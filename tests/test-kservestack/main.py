@@ -1,0 +1,83 @@
+from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
+from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kservestackv1alpha1
+from .model.io.crossplane.helm.release import v1beta1 as helmv1beta1
+
+test = compositiontest.CompositionTest(
+    metadata=k8s.ObjectMeta(
+        name="kservestack-basic",
+    ),
+    spec=compositiontest.Spec(
+        compositionPath="apis/kservestacks/composition.yaml",
+        xrPath="examples/kservestack/example.yaml",
+        xrdPath="apis/kservestacks/definition.yaml",
+        timeoutSeconds=120,
+        validate=False,
+        assertResources=[
+            kservestackv1alpha1.KServeStack(
+                apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                kind="KServeStack",
+                metadata=k8s.ObjectMeta(
+                    name="gpu-us-central1-kserve",
+                ),
+                spec=kservestackv1alpha1.Spec(
+                    providerConfigRef=kservestackv1alpha1.ProviderConfigRef(
+                        name="gpu-us-central1-kubeconfig",
+                    ),
+                ),
+            ).model_dump(exclude_unset=True),
+            helmv1beta1.Release(
+                apiVersion="helm.crossplane.io/v1beta1",
+                kind="Release",
+                metadata=k8s.ObjectMeta(
+                    annotations={
+                        "crossplane.io/composition-resource-name": "cert-manager",
+                    },
+                ),
+                spec=helmv1beta1.Spec(
+                    forProvider=helmv1beta1.ForProvider(
+                        chart=helmv1beta1.Chart(
+                            name="cert-manager",
+                            repository="https://charts.jetstack.io",
+                            version="v1.17.1",
+                        ),
+                        namespace="cert-manager",
+                    ),
+                    providerConfigRef=helmv1beta1.ProviderConfigRef(
+                        name="gpu-us-central1-kubeconfig",
+                    ),
+                ),
+            ).model_dump(exclude_unset=True),
+            helmv1beta1.Release(
+                apiVersion="helm.crossplane.io/v1beta1",
+                kind="Release",
+                metadata=k8s.ObjectMeta(
+                    annotations={
+                        "crossplane.io/composition-resource-name": "kserve-controller",
+                    },
+                ),
+                spec=helmv1beta1.Spec(
+                    forProvider=helmv1beta1.ForProvider(
+                        chart=helmv1beta1.Chart(
+                            name="kserve-llmisvc-resources",
+                            version="v0.16.0",
+                        ),
+                        namespace="kserve",
+                        patchesFrom=[
+                            helmv1beta1.PatchesFromItem(
+                                configMapKeyRef=helmv1beta1.ConfigMapKeyRef(
+                                    name="gpu-us-central1-kserve-storage-patch",
+                                    namespace="crossplane-system",
+                                    key="patches",
+                                ),
+                            ),
+                        ],
+                    ),
+                    providerConfigRef=helmv1beta1.ProviderConfigRef(
+                        name="gpu-us-central1-kubeconfig",
+                    ),
+                ),
+            ).model_dump(exclude_unset=True),
+        ],
+    ),
+)

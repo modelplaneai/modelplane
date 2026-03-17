@@ -1,0 +1,30 @@
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: GKECluster
+metadata:
+  name: gpu-us-central1
+spec:
+  project: acme-ml-platform
+  region: us-central1
+  kubernetesVersion: "1.35"
+  networking:
+    podCidr: "10.1.0.0/16"
+    serviceCidr: "10.2.0.0/16"
+    nodeCidr: "10.0.0.0/24"
+  nodePools:
+  - name: system
+    role: System
+    machineType: e2-standard-4
+    diskSizeGb: 100
+    nodeCount: 2
+    minNodeCount: 1
+    maxNodeCount: 4
+  - name: gpu-l4
+    role: GPU
+    machineType: g2-standard-4
+    diskSizeGb: 100
+    nodeCount: 1
+    minNodeCount: 0
+    maxNodeCount: 2
+    gpu:
+      acceleratorType: nvidia-l4
+      acceleratorCount: 1

@@ -1,0 +1,216 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: gkeclusters.infrastructure.modelplane.ai
+spec:
+  group: infrastructure.modelplane.ai
+  names:
+    categories:
+    - crossplane
+    - modelplane
+    kind: GKECluster
+    plural: gkeclusters
+    shortNames:
+    - gke
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: PROJECT
+      type: string
+      jsonPath: .spec.project
+    - name: REGION
+      type: string
+      jsonPath: .spec.region
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        description: >-
+          A GKECluster provisions a GKE cluster with dedicated node pools for
+          GPU inference and system workloads, plus ProviderConfigs for targeting
+          the cluster from downstream compositions.
+        properties:
+          spec:
+            description: GKEClusterSpec defines the desired state of GKECluster.
+            required:
+            - project
+            - region
+            - nodePools
+            properties:
+              project:
+                type: string
+                description: GCP project ID where the cluster will be created.
+                maxLength: 30
+                minLength: 6
+              region:
+                type: string
+                description: >-
+                  GCP region for the cluster (e.g. us-central1, europe-west4).
+                minLength: 1
+                maxLength: 32
+              kubernetesVersion:
+                type: string
+                default: "1.35"
+                description: >-
+                  GKE cluster Kubernetes version. Must be a version supported
+                  by the REGULAR release channel.
+                minLength: 1
+                maxLength: 16
+              networking:
+                type: object
+                description: >-
+                  VPC networking configuration. Defaults are suitable for
+                  standalone clusters. Override when VPC-peering multiple
+                  clusters to avoid CIDR collisions.
+                properties:
+                  podCidr:
+                    type: string
+                    default: "10.1.0.0/16"
+                    description: Secondary IP range for pods.
+                    maxLength: 18
+                  serviceCidr:
+                    type: string
+                    default: "10.2.0.0/16"
+                    description: Secondary IP range for services.
+                    maxLength: 18
+                  nodeCidr:
+                    type: string
+                    default: "10.0.0.0/24"
+                    description: Primary IP range for nodes.
+                    maxLength: 18
+              nodePools:
+                type: array
+                description: >-
+                  Node pools for the cluster. At least one System pool is
+                  required for controllers and infrastructure workloads.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys:
+                - name
+                items:
+                  type: object
+                  required:
+                  - name
+                  - role
+                  - machineType
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Unique name for this node pool. Used as a suffix in the
+                        GKE NodePool resource name.
+                      maxLength: 40
+                      minLength: 1
+                    role:
+                      type: string
+                      description: >-
+                        Determines what workloads this pool runs. System pools
+                        host controllers, gateways, and infrastructure. GPU
+                        pools host inference workloads and are tainted to
+                        exclude non-GPU pods.
+                      enum:
+                      - System
+                      - GPU
+                    machineType:
+                      type: string
+                      description: >-
+                        GCE machine type (e.g. e2-standard-4, a2-highgpu-8g,
+                        g2-standard-48).
+                      minLength: 1
+                      maxLength: 63
+                    diskSizeGb:
+                      type: integer
+                      default: 100
+                      description: Boot disk size in GB.
+                      minimum: 10
+                      maximum: 65536
+                    nodeCount:
+                      type: integer
+                      default: 1
+                      description: Initial number of nodes.
+                      minimum: 0
+                      maximum: 1000
+                    minNodeCount:
+                      type: integer
+                      default: 0
+                      description: >-
+                        Minimum number of nodes for autoscaling. Set to 1 or
+                        higher for pools that must always be available.
+                      minimum: 0
+                      maximum: 1000
+                    maxNodeCount:
+                      type: integer
+                      default: 8
+                      description: Maximum number of nodes for autoscaling.
+                      minimum: 0
+                      maximum: 1000
+                    gpu:
+                      type: object
+                      description: >-
+                        GPU configuration. Required when role is GPU. The pool
+                        will be tainted with nvidia.com/gpu=true:NoSchedule
+                        and labeled with the accelerator type.
+                      properties:
+                        acceleratorType:
+                          type: string
+                          description: >-
+                            GPU accelerator type (e.g. nvidia-tesla-a100,
+                            nvidia-h100-80gb, nvidia-l4).
+                          minLength: 1
+                          maxLength: 63
+                        acceleratorCount:
+                          type: integer
+                          default: 1
+                          description: Number of GPUs per node.
+                          minimum: 1
+                          maximum: 16
+                    zones:
+                      type: array
+                      description: >-
+                        Zones to restrict this node pool to. Required for GPU
+                        pools because not all zones in a region have every GPU
+                        type. Example: ["us-central1-a", "us-central1-b"].
+                      minItems: 1
+                      maxItems: 8
+                      items:
+                        type: string
+                        minLength: 1
+                        maxLength: 63
+            type: object
+          status:
+            description: GKEClusterStatus defines the observed state of GKECluster.
+            properties:
+              providerConfigRef:
+                type: object
+                description: >-
+                  Reference to the ProviderConfig that targets this cluster.
+                  Downstream compositions use this to create resources on
+                  the cluster.
+                properties:
+                  name:
+                    type: string
+                    maxLength: 253
+                    description: >-
+                      Name of the provider-kubernetes and provider-helm
+                      ProviderConfig targeting this cluster.
+              clusterEndpoint:
+                type: string
+                maxLength: 256
+                description: The GKE cluster's API server endpoint.
+              clusterCaCertificate:
+                type: string
+                maxLength: 16384
+                description: >-
+                  Base64-encoded CA certificate for the cluster's API server.
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
