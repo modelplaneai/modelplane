@@ -14,12 +14,16 @@ spec:
     version: '>=v2.5.0'
   - apiVersion: pkg.crossplane.io/v1
     kind: Provider
+    package: xpkg.upbound.io/upbound/provider-gcp-cloudplatform
+    version: '>=v2.5.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
     package: xpkg.upbound.io/upbound/provider-helm
     version: '>=v1.2.0'
   - apiVersion: pkg.crossplane.io/v1
     kind: Provider
     package: xpkg.upbound.io/upbound/provider-kubernetes
-    version: '>=v0.17.0'
+    version: '>=v1.2.0'
   - apiVersion: pkg.crossplane.io/v1
     kind: Function
     package: xpkg.upbound.io/crossplane-contrib/function-auto-ready
@@ -29,5 +33,5 @@ spec:
   maintainer: Upbound User <user@example.com>
   readme: |
     This is where you can add a readme for your project.
-  repository: xpkg.upbound.io/upbound/modelplane-infra
+  repository: xpkg.upbound.io/negzupboundio/modelplane-infra
   source: github.com/upbound/project-template-scratch

@@ -19,11 +19,21 @@ test = compositiontest.CompositionTest(
                 kind="KServeStack",
                 metadata=k8s.ObjectMeta(
                     name="gpu-us-central1-kserve",
+                    namespace="gpu-us-central1",
                 ),
                 spec=kservestackv1alpha1.Spec(
-                    providerConfigRef=kservestackv1alpha1.ProviderConfigRef(
-                        name="gpu-us-central1-kubeconfig",
-                    ),
+                    secrets=[
+                        kservestackv1alpha1.Secret(
+                            type="Kubeconfig",
+                            name="gpu-us-central1-kubeconfig",
+                            key="kubeconfig",
+                        ),
+                        kservestackv1alpha1.Secret(
+                            type="GCPServiceAccountKey",
+                            name="gpu-us-central1-sa-key",
+                            key="private_key",
+                        ),
+                    ],
                 ),
             ).model_dump(exclude_unset=True),
             helmv1beta1.Release(
@@ -44,7 +54,7 @@ test = compositiontest.CompositionTest(
                         namespace="cert-manager",
                     ),
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        name="gpu-us-central1-kubeconfig",
+                        name="gpu-us-central1-kserve-cluster",
                     ),
                 ),
             ).model_dump(exclude_unset=True),
@@ -67,14 +77,14 @@ test = compositiontest.CompositionTest(
                             helmv1beta1.PatchesFromItem(
                                 configMapKeyRef=helmv1beta1.ConfigMapKeyRef(
                                     name="gpu-us-central1-kserve-storage-patch",
-                                    namespace="crossplane-system",
+                                    namespace="gpu-us-central1",
                                     key="patches",
                                 ),
                             ),
                         ],
                     ),
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        name="gpu-us-central1-kubeconfig",
+                        name="gpu-us-central1-kserve-cluster",
                     ),
                 ),
             ).model_dump(exclude_unset=True),

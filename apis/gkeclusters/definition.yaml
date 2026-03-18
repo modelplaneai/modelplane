@@ -12,7 +12,7 @@ spec:
     plural: gkeclusters
     shortNames:
     - gke
-  scope: Cluster
+  scope: Namespaced
   versions:
   - name: v1alpha1
     referenceable: true
@@ -33,8 +33,9 @@ spec:
       openAPIV3Schema:
         description: >-
           A GKECluster provisions a GKE cluster with dedicated node pools for
-          GPU inference and system workloads, plus ProviderConfigs for targeting
-          the cluster from downstream compositions.
+          GPU inference and system workloads. It outputs secrets containing
+          the cluster kubeconfig and a GCP service account key that consumers
+          can use to target the cluster.
         properties:
           spec:
             description: GKEClusterSpec defines the desired state of GKECluster.
@@ -154,9 +155,7 @@ spec:
                     gpu:
                       type: object
                       description: >-
-                        GPU configuration. Required when role is GPU. The pool
-                        will be tainted with nvidia.com/gpu=true:NoSchedule
-                        and labeled with the accelerator type.
+                        GPU configuration. Required when role is GPU.
                       properties:
                         acceleratorType:
                           type: string
@@ -187,28 +186,39 @@ spec:
           status:
             description: GKEClusterStatus defines the observed state of GKECluster.
             properties:
-              providerConfigRef:
-                type: object
+              secrets:
+                type: array
                 description: >-
-                  Reference to the ProviderConfig that targets this cluster.
-                  Downstream compositions use this to create resources on
-                  the cluster.
-                properties:
-                  name:
-                    type: string
-                    maxLength: 253
-                    description: >-
-                      Name of the provider-kubernetes and provider-helm
-                      ProviderConfig targeting this cluster.
-              clusterEndpoint:
-                type: string
-                maxLength: 256
-                description: The GKE cluster's API server endpoint.
-              clusterCaCertificate:
-                type: string
-                maxLength: 16384
-                description: >-
-                  Base64-encoded CA certificate for the cluster's API server.
+                  Secrets produced by this cluster. Consumers use these to
+                  authenticate to the cluster. All secrets are in the same
+                  namespace as this GKECluster.
+                items:
+                  type: object
+                  required:
+                  - type
+                  - name
+                  - key
+                  properties:
+                    type:
+                      type: string
+                      description: >-
+                        The type of credential this secret contains.
+                        Kubeconfig contains a kubeconfig file with the cluster
+                        endpoint and CA certificate. GCPServiceAccountKey
+                        contains a GCP service account JSON key that can
+                        authenticate to the cluster via GKE IAM.
+                      enum:
+                      - Kubeconfig
+                      - GCPServiceAccountKey
+                    name:
+                      type: string
+                      description: Name of the Secret.
+                      maxLength: 253
+                    key:
+                      type: string
+                      description: >-
+                        Key within the Secret that holds the credential data.
+                      maxLength: 253
             type: object
         required:
         - spec

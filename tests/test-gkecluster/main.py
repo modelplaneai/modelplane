@@ -5,6 +5,8 @@ from .model.io.upbound.gcp.compute.network import v1beta1 as networkv1beta1
 from .model.io.upbound.gcp.compute.subnetwork import v1beta2 as subnetv1beta2
 from .model.io.upbound.gcp.container.cluster import v1beta2 as clusterv1beta2
 from .model.io.upbound.gcp.container.nodepool import v1beta2 as nodepoolv1beta2
+from .model.io.upbound.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
+from .model.io.upbound.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
 
 test = compositiontest.CompositionTest(
     metadata=k8s.ObjectMeta(
@@ -22,6 +24,7 @@ test = compositiontest.CompositionTest(
                 kind="GKECluster",
                 metadata=k8s.ObjectMeta(
                     name="gpu-us-central1",
+                    namespace="gpu-us-central1",
                 ),
                 spec=gkeclusterv1alpha1.Spec(
                     project="acme-ml-platform",
@@ -37,24 +40,34 @@ test = compositiontest.CompositionTest(
                             maxNodeCount=4,
                         ),
                         gkeclusterv1alpha1.NodePool(
-                            name="gpu-a100",
+                            name="gpu-l4",
                             role="GPU",
-                            machineType="a2-highgpu-8g",
-                            diskSizeGb=200,
-                            nodeCount=2,
+                            machineType="g2-standard-4",
+                            diskSizeGb=100,
+                            nodeCount=1,
                             minNodeCount=0,
-                            maxNodeCount=8,
+                            maxNodeCount=2,
                             gpu=gkeclusterv1alpha1.Gpu(
-                                acceleratorType="nvidia-tesla-a100",
-                                acceleratorCount=8,
+                                acceleratorType="nvidia-l4",
+                                acceleratorCount=1,
                             ),
+                            zones=["us-central1-a", "us-central1-c"],
                         ),
                     ],
                 ),
                 status=gkeclusterv1alpha1.Status(
-                    providerConfigRef=gkeclusterv1alpha1.ProviderConfigRef(
-                        name="gpu-us-central1-kubeconfig",
-                    ),
+                    secrets=[
+                        gkeclusterv1alpha1.Secret(
+                            type="Kubeconfig",
+                            name="gpu-us-central1-kubeconfig",
+                            key="kubeconfig",
+                        ),
+                        gkeclusterv1alpha1.Secret(
+                            type="GCPServiceAccountKey",
+                            name="gpu-us-central1-sa-key",
+                            key="private_key",
+                        ),
+                    ],
                 ),
             ).model_dump(exclude_unset=True),
             networkv1beta1.Network(
@@ -104,15 +117,10 @@ test = compositiontest.CompositionTest(
                         workloadIdentityConfig=clusterv1beta2.WorkloadIdentityConfig(
                             workloadPool="acme-ml-platform.svc.id.goog",
                         ),
-                        masterAuth=clusterv1beta2.MasterAuth(
-                            clientCertificateConfig=clusterv1beta2.ClientCertificateConfig(
-                                issueClientCertificate=True,
-                            ),
-                        ),
                     ),
                     writeConnectionSecretToRef=clusterv1beta2.WriteConnectionSecretToRef(
                         name="gpu-us-central1-kubeconfig",
-                        namespace="crossplane-system",
+                        namespace="gpu-us-central1",
                     ),
                 ),
             ).model_dump(exclude_unset=True),
@@ -155,7 +163,7 @@ test = compositiontest.CompositionTest(
                 kind="NodePool",
                 metadata=k8s.ObjectMeta(
                     annotations={
-                        "crossplane.io/composition-resource-name": "nodepool-gpu-a100",
+                        "crossplane.io/composition-resource-name": "nodepool-gpu-l4",
                     },
                 ),
                 spec=nodepoolv1beta2.Spec(
@@ -165,39 +173,68 @@ test = compositiontest.CompositionTest(
                         clusterSelector=nodepoolv1beta2.ClusterSelector(
                             matchControllerRef=True,
                         ),
-                        initialNodeCount=2,
+                        initialNodeCount=1,
                         autoscaling=nodepoolv1beta2.Autoscaling(
                             minNodeCount=0,
-                            maxNodeCount=8,
+                            maxNodeCount=2,
                         ),
+                        nodeLocations=["us-central1-a", "us-central1-c"],
                         nodeConfig=nodepoolv1beta2.NodeConfig(
-                            machineType="a2-highgpu-8g",
-                            diskSizeGb=200,
+                            machineType="g2-standard-4",
+                            diskSizeGb=100,
                             imageType="COS_CONTAINERD",
                             oauthScopes=[
                                 "https://www.googleapis.com/auth/cloud-platform",
                             ],
                             labels={
-                                "modelplane.ai/gpu": "nvidia-tesla-a100",
-                                "modelplane.ai/pool": "gpu-a100",
+                                "modelplane.ai/gpu": "nvidia-l4",
+                                "modelplane.ai/pool": "gpu-l4",
                             },
                             guestAccelerator=[
                                 nodepoolv1beta2.GuestAcceleratorItem(
-                                    type="nvidia-tesla-a100",
-                                    count=8,
+                                    type="nvidia-l4",
+                                    count=1,
                                     gpuDriverInstallationConfig=nodepoolv1beta2.GpuDriverInstallationConfig(
                                         gpuDriverVersion="DEFAULT",
                                     ),
                                 ),
                             ],
-                            taint=[
-                                nodepoolv1beta2.TaintItem(
-                                    key="nvidia.com/gpu",
-                                    value="true",
-                                    effect="NO_SCHEDULE",
-                                ),
-                            ],
                         ),
+                    ),
+                ),
+            ).model_dump(exclude_unset=True),
+            sav1beta1.ServiceAccount(
+                apiVersion="cloudplatform.gcp.upbound.io/v1beta1",
+                kind="ServiceAccount",
+                metadata=k8s.ObjectMeta(
+                    annotations={
+                        "crossplane.io/composition-resource-name": "service-account",
+                    },
+                ),
+                spec=sav1beta1.Spec(
+                    forProvider=sav1beta1.ForProvider(
+                        project="acme-ml-platform",
+                        displayName="Crossplane GKECluster gpu-us-central1",
+                    ),
+                ),
+            ).model_dump(exclude_unset=True),
+            sakeyv1beta1.ServiceAccountKey(
+                apiVersion="cloudplatform.gcp.upbound.io/v1beta1",
+                kind="ServiceAccountKey",
+                metadata=k8s.ObjectMeta(
+                    annotations={
+                        "crossplane.io/composition-resource-name": "service-account-key",
+                    },
+                ),
+                spec=sakeyv1beta1.Spec(
+                    forProvider=sakeyv1beta1.ForProvider(
+                        serviceAccountIdSelector=sakeyv1beta1.ServiceAccountIdSelector(
+                            matchControllerRef=True,
+                        ),
+                    ),
+                    writeConnectionSecretToRef=sakeyv1beta1.WriteConnectionSecretToRef(
+                        name="gpu-us-central1-sa-key",
+                        namespace="gpu-us-central1",
                     ),
                 ),
             ).model_dump(exclude_unset=True),

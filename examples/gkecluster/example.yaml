@@ -2,8 +2,9 @@ apiVersion: infrastructure.modelplane.ai/v1alpha1
 kind: GKECluster
 metadata:
   name: gpu-us-central1
+  namespace: gpu-us-central1
 spec:
-  project: acme-ml-platform
+  project: crossplane-playground
   region: us-central1
   kubernetesVersion: "1.35"
   networking:
@@ -28,3 +29,6 @@ spec:
     gpu:
       acceleratorType: nvidia-l4
       acceleratorCount: 1
+    zones:
+    - us-central1-a
+    - us-central1-c

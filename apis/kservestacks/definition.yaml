@@ -12,7 +12,7 @@ spec:
     plural: kservestacks
     shortNames:
     - kss
-  scope: Cluster
+  scope: Namespaced
   versions:
   - name: v1alpha1
     referenceable: true
@@ -39,22 +39,37 @@ spec:
           spec:
             description: KServeStackSpec defines the desired state of KServeStack.
             required:
-            - providerConfigRef
+            - secrets
             properties:
-              providerConfigRef:
-                type: object
-                required:
-                - name
+              secrets:
+                type: array
                 description: >-
-                  Reference to the ProviderConfig targeting the cluster where
-                  KServe should be installed. Typically output by a GKECluster
-                  or similar cluster XR.
-                properties:
-                  name:
-                    type: string
-                    description: Name of the provider-kubernetes and provider-helm ProviderConfig.
-                    maxLength: 253
-                    minLength: 1
+                  Secrets used to authenticate to the target cluster. Typically
+                  sourced from a GKECluster's status.secrets. All secrets must
+                  be in the same namespace as this KServeStack. A Kubeconfig
+                  secret and a GCPServiceAccountKey secret are required.
+                minItems: 1
+                items:
+                  type: object
+                  required:
+                  - type
+                  - name
+                  - key
+                  properties:
+                    type:
+                      type: string
+                      description: The type of credential this secret contains.
+                      enum:
+                      - Kubeconfig
+                      - GCPServiceAccountKey
+                    name:
+                      type: string
+                      description: Name of the Secret.
+                      maxLength: 253
+                    key:
+                      type: string
+                      description: Key within the Secret that holds the credential data.
+                      maxLength: 253
               versions:
                 type: object
                 description: >-

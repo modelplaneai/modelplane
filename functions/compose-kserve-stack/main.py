@@ -4,7 +4,11 @@ from pathlib import Path
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .model.io.crossplane.helm.release import v1beta1 as helmv1beta1
+from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
+from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
+from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1
 
 _HERE = Path(__file__).parent
@@ -62,6 +66,7 @@ def _helm_release(
     release = helmv1beta1.Release(
         spec=helmv1beta1.Spec(
             providerConfigRef=helmv1beta1.ProviderConfigRef(
+                kind="ProviderConfig",
                 name=provider_config,
             ),
             forProvider=helmv1beta1.ForProvider(
@@ -79,90 +84,216 @@ def _helm_release(
     return release
 
 
-def _k8s_object(provider_config: str, manifest: dict) -> dict:
-    return {
-        "apiVersion": "kubernetes.crossplane.io/v1alpha2",
-        "kind": "Object",
-        "spec": {
-            "providerConfigRef": {"name": provider_config},
-            "forProvider": {"manifest": manifest},
-        },
-    }
+def _k8s_object(provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
+    return k8sobjv1alpha1.Object(
+        spec=k8sobjv1alpha1.Spec(
+            providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                kind="ProviderConfig",
+                name=provider_config,
+            ),
+            forProvider=k8sobjv1alpha1.ForProvider(
+                manifest=manifest,
+            ),
+        ),
+    )
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     xr = v1alpha1.KServeStack(**resource.struct_to_dict(req.observed.composite.resource))
-    pc = xr.spec.providerConfigRef.name
+    name = xr.metadata.name
+    ns = xr.metadata.namespace
     v = xr.spec.versions or v1alpha1.Versions()
 
+    kubeconfig_secret = next(
+        (s for s in (xr.spec.secrets or []) if s.type == "Kubeconfig"), None
+    )
+    sa_key_secret = next(
+        (s for s in (xr.spec.secrets or []) if s.type == "GCPServiceAccountKey"), None
+    )
+
+    if not kubeconfig_secret or not sa_key_secret:
+        rsp.conditions.append(fnv1.Condition(
+            type="Ready",
+            status=fnv1.STATUS_CONDITION_FALSE,
+            reason="InvalidSpec",
+            message="spec.secrets must include a Kubeconfig and a GCPServiceAccountKey entry",
+            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
+        ))
+        return
+
+    pc_name = f"{name}-cluster"
+
     resource.update(
-        rsp.desired.resources["cert-manager"],
-        _helm_release(
-            chart="cert-manager",
-            repo="https://charts.jetstack.io",
-            version=v.certManager or "v1.17.1",
-            namespace="cert-manager",
-            provider_config=pc,
-            values={"crds": {"enabled": True, "keep": False}},
+        rsp.desired.resources["provider-config-kubernetes"],
+        k8spcv1alpha1.ProviderConfig(
+            metadata=metav1.ObjectMeta(name=pc_name),
+            spec=k8spcv1alpha1.Spec(
+                credentials=k8spcv1alpha1.Credentials(
+                    source="Secret",
+                    secretRef=k8spcv1alpha1.SecretRef(
+                        name=kubeconfig_secret.name,
+                        namespace=ns,
+                        key=kubeconfig_secret.key,
+                    ),
+                ),
+                identity=k8spcv1alpha1.Identity(
+                    type="GoogleApplicationCredentials",
+                    source="Secret",
+                    secretRef=k8spcv1alpha1.SecretRef(
+                        name=sa_key_secret.name,
+                        namespace=ns,
+                        key=sa_key_secret.key,
+                    ),
+                ),
+            ),
         ),
     )
 
     resource.update(
-        rsp.desired.resources["envoy-gateway"],
-        _helm_release(
-            chart="gateway-helm",
-            repo="oci://docker.io/envoyproxy",
-            version=v.envoyGateway or "v1.3.0",
-            namespace="envoy-gateway-system",
-            provider_config=pc,
-            values={
-                "config": {
-                    "envoyGateway": {
-                        "extensionApis": {"enableBackend": True},
+        rsp.desired.resources["provider-config-helm"],
+        helmpcv1beta1.ProviderConfig(
+            metadata=metav1.ObjectMeta(name=pc_name),
+            spec=helmpcv1beta1.Spec(
+                credentials=helmpcv1beta1.Credentials(
+                    source="Secret",
+                    secretRef=helmpcv1beta1.SecretRef(
+                        name=kubeconfig_secret.name,
+                        namespace=ns,
+                        key=kubeconfig_secret.key,
+                    ),
+                ),
+                identity=helmpcv1beta1.Identity(
+                    type="GoogleApplicationCredentials",
+                    source="Secret",
+                    secretRef=helmpcv1beta1.SecretRef(
+                        name=sa_key_secret.name,
+                        namespace=ns,
+                        key=sa_key_secret.key,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    # Gate resources that target the remote cluster on the ProviderConfigs
+    # being observed — i.e. persisted by Crossplane from a previous reconcile.
+    # This avoids transient "ProviderConfig not found" errors on first creation.
+    pc_observed = (
+        "provider-config-helm" in req.observed.resources
+        and "provider-config-kubernetes" in req.observed.resources
+    )
+
+    if pc_observed:
+        resource.update(
+            rsp.desired.resources["cert-manager"],
+            _helm_release(
+                chart="cert-manager",
+                repo="https://charts.jetstack.io",
+                version=v.certManager or "v1.17.1",
+                namespace="cert-manager",
+                provider_config=pc_name,
+                values={"crds": {"enabled": True, "keep": False}},
+            ),
+        )
+
+        resource.update(
+            rsp.desired.resources["envoy-gateway"],
+            _helm_release(
+                chart="gateway-helm",
+                repo="oci://docker.io/envoyproxy",
+                version=v.envoyGateway or "v1.3.0",
+                namespace="envoy-gateway-system",
+                provider_config=pc_name,
+                values={
+                    "config": {
+                        "envoyGateway": {
+                            "extensionApis": {"enableBackend": True},
+                        },
                     },
                 },
-            },
-        ),
-    )
+            ),
+        )
 
-    resource.update(
-        rsp.desired.resources["leader-worker-set"],
-        _helm_release(
-            chart="lws",
-            repo="oci://registry.k8s.io/lws/charts",
-            version=v.leaderWorkerSet or "v0.7.0",
-            namespace="lws-system",
-            provider_config=pc,
-        ),
-    )
+        resource.update(
+            rsp.desired.resources["leader-worker-set"],
+            _helm_release(
+                chart="lws",
+                repo="oci://registry.k8s.io/lws/charts",
+                version=v.leaderWorkerSet or "v0.7.0",
+                namespace="lws-system",
+                provider_config=pc_name,
+            ),
+        )
 
-    resource.update(
-        rsp.desired.resources["kserve-crds"],
-        _helm_release(
-            chart="kserve-llmisvc-crd",
-            repo="oci://ghcr.io/kserve/charts",
-            version=v.kserve or "v0.16.0",
-            namespace="kserve",
-            provider_config=pc,
-        ),
-    )
+        for crd in _INFERENCE_EXTENSION_CRDS:
+            crd_name = crd["metadata"]["name"]
+            short = crd_name.split(".")[0]
+            resource.update(
+                rsp.desired.resources[f"inference-ext-crd-{short}"],
+                _k8s_object(pc_name, crd),
+            )
 
-    # TODO(negz): File an upstream issue with kserve/kserve to expose
-    # storageInitializer config fields (especially memoryLimit) as Helm values.
-    #
-    # The kserve-llmisvc-resources chart v0.16.0 has a static ConfigMap template
-    # (inferenceservice-config) that hardcodes storageInitializer.memoryLimit to
-    # 1Gi. The entire storageInitializer JSON blob is inlined in the template
-    # with no {{ .Values }} references, so there's no way to override it via
-    # Helm values. The 1Gi default causes OOM when the storage initializer
-    # downloads models larger than ~1GB (even the 3GB Qwen2.5-1.5B triggers it).
-    #
-    # We work around this using provider-helm's patchesFrom, which applies a
-    # Kustomize strategic merge patch post-render. This makes Helm's desired
-    # state include 4Gi, avoiding a fight between Helm and any manual patch.
-    # The fix upstream would be to template the storageInitializer fields behind
-    # .Values so consumers can set memoryLimit (and other fields) normally.
-    patch_cm_name = f"{xr.metadata.name}-storage-patch"
+        gw = xr.spec.gateway or v1alpha1.Gateway()
+        gw_class_name = gw.className or "envoy"
+
+        if gw.listeners:
+            listeners = [
+                {"name": l.name, "protocol": l.protocol, "port": l.port}
+                for l in gw.listeners
+            ]
+        else:
+            listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
+
+        resource.update(
+            rsp.desired.resources["gateway-class"],
+            _k8s_object(pc_name, {
+                "apiVersion": "gateway.networking.k8s.io/v1",
+                "kind": "GatewayClass",
+                "metadata": {"name": gw_class_name},
+                "spec": {
+                    "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                },
+            }),
+        )
+
+        resource.update(
+            rsp.desired.resources["gateway"],
+            _k8s_object(pc_name, {
+                "apiVersion": "gateway.networking.k8s.io/v1",
+                "kind": "Gateway",
+                "metadata": {
+                    "name": "kserve-ingress-gateway",
+                    "namespace": "kserve",
+                },
+                "spec": {
+                    "gatewayClassName": gw_class_name,
+                    "listeners": [
+                        {**l, "allowedRoutes": {"namespaces": {"from": "All"}}}
+                        for l in listeners
+                    ],
+                },
+            }),
+        )
+
+    # Gate KServe CRDs and controller on cert-manager being ready. The kserve
+    # chart creates Certificate and Issuer resources, and the kserve controller
+    # registers a validating webhook that Helm calls during install. Both fail
+    # if cert-manager isn't fully up.
+    cert_manager_ready = _is_ready(req, "cert-manager")
+
+    if pc_observed and cert_manager_ready:
+        resource.update(
+            rsp.desired.resources["kserve-crds"],
+            _helm_release(
+                chart="kserve-llmisvc-crd",
+                repo="oci://ghcr.io/kserve/charts",
+                version=v.kserve or "v0.16.0",
+                namespace="kserve",
+                provider_config=pc_name,
+            ),
+        )
+
+    patch_cm_name = f"{name}-storage-patch"
 
     resource.update(
         rsp.desired.resources["kserve-storage-patch"],
@@ -171,7 +302,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             "kind": "ConfigMap",
             "metadata": {
                 "name": patch_cm_name,
-                "namespace": "crossplane-system",
+                "namespace": ns,
             },
             "data": {
                 "patches": _KUSTOMIZE_STORAGE_PATCH,
@@ -179,81 +310,29 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         },
     )
 
-    kserve_release = _helm_release(
-        chart="kserve-llmisvc-resources",
-        repo="oci://ghcr.io/kserve/charts",
-        version=v.kserve or "v0.16.0",
-        namespace="kserve",
-        provider_config=pc,
-    )
-    kserve_release.spec.forProvider.patchesFrom = [
-        helmv1beta1.PatchesFromItem(
-            configMapKeyRef=helmv1beta1.ConfigMapKeyRef(
-                name=patch_cm_name,
-                namespace="crossplane-system",
-                key="patches",
-            ),
-        ),
-    ]
-    resource.update(
-        rsp.desired.resources["kserve-controller"],
-        kserve_release,
-    )
-
-    # KServe v0.16 needs Gateway API Inference Extension CRDs (InferencePool,
-    # InferenceModel) but doesn't install them. We install each CRD as a
-    # provider-kubernetes Object.
-    for i, crd in enumerate(_INFERENCE_EXTENSION_CRDS):
-        crd_name = crd["metadata"]["name"]
-        short = crd_name.split(".")[0]
-        resource.update(
-            rsp.desired.resources[f"inference-ext-crd-{short}"],
-            _k8s_object(pc, crd),
+    if pc_observed and cert_manager_ready:
+        kserve_release = _helm_release(
+            chart="kserve-llmisvc-resources",
+            repo="oci://ghcr.io/kserve/charts",
+            version=v.kserve or "v0.16.0",
+            namespace="kserve",
+            provider_config=pc_name,
         )
-
-    gw = xr.spec.gateway or v1alpha1.Gateway()
-    gw_class_name = gw.className or "envoy"
-
-    if gw.listeners:
-        listeners = [
-            {"name": l.name, "protocol": l.protocol, "port": l.port}
-            for l in gw.listeners
+        kserve_release.spec.forProvider.patchesFrom = [
+            helmv1beta1.PatchesFromItem(
+                configMapKeyRef=helmv1beta1.ConfigMapKeyRef(
+                    name=patch_cm_name,
+                    namespace=ns,
+                    key="patches",
+                ),
+            ),
         ]
-    else:
-        listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
+        resource.update(rsp.desired.resources["kserve-controller"], kserve_release)
 
-    resource.update(
-        rsp.desired.resources["gateway-class"],
-        _k8s_object(pc, {
-            "apiVersion": "gateway.networking.k8s.io/v1",
-            "kind": "GatewayClass",
-            "metadata": {"name": gw_class_name},
-            "spec": {
-                "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
-            },
-        }),
-    )
-
-    gw_listeners = [
-        {**l, "allowedRoutes": {"namespaces": {"from": "All"}}}
-        for l in listeners
-    ]
-
-    resource.update(
-        rsp.desired.resources["gateway"],
-        _k8s_object(pc, {
-            "apiVersion": "gateway.networking.k8s.io/v1",
-            "kind": "Gateway",
-            "metadata": {
-                "name": "kserve-ingress-gateway",
-                "namespace": "kserve",
-            },
-            "spec": {
-                "gatewayClassName": gw_class_name,
-                "listeners": gw_listeners,
-            },
-        }),
-    )
+    always_ready = ["provider-config-kubernetes", "provider-config-helm", "kserve-storage-patch"]
+    for r in always_ready:
+        if r in rsp.desired.resources:
+            rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
     all_resources = [
         "cert-manager", "envoy-gateway",
@@ -264,12 +343,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         "gateway-class", "gateway",
     ]
 
-    rsp.desired.resources["kserve-storage-patch"].ready = fnv1.READY_TRUE
-
     all_ready = True
     not_ready = []
     for r in all_resources:
-        if _is_ready(req, r):
+        if r not in rsp.desired.resources:
+            all_ready = False
+            not_ready.append(r)
+        elif _is_ready(req, r):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
         else:
             all_ready = False
