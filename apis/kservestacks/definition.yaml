@@ -47,7 +47,10 @@ spec:
                   Secrets used to authenticate to the target cluster. Typically
                   sourced from a GKECluster's status.secrets. All secrets must
                   be in the same namespace as this KServeStack. A Kubeconfig
-                  secret and a GCPServiceAccountKey secret are required.
+                  secret is required. If a cloud-specific credential secret is
+                  present (e.g. GCPServiceAccountKey), the ProviderConfigs
+                  will use it for identity-based authentication instead of
+                  relying on the kubeconfig's embedded credentials.
                 minItems: 1
                 items:
                   type: object
@@ -58,7 +61,10 @@ spec:
                   properties:
                     type:
                       type: string
-                      description: The type of credential this secret contains.
+                      description: >-
+                        The type of credential this secret contains. Kubeconfig
+                        is required. Cloud-specific types are optional and
+                        determine how the ProviderConfigs authenticate.
                       enum:
                       - Kubeconfig
                       - GCPServiceAccountKey

@@ -104,22 +104,70 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     ns = xr.metadata.namespace
     v = xr.spec.versions or v1alpha1.Versions()
 
+    secrets = xr.spec.secrets or []
+
     kubeconfig_secret = next(
-        (s for s in (xr.spec.secrets or []) if s.type == "Kubeconfig"), None
-    )
-    sa_key_secret = next(
-        (s for s in (xr.spec.secrets or []) if s.type == "GCPServiceAccountKey"), None
+        (s for s in secrets if s.type == "Kubeconfig"), None
     )
 
-    if not kubeconfig_secret or not sa_key_secret:
+    if not kubeconfig_secret:
         rsp.conditions.append(fnv1.Condition(
             type="Ready",
             status=fnv1.STATUS_CONDITION_FALSE,
             reason="InvalidSpec",
-            message="spec.secrets must include a Kubeconfig and a GCPServiceAccountKey entry",
+            message="spec.secrets must include a Kubeconfig entry",
             target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
         ))
         return
+
+    # Build ProviderConfig specs from the secrets array. The kubeconfig
+    # provides the cluster endpoint and CA cert. If a cloud-specific
+    # credential secret is present, it's layered on as an identity block
+    # so the provider authenticates via the cloud's IAM instead of
+    # relying on whatever auth is baked into the kubeconfig.
+    k8s_pc_spec = k8spcv1alpha1.Spec(
+        credentials=k8spcv1alpha1.Credentials(
+            source="Secret",
+            secretRef=k8spcv1alpha1.SecretRef(
+                name=kubeconfig_secret.name,
+                namespace=ns,
+                key=kubeconfig_secret.key,
+            ),
+        ),
+    )
+    helm_pc_spec = helmpcv1beta1.Spec(
+        credentials=helmpcv1beta1.Credentials(
+            source="Secret",
+            secretRef=helmpcv1beta1.SecretRef(
+                name=kubeconfig_secret.name,
+                namespace=ns,
+                key=kubeconfig_secret.key,
+            ),
+        ),
+    )
+
+    gcp_secret = next(
+        (s for s in secrets if s.type == "GCPServiceAccountKey"), None
+    )
+    if gcp_secret:
+        k8s_pc_spec.identity = k8spcv1alpha1.Identity(
+            type="GoogleApplicationCredentials",
+            source="Secret",
+            secretRef=k8spcv1alpha1.SecretRef(
+                name=gcp_secret.name,
+                namespace=ns,
+                key=gcp_secret.key,
+            ),
+        )
+        helm_pc_spec.identity = helmpcv1beta1.Identity(
+            type="GoogleApplicationCredentials",
+            source="Secret",
+            secretRef=helmpcv1beta1.SecretRef(
+                name=gcp_secret.name,
+                namespace=ns,
+                key=gcp_secret.key,
+            ),
+        )
 
     pc_name = f"{name}-cluster"
 
@@ -127,25 +175,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         rsp.desired.resources["provider-config-kubernetes"],
         k8spcv1alpha1.ProviderConfig(
             metadata=metav1.ObjectMeta(name=pc_name),
-            spec=k8spcv1alpha1.Spec(
-                credentials=k8spcv1alpha1.Credentials(
-                    source="Secret",
-                    secretRef=k8spcv1alpha1.SecretRef(
-                        name=kubeconfig_secret.name,
-                        namespace=ns,
-                        key=kubeconfig_secret.key,
-                    ),
-                ),
-                identity=k8spcv1alpha1.Identity(
-                    type="GoogleApplicationCredentials",
-                    source="Secret",
-                    secretRef=k8spcv1alpha1.SecretRef(
-                        name=sa_key_secret.name,
-                        namespace=ns,
-                        key=sa_key_secret.key,
-                    ),
-                ),
-            ),
+            spec=k8s_pc_spec,
         ),
     )
 
@@ -153,25 +183,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         rsp.desired.resources["provider-config-helm"],
         helmpcv1beta1.ProviderConfig(
             metadata=metav1.ObjectMeta(name=pc_name),
-            spec=helmpcv1beta1.Spec(
-                credentials=helmpcv1beta1.Credentials(
-                    source="Secret",
-                    secretRef=helmpcv1beta1.SecretRef(
-                        name=kubeconfig_secret.name,
-                        namespace=ns,
-                        key=kubeconfig_secret.key,
-                    ),
-                ),
-                identity=helmpcv1beta1.Identity(
-                    type="GoogleApplicationCredentials",
-                    source="Secret",
-                    secretRef=helmpcv1beta1.SecretRef(
-                        name=sa_key_secret.name,
-                        namespace=ns,
-                        key=sa_key_secret.key,
-                    ),
-                ),
-            ),
+            spec=helm_pc_spec,
         ),
     )
 
