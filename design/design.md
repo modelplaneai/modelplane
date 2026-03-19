@@ -23,6 +23,7 @@ spec:
   modelRef:
     kind: ClusterModel
     name: llama-8b-vllm
+  environments: 1
 ```
 
 The platform team pre-configures the inference environment and model catalog
@@ -239,9 +240,10 @@ The `backend` discriminator is the top-level intent: "I want an inference
 environment running KServe" (or Dynamo, or a managed inference API). Everything
 else — including the cluster the backend runs on — is a property of the
 backend's configuration. A KServe backend needs a Kubernetes cluster, so
-`spec.kserve.cluster` carries a second discriminated union for the cloud
-provider (`provider: GKE` paired with `gke: {...}`). A hosted backend
-wouldn't have a `cluster` block at all — just credentials and region config.
+`spec.kserve.cluster` carries a second discriminated union for cluster
+provisioning (`source: GKE` paired with `gke: {...}`, or `source: Existing`
+for bring-your-own). A hosted backend wouldn't have a `cluster` block at all
+— just credentials and region config.
 
 v0.1 assumes dedicated inference environments. The environment exists solely for
 Modelplane workloads, with no shared scheduling or noisy-neighbor concerns. This
@@ -267,9 +269,9 @@ spec:
     version: v0.16.0
 
     # Cluster provisioning — not every backend needs a cluster. KServe does.
-    # The provider discriminator selects the cloud-specific config object.
+    # The source discriminator selects provisioning or bring-your-own.
     cluster:
-      provider: GKE                      # GKE | (EKS in v0.2)
+      source: GKE                        # GKE | EKS | Existing
       gke:
         project: acme-ml-platform
         region: us-east1
@@ -346,6 +348,37 @@ status:
   gateway:
     address: 10.0.1.50
 ```
+
+Platform teams with existing Kubernetes clusters can bring their own
+infrastructure instead of having Modelplane provision it. The `cluster` block
+accepts `source: Existing` as an alternative to a cloud provider:
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceEnvironment
+metadata:
+  name: gpu-us-east-byo
+spec:
+  backend: KServe
+  kserve:
+    version: v0.16.0
+    cluster:
+      source: Existing
+      existing:
+        secretRef:
+          name: gpu-cluster-kubeconfig
+          key: kubeconfig
+  modelCache:
+    enabled: true
+    storageClass: local-nvme
+    storageCapacity: 500Gi
+```
+
+Modelplane still installs and manages the backend stack (KServe, gateway, model
+caching) on the cluster. It just doesn't provision the cluster itself. This
+covers enterprise platform teams that manage clusters via Terraform, Cluster
+API, or their own Crossplane Compositions and don't want Modelplane recreating
+them.
 
 Labels on InferenceEnvironment serve a dual purpose: informational metadata and
 selection targets. ModelDeployments can target environments by label selector
@@ -604,6 +637,28 @@ serves multiple teams. Cluster-scoped InferenceEnvironments shared by namespaced
 ModelDeployments matches how enterprise platform teams actually manage shared
 infrastructure.
 
+### Custom InferenceEnvironment Compositions
+
+I considered letting platform teams provide their own Compositions for
+InferenceEnvironment (or for the internal GKECluster and KServeStack XRs) as
+the customization mechanism for bring-your-own infrastructure. This is how
+Crossplane customization normally works — the XRD is the contract, the
+Composition is swappable.
+
+The problem is that Modelplane's composition functions cross resource
+boundaries. The deploy function reads InferenceEnvironments to decide where to
+place models. The placement function reads the InferenceEnvironment to figure
+out how to deploy a model on its backend. A custom InferenceEnvironment
+Composition doesn't help if the platform team wants an unsupported backend —
+they'd also need a custom placement function, and potentially a custom deploy
+function. That's too much surface area to customize from outside the project.
+
+The bring-your-own-cluster path (`source: Existing` with a kubeconfig Secret)
+covers the realistic customization need: the platform team controls cluster
+provisioning, Modelplane controls the backend stack and model deployment.
+Adding new backends (Dynamo, KubeAI) is a contribution to Modelplane, not a
+per-platform-team customization.
+
 ## Future work
 
 Capabilities deferred from v0.1, ordered roughly by how soon I think they'll be
@@ -664,3 +719,15 @@ estimate VRAM requirements and disk size. OME does this via automatic parsing of
 safetensors headers. The question is whether v0.1 should require explicit
 resource specs (simpler, no source-specific logic in the model function) or
 infer them when possible and let the spec override.
+
+**Environment capacity and scheduling for BYO clusters:** When Modelplane
+provisions a cluster, it knows the GPU capacity from the node pool config. For
+bring-your-own clusters, capacity is unknown — and even for provisioned
+clusters, node autoscaling means declared capacity may not reflect reality. The
+deploy function currently uses capacity to match models to compatible
+environments. For BYO clusters this information isn't available. One option is
+to make capacity purely informational and have the deploy function only check
+engine/backend compatibility, letting the actual scheduling happen at the
+Kubernetes level when the ModelPlacement composes an LLMInferenceService. If the
+cluster can't schedule the pods, the placement reports that via status
+conditions rather than being rejected upfront.
