@@ -219,6 +219,15 @@ Workaround: use `up repo update <name> --private=false --publish=false --force`
 to make all function repositories public. This needs to be done for every new
 function repo, which is easy to forget.
 
+Additionally, `up repo update` has an aggressive rate limit that persists for
+10+ minutes after a batch of updates. During the initial setup we updated 5
+repos in quick succession, and subsequent updates for new repos hit
+`Repository Update Rate Limit Exceeded` for extended periods. The rate limit
+also can't be bypassed via the REST API directly (`PUT /v1/repositories/...`
+returns 200 but doesn't actually update the repo). This makes iterative
+development painful — every new function means waiting out a rate limit before
+Crossplane can pull it.
+
 ### Issue: `up project build --no-build-cache` doesn't invalidate Docker images
 
 `up project build` uses Docker buildx to build function images. The
@@ -343,7 +352,55 @@ Qwen 2.5 0.5B Instruct on a single L4 GPU.
   ensure code changes were picked up. Both `--no-build-cache` and deleting
   `~/.up/build-cache/` were insufficient.
 
-Total iterations pushed to registry: v0.1.0-dev.1 through v0.1.0-dev.12.
+Total iterations pushed to registry: v0.1.0-dev.1 through v0.1.0-dev.23.
+
+## InferenceGateway
+**Status:** Complete
+
+Added InferenceGateway XR to compose the control plane routing infrastructure.
+This eliminates 5 of 6 manual prerequisites (Envoy Gateway Helm install,
+GatewayClass, Gateway, namespace, and the envoy-gateway-system namespace).
+Only the RBAC ClusterRole remains as a manual prerequisite (chicken-and-egg —
+Crossplane needs the permission before it can grant itself the permission).
+
+### Issues encountered
+
+- **Cluster-scoped XR composing namespaced Helm Release**: the function must
+  set `metadata.namespace` on the Release explicitly (via Pydantic
+  `metadata=metav1.ObjectMeta(namespace=...)`). Crossplane preserves the
+  function-set namespace for cluster-scoped XRs. Without this, the
+  resourceRef has no namespace and Crossplane can't GET the resource.
+
+- **Provider-helm InjectedIdentity lacks namespace creation permission**:
+  provider-helm's SA can't create the `envoy-gateway-system` namespace. Fixed
+  by composing the namespace directly and setting `skipCreateNamespace=True`
+  on the Helm release.
+
+- **GatewayClass and Gateway readiness**: these resources have `Accepted`
+  conditions, not `Ready`. The function checks `Accepted` on both and sets
+  the composed resource ready flag accordingly. On kind clusters, the Gateway
+  is `Accepted` but never `Programmed` (no LoadBalancer) — this is fine.
+
+- **Functions can't set metadata.labels on the XR**: `resource.update` on
+  `rsp.desired.composite` with `metadata.labels` is accepted by the function
+  but Crossplane doesn't apply label changes from functions to the XR. User
+  metadata is user-managed. Workaround: require platform teams to add a
+  `modelplane.ai/environment: "true"` label to InferenceEnvironments. This is
+  needed because `match_labels={}` doesn't work (protobuf bug) and there's no
+  `match_all` option.
+
+- **Docker buildkit state volumes persist across builder recreation**: the
+  volume name is `buildx_buildkit_xpkg-builder0_state`. Removing the builder
+  (`docker buildx rm`) does NOT remove the volume. The volume must be removed
+  explicitly with `docker volume rm`. Without this, the new builder reuses
+  cached layers from the old one. The full cache purge sequence is:
+  ```bash
+  docker buildx rm xpkg-builder
+  docker volume ls -q | grep buildkit | xargs -r docker volume rm
+  docker builder prune -af
+  docker buildx create --name xpkg-builder --driver docker-container --use
+  up project build --no-build-cache
+  ```
 
 ---
 

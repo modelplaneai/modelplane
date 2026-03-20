@@ -3,6 +3,7 @@ kind: InferenceEnvironment
 metadata:
   name: demo-us-central
   labels:
+    modelplane.ai/environment: "true"
     modelplane.ai/region: us-central
 spec:
   backend: KServe

@@ -813,41 +813,10 @@ Before any Modelplane resources are created, the control plane cluster needs:
 1. **Crossplane v2.2+** with `function-python` installed.
 2. **Providers**: `provider-gcp-container`, `provider-gcp-compute`,
    `provider-gcp-cloudplatform`, `provider-helm`, `provider-kubernetes`.
-3. **Envoy Gateway on the control plane** with the Backend API enabled. This
-   handles unified endpoint routing. Install via Helm:
-   ```bash
-   helm install gateway-api oci://ghcr.io/kubernetes-sigs/gateway-api/charts/gateway-api \
-     --version v1.2.1 -n gateway-system --create-namespace
-   helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
-     --version v1.3.0 -n envoy-gateway-system --create-namespace \
-     --set config.envoyGateway.extensionApis.enableBackend=true
-   ```
-4. **A GatewayClass and Gateway on the control plane:**
-   ```yaml
-   apiVersion: gateway.networking.k8s.io/v1
-   kind: GatewayClass
-   metadata:
-     name: envoy
-   spec:
-     controllerName: gateway.envoyproxy.io/gatewayclass-controller
-   ---
-   apiVersion: gateway.networking.k8s.io/v1
-   kind: Gateway
-   metadata:
-     name: modelplane
-     namespace: modelplane-system
-   spec:
-     gatewayClassName: envoy
-     listeners:
-     - name: http
-       protocol: HTTP
-       port: 80
-       allowedRoutes:
-         namespaces:
-           from: All
-   ```
-5. **RBAC ClusterRoles** granting Crossplane permission to compose Namespaces,
-   Gateway API, and Envoy Gateway resources on the control plane:
+
+3. **RBAC ClusterRole** granting Crossplane permission to compose Namespaces,
+   Gateway API, and Envoy Gateway resources. This cannot be self-composed
+   (Crossplane needs the permission before it can grant itself the permission):
    ```yaml
    apiVersion: rbac.authorization.k8s.io/v1
    kind: ClusterRole
@@ -856,17 +825,23 @@ Before any Modelplane resources are created, the control plane cluster needs:
      labels:
        rbac.crossplane.io/aggregate-to-crossplane: "true"
    rules:
+   - apiGroups: ["rbac.authorization.k8s.io"]
+     resources: ["clusterroles"]
+     verbs: ["*"]
    - apiGroups: [""]
      resources: ["namespaces"]
      verbs: ["*"]
    - apiGroups: ["gateway.networking.k8s.io"]
-     resources: ["httproutes"]
+     resources: ["gateways", "gatewayclasses", "httproutes"]
      verbs: ["*"]
    - apiGroups: ["gateway.envoyproxy.io"]
      resources: ["backends"]
      verbs: ["*"]
    ```
-6. **A `modelplane-system` namespace** for the Gateway and system resources.
+
+Items 3-5 from the original spec (Envoy Gateway, GatewayClass, Gateway, and
+namespace) are now composed by the **InferenceGateway** XR. The platform team
+creates one InferenceGateway instead of manually installing these components.
 
 ---
 

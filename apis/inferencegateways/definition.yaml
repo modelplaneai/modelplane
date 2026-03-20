@@ -1,0 +1,78 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: inferencegateways.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: InferenceGateway
+    plural: inferencegateways
+    shortNames: [ig]
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: BACKEND
+      type: string
+      jsonPath: .spec.backend
+    - name: ADDRESS
+      type: string
+      jsonPath: .status.gateway.address
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [backend]
+            properties:
+              backend:
+                type: string
+                description: >-
+                  Gateway implementation. MVP supports EnvoyGateway only.
+                enum: [EnvoyGateway]
+              envoyGateway:
+                type: object
+                description: >-
+                  Envoy Gateway configuration. Required when backend is
+                  EnvoyGateway.
+                properties:
+                  version:
+                    type: string
+                    default: "v1.3.0"
+              gateway:
+                type: object
+                description: >-
+                  Gateway listener configuration.
+                properties:
+                  port:
+                    type: integer
+                    default: 80
+          status:
+            type: object
+            properties:
+              gateway:
+                type: object
+                properties:
+                  address:
+                    type: string
+                    description: >-
+                      External address of the control plane gateway.
+                  name:
+                    type: string
+                    description: >-
+                      Name of the Gateway resource.
+                  namespace:
+                    type: string
+                    description: >-
+                      Namespace of the Gateway resource.

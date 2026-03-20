@@ -1,13 +1,13 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: modeldeployments.modelplane.ai
+  name: inferencegateways.modelplane.ai
 spec:
   compositeTypeRef:
     apiVersion: modelplane.ai/v1alpha1
-    kind: ModelDeployment
+    kind: InferenceGateway
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: negzupboundio-modelplane-infracompose-model-deployment
-    step: compose-model-deployment
+      name: negzupboundio-modelplane-infracompose-inference-gateway
+    step: compose-inference-gateway
