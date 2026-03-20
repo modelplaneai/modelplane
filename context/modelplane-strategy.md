@@ -11,9 +11,13 @@
 Every serious organization building on AI will eventually run into the same problem: they need to operate AI inference on infrastructure they own and control, and there is no good platform to do it.
 
 Four structural forces make this inevitable, not optional:
+
 **Cost at scale.** A company running 10B tokens/day on managed APIs spends $15–20M/year. Moving the same workload to owned GPU infrastructure costs 60–70% less — not through engineering heroics, but through removing vendor margins on compute. At volume, this is the largest infrastructure cost most organizations will face.
+
 **Regulatory inevitability.** The EU AI Act, US executive orders on AI in critical infrastructure, and sector-specific data residency requirements (HIPAA, FedRAMP, GDPR) make external inference structurally impossible for entire industries. This is not a preference — a hospital or bank whose prompts touch patient or financial data has no legal path to managed inference at scale.
+
 **Latency and performance ownership.** Managed inference SLAs are shared-infrastructure SLAs. Organizations with latency-sensitive products — real-time voice, trading systems, embedded AI — cannot accept tail latency governed by someone else's fleet state.
+
 **Customization.** Fine-tuned and proprietary models cannot run on managed inference platforms. When an organization's competitive differentiation is a domain-specific model, there is no path forward except owning the inference layer.
 
 The managed inference services — Baseten, Fireworks, Together.ai — are excellent but they own the infrastructure and the control layer, which makes them structurally unusable for regulated industries, organizations with data sovereignty requirements, and anyone who needs to own their cost structure at scale. Their economics are also deteriorating — margins are thin and getting thinner as GPU costs compress, making the token pricing model increasingly unsustainable for customers running at volume. The open source tools — KServe, KubeAI, vLLM — are powerful engines but they are not platforms. They solve the serving problem on a single cluster. Nobody has solved the operations, governance, and federation problem across a fleet. The position is vacant. Modelplane claims it.
