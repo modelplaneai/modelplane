@@ -97,7 +97,66 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     })
     rsp.desired.resources["namespace-envoy"].ready = fnv1.READY_TRUE
 
-    # 3. Gate Envoy Gateway on the ProviderConfig being observed.
+    # 3. If MetalLB is requested, compose it (for kind / bare-metal clusters).
+    lb = eg.get("loadBalancer")
+    metallb_cfg = eg.get("metallb", {})
+    address_pool = metallb_cfg.get("addressPool", "")
+
+    if lb == "MetalLB" and address_pool:
+        metallb_ns = "metallb-system"
+
+        resource.update(rsp.desired.resources["namespace-metallb"], {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {"name": metallb_ns},
+        })
+        rsp.desired.resources["namespace-metallb"].ready = fnv1.READY_TRUE
+
+        metallb_exists = "metallb" in req.observed.resources
+        pc_observed_for_metallb = "provider-config-helm" in req.observed.resources
+        if pc_observed_for_metallb or metallb_exists:
+            resource.update(
+                rsp.desired.resources["metallb"],
+                _helm_release(
+                    chart="metallb",
+                    repo="https://metallb.github.io/metallb",
+                    version="0.14.9",
+                    namespace=metallb_ns,
+                    provider_config=pc_name,
+                ),
+            )
+
+        # Gate the IPAddressPool and L2Advertisement on MetalLB being ready.
+        metallb_ready = _is_ready(req, "metallb")
+        pool_exists = "metallb-pool" in req.observed.resources
+        if metallb_ready or pool_exists:
+            resource.update(rsp.desired.resources["metallb-pool"], {
+                "apiVersion": "metallb.io/v1beta1",
+                "kind": "IPAddressPool",
+                "metadata": {
+                    "name": "modelplane",
+                    "namespace": metallb_ns,
+                },
+                "spec": {
+                    "addresses": [address_pool],
+                },
+            })
+            rsp.desired.resources["metallb-pool"].ready = fnv1.READY_TRUE
+
+            resource.update(rsp.desired.resources["metallb-l2"], {
+                "apiVersion": "metallb.io/v1beta1",
+                "kind": "L2Advertisement",
+                "metadata": {
+                    "name": "modelplane",
+                    "namespace": metallb_ns,
+                },
+                "spec": {
+                    "ipAddressPools": ["modelplane"],
+                },
+            })
+            rsp.desired.resources["metallb-l2"].ready = fnv1.READY_TRUE
+
+    # 4. Gate Envoy Gateway on the ProviderConfig being observed.
     pc_observed = "provider-config-helm" in req.observed.resources
 
     envoy_gw_exists = "envoy-gateway" in req.observed.resources
@@ -181,6 +240,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # 8. Readiness.
     all_ready = True
     not_ready = []
+
+    # MetalLB Helm release: check Ready condition (only if requested).
+    if lb == "MetalLB" and address_pool:
+        if _is_ready(req, "metallb"):
+            rsp.desired.resources["metallb"].ready = fnv1.READY_TRUE
+        else:
+            all_ready = False
+            not_ready.append("metallb")
 
     # Envoy Gateway Helm release: check Ready condition.
     if _is_ready(req, "envoy-gateway"):

@@ -6,5 +6,8 @@ spec:
   backend: EnvoyGateway
   envoyGateway:
     version: v1.3.0
+    loadBalancer: MetalLB
+    metallb:
+      addressPool: "172.18.255.200-172.18.255.250"
   gateway:
     port: 80

@@ -50,6 +50,26 @@ spec:
                   version:
                     type: string
                     default: "v1.3.0"
+                  loadBalancer:
+                    type: string
+                    description: >-
+                      Load balancer implementation for the gateway Service.
+                      Omit for cloud environments where a native LB
+                      controller is available.
+                    enum: [MetalLB]
+                  metallb:
+                    type: object
+                    description: >-
+                      MetalLB configuration. Required when loadBalancer is
+                      MetalLB. Use for kind or bare-metal clusters.
+                    required: [addressPool]
+                    properties:
+                      addressPool:
+                        type: string
+                        description: >-
+                          IP address range for the MetalLB pool
+                          (e.g. "172.18.255.200-172.18.255.250").
+                          Must be within the cluster's network CIDR.
               gateway:
                 type: object
                 description: >-
