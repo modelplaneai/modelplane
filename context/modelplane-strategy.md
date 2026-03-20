@@ -8,7 +8,15 @@
 
 ## The opportunity in one paragraph
 
-Every serious organization building on AI will eventually run into the same problem: they need to operate AI inference on infrastructure they own and control, and there is no good platform to do it. The managed inference services — Baseten, Fireworks, Together.ai — are excellent but they own the infrastructure and the control layer, which makes them structurally unusable for regulated industries, organizations with data sovereignty requirements, and anyone who needs to own their cost structure at scale. Their economics are also deteriorating — margins are thin and getting thinner as GPU costs compress, making the token pricing model increasingly unsustainable for customers running at volume. The open source tools — KServe, KubeAI, vLLM — are powerful engines but they are not platforms. They solve the serving problem on a single cluster. Nobody has solved the operations, governance, and federation problem across a fleet. The position is vacant. Modelplane claims it.
+Every serious organization building on AI will eventually run into the same problem: they need to operate AI inference on infrastructure they own and control, and there is no good platform to do it.
+
+Four structural forces make this inevitable, not optional:
+**Cost at scale.** A company running 10B tokens/day on managed APIs spends $15–20M/year. Moving the same workload to owned GPU infrastructure costs 60–70% less — not through engineering heroics, but through removing vendor margins on compute. At volume, this is the largest infrastructure cost most organizations will face.
+**Regulatory inevitability.** The EU AI Act, US executive orders on AI in critical infrastructure, and sector-specific data residency requirements (HIPAA, FedRAMP, GDPR) make external inference structurally impossible for entire industries. This is not a preference — a hospital or bank whose prompts touch patient or financial data has no legal path to managed inference at scale.
+**Latency and performance ownership.** Managed inference SLAs are shared-infrastructure SLAs. Organizations with latency-sensitive products — real-time voice, trading systems, embedded AI — cannot accept tail latency governed by someone else's fleet state.
+**Customization.** Fine-tuned and proprietary models cannot run on managed inference platforms. When an organization's competitive differentiation is a domain-specific model, there is no path forward except owning the inference layer.
+
+The managed inference services — Baseten, Fireworks, Together.ai — are excellent but they own the infrastructure and the control layer, which makes them structurally unusable for regulated industries, organizations with data sovereignty requirements, and anyone who needs to own their cost structure at scale. Their economics are also deteriorating — margins are thin and getting thinner as GPU costs compress, making the token pricing model increasingly unsustainable for customers running at volume. The open source tools — KServe, KubeAI, vLLM — are powerful engines but they are not platforms. They solve the serving problem on a single cluster. Nobody has solved the operations, governance, and federation problem across a fleet. The position is vacant. Modelplane claims it.
 
 ---
 
@@ -85,9 +93,11 @@ Modelplane claims the federation layer. This is the right layer to own for three
 
 Claiming the federation layer is only meaningful if it is built out. This is what the federation layer delivers — the capabilities that make Modelplane the central control plane for an organization's inference fleet, and that distinguish it from every single-cluster operator or managed service.
 
+**What this looks like in practice.** An organization runs model deployments across a Coreweave lease and two on-premise DGX clusters. A cost spike hits Coreweave during peak hours — the federation layer detects current fleet economics in real time, reroutes 60% of traffic to the on-premise clusters automatically, and restores distribution when costs normalize. In parallel: every EU-origin request is pinned by policy to the EU cluster, enforced architecturally — not by an administrator remembering a configuration. A team in finance pushes a model update; it clears the deployment approval workflow and lands in staging, but the production budget threshold is exhausted for the month, so the control plane blocks the production rollout without human intervention. None of this is glued together from individual tools. It requires a control plane that holds real-time fleet state, enforces policy continuously, and makes routing decisions that account for all of it simultaneously.
+
 **Fleet management.** A single view of every inference environment across every cloud, neo cloud, and on-premise cluster in the organization — health, capacity, active deployments, model versions, utilization. Not a dashboard bolted on top; a control plane that continuously reconciles actual state against desired state and surfaces the delta. Organizations running inference across AWS, Coreweave, and on-premise DGX simultaneously have one place to understand and operate all of it.
 
-**Intelligent cross-environment routing.** Route inference requests across environments based on latency, cost, capacity, and availability. Not round-robin — policy-aware, cost-aware, latency-aware routing that places requests where they should go based on the current state of the fleet and the rules the platform team has set. This is where Baseten spends enormous engineering investment at the fleet level. Modelplane's reconciliation-based architecture is the right foundation for it — routing decisions that are continuously enforced, not configured once and forgotten.
+**Intelligent cross-environment routing.** Route inference requests across environments based on latency, cost, capacity, and availability. This is deceptively hard. Effective routing requires real-time fleet state across every environment — active models, GPU utilization, queue depth, latency distributions. It requires cost modeling that accounts for spot pricing, reservation amortization, and token throughput per dollar across heterogeneous hardware. It requires latency prediction that accounts for cold-start penalties, model cache state, and network topology. It requires failure handling that detects degradation before it cascades and reroutes without disrupting in-flight requests. Baseten spends enormous engineering investment at the fleet level building this — it is the core of their operational moat. Modelplane's reconciliation-based architecture is the right foundation: routing policy is declared once, enforced continuously by the control plane, and updated as fleet state changes — not configured manually and forgotten. This is where the control plane architecture matters most.
 
 **Cost attribution and optimization.** Which team consumed what GPU capacity across which environments, at what cost per token. Showback and chargeback across the fleet. Budget controls that block deployments when quotas are exceeded. This is what makes the platform financially governable at enterprise scale — the difference between GPU infrastructure as a shared resource nobody manages and GPU infrastructure as an allocated, accountable asset.
 
@@ -155,6 +165,8 @@ The buyer is a **CTO or VP of Infrastructure** building the operational layer fo
 
 Modelplane is true open source — Apache 2, no usage limits, no cluster caps, no token restrictions. This is not negotiable. The moment usage limits appear, community trust, partnership opportunities, and the CNCF trajectory evaporate. The Crossplane precedent holds exactly: genuine open source drives adoption; commercial captures value at the enterprise layer.
 
+**The principled boundary.** Modelplane is a single-fleet control plane — everything an organization needs to operate AI inference within one logical fleet, completely and without restriction. Upbound AI is the multi-fleet layer and enterprise system-of-record: unified management across multiple Modelplane deployments, the intelligent gateway that extends routing decisions across self-hosted and frontier APIs, and the enterprise governance capabilities that large organizations require for compliance procurement. The line is not arbitrary — it maps directly to organizational complexity. A single team running inference on one cluster or one cloud needs Modelplane. An enterprise operating inference across business units, regions, or customer environments — and needing to treat all of it as one coherent system — needs Upbound AI.
+
 **Upbound AI** is the commercial product built on Modelplane. It adds the capabilities enterprises and AI factory operators need at federation scale that open source Modelplane genuinely does not provide:
 
 **Global management plane.** Modelplane runs one inference fleet per deployment. Organizations operating multiple fleets — across regions, business units, or customer environments — need a unified management layer. Upbound AI provides the global console, API, and control fabric across multiple Modelplane deployments with cross-cluster observability and fleet-level analytics.
@@ -177,9 +189,11 @@ Modelplane is true open source — Apache 2, no usage limits, no cluster caps, n
 
 ## How we launch
 
-### v0.1 — Enough to plant the flag and acquire strategic partners
+### v0.1 — Control plane primitives
 
-v0.1 is the foundation, not the full product. It ships:
+v0.1 ships the control plane primitives — the declarative resource model, the reconciliation loop, the multi-environment targeting layer — that everything else is built on. It is not the federation layer yet. It is the foundation from which the federation layer gets built, in public, with design partners pulling the roadmap into shape.
+
+It ships:
 
 - Five declarative resources: ClusterModel, Model, InferenceEnvironment, ModelDeployment, ModelPlacement
 - KServe LLMInferenceService as the inference backend
@@ -188,6 +202,8 @@ v0.1 is the foundation, not the full product. It ships:
 - 4-5 popular models (Llama 3.1 8B, 70B, Qwen 2.5, Mistral) with pre-tested configurations
 - OpenAI-compatible endpoint from every deployment
 - Two-line ML team self-service deployment experience
+
+The honest framing: v0.1 proves that models can be managed as declarative infrastructure resources across multiple environments. v0.3 is where the federation value becomes visible. The gap between them is the roadmap — transparent, dated, and design-partner-driven.
 
 v0.1 proves the architecture works, establishes the category claim, secures strategic partners, and creates the design partner relationships that pull the federation features into existence. The risk of waiting for a complete product is that the position gets filled.
 
@@ -247,10 +263,14 @@ The transition from community product to enterprise platform happens between v0.
 
 **Frontier model providers (Anthropic, OpenAI)** are not competitors for self-hosted inference. They are gateway partners — Modelplane routes appropriate workloads to these providers through its intelligent gateway, making them part of a complete inference platform rather than alternatives to it.
 
-**NVIDIA** is the most important partner and the most significant long-term wildcard. They have Run:ai for GPU scheduling, NIM for model packaging, and Dynamo for inference optimization. The components of an integrated inference platform exist inside NVIDIA. Their incentive, however, is partner ecosystem: they want more GPU hardware sold, and an open source inference control plane that makes their hardware more operable serves that goal better than a proprietary software play. The partnership path — Modelplane as the recommended operational layer for DGX and AI factory deployments — is more valuable to both sides than competition.
+**NVIDIA** is the most important partner and the most significant long-term wildcard. The threat is real and worth stating plainly: Run:ai provides GPU scheduling, NIM provides model packaging, Dynamo provides inference optimization, and NIM Microservices increasingly abstract the serving layer. The components of an integrated, NVIDIA-native inference platform exist inside NVIDIA today. The question is whether they assemble them into a full control plane.
+
+The answer is probably not — and the reason is structural, not optimistic. NVIDIA's business is hardware distribution. Their software strategy is designed to make NVIDIA hardware easier to buy and operate — not to become a software company managing customers' control planes. A proprietary NVIDIA inference platform would require NVIDIA to take on operational accountability for customer fleets, compete with the partners (Baseten, Coreweave, managed services) who are buying enormous quantities of their hardware, and position their software as a reason to prefer NVIDIA over other GPU vendors. None of these serve their core business.
+
+The partnership path is more valuable to both sides: NVIDIA sells AI factories, Modelplane operates them. An open source inference control plane that makes DGX hardware more operable, that certifies NIM and Dynamo as first-class backends, and that gives enterprise buyers a neutral operational layer is better for GPU hardware sales than a closed NVIDIA platform that customers are reluctant to adopt. The existing relationships across NCP, DGX Cloud, and BCM make this partnership achievable. The strategic alignment makes it durable.
 
 ---
 
 ## The full case in three sentences
 
-AI inference is moving in-house. The managed inference platforms own the central control layer, which makes them structurally unusable for the organizations that most need to own their inference. Modelplane is that central layer — open source, running in your infrastructure — and the position it occupies is vacant, architecturally natural for Upbound to own, and growing more strategically important every week.
+Crossplane became the open source standard for infrastructure control planes because organizations need to own the layer that governs their infrastructure. The same logic applies to AI inference — and the same position is vacant. Modelplane is Crossplane for inference: the open source control plane that manages a fleet of inference environments the same way Crossplane manages cloud infrastructure, running entirely in your own infrastructure, with no vendor in the control layer. The managed inference platforms structurally cannot offer this. The position is Upbound's to take.
