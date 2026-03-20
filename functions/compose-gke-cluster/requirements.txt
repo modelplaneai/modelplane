@@ -1,2 +1,0 @@
-crossplane-function-sdk-python==0.9.0
-pydantic==2.12.4
