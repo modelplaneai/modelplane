@@ -837,6 +837,9 @@ Before any Modelplane resources are created, the control plane cluster needs:
    - apiGroups: ["gateway.envoyproxy.io"]
      resources: ["backends"]
      verbs: ["*"]
+   - apiGroups: ["metallb.io"]
+     resources: ["ipaddresspools", "l2advertisements"]
+     verbs: ["*"]
    ```
 
 Items 3-5 from the original spec (Envoy Gateway, GatewayClass, Gateway, and

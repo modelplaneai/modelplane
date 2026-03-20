@@ -402,6 +402,42 @@ Crossplane needs the permission before it can grant itself the permission).
   up project build --no-build-cache
   ```
 
+## MetalLB for kind clusters
+**Status:** Complete
+
+Added `loadBalancer: MetalLB` discriminator to InferenceGateway's envoyGateway
+config. When set, the function composes MetalLB as a Helm release and configures
+an IPAddressPool + L2Advertisement. This gives the Gateway a real IP on kind.
+
+### Unified endpoint verified end-to-end
+
+Full path tested from inside the kind cluster:
+```
+curl http://172.18.255.200/ml-team/qwen-demo/v1/chat/completions
+→ control plane Envoy Gateway (MetalLB IP)
+→ HTTPRoute rewrites /ml-team/qwen-demo/ → /default/qwen-demo-demo-us-central/
+→ Backend forwards to 34.55.233.135:80 (remote KServe gateway on GKE)
+→ Remote HTTPRoute rewrites prefix → /
+→ vLLM pod serves Qwen 2.5 0.5B Instruct
+→ 200 OK with chat completion response
+```
+
+The 500 errors from earlier were because the GKE gateway's external IP
+(`34.55.233.135`) isn't reachable from the host machine — only from inside the
+Docker/kind network. From inside kind, the full control plane → remote cluster
+path works.
+
+### Issues
+
+- **MetalLB conflicts with manual install**: if MetalLB was previously installed
+  via `kubectl apply`, the Helm release fails with ownership metadata errors.
+  The manual install must be fully deleted first.
+
+- **RBAC for MetalLB CRDs**: the prerequisites ClusterRole needs `metallb.io`
+  resources (ipaddresspools, l2advertisements) for the function to compose them.
+
+Total iterations pushed to registry: v0.1.0-dev.1 through v0.1.0-dev.24.
+
 ---
 
 ## Feedback for the `up` CLI team
