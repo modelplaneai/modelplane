@@ -1,0 +1,10 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelPlacement
+metadata:
+  name: qwen-demo-us-central
+  namespace: ml-team
+spec:
+  modelRef:
+    name: qwen-0.5b-vllm
+  inferenceEnvironmentRef:
+    name: demo-us-central

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from crossplane.function import logging, resource, response
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
@@ -250,8 +250,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
         if gw.listeners:
             listeners = [
-                {"name": l.name, "protocol": l.protocol, "port": l.port}
-                for l in gw.listeners
+                {"name": ln.name, "protocol": ln.protocol, "port": ln.port}
+                for ln in gw.listeners
             ]
         else:
             listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
@@ -280,8 +280,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 "spec": {
                     "gatewayClassName": gw_class_name,
                     "listeners": [
-                        {**l, "allowedRoutes": {"namespaces": {"from": "All"}}}
-                        for l in listeners
+                        {**ln, "allowedRoutes": {"namespaces": {"from": "All"}}}
+                        for ln in listeners
                     ],
                 },
             }),
@@ -366,6 +366,27 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         else:
             all_ready = False
             not_ready.append(r)
+
+    # Read the observed Gateway Object's status to extract the external IP
+    # and write it to the XR's status.gateway.address.
+    gateway_observed = req.observed.resources.get("gateway")
+    if gateway_observed:
+        gw = resource.struct_to_dict(gateway_observed.resource)
+        addresses = (
+            gw.get("status", {})
+            .get("atProvider", {})
+            .get("manifest", {})
+            .get("status", {})
+            .get("addresses", [])
+        )
+        if addresses:
+            gateway_address = addresses[0].get("value")
+            if gateway_address:
+                resource.update(rsp.desired.composite, {
+                    "status": {
+                        "gateway": {"address": gateway_address},
+                    },
+                })
 
     if all_ready:
         rsp.conditions.append(fnv1.Condition(

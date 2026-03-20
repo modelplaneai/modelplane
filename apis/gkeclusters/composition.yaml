@@ -9,5 +9,5 @@ spec:
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: upbound-modelplane-infracompose-gke-cluster
+      name: negzupboundio-modelplane-infracompose-gke-cluster
     step: compose-gke-cluster

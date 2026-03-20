@@ -1,0 +1,13 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: modelplacements.modelplane.ai
+spec:
+  compositeTypeRef:
+    apiVersion: modelplane.ai/v1alpha1
+    kind: ModelPlacement
+  mode: Pipeline
+  pipeline:
+  - functionRef:
+      name: negzupboundio-modelplane-infracompose-model-placement
+    step: compose-model-placement
