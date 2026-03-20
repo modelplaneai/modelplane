@@ -9,5 +9,5 @@ spec:
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: upbound-modelplane-infracompose-kserve-stack
+      name: negzupboundio-modelplane-infracompose-kserve-stack
     step: compose-kserve-stack

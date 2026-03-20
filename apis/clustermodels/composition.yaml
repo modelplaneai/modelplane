@@ -1,0 +1,13 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: clustermodels.modelplane.ai
+spec:
+  compositeTypeRef:
+    apiVersion: modelplane.ai/v1alpha1
+    kind: ClusterModel
+  mode: Pipeline
+  pipeline:
+  - functionRef:
+      name: negzupboundio-modelplane-infracompose-model
+    step: compose-model

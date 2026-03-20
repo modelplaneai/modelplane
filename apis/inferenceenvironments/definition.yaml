@@ -1,0 +1,170 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: inferenceenvironments.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: InferenceEnvironment
+    plural: inferenceenvironments
+    shortNames: [ie]
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: REGION
+      type: string
+      jsonPath: .spec.kserve.cluster.gke.region
+    - name: GATEWAY
+      type: string
+      jsonPath: .status.gateway.address
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [backend]
+            properties:
+              backend:
+                type: string
+                description: >-
+                  Inference backend to deploy. MVP supports KServe only.
+                enum: [KServe]
+              kserve:
+                type: object
+                description: >-
+                  KServe backend configuration. Required when backend is KServe.
+                required: [cluster]
+                properties:
+                  version:
+                    type: string
+                    default: "v0.16.0"
+                  cluster:
+                    type: object
+                    required: [source]
+                    properties:
+                      source:
+                        type: string
+                        description: >-
+                          Cluster provisioning method. MVP supports GKE only.
+                        enum: [GKE]
+                      gke:
+                        type: object
+                        description: >-
+                          GKE cluster configuration. Required when source is GKE.
+                        required: [project, region, nodePools]
+                        properties:
+                          project:
+                            type: string
+                            minLength: 6
+                            maxLength: 30
+                          region:
+                            type: string
+                            minLength: 1
+                            maxLength: 32
+                          kubernetesVersion:
+                            type: string
+                            default: "1.35"
+                          nodePools:
+                            type: array
+                            minItems: 1
+                            maxItems: 8
+                            x-kubernetes-list-type: map
+                            x-kubernetes-list-map-keys: [name]
+                            items:
+                              type: object
+                              required: [name, role, machineType]
+                              properties:
+                                name:
+                                  type: string
+                                  maxLength: 40
+                                role:
+                                  type: string
+                                  enum: [System, GPU]
+                                machineType:
+                                  type: string
+                                diskSizeGb:
+                                  type: integer
+                                  default: 100
+                                nodeCount:
+                                  type: integer
+                                  default: 1
+                                minNodeCount:
+                                  type: integer
+                                  default: 0
+                                maxNodeCount:
+                                  type: integer
+                                  default: 8
+                                gpu:
+                                  type: object
+                                  properties:
+                                    acceleratorType:
+                                      type: string
+                                    acceleratorCount:
+                                      type: integer
+                                      default: 1
+                                zones:
+                                  type: array
+                                  items:
+                                    type: string
+          status:
+            type: object
+            properties:
+              providerConfigRef:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: >-
+                      Name of the ProviderConfig targeting the remote cluster.
+                      Used by ModelPlacement to create resources on the cluster.
+              gateway:
+                type: object
+                properties:
+                  address:
+                    type: string
+                    description: >-
+                      External IP of the KServe gateway on the remote cluster.
+                      Used by ModelDeployment for unified endpoint routing.
+              capacity:
+                type: object
+                description: >-
+                  Declared capacity computed from the node pool config.
+                properties:
+                  backend:
+                    type: string
+                    description: >-
+                      The backend type (copied from spec.backend).
+                      Used by the deploy function for engine compatibility.
+                  gpuPools:
+                    type: array
+                    description: >-
+                      GPU pools with per-device VRAM. The env function
+                      resolves VRAM from a static lookup table keyed by
+                      acceleratorType.
+                    items:
+                      type: object
+                      properties:
+                        acceleratorType:
+                          type: string
+                        memory:
+                          type: string
+                          description: Per-GPU VRAM (e.g. "24Gi").
+                        count:
+                          type: integer
+                          description: Total GPUs in this pool.
+              namespace:
+                type: string
+                description: >-
+                  Namespace where the GKECluster and KServeStack were created.

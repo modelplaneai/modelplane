@@ -1,0 +1,92 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modeldeployments.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelDeployment
+    plural: modeldeployments
+    shortNames: [md]
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: MODEL
+      type: string
+      jsonPath: .spec.modelRef.name
+    - name: ENVS
+      type: string
+      jsonPath: .status.placements.ready
+    - name: ENDPOINT
+      type: string
+      jsonPath: .status.endpoint.url
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [modelRef, environments]
+            properties:
+              modelRef:
+                type: object
+                required: [name]
+                description: Reference to a ClusterModel or Model.
+                properties:
+                  kind:
+                    type: string
+                    description: >-
+                      Kind of model resource. Defaults to ClusterModel.
+                    enum: [ClusterModel, Model]
+                    default: ClusterModel
+                  name:
+                    type: string
+              environments:
+                type: integer
+                minimum: 1
+                maximum: 10
+                description: >-
+                  How many InferenceEnvironments to deploy to.
+              environmentSelector:
+                type: object
+                description: >-
+                  Optional label selector to filter environments.
+                  If omitted, all ready environments are candidates.
+                properties:
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+          status:
+            type: object
+            properties:
+              endpoint:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: >-
+                      Unified OpenAI-compatible endpoint URL. Routes
+                      across all healthy placements.
+              placements:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  ready:
+                    type: integer
+              model:
+                type: object
+                properties:
+                  name:
+                    type: string

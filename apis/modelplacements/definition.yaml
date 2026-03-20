@@ -1,0 +1,91 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelplacements.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelPlacement
+    plural: modelplacements
+    shortNames: [mp]
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: MODEL
+      type: string
+      jsonPath: .spec.modelRef.name
+    - name: ENVIRONMENT
+      type: string
+      jsonPath: .spec.inferenceEnvironmentRef.name
+    - name: ENDPOINT
+      type: string
+      jsonPath: .status.endpoint.url
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [modelRef, inferenceEnvironmentRef]
+            properties:
+              modelRef:
+                type: object
+                required: [name]
+                description: Reference to a ClusterModel or Model.
+                properties:
+                  kind:
+                    type: string
+                    description: >-
+                      Kind of model resource. Defaults to ClusterModel.
+                    enum: [ClusterModel, Model]
+                    default: ClusterModel
+                  name:
+                    type: string
+              inferenceEnvironmentRef:
+                type: object
+                required: [name]
+                description: Reference to an InferenceEnvironment.
+                properties:
+                  name:
+                    type: string
+          status:
+            type: object
+            properties:
+              endpoint:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: >-
+                      Per-placement endpoint URL on the remote cluster's
+                      gateway. Format:
+                      http://<gateway-ip>/<namespace>/<llmis-name>/v1
+              model:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Resolved model name from ClusterModel.
+              resources:
+                type: object
+                description: >-
+                  Resources consumed by this placement. Copied from the
+                  model spec at placement time. Used by the deploy function
+                  to compute available capacity per environment.
+                properties:
+                  gpu:
+                    type: object
+                    properties:
+                      count:
+                        type: integer

@@ -1,0 +1,125 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: clustermodels.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ClusterModel
+    plural: clustermodels
+    shortNames: [cm]
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: MODEL
+      type: string
+      jsonPath: .spec.model.name
+    - name: ENGINE
+      type: string
+      jsonPath: .spec.engine
+    - name: VRAM
+      type: string
+      jsonPath: .spec.resources.vram
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [model, source, engine, resources]
+            properties:
+              model:
+                type: object
+                required: [name]
+                description: Model identity passed to the serving engine.
+                properties:
+                  name:
+                    type: string
+                    description: >-
+                      Model name as the engine knows it
+                      (e.g. "Qwen/Qwen2.5-0.5B-Instruct").
+              source:
+                type: string
+                description: Where to download model weights from.
+                enum: [HuggingFace]
+              huggingFace:
+                type: object
+                description: >-
+                  HuggingFace model source. Required when source is HuggingFace.
+                required: [repo]
+                properties:
+                  repo:
+                    type: string
+                    description: >-
+                      HuggingFace repo ID (e.g. "Qwen/Qwen2.5-0.5B-Instruct").
+                  revision:
+                    type: string
+                    description: >-
+                      Git revision (branch, tag, or commit). Defaults to main.
+                    default: main
+                  secretRef:
+                    type: object
+                    description: >-
+                      Secret containing HuggingFace token for gated models.
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      key:
+                        type: string
+              engine:
+                type: string
+                description: Inference engine.
+                enum: [vLLM]
+              vllm:
+                type: object
+                description: >-
+                  vLLM-specific configuration. Only applies when engine is vLLM.
+                properties:
+                  image:
+                    type: string
+                    default: "vllm/vllm-openai:v0.7.3"
+                  extraArgs:
+                    type: array
+                    description: >-
+                      Additional CLI arguments passed to vLLM
+                      (e.g. ["--max-model-len=4096"]).
+                    items:
+                      type: string
+              resources:
+                type: object
+                required: [vram]
+                description: >-
+                  Hardware requirements. The model specifies total VRAM
+                  needed. The scheduler computes GPU count per-environment
+                  based on available per-GPU VRAM.
+                properties:
+                  vram:
+                    type: string
+                    description: >-
+                      Total VRAM the model needs (e.g. "24Gi", "140Gi").
+                      The scheduler divides this by the per-GPU VRAM of
+                      each candidate pool to determine how many GPUs are
+                      required.
+                  cpu:
+                    type: string
+                    default: "4"
+                  memory:
+                    type: string
+                    default: "16Gi"
+          status:
+            type: object
+            description: >-
+              ClusterModel has no composed resources. Status is conditions only.
