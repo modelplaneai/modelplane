@@ -80,11 +80,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     env_selector = spec.get("environmentSelector")
 
     # Always declare required resources.
-    # Match on accepting-placements=true to discover ready environments. This
-    # label is set by compose-inference-env when the IE is fully ready. It also
-    # avoids the empty match_labels protobuf serialization bug (see build log).
+    # Match on modelplane.ai/environment=true to discover IEs. This label must
+    # be applied by the platform team when creating InferenceEnvironments. We
+    # can't use an empty match_labels selector (Crossplane protobuf bug — see
+    # build log) or function-set labels (Crossplane doesn't apply metadata
+    # changes from functions to the XR).
     env_match_labels: dict[str, str] = {
-        "modelplane.ai/accepting-placements": "true",
+        "modelplane.ai/environment": "true",
     }
     if env_selector:
         env_match_labels.update(env_selector.get("matchLabels", {}))
@@ -103,10 +105,18 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         kind=model_kind,
         match_name=model_name,
     )
+    response.require_resources(
+        rsp,
+        name="inference-gateway",
+        api_version="modelplane.ai/v1alpha1",
+        kind="InferenceGateway",
+        match_name="default",
+    )
 
     # Read required resources.
     envs = request.get_required_resources(req, "environments")
     model = request.get_required_resource(req, "model")
+    inference_gw = request.get_required_resource(req, "inference-gateway")
     all_placements: list = []  # Capacity tracking deferred — MVP has one env
 
     if not envs:
@@ -274,10 +284,18 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         first_pname = _placement_name(xr_name, first_ie)
         rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{first_pname}/"
 
+        # Read gateway name/namespace from InferenceGateway status.
+        gw_name = "modelplane"
+        gw_ns = "modelplane-system"
+        if inference_gw:
+            gw_status = inference_gw.get("status", {}).get("gateway", {})
+            gw_name = gw_status.get("name", gw_name)
+            gw_ns = gw_status.get("namespace", gw_ns)
+
         httproute_spec: dict = {
             "parentRefs": [{
-                "name": "modelplane",
-                "namespace": "modelplane-system",
+                "name": gw_name,
+                "namespace": gw_ns,
             }],
             "rules": [{
                 "matches": [{
@@ -309,13 +327,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             "spec": httproute_spec,
         })
 
-    # Read the control plane Gateway address for the endpoint URL.
-    gateway = request.get_required_resource(req, "gateway")
+    # Read the control plane gateway address from InferenceGateway status.
     gateway_ip = None
-    if gateway:
-        addresses = gateway.get("status", {}).get("addresses", [])
-        if addresses:
-            gateway_ip = addresses[0].get("value")
+    if inference_gw:
+        gateway_ip = (
+            inference_gw.get("status", {})
+            .get("gateway", {})
+            .get("address")
+        )
 
     # Track readiness of composed resources.
     not_ready = []

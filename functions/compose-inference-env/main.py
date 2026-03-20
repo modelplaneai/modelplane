@@ -254,16 +254,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         all_ready = False
         not_ready.append("kserve-stack")
 
-    # 9. Label the XR to indicate whether it's accepting placements.
-    #    The ModelDeployment function discovers environments by matching on
-    #    this label, which avoids the need for an empty match_labels selector
-    #    (broken by a protobuf serialization issue — see build log).
     if all_ready:
-        resource.update(rsp.desired.composite, {
-            "metadata": {
-                "labels": {"modelplane.ai/accepting-placements": "true"},
-            },
-        })
         rsp.conditions.append(fnv1.Condition(
             type="Ready",
             status=fnv1.STATUS_CONDITION_TRUE,
@@ -271,11 +262,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
         ))
     else:
-        resource.update(rsp.desired.composite, {
-            "metadata": {
-                "labels": {"modelplane.ai/accepting-placements": "false"},
-            },
-        })
         rsp.conditions.append(fnv1.Condition(
             type="Ready",
             status=fnv1.STATUS_CONDITION_FALSE,
