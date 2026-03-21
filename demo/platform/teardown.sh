@@ -26,12 +26,26 @@ kubectl delete -f "$PLATFORM_DIR/cluster-model.yaml" --ignore-not-found --wait=t
 # and ALL its composed resources are fully deleted. The Usage resource
 # ensures correct deletion order: KServeStack (Helm releases) deletes
 # before GKECluster, so Helm can cleanly uninstall from the still-running
-# cluster. This is the slow step — typically ~10 minutes.
+# cluster.
+#
+# Delete each IE in parallel since they're independent. Each takes
+# ~15-20 minutes (KServe uninstall + GKE cluster delete + VPC cleanup).
 info "Deleting InferenceEnvironments (waiting for GKE deprovision)..."
-info "(This takes ~10 minutes. Crossplane deletes KServe, then the GKE clusters.)"
-kubectl delete -f "$PLATFORM_DIR/inference-environments.yaml" --ignore-not-found --cascade=foreground --timeout=2400s || {
-  echo "WARNING: Timed out waiting for IE deletion. Some GKE resources may be orphaned." >&2
-}
+info "(This takes ~15-20 minutes. Crossplane deletes KServe, then the GKE clusters.)"
+pids=()
+for ie in $(kubectl get ie -o name --ignore-not-found 2>/dev/null); do
+  kubectl delete "$ie" --cascade=foreground --timeout=2400s &
+  pids+=($!)
+done
+failed=0
+for pid in "${pids[@]}"; do
+  if ! wait "$pid"; then
+    failed=1
+  fi
+done
+if (( failed )); then
+  echo "WARNING: Some IEs timed out during deletion. GKE resources may be orphaned." >&2
+fi
 
 info "Deleting InferenceGateway..."
 kubectl delete -f "$PLATFORM_DIR/inference-gateway.yaml" --ignore-not-found --wait=true || true
