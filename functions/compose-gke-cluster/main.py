@@ -1,4 +1,4 @@
-from crossplane.function import logging, resource, response
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .model.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
@@ -14,12 +14,12 @@ from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
 
 
-def _is_ready(req: fnv1.RunFunctionRequest, name: str) -> bool:
+def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
+    """Check if an observed composed resource has the given condition True."""
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
-    c = resource.get_condition(observed.resource, "Ready")
-    return c.status == "True"
+    return resource.get_condition(observed.resource, cond).status == "True"
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -298,7 +298,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     all_ready = True
     not_ready = []
     for r in managed_resources:
-        if _is_ready(req, r):
+        if _has_condition(req, r, "Ready"):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
         else:
             all_ready = False

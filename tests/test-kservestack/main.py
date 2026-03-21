@@ -1,7 +1,6 @@
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kservestackv1alpha1
-from .model.io.crossplane.helm.release import v1beta1 as helmv1beta1
 
 test = compositiontest.CompositionTest(
     metadata=k8s.ObjectMeta(
@@ -14,6 +13,7 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         assertResources=[
+            # Assert on the XR itself.
             kservestackv1alpha1.KServeStack(
                 apiVersion="infrastructure.modelplane.ai/v1alpha1",
                 kind="KServeStack",
@@ -36,58 +36,31 @@ test = compositiontest.CompositionTest(
                     ],
                 ),
             ).model_dump(exclude_unset=True),
-            helmv1beta1.Release(
-                apiVersion="helm.crossplane.io/v1beta1",
-                kind="Release",
-                metadata=k8s.ObjectMeta(
-                    annotations={
-                        "crossplane.io/composition-resource-name": "cert-manager",
+            # Assert ProviderConfigs are composed on the first pass.
+            # Helm releases are gated on ProviderConfigs being observed,
+            # so they don't appear until the second reconcile.
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "ProviderConfig",
+                "metadata": {
+                    "name": "gpu-us-central1-kserve-cluster",
+                    "annotations": {
+                        "crossplane.io/composition-resource-name":
+                            "provider-config-kubernetes",
                     },
-                ),
-                spec=helmv1beta1.Spec(
-                    forProvider=helmv1beta1.ForProvider(
-                        chart=helmv1beta1.Chart(
-                            name="cert-manager",
-                            repository="https://charts.jetstack.io",
-                            version="v1.17.1",
-                        ),
-                        namespace="cert-manager",
-                    ),
-                    providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        name="gpu-us-central1-kserve-cluster",
-                    ),
-                ),
-            ).model_dump(exclude_unset=True),
-            helmv1beta1.Release(
-                apiVersion="helm.crossplane.io/v1beta1",
-                kind="Release",
-                metadata=k8s.ObjectMeta(
-                    annotations={
-                        "crossplane.io/composition-resource-name": "kserve-controller",
+                },
+            },
+            {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "ProviderConfig",
+                "metadata": {
+                    "name": "gpu-us-central1-kserve-cluster",
+                    "annotations": {
+                        "crossplane.io/composition-resource-name":
+                            "provider-config-helm",
                     },
-                ),
-                spec=helmv1beta1.Spec(
-                    forProvider=helmv1beta1.ForProvider(
-                        chart=helmv1beta1.Chart(
-                            name="kserve-llmisvc-resources",
-                            version="v0.16.0",
-                        ),
-                        namespace="kserve",
-                        patchesFrom=[
-                            helmv1beta1.PatchesFromItem(
-                                configMapKeyRef=helmv1beta1.ConfigMapKeyRef(
-                                    name="gpu-us-central1-kserve-storage-patch",
-                                    namespace="gpu-us-central1",
-                                    key="patches",
-                                ),
-                            ),
-                        ],
-                    ),
-                    providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        name="gpu-us-central1-kserve-cluster",
-                    ),
-                ),
-            ).model_dump(exclude_unset=True),
+                },
+            },
         ],
     ),
 )

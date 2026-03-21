@@ -1,4 +1,4 @@
-from crossplane.function import resource
+from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 
@@ -14,14 +14,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     engine = spec.get("engine", "")
     if engine == "vLLM" and not spec.get("vllm"):
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_TRUE,
-            reason="Available",
-            message="engine is vLLM but spec.vllm is not set; using defaults",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
-        return
+        response.warning(rsp, "engine is vLLM but spec.vllm is not set; using defaults")
 
     rsp.conditions.append(fnv1.Condition(
         type="Ready",

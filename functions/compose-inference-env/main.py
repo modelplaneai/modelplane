@@ -18,12 +18,12 @@ GPU_VRAM = {
 }
 
 
-def _is_ready(req: fnv1.RunFunctionRequest, name: str) -> bool:
+def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
+    """Check if an observed composed resource has the given condition True."""
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
-    c = resource.get_condition(observed.resource, "Ready")
-    return c.status == "True"
+    return resource.get_condition(observed.resource, cond).status == "True"
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -102,8 +102,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         ),
     )
 
-    # 3. Read the observed GKECluster's status.secrets.
+    # 3. Read the observed GKECluster's status.secrets and readiness.
+    #    Gate downstream resources (KServeStack, ClusterProviderConfig) on the
+    #    GKECluster being Ready, not just on secrets being available. The
+    #    secrets are populated immediately (they're just names), but the actual
+    #    kubeconfig and SA key secrets aren't created until the GKE cluster and
+    #    ServiceAccountKey are provisioned.
     gke_secrets = None
+    gke_ready = _has_condition(req, "gke-cluster", "Ready")
     gke_observed = req.observed.resources.get("gke-cluster")
     if gke_observed:
         gke_dict = resource.struct_to_dict(gke_observed.resource)
@@ -124,7 +130,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     cluster_pc_name = f"{name}-cluster-kubeconfig"
     cluster_pc_exists = "cluster-provider-config-kubernetes" in req.observed.resources
-    if kubeconfig_secret or cluster_pc_exists:
+    if (gke_ready and kubeconfig_secret) or cluster_pc_exists:
         pc_spec: dict = {
             "credentials": {
                 "source": "Secret",
@@ -153,10 +159,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         })
         rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
 
-    # 4. Gate KServeStack on secrets being available, but always emit it
-    #    once it exists in observed state.
+    # 4. Gate KServeStack on GKECluster being Ready. This prevents noisy
+    #    errors from Helm releases trying to connect to a cluster that
+    #    doesn't exist yet. Always emit once it exists in observed state.
     kserve_stack_exists = "kserve-stack" in req.observed.resources
-    if gke_secrets or kserve_stack_exists:
+    if (gke_ready and gke_secrets) or kserve_stack_exists:
         kserve_version = kserve.version or "v0.16.0"
         kss_spec_kwargs = {
             "versions": kssv1alpha1.Versions(kserve=kserve_version),
@@ -238,14 +245,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     all_ready = True
     not_ready = []
 
-    if _is_ready(req, "gke-cluster"):
+    if _has_condition(req, "gke-cluster", "Ready"):
         rsp.desired.resources["gke-cluster"].ready = fnv1.READY_TRUE
     else:
         all_ready = False
         not_ready.append("gke-cluster")
 
     if "kserve-stack" in rsp.desired.resources:
-        if _is_ready(req, "kserve-stack"):
+        if _has_condition(req, "kserve-stack", "Ready"):
             rsp.desired.resources["kserve-stack"].ready = fnv1.READY_TRUE
         else:
             all_ready = False

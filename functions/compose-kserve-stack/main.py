@@ -47,12 +47,12 @@ _KUSTOMIZE_STORAGE_PATCH = json.dumps({
 })
 
 
-def _is_ready(req: fnv1.RunFunctionRequest, name: str) -> bool:
+def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
+    """Check if an observed composed resource has the given condition True."""
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
-    c = resource.get_condition(observed.resource, "Ready")
-    return c.status == "True"
+    return resource.get_condition(observed.resource, cond).status == "True"
 
 
 def _helm_release(
@@ -291,7 +291,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # chart creates Certificate and Issuer resources, and the kserve controller
     # registers a validating webhook that Helm calls during install. Both fail
     # if cert-manager isn't fully up.
-    cert_manager_ready = _is_ready(req, "cert-manager")
+    cert_manager_ready = _has_condition(req, "cert-manager", "Ready")
 
     if pc_observed and cert_manager_ready:
         resource.update(
@@ -361,7 +361,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if r not in rsp.desired.resources:
             all_ready = False
             not_ready.append(r)
-        elif _is_ready(req, r):
+        elif _has_condition(req, r, "Ready"):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
         else:
             all_ready = False

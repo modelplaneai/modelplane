@@ -1,12 +1,12 @@
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkeclusterv1alpha1
-from .model.io.upbound.gcp.compute.network import v1beta1 as networkv1beta1
-from .model.io.upbound.gcp.compute.subnetwork import v1beta2 as subnetv1beta2
-from .model.io.upbound.gcp.container.cluster import v1beta2 as clusterv1beta2
-from .model.io.upbound.gcp.container.nodepool import v1beta2 as nodepoolv1beta2
-from .model.io.upbound.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
-from .model.io.upbound.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
+from .model.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
+from .model.io.upbound.m.gcp.compute.subnetwork import v1beta1 as subnetv1beta1
+from .model.io.upbound.m.gcp.container.cluster import v1beta1 as clusterv1beta1
+from .model.io.upbound.m.gcp.container.nodepool import v1beta1 as nodepoolv1beta1
+from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
+from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
 
 test = compositiontest.CompositionTest(
     metadata=k8s.ObjectMeta(
@@ -71,7 +71,7 @@ test = compositiontest.CompositionTest(
                 ),
             ).model_dump(exclude_unset=True),
             networkv1beta1.Network(
-                apiVersion="compute.gcp.upbound.io/v1beta1",
+                apiVersion="compute.gcp.m.upbound.io/v1beta1",
                 kind="Network",
                 metadata=k8s.ObjectMeta(
                     annotations={
@@ -85,66 +85,66 @@ test = compositiontest.CompositionTest(
                     ),
                 ),
             ).model_dump(exclude_unset=True),
-            clusterv1beta2.Cluster(
-                apiVersion="container.gcp.upbound.io/v1beta2",
+            clusterv1beta1.Cluster(
+                apiVersion="container.gcp.m.upbound.io/v1beta1",
                 kind="Cluster",
                 metadata=k8s.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "cluster",
                     },
                 ),
-                spec=clusterv1beta2.Spec(
-                    forProvider=clusterv1beta2.ForProvider(
+                spec=clusterv1beta1.Spec(
+                    forProvider=clusterv1beta1.ForProvider(
                         location="us-central1",
                         project="acme-ml-platform",
                         deletionProtection=False,
                         removeDefaultNodePool=True,
                         initialNodeCount=1,
                         minMasterVersion="1.35",
-                        networkSelector=clusterv1beta2.NetworkSelector(
+                        networkSelector=clusterv1beta1.NetworkSelector(
                             matchControllerRef=True,
                         ),
-                        subnetworkSelector=clusterv1beta2.SubnetworkSelector(
+                        subnetworkSelector=clusterv1beta1.SubnetworkSelector(
                             matchControllerRef=True,
                         ),
-                        ipAllocationPolicy=clusterv1beta2.IpAllocationPolicy(
+                        ipAllocationPolicy=clusterv1beta1.IpAllocationPolicy(
                             clusterSecondaryRangeName="pods",
                             servicesSecondaryRangeName="services",
                         ),
-                        releaseChannel=clusterv1beta2.ReleaseChannel(
+                        releaseChannel=clusterv1beta1.ReleaseChannel(
                             channel="REGULAR",
                         ),
-                        workloadIdentityConfig=clusterv1beta2.WorkloadIdentityConfig(
+                        workloadIdentityConfig=clusterv1beta1.WorkloadIdentityConfig(
                             workloadPool="acme-ml-platform.svc.id.goog",
                         ),
                     ),
-                    writeConnectionSecretToRef=clusterv1beta2.WriteConnectionSecretToRef(
+                    writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
                         name="gpu-us-central1-kubeconfig",
                         namespace="gpu-us-central1",
                     ),
                 ),
             ).model_dump(exclude_unset=True),
-            nodepoolv1beta2.NodePool(
-                apiVersion="container.gcp.upbound.io/v1beta2",
+            nodepoolv1beta1.NodePool(
+                apiVersion="container.gcp.m.upbound.io/v1beta1",
                 kind="NodePool",
                 metadata=k8s.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "nodepool-system",
                     },
                 ),
-                spec=nodepoolv1beta2.Spec(
-                    forProvider=nodepoolv1beta2.ForProvider(
+                spec=nodepoolv1beta1.Spec(
+                    forProvider=nodepoolv1beta1.ForProvider(
                         location="us-central1",
                         project="acme-ml-platform",
-                        clusterSelector=nodepoolv1beta2.ClusterSelector(
+                        clusterSelector=nodepoolv1beta1.ClusterSelector(
                             matchControllerRef=True,
                         ),
                         initialNodeCount=2,
-                        autoscaling=nodepoolv1beta2.Autoscaling(
+                        autoscaling=nodepoolv1beta1.Autoscaling(
                             minNodeCount=1,
                             maxNodeCount=4,
                         ),
-                        nodeConfig=nodepoolv1beta2.NodeConfig(
+                        nodeConfig=nodepoolv1beta1.NodeConfig(
                             machineType="e2-standard-4",
                             diskSizeGb=100,
                             imageType="COS_CONTAINERD",
@@ -158,28 +158,28 @@ test = compositiontest.CompositionTest(
                     ),
                 ),
             ).model_dump(exclude_unset=True),
-            nodepoolv1beta2.NodePool(
-                apiVersion="container.gcp.upbound.io/v1beta2",
+            nodepoolv1beta1.NodePool(
+                apiVersion="container.gcp.m.upbound.io/v1beta1",
                 kind="NodePool",
                 metadata=k8s.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "nodepool-gpu-l4",
                     },
                 ),
-                spec=nodepoolv1beta2.Spec(
-                    forProvider=nodepoolv1beta2.ForProvider(
+                spec=nodepoolv1beta1.Spec(
+                    forProvider=nodepoolv1beta1.ForProvider(
                         location="us-central1",
                         project="acme-ml-platform",
-                        clusterSelector=nodepoolv1beta2.ClusterSelector(
+                        clusterSelector=nodepoolv1beta1.ClusterSelector(
                             matchControllerRef=True,
                         ),
                         initialNodeCount=1,
-                        autoscaling=nodepoolv1beta2.Autoscaling(
+                        autoscaling=nodepoolv1beta1.Autoscaling(
                             minNodeCount=0,
                             maxNodeCount=2,
                         ),
                         nodeLocations=["us-central1-a", "us-central1-c"],
-                        nodeConfig=nodepoolv1beta2.NodeConfig(
+                        nodeConfig=nodepoolv1beta1.NodeConfig(
                             machineType="g2-standard-4",
                             diskSizeGb=100,
                             imageType="COS_CONTAINERD",
@@ -191,10 +191,10 @@ test = compositiontest.CompositionTest(
                                 "modelplane.ai/pool": "gpu-l4",
                             },
                             guestAccelerator=[
-                                nodepoolv1beta2.GuestAcceleratorItem(
+                                nodepoolv1beta1.GuestAcceleratorItem(
                                     type="nvidia-l4",
                                     count=1,
-                                    gpuDriverInstallationConfig=nodepoolv1beta2.GpuDriverInstallationConfig(
+                                    gpuDriverInstallationConfig=nodepoolv1beta1.GpuDriverInstallationConfig(
                                         gpuDriverVersion="DEFAULT",
                                     ),
                                 ),
@@ -204,7 +204,7 @@ test = compositiontest.CompositionTest(
                 ),
             ).model_dump(exclude_unset=True),
             sav1beta1.ServiceAccount(
-                apiVersion="cloudplatform.gcp.upbound.io/v1beta1",
+                apiVersion="cloudplatform.gcp.m.upbound.io/v1beta1",
                 kind="ServiceAccount",
                 metadata=k8s.ObjectMeta(
                     annotations={
@@ -219,7 +219,7 @@ test = compositiontest.CompositionTest(
                 ),
             ).model_dump(exclude_unset=True),
             sakeyv1beta1.ServiceAccountKey(
-                apiVersion="cloudplatform.gcp.upbound.io/v1beta1",
+                apiVersion="cloudplatform.gcp.m.upbound.io/v1beta1",
                 kind="ServiceAccountKey",
                 metadata=k8s.ObjectMeta(
                     annotations={

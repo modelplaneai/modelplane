@@ -3,17 +3,19 @@ import math
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from .model.ai.modelplane.modelplacement import v1alpha1
 
-def _is_ready(req: fnv1.RunFunctionRequest, name: str) -> bool:
+
+def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
+    """Check if an observed composed resource has the given condition True."""
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
-    c = resource.get_condition(observed.resource, "Ready")
-    return c.status == "True"
+    return resource.get_condition(observed.resource, cond).status == "True"
 
 
 def _parse_quantity(q: str) -> int:
-    """Parse a Kubernetes resource quantity to bytes. Only Gi and Mi needed."""
+    """Parse a Kubernetes resource quantity to bytes."""
     if not q:
         return 0
     q = q.strip()
@@ -23,7 +25,6 @@ def _parse_quantity(q: str) -> int:
         return int(q[:-2]) * 1024 * 1024
     if q.endswith("Ti"):
         return int(q[:-2]) * 1024 * 1024 * 1024 * 1024
-    # Plain integer (bytes)
     try:
         return int(q)
     except ValueError:
@@ -31,15 +32,13 @@ def _parse_quantity(q: str) -> int:
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-    xr = resource.struct_to_dict(req.observed.composite.resource)
-    spec = xr.get("spec", {})
-    xr_name = xr.get("metadata", {}).get("name", "")
+    xr = v1alpha1.ModelPlacement(
+        **resource.struct_to_dict(req.observed.composite.resource)
+    )
 
-    model_ref = spec.get("modelRef", {})
-    model_kind = model_ref.get("kind", "ClusterModel")
-    model_name = model_ref.get("name", "")
-    ie_ref = spec.get("inferenceEnvironmentRef", {})
-    ie_name = ie_ref.get("name", "")
+    model_kind = xr.spec.modelRef.kind or "ClusterModel"
+    model_name = xr.spec.modelRef.name
+    ie_name = xr.spec.inferenceEnvironmentRef.name
 
     # Always declare required resources (every reconcile).
     response.require_resources(
@@ -57,7 +56,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         match_name=ie_name,
     )
 
-    # Read required resources.
+    # Read required resources. These are dicts (not Pydantic models) because
+    # they're external resources resolved by Crossplane, not the XR itself.
     model = request.get_required_resource(req, "model")
     ie = request.get_required_resource(req, "environment")
     if model is None or ie is None:
@@ -72,8 +72,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Extract from InferenceEnvironment.
     ie_status = ie.get("status", {})
-    pc_ref = ie_status.get("providerConfigRef", {})
-    pc_name = pc_ref.get("name")
+    pc_name = ie_status.get("providerConfigRef", {}).get("name")
     gateway_address = ie_status.get("gateway", {}).get("address")
 
     if not pc_name:
@@ -113,27 +112,21 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     total_gpus = gpus_per_replica  # replicas hardcoded to 1
 
     # Derive LLMInferenceService name and namespace.
-    llmis_name = xr_name
+    llmis_name = xr.metadata.name
     llmis_namespace = "default"
 
     # Compose a provider-kubernetes Object wrapping an LLMInferenceService.
     container: dict = {
         "name": "main",
         "image": image,
-        "securityContext": {
-            "runAsUser": 0,
-            "runAsNonRoot": False,
-        },
+        "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
         "resources": {
             "limits": {
                 "nvidia.com/gpu": str(gpus_per_replica),
                 "cpu": cpu,
                 "memory": memory,
             },
-            "requests": {
-                "cpu": "1",
-                "memory": memory,
-            },
+            "requests": {"cpu": "1", "memory": memory},
         },
     }
     if extra_args:
@@ -144,9 +137,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         "kind": "Object",
         "spec": {
             "providerConfigRef": {
-                    "kind": "ClusterProviderConfig",
-                    "name": pc_name,
-                },
+                "kind": "ClusterProviderConfig",
+                "name": pc_name,
+            },
             "forProvider": {
                 "manifest": {
                     "apiVersion": "serving.kserve.io/v1alpha1",
@@ -156,18 +149,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         "namespace": llmis_namespace,
                     },
                     "spec": {
-                        "model": {
-                            "uri": model_uri,
-                            "name": resolved_model_name,
-                        },
+                        "model": {"uri": model_uri, "name": resolved_model_name},
                         "replicas": 1,
-                        "template": {
-                            "containers": [container],
-                        },
-                        "router": {
-                            "gateway": {},
-                            "route": {},
-                        },
+                        "template": {"containers": [container]},
+                        "router": {"gateway": {}, "route": {}},
                     },
                 },
             },
@@ -183,11 +168,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         status["endpoint"] = {
             "url": f"http://{gateway_address}/{llmis_namespace}/{llmis_name}/v1",
         }
-
     resource.update(rsp.desired.composite, {"status": status})
 
     # Readiness.
-    if _is_ready(req, "llm-inference-service"):
+    if _has_condition(req, "llm-inference-service", "Ready"):
         rsp.desired.resources["llm-inference-service"].ready = fnv1.READY_TRUE
         rsp.conditions.append(fnv1.Condition(
             type="Ready",
