@@ -14,7 +14,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/gkeclusters/composition.yaml",
-        xrPath="examples/gkecluster/example.yaml",
+        xrPath="tests/test-gkecluster/xr.yaml",
         xrdPath="apis/gkeclusters/definition.yaml",
         timeoutSeconds=120,
         validate=False,

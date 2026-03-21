@@ -9,7 +9,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/kservestacks/composition.yaml",
-        xrPath="examples/kservestack/example.yaml",
+        xrPath="tests/test-kservestack/xr.yaml",
         xrdPath="apis/kservestacks/definition.yaml",
         timeoutSeconds=120,
         validate=False,

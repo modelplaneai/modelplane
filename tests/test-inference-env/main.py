@@ -8,7 +8,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/inferenceenvironments/composition.yaml",
-        xrPath="examples/inferenceenvironment/demo.yaml",
+        xrPath="tests/test-inference-env/xr.yaml",
         xrdPath="apis/inferenceenvironments/definition.yaml",
         timeoutSeconds=120,
         validate=False,

@@ -1,0 +1,74 @@
+# Two inference environments in different regions.
+# Each provisions a GKE cluster with an L4 GPU and installs KServe.
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceEnvironment
+metadata:
+  name: demo-us-central
+  labels:
+    modelplane.ai/environment: "true"
+    modelplane.ai/region: us-central
+spec:
+  backend: KServe
+  kserve:
+    version: v0.16.0
+    cluster:
+      source: GKE
+      gke:
+        project: crossplane-playground
+        region: us-central1
+        nodePools:
+        - name: system
+          role: System
+          machineType: e2-standard-4
+          nodeCount: 1
+          minNodeCount: 1
+          maxNodeCount: 2
+        - name: gpu-l4
+          role: GPU
+          machineType: g2-standard-8
+          gpu:
+            acceleratorType: nvidia-l4
+            acceleratorCount: 1
+          nodeCount: 1
+          minNodeCount: 0
+          maxNodeCount: 2
+          zones:
+          - us-central1-a
+          - us-central1-c
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceEnvironment
+metadata:
+  name: demo-us-east
+  labels:
+    modelplane.ai/environment: "true"
+    modelplane.ai/region: us-east
+spec:
+  backend: KServe
+  kserve:
+    version: v0.16.0
+    cluster:
+      source: GKE
+      gke:
+        project: crossplane-playground
+        region: us-east1
+        nodePools:
+        - name: system
+          role: System
+          machineType: e2-standard-4
+          nodeCount: 1
+          minNodeCount: 1
+          maxNodeCount: 2
+        - name: gpu-l4
+          role: GPU
+          machineType: g2-standard-8
+          gpu:
+            acceleratorType: nvidia-l4
+            acceleratorCount: 1
+          nodeCount: 1
+          minNodeCount: 0
+          maxNodeCount: 2
+          zones:
+          - us-east1-b
+          - us-east1-c
