@@ -140,11 +140,11 @@ info ""
 # time is roughly the time of the slowest one.
 wait_for "InferenceEnvironment demo-us-central" \
   'is_condition_true "ie demo-us-central" "Ready"' \
-  1800
+  2400
 
 wait_for "InferenceEnvironment demo-us-east" \
   'is_condition_true "ie demo-us-east" "Ready"' \
-  1800
+  2400
 
 # ---- Done ----
 echo ""
