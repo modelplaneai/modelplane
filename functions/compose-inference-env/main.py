@@ -54,7 +54,27 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     })
     rsp.desired.resources["namespace"].ready = fnv1.READY_TRUE
 
-    # 2. Always compose a GKECluster.
+    # 2. Gate GKECluster on the Namespace being observed. Crossplane creates
+    #    the GKECluster in ie-{name}, which doesn't exist until the Namespace
+    #    resource is persisted from a previous reconcile.
+    ns_observed = "namespace" in req.observed.resources
+    gke_exists = "gke-cluster" in req.observed.resources
+    if not ns_observed and not gke_exists:
+        rsp.conditions.append(fnv1.Condition(
+            type="Ready",
+            status=fnv1.STATUS_CONDITION_FALSE,
+            reason="Creating",
+            message="Waiting for: namespace",
+            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
+        ))
+        resource.update(rsp.desired.composite, {"status": {
+            "providerConfigRef": {"name": f"{name}-cluster-kubeconfig"},
+            "namespace": ie_ns,
+            "capacity": {"backend": xr.spec.backend or "KServe", "gpuPools": []},
+        }})
+        return
+
+    # Compose a GKECluster.
     # Only pass through fields the user explicitly set. Let the GKECluster
     # XRD handle its own defaults for optional fields.
     gke_node_pools = []

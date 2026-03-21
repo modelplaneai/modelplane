@@ -29,7 +29,7 @@ kubectl delete -f "$PLATFORM_DIR/cluster-model.yaml" --ignore-not-found --wait=t
 # cluster. This is the slow step — typically ~10 minutes.
 info "Deleting InferenceEnvironments (waiting for GKE deprovision)..."
 info "(This takes ~10 minutes. Crossplane deletes KServe, then the GKE clusters.)"
-kubectl delete -f "$PLATFORM_DIR/inference-environments.yaml" --ignore-not-found --cascade=foreground --timeout=1200s || {
+kubectl delete -f "$PLATFORM_DIR/inference-environments.yaml" --ignore-not-found --cascade=foreground --timeout=2400s || {
   echo "WARNING: Timed out waiting for IE deletion. Some GKE resources may be orphaned." >&2
 }
 
