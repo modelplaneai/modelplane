@@ -204,6 +204,31 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             ),
         )
 
+    # 4b. Compose a Usage that blocks GKECluster deletion until KServeStack
+    #     is deleted. Without this, GKE cluster deletion can race ahead of
+    #     Helm release cleanup, leaving orphaned resources on the remote
+    #     cluster that can never be cleaned up.
+    if kserve_stack_exists or (gke_ready and gke_secrets):
+        resource.update(rsp.desired.resources["usage-gke-by-kserve"], {
+            "apiVersion": "protection.crossplane.io/v1beta1",
+            "kind": "Usage",
+            "metadata": {"namespace": ie_ns},
+            "spec": {
+                "of": {
+                    "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                    "kind": "GKECluster",
+                    "resourceSelector": {"matchControllerRef": True},
+                },
+                "by": {
+                    "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                    "kind": "KServeStack",
+                    "resourceSelector": {"matchControllerRef": True},
+                },
+                "replayDeletion": True,
+            },
+        })
+        rsp.desired.resources["usage-gke-by-kserve"].ready = fnv1.READY_TRUE
+
     # 5. Read the observed KServeStack's status.gateway.address.
     gateway_address = None
     kss_observed = req.observed.resources.get("kserve-stack")

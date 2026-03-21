@@ -94,8 +94,7 @@ if [[ -n "$ENDPOINT" ]]; then
 
   # Retry the endpoint until we get a 200. The model pods need time to
   # pull the vLLM image and load model weights into GPU memory.
-  local start
-  start=$(date +%s)
+  PROBE_START=$(date +%s)
   while true; do
     RESPONSE=$(kubectl run -i --rm "modelplane-probe-$(date +%s)" \
       --image=curlimages/curl --restart=Never --quiet 2>/dev/null \
@@ -107,12 +106,12 @@ if [[ -n "$ENDPOINT" ]]; then
       info "Model is serving requests."
       break
     fi
-    local elapsed=$(( $(date +%s) - start ))
-    if (( elapsed > 600 )); then
-      echo "WARNING: Model not serving after ${elapsed}s. Continuing anyway." >&2
+    PROBE_ELAPSED=$(( $(date +%s) - PROBE_START ))
+    if (( PROBE_ELAPSED > 600 )); then
+      echo "WARNING: Model not serving after ${PROBE_ELAPSED}s. Continuing anyway." >&2
       break
     fi
-    printf "  %ds elapsed (HTTP %s)...\r" "$elapsed" "$RESPONSE"
+    printf "  %ds elapsed (HTTP %s)...\r" "$PROBE_ELAPSED" "$RESPONSE"
     sleep 15
   done
 

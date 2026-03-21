@@ -24,6 +24,9 @@ rules:
 - apiGroups: ["metallb.io"]
   resources: ["ipaddresspools", "l2advertisements"]
   verbs: ["*"]
+- apiGroups: ["protection.crossplane.io"]
+  resources: ["usages"]
+  verbs: ["*"]
 ---
 # Give provider-helm a deterministic SA name so we can grant it
 # permissions. Without this, the SA name has a random hash.
