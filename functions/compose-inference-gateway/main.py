@@ -50,7 +50,6 @@ def _helm_release(
                     version=version,
                 ),
                 namespace=namespace,
-                skipCreateNamespace=True,
             ),
         ),
     )
@@ -82,20 +81,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     })
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    # 2. Compose namespaces.
+    # 2. Compose the modelplane-system namespace.
     resource.update(rsp.desired.resources["namespace"], {
         "apiVersion": "v1",
         "kind": "Namespace",
         "metadata": {"name": _NAMESPACE},
     })
     rsp.desired.resources["namespace"].ready = fnv1.READY_TRUE
-
-    resource.update(rsp.desired.resources["namespace-envoy"], {
-        "apiVersion": "v1",
-        "kind": "Namespace",
-        "metadata": {"name": "envoy-gateway-system"},
-    })
-    rsp.desired.resources["namespace-envoy"].ready = fnv1.READY_TRUE
 
     # 3. If MetalLB is requested, compose it (for kind / bare-metal clusters).
     lb = eg.get("loadBalancer")

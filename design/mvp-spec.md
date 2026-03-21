@@ -814,9 +814,9 @@ Before any Modelplane resources are created, the control plane cluster needs:
 2. **Providers**: `provider-gcp-container`, `provider-gcp-compute`,
    `provider-gcp-cloudplatform`, `provider-helm`, `provider-kubernetes`.
 
-3. **RBAC ClusterRole** granting Crossplane permission to compose Namespaces,
-   Gateway API, and Envoy Gateway resources. This cannot be self-composed
-   (Crossplane needs the permission before it can grant itself the permission):
+3. **RBAC and provider-helm permissions.** Crossplane and provider-helm need
+   permissions to compose Namespaces, Gateway API, Envoy Gateway, and MetalLB
+   resources. Apply these once after installing the Configuration:
    ```yaml
    apiVersion: rbac.authorization.k8s.io/v1
    kind: ClusterRole
@@ -825,9 +825,6 @@ Before any Modelplane resources are created, the control plane cluster needs:
      labels:
        rbac.crossplane.io/aggregate-to-crossplane: "true"
    rules:
-   - apiGroups: ["rbac.authorization.k8s.io"]
-     resources: ["clusterroles"]
-     verbs: ["*"]
    - apiGroups: [""]
      resources: ["namespaces"]
      verbs: ["*"]
@@ -840,6 +837,38 @@ Before any Modelplane resources are created, the control plane cluster needs:
    - apiGroups: ["metallb.io"]
      resources: ["ipaddresspools", "l2advertisements"]
      verbs: ["*"]
+   ---
+   # Give provider-helm a deterministic SA name so we can grant it
+   # permissions. Without this, the SA name has a random hash.
+   apiVersion: pkg.crossplane.io/v1beta1
+   kind: DeploymentRuntimeConfig
+   metadata:
+     name: provider-helm-modelplane
+   spec:
+     serviceAccountTemplate:
+       metadata:
+         name: provider-helm-modelplane
+   ---
+   # Grant provider-helm the same permissions as Crossplane (needed for
+   # Helm chart installs that create namespaces, Gateway resources, etc.)
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRoleBinding
+   metadata:
+     name: provider-helm-modelplane
+   roleRef:
+     apiGroup: rbac.authorization.k8s.io
+     kind: ClusterRole
+     name: crossplane-compose-modelplane
+   subjects:
+   - kind: ServiceAccount
+     name: provider-helm-modelplane
+     namespace: crossplane-system
+   ```
+
+   Then patch provider-helm to use the DeploymentRuntimeConfig:
+   ```bash
+   kubectl patch provider.pkg.crossplane.io/upbound-provider-helm \
+     --type=merge -p '{"spec":{"runtimeConfigRef":{"name":"provider-helm-modelplane"}}}'
    ```
 
 Items 3-5 from the original spec (Envoy Gateway, GatewayClass, Gateway, and
