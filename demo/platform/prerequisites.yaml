@@ -1,0 +1,67 @@
+# Modelplane prerequisites. Apply once after installing Crossplane.
+#
+# These resources grant Crossplane and provider-helm the permissions
+# needed to compose Gateway API, Envoy Gateway, and MetalLB resources.
+# They cannot be self-composed because Crossplane needs the permissions
+# before it can compose anything.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-compose-modelplane
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["*"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways", "gatewayclasses", "httproutes"]
+  verbs: ["*"]
+- apiGroups: ["gateway.envoyproxy.io"]
+  resources: ["backends"]
+  verbs: ["*"]
+- apiGroups: ["metallb.io"]
+  resources: ["ipaddresspools", "l2advertisements"]
+  verbs: ["*"]
+---
+# Give provider-helm a deterministic SA name so we can grant it
+# permissions. Without this, the SA name has a random hash.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-helm-modelplane
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-helm-modelplane
+---
+# Grant provider-helm the same permissions as Crossplane (needed for
+# Helm chart installs that create namespaces, Gateway resources, etc.)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: provider-helm-modelplane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crossplane-compose-modelplane
+subjects:
+- kind: ServiceAccount
+  name: provider-helm-modelplane
+  namespace: crossplane-system
+---
+# Apply the DRC to provider-helm automatically via ImageConfig.
+# Matches provider-helm by OCI image prefix and overrides its
+# runtimeConfigRef at install time.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: ImageConfig
+metadata:
+  name: provider-helm-modelplane
+spec:
+  matchImages:
+  - type: Prefix
+    prefix: xpkg.upbound.io/upbound/provider-helm
+  runtime:
+    configRef:
+      name: provider-helm-modelplane

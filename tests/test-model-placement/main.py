@@ -8,7 +8,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/modelplacements/composition.yaml",
-        xrPath="examples/modelplacement/example.yaml",
+        xrPath="tests/test-model-placement/xr.yaml",
         xrdPath="apis/modelplacements/definition.yaml",
         timeoutSeconds=120,
         validate=False,

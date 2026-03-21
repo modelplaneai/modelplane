@@ -4,7 +4,7 @@ metadata:
   name: gpu-us-central1
   namespace: gpu-us-central1
 spec:
-  project: crossplane-playground
+  project: acme-ml-platform
   region: us-central1
   kubernetesVersion: "1.35"
   networking:

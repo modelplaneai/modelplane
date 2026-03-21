@@ -8,7 +8,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/modeldeployments/composition.yaml",
-        xrPath="examples/modeldeployment/qwen-demo.yaml",
+        xrPath="tests/test-model-deployment/xr.yaml",
         xrdPath="apis/modeldeployments/definition.yaml",
         timeoutSeconds=120,
         validate=False,

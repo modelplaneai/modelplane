@@ -8,7 +8,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/clustermodels/composition.yaml",
-        xrPath="examples/clustermodel/qwen-0.5b.yaml",
+        xrPath="tests/test-cluster-model/xr.yaml",
         xrdPath="apis/clustermodels/definition.yaml",
         timeoutSeconds=120,
         validate=False,
