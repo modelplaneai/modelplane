@@ -105,13 +105,20 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         kind="InferenceGateway",
         match_name="default",
     )
+    response.require_resources(
+        rsp,
+        name="all-placements",
+        api_version="modelplane.ai/v1alpha1",
+        kind="ModelPlacement",
+        match_labels={"modelplane.ai/placement": "true"},
+    )
 
     # Read required resources. These are dicts (not Pydantic models) because
     # they're external resources resolved by Crossplane, not the XR itself.
     envs = request.get_required_resources(req, "environments")
     model = request.get_required_resource(req, "model")
     inference_gw = request.get_required_resource(req, "inference-gateway")
-    all_placements: list = []  # Capacity tracking deferred — MVP has one env
+    all_placements = request.get_required_resources(req, "all-placements")
 
     if not envs:
         rsp.conditions.append(fnv1.Condition(
@@ -167,9 +174,18 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if best_gpus_needed is None:
             continue
 
-        # Check available capacity from existing placements.
+        # Check available capacity from existing placements. Exclude
+        # placements owned by this deployment — we don't want our own
+        # placements to count against us on re-reconcile.
         used_gpus = 0
         for p in all_placements:
+            p_deployment = (
+                p.get("metadata", {})
+                .get("labels", {})
+                .get("modelplane.ai/deployment", "")
+            )
+            if p_deployment == xr_name:
+                continue
             p_ie = (
                 p.get("spec", {})
                 .get("inferenceEnvironmentRef", {})
@@ -207,7 +223,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             "metadata": {
                 "name": pname,
                 "namespace": xr_ns,
-                "labels": {"modelplane.ai/deployment": xr_name},
+                "labels": {
+                    "modelplane.ai/placement": "true",
+                    "modelplane.ai/deployment": xr_name,
+                },
             },
             "spec": {
                 "modelRef": {"kind": model_kind, "name": model_name},
