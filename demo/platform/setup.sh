@@ -23,12 +23,25 @@ GCP_KEY="${GCP_KEY:-$HOME/secret/crossplane-playground-716b2ea14ff0.json}"
 KIND_CLUSTER="modelplane-demo"
 
 info()  { echo "==> $*"; }
-warn()  { echo "WARNING: $*" >&2; }
+
+# Check whether a resource's conditions contain a given type with status True.
+# Uses grep instead of jsonpath filters to avoid shell quoting issues.
+is_condition_true() {
+  local resource="$1" cond_type="$2"
+  # $resource is intentionally unquoted so "ig default" splits into two args.
+  # Match both "type":"X"..."status":"True" and "status":"True"..."type":"X"
+  # since JSON field order isn't guaranteed.
+  # shellcheck disable=SC2086
+  local conditions
+  conditions=$(kubectl get $resource -o jsonpath='{.status.conditions}' 2>/dev/null) || return 1
+  echo "$conditions" | grep -qE "\"type\":\"${cond_type}\"[^}]*\"status\":\"True\"|\"status\":\"True\"[^}]*\"type\":\"${cond_type}\""
+}
 
 wait_for() {
   local what="$1" check="$2" timeout="${3:-600}"
   info "Waiting for $what (timeout ${timeout}s)..."
-  local start=$(date +%s)
+  local start
+  start=$(date +%s)
   while true; do
     if eval "$check" 2>/dev/null; then
       info "$what: ready."
@@ -87,8 +100,11 @@ info "Installing Modelplane Configuration..."
 kubectl apply -f "$PLATFORM_DIR/configuration.yaml"
 
 wait_for "Configuration" \
-  '[ "$(kubectl get configuration modelplane-infra -o jsonpath={.status.conditions[?(@.type==\"Healthy\")].status} 2>/dev/null)" = "True" ]' \
+  'is_condition_true "configuration modelplane-infra" "Healthy"' \
   300
+
+info "Installed packages:"
+kubectl get configuration,providers,functions
 
 # ---- Step 5: GCP credentials ----
 info "Configuring GCP credentials..."
@@ -100,11 +116,11 @@ fi
 kubectl apply -f "$PLATFORM_DIR/credentials.yaml"
 
 # ---- Step 6: InferenceGateway ----
-info "Creating InferenceGateway (Envoy Gateway + MetalLB)..."
+info "Creating InferenceGateway (control plane routing)..."
 kubectl apply -f "$PLATFORM_DIR/inference-gateway.yaml"
 
 wait_for "InferenceGateway" \
-  '[ "$(kubectl get ig default -o jsonpath={.status.conditions[?(@.type==\"Ready\")].status} 2>/dev/null)" = "True" ]' \
+  'is_condition_true "ig default" "Ready"' \
   600
 
 # ---- Step 7: ClusterModel ----
@@ -120,8 +136,14 @@ info "Both GKE clusters are provisioning in parallel. This takes ~20 minutes."
 info "Watch progress with: kubectl get ie"
 info ""
 
-wait_for "InferenceEnvironments (both)" \
-  '[ "$(kubectl get ie -o jsonpath="{range .items[*]}{.status.conditions[?(@.type==\"Ready\")].status}{\" \"}{end}" 2>/dev/null | grep -co True)" = "2" ]' \
+# Wait for both IEs to be Ready. They provision in parallel so the total
+# time is roughly the time of the slowest one.
+wait_for "InferenceEnvironment demo-us-central" \
+  'is_condition_true "ie demo-us-central" "Ready"' \
+  1800
+
+wait_for "InferenceEnvironment demo-us-east" \
+  'is_condition_true "ie demo-us-east" "Ready"' \
   1800
 
 # ---- Done ----

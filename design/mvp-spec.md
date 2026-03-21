@@ -858,7 +858,7 @@ Before any Modelplane resources are created, the control plane cluster needs:
    roleRef:
      apiGroup: rbac.authorization.k8s.io
      kind: ClusterRole
-     name: crossplane-compose-modelplane
+     name: cluster-admin
    subjects:
    - kind: ServiceAccount
      name: provider-helm-modelplane

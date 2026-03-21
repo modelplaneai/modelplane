@@ -36,8 +36,10 @@ spec:
     metadata:
       name: provider-helm-modelplane
 ---
-# Grant provider-helm the same permissions as Crossplane (needed for
-# Helm chart installs that create namespaces, Gateway resources, etc.)
+# Grant provider-helm cluster-admin. Helm charts install arbitrary
+# Kubernetes resources (Deployments, Services, RBAC, CRDs, etc.) and
+# need broad permissions. A narrower role would break every time a
+# chart adds a new resource type.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -45,7 +47,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: crossplane-compose-modelplane
+  name: cluster-admin
 subjects:
 - kind: ServiceAccount
   name: provider-helm-modelplane

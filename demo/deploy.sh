@@ -16,10 +16,20 @@ DEMO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 info() { echo "==> $*"; }
 
+is_condition_true() {
+  local resource="$1" cond_type="$2"
+  # $resource is intentionally unquoted so "ig default" splits into two args.
+  # shellcheck disable=SC2086
+  local conditions
+  conditions=$(kubectl get $resource -o jsonpath='{.status.conditions}' 2>/dev/null) || return 1
+  echo "$conditions" | grep -qE "\"type\":\"${cond_type}\"[^}]*\"status\":\"True\"|\"status\":\"True\"[^}]*\"type\":\"${cond_type}\""
+}
+
 wait_for() {
   local what="$1" check="$2" timeout="${3:-600}"
   info "Waiting for $what (timeout ${timeout}s)..."
-  local start=$(date +%s)
+  local start
+  start=$(date +%s)
   while true; do
     if eval "$check" 2>/dev/null; then
       info "$what: ready."
@@ -42,7 +52,8 @@ if ! kubectl get ie &>/dev/null; then
   exit 1
 fi
 
-READY_COUNT=$(kubectl get ie -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -c True || true)
+READY_COUNT=$(kubectl get ie -o jsonpath='{.items[*].status.conditions}' 2>/dev/null \
+  | grep -oE '"type":"Ready"[^}]*"status":"True"|"status":"True"[^}]*"type":"Ready"' | wc -l || true)
 if (( READY_COUNT < 2 )); then
   echo "ERROR: Expected 2 ready InferenceEnvironments, found $READY_COUNT." >&2
   echo "Wait for platform setup to complete." >&2
@@ -58,8 +69,9 @@ kubectl apply -f "$DEMO_DIR/model-deployment.yaml"
 
 echo ""
 info "Waiting for ModelPlacements to become ready..."
+
 wait_for "ModelDeployment (2 placements ready)" \
-  '[ "$(kubectl get md qwen-demo -n ml-team -o jsonpath={.status.placements.ready} 2>/dev/null)" = "2" ]' \
+  '[ "$(kubectl get md qwen-demo -n ml-team -o jsonpath="{.status.placements.ready}" 2>/dev/null)" = "2" ]' \
   600
 
 # ---- Show results ----
@@ -76,6 +88,34 @@ echo ""
 ENDPOINT=$(kubectl get md qwen-demo -n ml-team -o jsonpath='{.status.endpoint.url}' 2>/dev/null)
 if [[ -n "$ENDPOINT" ]]; then
   info "Unified endpoint: $ENDPOINT"
+  echo ""
+  info "Waiting for the model to be ready (image pull + model loading)..."
+  info "This takes a few minutes on fresh nodes."
+
+  # Retry the endpoint until we get a 200. The model pods need time to
+  # pull the vLLM image and load model weights into GPU memory.
+  local start
+  start=$(date +%s)
+  while true; do
+    RESPONSE=$(kubectl run -i --rm "modelplane-probe-$(date +%s)" \
+      --image=curlimages/curl --restart=Never --quiet 2>/dev/null \
+      -- curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$ENDPOINT" \
+        -H "Content-Type: application/json" \
+        -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"ping"}],"max_tokens":1}' \
+    ) || true
+    if [[ "$RESPONSE" == "200" ]]; then
+      info "Model is serving requests."
+      break
+    fi
+    local elapsed=$(( $(date +%s) - start ))
+    if (( elapsed > 600 )); then
+      echo "WARNING: Model not serving after ${elapsed}s. Continuing anyway." >&2
+      break
+    fi
+    printf "  %ds elapsed (HTTP %s)...\r" "$elapsed" "$RESPONSE"
+    sleep 15
+  done
+
   echo ""
   info "Testing the endpoint..."
   echo ""
