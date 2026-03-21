@@ -865,10 +865,22 @@ Before any Modelplane resources are created, the control plane cluster needs:
      namespace: crossplane-system
    ```
 
-   Then patch provider-helm to use the DeploymentRuntimeConfig:
-   ```bash
-   kubectl patch provider.pkg.crossplane.io/upbound-provider-helm \
-     --type=merge -p '{"spec":{"runtimeConfigRef":{"name":"provider-helm-modelplane"}}}'
+   ```yaml
+   ---
+   # Apply the DRC to provider-helm automatically via ImageConfig.
+   # This matches the provider by OCI image prefix and overrides its
+   # runtimeConfigRef at install time — no manual patch needed.
+   apiVersion: pkg.crossplane.io/v1beta1
+   kind: ImageConfig
+   metadata:
+     name: provider-helm-modelplane
+   spec:
+     matchImages:
+     - type: Prefix
+       prefix: xpkg.upbound.io/upbound/provider-helm
+     runtime:
+       configRef:
+         name: provider-helm-modelplane
    ```
 
 Items 3-5 from the original spec (Envoy Gateway, GatewayClass, Gateway, and
