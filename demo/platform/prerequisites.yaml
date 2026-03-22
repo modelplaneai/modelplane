@@ -25,7 +25,7 @@ rules:
   resources: ["ipaddresspools", "l2advertisements"]
   verbs: ["*"]
 - apiGroups: ["protection.crossplane.io"]
-  resources: ["usages"]
+  resources: ["usages", "clusterusages"]
   verbs: ["*"]
 ---
 # Give provider-helm a deterministic SA name so we can grant it
