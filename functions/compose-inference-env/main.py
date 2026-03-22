@@ -54,6 +54,30 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     })
     rsp.desired.resources["namespace"].ready = fnv1.READY_TRUE
 
+    # 1b. Protect the Namespace from terminating until GKECluster is gone.
+    #     When the IE is deleted, the Namespace gets a deletion timestamp
+    #     which puts it in Terminating state, blocking new API operations.
+    #     The managed resources (GKE clusters, Helm releases) need the
+    #     namespace to be active to reconcile their deletion.
+    resource.update(rsp.desired.resources["usage-ns-by-gke"], {
+        "apiVersion": "protection.crossplane.io/v1beta1",
+        "kind": "ClusterUsage",
+        "spec": {
+            "of": {
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "resourceRef": {"name": ie_ns},
+            },
+            "by": {
+                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                "kind": "GKECluster",
+                "resourceSelector": {"matchControllerRef": True},
+            },
+            "replayDeletion": True,
+        },
+    })
+    rsp.desired.resources["usage-ns-by-gke"].ready = fnv1.READY_TRUE
+
     # 2. Gate GKECluster on the Namespace being observed. Crossplane creates
     #    the GKECluster in ie-{name}, which doesn't exist until the Namespace
     #    resource is persisted from a previous reconcile.

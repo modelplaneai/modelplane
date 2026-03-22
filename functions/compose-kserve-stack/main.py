@@ -187,6 +187,50 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         ),
     )
 
+    # Protect the Helm ProviderConfig from deletion until all Helm Releases
+    # that reference it are gone. Without this, deleting the KServeStack
+    # deletes the ProviderConfig and Releases simultaneously — the Releases
+    # can't uninstall their charts because the ProviderConfig is gone.
+    resource.update(rsp.desired.resources["usage-helm-pc"], {
+        "apiVersion": "protection.crossplane.io/v1beta1",
+        "kind": "Usage",
+        "spec": {
+            "of": {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "ProviderConfig",
+                "resourceRef": {"name": pc_name},
+            },
+            "by": {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "Release",
+                "resourceSelector": {"matchControllerRef": True},
+            },
+            "replayDeletion": True,
+        },
+    })
+    rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
+
+    # Same for the Kubernetes ProviderConfig — protect it until all Objects
+    # that reference it are gone.
+    resource.update(rsp.desired.resources["usage-k8s-pc"], {
+        "apiVersion": "protection.crossplane.io/v1beta1",
+        "kind": "Usage",
+        "spec": {
+            "of": {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "ProviderConfig",
+                "resourceRef": {"name": pc_name},
+            },
+            "by": {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "resourceSelector": {"matchControllerRef": True},
+            },
+            "replayDeletion": True,
+        },
+    })
+    rsp.desired.resources["usage-k8s-pc"].ready = fnv1.READY_TRUE
+
     # Gate resources that target the remote cluster on the ProviderConfigs
     # being observed — i.e. persisted by Crossplane from a previous reconcile.
     # This avoids transient "ProviderConfig not found" errors on first creation.
