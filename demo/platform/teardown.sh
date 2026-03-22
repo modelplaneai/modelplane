@@ -2,7 +2,8 @@
 # Modelplane Platform Teardown
 #
 # Deletes all Modelplane resources and the kind cluster.
-# GKE cluster deletion takes ~5-10 minutes.
+# IE deletion takes ~10-15 minutes (KServe uninstall + GKE cluster
+# delete + VPC cleanup).
 #
 # Usage:
 #   ./demo/platform/teardown.sh
@@ -17,7 +18,7 @@ info() { echo "==> $*"; }
 # Delete consumers before infrastructure.
 
 info "Deleting ModelDeployment..."
-kubectl delete -f "$PLATFORM_DIR/../model-deployment.yaml" --ignore-not-found --wait=true || true
+kubectl delete -f "$PLATFORM_DIR/../model-deployment.yaml" --ignore-not-found --cascade=foreground --timeout=300s || true
 
 info "Deleting ClusterModel..."
 kubectl delete -f "$PLATFORM_DIR/cluster-model.yaml" --ignore-not-found --wait=true || true
@@ -28,13 +29,13 @@ kubectl delete -f "$PLATFORM_DIR/cluster-model.yaml" --ignore-not-found --wait=t
 # before GKECluster, so Helm can cleanly uninstall from the still-running
 # cluster.
 #
-# Delete each IE in parallel since they're independent. Each takes
-# ~15-20 minutes (KServe uninstall + GKE cluster delete + VPC cleanup).
+# Delete each IE in parallel since they're independent. Each typically
+# takes ~10-15 minutes.
 info "Deleting InferenceEnvironments (waiting for GKE deprovision)..."
-info "(This takes ~15-20 minutes. Crossplane deletes KServe, then the GKE clusters.)"
+info "(This takes ~10-15 minutes per IE. Crossplane deletes KServe, then the GKE clusters.)"
 pids=()
 for ie in $(kubectl get ie -o name --ignore-not-found 2>/dev/null); do
-  kubectl delete "$ie" --cascade=foreground --timeout=5400s &
+  kubectl delete "$ie" --cascade=foreground --timeout=2400s &
   pids+=($!)
 done
 failed=0
@@ -44,7 +45,10 @@ for pid in "${pids[@]}"; do
   fi
 done
 if (( failed )); then
-  echo "WARNING: Some IEs timed out during deletion. GKE resources may be orphaned." >&2
+  echo "ERROR: IE deletion timed out. Crossplane is still cleaning up GKE" >&2
+  echo "resources. Do NOT delete the kind cluster while this is in progress" >&2
+  echo "or the GKE resources will be orphaned. Wait and re-run this script." >&2
+  exit 1
 fi
 
 info "Deleting InferenceGateway..."

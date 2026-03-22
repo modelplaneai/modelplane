@@ -3,4 +3,4 @@ kind: Configuration
 metadata:
   name: modelplane-infra
 spec:
-  package: xpkg.upbound.io/negzupboundio/modelplane-infra:v0.1.0-dev.31
+  package: xpkg.upbound.io/negzupboundio/modelplane-infra:v0.1.0-dev.32
