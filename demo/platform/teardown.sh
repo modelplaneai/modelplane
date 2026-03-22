@@ -34,7 +34,7 @@ info "Deleting InferenceEnvironments (waiting for GKE deprovision)..."
 info "(This takes ~15-20 minutes. Crossplane deletes KServe, then the GKE clusters.)"
 pids=()
 for ie in $(kubectl get ie -o name --ignore-not-found 2>/dev/null); do
-  kubectl delete "$ie" --cascade=foreground --timeout=2400s &
+  kubectl delete "$ie" --cascade=foreground --timeout=3600s &
   pids+=($!)
 done
 failed=0
