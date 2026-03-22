@@ -13,11 +13,7 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         assertResources=[
-            # Assert on the XR status. On the first render pass, the
-            # function returns early because the Namespace isn't observed
-            # yet. Status has providerConfigRef and namespace but gpuPools
-            # is empty (capacity is computed after GKECluster is composed
-            # on the second pass).
+            # Assert on the XR status.
             iev1alpha1.InferenceEnvironment(
                 apiVersion="modelplane.ai/v1alpha1",
                 kind="InferenceEnvironment",
@@ -31,21 +27,33 @@ test = compositiontest.CompositionTest(
                     providerConfigRef=iev1alpha1.ProviderConfigRef(
                         name="demo-us-central-cluster-kubeconfig",
                     ),
-                    namespace="ie-demo-us-central",
+                    namespace="modelplane-system",
                     capacity=iev1alpha1.Capacity(
                         backend="KServe",
+                        gpuPools=[
+                            iev1alpha1.GpuPool(
+                                acceleratorType="nvidia-l4",
+                                memory="24Gi",
+                                count=1,
+                            ),
+                        ],
                     ),
                 ),
             ).model_dump(exclude_unset=True),
-            # Assert the Namespace is composed on the first pass.
+            # Assert GKECluster is composed in modelplane-system.
             {
-                "apiVersion": "v1",
-                "kind": "Namespace",
+                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                "kind": "GKECluster",
                 "metadata": {
-                    "name": "ie-demo-us-central",
+                    "name": "demo-us-central",
+                    "namespace": "modelplane-system",
                     "annotations": {
-                        "crossplane.io/composition-resource-name": "namespace",
+                        "crossplane.io/composition-resource-name": "gke-cluster",
                     },
+                },
+                "spec": {
+                    "project": "my-gcp-project",
+                    "region": "us-central1",
                 },
             },
         ],
