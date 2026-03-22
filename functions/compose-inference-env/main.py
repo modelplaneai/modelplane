@@ -44,61 +44,15 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         return
 
     gke = kserve.cluster.gke
-    ie_ns = f"ie-{name}"
 
-    # 1. Compose a Namespace for the GKECluster and KServeStack.
-    resource.update(rsp.desired.resources["namespace"], {
-        "apiVersion": "v1",
-        "kind": "Namespace",
-        "metadata": {"name": ie_ns},
-    })
-    rsp.desired.resources["namespace"].ready = fnv1.READY_TRUE
+    # All composed resources go in modelplane-system. Using a shared
+    # namespace avoids the terminating-namespace problem: when an IE is
+    # deleted, a per-IE namespace would enter Terminating state and block
+    # ProviderConfigUsage creation, preventing managed resources from
+    # reconciling their deletion.
+    ie_ns = "modelplane-system"
 
-    # 1b. Protect the Namespace from terminating until GKECluster is gone.
-    #     When the IE is deleted, the Namespace gets a deletion timestamp
-    #     which puts it in Terminating state, blocking new API operations.
-    #     The managed resources (GKE clusters, Helm releases) need the
-    #     namespace to be active to reconcile their deletion.
-    resource.update(rsp.desired.resources["usage-ns-by-gke"], {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "ClusterUsage",
-        "spec": {
-            "of": {
-                "apiVersion": "v1",
-                "kind": "Namespace",
-                "resourceRef": {"name": ie_ns},
-            },
-            "by": {
-                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                "kind": "GKECluster",
-                "resourceSelector": {"matchControllerRef": True},
-            },
-            "replayDeletion": True,
-        },
-    })
-    rsp.desired.resources["usage-ns-by-gke"].ready = fnv1.READY_TRUE
-
-    # 2. Gate GKECluster on the Namespace being observed. Crossplane creates
-    #    the GKECluster in ie-{name}, which doesn't exist until the Namespace
-    #    resource is persisted from a previous reconcile.
-    ns_observed = "namespace" in req.observed.resources
-    gke_exists = "gke-cluster" in req.observed.resources
-    if not ns_observed and not gke_exists:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="Creating",
-            message="Waiting for: namespace",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
-        resource.update(rsp.desired.composite, {"status": {
-            "providerConfigRef": {"name": f"{name}-cluster-kubeconfig"},
-            "namespace": ie_ns,
-            "capacity": {"backend": xr.spec.backend or "KServe", "gpuPools": []},
-        }})
-        return
-
-    # Compose a GKECluster.
+    # 1. Compose a GKECluster.
     # Only pass through fields the user explicitly set. Let the GKECluster
     # XRD handle its own defaults for optional fields.
     gke_node_pools = []
