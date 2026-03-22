@@ -84,8 +84,12 @@ def _helm_release(
     return release
 
 
-def _k8s_object(provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
-    return k8sobjv1alpha1.Object(
+def _k8s_object(
+    provider_config: str,
+    manifest: dict,
+    labels: dict | None = None,
+) -> k8sobjv1alpha1.Object:
+    obj = k8sobjv1alpha1.Object(
         spec=k8sobjv1alpha1.Spec(
             providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                 kind="ProviderConfig",
@@ -96,6 +100,9 @@ def _k8s_object(provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
             ),
         ),
     )
+    if labels:
+        obj.metadata = metav1.ObjectMeta(labels=labels)
+    return obj
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -210,6 +217,35 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     })
     rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
 
+    # Protect the GatewayClass Object from deletion until the Gateway Object
+    # is gone. The remote GatewayClass has a gateway-exists-finalizer that
+    # blocks deletion while Gateways reference it. Without this, both Objects
+    # delete simultaneously and the GatewayClass hangs indefinitely.
+    resource.update(rsp.desired.resources["usage-gwclass-by-gw"], {
+        "apiVersion": "protection.crossplane.io/v1beta1",
+        "kind": "Usage",
+        "spec": {
+            "of": {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "resourceSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/resource": "gateway-class"},
+                },
+            },
+            "by": {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "resourceSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/resource": "gateway"},
+                },
+            },
+            "replayDeletion": True,
+        },
+    })
+    rsp.desired.resources["usage-gwclass-by-gw"].ready = fnv1.READY_TRUE
+
     # Same for the Kubernetes ProviderConfig — protect it until all Objects
     # that reference it are gone.
     resource.update(rsp.desired.resources["usage-k8s-pc"], {
@@ -309,7 +345,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 "spec": {
                     "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
                 },
-            }),
+            }, labels={"modelplane.ai/resource": "gateway-class"}),
         )
 
         resource.update(
@@ -328,7 +364,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         for ln in listeners
                     ],
                 },
-            }),
+            }, labels={"modelplane.ai/resource": "gateway"}),
         )
 
     # Gate KServe CRDs and controller on cert-manager being ready. The kserve
