@@ -324,7 +324,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 "spec": {
                     "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
                 },
-            }, management_policies=["Create", "Observe"]),
+            }, management_policies=["Create", "Observe", "Update"]),
         )
 
         resource.update(
@@ -361,7 +361,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             provider_config=pc_name,
         )
         # Don't uninstall KServe CRDs — same rationale as the controller.
-        kserve_crds.spec.managementPolicies = ["Create", "Observe"]
+        kserve_crds.spec.managementPolicies = ["Create", "Observe", "Update"]
         resource.update(rsp.desired.resources["kserve-crds"], kserve_crds)
 
     patch_cm_name = f"{name}-storage-patch"
@@ -403,7 +403,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # pod is deleted before the webhook configurations, causing all
         # resource deletions to fail validation). Since the GKE cluster is
         # being deleted anyway, leaving KServe installed is harmless.
-        kserve_release.spec.managementPolicies = ["Create", "Observe"]
+        kserve_release.spec.managementPolicies = ["Create", "Observe", "Update"]
         resource.update(rsp.desired.resources["kserve-controller"], kserve_release)
 
     always_ready = [
