@@ -353,16 +353,16 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     cert_manager_ready = _has_condition(req, "cert-manager", "Ready")
 
     if pc_observed and cert_manager_ready:
-        resource.update(
-            rsp.desired.resources["kserve-crds"],
-            _helm_release(
-                chart="kserve-llmisvc-crd",
-                repo="oci://ghcr.io/kserve/charts",
-                version=v.kserve or "v0.16.0",
-                namespace="kserve",
-                provider_config=pc_name,
-            ),
+        kserve_crds = _helm_release(
+            chart="kserve-llmisvc-crd",
+            repo="oci://ghcr.io/kserve/charts",
+            version=v.kserve or "v0.16.0",
+            namespace="kserve",
+            provider_config=pc_name,
         )
+        # Don't uninstall KServe CRDs — same rationale as the controller.
+        kserve_crds.spec.managementPolicies = ["Create", "Observe"]
+        resource.update(rsp.desired.resources["kserve-crds"], kserve_crds)
 
     patch_cm_name = f"{name}-storage-patch"
 
@@ -398,11 +398,18 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 ),
             ),
         ]
+        # Don't uninstall the KServe controller when KServeStack is deleted.
+        # KServe's webhooks prevent clean Helm uninstall (the webhook server
+        # pod is deleted before the webhook configurations, causing all
+        # resource deletions to fail validation). Since the GKE cluster is
+        # being deleted anyway, leaving KServe installed is harmless.
+        kserve_release.spec.managementPolicies = ["Create", "Observe"]
         resource.update(rsp.desired.resources["kserve-controller"], kserve_release)
 
     always_ready = [
         "provider-config-kubernetes", "provider-config-helm",
         "kserve-storage-patch", "gateway-class",
+        "kserve-crds", "kserve-controller",
     ]
     for r in always_ready:
         if r in rsp.desired.resources:
@@ -411,7 +418,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     all_resources = [
         "cert-manager", "envoy-gateway",
         "leader-worker-set",
-        "kserve-crds", "kserve-controller",
         "inference-ext-crd-inferencemodels",
         "inference-ext-crd-inferencepools",
         "gateway",
