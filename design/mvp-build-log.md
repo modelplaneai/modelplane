@@ -705,3 +705,101 @@ The Backend CRD has separate `fqdn` and `ip` endpoint types. Using `fqdn`
 with an IP address fails with "hostname X is an IP address". Use `ip.address`
 for IP addresses. Since KServe gateways expose IPs (not DNS names), you'll
 almost always need `ip`.
+
+## Deletion reliability (learned during 3-cycle validation)
+
+Getting InferenceEnvironment deletion to work reliably required solving
+four distinct problems. Each was discovered by monitoring `kubectl describe`
+on stuck resources — not by increasing timeouts.
+
+### 1. Namespace termination blocks ProviderConfigUsage creation
+
+When an IE composes a per-IE namespace and that namespace gets a
+`deletionTimestamp`, it enters Terminating state. All managed resources in
+that namespace can no longer create `ProviderConfigUsage` objects (the
+namespace admission controller blocks new content). Without PCUs, providers
+can't connect to GCP/Kubernetes to delete the external resources.
+
+**Fix:** use a shared `modelplane-system` namespace for all IEs instead of
+per-IE namespaces. The shared namespace is created by InferenceGateway and
+never deleted during IE teardown.
+
+Note: `protection.crossplane.io/Usage` does NOT fix this. Usages block
+final deletion but don't prevent the namespace from entering Terminating
+state (the `deletionTimestamp` is set immediately).
+
+### 2. KServe webhooks prevent Helm uninstall
+
+KServe's Helm chart installs validating webhooks for
+`LLMInferenceServiceConfig`. When the chart is uninstalled, Helm tries to
+delete these resources, but the webhook server pod is already gone (deleted
+by an earlier Helm release in the same KServeStack). The webhook intercepts
+the deletion request and fails with "no endpoints available for service."
+This causes the Helm uninstall to retry indefinitely.
+
+**Fix:** set `managementPolicies: ["Create", "Observe"]` on the KServe
+controller and CRD Helm releases. Crossplane creates them but doesn't
+attempt to uninstall them. Since the GKE cluster is being deleted anyway,
+leaving KServe installed is harmless.
+
+### 3. GatewayClass finalizer blocks Object deletion
+
+The remote GatewayClass has a `gateway-exists-finalizer` that blocks
+deletion while any Gateway references it. When compose-kserve-stack deletes
+both the Gateway and GatewayClass Objects simultaneously, the GatewayClass
+can't be deleted because the remote Gateway still exists (for a moment).
+The Object retries `DeletedExternalResource` indefinitely.
+
+**Fix:** set `managementPolicies: ["Create", "Observe"]` on the GatewayClass
+Object, same rationale as KServe. The GatewayClass is cluster-level
+infrastructure config — it's harmless to leave behind.
+
+### 4. ProviderConfigUsage lingers after ModelDeployment deletion
+
+When the teardown script deletes the ModelDeployment with `--wait=true`,
+kubectl returns as soon as the MD API object disappears. But the
+ModelPlacement's provider-kubernetes Object created a
+`ProviderConfigUsage` for the ClusterProviderConfig. The PCU outlives the
+Object because provider-kubernetes hasn't cleaned it up yet. This blocks
+the ClusterProviderConfig from being deleted (it has an `in-use.crossplane.io`
+finalizer), which blocks the IE from completing its foreground cascade.
+
+**Fix:** use `--cascade=foreground` on the ModelDeployment deletion. This
+blocks until ALL downstream resources (including PCUs) are cleaned up
+before the MD deletion returns.
+
+### The deletion chain (when everything works)
+
+Observed timeline from monitoring `kubectl get managed` every 15 seconds:
+
+```
+T+0s    IE deleted. KServeStack + GKECluster get deletion timestamps.
+T+15s   Helm releases uninstalling (cert-manager, envoy-gateway, LWS).
+        KServe CRDs/controller skipped (managementPolicies: Create+Observe).
+T+30s   KServeStack fully deleted. Usage allows GKECluster deletion.
+T+45s   SA, SA key, IAM binding deleted.
+T+60s   NodePools deleting. Network deletion starts (blocked by firewall rules).
+T+120s  NodePools deleted.
+T+300s  Network deletion retries succeed (firewall rules cleaned up by GKE).
+T+330s  GKE Cluster deleting (GCP async operation).
+T+420s  GKE Cluster deleted. Subnet + network deleted.
+T+450s  GKECluster XR fully deleted. IE XR deleted.
+```
+
+Total: ~8-12 minutes per IE. Two IEs in parallel complete in ~12-15 minutes.
+
+### Key debugging lesson
+
+Every time deletion was "slow" (>15 minutes), something was stuck — not
+just slow. The pattern was always: `kubectl describe` on the stuck resource
+reveals a specific error (webhook failure, missing ProviderConfig, PCU
+blocking finalizer, etc.). Increasing timeouts never fixed the underlying
+problem. The right response to a slow deletion is always: describe the
+resources, find the error, fix the root cause.
+
+### Teardown script safety
+
+If the foreground cascade times out, the teardown script must NOT proceed
+to delete the Configuration or kind cluster. Killing the control plane
+mid-deletion orphans GKE resources. The script now exits with an error
+instructing the user to wait and re-run.
