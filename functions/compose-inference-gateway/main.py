@@ -1,20 +1,30 @@
-from crossplane.function import resource
+"""Compose the control plane routing gateway.
+
+This function installs Envoy Gateway on the control plane cluster via Helm,
+creates a GatewayClass and Gateway for unified endpoint routing, and
+optionally installs MetalLB for kind/bare-metal clusters. The gateway address
+is surfaced in status for compose-model-deployment to use.
+"""
+
+from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .model.ai.modelplane.inferencegateway import v1alpha1
 from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
+# The namespace where the Gateway and Envoy proxy resources live. Created
+# as a prerequisite — not composed by this function.
 _NAMESPACE = "modelplane-system"
+
 _GATEWAY_NAME = "modelplane"
 
 
 def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has the given condition True.
+    """Check if an observed composed resource has a condition set to True.
 
-    Uses the SDK's get_condition which reads status.conditions from the
-    protobuf Struct. Works for both Crossplane conditions (Ready, Synced)
-    and Gateway API conditions (Accepted, Programmed).
+    Uses the SDK's resource.get_condition which reads status.conditions from
+    the protobuf Struct representation of the resource.
     """
     observed = req.observed.resources.get(name)
     if observed is None:
@@ -30,10 +40,10 @@ def _helm_release(
     provider_config: str,
     values: dict | None = None,
 ) -> helmv1beta1.Release:
-    """Build a Helm Release with metadata.namespace set explicitly.
+    """Build a Helm Release for the control plane.
 
-    Cluster-scoped XRs don't auto-populate the namespace on composed
-    namespaced resources, so we set it here.
+    Sets metadata.namespace explicitly because cluster-scoped XRs don't
+    auto-populate the namespace on composed namespaced resources.
     """
     release = helmv1beta1.Release(
         metadata=metav1.ObjectMeta(namespace=_NAMESPACE),
@@ -58,6 +68,7 @@ def _helm_release(
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+    """Compose Envoy Gateway, MetalLB, GatewayClass, and Gateway."""
     xr = v1alpha1.InferenceGateway(
         **resource.struct_to_dict(req.observed.composite.resource)
     )
@@ -70,27 +81,18 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     pc_name = "modelplane-in-cluster"
 
-    # 1. Compose a ClusterProviderConfig for provider-helm targeting the
-    #    control plane (in-cluster identity).
+    # ClusterProviderConfig for provider-helm targeting the control plane
+    # using the pod's own service account (in-cluster identity).
     resource.update(rsp.desired.resources["provider-config-helm"], {
         "apiVersion": "helm.m.crossplane.io/v1beta1",
         "kind": "ClusterProviderConfig",
         "metadata": {"name": pc_name},
-        "spec": {
-            "credentials": {"source": "InjectedIdentity"},
-        },
+        "spec": {"credentials": {"source": "InjectedIdentity"}},
     })
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    # 2. Compose the modelplane-system namespace.
-    resource.update(rsp.desired.resources["namespace"], {
-        "apiVersion": "v1",
-        "kind": "Namespace",
-        "metadata": {"name": _NAMESPACE},
-    })
-    rsp.desired.resources["namespace"].ready = fnv1.READY_TRUE
-
-    # 3. If MetalLB is requested, compose it (for kind / bare-metal clusters).
+    # Optional MetalLB for kind/bare-metal clusters that don't have a cloud
+    # load balancer controller to assign Gateway addresses.
     lb = eg.loadBalancer if eg else None
     address_pool = eg.metallb.addressPool if eg and eg.metallb else ""
 
@@ -138,7 +140,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             })
             rsp.desired.resources["metallb-l2"].ready = fnv1.READY_TRUE
 
-    # 4. Gate Envoy Gateway on the ProviderConfig being observed.
+    # Gate Envoy Gateway on the ProviderConfig being observed.
     pc_observed = "provider-config-helm" in req.observed.resources
     envoy_gw_exists = "envoy-gateway" in req.observed.resources
     if pc_observed or envoy_gw_exists:
@@ -160,7 +162,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             ),
         )
 
-    # 5. Gate GatewayClass and Gateway on Envoy Gateway being ready.
+    # Gate GatewayClass and Gateway on Envoy Gateway being ready.
     envoy_gw_ready = _has_condition(req, "envoy-gateway", "Ready")
     gw_class_exists = "gateway-class" in req.observed.resources
     gw_exists = "gateway" in req.observed.resources
@@ -191,7 +193,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             },
         })
 
-    # 6. Read the observed Gateway's status to extract the external address.
+    # Read the observed Gateway's status to extract the external address.
     gateway_address = None
     gw_observed = req.observed.resources.get("gateway")
     if gw_observed:
@@ -200,7 +202,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if addresses:
             gateway_address = addresses[0].get("value")
 
-    # 7. Write status.
+    # Write status for consumption by compose-model-deployment.
     status: dict = {
         "gateway": {"name": _GATEWAY_NAME, "namespace": _NAMESPACE},
     }
@@ -208,50 +210,33 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         status["gateway"]["address"] = gateway_address
     resource.update(rsp.desired.composite, {"status": status})
 
-    # 8. Readiness.
-    all_ready = True
+    # Track readiness. GatewayClass and Gateway use Accepted (not Ready) —
+    # on kind the Gateway won't be Programmed (no LoadBalancer), but Accepted
+    # means the controller has scheduled it and it's usable.
     not_ready = []
 
     if lb == "MetalLB" and address_pool:
         if _has_condition(req, "metallb", "Ready"):
             rsp.desired.resources["metallb"].ready = fnv1.READY_TRUE
         else:
-            all_ready = False
             not_ready.append("metallb")
 
     if _has_condition(req, "envoy-gateway", "Ready"):
         rsp.desired.resources["envoy-gateway"].ready = fnv1.READY_TRUE
     else:
-        all_ready = False
         not_ready.append("envoy-gateway")
 
     if _has_condition(req, "gateway-class", "Accepted"):
         rsp.desired.resources["gateway-class"].ready = fnv1.READY_TRUE
     else:
-        all_ready = False
         not_ready.append("gateway-class")
 
-    # Gateway: check Accepted (not Programmed). On kind the Gateway won't be
-    # Programmed (no LoadBalancer), but Accepted means the controller has
-    # scheduled it and it's usable.
     if _has_condition(req, "gateway", "Accepted"):
         rsp.desired.resources["gateway"].ready = fnv1.READY_TRUE
     else:
-        all_ready = False
         not_ready.append("gateway")
 
-    if all_ready:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_TRUE,
-            reason="Available",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+    if not not_ready:
+        rsp.desired.composite.ready = fnv1.READY_TRUE
     else:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="Creating",
-            message=f"Waiting for: {', '.join(not_ready)}",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        response.warning(rsp, f"Waiting for: {', '.join(not_ready)}")

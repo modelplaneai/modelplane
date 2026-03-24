@@ -24,14 +24,14 @@ test = compositiontest.CompositionTest(
                     },
                 },
             },
-            # Assert the namespace is composed.
+            # Assert the ClusterProviderConfig is composed.
             {
-                "apiVersion": "v1",
-                "kind": "Namespace",
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "ClusterProviderConfig",
                 "metadata": {
-                    "name": "modelplane-system",
+                    "name": "modelplane-in-cluster",
                     "annotations": {
-                        "crossplane.io/composition-resource-name": "namespace",
+                        "crossplane.io/composition-resource-name": "provider-config-helm",
                     },
                 },
             },

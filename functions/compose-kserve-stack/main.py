@@ -1,7 +1,19 @@
+"""Install KServe and supporting components on a remote cluster.
+
+This function composes the full KServe inference stack on a GKE cluster:
+cert-manager, Envoy Gateway, LeaderWorkerSet, KServe CRDs and controller,
+inference extension CRDs, and a Gateway. Resources are composed as Helm
+releases and provider-kubernetes Objects, all targeting the remote cluster
+via ProviderConfigs.
+
+Usage resources protect ProviderConfigs from premature deletion during
+teardown, ensuring Helm releases can uninstall before losing connectivity.
+"""
+
 import json
 from pathlib import Path
 
-from crossplane.function import resource
+from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
@@ -13,10 +25,14 @@ from .model.ai.modelplane.infrastructure.kservestack import v1alpha1
 
 _HERE = Path(__file__).parent
 
+# Gateway API Inference Extension CRDs (InferenceModel, InferencePool).
+# Not part of any Helm chart — applied as raw provider-kubernetes Objects.
 _INFERENCE_EXTENSION_CRDS = json.loads(
     (_HERE / "inference_extension_crds.json").read_text()
 )
 
+# KServe storage initializer config override. Enables modelcar support
+# for model caching, which the default KServe config doesn't include.
 _STORAGE_INITIALIZER_CONFIG = json.dumps({
     "image": "kserve/storage-initializer:latest",
     "memoryRequest": "100Mi",
@@ -31,6 +47,8 @@ _STORAGE_INITIALIZER_CONFIG = json.dumps({
     "uidModelcar": 1010,
 })
 
+# Kustomize patch applied via Helm's patchesFrom to override the
+# inferenceservice-config ConfigMap with the storage initializer config.
 _KUSTOMIZE_STORAGE_PATCH = json.dumps({
     "patches": [{
         "patch": json.dumps({
@@ -48,7 +66,11 @@ _KUSTOMIZE_STORAGE_PATCH = json.dumps({
 
 
 def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has the given condition True."""
+    """Check if an observed composed resource has a condition set to True.
+
+    Uses the SDK's resource.get_condition which reads status.conditions from
+    the protobuf Struct representation of the resource.
+    """
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
@@ -109,6 +131,7 @@ def _k8s_object(
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+    """Compose the KServe inference stack on a remote cluster."""
     xr = v1alpha1.KServeStack(**resource.struct_to_dict(req.observed.composite.resource))
     name = xr.metadata.name
     ns = xr.metadata.namespace
@@ -121,13 +144,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     )
 
     if not kubeconfig_secret:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="InvalidSpec",
-            message="spec.secrets must include a Kubeconfig entry",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        response.warning(rsp, "spec.secrets must include a Kubeconfig entry")
         return
 
     # Build ProviderConfig specs from the secrets array. The kubeconfig
@@ -457,17 +474,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 })
 
     if all_ready:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_TRUE,
-            reason="Available",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        rsp.desired.composite.ready = fnv1.READY_TRUE
     else:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="Creating",
-            message=f"Waiting for: {', '.join(not_ready)}",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        response.warning(rsp, f"Waiting for: {', '.join(not_ready)}")
