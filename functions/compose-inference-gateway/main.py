@@ -91,6 +91,30 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     })
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
+    # Protect the ClusterProviderConfig from deletion until all Helm releases
+    # that reference it are gone. Without this, deleting the InferenceGateway
+    # deletes the ProviderConfig and releases simultaneously — the releases
+    # can't uninstall because the ProviderConfig is gone.
+    resource.update(rsp.desired.resources["usage-helm-pc"], {
+        "apiVersion": "protection.crossplane.io/v1beta1",
+        "kind": "Usage",
+        "metadata": {"namespace": _NAMESPACE},
+        "spec": {
+            "of": {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "ClusterProviderConfig",
+                "resourceRef": {"name": pc_name},
+            },
+            "by": {
+                "apiVersion": "helm.m.crossplane.io/v1beta1",
+                "kind": "Release",
+                "resourceSelector": {"matchControllerRef": True},
+            },
+            "replayDeletion": True,
+        },
+    })
+    rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
+
     # Optional MetalLB for kind/bare-metal clusters that don't have a cloud
     # load balancer controller to assign Gateway addresses.
     lb = eg.loadBalancer if eg else None
