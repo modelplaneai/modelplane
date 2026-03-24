@@ -1,4 +1,12 @@
-from crossplane.function import resource
+"""Compose a GKE cluster with networking, node pools, and service accounts.
+
+This function provisions the GCP infrastructure for an inference environment:
+a VPC with a subnet, a GKE cluster with system and GPU node pools, a service
+account with container.admin IAM, and ProviderConfigs for provider-kubernetes
+and provider-helm to reach the cluster.
+"""
+
+from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .model.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
@@ -15,7 +23,11 @@ from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
 
 
 def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has the given condition True."""
+    """Check if an observed composed resource has a condition set to True.
+
+    Uses the SDK's resource.get_condition which reads status.conditions from
+    the protobuf Struct representation of the resource.
+    """
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
@@ -23,6 +35,7 @@ def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+    """Compose a GKE cluster and all supporting GCP resources."""
     xr = v1alpha1.GKECluster(**resource.struct_to_dict(req.observed.composite.resource))
     name = xr.metadata.name
     ns = xr.metadata.namespace
@@ -308,17 +321,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
     if all_ready:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_TRUE,
-            reason="Available",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        rsp.desired.composite.ready = fnv1.READY_TRUE
     else:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="Creating",
-            message=f"Waiting for: {', '.join(not_ready)}",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        response.warning(rsp, f"Waiting for: {', '.join(not_ready)}")

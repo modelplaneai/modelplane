@@ -1,11 +1,21 @@
+"""Fan out a ModelDeployment to ModelPlacements and configure routing.
+
+This function discovers InferenceEnvironments, matches model requirements
+against available capacity, creates a ModelPlacement per matched environment,
+and composes Envoy Gateway Backend + HTTPRoute resources on the control plane
+for unified endpoint routing.
+"""
+
 import math
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .model.ai.modelplane.modeldeployment import v1alpha1
+from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# Engine/backend compatibility map.
+# Maps InferenceEnvironment backends to the engines they support.
 _COMPAT = {
     "KServe": ["vLLM"],
 }
@@ -15,7 +25,11 @@ _REMOTE_NAMESPACE = "default"
 
 
 def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has the given condition True."""
+    """Check if an observed composed resource has a condition set to True.
+
+    Uses the SDK's resource.get_condition which reads status.conditions from
+    the protobuf Struct representation of the resource.
+    """
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
@@ -25,7 +39,11 @@ def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
 def _has_parent_condition(
     req: fnv1.RunFunctionRequest, name: str, cond: str,
 ) -> bool:
-    """Check a Gateway API condition nested under status.parents[].conditions."""
+    """Check a Gateway API condition nested under status.parents[].conditions.
+
+    Gateway API resources (HTTPRoute, etc.) nest route status under
+    status.parents[].conditions instead of top-level status.conditions.
+    """
     observed = req.observed.resources.get(name)
     if observed is None:
         return False
@@ -38,7 +56,10 @@ def _has_parent_condition(
 
 
 def _parse_quantity(q: str) -> int:
-    """Parse a Kubernetes resource quantity to bytes."""
+    """Parse a Kubernetes resource quantity string to bytes.
+
+    Supports Gi, Mi, and Ti suffixes. Returns 0 for unparseable values.
+    """
     if not q:
         return 0
     q = q.strip()
@@ -55,29 +76,30 @@ def _parse_quantity(q: str) -> int:
 
 
 def _placement_name(deployment_name: str, ie_name: str) -> str:
-    """Derive a deterministic ModelPlacement name from the deployment and env."""
+    """Derive a deterministic ModelPlacement name.
+
+    Deterministic names are needed so the deployment function knows the
+    LLMInferenceService name on the remote cluster for URL rewriting.
+    """
     return f"{deployment_name}-{ie_name}"[:63]
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+    """Compose ModelPlacements and control plane routing resources."""
     xr = v1alpha1.ModelDeployment(
         **resource.struct_to_dict(req.observed.composite.resource)
     )
 
     model_kind = xr.spec.modelRef.kind or "ClusterModel"
     model_name = xr.spec.modelRef.name
-    # Protobuf Struct delivers all numbers as float.
-    desired_envs = int(xr.spec.environments)
+    desired_envs = int(xr.spec.environments)  # protobuf delivers as float
     env_selector = xr.spec.environmentSelector
     xr_name = xr.metadata.name
     xr_ns = xr.metadata.namespace or ""
 
-    # Always declare required resources.
-    # Match on modelplane.ai/environment=true to discover IEs. This label must
-    # be applied by the platform team when creating InferenceEnvironments. We
-    # can't use an empty match_labels selector (Crossplane protobuf bug — see
-    # build log) or function-set labels (Crossplane doesn't apply metadata
-    # changes from functions to the XR).
+    # Declare required resources. InferenceEnvironments are matched by the
+    # modelplane.ai/environment=true label — a workaround for the empty
+    # match_labels protobuf bug (see build log).
     env_match_labels: dict[str, str] = {
         "modelplane.ai/environment": "true",
     }
@@ -113,40 +135,28 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         match_labels={"modelplane.ai/placement": "true"},
     )
 
-    # Read required resources. These are dicts (not Pydantic models) because
-    # they're external resources resolved by Crossplane, not the XR itself.
+    # Required resources are dicts resolved by Crossplane.
     envs = request.get_required_resources(req, "environments")
-    model = request.get_required_resource(req, "model")
+    model_resource = request.get_required_resource(req, "model")
     inference_gw = request.get_required_resource(req, "inference-gateway")
     all_placements = request.get_required_resources(req, "all-placements")
 
     if not envs:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="NoEnvironments",
-            message="No InferenceEnvironments found",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        response.warning(rsp, "No InferenceEnvironments found")
         return
 
-    if model is None:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="ModelNotFound",
-            message=f"Model {model_name} not found",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+    if model_resource is None:
+        response.warning(rsp, f"Model {model_name} not found")
         return
 
-    model_spec = model.get("spec", {})
+    model_spec = model_resource.get("spec", {})
     resolved_model_name = model_spec.get("model", {}).get("name", "")
     engine = model_spec.get("engine", "")
-    model_vram = model_spec.get("resources", {}).get("vram", "0Gi")
-    model_vram_bytes = _parse_quantity(model_vram)
+    model_vram_bytes = _parse_quantity(
+        model_spec.get("resources", {}).get("vram", "0Gi")
+    )
 
-    # Schedule: filter and rank environments.
+    # Schedule: filter environments by engine compatibility and VRAM capacity.
     candidates = []
     for env in envs:
         env_name = env.get("metadata", {}).get("name", "")
@@ -154,11 +164,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         capacity = env_status.get("capacity", {})
         backend = capacity.get("backend", "")
 
-        # Engine compatibility.
         if engine not in _COMPAT.get(backend, []):
             continue
 
-        # VRAM and capacity.
+        # Find the pool that needs the fewest GPUs for this model.
         gpu_pools = capacity.get("gpuPools", [])
         best_gpus_needed = None
         eligible_total = 0
@@ -174,9 +183,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if best_gpus_needed is None:
             continue
 
-        # Check available capacity from existing placements. Exclude
-        # placements owned by this deployment — we don't want our own
-        # placements to count against us on re-reconcile.
+        # Subtract GPUs used by other deployments' placements on this IE.
         used_gpus = 0
         for p in all_placements:
             p_deployment = (
@@ -185,7 +192,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 .get("modelplane.ai/deployment", "")
             )
             if p_deployment == xr_name:
-                continue
+                continue  # Don't count our own placements against us.
             p_ie = (
                 p.get("spec", {})
                 .get("inferenceEnvironmentRef", {})
@@ -207,34 +214,39 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             "gateway_address": env_status.get("gateway", {}).get("address"),
         })
 
-    # Sort by name for determinism and take first N.
+    # Sort by name for deterministic scheduling and take first N.
     candidates.sort(key=lambda c: c["name"])
     matched = candidates[:desired_envs]
 
-    # Compose a ModelPlacement for each matched environment.
+    # Compose a ModelPlacement per matched environment.
     for env_info in matched:
         ie_name = env_info["name"]
         placement_key = f"placement-{ie_name}"
         pname = _placement_name(xr_name, ie_name)
 
-        resource.update(rsp.desired.resources[placement_key], {
-            "apiVersion": "modelplane.ai/v1alpha1",
-            "kind": "ModelPlacement",
-            "metadata": {
-                "name": pname,
-                "namespace": xr_ns,
-                "labels": {
-                    "modelplane.ai/placement": "true",
-                    "modelplane.ai/deployment": xr_name,
-                },
-            },
-            "spec": {
-                "modelRef": {"kind": model_kind, "name": model_name},
-                "inferenceEnvironmentRef": {"name": ie_name},
-            },
-        })
+        resource.update(
+            rsp.desired.resources[placement_key],
+            mpv1alpha1.ModelPlacement(
+                metadata=metav1.ObjectMeta(
+                    name=pname,
+                    namespace=xr_ns,
+                    labels={
+                        "modelplane.ai/placement": "true",
+                        "modelplane.ai/deployment": xr_name,
+                    },
+                ),
+                spec=mpv1alpha1.Spec(
+                    modelRef=mpv1alpha1.ModelRef(kind=model_kind, name=model_name),
+                    inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
+                        name=ie_name,
+                    ),
+                ),
+            ),
+        )
 
-    # Compose routing resources on the control plane.
+    # Compose routing resources on the control plane: a Backend per
+    # environment and an HTTPRoute that rewrites the unified endpoint path
+    # to the remote KServe gateway path.
     backend_refs = []
     for env_info in matched:
         ie_name = env_info["name"]
@@ -252,7 +264,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             },
         })
 
-        # Read the Crossplane-generated name from an observed Backend.
+        # The Backend's Crossplane-generated name is needed for the
+        # HTTPRoute's backendRefs. Read it from observed state.
         backend_observed = req.observed.resources.get(backend_key)
         if backend_observed:
             d = resource.struct_to_dict(backend_observed.resource)
@@ -266,12 +279,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     "weight": 1,
                 })
 
-    # Compose an HTTPRoute.
     if matched:
+        # Rewrite the control plane path to the remote KServe gateway path.
+        # The LLMInferenceService name = the ModelPlacement XR name.
         first_pname = _placement_name(xr_name, matched[0]["name"])
         rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{first_pname}/"
 
-        # Read gateway name/namespace from InferenceGateway status.
         gw_name = "modelplane"
         gw_ns = "modelplane-system"
         if inference_gw:
@@ -309,7 +322,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             "spec": httproute_spec,
         })
 
-    # Read the control plane gateway address from InferenceGateway status.
+    # Read the control plane gateway address for the unified endpoint URL.
     gateway_ip = None
     if inference_gw:
         gateway_ip = (
@@ -346,7 +359,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         else:
             not_ready.append("httproute")
 
-    # Write status.
+    # Write status for the user.
     status: dict = {
         "model": {"name": resolved_model_name},
         "placements": {"total": len(matched), "ready": placements_ready},
@@ -357,14 +370,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         }
     resource.update(rsp.desired.composite, {"status": status})
 
-    # Set Ready condition.
     if placements_ready > 0 and not not_ready:
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_TRUE,
-            reason="PlacementsAvailable",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        rsp.desired.composite.ready = fnv1.READY_TRUE
     else:
         msg_parts = []
         if not_ready:
@@ -373,10 +380,4 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             msg_parts.append(
                 f"{len(matched)} of {desired_envs} environments matched"
             )
-        rsp.conditions.append(fnv1.Condition(
-            type="Ready",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="Creating",
-            message="; ".join(msg_parts) if msg_parts else "Waiting",
-            target=fnv1.TARGET_COMPOSITE_AND_CLAIM,
-        ))
+        response.warning(rsp, "; ".join(msg_parts) if msg_parts else "Waiting")

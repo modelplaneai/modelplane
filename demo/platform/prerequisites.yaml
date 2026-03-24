@@ -5,6 +5,12 @@
 # They cannot be self-composed because Crossplane needs the permissions
 # before it can compose anything.
 ---
+# Shared namespace for all Modelplane infrastructure resources.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modelplane-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
