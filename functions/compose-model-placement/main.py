@@ -79,7 +79,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     model = request.get_required_resource(req, "model")
     ie = request.get_required_resource(req, "environment")
     if model is None or ie is None:
-        response.warning(rsp, "Waiting for model and environment to be resolved")
+        response.normal(rsp, "Waiting for model and environment to be resolved")
         return
 
     ie_status = ie.get("status", {})
@@ -87,7 +87,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gateway_address = ie_status.get("gateway", {}).get("address")
 
     if not pc_name:
-        response.warning(rsp, "Waiting for environment providerConfigRef")
+        response.normal(rsp, "Waiting for environment providerConfigRef")
         return
 
     # Extract model configuration from the ClusterModel (or Model) spec.
@@ -176,9 +176,24 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         }
     resource.update(rsp.desired.composite, {"status": status})
 
+    # Transition: first time composing the LLMInferenceService.
+    if "llm-inference-service" not in req.observed.resources:
+        response.normal(
+            rsp,
+            f"Composing LLMInferenceService for {resolved_model_name} "
+            f"on {ie_name}, GPUs: {gpus_per_replica}",
+        )
+
     # Set readiness based on the LLMInferenceService Object's Ready condition.
+    was_ready = resource.get_condition(
+        req.observed.composite.resource, "Ready"
+    ).status == "True"
+
     if _has_condition(req, "llm-inference-service", "Ready"):
         rsp.desired.resources["llm-inference-service"].ready = fnv1.READY_TRUE
         rsp.desired.composite.ready = fnv1.READY_TRUE
+        if not was_ready:
+            endpoint = f"http://{gateway_address}/{llmis_namespace}/{llmis_name}/v1" if gateway_address else "pending"
+            response.normal(rsp, f"Ready, endpoint: {endpoint}")
     else:
-        response.warning(rsp, "Waiting for: llm-inference-service")
+        response.normal(rsp, "Waiting for: llm-inference-service")

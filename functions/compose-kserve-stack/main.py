@@ -473,7 +473,19 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     },
                 })
 
+    # Transition: cert-manager is ready (triggers KServe composition).
+    if cert_manager_ready and not _has_condition(req, "kserve-controller", "Ready"):
+        if "kserve-controller" not in req.observed.resources:
+            response.normal(rsp, "cert-manager ready, composing KServe")
+
+    was_ready = resource.get_condition(
+        req.observed.composite.resource, "Ready"
+    ).status == "True"
+
     if all_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
+        if not was_ready:
+            addr = f", gateway: {gateway_address}" if gateway_address else ""
+            response.normal(rsp, f"Ready{addr}")
     else:
-        response.warning(rsp, f"Waiting for: {', '.join(not_ready)}")
+        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")
