@@ -218,6 +218,17 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     candidates.sort(key=lambda c: c["name"])
     matched = candidates[:desired_envs]
 
+    # Transition: emit which environments were matched (first time only).
+    matched_names = [c["name"] for c in matched]
+    prev_placement_count = sum(
+        1 for c in matched
+        if f"placement-{c['name']}" in req.observed.resources
+    )
+    if matched and prev_placement_count == 0:
+        response.normal(
+            rsp, f"Matched {len(matched)} environments: {', '.join(matched_names)}"
+        )
+
     # Compose a ModelPlacement per matched environment.
     for env_info in matched:
         ie_name = env_info["name"]
@@ -370,9 +381,30 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         }
     resource.update(rsp.desired.composite, {"status": status})
 
+    was_ready = resource.get_condition(
+        req.observed.composite.resource, "Ready"
+    ).status == "True"
+
+    # Track previous placement count for transition detection.
+    prev_ready = int(
+        resource.struct_to_dict(req.observed.composite.resource)
+        .get("status", {}).get("placements", {}).get("ready", 0)
+    )
+
     if placements_ready > 0 and not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
+        if not was_ready:
+            endpoint = status.get("endpoint", {}).get("url", "pending")
+            response.normal(
+                rsp,
+                f"{placements_ready} placements ready, endpoint: {endpoint}",
+            )
     else:
+        # Emit progress transition when placement count changes.
+        if placements_ready > prev_ready:
+            response.normal(
+                rsp, f"{placements_ready} of {len(matched)} placements ready"
+            )
         msg_parts = []
         if not_ready:
             msg_parts.append(f"Unready: {', '.join(not_ready)}")
@@ -380,4 +412,4 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             msg_parts.append(
                 f"{len(matched)} of {desired_envs} environments matched"
             )
-        response.warning(rsp, "; ".join(msg_parts) if msg_parts else "Waiting")
+        response.normal(rsp, "; ".join(msg_parts) if msg_parts else "Waiting")

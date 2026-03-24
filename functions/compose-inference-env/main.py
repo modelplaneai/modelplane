@@ -259,11 +259,16 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         status["gateway"] = {"address": gateway_address}
     resource.update(rsp.desired.composite, {"status": status})
 
-    # Track readiness of composed XRs.
+    # Track readiness. Emit transition events when gating dependencies
+    # become ready so kubectl describe shows provisioning progress.
     not_ready = []
 
-    if _has_condition(req, "gke-cluster", "Ready"):
+    gke_is_ready = _has_condition(req, "gke-cluster", "Ready")
+    if gke_is_ready:
         rsp.desired.resources["gke-cluster"].ready = fnv1.READY_TRUE
+        # Transition: GKE just became ready (KServeStack not yet observed).
+        if not kserve_stack_exists:
+            response.normal(rsp, "GKE cluster ready, composing KServeStack")
     else:
         not_ready.append("gke-cluster")
 
@@ -275,7 +280,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         not_ready.append("kserve-stack")
 
+    was_ready = resource.get_condition(
+        req.observed.composite.resource, "Ready"
+    ).status == "True"
+
     if not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
+        if not was_ready:
+            addr = f", gateway: {gateway_address}" if gateway_address else ""
+            response.normal(rsp, f"Ready{addr}")
     else:
-        response.warning(rsp, f"Waiting for: {', '.join(not_ready)}")
+        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")

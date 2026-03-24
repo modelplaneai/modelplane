@@ -308,19 +308,23 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if sa_email:
         managed_resources.append("iam-binding")
 
-    all_ready = True
     not_ready = []
     for r in managed_resources:
         if _has_condition(req, r, "Ready"):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
         else:
-            all_ready = False
             not_ready.append(r)
 
     rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    if all_ready:
+    was_ready = resource.get_condition(
+        req.observed.composite.resource, "Ready"
+    ).status == "True"
+
+    if not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
+        if not was_ready:
+            response.normal(rsp, "All GCP resources ready")
     else:
-        response.warning(rsp, f"Waiting for: {', '.join(not_ready)}")
+        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")

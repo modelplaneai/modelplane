@@ -221,8 +221,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         else:
             not_ready.append("metallb")
 
-    if _has_condition(req, "envoy-gateway", "Ready"):
+    envoy_ready = _has_condition(req, "envoy-gateway", "Ready")
+    if envoy_ready:
         rsp.desired.resources["envoy-gateway"].ready = fnv1.READY_TRUE
+        # Transition: Envoy Gateway just became ready (Gateway not yet observed).
+        if not gw_exists:
+            response.normal(rsp, "Envoy Gateway ready, composing Gateway")
     else:
         not_ready.append("envoy-gateway")
 
@@ -236,7 +240,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         not_ready.append("gateway")
 
+    was_ready = resource.get_condition(
+        req.observed.composite.resource, "Ready"
+    ).status == "True"
+
     if not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
+        if not was_ready:
+            addr = f", address: {gateway_address}" if gateway_address else ""
+            response.normal(rsp, f"Ready{addr}")
     else:
-        response.warning(rsp, f"Waiting for: {', '.join(not_ready)}")
+        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")
