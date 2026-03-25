@@ -228,26 +228,27 @@ returns 200 but doesn't actually update the repo). This makes iterative
 development painful — every new function means waiting out a rate limit before
 Crossplane can pull it.
 
-### Issue: `up project build --no-build-cache` doesn't invalidate Docker images
+### Correction: `up project build` does NOT use Docker buildx
 
-`up project build` uses Docker buildx to build function images. The
-`--no-build-cache` flag clears the `~/.up/build-cache/` directory but does NOT
-invalidate Docker's buildx cache. If the buildx builder has a cached layer for
-a function's Python code, it reuses it even though the source changed. This
-means code changes aren't picked up in the built images.
+Earlier entries in this log blamed Docker buildx caching for stale function
+code. This was wrong. Investigation of the `up` CLI source code revealed
+that Python function builds don't use Docker or buildx at all. The build:
 
-Workaround: manually delete the stale Docker images AND the buildx builder
-before rebuilding:
-```bash
-docker rmi $(docker images -q --filter "reference=xpkg.upbound.io/negzupboundio/modelplane-infra*")
-docker buildx prune -af
-up project build
-```
+1. Pulls the `function-interpreter-python` base image from the registry
+2. Tars the function directory (following symlinks) using `go-containerregistry`
+3. Appends the tar as a layer to the base image in memory
+4. Writes the result to the `.uppkg` file
 
-This is extremely confusing because `up project build` reports success, the
-`.uppkg` artifact has the right content, and `up project push` pushes new
-digests — but the actual function code inside the image is stale. The only
-way to verify is to `docker run` the image and inspect the embedded Python.
+No Docker daemon is involved. The build always reads source files directly
+from the filesystem — there is no build cache to invalidate.
+
+The "stale code" I was seeing was from `docker run` on OLD images left in
+the Docker daemon by previous `up test run` or `up project run` sessions.
+These are NOT the images that `up project build` produces. The `.uppkg` was
+always correct. The confusion was caused by verifying the wrong image.
+
+The actual issue when code changes didn't take effect on a cluster was
+Crossplane's `IfNotPresent` Function caching (see below), not the build.
 
 ### Issue: Crossplane v2 IfNotPresent caching for function images
 
