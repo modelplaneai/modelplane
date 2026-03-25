@@ -81,18 +81,8 @@ spec:
           status:
             type: object
             properties:
-              gateway:
-                type: object
-                properties:
-                  address:
-                    type: string
-                    description: >-
-                      External address of the control plane gateway.
-                  name:
-                    type: string
-                    description: >-
-                      Name of the Gateway resource.
-                  namespace:
-                    type: string
-                    description: >-
-                      Namespace of the Gateway resource.
+              address:
+                type: string
+                description: >-
+                  External address of the control plane gateway.
+                  Backend-agnostic — works for any routing implementation.

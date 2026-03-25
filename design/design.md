@@ -437,8 +437,11 @@ deploy a model across one or more InferenceEnvironments. Modelplane creates a
 `ModelPlacement` for each matched environment and aggregates their status.
 
 ModelDeployment is deliberately backend-agnostic. It handles environment
-discovery, scheduling, and fan-out. It does not compose routing resources —
-that responsibility belongs to ModelPlacement, which knows the backend type.
+discovery, scheduling, fan-out, and routing aggregation. It composes a
+Gateway API HTTPRoute that load-balances across all its placements' backends
+— but it doesn't know or care what kind of backend they are. The
+backend-specific routing resources (e.g., Envoy Gateway Backends) are
+composed by ModelPlacement.
 
 The simplest possible deployment:
 
@@ -515,12 +518,18 @@ If a new InferenceEnvironment appears that matches the selector (or model
 requirements, when no selector is specified), Modelplane automatically creates a
 ModelPlacement for it.
 
-The unified endpoint is the InferenceGateway's address. Traffic is routed by
-model name — the `model` field in the OpenAI request body — not by URL path.
-This means the endpoint is the same for every deployment:
-`http://<gateway-address>/v1/chat/completions`. Each ModelPlacement registers
-its environment with the routing layer, and the gateway load-balances across
-placements serving the same model.
+Each ModelDeployment gets a unique endpoint derived from the InferenceGateway
+address and the deployment's namespace and name:
+`http://<gateway-address>/<namespace>/<deployment-name>/v1/chat/completions`.
+The control plane gateway matches the path prefix and rewrites it to the
+remote KServe path, load-balancing across all placements' backends. Since every
+placement uses the ClusterModel name as the LLMInferenceService name on its
+remote cluster, the rewrite target is the same for all backends — fixing
+multi-environment routing.
+
+Future versions with model-name-aware routing (e.g., LiteLLM as the
+InferenceGateway backend) could simplify this to a single gateway-wide
+endpoint where the `model` field in the request body selects the backend.
 
 Individual placement endpoints are available on the ModelPlacement resources
 for debugging, but the intended production pattern is to always go through
@@ -660,8 +669,8 @@ Five composition functions, one per concern:
 | `function-modelplane-gateway` | Composes the control plane routing infrastructure. Dispatches on gateway backend (Envoy Gateway, LiteLLM). Surfaces `status.address` for ModelPlacements. |
 | `function-modelplane-env` | Dispatches on inference backend and cloud provider discriminators. Composes `GKECluster` and `KServeStack` XRs, wires them together, populates `status.capacity`. Adding a new backend or cloud provider means adding a branch here. |
 | `function-modelplane-model` | Validates model catalog entries for both `ClusterModel` and `Model`. Registration and validation only — caching is an environment concern. |
-| `function-modelplane-deploy` | Backend-agnostic fan-out from ModelDeployment to ModelPlacements. Resolves target environments (by selector or automatic matching), stamps placements, aggregates status. Does not compose routing resources. |
-| `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model, InferenceEnvironment, and InferenceGateway. Composes backend-specific model serving resources (LLMInferenceService for KServe) and routing resources (HTTPRoute + Backend for Envoy Gateway). Adding a new inference or routing backend means updating this one function. |
+| `function-modelplane-deploy` | Backend-agnostic fan-out and routing aggregation. Resolves target environments, stamps placements, composes a Gateway API HTTPRoute that load-balances across all placements' backends, aggregates status. |
+| `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model, InferenceEnvironment, and InferenceGateway. Composes backend-specific model serving resources (LLMInferenceService for KServe) and routing endpoint resources (Envoy Gateway Backend). Adding a new inference or routing backend means updating this one function. |
 
 The `GKECluster` and `KServeStack` XRs are internal implementation details —
 they have their own XRDs and composition functions but are not part of

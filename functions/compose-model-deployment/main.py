@@ -255,32 +255,16 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             ),
         )
 
-    # Compose routing resources on the control plane: a Backend per
-    # environment and an HTTPRoute that rewrites the unified endpoint path
-    # to the remote KServe gateway path.
+    # Compose an HTTPRoute that aggregates all placements' backends.
+    # Backends are composed by ModelPlacement — we read their names from
+    # observed ModelPlacement status.
     backend_refs = []
     for env_info in matched:
-        ie_name = env_info["name"]
-        gw_addr = env_info.get("gateway_address")
-        if not gw_addr:
-            continue
-
-        backend_key = f"backend-{ie_name}"
-        resource.update(rsp.desired.resources[backend_key], {
-            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-            "kind": "Backend",
-            "metadata": {"namespace": xr_ns},
-            "spec": {
-                "endpoints": [{"ip": {"address": gw_addr, "port": 80}}],
-            },
-        })
-
-        # The Backend's Crossplane-generated name is needed for the
-        # HTTPRoute's backendRefs. Read it from observed state.
-        backend_observed = req.observed.resources.get(backend_key)
-        if backend_observed:
-            d = resource.struct_to_dict(backend_observed.resource)
-            backend_name = d.get("metadata", {}).get("name")
+        placement_key = f"placement-{env_info['name']}"
+        observed = req.observed.resources.get(placement_key)
+        if observed:
+            p_status = resource.struct_to_dict(observed.resource).get("status", {})
+            backend_name = p_status.get("routing", {}).get("backendName")
             if backend_name:
                 backend_refs.append({
                     "group": "gateway.envoyproxy.io",
@@ -291,17 +275,15 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 })
 
     if matched:
-        # Rewrite the control plane path to the remote KServe gateway path.
-        # The LLMInferenceService name = the ModelPlacement XR name.
-        first_pname = _placement_name(xr_name, matched[0]["name"])
-        rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{first_pname}/"
+        # Rewrite /{ns}/{deployment}/ to /{remote-ns}/{model-name}/.
+        # The LLMIS name is the ClusterModel name on all remote clusters,
+        # so the rewrite is the same for every backend.
+        rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{model_name}/"
 
+        # Gateway parentRef — defaults for Envoy Gateway, could be read
+        # from InferenceGateway status in future.
         gw_name = "modelplane"
         gw_ns = "modelplane-system"
-        if inference_gw:
-            gw_status = inference_gw.get("status", {}).get("gateway", {})
-            gw_name = gw_status.get("name", gw_name)
-            gw_ns = gw_status.get("namespace", gw_ns)
 
         httproute_spec: dict = {
             "parentRefs": [{"name": gw_name, "namespace": gw_ns}],
@@ -336,9 +318,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # Read the control plane gateway address for the unified endpoint URL.
     gateway_ip = None
     if inference_gw:
-        gateway_ip = (
-            inference_gw.get("status", {}).get("gateway", {}).get("address")
-        )
+        gateway_ip = inference_gw.get("status", {}).get("address")
 
     # Track readiness of composed resources.
     not_ready = []
@@ -351,18 +331,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             placements_ready += 1
         else:
             not_ready.append(placement_key)
-
-    for env_info in matched:
-        backend_key = f"backend-{env_info['name']}"
-        if backend_key in rsp.desired.resources:
-            if _has_condition(req, backend_key, "Accepted"):
-                rsp.desired.resources[backend_key].ready = fnv1.READY_TRUE
-            elif _has_condition(req, backend_key, "Invalid"):
-                not_ready.append(backend_key)
-            elif backend_key not in req.observed.resources:
-                not_ready.append(backend_key)
-            else:
-                rsp.desired.resources[backend_key].ready = fnv1.READY_TRUE
 
     if "httproute" in rsp.desired.resources:
         if _has_parent_condition(req, "httproute", "Accepted"):
