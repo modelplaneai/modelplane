@@ -50,7 +50,7 @@ def _helm_release(
         metadata=metav1.ObjectMeta(namespace=_NAMESPACE, labels=labels),
         spec=helmv1beta1.Spec(
             providerConfigRef=helmv1beta1.ProviderConfigRef(
-                kind="ClusterProviderConfig",
+                kind="ProviderConfig",
                 name=provider_config,
             ),
             forProvider=helmv1beta1.ForProvider(
@@ -82,27 +82,30 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     pc_name = "modelplane-in-cluster"
 
-    # ClusterProviderConfig for provider-helm targeting the control plane
-    # using the pod's own service account (in-cluster identity).
+    # Namespaced ProviderConfig for provider-helm targeting the control plane
+    # using the pod's own service account (in-cluster identity). Namespaced
+    # (not ClusterProviderConfig) so the Usage can protect it — cross-scope
+    # Usages aren't supported.
     resource.update(rsp.desired.resources["provider-config-helm"], {
         "apiVersion": "helm.m.crossplane.io/v1beta1",
-        "kind": "ClusterProviderConfig",
-        "metadata": {"name": pc_name},
+        "kind": "ProviderConfig",
+        "metadata": {"name": pc_name, "namespace": _NAMESPACE},
         "spec": {"credentials": {"source": "InjectedIdentity"}},
     })
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
     def _pc_usage(release_key: str) -> None:
-        """Compose a Usage protecting the ClusterProviderConfig from deletion
-        until the given Helm release is gone. One Usage per release is needed
+        """Compose a Usage protecting the ProviderConfig from deletion until
+        the given Helm release is gone. One Usage per release is needed
         because matchControllerRef only matches a single resource."""
         resource.update(rsp.desired.resources[f"usage-pc-by-{release_key}"], {
             "apiVersion": "protection.crossplane.io/v1beta1",
-            "kind": "ClusterUsage",
+            "kind": "Usage",
+            "metadata": {"namespace": _NAMESPACE},
             "spec": {
                 "of": {
                     "apiVersion": "helm.m.crossplane.io/v1beta1",
-                    "kind": "ClusterProviderConfig",
+                    "kind": "ProviderConfig",
                     "resourceRef": {"name": pc_name},
                 },
                 "by": {
