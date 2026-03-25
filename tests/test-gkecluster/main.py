@@ -2,7 +2,6 @@ from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositionte
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkeclusterv1alpha1
 from .model.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
-from .model.io.upbound.m.gcp.compute.subnetwork import v1beta1 as subnetv1beta1
 from .model.io.upbound.m.gcp.container.cluster import v1beta1 as clusterv1beta1
 from .model.io.upbound.m.gcp.container.nodepool import v1beta1 as nodepoolv1beta1
 from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1

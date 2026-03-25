@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* Modelplane brand palette — from modelplane.ai */
+@theme {
+  --color-bg: #070714;
+  --color-bg-mid: #0d0d1f;
+  --color-bg-card: #0f0f22;
+  --color-bg-card-hover: #121228;
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-hi: rgba(173, 123, 252, 0.25);
+  --color-text: #ffffff;
+  --color-muted: #8b8aae;
+  --color-muted-hi: #b0afcc;
+  --color-purple: #ad7bfc;
+  --color-purple-hi: #c39efd;
+  --color-cyan: #22d3ee;
+  --color-green: #34d399;
+  --color-red: #ef4444;
+  --color-gold: #ffcd3c;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "DM Mono", "Fira Code", ui-monospace, monospace;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}

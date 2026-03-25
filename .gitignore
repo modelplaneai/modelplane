@@ -1,3 +1,5 @@
 .venv
 _output
 .up
+result
+.direnv

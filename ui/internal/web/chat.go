@@ -17,146 +17,91 @@ limitations under the License.
 package web
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
 )
 
-// Error strings.
-const (
-	errParseChatPath    = "cannot parse chat path, expected /api/chat/{namespace}/{name}"
-	errGetDeployment    = "cannot get ModelDeployment"
-	errNoEndpoint       = "ModelDeployment has no endpoint URL"
-	errForwardChat      = "cannot forward chat request"
-	errFmtBadChatMethod = "chat proxy only accepts POST, got %s"
-)
-
-var modelDeploymentGVR = schema.GroupVersionResource{
-	Group:    "modelplane.ai",
-	Version:  "v1alpha1",
-	Resource: "modeldeployments",
-}
-
-// newChatProxy returns a handler that resolves the ModelDeployment's endpoint
+// NewChatProxy returns a handler that resolves the ModelDeployment's endpoint
 // URL and forwards the request body to it. The response is streamed back for
 // SSE (token-by-token) display.
 //
-// Route: POST /api/chat/{namespace}/{name}
-func newChatProxy(log *slog.Logger, cfg *rest.Config) http.Handler {
-	client := dynamic.NewForConfigOrDie(cfg)
-
+// Route: POST /api/chat/{namespace}/{name}.
+func NewChatProxy(log *slog.Logger, er EndpointResolver, client *http.Client) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, fmt.Sprintf(errFmtBadChatMethod, r.Method), http.StatusMethodNotAllowed)
-			return
-		}
-
 		ns, name, ok := parseChatPath(r.URL.Path)
 		if !ok {
-			http.Error(w, errParseChatPath, http.StatusBadRequest)
+			http.Error(w, "cannot parse chat path, expected /api/chat/{namespace}/{name}", http.StatusBadRequest)
 			return
 		}
 
-		endpoint, err := resolveEndpoint(r.Context(), client, ns, name)
+		endpoint, err := er.ResolveEndpoint(r.Context(), ns, name)
 		if err != nil {
-			log.Error(errGetDeployment, "namespace", ns, "name", name, "err", err)
-			http.Error(w, errGetDeployment, http.StatusBadGateway)
+			log.Error("cannot resolve endpoint", "namespace", ns, "name", name, "err", err)
+			http.Error(w, "cannot resolve endpoint", http.StatusBadGateway)
 			return
 		}
 		if endpoint == "" {
-			http.Error(w, errNoEndpoint, http.StatusServiceUnavailable)
+			http.Error(w, "ModelDeployment has no endpoint URL", http.StatusServiceUnavailable)
 			return
 		}
 
 		// Forward the request body to the inference endpoint.
 		upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, endpoint, r.Body)
 		if err != nil {
-			log.Error(errForwardChat, "endpoint", endpoint, "err", err)
-			http.Error(w, errForwardChat, http.StatusInternalServerError)
+			log.Error("cannot forward chat request", "endpoint", endpoint, "err", err)
+			http.Error(w, "cannot forward chat request", http.StatusInternalServerError)
 			return
 		}
 		upstream.Header.Set("Content-Type", "application/json")
 
-		resp, err := http.DefaultClient.Do(upstream)
+		resp, err := client.Do(upstream)
 		if err != nil {
-			log.Error(errForwardChat, "endpoint", endpoint, "err", err)
-			http.Error(w, errForwardChat, http.StatusBadGateway)
+			log.Error("cannot forward chat request", "endpoint", endpoint, "err", err)
+			http.Error(w, "cannot forward chat request", http.StatusBadGateway)
 			return
 		}
-		defer resp.Body.Close() //nolint:errcheck // Best effort.
 
-		// Stream the response back to the browser. Copy all headers (including
-		// Content-Type: text/event-stream for SSE).
-		for k, vs := range resp.Header {
-			for _, v := range vs {
-				w.Header().Add(k, v)
-			}
-		}
-		w.WriteHeader(resp.StatusCode)
-
-		// Flush after each write for SSE streaming.
-		if f, ok := w.(http.Flusher); ok {
-			buf := make([]byte, 4096)
-			for {
-				n, err := resp.Body.Read(buf)
-				if n > 0 {
-					_, _ = w.Write(buf[:n])
-					f.Flush()
-				}
-				if err != nil {
-					break
-				}
-			}
-		} else {
-			_, _ = io.Copy(w, resp.Body)
-		}
+		streamResponse(w, resp)
 	})
+}
+
+// streamResponse copies an upstream HTTP response to w, flushing after each
+// chunk for SSE streaming.
+func streamResponse(w http.ResponseWriter, resp *http.Response) {
+	defer resp.Body.Close() //nolint:errcheck // Best effort.
+
+	for k, vs := range resp.Header {
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	if f, ok := w.(http.Flusher); ok {
+		buf := make([]byte, 4096)
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				_, _ = w.Write(buf[:n])
+				f.Flush()
+			}
+			if err != nil {
+				break
+			}
+		}
+	} else {
+		_, _ = io.Copy(w, resp.Body)
+	}
 }
 
 // parseChatPath extracts namespace and name from /api/chat/{namespace}/{name}.
 func parseChatPath(path string) (ns, name string, ok bool) {
-	// Trim the prefix and split the remainder.
 	path = strings.TrimPrefix(path, "/api/chat/")
 	parts := strings.SplitN(path, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", false
 	}
 	return parts[0], parts[1], true
-}
-
-// resolveEndpoint reads a ModelDeployment and returns its status.endpoint.url.
-func resolveEndpoint(ctx context.Context, client dynamic.Interface, ns, name string) (string, error) {
-	md, err := client.Resource(modelDeploymentGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("%s %s/%s: %w", errGetDeployment, ns, name, err)
-	}
-
-	url, _, _ := unstructured.NestedString(md.Object, "status", "endpoint", "url")
-	return url, nil
-}
-
-// chatMessage is the minimal shape of an OpenAI chat request, used only for
-// extracting the model name when logging.
-type chatMessage struct {
-	Model string `json:"model"`
-}
-
-// extractModel reads the model name from a chat request body without consuming
-// it. Returns empty string on failure.
-func extractModel(body io.Reader) string {
-	var m chatMessage
-	if err := json.NewDecoder(body).Decode(&m); err != nil {
-		return ""
-	}
-	return m.Model
 }

@@ -19,40 +19,71 @@ limitations under the License.
 package main
 
 import (
-	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/alecthomas/kong"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
 	"github.com/modelplaneai/modelplane/ui/internal/web"
 )
 
-func main() {
-	var (
-		addr       = flag.String("addr", ":8080", "Listen address")
-		kubeconfig = flag.String("kubeconfig", "", "Path to kubeconfig file (omit for in-cluster)")
-	)
-	flag.Parse()
+type cli struct {
+	Addr       string `default:":8080"              help:"Address to listen on."`
+	Kubeconfig string `default:""                   help:"Path to kubeconfig file (omit for in-cluster)." optional:"" type:"existingfile"`
+	Verbose    bool   `help:"Enable debug logging." short:"v"`
+}
 
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+func (c *cli) Run() error {
+	level := slog.LevelInfo
+	if c.Verbose {
+		level = slog.LevelDebug
+	}
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
-	s, err := web.NewServer(log, *kubeconfig)
+	cfg, err := loadRESTConfig(c.Kubeconfig)
 	if err != nil {
-		log.Error("cannot create server", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot load Kubernetes config: %w", err)
 	}
 
+	transport, err := rest.TransportFor(cfg)
+	if err != nil {
+		return fmt.Errorf("cannot create Kubernetes transport: %w", err)
+	}
+
+	resolver := web.NewKubernetesEndpointResolver(dynamic.NewForConfigOrDie(cfg))
+
+	s := web.NewServer(cfg.Host, transport, resolver, web.WithLogger(log))
+
 	srv := &http.Server{
-		Addr:              *addr,
+		Addr:              c.Addr,
 		Handler:           web.WithLogging(s.Handler(), log),
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      120 * time.Second, // Long for watch and chat streaming.
 	}
 
-	log.Info("listening", "addr", *addr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Error("cannot serve", "err", err)
-		os.Exit(1)
+	log.Info("listening", "addr", c.Addr)
+	return srv.ListenAndServe()
+}
+
+func main() {
+	c := &cli{}
+	ctx := kong.Parse(c,
+		kong.Name("modelplane-ui"),
+		kong.Description("Modelplane web console."),
+		kong.UsageOnError(),
+	)
+	ctx.FatalIfErrorf(c.Run())
+}
+
+func loadRESTConfig(kubeconfig string) (*rest.Config, error) {
+	if kubeconfig != "" {
+		return clientcmd.BuildConfigFromFlags("", kubeconfig)
 	}
+	return rest.InClusterConfig()
 }

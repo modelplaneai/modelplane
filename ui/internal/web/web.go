@@ -20,51 +20,70 @@ limitations under the License.
 package web
 
 import (
+	"context"
 	"embed"
-	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
-
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-)
-
-// Error strings.
-const (
-	errLoadConfig = "cannot load Kubernetes config"
-	errTransport  = "cannot create Kubernetes transport"
 )
 
 //go:embed all:static
 var staticFS embed.FS
 
+// An EndpointResolver resolves a ModelDeployment's inference endpoint URL from
+// its namespace and name.
+type EndpointResolver interface {
+	ResolveEndpoint(ctx context.Context, ns, name string) (string, error)
+}
+
+// An EndpointResolverFn satisfies EndpointResolver using a plain function.
+type EndpointResolverFn func(ctx context.Context, ns, name string) (string, error)
+
+// ResolveEndpoint calls fn.
+func (fn EndpointResolverFn) ResolveEndpoint(ctx context.Context, ns, name string) (string, error) {
+	return fn(ctx, ns, name)
+}
+
+// An Option configures a Server.
+type Option func(*Server)
+
+// WithLogger sets the logger. Defaults to a no-op logger.
+func WithLogger(l *slog.Logger) Option {
+	return func(s *Server) { s.log = l }
+}
+
+// WithHTTPClient sets the HTTP client used to forward chat requests to
+// inference endpoints. Defaults to http.DefaultClient.
+func WithHTTPClient(c *http.Client) Option {
+	return func(s *Server) { s.client = c }
+}
+
 // A Server serves the Modelplane console.
 type Server struct {
-	log  *slog.Logger
+	log    *slog.Logger
+	client *http.Client
+
 	kube http.Handler
 	chat http.Handler
 }
 
-// NewServer returns a new Server. If kubeconfig is empty, in-cluster
-// configuration is used.
-func NewServer(log *slog.Logger, kubeconfig string) (*Server, error) {
-	cfg, err := loadRESTConfig(kubeconfig)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", errLoadConfig, err)
+// NewServer returns a new Server. The host and transport configure the
+// Kubernetes API proxy. The EndpointResolver is used by the chat proxy to look
+// up ModelDeployment endpoint URLs.
+func NewServer(host string, transport http.RoundTripper, er EndpointResolver, o ...Option) *Server {
+	s := &Server{
+		log:    slog.New(discardHandler{}),
+		client: http.DefaultClient,
+	}
+	for _, fn := range o {
+		fn(s)
 	}
 
-	transport, err := rest.TransportFor(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", errTransport, err)
-	}
-
-	return &Server{
-		log:  log,
-		kube: newKubeProxy(log, cfg.Host, transport),
-		chat: newChatProxy(log, cfg),
-	}, nil
+	s.kube = NewKubeProxy(s.log, host, transport)
+	s.chat = NewChatProxy(s.log, er, s.client)
+	return s
 }
 
 // Handler returns an http.Handler that routes requests to the appropriate
@@ -77,7 +96,7 @@ func NewServer(log *slog.Logger, kubeconfig string) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -88,19 +107,19 @@ func (s *Server) Handler() http.Handler {
 	// use 'npm run dev' to serve the frontend with hot reload and proxy API
 	// requests to this server.
 	static, _ := fs.Sub(staticFS, "static")
-	mux.Handle("GET /", spaHandler(static))
+	mux.Handle("/", SPAHandler(static))
 
 	return mux
 }
 
-// spaHandler serves a single-page app. It serves the requested file if it
+// SPAHandler serves a single-page app. It serves the requested file if it
 // exists, otherwise falls back to index.html for client-side routing.
-func spaHandler(fsys fs.FS) http.Handler {
+func SPAHandler(fsys fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(fsys))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Try the requested path.
-		p := r.URL.Path
-		if p == "/" {
+		// Try the requested path. fs.FS paths must not have a leading slash.
+		p := strings.TrimPrefix(r.URL.Path, "/")
+		if p == "" {
 			p = "index.html"
 		}
 		if _, err := fs.Stat(fsys, p); err == nil {
@@ -132,17 +151,19 @@ func WithLogging(next http.Handler, log *slog.Logger) http.Handler {
 // statusRecorder wraps http.ResponseWriter to capture the status code.
 type statusRecorder struct {
 	http.ResponseWriter
+
 	status int
 }
 
-func (r *statusRecorder) WriteHeader(code int) {
-	r.status = code
-	r.ResponseWriter.WriteHeader(code)
+func (sr *statusRecorder) WriteHeader(code int) {
+	sr.status = code
+	sr.ResponseWriter.WriteHeader(code)
 }
 
-func loadRESTConfig(kubeconfig string) (*rest.Config, error) {
-	if kubeconfig != "" {
-		return clientcmd.BuildConfigFromFlags("", kubeconfig)
-	}
-	return rest.InClusterConfig()
-}
+// discardHandler is a slog.Handler that discards all log records.
+type discardHandler struct{}
+
+func (discardHandler) Enabled(context.Context, slog.Level) bool  { return false }
+func (discardHandler) Handle(context.Context, slog.Record) error { return nil }
+func (dh discardHandler) WithAttrs([]slog.Attr) slog.Handler     { return dh }
+func (dh discardHandler) WithGroup(string) slog.Handler          { return dh }

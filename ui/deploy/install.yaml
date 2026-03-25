@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modelplane-ui
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: modelplane-ui
+  namespace: modelplane-ui
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: modelplane-ui
+rules:
+  # Modelplane custom resources.
+  - apiGroups: ["modelplane.ai"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # Namespace listing for the deploy modal.
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: modelplane-ui
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: modelplane-ui
+subjects:
+  - kind: ServiceAccount
+    name: modelplane-ui
+    namespace: modelplane-ui
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modelplane-ui
+  namespace: modelplane-ui
+  labels:
+    app: modelplane-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: modelplane-ui
+  template:
+    metadata:
+      labels:
+        app: modelplane-ui
+    spec:
+      serviceAccountName: modelplane-ui
+      containers:
+        - name: proxy
+          image: modelplane-ui:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: modelplane-ui
+  namespace: modelplane-ui
+spec:
+  selector:
+    app: modelplane-ui
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP

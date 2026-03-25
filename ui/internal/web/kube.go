@@ -25,10 +25,10 @@ import (
 
 const kubePrefix = "/api/k8s"
 
-// newKubeProxy returns a handler that strips the /api/k8s prefix and forwards
+// NewKubeProxy returns a handler that strips the /api/k8s prefix and forwards
 // the request to the Kubernetes API server. The supplied transport carries the
 // cluster credentials (bearer token, client certs, etc.).
-func newKubeProxy(log *slog.Logger, host string, transport http.RoundTripper) http.Handler {
+func NewKubeProxy(log *slog.Logger, host string, transport http.RoundTripper) http.Handler {
 	// Trim any trailing slash and scheme prefix to get a bare host:port for
 	// the URL rewriter.
 	h := strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
