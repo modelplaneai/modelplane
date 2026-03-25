@@ -39,6 +39,7 @@ def _helm_release(
     namespace: str,
     provider_config: str,
     values: dict | None = None,
+    labels: dict | None = None,
 ) -> helmv1beta1.Release:
     """Build a Helm Release for the control plane.
 
@@ -46,7 +47,7 @@ def _helm_release(
     auto-populate the namespace on composed namespaced resources.
     """
     release = helmv1beta1.Release(
-        metadata=metav1.ObjectMeta(namespace=_NAMESPACE),
+        metadata=metav1.ObjectMeta(namespace=_NAMESPACE, labels=labels),
         spec=helmv1beta1.Spec(
             providerConfigRef=helmv1beta1.ProviderConfigRef(
                 kind="ClusterProviderConfig",
@@ -91,29 +92,32 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     })
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    # Protect the ClusterProviderConfig from deletion until all Helm releases
-    # that reference it are gone. Without this, deleting the InferenceGateway
-    # deletes the ProviderConfig and releases simultaneously — the releases
-    # can't uninstall because the ProviderConfig is gone.
-    resource.update(rsp.desired.resources["usage-helm-pc"], {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "metadata": {"namespace": _NAMESPACE},
-        "spec": {
-            "of": {
-                "apiVersion": "helm.m.crossplane.io/v1beta1",
-                "kind": "ClusterProviderConfig",
-                "resourceRef": {"name": pc_name},
+    def _pc_usage(release_key: str) -> None:
+        """Compose a Usage protecting the ClusterProviderConfig from deletion
+        until the given Helm release is gone. One Usage per release is needed
+        because matchControllerRef only matches a single resource."""
+        resource.update(rsp.desired.resources[f"usage-pc-by-{release_key}"], {
+            "apiVersion": "protection.crossplane.io/v1beta1",
+            "kind": "Usage",
+            "metadata": {"namespace": _NAMESPACE},
+            "spec": {
+                "of": {
+                    "apiVersion": "helm.m.crossplane.io/v1beta1",
+                    "kind": "ClusterProviderConfig",
+                    "resourceRef": {"name": pc_name},
+                },
+                "by": {
+                    "apiVersion": "helm.m.crossplane.io/v1beta1",
+                    "kind": "Release",
+                    "resourceSelector": {
+                        "matchControllerRef": True,
+                        "matchLabels": {"modelplane.ai/release": release_key},
+                    },
+                },
+                "replayDeletion": True,
             },
-            "by": {
-                "apiVersion": "helm.m.crossplane.io/v1beta1",
-                "kind": "Release",
-                "resourceSelector": {"matchControllerRef": True},
-            },
-            "replayDeletion": True,
-        },
-    })
-    rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
+        })
+        rsp.desired.resources[f"usage-pc-by-{release_key}"].ready = fnv1.READY_TRUE
 
     # Optional MetalLB for kind/bare-metal clusters that don't have a cloud
     # load balancer controller to assign Gateway addresses.
@@ -141,8 +145,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     version="0.14.9",
                     namespace=metallb_ns,
                     provider_config=pc_name,
+                    labels={"modelplane.ai/release": "metallb"},
                 ),
             )
+            _pc_usage("metallb")
 
         # Gate the IPAddressPool and L2Advertisement on MetalLB being ready.
         metallb_ready = _has_condition(req, "metallb", "Ready")
@@ -183,8 +189,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         },
                     },
                 },
+                labels={"modelplane.ai/release": "envoy-gateway"},
             ),
         )
+        _pc_usage("envoy-gateway")
 
     # Gate GatewayClass and Gateway on Envoy Gateway being ready.
     envoy_gw_ready = _has_condition(req, "envoy-gateway", "Ready")
