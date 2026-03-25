@@ -134,23 +134,23 @@ Their primary concern is velocity: how quickly can they go from "I need Llama 3
 
 ### API design
 
-Modelplane defines five Crossplane composite resources (XRs). The API group is
+Modelplane defines six Crossplane composite resources (XRs). The API group is
 `modelplane.ai`.
-
 
 | CRD | Scope | Created by | Purpose |
 |-----|-------|------------|---------|
+| `InferenceGateway` | Cluster | Platform team | Control plane routing infrastructure |
 | `InferenceEnvironment` | Cluster | Platform team | Inference environment with backend stack |
 | `ClusterModel` | Cluster | Platform team | Model catalog |
 | `Model` | Namespace | ML team | Private fine-tuned models |
-| `ModelDeployment` | Namespace | ML team | Multi-environment deployment and unified endpoint |
-| `ModelPlacement` | Namespace | Typically composed by ModelDeployment | Per-environment deployment status |
+| `ModelDeployment` | Namespace | ML team | Multi-environment deployment |
+| `ModelPlacement` | Namespace | Typically composed by ModelDeployment | Per-environment deployment and routing |
 
-`ClusterModel` and `InferenceEnvironment` are cluster-scoped (platform
-infrastructure). `Model`, `ModelDeployment`, and `ModelPlacement` are
-namespace-scoped (team resources). This eliminates cross-namespace references.
-Namespaced resources reference cluster-scoped resources or resources in their
-own namespace.
+`InferenceGateway`, `ClusterModel`, and `InferenceEnvironment` are
+cluster-scoped (platform infrastructure). `Model`, `ModelDeployment`, and
+`ModelPlacement` are namespace-scoped (team resources). This eliminates
+cross-namespace references. Namespaced resources reference cluster-scoped
+resources or resources in their own namespace.
 
 ### ClusterModel and Model
 
@@ -229,6 +229,51 @@ The ML team picks from the catalog without needing to understand what the engine
 flags mean. Advanced ML teams that want to tune engine flags for a model can do
 so by creating a namespaced `Model`.
 
+
+### InferenceGateway (`inferencegateways.modelplane.ai/v1alpha1`)
+
+An `InferenceGateway` configures the control plane's routing infrastructure —
+the gateway that sits between ML teams and inference environments. It's
+cluster-scoped and singleton in practice (one gateway per control plane). It
+parallels `InferenceEnvironment`: one is "where models run", the other is "how
+you reach them."
+
+The `backend` discriminator selects the gateway implementation. v0.1 supports
+Envoy Gateway; future versions could add LiteLLM for intelligent routing
+(cost-aware, performance-aware, model-name-aware). The nested `loadBalancer`
+discriminator handles how the gateway gets an external address — MetalLB for
+kind and bare-metal clusters, omitted for cloud environments where a native LB
+controller is available.
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceGateway
+metadata:
+  name: default
+spec:
+  backend: EnvoyGateway                  # EnvoyGateway | (LiteLLM in v0.2)
+  envoyGateway:
+    version: v1.3.0
+    loadBalancer: MetalLB                # Optional — for kind/bare-metal
+    metallb:
+      addressPool: "172.18.255.200-172.18.255.250"
+  gateway:
+    port: 80
+
+status:
+  address: 34.56.129.3                   # External address of the gateway
+```
+
+The status contract is deliberately minimal: just `status.address`. No
+gateway-specific fields like Gateway API names or namespaces — those are
+implementation details of the Envoy Gateway backend. A LiteLLM backend would
+surface the same `status.address` without any Gateway API concepts leaking
+through.
+
+ModelPlacements read the InferenceGateway to configure routing for their
+environment. They compose backend-specific routing resources (e.g., Gateway API
+HTTPRoutes for Envoy Gateway, or config entries for LiteLLM) so that the
+gateway routes traffic to the remote cluster where the model runs.
 
 ### InferenceEnvironment (`inferenceenvironments.modelplane.ai/v1alpha1`)
 
@@ -389,8 +434,11 @@ deployment works without hard-coded environment references.
 
 A `ModelDeployment` is the primary consumer-facing API. ML teams create one to
 deploy a model across one or more InferenceEnvironments. Modelplane creates a
-`ModelPlacement` for each matched environment, aggregates their status, and
-surfaces a unified OpenAI-compatible endpoint.
+`ModelPlacement` for each matched environment and aggregates their status.
+
+ModelDeployment is deliberately backend-agnostic. It handles environment
+discovery, scheduling, and fan-out. It does not compose routing resources —
+that responsibility belongs to ModelPlacement, which knows the backend type.
 
 The simplest possible deployment:
 
@@ -467,21 +515,34 @@ If a new InferenceEnvironment appears that matches the selector (or model
 requirements, when no selector is specified), Modelplane automatically creates a
 ModelPlacement for it.
 
-The unified `status.endpoint.url` is what ML teams actually use. It's a single
-URL that routes across all healthy placements. Individual placement endpoints are
-available on the ModelPlacement resources for debugging, but the intended
-production pattern is to always go through the unified endpoint.
+The unified endpoint is the InferenceGateway's address. Traffic is routed by
+model name — the `model` field in the OpenAI request body — not by URL path.
+This means the endpoint is the same for every deployment:
+`http://<gateway-address>/v1/chat/completions`. Each ModelPlacement registers
+its environment with the routing layer, and the gateway load-balances across
+placements serving the same model.
+
+Individual placement endpoints are available on the ModelPlacement resources
+for debugging, but the intended production pattern is to always go through
+the unified gateway endpoint.
 
 ### ModelPlacement (`modelplacements.modelplane.ai/v1alpha1`)
 
-A `ModelPlacement` is the resource that actually deploys a model. When
-Modelplane creates a ModelPlacement, it composes the backend-specific resources
-that run the model on a specific InferenceEnvironment — for a KServe backend,
-that means creating an `LLMInferenceService` on the target cluster. Nothing else
-in Modelplane does this. An InferenceEnvironment provisions infrastructure and
-installs the backend stack, but no models are running until a ModelPlacement
-targets it. A ClusterModel describes how a model should be served, but it's
-inert until referenced by a ModelPlacement.
+A `ModelPlacement` is the resource that actually deploys a model and registers
+it with the routing layer. When Modelplane creates a ModelPlacement, it
+composes the backend-specific resources that run the model on a specific
+InferenceEnvironment — for a KServe backend, that means creating an
+`LLMInferenceService` on the target cluster. It also reads the
+InferenceGateway and composes routing resources so the gateway can reach the
+model — for an Envoy Gateway backend, that means a Backend and HTTPRoute on
+the control plane.
+
+ModelPlacement is the only function that knows about specific backends. It's
+where backend-specific model serving and routing logic lives. Adding a new
+backend means updating this one function. An InferenceEnvironment provisions
+infrastructure and installs the backend stack, but no models are running until
+a ModelPlacement targets it. A ClusterModel describes how a model should be
+served, but it's inert until referenced by a ModelPlacement.
 
 ModelDeployments create ModelPlacements automatically — one per matched
 InferenceEnvironment. ML teams aren't intended to create them directly, but
@@ -552,12 +613,13 @@ computed output, not user intent.
 Each XRD has a corresponding Composition powered by a Python composition
 function. 
 
-The following diagram shows how the five public resources relate to each other and
-to the internal XRs that Modelplane composes under the hood:
+The following diagram shows how the six public resources relate to each other
+and to the internal XRs that Modelplane composes under the hood:
 
 ```mermaid
 flowchart TD
     subgraph platform["Platform team creates"]
+        IG["InferenceGateway"]
         CM["ClusterModel\n<i>per model + engine</i>"]
         IE1["InferenceEnvironment A"]
         IE2["InferenceEnvironment B"]
@@ -580,7 +642,9 @@ flowchart TD
     MD --> MP1
     MD --> MP2
     MP1 --> IE1
+    MP1 -. "routing" .-> IG
     MP2 --> IE2
+    MP2 -. "routing" .-> IG
     IE1 --> GKE1
     IE1 --> KS1
     IE2 --> GKE2
@@ -589,14 +653,15 @@ flowchart TD
     MP2 -. "LLMInferenceService" .-> GKE2
 ```
 
-Four composition functions, one per concern:
+Five composition functions, one per concern:
 
 | Function | Responsibility |
 |----------|---------------|
-| `function-modelplane-env` | Dispatches on backend and cloud provider discriminators. Composes `GKECluster` and `KServeStack` XRs, wires them together, populates `status.resolved` and `status.capacity`. Adding a new backend or cloud provider means adding a branch here. |
+| `function-modelplane-gateway` | Composes the control plane routing infrastructure. Dispatches on gateway backend (Envoy Gateway, LiteLLM). Surfaces `status.address` for ModelPlacements. |
+| `function-modelplane-env` | Dispatches on inference backend and cloud provider discriminators. Composes `GKECluster` and `KServeStack` XRs, wires them together, populates `status.capacity`. Adding a new backend or cloud provider means adding a branch here. |
 | `function-modelplane-model` | Validates model catalog entries for both `ClusterModel` and `Model`. Registration and validation only — caching is an environment concern. |
-| `function-modelplane-deploy` | Backend-agnostic fan-out from ModelDeployment to ModelPlacements. Resolves target environments (by selector or automatic matching), stamps placements, aggregates status. |
-| `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model and InferenceEnvironment, checks engine/backend compatibility, composes backend-specific resources (LLMInferenceService for KServe), maps backend status onto ModelPlacement conditions. Adding a new backend means updating this one function. |
+| `function-modelplane-deploy` | Backend-agnostic fan-out from ModelDeployment to ModelPlacements. Resolves target environments (by selector or automatic matching), stamps placements, aggregates status. Does not compose routing resources. |
+| `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model, InferenceEnvironment, and InferenceGateway. Composes backend-specific model serving resources (LLMInferenceService for KServe) and routing resources (HTTPRoute + Backend for Envoy Gateway). Adding a new inference or routing backend means updating this one function. |
 
 The `GKECluster` and `KServeStack` XRs are internal implementation details —
 they have their own XRDs and composition functions but are not part of
@@ -606,8 +671,8 @@ delegates to specialist XRs and wires them together.
 The composition functions rely on Crossplane v2's **required resources**
 mechanism to read across XR boundaries. `function-modelplane-deploy` requests
 InferenceEnvironments for fan-out. `function-modelplane-placement` requests the
-referenced Model and InferenceEnvironment for compatibility checking and backend
-composition.
+referenced Model, InferenceEnvironment, and InferenceGateway for backend
+composition and routing.
 
 ## Alternatives considered
 
@@ -668,9 +733,16 @@ needed.
 continuous reconciliation. Changes to Model config propagate to running
 placements automatically. 
 
-**Intelligent routing.** Routing strategies (closest, cheapest, fastest) for
-multi-environment deployments. A natural fit for RoutingPolicy rather than a
-field on ModelDeployment.
+**Intelligent routing.** v0.1 uses Envoy Gateway for basic model-name routing
+across environments. Future versions should support cost-aware and
+performance-aware routing — selecting backends based on GPU pricing, latency,
+throughput, and queue depth. LiteLLM is a natural candidate for the
+InferenceGateway backend here: it supports load balancing across
+OpenAI-compatible endpoints with cost tracking, rate limiting, and fallbacks.
+The InferenceGateway API's `backend` discriminator is designed for this
+evolution — adding `backend: LiteLLM` would mean ModelPlacement composes
+LiteLLM config entries instead of Gateway API HTTPRoutes. The routing
+concern stays in ModelPlacement either way.
 
 **Policy.** Typed policy resources (PlacementPolicy, ResourcePolicy,
 RoutingPolicy, ModelPolicy, etc.). These could be namespace-scoped, one per
@@ -702,13 +774,6 @@ ModelPlacements are owned by ModelDeployments, not InferenceEnvironments. The
 deploy function would need to detect the missing environment and remove the
 orphaned placement. The placement function would need to handle the unresolvable
 ref with a clear status condition rather than failing silently.
-
-**Unified endpoint implementation:** The unified endpoint needs to physically
-exist as infrastructure — a global load balancer, a DNS record, or a gateway on
-the control plane cluster. The API should include the endpoint field in
-ModelDeployment's status from day one, even if the v0.1 implementation is
-limited to simple cases. See `context/unified-endpoint-routing.md` for the
-options analysis.
 
 **Inferring model resource requirements:** `ClusterModel` and `Model` currently
 require the platform team or ML team to specify `spec.resources` (GPU count,
