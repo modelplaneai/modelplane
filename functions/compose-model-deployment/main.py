@@ -333,7 +333,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             not_ready.append(placement_key)
 
     if "httproute" in rsp.desired.resources:
-        if _has_parent_condition(req, "httproute", "Accepted"):
+        # The HTTPRoute is only truly ready when it has backendRefs (not
+        # just Accepted). An empty-backendRefs HTTPRoute returns 404.
+        if _has_parent_condition(req, "httproute", "Accepted") and backend_refs:
             rsp.desired.resources["httproute"].ready = fnv1.READY_TRUE
         else:
             not_ready.append("httproute")
