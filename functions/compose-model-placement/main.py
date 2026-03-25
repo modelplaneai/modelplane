@@ -74,6 +74,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         match_name=ie_name,
     )
 
+
     # Required resources are dicts — they're external resources resolved by
     # Crossplane, not composed resources with generated Pydantic models.
     model = request.get_required_resource(req, "model")
@@ -115,7 +116,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             ))
             break
 
-    llmis_name = xr.metadata.name
+    # Use the ClusterModel name as the LLMIS name on all remote clusters.
+    # This means the remote path (/default/qwen-0.5b-vllm/v1/) is the same
+    # regardless of which environment, fixing multi-environment routing.
+    llmis_name = model_name
     llmis_namespace = "default"
 
     # Build the container spec for the vLLM model server.
@@ -165,6 +169,28 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         ),
     )
 
+    # Compose a Backend on the control plane pointing to the remote cluster's
+    # KServe gateway. ModelDeployment aggregates these into an HTTPRoute.
+    if gateway_address:
+        resource.update(rsp.desired.resources["backend"], {
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "Backend",
+            "metadata": {"namespace": xr.metadata.namespace},
+            "spec": {
+                "endpoints": [{"ip": {"address": gateway_address, "port": 80}}],
+            },
+        })
+
+    # Read the Backend's Crossplane-generated name from observed state and
+    # surface it in status so ModelDeployment can reference it in the HTTPRoute.
+    backend_name = None
+    backend_observed = req.observed.resources.get("backend")
+    if backend_observed:
+        backend_name = (
+            resource.struct_to_dict(backend_observed.resource)
+            .get("metadata", {}).get("name")
+        )
+
     # Write status fields for consumption by compose-model-deployment.
     status: dict = {
         "model": {"name": resolved_model_name},
@@ -174,6 +200,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         status["endpoint"] = {
             "url": f"http://{gateway_address}/{llmis_namespace}/{llmis_name}/v1",
         }
+    if backend_name:
+        status["routing"] = {"backendName": backend_name}
     resource.update(rsp.desired.composite, {"status": status})
 
     # Transition: first time composing the LLMInferenceService.

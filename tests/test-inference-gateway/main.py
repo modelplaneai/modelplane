@@ -12,17 +12,12 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         assertResources=[
-            # Assert the XR has gateway status fields.
+            # Assert the XR exists. No status.address on the first pass
+            # (the Gateway hasn't been assigned an IP yet).
             {
                 "apiVersion": "modelplane.ai/v1alpha1",
                 "kind": "InferenceGateway",
                 "metadata": {"name": "default"},
-                "status": {
-                    "gateway": {
-                        "name": "modelplane",
-                        "namespace": "modelplane-system",
-                    },
-                },
             },
             # Assert the ClusterProviderConfig is composed.
             {

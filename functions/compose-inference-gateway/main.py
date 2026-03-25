@@ -234,12 +234,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if addresses:
             gateway_address = addresses[0].get("value")
 
-    # Write status for consumption by compose-model-deployment.
-    status: dict = {
-        "gateway": {"name": _GATEWAY_NAME, "namespace": _NAMESPACE},
-    }
+    # Write status. Only the address — no gateway-specific fields. This
+    # contract works for any routing backend (Envoy Gateway, LiteLLM, etc.).
+    status: dict = {}
     if gateway_address:
-        status["gateway"]["address"] = gateway_address
+        status["address"] = gateway_address
     resource.update(rsp.desired.composite, {"status": status})
 
     # Track readiness. GatewayClass and Gateway use Accepted (not Ready) —
