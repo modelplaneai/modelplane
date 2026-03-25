@@ -98,8 +98,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         because matchControllerRef only matches a single resource."""
         resource.update(rsp.desired.resources[f"usage-pc-by-{release_key}"], {
             "apiVersion": "protection.crossplane.io/v1beta1",
-            "kind": "Usage",
-            "metadata": {"namespace": _NAMESPACE},
+            "kind": "ClusterUsage",
             "spec": {
                 "of": {
                     "apiVersion": "helm.m.crossplane.io/v1beta1",
