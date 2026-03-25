@@ -19,12 +19,13 @@ test = compositiontest.CompositionTest(
                 "kind": "InferenceGateway",
                 "metadata": {"name": "default"},
             },
-            # Assert the ClusterProviderConfig is composed.
+            # Assert the ProviderConfig is composed in modelplane-system.
             {
                 "apiVersion": "helm.m.crossplane.io/v1beta1",
-                "kind": "ClusterProviderConfig",
+                "kind": "ProviderConfig",
                 "metadata": {
                     "name": "modelplane-in-cluster",
+                    "namespace": "modelplane-system",
                     "annotations": {
                         "crossplane.io/composition-resource-name": "provider-config-helm",
                     },
