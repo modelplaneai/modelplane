@@ -90,17 +90,7 @@ export function PlacementDetail() {
         </div>
       </div>
 
-      {/* Conditions */}
-      {conditions.length > 0 && (
-        <div>
-          <SectionLabel>CONDITIONS</SectionLabel>
-          <Card>
-            <ConditionList conditions={conditions} />
-          </Card>
-        </div>
-      )}
-
-      {/* Environment */}
+      {/* Environment — the defining context for this placement */}
       <div>
         <SectionLabel>ENVIRONMENT</SectionLabel>
         <Card>
@@ -127,6 +117,16 @@ export function PlacementDetail() {
           </div>
         </Card>
       </div>
+
+      {/* Conditions */}
+      {conditions.length > 0 && (
+        <div>
+          <SectionLabel>CONDITIONS</SectionLabel>
+          <Card>
+            <ConditionList conditions={conditions} />
+          </Card>
+        </div>
+      )}
 
       {/* Endpoint */}
       {endpoint && (

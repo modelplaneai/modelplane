@@ -28,6 +28,7 @@ export function DeploymentDetail() {
   const [showCurl, setShowCurl] = useState(false);
   const [endpointCopied, setEndpointCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -48,6 +49,7 @@ export function DeploymentDetail() {
   }
 
   const status = deriveStatus(deployment.status?.conditions);
+  const isReady = status === "ready";
   const modelName = deployment.status?.model?.name ?? deployment.spec.modelRef.name;
   const endpointUrl = deployment.status?.endpoint?.url;
   const age = relativeAge(deployment.metadata.creationTimestamp);
@@ -58,10 +60,7 @@ export function DeploymentDetail() {
     (p) => p.metadata.labels?.["modelplane.ai/deployment"] === name,
   );
 
-  // Collect events for the deployment and all its placements.
-  const allEvents = [
-    ...(deploymentEvents?.items ?? []),
-  ];
+  const allEvents = [...(deploymentEvents?.items ?? [])];
 
   async function copyEndpoint() {
     if (!endpointUrl) return;
@@ -110,22 +109,12 @@ export function DeploymentDetail() {
         </Button>
       </div>
 
-      {/* Conditions */}
-      {conditions.length > 0 && (
+      {/* Hero — adapts to lifecycle state */}
+      {isReady && endpointUrl ? (
         <div>
-          <SectionLabel>CONDITIONS</SectionLabel>
           <Card>
-            <ConditionList conditions={conditions} />
-          </Card>
-        </div>
-      )}
-
-      {/* Endpoint */}
-      <div>
-        <SectionLabel>ENDPOINT</SectionLabel>
-        <Card>
-          {endpointUrl ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* Endpoint */}
               <div className="flex items-center gap-3">
                 <code className="font-mono text-lg text-text flex-1 truncate">{endpointUrl}</code>
                 <Button variant="ghost" onClick={copyEndpoint} className="shrink-0">
@@ -136,12 +125,19 @@ export function DeploymentDetail() {
                 </Button>
               </div>
               {showCurl && <CurlSnippet url={endpointUrl} model={modelName} />}
+
+              {/* Chat inline */}
+              <div className="border-t border-border pt-4">
+                <ChatWidget namespace={ns ?? ""} deployment={name ?? ""} model={modelName} />
+              </div>
             </div>
-          ) : (
-            <p className="text-muted text-sm">Endpoint not available yet.</p>
-          )}
+          </Card>
+        </div>
+      ) : (
+        <Card>
+          <ConditionList conditions={conditions} />
         </Card>
-      </div>
+      )}
 
       {/* Placements */}
       <div>
@@ -157,25 +153,43 @@ export function DeploymentDetail() {
         )}
       </div>
 
-      {/* Events */}
-      {allEvents.length > 0 && (
-        <div>
-          <SectionLabel>EVENTS</SectionLabel>
-          <Card>
-            <EventTimeline events={allEvents} />
-          </Card>
-        </div>
-      )}
-
-      {/* Chat */}
+      {/* Activity — conditions + events, collapsible in steady state */}
       <div>
-        <SectionLabel>CHAT</SectionLabel>
-        {status === "ready" && endpointUrl ? (
-          <ChatWidget namespace={ns ?? ""} deployment={name ?? ""} model={modelName} />
+        {isReady ? (
+          <>
+            <button
+              onClick={() => setDetailsOpen(!detailsOpen)}
+              className="flex items-center gap-2 text-muted hover:text-muted-hi transition text-xs font-mono uppercase tracking-wider mb-4"
+            >
+              <span className={`transition ${detailsOpen ? "rotate-90" : ""}`}>&#9654;</span>
+              Activity
+            </button>
+            {detailsOpen && (
+              <div className="space-y-6">
+                {conditions.length > 0 && (
+                  <Card>
+                    <ConditionList conditions={conditions} />
+                  </Card>
+                )}
+                {allEvents.length > 0 && (
+                  <Card>
+                    <EventTimeline events={allEvents} />
+                  </Card>
+                )}
+              </div>
+            )}
+          </>
         ) : (
-          <Card>
-            <p className="text-muted text-sm">Chat is available once the deployment is ready.</p>
-          </Card>
+          <>
+            {allEvents.length > 0 && (
+              <>
+                <SectionLabel>EVENTS</SectionLabel>
+                <Card>
+                  <EventTimeline events={allEvents} />
+                </Card>
+              </>
+            )}
+          </>
         )}
       </div>
     </div>
