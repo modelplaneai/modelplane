@@ -256,7 +256,7 @@
 
             buildPhase = ''
               echo "Running TypeScript type check..."
-              npx tsc --noEmit
+              npx tsc -b --noEmit
               echo "Running Vitest..."
               npx vitest run
             '';

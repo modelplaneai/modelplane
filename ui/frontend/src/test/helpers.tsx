@@ -8,8 +8,6 @@ import type {
   InferenceEnvironment,
   KubeList,
   ModelDeployment,
-  ModelPlacement,
-  ObjectMeta,
 } from "../api/types";
 
 // nopClient returns an ApiClient where every method resolves to an empty list

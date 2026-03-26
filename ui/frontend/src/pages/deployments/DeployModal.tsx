@@ -7,7 +7,6 @@ import { useModels } from "../../hooks/useModels";
 import { useApi } from "../../api/context";
 import { modelDisplayName, isValidKubernetesName } from "../../lib/format";
 import { DEFAULT_NAMESPACE } from "../../lib/config";
-import type { ClusterModel } from "../../api/types";
 
 interface DeployModalProps {
   open: boolean;
