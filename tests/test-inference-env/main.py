@@ -1,9 +1,14 @@
-from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
-from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
+from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
+from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
+from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
+    v1alpha1 as k8scpcv1alpha1,
+)
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
 
 test = compositiontest.CompositionTest(
-    metadata=k8s.ObjectMeta(
+    metadata=metav1.ObjectMeta(
         name="inference-env-basic",
     ),
     spec=compositiontest.Spec(
@@ -12,12 +17,47 @@ test = compositiontest.CompositionTest(
         xrdPath="apis/inferenceenvironments/definition.yaml",
         timeoutSeconds=120,
         validate=False,
+        # Simulate a second reconcile where the GKECluster is observed and
+        # Ready with secrets. This triggers KServeStack and
+        # ClusterProviderConfig composition.
+        observedResources=[
+            {
+                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                "kind": "GKECluster",
+                "metadata": {
+                    "name": "demo-us-central",
+                    "namespace": "modelplane-system",
+                    "annotations": {
+                        "crossplane.io/composition-resource-name": "gke-cluster",
+                    },
+                },
+                "status": {
+                    "conditions": [{
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "Available",
+                        "lastTransitionTime": "2025-01-01T00:00:00Z",
+                    }],
+                    "secrets": [
+                        {
+                            "type": "Kubeconfig",
+                            "name": "demo-us-central-kubeconfig",
+                            "key": "kubeconfig",
+                        },
+                        {
+                            "type": "GCPServiceAccountKey",
+                            "name": "demo-us-central-sa-key",
+                            "key": "credentials.json",
+                        },
+                    ],
+                },
+            },
+        ],
         assertResources=[
-            # Assert on the XR status.
-            iev1alpha1.InferenceEnvironment(
-                apiVersion="modelplane.ai/v1alpha1",
-                kind="InferenceEnvironment",
-                metadata=k8s.ObjectMeta(
+            # Assert the XR has status populated with providerConfigRef,
+            # namespace, and GPU capacity.
+            libresource.model_to_dict(iev1alpha1.InferenceEnvironment(
+                metadata=metav1.ObjectMeta(
                     name="demo-us-central",
                 ),
                 spec=iev1alpha1.Spec(
@@ -39,7 +79,7 @@ test = compositiontest.CompositionTest(
                         ],
                     ),
                 ),
-            ).model_dump(exclude_unset=True),
+            )),
             # Assert GKECluster is composed in modelplane-system.
             {
                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
@@ -56,6 +96,60 @@ test = compositiontest.CompositionTest(
                     "region": "us-central1",
                 },
             },
+            # Assert KServeStack is composed (gated on GKE being ready).
+            libresource.model_to_dict(kssv1alpha1.KServeStack(
+                metadata=metav1.ObjectMeta(
+                    name="demo-us-central-kserve",
+                    namespace="modelplane-system",
+                    annotations={
+                        "crossplane.io/composition-resource-name": "kserve-stack",
+                    },
+                ),
+                spec=kssv1alpha1.Spec(
+                    versions=kssv1alpha1.Versions(kserve="v0.16.0"),
+                    secrets=[
+                        kssv1alpha1.Secret(
+                            type="Kubeconfig",
+                            name="demo-us-central-kubeconfig",
+                            key="kubeconfig",
+                        ),
+                        kssv1alpha1.Secret(
+                            type="GCPServiceAccountKey",
+                            name="demo-us-central-sa-key",
+                            key="credentials.json",
+                        ),
+                    ],
+                ),
+            )),
+            # Assert ClusterProviderConfig is composed for cross-namespace
+            # Object creation by ModelPlacements.
+            libresource.model_to_dict(k8scpcv1alpha1.ClusterProviderConfig(
+                metadata=metav1.ObjectMeta(
+                    name="demo-us-central-cluster-kubeconfig",
+                    annotations={
+                        "crossplane.io/composition-resource-name": "cluster-provider-config-kubernetes",
+                    },
+                ),
+                spec=k8scpcv1alpha1.Spec(
+                    credentials=k8scpcv1alpha1.Credentials(
+                        source="Secret",
+                        secretRef=k8scpcv1alpha1.SecretRef(
+                            namespace="modelplane-system",
+                            name="demo-us-central-kubeconfig",
+                            key="kubeconfig",
+                        ),
+                    ),
+                    identity=k8scpcv1alpha1.Identity(
+                        type="GoogleApplicationCredentials",
+                        source="Secret",
+                        secretRef=k8scpcv1alpha1.SecretRef(
+                            namespace="modelplane-system",
+                            name="demo-us-central-sa-key",
+                            key="credentials.json",
+                        ),
+                    ),
+                ),
+            )),
         ],
     ),
 )
