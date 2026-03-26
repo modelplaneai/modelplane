@@ -9,29 +9,18 @@ and provider-helm to reach the cluster.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from .lib import conditions
+from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
+from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+from .model.io.upbound.m.gcp.cloudplatform.projectiammember import v1beta1 as iamv1beta1
+from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
+from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
 from .model.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
 from .model.io.upbound.m.gcp.compute.subnetwork import v1beta1 as subnetv1beta1
 from .model.io.upbound.m.gcp.container.cluster import v1beta1 as clusterv1beta1
 from .model.io.upbound.m.gcp.container.nodepool import v1beta1 as nodepoolv1beta1
-from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
-from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
-from .model.io.upbound.m.gcp.cloudplatform.projectiammember import v1beta1 as iamv1beta1
-from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
-from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
-from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
-from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
-
-
-def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has a condition set to True.
-
-    Uses the SDK's resource.get_condition which reads status.conditions from
-    the protobuf Struct representation of the resource.
-    """
-    observed = req.observed.resources.get(name)
-    if observed is None:
-        return False
-    return resource.get_condition(observed.resource, cond).status == "True"
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -310,7 +299,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     not_ready = []
     for r in managed_resources:
-        if _has_condition(req, r, "Ready"):
+        if conditions.has_condition(req, r, "Ready"):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
         else:
             not_ready.append(r)
@@ -318,13 +307,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    was_ready = resource.get_condition(
-        req.observed.composite.resource, "Ready"
-    ).status == "True"
-
     if not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not was_ready:
+        if not conditions.was_ready(req):
             response.normal(rsp, "All GCP resources ready")
     else:
         response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")

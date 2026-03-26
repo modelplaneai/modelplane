@@ -16,12 +16,14 @@ from pathlib import Path
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
-from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
-from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
-from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
-from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+from .lib import conditions
+from .lib import helm
+from .lib import k8s
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1
+from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
+from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 _HERE = Path(__file__).parent
 
@@ -63,71 +65,6 @@ _KUSTOMIZE_STORAGE_PATCH = json.dumps({
         },
     }],
 })
-
-
-def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has a condition set to True.
-
-    Uses the SDK's resource.get_condition which reads status.conditions from
-    the protobuf Struct representation of the resource.
-    """
-    observed = req.observed.resources.get(name)
-    if observed is None:
-        return False
-    return resource.get_condition(observed.resource, cond).status == "True"
-
-
-def _helm_release(
-    chart: str,
-    repo: str,
-    version: str,
-    namespace: str,
-    provider_config: str,
-    values: dict | None = None,
-) -> helmv1beta1.Release:
-    release = helmv1beta1.Release(
-        spec=helmv1beta1.Spec(
-            providerConfigRef=helmv1beta1.ProviderConfigRef(
-                kind="ProviderConfig",
-                name=provider_config,
-            ),
-            forProvider=helmv1beta1.ForProvider(
-                chart=helmv1beta1.Chart(
-                    name=chart,
-                    repository=repo,
-                    version=version,
-                ),
-                namespace=namespace,
-            ),
-        ),
-    )
-    if values:
-        release.spec.forProvider.values = values
-    return release
-
-
-def _k8s_object(
-    provider_config: str,
-    manifest: dict,
-    labels: dict | None = None,
-    management_policies: list | None = None,
-) -> k8sobjv1alpha1.Object:
-    obj = k8sobjv1alpha1.Object(
-        spec=k8sobjv1alpha1.Spec(
-            providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                kind="ProviderConfig",
-                name=provider_config,
-            ),
-            forProvider=k8sobjv1alpha1.ForProvider(
-                manifest=manifest,
-            ),
-        ),
-    )
-    if labels:
-        obj.metadata = metav1.ObjectMeta(labels=labels)
-    if management_policies:
-        obj.spec.managementPolicies = management_policies
-    return obj
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -269,7 +206,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if pc_observed:
         resource.update(
             rsp.desired.resources["cert-manager"],
-            _helm_release(
+            helm.helm_release(
                 chart="cert-manager",
                 repo="https://charts.jetstack.io",
                 version=v.certManager or "v1.17.1",
@@ -281,7 +218,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
         resource.update(
             rsp.desired.resources["envoy-gateway"],
-            _helm_release(
+            helm.helm_release(
                 chart="gateway-helm",
                 repo="oci://docker.io/envoyproxy",
                 version=v.envoyGateway or "v1.3.0",
@@ -299,7 +236,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
         resource.update(
             rsp.desired.resources["leader-worker-set"],
-            _helm_release(
+            helm.helm_release(
                 chart="lws",
                 repo="oci://registry.k8s.io/lws/charts",
                 version=v.leaderWorkerSet or "v0.7.0",
@@ -313,7 +250,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             short = crd_name.split(".")[0]
             resource.update(
                 rsp.desired.resources[f"inference-ext-crd-{short}"],
-                _k8s_object(pc_name, crd),
+                k8s.k8s_object(pc_name, crd),
             )
 
         gw = xr.spec.gateway or v1alpha1.Gateway()
@@ -334,7 +271,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # config — leaving it behind is harmless.
         resource.update(
             rsp.desired.resources["gateway-class"],
-            _k8s_object(pc_name, {
+            k8s.k8s_object(pc_name, {
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "GatewayClass",
                 "metadata": {"name": gw_class_name},
@@ -346,7 +283,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
         resource.update(
             rsp.desired.resources["gateway"],
-            _k8s_object(pc_name, {
+            k8s.k8s_object(pc_name, {
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "Gateway",
                 "metadata": {
@@ -360,17 +297,17 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         for ln in listeners
                     ],
                 },
-            }, labels={"modelplane.ai/resource": "gateway"}),
+            }, metadata=metav1.ObjectMeta(labels={"modelplane.ai/resource": "gateway"})),
         )
 
     # Gate KServe CRDs and controller on cert-manager being ready. The kserve
     # chart creates Certificate and Issuer resources, and the kserve controller
     # registers a validating webhook that Helm calls during install. Both fail
     # if cert-manager isn't fully up.
-    cert_manager_ready = _has_condition(req, "cert-manager", "Ready")
+    cert_manager_ready = conditions.has_condition(req, "cert-manager", "Ready")
 
     if pc_observed and cert_manager_ready:
-        kserve_crds = _helm_release(
+        kserve_crds = helm.helm_release(
             chart="kserve-llmisvc-crd",
             repo="oci://ghcr.io/kserve/charts",
             version=v.kserve or "v0.16.0",
@@ -399,7 +336,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     )
 
     if pc_observed and cert_manager_ready:
-        kserve_release = _helm_release(
+        kserve_release = helm.helm_release(
             chart="kserve-llmisvc-resources",
             repo="oci://ghcr.io/kserve/charts",
             version=v.kserve or "v0.16.0",
@@ -446,7 +383,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if r not in rsp.desired.resources:
             all_ready = False
             not_ready.append(r)
-        elif _has_condition(req, r, "Ready"):
+        elif conditions.has_condition(req, r, "Ready"):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
         else:
             all_ready = False
@@ -474,17 +411,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 })
 
     # Transition: cert-manager is ready (triggers KServe composition).
-    if cert_manager_ready and not _has_condition(req, "kserve-controller", "Ready"):
+    if cert_manager_ready and not conditions.has_condition(req, "kserve-controller", "Ready"):
         if "kserve-controller" not in req.observed.resources:
             response.normal(rsp, "cert-manager ready, composing KServe")
 
-    was_ready = resource.get_condition(
-        req.observed.composite.resource, "Ready"
-    ).status == "True"
-
     if all_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not was_ready:
+        if not conditions.was_ready(req):
             addr = f", gateway: {gateway_address}" if gateway_address else ""
             response.normal(rsp, f"Ready{addr}")
     else:

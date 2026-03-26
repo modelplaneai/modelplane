@@ -7,93 +7,15 @@ LLMInferenceService on the remote cluster.
 """
 
 import math
-import re
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from .lib import conditions
+from .lib import naming
+from .lib import quantities
 from .model.ai.modelplane.modelplacement import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
-
-
-def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has a condition set to True.
-
-    Uses the SDK's resource.get_condition which reads status.conditions from
-    the protobuf Struct representation of the resource.
-    """
-    observed = req.observed.resources.get(name)
-    if observed is None:
-        return False
-    return resource.get_condition(observed.resource, cond).status == "True"
-
-
-def _to_dns_label(s: str) -> str:
-    """Sanitize a string to a valid DNS-1035 label.
-
-    DNS-1035 labels must be lowercase, start with a letter, end with an
-    alphanumeric, contain only [a-z0-9-], and be at most 63 characters.
-    """
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9-]", "-", s)  # Replace invalid chars with hyphens
-    s = re.sub(r"-+", "-", s)           # Collapse consecutive hyphens
-    s = s.strip("-")
-    s = f"model-{s}"
-    return s[:63]
-
-
-def _set_conditions(
-    rsp: fnv1.RunFunctionResponse,
-    model_accepted: bool,
-    model_accepted_reason: str,
-    model_ready: bool = False,
-    model_ready_reason: str = "WaitingForModel",
-    routing_ready: bool = False,
-    routing_ready_reason: str = "WaitingForModel",
-) -> None:
-    """Set custom conditions on the XR.
-
-    Emitted on every reconcile so the UI always knows the full condition set.
-    Ready is handled separately via rsp.desired.composite.ready (reserved).
-    """
-    rsp.conditions.append(fnv1.Condition(
-        type="ModelAccepted",
-        status=fnv1.STATUS_CONDITION_TRUE if model_accepted else fnv1.STATUS_CONDITION_FALSE,
-        reason=model_accepted_reason,
-        target=fnv1.TARGET_COMPOSITE,
-    ))
-    rsp.conditions.append(fnv1.Condition(
-        type="ModelReady",
-        status=fnv1.STATUS_CONDITION_TRUE if model_ready else fnv1.STATUS_CONDITION_FALSE,
-        reason=model_ready_reason,
-        target=fnv1.TARGET_COMPOSITE,
-    ))
-    rsp.conditions.append(fnv1.Condition(
-        type="RoutingReady",
-        status=fnv1.STATUS_CONDITION_TRUE if routing_ready else fnv1.STATUS_CONDITION_FALSE,
-        reason=routing_ready_reason,
-        target=fnv1.TARGET_COMPOSITE,
-    ))
-
-
-def _parse_quantity(q: str) -> int:
-    """Parse a Kubernetes resource quantity string to bytes.
-
-    Supports Gi, Mi, and Ti suffixes. Returns 0 for unparseable values.
-    """
-    if not q:
-        return 0
-    q = q.strip()
-    if q.endswith("Gi"):
-        return int(q[:-2]) * 1024 * 1024 * 1024
-    if q.endswith("Mi"):
-        return int(q[:-2]) * 1024 * 1024
-    if q.endswith("Ti"):
-        return int(q[:-2]) * 1024 * 1024 * 1024 * 1024
-    try:
-        return int(q)
-    except ValueError:
-        return 0
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -129,7 +51,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     model = request.get_required_resource(req, "model")
     ie = request.get_required_resource(req, "environment")
     if model is None or ie is None:
-        _set_conditions(rsp, model_accepted=False, model_accepted_reason="WaitingForReferences")
+        conditions.set_condition(rsp, "ModelAccepted", False, "WaitingForReferences")
+        conditions.set_condition(rsp, "ModelReady", False, "WaitingForModel")
+        conditions.set_condition(rsp, "RoutingReady", False, "WaitingForModel")
         response.normal(rsp, "Waiting for model and environment to be resolved")
         return
 
@@ -138,7 +62,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gateway_address = ie_status.get("gateway", {}).get("address")
 
     if not pc_name:
-        _set_conditions(rsp, model_accepted=False, model_accepted_reason="WaitingForEnvironment")
+        conditions.set_condition(rsp, "ModelAccepted", False, "WaitingForEnvironment")
+        conditions.set_condition(rsp, "ModelReady", False, "WaitingForModel")
+        conditions.set_condition(rsp, "RoutingReady", False, "WaitingForModel")
         response.normal(rsp, "Waiting for environment providerConfigRef")
         return
 
@@ -160,17 +86,17 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gpu_pools = ie_status.get("capacity", {}).get("gpuPools", [])
     gpus_per_replica = 1
     for pool in gpu_pools:
-        pool_memory = _parse_quantity(pool.get("memory", "0Gi"))
+        pool_memory = quantities.parse_quantity(pool.get("memory", "0Gi"))
         if pool_memory > 0:
             gpus_per_replica = max(1, math.ceil(
-                _parse_quantity(model_vram) / pool_memory
+                quantities.parse_quantity(model_vram) / pool_memory
             ))
             break
 
     # Use the ClusterModel name (sanitized to DNS-1035) as the LLMIS name on
     # all remote clusters. This means the remote path is the same regardless
     # of which environment, fixing multi-environment routing.
-    llmis_name = _to_dns_label(model_name)
+    llmis_name = naming.to_dns_label(model_name)
     llmis_namespace = "default"
 
     # Build the container spec for the vLLM model server. Always set
@@ -283,18 +209,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # An Object that exists but can't reach the remote cluster (e.g. because
     # the cluster is still provisioning) has Synced=False — it hasn't
     # actually been accepted by the backend.
-    llmis_synced = _has_condition(req, "llm-inference-service", "Synced")
+    llmis_synced = conditions.has_condition(req, "llm-inference-service", "Synced")
     llmis_accepted = llmis_exists and llmis_synced
 
     # ModelReady: the LLMIS is actually serving traffic. With
     # DeriveFromCelQuery, the Object reports Ready only when the remote
     # LLMIS's Ready condition is True.
-    llmis_ready = _has_condition(req, "llm-inference-service", "Ready")
+    llmis_ready = conditions.has_condition(req, "llm-inference-service", "Ready")
     backend_exists = "backend" in req.observed.resources
-    was_ready = resource.get_condition(
-        req.observed.composite.resource, "Ready"
-    ).status == "True"
-
     # ModelAccepted: the backend accepted the model workload (Object synced).
     # ModelReady: the LLMIS is actually serving traffic.
     # RoutingReady: the Backend resource exists on the control plane.
@@ -306,20 +228,24 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         accepted_reason = "WaitingForCluster"
 
-    _set_conditions(
+    conditions.set_condition(rsp, "ModelAccepted", llmis_accepted, accepted_reason)
+    conditions.set_condition(
         rsp,
-        model_accepted=llmis_accepted,
-        model_accepted_reason=accepted_reason,
-        model_ready=llmis_ready,
-        model_ready_reason="Serving" if llmis_ready else "ModelStarting" if llmis_accepted else "WaitingForModel",
-        routing_ready=backend_exists,
-        routing_ready_reason="BackendConfigured" if backend_exists else "WaitingForGateway",
+        "ModelReady",
+        llmis_ready,
+        "Serving" if llmis_ready else "ModelStarting" if llmis_accepted else "WaitingForModel",
+    )
+    conditions.set_condition(
+        rsp,
+        "RoutingReady",
+        backend_exists,
+        "BackendConfigured" if backend_exists else "WaitingForGateway",
     )
 
     if llmis_ready:
         rsp.desired.resources["llm-inference-service"].ready = fnv1.READY_TRUE
         rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not was_ready:
+        if not conditions.was_ready(req):
             endpoint = f"http://{gateway_address}/{llmis_namespace}/{llmis_name}/v1" if gateway_address else "pending"
             response.normal(rsp, f"Ready, endpoint: {endpoint}")
     else:

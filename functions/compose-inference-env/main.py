@@ -10,6 +10,7 @@ node pool config, and surfaces the gateway address for model routing.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from .lib import conditions
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
@@ -30,18 +31,6 @@ GPU_VRAM = {
     "nvidia-h100-mega-80gb": "80Gi",
     "nvidia-v100": "16Gi",
 }
-
-
-def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has a condition set to True.
-
-    Uses the SDK's resource.get_condition which reads status.conditions from
-    the protobuf Struct representation of the resource.
-    """
-    observed = req.observed.resources.get(name)
-    if observed is None:
-        return False
-    return resource.get_condition(observed.resource, cond).status == "True"
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -115,7 +104,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # kubeconfig and SA key secrets aren't created until the GKE cluster and
     # ServiceAccountKey are provisioned.
     gke_secrets = None
-    gke_ready = _has_condition(req, "gke-cluster", "Ready")
+    gke_ready = conditions.has_condition(req, "gke-cluster", "Ready")
     gke_observed = req.observed.resources.get("gke-cluster")
     if gke_observed:
         gke_dict = resource.struct_to_dict(gke_observed.resource)
@@ -263,7 +252,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # become ready so kubectl describe shows provisioning progress.
     not_ready = []
 
-    gke_is_ready = _has_condition(req, "gke-cluster", "Ready")
+    gke_is_ready = conditions.has_condition(req, "gke-cluster", "Ready")
     if gke_is_ready:
         rsp.desired.resources["gke-cluster"].ready = fnv1.READY_TRUE
         # Transition: GKE just became ready (KServeStack not yet observed).
@@ -274,7 +263,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     kserve_ready = False
     if "kserve-stack" in rsp.desired.resources:
-        kserve_ready = _has_condition(req, "kserve-stack", "Ready")
+        kserve_ready = conditions.has_condition(req, "kserve-stack", "Ready")
         if kserve_ready:
             rsp.desired.resources["kserve-stack"].ready = fnv1.READY_TRUE
         else:
@@ -305,13 +294,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         target=fnv1.TARGET_COMPOSITE,
     ))
 
-    was_ready = resource.get_condition(
-        req.observed.composite.resource, "Ready"
-    ).status == "True"
-
     if not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not was_ready:
+        if not conditions.was_ready(req):
             addr = f", gateway: {gateway_address}" if gateway_address else ""
             response.normal(rsp, f"Ready{addr}")
     else:

@@ -9,63 +9,15 @@ is surfaced in status for compose-model-deployment to use.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from .lib import conditions
+from .lib import helm
 from .model.ai.modelplane.inferencegateway import v1alpha1
-from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
-from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 # The namespace where the Gateway and Envoy proxy resources live. Created
 # as a prerequisite — not composed by this function.
 _NAMESPACE = "modelplane-system"
 
 _GATEWAY_NAME = "modelplane"
-
-
-def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has a condition set to True.
-
-    Uses the SDK's resource.get_condition which reads status.conditions from
-    the protobuf Struct representation of the resource.
-    """
-    observed = req.observed.resources.get(name)
-    if observed is None:
-        return False
-    return resource.get_condition(observed.resource, cond).status == "True"
-
-
-def _helm_release(
-    chart: str,
-    repo: str,
-    version: str,
-    namespace: str,
-    provider_config: str,
-    values: dict | None = None,
-    labels: dict | None = None,
-) -> helmv1beta1.Release:
-    """Build a Helm Release for the control plane.
-
-    Sets metadata.namespace explicitly because cluster-scoped XRs don't
-    auto-populate the namespace on composed namespaced resources.
-    """
-    release = helmv1beta1.Release(
-        metadata=metav1.ObjectMeta(namespace=_NAMESPACE, labels=labels),
-        spec=helmv1beta1.Spec(
-            providerConfigRef=helmv1beta1.ProviderConfigRef(
-                kind="ProviderConfig",
-                name=provider_config,
-            ),
-            forProvider=helmv1beta1.ForProvider(
-                chart=helmv1beta1.Chart(
-                    name=chart,
-                    repository=repo,
-                    version=version,
-                ),
-                namespace=namespace,
-            ),
-        ),
-    )
-    if values:
-        release.spec.forProvider.values = values
-    return release
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -141,19 +93,20 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if pc_observed or metallb_exists:
             resource.update(
                 rsp.desired.resources["metallb"],
-                _helm_release(
+                helm.helm_release(
                     chart="metallb",
                     repo="https://metallb.github.io/metallb",
                     version="0.14.9",
                     namespace=metallb_ns,
                     provider_config=pc_name,
                     labels={"modelplane.ai/release": "metallb"},
+                    metadata_namespace=_NAMESPACE,
                 ),
             )
             _pc_usage("metallb")
 
         # Gate the IPAddressPool and L2Advertisement on MetalLB being ready.
-        metallb_ready = _has_condition(req, "metallb", "Ready")
+        metallb_ready = conditions.has_condition(req, "metallb", "Ready")
         pool_exists = "metallb-pool" in req.observed.resources
         if metallb_ready or pool_exists:
             resource.update(rsp.desired.resources["metallb-pool"], {
@@ -178,7 +131,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if pc_observed or envoy_gw_exists:
         resource.update(
             rsp.desired.resources["envoy-gateway"],
-            _helm_release(
+            helm.helm_release(
                 chart="gateway-helm",
                 repo="oci://docker.io/envoyproxy",
                 version=eg_version or "v1.3.0",
@@ -192,12 +145,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     },
                 },
                 labels={"modelplane.ai/release": "envoy-gateway"},
+                metadata_namespace=_NAMESPACE,
             ),
         )
         _pc_usage("envoy-gateway")
 
     # Gate GatewayClass and Gateway on Envoy Gateway being ready.
-    envoy_gw_ready = _has_condition(req, "envoy-gateway", "Ready")
+    envoy_gw_ready = conditions.has_condition(req, "envoy-gateway", "Ready")
     gw_class_exists = "gateway-class" in req.observed.resources
     gw_exists = "gateway" in req.observed.resources
 
@@ -249,12 +203,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     not_ready = []
 
     if lb == "MetalLB" and address_pool:
-        if _has_condition(req, "metallb", "Ready"):
+        if conditions.has_condition(req, "metallb", "Ready"):
             rsp.desired.resources["metallb"].ready = fnv1.READY_TRUE
         else:
             not_ready.append("metallb")
 
-    envoy_ready = _has_condition(req, "envoy-gateway", "Ready")
+    envoy_ready = conditions.has_condition(req, "envoy-gateway", "Ready")
     if envoy_ready:
         rsp.desired.resources["envoy-gateway"].ready = fnv1.READY_TRUE
         # Transition: Envoy Gateway just became ready (Gateway not yet observed).
@@ -271,23 +225,19 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         target=fnv1.TARGET_COMPOSITE,
     ))
 
-    if _has_condition(req, "gateway-class", "Accepted"):
+    if conditions.has_condition(req, "gateway-class", "Accepted"):
         rsp.desired.resources["gateway-class"].ready = fnv1.READY_TRUE
     else:
         not_ready.append("gateway-class")
 
-    if _has_condition(req, "gateway", "Accepted"):
+    if conditions.has_condition(req, "gateway", "Accepted"):
         rsp.desired.resources["gateway"].ready = fnv1.READY_TRUE
     else:
         not_ready.append("gateway")
 
-    was_ready = resource.get_condition(
-        req.observed.composite.resource, "Ready"
-    ).status == "True"
-
     if not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not was_ready:
+        if not conditions.was_ready(req):
             addr = f", address: {gateway_address}" if gateway_address else ""
             response.normal(rsp, f"Ready{addr}")
     else:
