@@ -26,6 +26,21 @@ export interface GPUPool {
   count: number;
 }
 
+export interface InferenceGateway {
+  apiVersion: "modelplane.ai/v1alpha1";
+  kind: "InferenceGateway";
+  metadata: ObjectMeta;
+  spec: {
+    backend: string;
+    envoyGateway?: { version?: string; loadBalancer?: string };
+    gateway?: { port?: number };
+  };
+  status?: {
+    conditions?: Condition[];
+    address?: string;
+  };
+}
+
 export interface InferenceEnvironment {
   apiVersion: "modelplane.ai/v1alpha1";
   kind: "InferenceEnvironment";

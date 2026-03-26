@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import type {
   ClusterModel,
   InferenceEnvironment,
+  InferenceGateway,
   KubeEvent,
   KubeList,
   ModelDeployment,
@@ -15,6 +16,7 @@ import * as defaultClient from "./client";
 // every component testable — tests provide a fake client via the context.
 export interface ApiClient {
   listClusterModels(): Promise<KubeList<ClusterModel>>;
+  listInferenceGateways(): Promise<KubeList<InferenceGateway>>;
   listInferenceEnvironments(): Promise<KubeList<InferenceEnvironment>>;
   listModelDeployments(ns: string): Promise<KubeList<ModelDeployment>>;
   listModelPlacements(ns: string): Promise<KubeList<ModelPlacement>>;

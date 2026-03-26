@@ -5,7 +5,8 @@ import { DeploymentsPage } from "./pages/deployments/DeploymentsPage";
 import { DeploymentDetail } from "./pages/deployments/DeploymentDetail";
 import { DeployPage } from "./pages/deploy/DeployPage";
 import { PlacementDetail } from "./pages/placements/PlacementDetail";
-import { EnvironmentsPage } from "./pages/admin/EnvironmentsPage";
+import { InfrastructurePage } from "./pages/admin/InfrastructurePage";
+import { EnvironmentDetail } from "./pages/admin/EnvironmentDetail";
 import { CatalogPage } from "./pages/admin/CatalogPage";
 import { NamespaceContext } from "./hooks/useNamespace";
 import { DEFAULT_NAMESPACE } from "./lib/config";
@@ -31,7 +32,11 @@ export default function App() {
           />
           <Route
             path="/admin/environments"
-            element={<EnvironmentsPage />}
+            element={<InfrastructurePage />}
+          />
+          <Route
+            path="/admin/environments/:name"
+            element={<EnvironmentDetail />}
           />
           <Route path="/admin/catalog" element={<CatalogPage />} />
         </Routes>
