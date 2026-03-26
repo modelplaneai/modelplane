@@ -42,6 +42,24 @@ def _to_dns_label(s: str) -> str:
     return s[:63]
 
 
+def _set_conditions(
+    rsp: fnv1.RunFunctionResponse,
+    deployed: bool,
+    deployed_reason: str,
+) -> None:
+    """Set the Deployed condition on the XR.
+
+    Emitted on every reconcile so the UI always knows the full condition set.
+    Ready is handled separately via rsp.desired.composite.ready (reserved).
+    """
+    rsp.conditions.append(fnv1.Condition(
+        type="Deployed",
+        status=fnv1.STATUS_CONDITION_TRUE if deployed else fnv1.STATUS_CONDITION_FALSE,
+        reason=deployed_reason,
+        target=fnv1.TARGET_COMPOSITE,
+    ))
+
+
 def _parse_quantity(q: str) -> int:
     """Parse a Kubernetes resource quantity string to bytes.
 
@@ -95,6 +113,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     model = request.get_required_resource(req, "model")
     ie = request.get_required_resource(req, "environment")
     if model is None or ie is None:
+        _set_conditions(rsp, deployed=False, deployed_reason="WaitingForReferences")
         response.normal(rsp, "Waiting for model and environment to be resolved")
         return
 
@@ -103,6 +122,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gateway_address = ie_status.get("gateway", {}).get("address")
 
     if not pc_name:
+        _set_conditions(rsp, deployed=False, deployed_reason="WaitingForEnvironment")
         response.normal(rsp, "Waiting for environment providerConfigRef")
         return
 
@@ -155,7 +175,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         container["args"] = extra_args
 
     # Compose a provider-kubernetes Object wrapping an LLMInferenceService
-    # on the remote cluster.
+    # on the remote cluster. Use DeriveFromCelQuery so the Object's Ready
+    # condition reflects the LLMIS actually serving traffic, not just being
+    # created. Without this, SuccessfulCreate reports Ready in seconds while
+    # the model spends minutes downloading weights and starting up.
     resource.update(
         rsp.desired.resources["llm-inference-service"],
         k8sobjv1alpha1.Object(
@@ -163,6 +186,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                     kind="ClusterProviderConfig",
                     name=pc_name,
+                ),
+                readiness=k8sobjv1alpha1.Readiness(
+                    policy="DeriveFromCelQuery",
+                    celQuery=(
+                        'object.status.conditions.exists('
+                        'c, c.type == "Ready" && c.status == "True")'
+                    ),
                 ),
                 forProvider=k8sobjv1alpha1.ForProvider(
                     manifest={
@@ -220,19 +250,32 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     resource.update(rsp.desired.composite, {"status": status})
 
     # Transition: first time composing the LLMInferenceService.
-    if "llm-inference-service" not in req.observed.resources:
+    llmis_exists = "llm-inference-service" in req.observed.resources
+    if not llmis_exists:
         response.normal(
             rsp,
             f"Composing LLMInferenceService for {resolved_model_name} "
             f"on {ie_name}, GPUs: {gpus_per_replica}",
         )
 
-    # Set readiness based on the LLMInferenceService Object's Ready condition.
+    # Set readiness based on the LLMInferenceService Object's Ready
+    # condition. With DeriveFromCelQuery, the Object reports Ready only when
+    # the remote LLMIS's Ready condition is True — meaning the model is
+    # actually serving traffic, not just submitted.
+    llmis_ready = _has_condition(req, "llm-inference-service", "Ready")
     was_ready = resource.get_condition(
         req.observed.composite.resource, "Ready"
     ).status == "True"
 
-    if _has_condition(req, "llm-inference-service", "Ready"):
+    # Deployed: the Object exists on the remote cluster.
+    # Ready: the LLMIS is actually serving traffic (via rsp.desired.composite.ready).
+    _set_conditions(
+        rsp,
+        deployed=llmis_exists,
+        deployed_reason="ModelSubmitted" if llmis_exists else "Deploying",
+    )
+
+    if llmis_ready:
         rsp.desired.resources["llm-inference-service"].ready = fnv1.READY_TRUE
         rsp.desired.composite.ready = fnv1.READY_TRUE
         if not was_ready:

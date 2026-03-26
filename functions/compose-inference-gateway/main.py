@@ -263,6 +263,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         not_ready.append("envoy-gateway")
 
+    # ControllerReady: the gateway controller is running.
+    rsp.conditions.append(fnv1.Condition(
+        type="ControllerReady",
+        status=fnv1.STATUS_CONDITION_TRUE if envoy_ready else fnv1.STATUS_CONDITION_FALSE,
+        reason="ControllerHealthy" if envoy_ready else "Installing",
+        target=fnv1.TARGET_COMPOSITE,
+    ))
+
     if _has_condition(req, "gateway-class", "Accepted"):
         rsp.desired.resources["gateway-class"].ready = fnv1.READY_TRUE
     else:

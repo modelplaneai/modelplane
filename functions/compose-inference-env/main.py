@@ -272,13 +272,38 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         not_ready.append("gke-cluster")
 
+    kserve_ready = False
     if "kserve-stack" in rsp.desired.resources:
-        if _has_condition(req, "kserve-stack", "Ready"):
+        kserve_ready = _has_condition(req, "kserve-stack", "Ready")
+        if kserve_ready:
             rsp.desired.resources["kserve-stack"].ready = fnv1.READY_TRUE
         else:
             not_ready.append("kserve-stack")
     else:
         not_ready.append("kserve-stack")
+
+    # ClusterReady: the underlying cluster is provisioned and reachable.
+    rsp.conditions.append(fnv1.Condition(
+        type="ClusterReady",
+        status=fnv1.STATUS_CONDITION_TRUE if gke_is_ready else fnv1.STATUS_CONDITION_FALSE,
+        reason="ClusterRunning" if gke_is_ready else "Provisioning",
+        target=fnv1.TARGET_COMPOSITE,
+    ))
+
+    # BackendReady: the inference backend is installed and healthy.
+    if not gke_is_ready:
+        backend_reason = "WaitingForCluster"
+    elif kserve_ready:
+        backend_reason = "BackendHealthy"
+    else:
+        backend_reason = "Installing"
+
+    rsp.conditions.append(fnv1.Condition(
+        type="BackendReady",
+        status=fnv1.STATUS_CONDITION_TRUE if kserve_ready else fnv1.STATUS_CONDITION_FALSE,
+        reason=backend_reason,
+        target=fnv1.TARGET_COMPOSITE,
+    ))
 
     was_ready = resource.get_condition(
         req.observed.composite.resource, "Ready"

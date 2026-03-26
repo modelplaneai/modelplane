@@ -157,10 +157,22 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     all_placements = request.get_required_resources(req, "all-placements")
 
     if not envs:
+        rsp.conditions.append(fnv1.Condition(
+            type="Scheduled",
+            status=fnv1.STATUS_CONDITION_FALSE,
+            reason="NoEnvironments",
+            target=fnv1.TARGET_COMPOSITE,
+        ))
         response.warning(rsp, "No InferenceEnvironments found")
         return
 
     if model_resource is None:
+        rsp.conditions.append(fnv1.Condition(
+            type="Scheduled",
+            status=fnv1.STATUS_CONDITION_FALSE,
+            reason="ModelNotFound",
+            target=fnv1.TARGET_COMPOSITE,
+        ))
         response.warning(rsp, f"Model {model_name} not found")
         return
 
@@ -269,6 +281,20 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 ),
             ),
         )
+
+    # Scheduled: environments matched and placements created.
+    any_placements_observed = any(
+        f"placement-{c['name']}" in req.observed.resources for c in matched
+    )
+    scheduled = len(matched) > 0 and any_placements_observed
+
+    rsp.conditions.append(fnv1.Condition(
+        type="Scheduled",
+        status=fnv1.STATUS_CONDITION_TRUE if scheduled else fnv1.STATUS_CONDITION_FALSE,
+        reason="PlacementsCreated" if scheduled else "Scheduling",
+        message=f"Matched {len(matched)} environments" if scheduled else "",
+        target=fnv1.TARGET_COMPOSITE,
+    ))
 
     # Compose an HTTPRoute that aggregates all placements' backends.
     # Backends are composed by ModelPlacement — we read their names from
