@@ -1,16 +1,14 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useDeployments } from "../../hooks/useDeployments";
+import { useNamespace } from "../../hooks/useNamespace";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Button } from "../../components/Button";
-import { DeployModal } from "./DeployModal";
 import { deriveStatus, statusText } from "../../lib/status";
-import { DEFAULT_NAMESPACE } from "../../lib/config";
 
 export function DeploymentsPage() {
-  const { data, isLoading, error } = useDeployments(DEFAULT_NAMESPACE);
-  const [deployOpen, setDeployOpen] = useState(false);
+  const { namespace } = useNamespace();
+  const { data, isLoading, error } = useDeployments(namespace);
 
   if (isLoading) {
     return (
@@ -35,15 +33,10 @@ export function DeploymentsPage() {
   return (
     <div>
       <div className="flex items-start justify-between mb-6">
-        <div>
-          <SectionLabel>DEPLOYMENTS</SectionLabel>
-          <p className="text-muted text-sm -mt-2">
-            Namespace: <span className="font-mono text-muted-hi">{DEFAULT_NAMESPACE}</span>
-          </p>
-        </div>
-        <Button variant="primary" onClick={() => setDeployOpen(true)}>
-          Deploy Model
-        </Button>
+        <SectionLabel>DEPLOYMENTS</SectionLabel>
+        <Link to="/deploy">
+          <Button variant="primary">Deploy Model</Button>
+        </Link>
       </div>
 
       <div className="overflow-x-auto">
@@ -59,7 +52,7 @@ export function DeploymentsPage() {
           </thead>
           <tbody>
             {deployments.map((dep) => {
-              const ns = dep.metadata.namespace ?? DEFAULT_NAMESPACE;
+              const ns = dep.metadata.namespace ?? namespace;
               const name = dep.metadata.name;
               const status = deriveStatus(dep.status?.conditions);
               const model = dep.status?.model?.name ?? dep.spec.modelRef.name;
@@ -99,12 +92,15 @@ export function DeploymentsPage() {
       </div>
 
       {deployments.length === 0 && (
-        <p className="text-muted text-sm text-center py-12">
-          No deployments found. Deploy a model to get started.
-        </p>
+        <div className="text-center py-16">
+          <p className="text-muted text-sm mb-4">
+            No deployments in this namespace.
+          </p>
+          <Link to="/deploy">
+            <Button variant="primary">Deploy your first model</Button>
+          </Link>
+        </div>
       )}
-
-      <DeployModal open={deployOpen} onClose={() => setDeployOpen(false)} />
     </div>
   );
 }
