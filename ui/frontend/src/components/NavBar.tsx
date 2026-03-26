@@ -38,7 +38,7 @@ export function NavBar() {
           <div className="ml-auto">
             <Link
               to="/admin/environments"
-              className="text-muted hover:text-muted-hi transition"
+              className="text-2xl text-muted hover:text-muted-hi transition"
               title="Admin"
             >
               &#9881;
