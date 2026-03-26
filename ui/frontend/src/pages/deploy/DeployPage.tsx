@@ -11,7 +11,29 @@ import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
+import { Labels, filterLabels } from "../../components/Labels";
 import type { ClusterModel, InferenceEnvironment } from "../../api/types";
+
+// Collect all unique filtered label key=value pairs from a list of resources.
+function collectLabels(resources: Array<{ metadata: { labels?: Record<string, string> } }>): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
+  for (const r of resources) {
+    for (const [k, v] of filterLabels(r.metadata.labels)) {
+      if (!result.has(k)) result.set(k, new Set());
+      result.get(k)!.add(v);
+    }
+  }
+  return result;
+}
+
+// Filter resources by selected labels (using filtered/humanized keys).
+function matchesLabels(
+  labels: Record<string, string> | undefined,
+  selected: Record<string, string>,
+): boolean {
+  const filtered = Object.fromEntries(filterLabels(labels));
+  return Object.entries(selected).every(([k, v]) => filtered[k] === v);
+}
 
 export function DeployPage() {
   const navigate = useNavigate();
@@ -26,7 +48,8 @@ export function DeployPage() {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [deploymentName, setDeploymentName] = useState("");
   const [nameEdited, setNameEdited] = useState(false);
-  const [selectedLabels, setSelectedLabels] = useState<Record<string, string>>({});
+  const [modelLabelFilter, setModelLabelFilter] = useState<Record<string, string>>({});
+  const [envLabelFilter, setEnvLabelFilter] = useState<Record<string, string>>({});
   const [envCount, setEnvCount] = useState("1");
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,49 +64,52 @@ export function DeployPage() {
   const displayName = nameEdited ? deploymentName : derivedName;
   const nameInvalid = displayName !== "" && !isValidKubernetesName(displayName);
 
-  // Collect all unique label key=value pairs from environments, excluding
-  // Crossplane-internal labels.
-  const allLabels = useMemo(() => {
-    const labels = new Map<string, Set<string>>();
-    for (const env of environments) {
-      for (const [k, v] of Object.entries(env.metadata.labels ?? {})) {
-        if (k.startsWith("crossplane.io/")) continue;
-        if (!labels.has(k)) labels.set(k, new Set());
-        labels.get(k)!.add(v);
-      }
-    }
-    return labels;
-  }, [environments]);
+  // Model label chips.
+  const allModelLabels = useMemo(() => collectLabels(models), [models]);
 
-  // Filter environments by selected labels.
-  const matchingEnvs = useMemo(() => {
-    return environments.filter((env) => {
-      const envLabels = env.metadata.labels ?? {};
-      return Object.entries(selectedLabels).every(
-        ([k, v]) => envLabels[k] === v,
-      );
-    });
-  }, [environments, selectedLabels]);
+  // Filtered models.
+  const matchingModels = useMemo(
+    () => models.filter((m) => matchesLabels(m.metadata.labels, modelLabelFilter)),
+    [models, modelLabelFilter],
+  );
+
+  // Environment label chips.
+  const allEnvLabels = useMemo(() => collectLabels(environments), [environments]);
+
+  // Filtered environments. Uses raw labels for the selector since the API
+  // expects the original label keys, not the humanized ones.
+  const matchingEnvs = useMemo(
+    () => environments.filter((e) => matchesLabels(e.metadata.labels, envLabelFilter)),
+    [environments, envLabelFilter],
+  );
 
   const parsedEnvCount = Math.max(1, parseInt(envCount) || 1);
 
-  function toggleLabel(key: string, value: string) {
-    setSelectedLabels((prev) => {
-      const next = { ...prev };
-      if (next[key] === value) {
-        delete next[key];
-      } else {
-        next[key] = value;
-      }
-      return next;
-    });
+  function toggleLabel(
+    filter: Record<string, string>,
+    setFilter: (f: Record<string, string>) => void,
+    key: string,
+    value: string,
+  ) {
+    const next = { ...filter };
+    if (next[key] === value) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+    setFilter(next);
   }
 
   function selectModel(name: string) {
     setSelectedModel(name);
     setNameEdited(false);
-    setSelectedLabels({});
+    setEnvLabelFilter({});
     setError(null);
+  }
+
+  function buildEnvSelector(): Record<string, string> | undefined {
+    if (Object.keys(envLabelFilter).length === 0) return undefined;
+    return { ...envLabelFilter };
   }
 
   async function handleDeploy() {
@@ -92,8 +118,7 @@ export function DeployPage() {
     setError(null);
 
     const name = nameEdited ? deploymentName : derivedName;
-    const matchLabels =
-      Object.keys(selectedLabels).length > 0 ? selectedLabels : undefined;
+    const matchLabels = buildEnvSelector();
 
     try {
       await api.createModelDeployment(namespace, {
@@ -128,6 +153,18 @@ export function DeployPage() {
       {/* Model selection */}
       <div>
         <SectionLabel>SELECT A MODEL</SectionLabel>
+
+        {/* Model label filter chips */}
+        {allModelLabels.size > 0 && (
+          <div className="mb-4">
+            <LabelChips
+              allLabels={allModelLabels}
+              selected={modelLabelFilter}
+              onToggle={(k, v) => toggleLabel(modelLabelFilter, setModelLabelFilter, k, v)}
+            />
+          </div>
+        )}
+
         {models.length === 0 ? (
           <p className="text-muted text-sm">No models found in the cluster.</p>
         ) : (
@@ -137,6 +174,7 @@ export function DeployPage() {
                 key={model.metadata.name}
                 model={model}
                 selected={model.metadata.name === selectedModel}
+                dimmed={!matchingModels.includes(model)}
                 onSelect={() => selectModel(model.metadata.name)}
               />
             ))}
@@ -171,47 +209,26 @@ export function DeployPage() {
           <div>
             <SectionLabel>ENVIRONMENTS</SectionLabel>
 
-            {/* Label chips */}
-            {allLabels.size > 0 && (
+            {/* Environment label filter chips */}
+            {allEnvLabels.size > 0 && (
               <div className="mb-4">
-                <p className="text-xs text-muted mb-2">
-                  Filter by labels — click to select, click again to remove
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {[...allLabels.entries()].flatMap(([key, values]) =>
-                    [...values].map((value) => {
-                      const isActive = selectedLabels[key] === value;
-                      return (
-                        <button
-                          key={`${key}=${value}`}
-                          onClick={() => toggleLabel(key, value)}
-                          className={`text-xs font-mono px-2 py-1 rounded-md border transition ${
-                            isActive
-                              ? "border-purple bg-purple/10 text-purple"
-                              : "border-border text-muted hover:text-muted-hi hover:border-border-hi"
-                          }`}
-                        >
-                          {key}={value}
-                        </button>
-                      );
-                    }),
-                  )}
-                </div>
+                <LabelChips
+                  allLabels={allEnvLabels}
+                  selected={envLabelFilter}
+                  onToggle={(k, v) => toggleLabel(envLabelFilter, setEnvLabelFilter, k, v)}
+                />
               </div>
             )}
 
             {/* Environment cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {environments.map((env) => {
-                const matches = matchingEnvs.includes(env);
-                return (
-                  <EnvironmentCard
-                    key={env.metadata.name}
-                    env={env}
-                    dimmed={!matches}
-                  />
-                );
-              })}
+              {environments.map((env) => (
+                <EnvironmentCard
+                  key={env.metadata.name}
+                  env={env}
+                  dimmed={!matchingEnvs.includes(env)}
+                />
+              ))}
             </div>
 
             {/* Environment count */}
@@ -263,19 +280,57 @@ export function DeployPage() {
   );
 }
 
+// Shared label chip filter component.
+function LabelChips({
+  allLabels,
+  selected,
+  onToggle,
+}: {
+  allLabels: Map<string, Set<string>>;
+  selected: Record<string, string>;
+  onToggle: (key: string, value: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {[...allLabels.entries()].flatMap(([key, values]) =>
+        [...values].map((value) => {
+          const isActive = selected[key] === value;
+          return (
+            <button
+              key={`${key}=${value}`}
+              onClick={() => onToggle(key, value)}
+              className={`text-xs font-mono px-2 py-1 rounded-md border transition ${
+                isActive
+                  ? "border-purple bg-purple/10 text-purple"
+                  : "border-border text-muted hover:text-muted-hi hover:border-border-hi"
+              }`}
+            >
+              {key}: {value}
+            </button>
+          );
+        }),
+      )}
+    </div>
+  );
+}
+
 function ModelCard({
   model,
   selected,
+  dimmed,
   onSelect,
 }: {
   model: ClusterModel;
   selected: boolean;
+  dimmed: boolean;
   onSelect: () => void;
 }) {
   return (
     <button
       onClick={onSelect}
       className={`text-left rounded-xl transition ${
+        dimmed ? "opacity-30" : ""
+      } ${
         selected
           ? "ring-2 ring-purple"
           : "hover:ring-1 hover:ring-border-hi"
@@ -298,6 +353,7 @@ function ModelCard({
               {model.spec.huggingFace.repo}
             </p>
           )}
+          <Labels labels={model.metadata.labels} />
         </div>
       </Card>
     </button>
@@ -314,9 +370,6 @@ function EnvironmentCard({
   const status = deriveStatus(env.status?.conditions);
   const region = env.spec.kserve?.cluster?.gke?.region;
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
-  const labels = Object.entries(env.metadata.labels ?? {}).filter(
-    ([k]) => !k.startsWith("crossplane.io/"),
-  );
 
   return (
     <div className={`transition ${dimmed ? "opacity-30" : ""}`}>
@@ -341,18 +394,7 @@ function EnvironmentCard({
               ))}
             </div>
           )}
-          {labels.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {labels.map(([k, v]) => (
-                <span
-                  key={k}
-                  className="text-[10px] font-mono text-muted bg-bg px-1.5 py-0.5 rounded"
-                >
-                  {k}={v}
-                </span>
-              ))}
-            </div>
-          )}
+          <Labels labels={env.metadata.labels} />
         </div>
       </Card>
     </div>

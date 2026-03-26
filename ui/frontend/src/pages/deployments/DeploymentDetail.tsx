@@ -13,6 +13,7 @@ import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { CurlSnippet } from "../../components/CurlSnippet";
 import { ChatWidget } from "../../components/ChatWidget";
+import { Labels } from "../../components/Labels";
 import { ConditionList } from "../../components/ConditionList";
 import { EventTimeline } from "../../components/EventTimeline";
 import type { ModelPlacement } from "../../api/types";
@@ -103,6 +104,7 @@ export function DeploymentDetail() {
             <span>&middot;</span>
             <span>{age}</span>
           </div>
+          <Labels labels={deployment.metadata.labels} className="mt-2" />
         </div>
         <Button variant="ghost" onClick={handleDelete} disabled={deleting} className="text-red hover:text-red">
           {deleting ? "Deleting…" : "Delete"}

@@ -8,6 +8,7 @@ import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
+import { Labels } from "../../components/Labels";
 import { ConditionList } from "../../components/ConditionList";
 import { EventTimeline } from "../../components/EventTimeline";
 
@@ -88,6 +89,7 @@ export function PlacementDetail() {
           <span>&middot;</span>
           <span>{age}</span>
         </div>
+        <Labels labels={placement.metadata.labels} className="mt-2" />
       </div>
 
       {/* Environment — the defining context for this placement */}
