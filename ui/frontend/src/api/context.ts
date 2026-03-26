@@ -18,6 +18,7 @@ export interface ApiClient {
   listInferenceEnvironments(): Promise<KubeList<InferenceEnvironment>>;
   listModelDeployments(ns: string): Promise<KubeList<ModelDeployment>>;
   listModelPlacements(ns: string): Promise<KubeList<ModelPlacement>>;
+  listAllModelPlacements(): Promise<KubeList<ModelPlacement>>;
   getModelDeployment(ns: string, name: string): Promise<ModelDeployment>;
   createModelDeployment(ns: string, md: Partial<ModelDeployment>): Promise<ModelDeployment>;
   deleteModelDeployment(ns: string, name: string): Promise<void>;

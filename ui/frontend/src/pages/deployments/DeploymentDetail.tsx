@@ -190,37 +190,41 @@ function PlacementCard({ placement }: { placement: ModelPlacement }) {
     (c) => c.type !== "Ready" && c.type !== "Synced" && c.type !== "Responsive",
   );
 
+  const href = `/placements/${placement.metadata.namespace}/${placement.metadata.name}`;
+
   return (
-    <Card>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <StatusDot status={pStatus} />
-          <span className="text-text font-medium text-sm">{placement.metadata.name}</span>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs text-muted">
-          <span>
-            Env:{" "}
-            <span className="text-muted-hi font-mono">
-              {placement.spec.inferenceEnvironmentRef.name}
+    <Link to={href} className="block hover:ring-1 hover:ring-border-hi rounded-xl transition">
+      <Card>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <StatusDot status={pStatus} />
+            <span className="text-text font-medium text-sm">{placement.metadata.name}</span>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-muted">
+            <span>
+              Env:{" "}
+              <span className="text-muted-hi font-mono">
+                {placement.spec.inferenceEnvironmentRef.name}
+              </span>
             </span>
-          </span>
-          {gpuCount !== undefined && (
-            <Badge variant="neutral">
-              {gpuCount} GPU{gpuCount !== 1 ? "s" : ""}
-            </Badge>
+            {gpuCount !== undefined && (
+              <Badge variant="neutral">
+                {gpuCount} GPU{gpuCount !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </div>
+          {conditions.length > 0 && (
+            <div className="pt-1">
+              <ConditionList conditions={conditions} />
+            </div>
+          )}
+          {pEndpoint && (
+            <p className="text-xs font-mono text-muted truncate" title={pEndpoint}>
+              {pEndpoint}
+            </p>
           )}
         </div>
-        {conditions.length > 0 && (
-          <div className="pt-1">
-            <ConditionList conditions={conditions} />
-          </div>
-        )}
-        {pEndpoint && (
-          <p className="text-xs font-mono text-muted truncate" title={pEndpoint}>
-            {pEndpoint}
-          </p>
-        )}
-      </div>
-    </Card>
+      </Card>
+    </Link>
   );
 }

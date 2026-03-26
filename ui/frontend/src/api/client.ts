@@ -63,6 +63,10 @@ export function listModelPlacements(
   return get(`${MP}/namespaces/${ns}/modelplacements`);
 }
 
+export function listAllModelPlacements(): Promise<KubeList<ModelPlacement>> {
+  return get(`${MP}/modelplacements`);
+}
+
 export function getModelDeployment(
   ns: string,
   name: string,

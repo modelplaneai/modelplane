@@ -3,6 +3,7 @@ import { NavBar } from "./components/NavBar";
 import { ModelsPage } from "./pages/models/ModelsPage";
 import { DeploymentsPage } from "./pages/deployments/DeploymentsPage";
 import { DeploymentDetail } from "./pages/deployments/DeploymentDetail";
+import { PlacementDetail } from "./pages/placements/PlacementDetail";
 import { EnvironmentsPage } from "./pages/admin/EnvironmentsPage";
 import { CatalogPage } from "./pages/admin/CatalogPage";
 
@@ -18,6 +19,10 @@ export default function App() {
           <Route
             path="/deployments/:ns/:name"
             element={<DeploymentDetail />}
+          />
+          <Route
+            path="/placements/:ns/:name"
+            element={<PlacementDetail />}
           />
           <Route
             path="/admin/environments"

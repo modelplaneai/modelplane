@@ -19,6 +19,9 @@ const PROGRESS_REASONS = new Set([
   "Deploying",
   "ModelStarting",
   "Scheduling",
+  "Configuring",
+  "NoPlacementsScheduled",
+  "WaitingForGateway",
   "Available", // Crossplane sets reason=Available before Ready=True.
 ]);
 

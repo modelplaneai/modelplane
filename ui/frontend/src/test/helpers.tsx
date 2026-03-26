@@ -18,6 +18,7 @@ export function nopClient(overrides?: Partial<ApiClient>): ApiClient {
     listInferenceEnvironments: async () => emptyList(),
     listModelDeployments: async () => emptyList(),
     listModelPlacements: async () => emptyList(),
+    listAllModelPlacements: async () => emptyList(),
     getModelDeployment: async () => ({ apiVersion: "modelplane.ai/v1alpha1", kind: "ModelDeployment", metadata: { name: "" }, spec: { modelRef: { kind: "", name: "" }, environments: 0 } }),
     createModelDeployment: async (_, md) => md as ModelDeployment,
     deleteModelDeployment: async () => {},
