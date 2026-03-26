@@ -173,10 +173,17 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     llmis_name = _to_dns_label(model_name)
     llmis_namespace = "default"
 
-    # Build the container spec for the vLLM model server.
+    # Build the container spec for the vLLM model server. Always set
+    # --served-model-name so vLLM registers the model under the name
+    # from the ClusterModel spec, not the local path (/mnt/models).
+    args = [f"--served-model-name={resolved_model_name}"]
+    if extra_args:
+        args.extend(extra_args)
+
     container: dict = {
         "name": "main",
         "image": image,
+        "args": args,
         "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
         "resources": {
             "limits": {
@@ -187,8 +194,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             "requests": {"cpu": "1", "memory": memory},
         },
     }
-    if extra_args:
-        container["args"] = extra_args
 
     # Compose a provider-kubernetes Object wrapping an LLMInferenceService
     # on the remote cluster. Use DeriveFromCelQuery so the Object's Ready
