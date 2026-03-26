@@ -104,9 +104,9 @@ export function listEvents(
   ns: string,
   kind: string,
   name: string,
+  uid?: string,
 ): Promise<KubeList<KubeEvent>> {
-  const sel = encodeURIComponent(
-    `involvedObject.kind=${kind},involvedObject.name=${name}`,
-  );
-  return get(`api/v1/namespaces/${ns}/events?fieldSelector=${sel}`);
+  let sel = `involvedObject.kind=${kind},involvedObject.name=${name}`;
+  if (uid) sel += `,involvedObject.uid=${uid}`;
+  return get(`api/v1/namespaces/${ns}/events?fieldSelector=${encodeURIComponent(sel)}`);
 }

@@ -13,7 +13,7 @@ function EnvironmentDetailRow({ env }: { env: InferenceEnvironment }) {
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
 
   // Cluster-scoped resource events land in the default namespace.
-  const { data: eventsData } = useEvents("default", "InferenceEnvironment", env.metadata.name);
+  const { data: eventsData } = useEvents("default", "InferenceEnvironment", env.metadata.name, env.metadata.uid);
   const events = eventsData?.items ?? [];
 
   return (
