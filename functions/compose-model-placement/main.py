@@ -7,6 +7,7 @@ LLMInferenceService on the remote cluster.
 """
 
 import math
+import re
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -25,6 +26,20 @@ def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
     if observed is None:
         return False
     return resource.get_condition(observed.resource, cond).status == "True"
+
+
+def _to_dns_label(s: str) -> str:
+    """Sanitize a string to a valid DNS-1035 label.
+
+    DNS-1035 labels must be lowercase, start with a letter, end with an
+    alphanumeric, contain only [a-z0-9-], and be at most 63 characters.
+    """
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9-]", "-", s)  # Replace invalid chars with hyphens
+    s = re.sub(r"-+", "-", s)           # Collapse consecutive hyphens
+    s = s.strip("-")
+    s = f"model-{s}"
+    return s[:63]
 
 
 def _parse_quantity(q: str) -> int:
@@ -116,10 +131,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             ))
             break
 
-    # Use the ClusterModel name as the LLMIS name on all remote clusters.
-    # This means the remote path (/default/qwen-0.5b-vllm/v1/) is the same
-    # regardless of which environment, fixing multi-environment routing.
-    llmis_name = model_name
+    # Use the ClusterModel name (sanitized to DNS-1035) as the LLMIS name on
+    # all remote clusters. This means the remote path is the same regardless
+    # of which environment, fixing multi-environment routing.
+    llmis_name = _to_dns_label(model_name)
     llmis_namespace = "default"
 
     # Build the container spec for the vLLM model server.

@@ -7,6 +7,7 @@ for unified endpoint routing.
 """
 
 import math
+import re
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -22,6 +23,20 @@ _COMPAT = {
 
 # The namespace used for LLMInferenceService on all remote clusters.
 _REMOTE_NAMESPACE = "default"
+
+
+def _to_dns_label(s: str) -> str:
+    """Sanitize a string to a valid DNS-1035 label.
+
+    DNS-1035 labels must be lowercase, start with a letter, end with an
+    alphanumeric, contain only [a-z0-9-], and be at most 63 characters.
+    """
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9-]", "-", s)
+    s = re.sub(r"-+", "-", s)
+    s = s.strip("-")
+    s = f"model-{s}"
+    return s[:63]
 
 
 def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
@@ -278,7 +293,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # Rewrite /{ns}/{deployment}/ to /{remote-ns}/{model-name}/.
         # The LLMIS name is the ClusterModel name on all remote clusters,
         # so the rewrite is the same for every backend.
-        rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{model_name}/"
+        rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{_to_dns_label(model_name)}/"
 
         # Gateway parentRef — defaults for Envoy Gateway, could be read
         # from InferenceGateway status in future.
