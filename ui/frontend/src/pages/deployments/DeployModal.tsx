@@ -23,7 +23,7 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
   const [selectedModel, setSelectedModel] = useState(preselectedModel ?? "");
   const [deploymentName, setDeploymentName] = useState("");
   const [nameEdited, setNameEdited] = useState(false);
-  const [environments, setEnvironments] = useState(1);
+  const [environments, setEnvironments] = useState("1");
   const [namespace, setNamespace] = useState(DEFAULT_NAMESPACE);
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
         metadata: { name, namespace },
         spec: {
           modelRef: { kind: "ClusterModel", name: selected.metadata.name },
-          environments,
+          environments: Math.max(1, parseInt(environments) || 1),
         },
       });
       onClose();
@@ -145,7 +145,8 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
             type="number"
             min={1}
             value={environments}
-            onChange={(e) => setEnvironments(Math.max(1, parseInt(e.target.value) || 1))}
+            onChange={(e) => setEnvironments(e.target.value)}
+            onBlur={() => setEnvironments(String(Math.max(1, parseInt(environments) || 1)))}
             className="w-full bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
           />
         </div>
