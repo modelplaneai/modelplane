@@ -1,6 +1,7 @@
 import type {
   ClusterModel,
   InferenceEnvironment,
+  InferenceGateway,
   KubeEvent,
   KubeList,
   ModelDeployment,
@@ -43,6 +44,12 @@ async function del(path: string): Promise<void> {
 
 export function listClusterModels(): Promise<KubeList<ClusterModel>> {
   return get(`${MP}/clustermodels`);
+}
+
+export function listInferenceGateways(): Promise<
+  KubeList<InferenceGateway>
+> {
+  return get(`${MP}/inferencegateways`);
 }
 
 export function listInferenceEnvironments(): Promise<

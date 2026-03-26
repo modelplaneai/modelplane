@@ -15,6 +15,7 @@ import type {
 export function nopClient(overrides?: Partial<ApiClient>): ApiClient {
   return {
     listClusterModels: async () => emptyList(),
+    listInferenceGateways: async () => emptyList(),
     listInferenceEnvironments: async () => emptyList(),
     listModelDeployments: async () => emptyList(),
     listModelPlacements: async () => emptyList(),

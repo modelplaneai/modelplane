@@ -38,11 +38,8 @@ export function NavBar() {
 
       {isAdmin ? (
         <>
-          <Link to="/deployments" className="text-muted hover:text-muted-hi text-sm">
-            &larr; Back
-          </Link>
-          <NavLink to="/admin/environments" className={linkClass} end>
-            <span className="text-sm">Environments</span>
+          <NavLink to="/admin/environments" className={linkClass}>
+            <span className="text-sm">Infrastructure</span>
           </NavLink>
           <NavLink to="/admin/catalog" className={linkClass} end>
             <span className="text-sm">Model Catalog</span>
@@ -64,18 +61,23 @@ export function NavBar() {
               ))}
             </select>
           )}
-
-          <div className="ml-auto">
-            <Link
-              to="/admin/environments"
-              className="text-2xl text-muted hover:text-muted-hi transition"
-              title="Admin"
-            >
-              &#9881;
-            </Link>
-          </div>
         </>
       )}
+
+      {/* Admin toggle — always in the same position, highlighted when active */}
+      <div className="ml-auto">
+        <Link
+          to={isAdmin ? "/deployments" : "/admin/environments"}
+          className={`text-2xl transition ${
+            isAdmin
+              ? "text-purple hover:text-purple-hi"
+              : "text-muted hover:text-muted-hi"
+          }`}
+          title={isAdmin ? "Back to deployments" : "Admin"}
+        >
+          &#9881;
+        </Link>
+      </div>
     </nav>
   );
 }
