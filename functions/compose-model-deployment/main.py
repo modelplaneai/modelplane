@@ -288,11 +288,27 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     )
     scheduled = len(matched) > 0 and any_placements_observed
 
+    # Scheduled: environments matched and placements created.
+    any_placements_observed = any(
+        f"placement-{c['name']}" in req.observed.resources for c in matched
+    )
+    scheduled = len(matched) > 0 and any_placements_observed
+
+    if not matched:
+        sched_reason = "InsufficientCapacity"
+        sched_msg = f"0 of {desired_envs} environments matched (checked {len(envs)})"
+    elif scheduled:
+        sched_reason = "PlacementsCreated"
+        sched_msg = f"Matched {len(matched)} environments"
+    else:
+        sched_reason = "Scheduling"
+        sched_msg = ""
+
     rsp.conditions.append(fnv1.Condition(
         type="Scheduled",
         status=fnv1.STATUS_CONDITION_TRUE if scheduled else fnv1.STATUS_CONDITION_FALSE,
-        reason="PlacementsCreated" if scheduled else "Scheduling",
-        message=f"Matched {len(matched)} environments" if scheduled else "",
+        reason=sched_reason,
+        message=sched_msg,
         target=fnv1.TARGET_COMPOSITE,
     ))
 
@@ -411,6 +427,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 f"{placements_ready} placements ready, endpoint: {endpoint}",
             )
     else:
+        # Explicitly not ready. Without this, an XR with no composed
+        # resources (e.g. no environments matched) would be trivially ready.
+        rsp.desired.composite.ready = fnv1.READY_FALSE
+
         # Emit progress transition when placement count changes.
         if placements_ready > prev_ready:
             response.normal(

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { useDeployment } from "../../hooks/useDeployments";
 import { usePlacements } from "../../hooks/usePlacements";
 import { useEvents } from "../../hooks/useEvents";
+import { useApi } from "../../api/context";
 import { deriveStatus } from "../../lib/status";
 import { relativeAge } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
@@ -18,11 +19,14 @@ import type { ModelPlacement } from "../../api/types";
 
 export function DeploymentDetail() {
   const { ns, name } = useParams<{ ns: string; name: string }>();
+  const navigate = useNavigate();
+  const api = useApi();
   const { data: deployment, isLoading, error } = useDeployment(ns ?? "", name ?? "");
   const { data: placementsData } = usePlacements(ns ?? "");
   const { data: deploymentEvents } = useEvents(ns ?? "", "ModelDeployment", name ?? "");
   const [showCurl, setShowCurl] = useState(false);
   const [endpointCopied, setEndpointCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (isLoading) {
     return (
@@ -65,6 +69,17 @@ export function DeploymentDetail() {
     setTimeout(() => setEndpointCopied(false), 2000);
   }
 
+  async function handleDelete() {
+    if (!confirm(`Delete deployment ${name}?`)) return;
+    setDeleting(true);
+    try {
+      await api.deleteModelDeployment(ns ?? "", name ?? "");
+      navigate("/deployments");
+    } catch {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Back link */}
@@ -89,6 +104,9 @@ export function DeploymentDetail() {
             <span>{age}</span>
           </div>
         </div>
+        <Button variant="ghost" onClick={handleDelete} disabled={deleting} className="text-red hover:text-red">
+          {deleting ? "Deleting…" : "Delete"}
+        </Button>
       </div>
 
       {/* Conditions */}
@@ -151,11 +169,11 @@ export function DeploymentDetail() {
       {/* Chat */}
       <div>
         <SectionLabel>CHAT</SectionLabel>
-        {endpointUrl ? (
+        {status === "ready" && endpointUrl ? (
           <ChatWidget namespace={ns ?? ""} deployment={name ?? ""} model={modelName} />
         ) : (
           <Card>
-            <p className="text-muted text-sm">Chat is available once the endpoint is ready.</p>
+            <p className="text-muted text-sm">Chat is available once the deployment is ready.</p>
           </Card>
         )}
       </div>

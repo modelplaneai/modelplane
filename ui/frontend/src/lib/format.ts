@@ -25,3 +25,10 @@ export function relativeAge(ts?: string): string {
 export function isValidKubernetesName(name: string): boolean {
   return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name) && name.length <= 253;
 }
+
+// toKubernetesName sanitizes a string into a valid Kubernetes name by
+// lowercasing, replacing non-alphanumeric runs with hyphens, and trimming
+// leading/trailing hyphens.
+export function toKubernetesName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}

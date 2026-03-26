@@ -5,7 +5,7 @@ import { Button } from "../../components/Button";
 import { Badge } from "../../components/Badge";
 import { useModels } from "../../hooks/useModels";
 import { useApi } from "../../api/context";
-import { modelDisplayName, isValidKubernetesName } from "../../lib/format";
+import { modelDisplayName, isValidKubernetesName, toKubernetesName } from "../../lib/format";
 import { DEFAULT_NAMESPACE } from "../../lib/config";
 
 interface DeployModalProps {
@@ -21,15 +21,20 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
   const models = useMemo(() => modelsData?.items ?? [], [modelsData]);
 
   const [selectedModel, setSelectedModel] = useState(preselectedModel ?? "");
+  const [deploymentName, setDeploymentName] = useState("");
+  const [nameEdited, setNameEdited] = useState(false);
   const [environments, setEnvironments] = useState(1);
   const [namespace, setNamespace] = useState(DEFAULT_NAMESPACE);
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync preselectedModel when it changes or modal opens.
+  // Sync preselectedModel and reset name when the modal opens.
   useEffect(() => {
-    if (open && preselectedModel) {
-      setSelectedModel(preselectedModel);
+    if (open) {
+      setNameEdited(false);
+      if (preselectedModel) {
+        setSelectedModel(preselectedModel);
+      }
     }
   }, [open, preselectedModel]);
 
@@ -40,8 +45,15 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
     }
   }, [open, selectedModel, models]);
 
+  // Derive a default deployment name from the selected model unless the
+  // user has manually edited the name field.
   const selected = models.find((m) => m.metadata.name === selectedModel);
-  const deploymentName = selected ? `${selected.metadata.name}-deployment` : "";
+  useEffect(() => {
+    if (selected && !nameEdited) {
+      setDeploymentName(toKubernetesName(`${selected.metadata.name}-deployment`));
+    }
+  }, [selected, nameEdited]);
+
   const nameInvalid = deploymentName !== "" && !isValidKubernetesName(deploymentName);
 
   async function handleDeploy() {
@@ -49,7 +61,7 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
     setDeploying(true);
     setError(null);
 
-    const name = `${selected.metadata.name}-deployment`;
+    const name = deploymentName;
 
     try {
       await api.createModelDeployment(namespace, {
@@ -105,19 +117,24 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
           </div>
         )}
 
-        {/* Deployment name preview + validation */}
-        {deploymentName && (
-          <div>
-            <p className="text-xs font-mono text-muted">
-              Name: <span className="text-muted-hi">{deploymentName}</span>
+        {/* Deployment name */}
+        <div>
+          <label className="block text-xs font-mono uppercase tracking-wider text-muted mb-1.5">
+            Name
+          </label>
+          <input
+            type="text"
+            required
+            value={deploymentName}
+            onChange={(e) => { setDeploymentName(e.target.value); setNameEdited(true); }}
+            className="w-full bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
+          />
+          {nameInvalid && (
+            <p className="text-xs text-red mt-1">
+              Must be lowercase alphanumeric or hyphens, and start/end with an alphanumeric character.
             </p>
-            {nameInvalid && (
-              <p className="text-xs text-red mt-1">
-                Invalid Kubernetes name. Must be lowercase alphanumeric or hyphens, and start/end with an alphanumeric character.
-              </p>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Environments */}
         <div>
