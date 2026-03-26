@@ -24,7 +24,7 @@ export interface ApiClient {
   createClusterModel(cm: Partial<ClusterModel>): Promise<ClusterModel>;
   deleteClusterModel(name: string): Promise<void>;
   listNamespaces(): Promise<KubeList<{ metadata: ObjectMeta }>>;
-  listEvents(ns: string, kind: string, name: string): Promise<KubeList<KubeEvent>>;
+  listEvents(ns: string, kind: string, name: string, uid?: string): Promise<KubeList<KubeEvent>>;
 }
 
 // ChatFn streams chat tokens from a model endpoint. Separated from ApiClient

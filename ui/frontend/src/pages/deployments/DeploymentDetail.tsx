@@ -23,7 +23,8 @@ export function DeploymentDetail() {
   const api = useApi();
   const { data: deployment, isLoading, error } = useDeployment(ns ?? "", name ?? "");
   const { data: placementsData } = usePlacements(ns ?? "");
-  const { data: deploymentEvents } = useEvents(ns ?? "", "ModelDeployment", name ?? "");
+  const deploymentUid = deployment?.metadata.uid;
+  const { data: deploymentEvents } = useEvents(ns ?? "", "ModelDeployment", name ?? "", deploymentUid);
   const [showCurl, setShowCurl] = useState(false);
   const [endpointCopied, setEndpointCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
