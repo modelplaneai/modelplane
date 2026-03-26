@@ -93,7 +93,7 @@ describe("DeploymentsPage", () => {
   it("shows empty state when no deployments exist", async () => {
     renderWithProviders(<DeploymentsPage />); // nopClient returns empty list
     await waitFor(() => {
-      expect(screen.getByText(/No deployments found/)).toBeInTheDocument();
+      expect(screen.getByText(/No deployments in this namespace/)).toBeInTheDocument();
     });
   });
 });

@@ -63,6 +63,7 @@ fi
 # ---- Deploy the model ----
 info "Creating ml-team namespace..."
 kubectl create namespace ml-team --dry-run=client -o yaml | kubectl apply -f -
+kubectl annotate namespace ml-team "ui.modelplane.ai/namespace=ML Team" --overwrite
 
 info "Deploying Qwen 2.5 0.5B to both environments..."
 kubectl apply -f "$DEMO_DIR/model-deployment.yaml"
