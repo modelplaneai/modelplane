@@ -241,8 +241,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             "gateway_address": env_status.get("gateway", {}).get("address"),
         })
 
-    # Sort by name for deterministic scheduling and take first N.
-    candidates.sort(key=lambda c: c["name"])
+    # Sort candidates preferring environments that already have placements.
+    # This ensures adding a new environment doesn't displace existing working
+    # placements. New environments only get placements if there are open slots.
+    # Within each group (existing vs new), sort by name for determinism.
+    candidates.sort(key=lambda c: (
+        0 if f"placement-{c['name']}" in req.observed.resources else 1,
+        c["name"],
+    ))
     matched = candidates[:desired_envs]
 
     # Transition: emit which environments were matched (first time only).

@@ -274,26 +274,39 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             f"on {ie_name}, GPUs: {gpus_per_replica}",
         )
 
-    # Set readiness based on the LLMInferenceService Object's Ready
-    # condition. With DeriveFromCelQuery, the Object reports Ready only when
-    # the remote LLMIS's Ready condition is True — meaning the model is
-    # actually serving traffic, not just submitted.
+    # ModelAccepted requires the Object to be both observed AND synced.
+    # An Object that exists but can't reach the remote cluster (e.g. because
+    # the cluster is still provisioning) has Synced=False — it hasn't
+    # actually been accepted by the backend.
+    llmis_synced = _has_condition(req, "llm-inference-service", "Synced")
+    llmis_accepted = llmis_exists and llmis_synced
+
+    # ModelReady: the LLMIS is actually serving traffic. With
+    # DeriveFromCelQuery, the Object reports Ready only when the remote
+    # LLMIS's Ready condition is True.
     llmis_ready = _has_condition(req, "llm-inference-service", "Ready")
     backend_exists = "backend" in req.observed.resources
     was_ready = resource.get_condition(
         req.observed.composite.resource, "Ready"
     ).status == "True"
 
-    # ModelAccepted: the LLMIS Object exists on the remote cluster.
+    # ModelAccepted: the backend accepted the model workload (Object synced).
     # ModelReady: the LLMIS is actually serving traffic.
     # RoutingReady: the Backend resource exists on the control plane.
     # Ready: all of the above (via rsp.desired.composite.ready).
+    if not llmis_exists:
+        accepted_reason = "Deploying"
+    elif llmis_accepted:
+        accepted_reason = "Accepted"
+    else:
+        accepted_reason = "WaitingForCluster"
+
     _set_conditions(
         rsp,
-        model_accepted=llmis_exists,
-        model_accepted_reason="Accepted" if llmis_exists else "Deploying",
+        model_accepted=llmis_accepted,
+        model_accepted_reason=accepted_reason,
         model_ready=llmis_ready,
-        model_ready_reason="Serving" if llmis_ready else "ModelStarting" if llmis_exists else "WaitingForModel",
+        model_ready_reason="Serving" if llmis_ready else "ModelStarting" if llmis_accepted else "WaitingForModel",
         routing_ready=backend_exists,
         routing_ready_reason="BackendConfigured" if backend_exists else "WaitingForGateway",
     )
