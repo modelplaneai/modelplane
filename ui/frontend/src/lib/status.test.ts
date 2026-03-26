@@ -8,6 +8,9 @@ describe("deriveStatus", () => {
     { name: "creating when reason=Creating", input: [{ type: "Ready", status: "False" as const, reason: "Creating" }], expected: "creating" },
     { name: "creating when reason=Pending", input: [{ type: "Ready", status: "False" as const, reason: "Pending" }], expected: "creating" },
     { name: "creating when reason=Progressing", input: [{ type: "Ready", status: "False" as const, reason: "Progressing" }], expected: "creating" },
+    { name: "creating when reason=Provisioning", input: [{ type: "Ready", status: "False" as const, reason: "Provisioning" }], expected: "creating" },
+    { name: "creating when reason=Installing", input: [{ type: "Ready", status: "False" as const, reason: "Installing" }], expected: "creating" },
+    { name: "creating when reason=WaitingForPlacements", input: [{ type: "Ready", status: "False" as const, reason: "WaitingForPlacements" }], expected: "creating" },
     { name: "error when Ready=False with non-progressing reason", input: [{ type: "Ready", status: "False" as const, reason: "Failed" }], expected: "error" },
     { name: "error when Ready=False with no reason", input: [{ type: "Ready", status: "False" as const }], expected: "error" },
     { name: "unknown when conditions undefined", input: undefined, expected: "unknown" },
@@ -34,7 +37,14 @@ describe("statusText", () => {
 describe("conditionDotStatus", () => {
   test.each([
     { name: "ready when status=True", input: { type: "Ready", status: "True" as const }, expected: "ready" },
-    { name: "error when status=False", input: { type: "Ready", status: "False" as const }, expected: "error" },
+    { name: "error when status=False with no reason", input: { type: "Ready", status: "False" as const }, expected: "error" },
+    { name: "error when status=False with failure reason", input: { type: "Ready", status: "False" as const, reason: "Failed" }, expected: "error" },
+    { name: "creating when status=False reason=Provisioning", input: { type: "ClusterReady", status: "False" as const, reason: "Provisioning" }, expected: "creating" },
+    { name: "creating when status=False reason=Installing", input: { type: "BackendReady", status: "False" as const, reason: "Installing" }, expected: "creating" },
+    { name: "creating when status=False reason=WaitingForCluster", input: { type: "BackendReady", status: "False" as const, reason: "WaitingForCluster" }, expected: "creating" },
+    { name: "creating when status=False reason=Deploying", input: { type: "Deployed", status: "False" as const, reason: "Deploying" }, expected: "creating" },
+    { name: "creating when status=False reason=ModelStarting", input: { type: "Ready", status: "False" as const, reason: "ModelStarting" }, expected: "creating" },
+    { name: "creating when status=False reason=Scheduling", input: { type: "Scheduled", status: "False" as const, reason: "Scheduling" }, expected: "creating" },
     { name: "unknown when status=Unknown", input: { type: "Ready", status: "Unknown" as const }, expected: "unknown" },
   ])("returns $expected ($name)", ({ input, expected }) => {
     expect(conditionDotStatus(input)).toBe(expected);

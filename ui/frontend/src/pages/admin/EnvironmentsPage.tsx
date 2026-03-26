@@ -1,13 +1,20 @@
 import { Fragment, useState } from "react";
 import { useEnvironments } from "../../hooks/useEnvironments";
+import { useEvents } from "../../hooks/useEvents";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
-import { deriveStatus, statusText, conditionDotStatus } from "../../lib/status";
+import { ConditionList } from "../../components/ConditionList";
+import { EventTimeline } from "../../components/EventTimeline";
+import { deriveStatus, statusText } from "../../lib/status";
 import type { InferenceEnvironment } from "../../api/types";
 
 function EnvironmentDetailRow({ env }: { env: InferenceEnvironment }) {
   const conditions = env.status?.conditions ?? [];
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
+
+  // Cluster-scoped resource events land in the default namespace.
+  const { data: eventsData } = useEvents("default", "InferenceEnvironment", env.metadata.name);
+  const events = eventsData?.items ?? [];
 
   return (
     <tr>
@@ -18,21 +25,7 @@ function EnvironmentDetailRow({ env }: { env: InferenceEnvironment }) {
             <p className="font-mono text-[11px] uppercase tracking-wider text-muted mb-2">
               Conditions
             </p>
-            {conditions.length === 0 && (
-              <p className="text-sm text-muted">No conditions reported</p>
-            )}
-            <ul className="space-y-1">
-              {conditions.map((c) => (
-                <li key={c.type} className="flex items-center gap-2 text-sm">
-                  <StatusDot status={conditionDotStatus(c)} />
-                  <span className="text-text">{c.type}</span>
-                  <span className="text-muted">{c.status}</span>
-                  {c.reason && (
-                    <span className="text-muted-hi">— {c.reason}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <ConditionList conditions={conditions} />
           </div>
 
           {/* Right column: metadata */}
@@ -85,6 +78,16 @@ function EnvironmentDetailRow({ env }: { env: InferenceEnvironment }) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Events */}
+        {events.length > 0 && (
+          <div className="mt-4">
+            <p className="font-mono text-[11px] uppercase tracking-wider text-muted mb-2">
+              Events
+            </p>
+            <EventTimeline events={events} />
           </div>
         )}
       </td>

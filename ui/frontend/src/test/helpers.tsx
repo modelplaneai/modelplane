@@ -24,6 +24,7 @@ export function nopClient(overrides?: Partial<ApiClient>): ApiClient {
     createClusterModel: async (cm) => cm as ClusterModel,
     deleteClusterModel: async () => {},
     listNamespaces: async () => emptyList(),
+    listEvents: async () => emptyList(),
     ...overrides,
   };
 }

@@ -35,7 +35,7 @@ import (
 
 type cli struct {
 	Addr       string `default:":8080"              help:"Address to listen on."`
-	Kubeconfig string `default:""                   help:"Path to kubeconfig file (omit for in-cluster)." optional:"" type:"existingfile"`
+	Kubeconfig string `default:""                   help:"Path to kubeconfig file (omit for in-cluster)." optional:""`
 	Verbose    bool   `help:"Enable debug logging." short:"v"`
 }
 

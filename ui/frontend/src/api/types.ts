@@ -94,6 +94,25 @@ export interface ModelDeployment {
   };
 }
 
+export interface KubeEvent {
+  apiVersion: "v1";
+  kind: "Event";
+  metadata: ObjectMeta;
+  type: "Normal" | "Warning";
+  reason: string;
+  message: string;
+  firstTimestamp?: string;
+  lastTimestamp?: string;
+  count?: number;
+  involvedObject: {
+    apiVersion: string;
+    kind: string;
+    name: string;
+    namespace?: string;
+    uid?: string;
+  };
+}
+
 export interface ModelPlacement {
   apiVersion: "modelplane.ai/v1alpha1";
   kind: "ModelPlacement";

@@ -1,6 +1,7 @@
 import type {
   ClusterModel,
   InferenceEnvironment,
+  KubeEvent,
   KubeList,
   ModelDeployment,
   ModelPlacement,
@@ -97,4 +98,15 @@ export function listNamespaces(): Promise<
   KubeList<{ metadata: ObjectMeta }>
 > {
   return get("api/v1/namespaces");
+}
+
+export function listEvents(
+  ns: string,
+  kind: string,
+  name: string,
+): Promise<KubeList<KubeEvent>> {
+  const sel = encodeURIComponent(
+    `involvedObject.kind=${kind},involvedObject.name=${name}`,
+  );
+  return get(`api/v1/namespaces/${ns}/events?fieldSelector=${sel}`);
 }

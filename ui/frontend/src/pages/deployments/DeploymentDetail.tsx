@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useDeployment } from "../../hooks/useDeployments";
 import { usePlacements } from "../../hooks/usePlacements";
+import { useEvents } from "../../hooks/useEvents";
 import { deriveStatus } from "../../lib/status";
 import { relativeAge } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
@@ -11,12 +12,15 @@ import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { CurlSnippet } from "../../components/CurlSnippet";
 import { ChatWidget } from "../../components/ChatWidget";
+import { ConditionList } from "../../components/ConditionList";
+import { EventTimeline } from "../../components/EventTimeline";
 import type { ModelPlacement } from "../../api/types";
 
 export function DeploymentDetail() {
   const { ns, name } = useParams<{ ns: string; name: string }>();
   const { data: deployment, isLoading, error } = useDeployment(ns ?? "", name ?? "");
   const { data: placementsData } = usePlacements(ns ?? "");
+  const { data: deploymentEvents } = useEvents(ns ?? "", "ModelDeployment", name ?? "");
   const [showCurl, setShowCurl] = useState(false);
   const [endpointCopied, setEndpointCopied] = useState(false);
 
@@ -42,11 +46,17 @@ export function DeploymentDetail() {
   const modelName = deployment.status?.model?.name ?? deployment.spec.modelRef.name;
   const endpointUrl = deployment.status?.endpoint?.url;
   const age = relativeAge(deployment.metadata.creationTimestamp);
+  const conditions = deployment.status?.conditions ?? [];
 
   // Filter placements belonging to this deployment.
   const placements: ModelPlacement[] = (placementsData?.items ?? []).filter(
     (p) => p.metadata.labels?.["modelplane.ai/deployment"] === name,
   );
+
+  // Collect events for the deployment and all its placements.
+  const allEvents = [
+    ...(deploymentEvents?.items ?? []),
+  ];
 
   async function copyEndpoint() {
     if (!endpointUrl) return;
@@ -81,6 +91,16 @@ export function DeploymentDetail() {
         </div>
       </div>
 
+      {/* Conditions */}
+      {conditions.length > 0 && (
+        <div>
+          <SectionLabel>CONDITIONS</SectionLabel>
+          <Card>
+            <ConditionList conditions={conditions} />
+          </Card>
+        </div>
+      )}
+
       {/* Endpoint */}
       <div>
         <SectionLabel>ENDPOINT</SectionLabel>
@@ -111,43 +131,22 @@ export function DeploymentDetail() {
           <p className="text-muted text-sm">No placements yet.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {placements.map((p) => {
-              const pStatus = deriveStatus(p.status?.conditions);
-              const gpuCount = p.status?.resources?.gpu?.count;
-              const pEndpoint = p.status?.endpoint?.url;
-
-              return (
-                <Card key={p.metadata.name}>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <StatusDot status={pStatus} />
-                      <span className="text-text font-medium text-sm">{p.metadata.name}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs text-muted">
-                      <span>
-                        Env:{" "}
-                        <span className="text-muted-hi font-mono">
-                          {p.spec.inferenceEnvironmentRef.name}
-                        </span>
-                      </span>
-                      {gpuCount !== undefined && (
-                        <Badge variant="neutral">
-                          {gpuCount} GPU{gpuCount !== 1 ? "s" : ""}
-                        </Badge>
-                      )}
-                    </div>
-                    {pEndpoint && (
-                      <p className="text-xs font-mono text-muted truncate" title={pEndpoint}>
-                        {pEndpoint}
-                      </p>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
+            {placements.map((p) => (
+              <PlacementCard key={p.metadata.name} placement={p} />
+            ))}
           </div>
         )}
       </div>
+
+      {/* Events */}
+      {allEvents.length > 0 && (
+        <div>
+          <SectionLabel>EVENTS</SectionLabel>
+          <Card>
+            <EventTimeline events={allEvents} />
+          </Card>
+        </div>
+      )}
 
       {/* Chat */}
       <div>
@@ -161,5 +160,48 @@ export function DeploymentDetail() {
         )}
       </div>
     </div>
+  );
+}
+
+function PlacementCard({ placement }: { placement: ModelPlacement }) {
+  const pStatus = deriveStatus(placement.status?.conditions);
+  const gpuCount = placement.status?.resources?.gpu?.count;
+  const pEndpoint = placement.status?.endpoint?.url;
+  const conditions = (placement.status?.conditions ?? []).filter(
+    (c) => c.type !== "Ready" && c.type !== "Synced" && c.type !== "Responsive",
+  );
+
+  return (
+    <Card>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <StatusDot status={pStatus} />
+          <span className="text-text font-medium text-sm">{placement.metadata.name}</span>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs text-muted">
+          <span>
+            Env:{" "}
+            <span className="text-muted-hi font-mono">
+              {placement.spec.inferenceEnvironmentRef.name}
+            </span>
+          </span>
+          {gpuCount !== undefined && (
+            <Badge variant="neutral">
+              {gpuCount} GPU{gpuCount !== 1 ? "s" : ""}
+            </Badge>
+          )}
+        </div>
+        {conditions.length > 0 && (
+          <div className="pt-1">
+            <ConditionList conditions={conditions} />
+          </div>
+        )}
+        {pEndpoint && (
+          <p className="text-xs font-mono text-muted truncate" title={pEndpoint}>
+            {pEndpoint}
+          </p>
+        )}
+      </div>
+    </Card>
   );
 }
