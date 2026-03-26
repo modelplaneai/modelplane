@@ -7,11 +7,13 @@ for unified endpoint routing.
 """
 
 import math
-import re
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from .lib import conditions
+from .lib import naming
+from .lib import quantities
 from .model.ai.modelplane.modeldeployment import v1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -23,80 +25,6 @@ _COMPAT = {
 
 # The namespace used for LLMInferenceService on all remote clusters.
 _REMOTE_NAMESPACE = "default"
-
-
-def _to_dns_label(s: str) -> str:
-    """Sanitize a string to a valid DNS-1035 label.
-
-    DNS-1035 labels must be lowercase, start with a letter, end with an
-    alphanumeric, contain only [a-z0-9-], and be at most 63 characters.
-    """
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9-]", "-", s)
-    s = re.sub(r"-+", "-", s)
-    s = s.strip("-")
-    s = f"model-{s}"
-    return s[:63]
-
-
-def _has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
-    """Check if an observed composed resource has a condition set to True.
-
-    Uses the SDK's resource.get_condition which reads status.conditions from
-    the protobuf Struct representation of the resource.
-    """
-    observed = req.observed.resources.get(name)
-    if observed is None:
-        return False
-    return resource.get_condition(observed.resource, cond).status == "True"
-
-
-def _has_parent_condition(
-    req: fnv1.RunFunctionRequest, name: str, cond: str,
-) -> bool:
-    """Check a Gateway API condition nested under status.parents[].conditions.
-
-    Gateway API resources (HTTPRoute, etc.) nest route status under
-    status.parents[].conditions instead of top-level status.conditions.
-    """
-    observed = req.observed.resources.get(name)
-    if observed is None:
-        return False
-    d = resource.struct_to_dict(observed.resource)
-    for p in d.get("status", {}).get("parents", []):
-        for c in p.get("conditions", []):
-            if c.get("type") == cond and c.get("status") == "True":
-                return True
-    return False
-
-
-def _parse_quantity(q: str) -> int:
-    """Parse a Kubernetes resource quantity string to bytes.
-
-    Supports Gi, Mi, and Ti suffixes. Returns 0 for unparseable values.
-    """
-    if not q:
-        return 0
-    q = q.strip()
-    if q.endswith("Gi"):
-        return int(q[:-2]) * 1024 * 1024 * 1024
-    if q.endswith("Mi"):
-        return int(q[:-2]) * 1024 * 1024
-    if q.endswith("Ti"):
-        return int(q[:-2]) * 1024 * 1024 * 1024 * 1024
-    try:
-        return int(q)
-    except ValueError:
-        return 0
-
-
-def _placement_name(deployment_name: str, ie_name: str) -> str:
-    """Derive a deterministic ModelPlacement name.
-
-    Deterministic names are needed so the deployment function knows the
-    LLMInferenceService name on the remote cluster for URL rewriting.
-    """
-    return f"{deployment_name}-{ie_name}"[:63]
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -179,7 +107,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     model_spec = model_resource.get("spec", {})
     resolved_model_name = model_spec.get("model", {}).get("name", "")
     engine = model_spec.get("engine", "")
-    model_vram_bytes = _parse_quantity(
+    model_vram_bytes = quantities.parse_quantity(
         model_spec.get("resources", {}).get("vram", "0Gi")
     )
 
@@ -199,7 +127,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         best_gpus_needed = None
         eligible_total = 0
         for pool in gpu_pools:
-            pool_mem = _parse_quantity(pool.get("memory", "0Gi"))
+            pool_mem = quantities.parse_quantity(pool.get("memory", "0Gi"))
             if pool_mem <= 0:
                 continue
             gpus_needed = max(1, math.ceil(model_vram_bytes / pool_mem))
@@ -266,7 +194,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     for env_info in matched:
         ie_name = env_info["name"]
         placement_key = f"placement-{ie_name}"
-        pname = _placement_name(xr_name, ie_name)
+        pname = naming.placement_name(xr_name, ie_name)
 
         resource.update(
             rsp.desired.resources[placement_key],
@@ -335,7 +263,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # Rewrite /{ns}/{deployment}/ to /{remote-ns}/{model-name}/.
         # The LLMIS name is the ClusterModel name on all remote clusters,
         # so the rewrite is the same for every backend.
-        rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{_to_dns_label(model_name)}/"
+        rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{naming.to_dns_label(model_name)}/"
 
         # Gateway parentRef — defaults for Envoy Gateway, could be read
         # from InferenceGateway status in future.
@@ -383,7 +311,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     placements_ready = 0
     for env_info in matched:
         placement_key = f"placement-{env_info['name']}"
-        if _has_condition(req, placement_key, "Ready"):
+        if conditions.has_condition(req, placement_key, "Ready"):
             rsp.desired.resources[placement_key].ready = fnv1.READY_TRUE
             placements_ready += 1
         else:
@@ -393,7 +321,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if "httproute" in rsp.desired.resources:
         # The HTTPRoute is only truly ready when it has backendRefs (not
         # just Accepted). An empty-backendRefs HTTPRoute returns 404.
-        route_ready = _has_parent_condition(req, "httproute", "Accepted") and bool(backend_refs)
+        route_ready = conditions.has_parent_condition(req, "httproute", "Accepted") and bool(backend_refs)
         if route_ready:
             rsp.desired.resources["httproute"].ready = fnv1.READY_TRUE
         else:
@@ -447,10 +375,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         }
     resource.update(rsp.desired.composite, {"status": status})
 
-    was_ready = resource.get_condition(
-        req.observed.composite.resource, "Ready"
-    ).status == "True"
-
     # Track previous placement count for transition detection.
     prev_ready = int(
         resource.struct_to_dict(req.observed.composite.resource)
@@ -459,7 +383,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     if placements_ready > 0 and not not_ready:
         rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not was_ready:
+        if not conditions.was_ready(req):
             endpoint = status.get("endpoint", {}).get("url", "pending")
             response.normal(
                 rsp,
