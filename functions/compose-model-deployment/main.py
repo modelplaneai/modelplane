@@ -12,8 +12,12 @@ from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
+from .lib import defaults
 from .lib import naming
 from .lib import quantities
+from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
+from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
+from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -78,13 +82,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         match_labels={"modelplane.ai/placement": "true"},
     )
 
-    # Required resources are dicts resolved by Crossplane.
-    envs = request.get_required_resources(req, "environments")
-    model_resource = request.get_required_resource(req, "model")
-    inference_gw = request.get_required_resource(req, "inference-gateway")
-    all_placements = request.get_required_resources(req, "all-placements")
+    env_dicts = request.get_required_resources(req, "environments")
+    model_dict = request.get_required_resource(req, "model")
+    gw_dict = request.get_required_resource(req, "inference-gateway")
+    placement_dicts = request.get_required_resources(req, "all-placements")
 
-    if not envs:
+    if not env_dicts:
         rsp.conditions.append(fnv1.Condition(
             type="PlacementsScheduled",
             status=fnv1.STATUS_CONDITION_FALSE,
@@ -94,7 +97,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         response.warning(rsp, "No InferenceEnvironments found")
         return
 
-    if model_resource is None:
+    if model_dict is None:
         rsp.conditions.append(fnv1.Condition(
             type="PlacementsScheduled",
             status=fnv1.STATUS_CONDITION_FALSE,
@@ -104,34 +107,47 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         response.warning(rsp, f"Model {model_name} not found")
         return
 
-    model_spec = model_resource.get("spec", {})
-    resolved_model_name = model_spec.get("model", {}).get("name", "")
-    engine = model_spec.get("engine", "")
-    model_vram_bytes = quantities.parse_quantity(
-        model_spec.get("resources", {}).get("vram", "0Gi")
+    envs = [
+        defaults.inference_environment(
+            iev1alpha1.InferenceEnvironment.model_validate(e)
+        )
+        for e in env_dicts
+    ]
+    model_resource = defaults.cluster_model(
+        cmv1alpha1.ClusterModel.model_validate(model_dict)
     )
+    inference_gw = (
+        defaults.inference_gateway(
+            igwv1alpha1.InferenceGateway.model_validate(gw_dict)
+        )
+        if gw_dict
+        else None
+    )
+    all_placements = [
+        defaults.model_placement(mpv1alpha1.ModelPlacement.model_validate(p))
+        for p in placement_dicts
+    ]
+
+    resolved_model_name = model_resource.spec.model.name
+    engine = model_resource.spec.engine
+    model_vram_bytes = quantities.parse_quantity(model_resource.spec.resources.vram)
 
     # Schedule: filter environments by engine compatibility and VRAM capacity.
     candidates = []
     for env in envs:
-        env_name = env.get("metadata", {}).get("name", "")
-        env_status = env.get("status", {})
-        capacity = env_status.get("capacity", {})
-        backend = capacity.get("backend", "")
-
-        if engine not in _COMPAT.get(backend, []):
+        env_name = env.metadata.name if env.metadata else ""
+        if engine not in _COMPAT.get(env.status.capacity.backend or "", []):
             continue
 
         # Find the pool that needs the fewest GPUs for this model.
-        gpu_pools = capacity.get("gpuPools", [])
         best_gpus_needed = None
         eligible_total = 0
-        for pool in gpu_pools:
-            pool_mem = quantities.parse_quantity(pool.get("memory", "0Gi"))
+        for pool in env.status.capacity.gpuPools:
+            pool_mem = quantities.parse_quantity(pool.memory or "0Gi")
             if pool_mem <= 0:
                 continue
             gpus_needed = max(1, math.ceil(model_vram_bytes / pool_mem))
-            eligible_total += pool.get("count", 0)
+            eligible_total += pool.count or 0
             if best_gpus_needed is None or gpus_needed < best_gpus_needed:
                 best_gpus_needed = gpus_needed
 
@@ -141,32 +157,21 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # Subtract GPUs used by other deployments' placements on this IE.
         used_gpus = 0
         for p in all_placements:
-            p_deployment = (
-                p.get("metadata", {})
-                .get("labels", {})
-                .get("modelplane.ai/deployment", "")
-            )
+            p_labels = p.metadata.labels or {}
+            p_deployment = p_labels.get("modelplane.ai/deployment", "")
             if p_deployment == xr_name:
                 continue  # Don't count our own placements against us.
-            p_ie = (
-                p.get("spec", {})
-                .get("inferenceEnvironmentRef", {})
-                .get("name", "")
-            )
+            p_ie = p.spec.inferenceEnvironmentRef.name if p.spec and p.spec.inferenceEnvironmentRef else ""
             if p_ie == env_name:
-                used_gpus += (
-                    p.get("status", {})
-                    .get("resources", {})
-                    .get("gpu", {})
-                    .get("count", 0)
-                )
+                used_gpus += p.status.resources.gpu.count or 0
 
         if eligible_total - used_gpus < best_gpus_needed:
             continue
 
+        gateway_address = env.status.gateway.address
         candidates.append({
             "name": env_name,
-            "gateway_address": env_status.get("gateway", {}).get("address"),
+            "gateway_address": gateway_address,
         })
 
     # Sort candidates preferring environments that already have placements.
@@ -301,9 +306,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         })
 
     # Read the control plane gateway address for the unified endpoint URL.
-    gateway_ip = None
-    if inference_gw:
-        gateway_ip = inference_gw.get("status", {}).get("address")
+    gateway_ip = inference_gw.status.address if inference_gw else None
 
     # Track readiness of composed resources.
     not_ready = []

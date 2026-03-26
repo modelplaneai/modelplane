@@ -107,8 +107,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gke_ready = conditions.has_condition(req, "gke-cluster", "Ready")
     gke_observed = req.observed.resources.get("gke-cluster")
     if gke_observed:
-        gke_dict = resource.struct_to_dict(gke_observed.resource)
-        gke_secrets = gke_dict.get("status", {}).get("secrets")
+        observed_gke = gkev1alpha1.GKECluster.model_validate(
+            resource.struct_to_dict(gke_observed.resource)
+        )
+        gke_secrets = observed_gke.status.secrets if observed_gke.status else None
 
     # Compose a ClusterProviderConfig for provider-kubernetes so that
     # ModelPlacements (which are namespaced, in ml-team) can create Objects on
@@ -118,9 +120,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     sa_key_secret = None
     if gke_secrets:
         for s in gke_secrets:
-            if s.get("type") == "Kubeconfig":
+            if s.type == "Kubeconfig":
                 kubeconfig_secret = s
-            elif s.get("type") == "GCPServiceAccountKey":
+            elif s.type == "GCPServiceAccountKey":
                 sa_key_secret = s
 
     cluster_pc_name = f"{name}-cluster-kubeconfig"
@@ -133,8 +135,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     source="Secret",
                     secretRef=k8scpcv1alpha1.SecretRef(
                         namespace=ie_ns,
-                        name=kubeconfig_secret["name"] if kubeconfig_secret else "",
-                        key=kubeconfig_secret["key"] if kubeconfig_secret else "",
+                        name=kubeconfig_secret.name if kubeconfig_secret else "",
+                        key=kubeconfig_secret.key if kubeconfig_secret else "",
                     ),
                 ),
             ),
@@ -145,8 +147,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 source="Secret",
                 secretRef=k8scpcv1alpha1.SecretRef(
                     namespace=ie_ns,
-                    name=sa_key_secret["name"],
-                    key=sa_key_secret["key"],
+                    name=sa_key_secret.name,
+                    key=sa_key_secret.key,
                 ),
             )
         resource.update(
@@ -165,7 +167,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         }
         if gke_secrets:
             kss_spec_kwargs["secrets"] = [
-                kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"])
+                kssv1alpha1.Secret(type=s.type, name=s.name, key=s.key)
                 for s in gke_secrets
             ]
         else:
@@ -173,11 +175,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             # spec.secrets to keep emitting consistently.
             kss_observed = req.observed.resources.get("kserve-stack")
             if kss_observed:
-                kss_dict = resource.struct_to_dict(kss_observed.resource)
-                kss_spec_kwargs["secrets"] = [
-                    kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"])
-                    for s in kss_dict.get("spec", {}).get("secrets", [])
-                ]
+                kss = kssv1alpha1.KServeStack.model_validate(
+                    resource.struct_to_dict(kss_observed.resource)
+                )
+                if kss.spec and kss.spec.secrets:
+                    kss_spec_kwargs["secrets"] = [
+                        kssv1alpha1.Secret(type=s.type, name=s.name, key=s.key)
+                        for s in kss.spec.secrets
+                    ]
 
         resource.update(
             rsp.desired.resources["kserve-stack"],

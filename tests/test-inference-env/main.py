@@ -31,6 +31,13 @@ test = compositiontest.CompositionTest(
                         "crossplane.io/composition-resource-name": "gke-cluster",
                     },
                 },
+                "spec": {
+                    "project": "my-gcp-project",
+                    "region": "us-central1",
+                    "nodePools": [
+                        {"name": "system", "role": "System", "machineType": "e2-standard-4"},
+                    ],
+                },
                 "status": {
                     "conditions": [{
                         "type": "Ready",

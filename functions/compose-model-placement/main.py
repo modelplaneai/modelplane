@@ -12,8 +12,11 @@ from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
+from .lib import defaults
 from .lib import naming
 from .lib import quantities
+from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
+from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
@@ -46,50 +49,38 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     )
 
 
-    # Required resources are dicts — they're external resources resolved by
-    # Crossplane, not composed resources with generated Pydantic models.
-    model = request.get_required_resource(req, "model")
-    ie = request.get_required_resource(req, "environment")
-    if model is None or ie is None:
+    model_dict = request.get_required_resource(req, "model")
+    ie_dict = request.get_required_resource(req, "environment")
+    if model_dict is None or ie_dict is None:
         conditions.set_condition(rsp, "ModelAccepted", False, "WaitingForReferences")
         conditions.set_condition(rsp, "ModelReady", False, "WaitingForModel")
         conditions.set_condition(rsp, "RoutingReady", False, "WaitingForModel")
         response.normal(rsp, "Waiting for model and environment to be resolved")
         return
 
-    ie_status = ie.get("status", {})
-    pc_name = ie_status.get("providerConfigRef", {}).get("name")
-    gateway_address = ie_status.get("gateway", {}).get("address")
+    ie = defaults.inference_environment(
+        iev1alpha1.InferenceEnvironment.model_validate(ie_dict)
+    )
 
-    if not pc_name:
+    if not ie.status.providerConfigRef.name:
         conditions.set_condition(rsp, "ModelAccepted", False, "WaitingForEnvironment")
         conditions.set_condition(rsp, "ModelReady", False, "WaitingForModel")
         conditions.set_condition(rsp, "RoutingReady", False, "WaitingForModel")
         response.normal(rsp, "Waiting for environment providerConfigRef")
         return
 
-    # Extract model configuration from the ClusterModel (or Model) spec.
-    model_spec = model.get("spec", {})
-    resolved_model_name = model_spec.get("model", {}).get("name", "")
-    hf = model_spec.get("huggingFace", {})
-    model_repo = hf.get("repo", "")
-    model_uri = f"hf://{model_repo}" if model_repo else ""
-    vllm_config = model_spec.get("vllm", {})
-    image = vllm_config.get("image", "vllm/vllm-openai:v0.7.3")
-    extra_args = vllm_config.get("extraArgs", [])
-    model_vram = model_spec.get("resources", {}).get("vram", "0Gi")
-    cpu = model_spec.get("resources", {}).get("cpu", "4")
-    memory = model_spec.get("resources", {}).get("memory", "16Gi")
+    model = defaults.cluster_model(
+        cmv1alpha1.ClusterModel.model_validate(model_dict)
+    )
 
     # Compute how many GPUs the model needs by dividing model VRAM by the
     # per-GPU VRAM of the first eligible pool in the environment.
-    gpu_pools = ie_status.get("capacity", {}).get("gpuPools", [])
     gpus_per_replica = 1
-    for pool in gpu_pools:
-        pool_memory = quantities.parse_quantity(pool.get("memory", "0Gi"))
+    for pool in ie.status.capacity.gpuPools:
+        pool_memory = quantities.parse_quantity(pool.memory or "0Gi")
         if pool_memory > 0:
             gpus_per_replica = max(1, math.ceil(
-                quantities.parse_quantity(model_vram) / pool_memory
+                quantities.parse_quantity(model.spec.resources.vram) / pool_memory
             ))
             break
 
@@ -102,22 +93,22 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # Build the container spec for the vLLM model server. Always set
     # --served-model-name so vLLM registers the model under the name
     # from the ClusterModel spec, not the local path (/mnt/models).
-    args = [f"--served-model-name={resolved_model_name}"]
-    if extra_args:
-        args.extend(extra_args)
+    args = [f"--served-model-name={model.spec.model.name}"]
+    if model.spec.vllm.extraArgs:
+        args.extend(model.spec.vllm.extraArgs)
 
     container: dict = {
         "name": "main",
-        "image": image,
+        "image": model.spec.vllm.image,
         "args": args,
         "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
         "resources": {
             "limits": {
                 "nvidia.com/gpu": str(gpus_per_replica),
-                "cpu": cpu,
-                "memory": memory,
+                "cpu": model.spec.resources.cpu,
+                "memory": model.spec.resources.memory,
             },
-            "requests": {"cpu": "1", "memory": memory},
+            "requests": {"cpu": "1", "memory": model.spec.resources.memory},
         },
     }
 
@@ -132,7 +123,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             spec=k8sobjv1alpha1.Spec(
                 providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                     kind="ClusterProviderConfig",
-                    name=pc_name,
+                    name=ie.status.providerConfigRef.name,
                 ),
                 readiness=k8sobjv1alpha1.Readiness(
                     policy="DeriveFromCelQuery",
@@ -150,7 +141,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                             "namespace": llmis_namespace,
                         },
                         "spec": {
-                            "model": {"uri": model_uri, "name": resolved_model_name},
+                            "model": {
+                                "uri": f"hf://{model.spec.huggingFace.repo}" if model.spec.huggingFace else "",
+                                "name": model.spec.model.name,
+                            },
                             "replicas": 1,
                             "template": {"containers": [container]},
                             "router": {"gateway": {}, "route": {}},
@@ -163,13 +157,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Compose a Backend on the control plane pointing to the remote cluster's
     # KServe gateway. ModelDeployment aggregates these into an HTTPRoute.
-    if gateway_address:
+    if ie.status.gateway.address:
         resource.update(rsp.desired.resources["backend"], {
             "apiVersion": "gateway.envoyproxy.io/v1alpha1",
             "kind": "Backend",
             "metadata": {"namespace": xr.metadata.namespace},
             "spec": {
-                "endpoints": [{"ip": {"address": gateway_address, "port": 80}}],
+                "endpoints": [{"ip": {"address": ie.status.gateway.address, "port": 80}}],
             },
         })
 
@@ -185,12 +179,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Write status fields for consumption by compose-model-deployment.
     status: dict = {
-        "model": {"name": resolved_model_name},
+        "model": {"name": model.spec.model.name},
         "resources": {"gpu": {"count": gpus_per_replica}},
     }
-    if gateway_address:
+    if ie.status.gateway.address:
         status["endpoint"] = {
-            "url": f"http://{gateway_address}/{llmis_namespace}/{llmis_name}/v1",
+            "url": f"http://{ie.status.gateway.address}/{llmis_namespace}/{llmis_name}/v1",
         }
     if backend_name:
         status["routing"] = {"backendName": backend_name}
@@ -201,7 +195,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if not llmis_exists:
         response.normal(
             rsp,
-            f"Composing LLMInferenceService for {resolved_model_name} "
+            f"Composing LLMInferenceService for {model.spec.model.name} "
             f"on {ie_name}, GPUs: {gpus_per_replica}",
         )
 
@@ -246,7 +240,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         rsp.desired.resources["llm-inference-service"].ready = fnv1.READY_TRUE
         rsp.desired.composite.ready = fnv1.READY_TRUE
         if not conditions.was_ready(req):
-            endpoint = f"http://{gateway_address}/{llmis_namespace}/{llmis_name}/v1" if gateway_address else "pending"
+            endpoint = f"http://{ie.status.gateway.address}/{llmis_namespace}/{llmis_name}/v1" if ie.status.gateway.address else "pending"
             response.normal(rsp, f"Ready, endpoint: {endpoint}")
     else:
         response.normal(rsp, "Waiting for: llm-inference-service")

@@ -45,6 +45,7 @@ test = compositiontest.CompositionTest(
                     "name": "demo-us-central",
                     "labels": {"modelplane.ai/environment": "true"},
                 },
+                "spec": {"backend": "KServe"},
                 "status": {
                     "providerConfigRef": {"name": "demo-us-central-cluster"},
                     "gateway": {"address": "34.55.100.10"},
