@@ -158,7 +158,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     if not envs:
         rsp.conditions.append(fnv1.Condition(
-            type="Scheduled",
+            type="PlacementsScheduled",
             status=fnv1.STATUS_CONDITION_FALSE,
             reason="NoEnvironments",
             target=fnv1.TARGET_COMPOSITE,
@@ -168,7 +168,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     if model_resource is None:
         rsp.conditions.append(fnv1.Condition(
-            type="Scheduled",
+            type="PlacementsScheduled",
             status=fnv1.STATUS_CONDITION_FALSE,
             reason="ModelNotFound",
             target=fnv1.TARGET_COMPOSITE,
@@ -282,13 +282,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             ),
         )
 
-    # Scheduled: environments matched and placements created.
-    any_placements_observed = any(
-        f"placement-{c['name']}" in req.observed.resources for c in matched
-    )
-    scheduled = len(matched) > 0 and any_placements_observed
-
-    # Scheduled: environments matched and placements created.
+    # PlacementsScheduled: environments matched and placements created.
     any_placements_observed = any(
         f"placement-{c['name']}" in req.observed.resources for c in matched
     )
@@ -305,7 +299,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         sched_msg = ""
 
     rsp.conditions.append(fnv1.Condition(
-        type="Scheduled",
+        type="PlacementsScheduled",
         status=fnv1.STATUS_CONDITION_TRUE if scheduled else fnv1.STATUS_CONDITION_FALSE,
         reason=sched_reason,
         message=sched_msg,
@@ -389,13 +383,52 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         else:
             not_ready.append(placement_key)
 
+    route_ready = False
     if "httproute" in rsp.desired.resources:
         # The HTTPRoute is only truly ready when it has backendRefs (not
         # just Accepted). An empty-backendRefs HTTPRoute returns 404.
-        if _has_parent_condition(req, "httproute", "Accepted") and backend_refs:
+        route_ready = _has_parent_condition(req, "httproute", "Accepted") and bool(backend_refs)
+        if route_ready:
             rsp.desired.resources["httproute"].ready = fnv1.READY_TRUE
         else:
             not_ready.append("httproute")
+
+    # PlacementsReady: all placements are serving traffic.
+    all_placements_ready = len(matched) > 0 and placements_ready == len(matched)
+    if not matched:
+        pr_reason = "NoPlacementsScheduled"
+        pr_msg = ""
+    elif all_placements_ready:
+        pr_reason = "AllPlacementsReady"
+        pr_msg = f"{placements_ready} of {len(matched)} ready"
+    else:
+        pr_reason = "ModelStarting"
+        pr_msg = f"{placements_ready} of {len(matched)} ready"
+
+    rsp.conditions.append(fnv1.Condition(
+        type="PlacementsReady",
+        status=fnv1.STATUS_CONDITION_TRUE if all_placements_ready else fnv1.STATUS_CONDITION_FALSE,
+        reason=pr_reason,
+        message=pr_msg,
+        target=fnv1.TARGET_COMPOSITE,
+    ))
+
+    # RoutingReady: the control plane HTTPRoute is configured.
+    if not matched:
+        rr_reason = "NoPlacementsScheduled"
+    elif route_ready:
+        rr_reason = "RouteConfigured"
+    elif "httproute" in rsp.desired.resources:
+        rr_reason = "Configuring"
+    else:
+        rr_reason = "WaitingForPlacements"
+
+    rsp.conditions.append(fnv1.Condition(
+        type="RoutingReady",
+        status=fnv1.STATUS_CONDITION_TRUE if route_ready else fnv1.STATUS_CONDITION_FALSE,
+        reason=rr_reason,
+        target=fnv1.TARGET_COMPOSITE,
+    ))
 
     # Write status for the user.
     status: dict = {

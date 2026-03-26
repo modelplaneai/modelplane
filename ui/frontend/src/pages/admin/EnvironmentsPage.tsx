@@ -1,14 +1,19 @@
 import { Fragment, useState } from "react";
+import { Link } from "react-router-dom";
 import { useEnvironments } from "../../hooks/useEnvironments";
 import { useEvents } from "../../hooks/useEvents";
+import { useApi } from "../../api/context";
+import { useQuery } from "@tanstack/react-query";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
+import { Badge } from "../../components/Badge";
+import { Card } from "../../components/Card";
 import { ConditionList } from "../../components/ConditionList";
 import { EventTimeline } from "../../components/EventTimeline";
 import { deriveStatus, statusText } from "../../lib/status";
-import type { InferenceEnvironment } from "../../api/types";
+import type { InferenceEnvironment, ModelPlacement, KubeList } from "../../api/types";
 
-function EnvironmentDetailRow({ env }: { env: InferenceEnvironment }) {
+function EnvironmentDetailRow({ env, placements }: { env: InferenceEnvironment; placements: ModelPlacement[] }) {
   const conditions = env.status?.conditions ?? [];
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
 
@@ -81,6 +86,58 @@ function EnvironmentDetailRow({ env }: { env: InferenceEnvironment }) {
           </div>
         )}
 
+        {/* Model Placements */}
+        {placements.length > 0 && (
+          <div className="mt-4">
+            <p className="font-mono text-[11px] uppercase tracking-wider text-muted mb-2">
+              Model Placements
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {placements.map((p) => {
+                const pStatus = deriveStatus(p.status?.conditions);
+                const gpuCount = p.status?.resources?.gpu?.count;
+                const pConditions = (p.status?.conditions ?? []).filter(
+                  (c) => c.type !== "Ready" && c.type !== "Synced" && c.type !== "Responsive",
+                );
+                const deploymentName = p.metadata.labels?.["modelplane.ai/deployment"];
+                return (
+                  <Link
+                    key={p.metadata.name}
+                    to={`/placements/${p.metadata.namespace}/${p.metadata.name}`}
+                    className="block hover:ring-1 hover:ring-border-hi rounded-xl transition"
+                  >
+                    <Card>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <StatusDot status={pStatus} />
+                          <span className="text-text font-medium text-sm">{p.spec.modelRef.name}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted">
+                          {deploymentName && (
+                            <span>
+                              deploy: <span className="text-muted-hi font-mono">{deploymentName}</span>
+                            </span>
+                          )}
+                          {gpuCount !== undefined && (
+                            <Badge variant="neutral">
+                              {gpuCount} GPU{gpuCount !== 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                        {pConditions.length > 0 && (
+                          <div className="pt-1">
+                            <ConditionList conditions={pConditions} />
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Events */}
         {events.length > 0 && (
           <div className="mt-4">
@@ -97,6 +154,11 @@ function EnvironmentDetailRow({ env }: { env: InferenceEnvironment }) {
 
 export function EnvironmentsPage() {
   const { data, isLoading, error } = useEnvironments();
+  const api = useApi();
+  const { data: allPlacements } = useQuery<KubeList<ModelPlacement>>({
+    queryKey: ["all-placements"],
+    queryFn: () => api.listAllModelPlacements(),
+  });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggle = (name: string) => {
@@ -185,7 +247,14 @@ export function EnvironmentsPage() {
                     {statusText(env.status?.conditions)}
                   </td>
                 </tr>
-                {isExpanded && <EnvironmentDetailRow env={env} />}
+                {isExpanded && (
+                  <EnvironmentDetailRow
+                    env={env}
+                    placements={(allPlacements?.items ?? []).filter(
+                      (p) => p.spec.inferenceEnvironmentRef.name === name,
+                    )}
+                  />
+                )}
               </Fragment>
             );
           })}

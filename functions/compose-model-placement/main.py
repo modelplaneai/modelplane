@@ -44,18 +44,34 @@ def _to_dns_label(s: str) -> str:
 
 def _set_conditions(
     rsp: fnv1.RunFunctionResponse,
-    deployed: bool,
-    deployed_reason: str,
+    model_accepted: bool,
+    model_accepted_reason: str,
+    model_ready: bool = False,
+    model_ready_reason: str = "WaitingForModel",
+    routing_ready: bool = False,
+    routing_ready_reason: str = "WaitingForModel",
 ) -> None:
-    """Set the Deployed condition on the XR.
+    """Set custom conditions on the XR.
 
     Emitted on every reconcile so the UI always knows the full condition set.
     Ready is handled separately via rsp.desired.composite.ready (reserved).
     """
     rsp.conditions.append(fnv1.Condition(
-        type="Deployed",
-        status=fnv1.STATUS_CONDITION_TRUE if deployed else fnv1.STATUS_CONDITION_FALSE,
-        reason=deployed_reason,
+        type="ModelAccepted",
+        status=fnv1.STATUS_CONDITION_TRUE if model_accepted else fnv1.STATUS_CONDITION_FALSE,
+        reason=model_accepted_reason,
+        target=fnv1.TARGET_COMPOSITE,
+    ))
+    rsp.conditions.append(fnv1.Condition(
+        type="ModelReady",
+        status=fnv1.STATUS_CONDITION_TRUE if model_ready else fnv1.STATUS_CONDITION_FALSE,
+        reason=model_ready_reason,
+        target=fnv1.TARGET_COMPOSITE,
+    ))
+    rsp.conditions.append(fnv1.Condition(
+        type="RoutingReady",
+        status=fnv1.STATUS_CONDITION_TRUE if routing_ready else fnv1.STATUS_CONDITION_FALSE,
+        reason=routing_ready_reason,
         target=fnv1.TARGET_COMPOSITE,
     ))
 
@@ -113,7 +129,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     model = request.get_required_resource(req, "model")
     ie = request.get_required_resource(req, "environment")
     if model is None or ie is None:
-        _set_conditions(rsp, deployed=False, deployed_reason="WaitingForReferences")
+        _set_conditions(rsp, model_accepted=False, model_accepted_reason="WaitingForReferences")
         response.normal(rsp, "Waiting for model and environment to be resolved")
         return
 
@@ -122,7 +138,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gateway_address = ie_status.get("gateway", {}).get("address")
 
     if not pc_name:
-        _set_conditions(rsp, deployed=False, deployed_reason="WaitingForEnvironment")
+        _set_conditions(rsp, model_accepted=False, model_accepted_reason="WaitingForEnvironment")
         response.normal(rsp, "Waiting for environment providerConfigRef")
         return
 
@@ -263,16 +279,23 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # the remote LLMIS's Ready condition is True — meaning the model is
     # actually serving traffic, not just submitted.
     llmis_ready = _has_condition(req, "llm-inference-service", "Ready")
+    backend_exists = "backend" in req.observed.resources
     was_ready = resource.get_condition(
         req.observed.composite.resource, "Ready"
     ).status == "True"
 
-    # Deployed: the Object exists on the remote cluster.
-    # Ready: the LLMIS is actually serving traffic (via rsp.desired.composite.ready).
+    # ModelAccepted: the LLMIS Object exists on the remote cluster.
+    # ModelReady: the LLMIS is actually serving traffic.
+    # RoutingReady: the Backend resource exists on the control plane.
+    # Ready: all of the above (via rsp.desired.composite.ready).
     _set_conditions(
         rsp,
-        deployed=llmis_exists,
-        deployed_reason="ModelSubmitted" if llmis_exists else "Deploying",
+        model_accepted=llmis_exists,
+        model_accepted_reason="Accepted" if llmis_exists else "Deploying",
+        model_ready=llmis_ready,
+        model_ready_reason="Serving" if llmis_ready else "ModelStarting" if llmis_exists else "WaitingForModel",
+        routing_ready=backend_exists,
+        routing_ready_reason="BackendConfigured" if backend_exists else "WaitingForGateway",
     )
 
     if llmis_ready:
