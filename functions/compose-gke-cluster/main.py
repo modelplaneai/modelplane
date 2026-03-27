@@ -12,6 +12,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .lib import conditions
 from .lib import metadata
 from .lib import resource as libresource
+from .lib import secrets
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
@@ -30,19 +31,19 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     xr = v1alpha1.GKECluster(**resource.struct_to_dict(req.observed.composite.resource))
     name = xr.metadata.name
     ns = xr.metadata.namespace
-    spec = xr.spec
+    networking = xr.spec.networking or v1alpha1.Networking()
 
-    networking = spec.networking or v1alpha1.Networking()
-    pod_cidr = networking.podCidr or "10.1.0.0/16"
-    svc_cidr = networking.serviceCidr or "10.2.0.0/16"
-    node_cidr = networking.nodeCidr or "10.0.0.0/24"
+    # Subnet secondary range names. These couple the subnet definition to
+    # the cluster's ipAllocationPolicy — both must use the same names.
+    range_pods = "pods"
+    range_services = "services"
 
     resource.update(
         rsp.desired.resources["network"],
         networkv1beta1.Network(
             spec=networkv1beta1.Spec(
                 forProvider=networkv1beta1.ForProvider(
-                    project=spec.project,
+                    project=xr.spec.project,
                     autoCreateSubnetworks=False,
                 ),
             ),
@@ -54,20 +55,20 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         subnetv1beta1.Subnetwork(
             spec=subnetv1beta1.Spec(
                 forProvider=subnetv1beta1.ForProvider(
-                    project=spec.project,
-                    region=spec.region,
+                    project=xr.spec.project,
+                    region=xr.spec.region,
                     networkSelector=subnetv1beta1.NetworkSelector(
                         matchControllerRef=True,
                     ),
-                    ipCidrRange=node_cidr,
+                    ipCidrRange=networking.nodeCidr,
                     secondaryIpRange=[
                         subnetv1beta1.SecondaryIpRangeItem(
-                            rangeName="pods",
-                            ipCidrRange=pod_cidr,
+                            rangeName=range_pods,
+                            ipCidrRange=networking.podCidr,
                         ),
                         subnetv1beta1.SecondaryIpRangeItem(
-                            rangeName="services",
-                            ipCidrRange=svc_cidr,
+                            rangeName=range_services,
+                            ipCidrRange=networking.serviceCidr,
                         ),
                     ],
                 ),
@@ -82,12 +83,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         clusterv1beta1.Cluster(
             spec=clusterv1beta1.Spec(
                 forProvider=clusterv1beta1.ForProvider(
-                    project=spec.project,
-                    location=spec.region,
+                    project=xr.spec.project,
+                    location=xr.spec.region,
                     deletionProtection=False,
                     removeDefaultNodePool=True,
                     initialNodeCount=1,
-                    minMasterVersion=spec.kubernetesVersion or "1.35",
+                    minMasterVersion=xr.spec.kubernetesVersion,
                     networkSelector=clusterv1beta1.NetworkSelector(
                         matchControllerRef=True,
                     ),
@@ -95,14 +96,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         matchControllerRef=True,
                     ),
                     ipAllocationPolicy=clusterv1beta1.IpAllocationPolicy(
-                        clusterSecondaryRangeName="pods",
-                        servicesSecondaryRangeName="services",
+                        clusterSecondaryRangeName=range_pods,
+                        servicesSecondaryRangeName=range_services,
                     ),
                     releaseChannel=clusterv1beta1.ReleaseChannel(
                         channel="REGULAR",
                     ),
                     workloadIdentityConfig=clusterv1beta1.WorkloadIdentityConfig(
-                        workloadPool=f"{spec.project}.svc.id.goog",
+                        workloadPool=f"{xr.spec.project}.svc.id.goog",
                     ),
                 ),
                 writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
@@ -113,10 +114,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         ),
     )
 
-    for pool in spec.nodePools:
+    for pool in xr.spec.nodePools:
         node_config = nodepoolv1beta1.NodeConfig(
             machineType=pool.machineType,
-            diskSizeGb=pool.diskSizeGb or 100,
+            diskSizeGb=pool.diskSizeGb,
             imageType="COS_CONTAINERD",
             oauthScopes=[
                 "https://www.googleapis.com/auth/cloud-platform",
@@ -127,14 +128,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             node_config.guestAccelerator = [
                 nodepoolv1beta1.GuestAcceleratorItem(
                     type=pool.gpu.acceleratorType,
-                    count=pool.gpu.acceleratorCount or 1,
+                    count=pool.gpu.acceleratorCount,
                     gpuDriverInstallationConfig=nodepoolv1beta1.GpuDriverInstallationConfig(
                         gpuDriverVersion="DEFAULT",
                     ),
                 ),
             ]
             node_config.labels = {
-                metadata.LABEL_KEY_GPU: pool.gpu.acceleratorType or "unknown",
+                metadata.LABEL_KEY_GPU: pool.gpu.acceleratorType,
                 metadata.LABEL_KEY_POOL: pool.name,
             }
         else:
@@ -145,15 +146,15 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         np = nodepoolv1beta1.NodePool(
             spec=nodepoolv1beta1.Spec(
                 forProvider=nodepoolv1beta1.ForProvider(
-                    project=spec.project,
-                    location=spec.region,
+                    project=xr.spec.project,
+                    location=xr.spec.region,
                     clusterSelector=nodepoolv1beta1.ClusterSelector(
                         matchControllerRef=True,
                     ),
-                    initialNodeCount=pool.nodeCount or 1,
+                    initialNodeCount=pool.nodeCount,
                     autoscaling=nodepoolv1beta1.Autoscaling(
-                        minNodeCount=pool.minNodeCount or 0,
-                        maxNodeCount=pool.maxNodeCount or 8,
+                        minNodeCount=pool.minNodeCount,
+                        maxNodeCount=pool.maxNodeCount,
                     ),
                     nodeConfig=node_config,
                 ),
@@ -175,7 +176,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         sav1beta1.ServiceAccount(
             spec=sav1beta1.Spec(
                 forProvider=sav1beta1.ForProvider(
-                    project=spec.project,
+                    project=xr.spec.project,
                     displayName=f"Crossplane GKECluster {name}",
                 ),
             ),
@@ -202,12 +203,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     sa_email = None
     observed_sa = req.observed.resources.get("service-account")
     if observed_sa:
-        sa_email = (
+        sa = sav1beta1.ServiceAccount.model_validate(
             resource.struct_to_dict(observed_sa.resource)
-            .get("status", {})
-            .get("atProvider", {})
-            .get("email")
         )
+        if sa.status and sa.status.atProvider:
+            sa_email = sa.status.atProvider.email
 
     if sa_email:
         resource.update(
@@ -215,7 +215,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             iamv1beta1.ProjectIAMMember(
                 spec=iamv1beta1.Spec(
                     forProvider=iamv1beta1.ForProvider(
-                        project=spec.project,
+                        project=xr.spec.project,
                         role="roles/container.admin",
                         member=f"serviceAccount:{sa_email}",
                     ),
@@ -223,12 +223,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             ),
         )
 
-    pc_name = f"{name}-kubeconfig"
-
     resource.update(
         rsp.desired.resources["provider-config-kubernetes"],
         k8spcv1alpha1.ProviderConfig(
-            metadata=metav1.ObjectMeta(name=pc_name),
+            metadata=metav1.ObjectMeta(name=kubeconfig_secret_name),
             spec=k8spcv1alpha1.Spec(
                 credentials=k8spcv1alpha1.Credentials(
                     source="Secret",
@@ -254,7 +252,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     resource.update(
         rsp.desired.resources["provider-config-helm"],
         helmpcv1beta1.ProviderConfig(
-            metadata=metav1.ObjectMeta(name=pc_name),
+            metadata=metav1.ObjectMeta(name=kubeconfig_secret_name),
             spec=helmpcv1beta1.Spec(
                 credentials=helmpcv1beta1.Credentials(
                     source="Secret",
@@ -279,13 +277,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     libresource.update_status(rsp.desired.composite, v1alpha1.Status(
         secrets=[
-            v1alpha1.Secret(type="Kubeconfig", name=kubeconfig_secret_name, key="kubeconfig"),
-            v1alpha1.Secret(type="GCPServiceAccountKey", name=sa_key_secret_name, key="private_key"),
+            v1alpha1.Secret(type=secrets.SECRET_TYPE_KUBECONFIG, name=kubeconfig_secret_name, key="kubeconfig"),
+            v1alpha1.Secret(type=secrets.SECRET_TYPE_GCP_SA_KEY, name=sa_key_secret_name, key="private_key"),
         ],
     ))
 
     managed_resources = ["network", "subnet", "cluster", "service-account", "service-account-key"]
-    managed_resources += [f"nodepool-{pool.name}" for pool in spec.nodePools]
+    managed_resources += [f"nodepool-{pool.name}" for pool in xr.spec.nodePools]
     if sa_email:
         managed_resources.append("iam-binding")
 

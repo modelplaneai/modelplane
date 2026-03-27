@@ -21,6 +21,7 @@ from .lib import helm
 from .lib import k8s
 from .lib import metadata
 from .lib import resource as libresource
+from .lib import secrets
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
@@ -76,10 +77,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     ns = xr.metadata.namespace
     v = xr.spec.versions or v1alpha1.Versions()
 
-    secrets = xr.spec.secrets or []
+    xr_secrets = xr.spec.secrets or []
 
     kubeconfig_secret = next(
-        (s for s in secrets if s.type == "Kubeconfig"), None
+        (s for s in xr_secrets if s.type == secrets.SECRET_TYPE_KUBECONFIG), None
     )
 
     if not kubeconfig_secret:
@@ -113,7 +114,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     )
 
     gcp_secret = next(
-        (s for s in secrets if s.type == "GCPServiceAccountKey"), None
+        (s for s in xr_secrets if s.type == secrets.SECRET_TYPE_GCP_SA_KEY), None
     )
     if gcp_secret:
         k8s_pc_spec.identity = k8spcv1alpha1.Identity(

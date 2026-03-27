@@ -1,13 +1,9 @@
-"""Populate default values on Pydantic models for required resources.
+"""Populate default values on Pydantic models.
 
-Required and observed resources have Optional status fields that are populated
-incrementally by their controllers. Rather than guarding every access with
-chains like `ie.status and ie.status.capacity and ie.status.capacity.gpuPools`,
-these functions return a deep copy with all intermediate Optional fields
-populated with their zero values.
-
-This is safe because functions only read required/observed resources — they
-never write them back to the response.
+Optional nested fields (status sub-objects, optional spec groups) require
+guard chains at every access site. These functions return a deep copy with
+all intermediate Optional fields populated with their zero values, so
+downstream code can access fields directly.
 """
 
 from ..model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
