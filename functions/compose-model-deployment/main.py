@@ -6,15 +6,13 @@ and composes Envoy Gateway Backend + HTTPRoute resources on the control plane
 for unified endpoint routing.
 """
 
-import math
-
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from . import scheduling
 from .lib import conditions
 from .lib import defaults
 from .lib import naming
-from .lib import quantities
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
@@ -22,11 +20,6 @@ from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
-
-# Maps InferenceEnvironment backends to the engines they support.
-_COMPAT = {
-    "KServe": ["vLLM"],
-}
 
 # The namespace used for LLMInferenceService on all remote clusters.
 _REMOTE_NAMESPACE = "default"
@@ -129,67 +122,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         for p in placement_dicts
     ]
 
-    resolved_model_name = model_resource.spec.model.name
-    engine = model_resource.spec.engine
-    model_vram_bytes = quantities.parse_quantity(model_resource.spec.resources.vram)
-
-    # Schedule: filter environments by engine compatibility and VRAM capacity.
-    candidates = []
-    for env in envs:
-        env_name = env.metadata.name if env.metadata else ""
-        if engine not in _COMPAT.get(env.status.capacity.backend or "", []):
-            continue
-
-        # Find the pool that needs the fewest GPUs for this model.
-        best_gpus_needed = None
-        eligible_total = 0
-        for pool in env.status.capacity.gpuPools:
-            pool_mem = quantities.parse_quantity(pool.memory or "0Gi")
-            if pool_mem <= 0:
-                continue
-            gpus_needed = max(1, math.ceil(model_vram_bytes / pool_mem))
-            eligible_total += pool.count or 0
-            if best_gpus_needed is None or gpus_needed < best_gpus_needed:
-                best_gpus_needed = gpus_needed
-
-        if best_gpus_needed is None:
-            continue
-
-        # Subtract GPUs used by other deployments' placements on this IE.
-        used_gpus = 0
-        for p in all_placements:
-            p_labels = p.metadata.labels or {}
-            p_deployment = p_labels.get("modelplane.ai/deployment", "")
-            if p_deployment == xr_name:
-                continue  # Don't count our own placements against us.
-            p_ie = p.spec.inferenceEnvironmentRef.name if p.spec and p.spec.inferenceEnvironmentRef else ""
-            if p_ie == env_name:
-                used_gpus += p.status.resources.gpu.count or 0
-
-        if eligible_total - used_gpus < best_gpus_needed:
-            continue
-
-        gateway_address = env.status.gateway.address
-        candidates.append({
-            "name": env_name,
-            "gateway_address": gateway_address,
-        })
-
-    # Sort candidates preferring environments that already have placements.
-    # This ensures adding a new environment doesn't displace existing working
-    # placements. New environments only get placements if there are open slots.
-    # Within each group (existing vs new), sort by name for determinism.
-    candidates.sort(key=lambda c: (
-        0 if f"placement-{c['name']}" in req.observed.resources else 1,
-        c["name"],
-    ))
-    matched = candidates[:desired_envs]
+    matched = scheduling.schedule(xr, model_resource, envs, all_placements)
 
     # Transition: emit which environments were matched (first time only).
-    matched_names = [c["name"] for c in matched]
+    matched_names = [c.name for c in matched]
     prev_placement_count = sum(
         1 for c in matched
-        if f"placement-{c['name']}" in req.observed.resources
+        if f"placement-{c.name}" in req.observed.resources
     )
     if matched and prev_placement_count == 0:
         response.normal(
@@ -198,7 +137,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Compose a ModelPlacement per matched environment.
     for env_info in matched:
-        ie_name = env_info["name"]
+        ie_name = env_info.name
         placement_key = f"placement-{ie_name}"
         pname = naming.placement_name(xr_name, ie_name)
 
@@ -224,7 +163,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # PlacementsScheduled: environments matched and placements created.
     any_placements_observed = any(
-        f"placement-{c['name']}" in req.observed.resources for c in matched
+        f"placement-{c.name}" in req.observed.resources for c in matched
     )
     scheduled = len(matched) > 0 and any_placements_observed
 
@@ -251,8 +190,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # observed ModelPlacement status.
     backend_refs = []
     for env_info in matched:
-        placement_key = f"placement-{env_info['name']}"
-        observed = req.observed.resources.get(placement_key)
+        observed = req.observed.resources.get(f"placement-{env_info.name}")
         if observed:
             p_status = resource.struct_to_dict(observed.resource).get("status", {})
             backend_name = p_status.get("routing", {}).get("backendName")
@@ -314,7 +252,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     placements_ready = 0
     for env_info in matched:
-        placement_key = f"placement-{env_info['name']}"
+        placement_key = f"placement-{env_info.name}"
         if conditions.has_condition(req, placement_key, "Ready"):
             rsp.desired.resources[placement_key].ready = fnv1.READY_TRUE
             placements_ready += 1
@@ -370,7 +308,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Write status for the user.
     status = v1alpha1.Status(
-        model=v1alpha1.Model(name=resolved_model_name),
+        model=v1alpha1.Model(name=model_resource.spec.model.name),
         placements=v1alpha1.Placements(total=len(matched), ready=placements_ready),
     )
     if gateway_ip:
