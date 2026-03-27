@@ -19,9 +19,7 @@ def has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
     return resource.get_condition(observed.resource, cond).status == "True"
 
 
-def has_parent_condition(
-    req: fnv1.RunFunctionRequest, name: str, cond: str
-) -> bool:
+def has_parent_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
     """Check a Gateway API condition nested under status.parents[].conditions.
 
     Gateway API resources (HTTPRoute, etc.) nest route status under
@@ -54,13 +52,10 @@ def set_condition(
         fnv1.Condition(
             type=type,
             status=(
-                fnv1.STATUS_CONDITION_TRUE
-                if status
-                else fnv1.STATUS_CONDITION_FALSE
+                fnv1.STATUS_CONDITION_TRUE if status else fnv1.STATUS_CONDITION_FALSE
             ),
             reason=reason,
             message=message,
             target=fnv1.TARGET_COMPOSITE,
         )
     )
-

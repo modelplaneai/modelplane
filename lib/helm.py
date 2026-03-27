@@ -31,9 +31,7 @@ def helm_release(
     """
     metadata = None
     if labels or metadata_namespace:
-        metadata = metav1.ObjectMeta(
-            namespace=metadata_namespace, labels=labels
-        )
+        metadata = metav1.ObjectMeta(namespace=metadata_namespace, labels=labels)
 
     release = helmv1beta1.Release(
         metadata=metadata,

@@ -19,7 +19,9 @@ from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.m.gcp.cloudplatform.projectiammember import v1beta1 as iamv1beta1
 from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
-from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
+from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import (
+    v1beta1 as sakeyv1beta1,
+)
 from .model.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
 from .model.io.upbound.m.gcp.compute.subnetwork import v1beta1 as subnetv1beta1
 from .model.io.upbound.m.gcp.container.cluster import v1beta1 as clusterv1beta1
@@ -275,14 +277,31 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         ),
     )
 
-    libresource.update_status(rsp.desired.composite, v1alpha1.Status(
-        secrets=[
-            v1alpha1.Secret(type=secrets.SECRET_TYPE_KUBECONFIG, name=kubeconfig_secret_name, key=secrets.SECRET_KEY_KUBECONFIG),
-            v1alpha1.Secret(type=secrets.SECRET_TYPE_GCP_SA_KEY, name=sa_key_secret_name, key=secrets.SECRET_KEY_GCP_SA),
-        ],
-    ))
+    libresource.update_status(
+        rsp.desired.composite,
+        v1alpha1.Status(
+            secrets=[
+                v1alpha1.Secret(
+                    type=secrets.SECRET_TYPE_KUBECONFIG,
+                    name=kubeconfig_secret_name,
+                    key=secrets.SECRET_KEY_KUBECONFIG,
+                ),
+                v1alpha1.Secret(
+                    type=secrets.SECRET_TYPE_GCP_SA_KEY,
+                    name=sa_key_secret_name,
+                    key=secrets.SECRET_KEY_GCP_SA,
+                ),
+            ],
+        ),
+    )
 
-    managed_resources = ["network", "subnet", "cluster", "service-account", "service-account-key"]
+    managed_resources = [
+        "network",
+        "subnet",
+        "cluster",
+        "service-account",
+        "service-account-key",
+    ]
     managed_resources += [f"nodepool-{pool.name}" for pool in xr.spec.nodePools]
     if sa_email:
         managed_resources.append("iam-binding")

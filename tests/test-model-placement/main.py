@@ -21,138 +21,150 @@ test = compositiontest.CompositionTest(
         # by Crossplane at runtime via response.require_resources().
         extraResources=[
             # The ClusterModel referenced by the XR's spec.modelRef.
-            libresource.model_to_fixture(cmv1alpha1.ClusterModel(
-                metadata=metav1.ObjectMeta(name="qwen-0.5b-vllm"),
-                spec=cmv1alpha1.Spec(
-                    model=cmv1alpha1.Model(name="Qwen/Qwen2.5-0.5B-Instruct"),
-                    source="HuggingFace",
-                    huggingFace=cmv1alpha1.HuggingFace(
-                        repo="Qwen/Qwen2.5-0.5B-Instruct",
+            libresource.model_to_fixture(
+                cmv1alpha1.ClusterModel(
+                    metadata=metav1.ObjectMeta(name="qwen-0.5b-vllm"),
+                    spec=cmv1alpha1.Spec(
+                        model=cmv1alpha1.Model(name="Qwen/Qwen2.5-0.5B-Instruct"),
+                        source="HuggingFace",
+                        huggingFace=cmv1alpha1.HuggingFace(
+                            repo="Qwen/Qwen2.5-0.5B-Instruct",
+                        ),
+                        engine="vLLM",
+                        vllm=cmv1alpha1.Vllm(image="vllm/vllm-openai:v0.7.3"),
+                        resources=cmv1alpha1.Resources(
+                            vram="2Gi",
+                            cpu="3",
+                            memory="10Gi",
+                        ),
                     ),
-                    engine="vLLM",
-                    vllm=cmv1alpha1.Vllm(image="vllm/vllm-openai:v0.7.3"),
-                    resources=cmv1alpha1.Resources(
-                        vram="2Gi",
-                        cpu="3",
-                        memory="10Gi",
-                    ),
-                ),
-            )),
+                )
+            ),
             # The InferenceEnvironment referenced by spec.inferenceEnvironmentRef.
             # Status fields are populated as if the environment is fully ready.
-            libresource.model_to_fixture(iev1alpha1.InferenceEnvironment(
-                metadata=metav1.ObjectMeta(
-                    name="demo-us-central",
-                    labels={"modelplane.ai/environment": "true"},
-                ),
-                spec=iev1alpha1.Spec(backend="KServe"),
-                status=iev1alpha1.Status(
-                    providerConfigRef=iev1alpha1.ProviderConfigRef(
-                        name="demo-us-central-cluster",
+            libresource.model_to_fixture(
+                iev1alpha1.InferenceEnvironment(
+                    metadata=metav1.ObjectMeta(
+                        name="demo-us-central",
+                        labels={"modelplane.ai/environment": "true"},
                     ),
-                    gateway=iev1alpha1.Gateway(address="34.55.100.10"),
-                    capacity=iev1alpha1.Capacity(
-                        backend="KServe",
-                        gpuPools=[iev1alpha1.GpuPool(
-                            acceleratorType="nvidia-l4",
-                            count=2,
-                            memory="24Gi",
-                        )],
+                    spec=iev1alpha1.Spec(backend="KServe"),
+                    status=iev1alpha1.Status(
+                        providerConfigRef=iev1alpha1.ProviderConfigRef(
+                            name="demo-us-central-cluster",
+                        ),
+                        gateway=iev1alpha1.Gateway(address="34.55.100.10"),
+                        capacity=iev1alpha1.Capacity(
+                            backend="KServe",
+                            gpuPools=[
+                                iev1alpha1.GpuPool(
+                                    acceleratorType="nvidia-l4",
+                                    count=2,
+                                    memory="24Gi",
+                                )
+                            ],
+                        ),
                     ),
-                ),
-            )),
+                )
+            ),
         ],
         assertResources=[
             # Assert the XR has status populated from the model and env.
-            libresource.model_to_dict(mpv1alpha1.ModelPlacement(
-                metadata=metav1.ObjectMeta(
-                    name="qwen-demo-us-central",
-                    namespace="ml-team",
-                ),
-                spec=mpv1alpha1.Spec(
-                    modelRef=mpv1alpha1.ModelRef(
-                        name="qwen-0.5b-vllm",
+            libresource.model_to_dict(
+                mpv1alpha1.ModelPlacement(
+                    metadata=metav1.ObjectMeta(
+                        name="qwen-demo-us-central",
+                        namespace="ml-team",
                     ),
-                    inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
-                        name="demo-us-central",
-                    ),
-                ),
-                status=mpv1alpha1.Status(
-                    model=mpv1alpha1.Model(
-                        name="Qwen/Qwen2.5-0.5B-Instruct",
-                    ),
-                    resources=mpv1alpha1.Resources(
-                        gpu=mpv1alpha1.Gpu(count=1),
-                    ),
-                    endpoint=mpv1alpha1.Endpoint(
-                        url="http://34.55.100.10/default/model-qwen-0-5b-vllm/v1",
-                    ),
-                ),
-            )),
-            # Assert the LLMInferenceService Object is composed on the remote
-            # cluster with the correct vLLM container spec and GPU count.
-            libresource.model_to_dict(k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(
-                    annotations={
-                        "crossplane.io/composition-resource-name": "llm-inference-service",
-                    },
-                ),
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name="demo-us-central-cluster",
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromCelQuery",
-                        celQuery=(
-                            'object.status.conditions.exists('
-                            'c, c.type == "Ready" && c.status == "True")'
+                    spec=mpv1alpha1.Spec(
+                        modelRef=mpv1alpha1.ModelRef(
+                            name="qwen-0.5b-vllm",
+                        ),
+                        inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
+                            name="demo-us-central",
                         ),
                     ),
-                    forProvider=k8sobjv1alpha1.ForProvider(
-                        manifest={
-                            "apiVersion": "serving.kserve.io/v1alpha1",
-                            "kind": "LLMInferenceService",
-                            "metadata": {
-                                "name": "model-qwen-0-5b-vllm",
-                                "namespace": "default",
-                            },
-                            "spec": {
-                                "model": {
-                                    "uri": "hf://Qwen/Qwen2.5-0.5B-Instruct",
-                                    "name": "Qwen/Qwen2.5-0.5B-Instruct",
-                                },
-                                "replicas": 1,
-                                "template": {
-                                    "containers": [{
-                                        "name": "main",
-                                        "image": "vllm/vllm-openai:v0.7.3",
-                                        "args": [
-                                            "--served-model-name=Qwen/Qwen2.5-0.5B-Instruct",
-                                        ],
-                                        "securityContext": {
-                                            "runAsUser": 0,
-                                            "runAsNonRoot": False,
-                                        },
-                                        "resources": {
-                                            "limits": {
-                                                "nvidia.com/gpu": "1",
-                                                "cpu": "3",
-                                                "memory": "10Gi",
-                                            },
-                                            "requests": {
-                                                "cpu": "1",
-                                                "memory": "10Gi",
-                                            },
-                                        },
-                                    }],
-                                },
-                                "router": {"gateway": {}, "route": {}},
-                            },
+                    status=mpv1alpha1.Status(
+                        model=mpv1alpha1.Model(
+                            name="Qwen/Qwen2.5-0.5B-Instruct",
+                        ),
+                        resources=mpv1alpha1.Resources(
+                            gpu=mpv1alpha1.Gpu(count=1),
+                        ),
+                        endpoint=mpv1alpha1.Endpoint(
+                            url="http://34.55.100.10/default/model-qwen-0-5b-vllm/v1",
+                        ),
+                    ),
+                )
+            ),
+            # Assert the LLMInferenceService Object is composed on the remote
+            # cluster with the correct vLLM container spec and GPU count.
+            libresource.model_to_dict(
+                k8sobjv1alpha1.Object(
+                    metadata=metav1.ObjectMeta(
+                        annotations={
+                            "crossplane.io/composition-resource-name": "llm-inference-service",
                         },
                     ),
-                ),
-            )),
+                    spec=k8sobjv1alpha1.Spec(
+                        providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                            kind="ClusterProviderConfig",
+                            name="demo-us-central-cluster",
+                        ),
+                        readiness=k8sobjv1alpha1.Readiness(
+                            policy="DeriveFromCelQuery",
+                            celQuery=(
+                                "object.status.conditions.exists("
+                                'c, c.type == "Ready" && c.status == "True")'
+                            ),
+                        ),
+                        forProvider=k8sobjv1alpha1.ForProvider(
+                            manifest={
+                                "apiVersion": "serving.kserve.io/v1alpha1",
+                                "kind": "LLMInferenceService",
+                                "metadata": {
+                                    "name": "model-qwen-0-5b-vllm",
+                                    "namespace": "default",
+                                },
+                                "spec": {
+                                    "model": {
+                                        "uri": "hf://Qwen/Qwen2.5-0.5B-Instruct",
+                                        "name": "Qwen/Qwen2.5-0.5B-Instruct",
+                                    },
+                                    "replicas": 1,
+                                    "template": {
+                                        "containers": [
+                                            {
+                                                "name": "main",
+                                                "image": "vllm/vllm-openai:v0.7.3",
+                                                "args": [
+                                                    "--served-model-name=Qwen/Qwen2.5-0.5B-Instruct",
+                                                ],
+                                                "securityContext": {
+                                                    "runAsUser": 0,
+                                                    "runAsNonRoot": False,
+                                                },
+                                                "resources": {
+                                                    "limits": {
+                                                        "nvidia.com/gpu": "1",
+                                                        "cpu": "3",
+                                                        "memory": "10Gi",
+                                                    },
+                                                    "requests": {
+                                                        "cpu": "1",
+                                                        "memory": "10Gi",
+                                                    },
+                                                },
+                                            }
+                                        ],
+                                    },
+                                    "router": {"gateway": {}, "route": {}},
+                                },
+                            },
+                        ),
+                    ),
+                )
+            ),
             # Assert the Backend is composed pointing to the remote gateway.
             {
                 "apiVersion": "gateway.envoyproxy.io/v1alpha1",
@@ -164,9 +176,11 @@ test = compositiontest.CompositionTest(
                     },
                 },
                 "spec": {
-                    "endpoints": [{
-                        "ip": {"address": "34.55.100.10", "port": 80},
-                    }],
+                    "endpoints": [
+                        {
+                            "ip": {"address": "34.55.100.10", "port": 80},
+                        }
+                    ],
                 },
             },
         ],

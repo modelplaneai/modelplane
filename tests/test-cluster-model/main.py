@@ -14,29 +14,31 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         assertResources=[
-            libresource.model_to_dict(cmv1alpha1.ClusterModel(
-                metadata=metav1.ObjectMeta(
-                    name="qwen-0.5b-vllm",
-                ),
-                spec=cmv1alpha1.Spec(
-                    model=cmv1alpha1.Model(
-                        name="Qwen/Qwen2.5-0.5B-Instruct",
+            libresource.model_to_dict(
+                cmv1alpha1.ClusterModel(
+                    metadata=metav1.ObjectMeta(
+                        name="qwen-0.5b-vllm",
                     ),
-                    source="HuggingFace",
-                    huggingFace=cmv1alpha1.HuggingFace(
-                        repo="Qwen/Qwen2.5-0.5B-Instruct",
+                    spec=cmv1alpha1.Spec(
+                        model=cmv1alpha1.Model(
+                            name="Qwen/Qwen2.5-0.5B-Instruct",
+                        ),
+                        source="HuggingFace",
+                        huggingFace=cmv1alpha1.HuggingFace(
+                            repo="Qwen/Qwen2.5-0.5B-Instruct",
+                        ),
+                        engine="vLLM",
+                        vllm=cmv1alpha1.Vllm(
+                            image="vllm/vllm-openai:v0.7.3",
+                        ),
+                        resources=cmv1alpha1.Resources(
+                            vram="2Gi",
+                            cpu="3",
+                            memory="10Gi",
+                        ),
                     ),
-                    engine="vLLM",
-                    vllm=cmv1alpha1.Vllm(
-                        image="vllm/vllm-openai:v0.7.3",
-                    ),
-                    resources=cmv1alpha1.Resources(
-                        vram="2Gi",
-                        cpu="3",
-                        memory="10Gi",
-                    ),
-                ),
-            )),
+                )
+            ),
         ],
     ),
 )

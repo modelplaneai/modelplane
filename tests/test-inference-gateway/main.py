@@ -17,27 +17,30 @@ test = compositiontest.CompositionTest(
         assertResources=[
             # Assert the XR exists. No status.address on the first pass
             # (the Gateway hasn't been assigned an IP yet).
-            libresource.model_to_dict(igwv1alpha1.InferenceGateway(
-                metadata=metav1.ObjectMeta(name="default"),
-                spec=igwv1alpha1.Spec(backend="EnvoyGateway"),
-            )),
+            libresource.model_to_dict(
+                igwv1alpha1.InferenceGateway(
+                    metadata=metav1.ObjectMeta(name="default"),
+                    spec=igwv1alpha1.Spec(backend="EnvoyGateway"),
+                )
+            ),
             # Assert the Helm ProviderConfig is composed in
             # modelplane-system.
-            libresource.model_to_dict(helmpcv1beta1.ProviderConfig(
-                metadata=metav1.ObjectMeta(
-                    name="modelplane-in-cluster",
-                    namespace="modelplane-system",
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "provider-config-helm",
-                    },
-                ),
-                spec=helmpcv1beta1.Spec(
-                    credentials=helmpcv1beta1.Credentials(
-                        source="InjectedIdentity",
+            libresource.model_to_dict(
+                helmpcv1beta1.ProviderConfig(
+                    metadata=metav1.ObjectMeta(
+                        name="modelplane-in-cluster",
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "provider-config-helm",
+                        },
                     ),
-                ),
-            )),
+                    spec=helmpcv1beta1.Spec(
+                        credentials=helmpcv1beta1.Credentials(
+                            source="InjectedIdentity",
+                        ),
+                    ),
+                )
+            ),
         ],
     ),
 )

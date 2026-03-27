@@ -22,74 +22,80 @@ test = compositiontest.CompositionTest(
         # Ready with secrets. This triggers KServeStack and
         # ClusterProviderConfig composition.
         observedResources=[
-            libresource.model_to_fixture(gkev1alpha1.GKECluster(
-                metadata=metav1.ObjectMeta(
-                    name="demo-us-central",
-                    namespace="modelplane-system",
-                    annotations={
-                        "crossplane.io/composition-resource-name": "gke-cluster",
-                    },
-                ),
-                spec=gkev1alpha1.Spec(
-                    project="my-gcp-project",
-                    region="us-central1",
-                    nodePools=[
-                        gkev1alpha1.NodePool(
-                            name="system",
-                            role="System",
-                            machineType="e2-standard-4",
-                        ),
-                    ],
-                ),
-                status=gkev1alpha1.Status(
-                    conditions=[gkev1alpha1.Condition(
-                        type="Ready",
-                        status="True",
-                        reason="Available",
-                        lastTransitionTime="2025-01-01T00:00:00Z",
-                    )],
-                    secrets=[
-                        gkev1alpha1.Secret(
-                            type="Kubeconfig",
-                            name="demo-us-central-kubeconfig",
-                            key="kubeconfig",
-                        ),
-                        gkev1alpha1.Secret(
-                            type="GCPServiceAccountKey",
-                            name="demo-us-central-sa-key",
-                            key="credentials.json",
-                        ),
-                    ],
-                ),
-            )),
+            libresource.model_to_fixture(
+                gkev1alpha1.GKECluster(
+                    metadata=metav1.ObjectMeta(
+                        name="demo-us-central",
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "gke-cluster",
+                        },
+                    ),
+                    spec=gkev1alpha1.Spec(
+                        project="my-gcp-project",
+                        region="us-central1",
+                        nodePools=[
+                            gkev1alpha1.NodePool(
+                                name="system",
+                                role="System",
+                                machineType="e2-standard-4",
+                            ),
+                        ],
+                    ),
+                    status=gkev1alpha1.Status(
+                        conditions=[
+                            gkev1alpha1.Condition(
+                                type="Ready",
+                                status="True",
+                                reason="Available",
+                                lastTransitionTime="2025-01-01T00:00:00Z",
+                            )
+                        ],
+                        secrets=[
+                            gkev1alpha1.Secret(
+                                type="Kubeconfig",
+                                name="demo-us-central-kubeconfig",
+                                key="kubeconfig",
+                            ),
+                            gkev1alpha1.Secret(
+                                type="GCPServiceAccountKey",
+                                name="demo-us-central-sa-key",
+                                key="credentials.json",
+                            ),
+                        ],
+                    ),
+                )
+            ),
         ],
         assertResources=[
             # Assert the XR has status populated with providerConfigRef,
             # namespace, and GPU capacity.
-            libresource.model_to_dict(iev1alpha1.InferenceEnvironment(
-                metadata=metav1.ObjectMeta(
-                    name="demo-us-central",
-                ),
-                spec=iev1alpha1.Spec(
-                    backend="KServe",
-                ),
-                status=iev1alpha1.Status(
-                    providerConfigRef=iev1alpha1.ProviderConfigRef(
-                        name="demo-us-central-cluster-kubeconfig",
+            libresource.model_to_dict(
+                iev1alpha1.InferenceEnvironment(
+                    metadata=metav1.ObjectMeta(
+                        name="demo-us-central",
                     ),
-                    namespace="modelplane-system",
-                    capacity=iev1alpha1.Capacity(
+                    spec=iev1alpha1.Spec(
                         backend="KServe",
-                        gpuPools=[
-                            iev1alpha1.GpuPool(
-                                acceleratorType="nvidia-l4",
-                                memory="24Gi",
-                                count=1,
-                            ),
-                        ],
                     ),
-                ),
-            )),
+                    status=iev1alpha1.Status(
+                        providerConfigRef=iev1alpha1.ProviderConfigRef(
+                            name="demo-us-central-cluster-kubeconfig",
+                        ),
+                        namespace="modelplane-system",
+                        capacity=iev1alpha1.Capacity(
+                            backend="KServe",
+                            gpuPools=[
+                                iev1alpha1.GpuPool(
+                                    acceleratorType="nvidia-l4",
+                                    memory="24Gi",
+                                    count=1,
+                                ),
+                            ],
+                        ),
+                    ),
+                )
+            ),
             # Assert GKECluster is composed in modelplane-system.
             {
                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
@@ -107,59 +113,63 @@ test = compositiontest.CompositionTest(
                 },
             },
             # Assert KServeStack is composed (gated on GKE being ready).
-            libresource.model_to_dict(kssv1alpha1.KServeStack(
-                metadata=metav1.ObjectMeta(
-                    name="demo-us-central-kserve",
-                    namespace="modelplane-system",
-                    annotations={
-                        "crossplane.io/composition-resource-name": "kserve-stack",
-                    },
-                ),
-                spec=kssv1alpha1.Spec(
-                    versions=kssv1alpha1.Versions(kserve="v0.16.0"),
-                    secrets=[
-                        kssv1alpha1.Secret(
-                            type="Kubeconfig",
-                            name="demo-us-central-kubeconfig",
-                            key="kubeconfig",
-                        ),
-                        kssv1alpha1.Secret(
-                            type="GCPServiceAccountKey",
-                            name="demo-us-central-sa-key",
-                            key="credentials.json",
-                        ),
-                    ],
-                ),
-            )),
+            libresource.model_to_dict(
+                kssv1alpha1.KServeStack(
+                    metadata=metav1.ObjectMeta(
+                        name="demo-us-central-kserve",
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "kserve-stack",
+                        },
+                    ),
+                    spec=kssv1alpha1.Spec(
+                        versions=kssv1alpha1.Versions(kserve="v0.16.0"),
+                        secrets=[
+                            kssv1alpha1.Secret(
+                                type="Kubeconfig",
+                                name="demo-us-central-kubeconfig",
+                                key="kubeconfig",
+                            ),
+                            kssv1alpha1.Secret(
+                                type="GCPServiceAccountKey",
+                                name="demo-us-central-sa-key",
+                                key="credentials.json",
+                            ),
+                        ],
+                    ),
+                )
+            ),
             # Assert ClusterProviderConfig is composed for cross-namespace
             # Object creation by ModelPlacements.
-            libresource.model_to_dict(k8scpcv1alpha1.ClusterProviderConfig(
-                metadata=metav1.ObjectMeta(
-                    name="demo-us-central-cluster-kubeconfig",
-                    annotations={
-                        "crossplane.io/composition-resource-name": "cluster-provider-config-kubernetes",
-                    },
-                ),
-                spec=k8scpcv1alpha1.Spec(
-                    credentials=k8scpcv1alpha1.Credentials(
-                        source="Secret",
-                        secretRef=k8scpcv1alpha1.SecretRef(
-                            namespace="modelplane-system",
-                            name="demo-us-central-kubeconfig",
-                            key="kubeconfig",
+            libresource.model_to_dict(
+                k8scpcv1alpha1.ClusterProviderConfig(
+                    metadata=metav1.ObjectMeta(
+                        name="demo-us-central-cluster-kubeconfig",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "cluster-provider-config-kubernetes",
+                        },
+                    ),
+                    spec=k8scpcv1alpha1.Spec(
+                        credentials=k8scpcv1alpha1.Credentials(
+                            source="Secret",
+                            secretRef=k8scpcv1alpha1.SecretRef(
+                                namespace="modelplane-system",
+                                name="demo-us-central-kubeconfig",
+                                key="kubeconfig",
+                            ),
+                        ),
+                        identity=k8scpcv1alpha1.Identity(
+                            type="GoogleApplicationCredentials",
+                            source="Secret",
+                            secretRef=k8scpcv1alpha1.SecretRef(
+                                namespace="modelplane-system",
+                                name="demo-us-central-sa-key",
+                                key="credentials.json",
+                            ),
                         ),
                     ),
-                    identity=k8scpcv1alpha1.Identity(
-                        type="GoogleApplicationCredentials",
-                        source="Secret",
-                        secretRef=k8scpcv1alpha1.SecretRef(
-                            namespace="modelplane-system",
-                            name="demo-us-central-sa-key",
-                            key="credentials.json",
-                        ),
-                    ),
-                ),
-            )),
+                )
+            ),
         ],
     ),
 )

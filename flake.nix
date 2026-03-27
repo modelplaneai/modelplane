@@ -267,15 +267,18 @@
           go = goChecks;
           frontend = frontendChecks;
 
-          # Python lint doesn't need network — ruff works on source files only.
+          # Python lint and formatting don't need network — ruff works on
+          # source files only. Configuration lives in pyproject.toml.
           python = pkgs.stdenvNoCC.mkDerivation {
             pname = "modelplane-python-checks";
             version = "0.1.0";
             src = ./.;
             nativeBuildInputs = [ pkgs.ruff ];
             buildPhase = ''
-              echo "Running ruff..."
-              ruff check functions/ tests/
+              echo "Checking Python formatting..."
+              ruff format --check functions/ lib/ tests/
+              echo "Running Python linter..."
+              ruff check functions/ lib/ tests/
             '';
             installPhase = "touch $out";
           };
@@ -339,7 +342,8 @@
               echo "  Crossplane project"
               echo "    up project build                    Build XRDs, functions, and compositions"
               echo "    up test run tests/*                 Run composition tests"
-              echo "    ruff check functions/               Lint Python functions"
+              echo "    ruff check functions/ lib/           Lint Python functions"
+              echo "    ruff format functions/ lib/          Format Python functions"
               echo "    pyright                             Type-check Python functions"
               echo ""
               echo "  Web UI"

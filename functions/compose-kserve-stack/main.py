@@ -38,41 +38,51 @@ _INFERENCE_EXTENSION_CRDS = json.loads(
 
 # KServe storage initializer config override. Enables modelcar support
 # for model caching, which the default KServe config doesn't include.
-_STORAGE_INITIALIZER_CONFIG = json.dumps({
-    "image": "kserve/storage-initializer:latest",
-    "memoryRequest": "100Mi",
-    "memoryLimit": "4Gi",
-    "cpuRequest": "100m",
-    "cpuLimit": "1",
-    "caBundleConfigMapName": "",
-    "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
-    "enableModelcar": True,
-    "cpuModelcar": "10m",
-    "memoryModelcar": "15Mi",
-    "uidModelcar": 1010,
-})
+_STORAGE_INITIALIZER_CONFIG = json.dumps(
+    {
+        "image": "kserve/storage-initializer:latest",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "4Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1",
+        "caBundleConfigMapName": "",
+        "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
+        "enableModelcar": True,
+        "cpuModelcar": "10m",
+        "memoryModelcar": "15Mi",
+        "uidModelcar": 1010,
+    }
+)
 
 # Kustomize patch applied via Helm's patchesFrom to override the
 # inferenceservice-config ConfigMap with the storage initializer config.
-_KUSTOMIZE_STORAGE_PATCH = json.dumps({
-    "patches": [{
-        "patch": json.dumps({
-            "apiVersion": "v1",
-            "kind": "ConfigMap",
-            "metadata": {"name": "inferenceservice-config"},
-            "data": {"storageInitializer": _STORAGE_INITIALIZER_CONFIG},
-        }),
-        "target": {
-            "kind": "ConfigMap",
-            "name": "inferenceservice-config",
-        },
-    }],
-})
+_KUSTOMIZE_STORAGE_PATCH = json.dumps(
+    {
+        "patches": [
+            {
+                "patch": json.dumps(
+                    {
+                        "apiVersion": "v1",
+                        "kind": "ConfigMap",
+                        "metadata": {"name": "inferenceservice-config"},
+                        "data": {"storageInitializer": _STORAGE_INITIALIZER_CONFIG},
+                    }
+                ),
+                "target": {
+                    "kind": "ConfigMap",
+                    "name": "inferenceservice-config",
+                },
+            }
+        ],
+    }
+)
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     """Compose the KServe inference stack on a remote cluster."""
-    xr = v1alpha1.KServeStack(**resource.struct_to_dict(req.observed.composite.resource))
+    xr = v1alpha1.KServeStack(
+        **resource.struct_to_dict(req.observed.composite.resource)
+    )
     name = xr.metadata.name
     ns = xr.metadata.namespace
     v = xr.spec.versions or v1alpha1.Versions()
@@ -158,44 +168,50 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # that reference it are gone. Without this, deleting the KServeStack
     # deletes the ProviderConfig and Releases simultaneously — the Releases
     # can't uninstall their charts because the ProviderConfig is gone.
-    resource.update(rsp.desired.resources["usage-helm-pc"], {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "spec": {
-            "of": {
-                "apiVersion": "helm.m.crossplane.io/v1beta1",
-                "kind": "ProviderConfig",
-                "resourceRef": {"name": pc_name},
+    resource.update(
+        rsp.desired.resources["usage-helm-pc"],
+        {
+            "apiVersion": "protection.crossplane.io/v1beta1",
+            "kind": "Usage",
+            "spec": {
+                "of": {
+                    "apiVersion": "helm.m.crossplane.io/v1beta1",
+                    "kind": "ProviderConfig",
+                    "resourceRef": {"name": pc_name},
+                },
+                "by": {
+                    "apiVersion": "helm.m.crossplane.io/v1beta1",
+                    "kind": "Release",
+                    "resourceSelector": {"matchControllerRef": True},
+                },
+                "replayDeletion": True,
             },
-            "by": {
-                "apiVersion": "helm.m.crossplane.io/v1beta1",
-                "kind": "Release",
-                "resourceSelector": {"matchControllerRef": True},
-            },
-            "replayDeletion": True,
         },
-    })
+    )
     rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
 
     # Same for the Kubernetes ProviderConfig — protect it until all Objects
     # that reference it are gone.
-    resource.update(rsp.desired.resources["usage-k8s-pc"], {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "spec": {
-            "of": {
-                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                "kind": "ProviderConfig",
-                "resourceRef": {"name": pc_name},
+    resource.update(
+        rsp.desired.resources["usage-k8s-pc"],
+        {
+            "apiVersion": "protection.crossplane.io/v1beta1",
+            "kind": "Usage",
+            "spec": {
+                "of": {
+                    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                    "kind": "ProviderConfig",
+                    "resourceRef": {"name": pc_name},
+                },
+                "by": {
+                    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                    "kind": "Object",
+                    "resourceSelector": {"matchControllerRef": True},
+                },
+                "replayDeletion": True,
             },
-            "by": {
-                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                "kind": "Object",
-                "resourceSelector": {"matchControllerRef": True},
-            },
-            "replayDeletion": True,
         },
-    })
+    )
     rsp.desired.resources["usage-k8s-pc"].ready = fnv1.READY_TRUE
 
     # Gate resources that target the remote cluster on the ProviderConfigs
@@ -274,33 +290,43 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # config — leaving it behind is harmless.
         resource.update(
             rsp.desired.resources["gateway-class"],
-            k8s.k8s_object(pc_name, {
-                "apiVersion": "gateway.networking.k8s.io/v1",
-                "kind": "GatewayClass",
-                "metadata": {"name": gw_class_name},
-                "spec": {
-                    "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+            k8s.k8s_object(
+                pc_name,
+                {
+                    "apiVersion": "gateway.networking.k8s.io/v1",
+                    "kind": "GatewayClass",
+                    "metadata": {"name": gw_class_name},
+                    "spec": {
+                        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                    },
                 },
-            }, management_policies=["Create", "Observe", "Update"]),
+                management_policies=["Create", "Observe", "Update"],
+            ),
         )
 
         resource.update(
             rsp.desired.resources["gateway"],
-            k8s.k8s_object(pc_name, {
-                "apiVersion": "gateway.networking.k8s.io/v1",
-                "kind": "Gateway",
-                "metadata": {
-                    "name": "kserve-ingress-gateway",
-                    "namespace": "kserve",
+            k8s.k8s_object(
+                pc_name,
+                {
+                    "apiVersion": "gateway.networking.k8s.io/v1",
+                    "kind": "Gateway",
+                    "metadata": {
+                        "name": "kserve-ingress-gateway",
+                        "namespace": "kserve",
+                    },
+                    "spec": {
+                        "gatewayClassName": gw_class_name,
+                        "listeners": [
+                            {**ln, "allowedRoutes": {"namespaces": {"from": "All"}}}
+                            for ln in listeners
+                        ],
+                    },
                 },
-                "spec": {
-                    "gatewayClassName": gw_class_name,
-                    "listeners": [
-                        {**ln, "allowedRoutes": {"namespaces": {"from": "All"}}}
-                        for ln in listeners
-                    ],
-                },
-            }, metadata=metav1.ObjectMeta(labels={metadata.LABEL_KEY_RESOURCE: "gateway"})),
+                metadata=metav1.ObjectMeta(
+                    labels={metadata.LABEL_KEY_RESOURCE: "gateway"}
+                ),
+            ),
         )
 
     # Gate KServe CRDs and controller on cert-manager being ready. The kserve
@@ -364,16 +390,20 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         resource.update(rsp.desired.resources["kserve-controller"], kserve_release)
 
     always_ready = [
-        "provider-config-kubernetes", "provider-config-helm",
-        "kserve-storage-patch", "gateway-class",
-        "kserve-crds", "kserve-controller",
+        "provider-config-kubernetes",
+        "provider-config-helm",
+        "kserve-storage-patch",
+        "gateway-class",
+        "kserve-crds",
+        "kserve-controller",
     ]
     for r in always_ready:
         if r in rsp.desired.resources:
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
     all_resources = [
-        "cert-manager", "envoy-gateway",
+        "cert-manager",
+        "envoy-gateway",
         "leader-worker-set",
         "inference-ext-crd-inferencemodels",
         "inference-ext-crd-inferencepools",
@@ -408,6 +438,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     libresource.update_status(rsp.desired.composite, status)
 
     # Transition: cert-manager is ready (triggers KServe composition).
-    if cert_manager_ready and not conditions.has_condition(req, "kserve-controller", "Ready"):
+    if cert_manager_ready and not conditions.has_condition(
+        req, "kserve-controller", "Ready"
+    ):
         if "kserve-controller" not in req.observed.resources:
             response.normal(rsp, "cert-manager ready, composing KServe")

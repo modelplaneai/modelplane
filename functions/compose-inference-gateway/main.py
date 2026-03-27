@@ -22,8 +22,6 @@ CONDITION_REASON_CONTROLLER_HEALTHY = "ControllerHealthy"
 CONDITION_REASON_INSTALLING = "Installing"
 
 
-
-
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     """Compose Envoy Gateway, MetalLB, GatewayClass, and Gateway."""
     xr = v1alpha1.InferenceGateway(
@@ -42,39 +40,45 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # using the pod's own service account (in-cluster identity). Namespaced
     # (not ClusterProviderConfig) so the Usage can protect it — cross-scope
     # Usages aren't supported.
-    resource.update(rsp.desired.resources["provider-config-helm"], {
-        "apiVersion": "helm.m.crossplane.io/v1beta1",
-        "kind": "ProviderConfig",
-        "metadata": {"name": pc_name, "namespace": metadata.NAMESPACE_SYSTEM},
-        "spec": {"credentials": {"source": "InjectedIdentity"}},
-    })
+    resource.update(
+        rsp.desired.resources["provider-config-helm"],
+        {
+            "apiVersion": "helm.m.crossplane.io/v1beta1",
+            "kind": "ProviderConfig",
+            "metadata": {"name": pc_name, "namespace": metadata.NAMESPACE_SYSTEM},
+            "spec": {"credentials": {"source": "InjectedIdentity"}},
+        },
+    )
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
     def _pc_usage(release_key: str) -> None:
         """Compose a Usage protecting the ProviderConfig from deletion until
         the given Helm release is gone. One Usage per release is needed
         because matchControllerRef only matches a single resource."""
-        resource.update(rsp.desired.resources[f"usage-pc-by-{release_key}"], {
-            "apiVersion": "protection.crossplane.io/v1beta1",
-            "kind": "Usage",
-            "metadata": {"namespace": metadata.NAMESPACE_SYSTEM},
-            "spec": {
-                "of": {
-                    "apiVersion": "helm.m.crossplane.io/v1beta1",
-                    "kind": "ProviderConfig",
-                    "resourceRef": {"name": pc_name},
-                },
-                "by": {
-                    "apiVersion": "helm.m.crossplane.io/v1beta1",
-                    "kind": "Release",
-                    "resourceSelector": {
-                        "matchControllerRef": True,
-                        "matchLabels": {metadata.LABEL_KEY_RELEASE: release_key},
+        resource.update(
+            rsp.desired.resources[f"usage-pc-by-{release_key}"],
+            {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "Usage",
+                "metadata": {"namespace": metadata.NAMESPACE_SYSTEM},
+                "spec": {
+                    "of": {
+                        "apiVersion": "helm.m.crossplane.io/v1beta1",
+                        "kind": "ProviderConfig",
+                        "resourceRef": {"name": pc_name},
                     },
+                    "by": {
+                        "apiVersion": "helm.m.crossplane.io/v1beta1",
+                        "kind": "Release",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RELEASE: release_key},
+                        },
+                    },
+                    "replayDeletion": True,
                 },
-                "replayDeletion": True,
             },
-        })
+        )
         rsp.desired.resources[f"usage-pc-by-{release_key}"].ready = fnv1.READY_TRUE
 
     # Optional MetalLB for kind/bare-metal clusters that don't have a cloud
@@ -85,11 +89,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if lb == "MetalLB" and address_pool:
         metallb_ns = "metallb-system"
 
-        resource.update(rsp.desired.resources["namespace-metallb"], {
-            "apiVersion": "v1",
-            "kind": "Namespace",
-            "metadata": {"name": metallb_ns},
-        })
+        resource.update(
+            rsp.desired.resources["namespace-metallb"],
+            {
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "metadata": {"name": metallb_ns},
+            },
+        )
         rsp.desired.resources["namespace-metallb"].ready = fnv1.READY_TRUE
 
         metallb_exists = "metallb" in req.observed.resources
@@ -113,20 +120,26 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         metallb_ready = conditions.has_condition(req, "metallb", "Ready")
         pool_exists = "metallb-pool" in req.observed.resources
         if metallb_ready or pool_exists:
-            resource.update(rsp.desired.resources["metallb-pool"], {
-                "apiVersion": "metallb.io/v1beta1",
-                "kind": "IPAddressPool",
-                "metadata": {"name": "modelplane", "namespace": metallb_ns},
-                "spec": {"addresses": [address_pool]},
-            })
+            resource.update(
+                rsp.desired.resources["metallb-pool"],
+                {
+                    "apiVersion": "metallb.io/v1beta1",
+                    "kind": "IPAddressPool",
+                    "metadata": {"name": "modelplane", "namespace": metallb_ns},
+                    "spec": {"addresses": [address_pool]},
+                },
+            )
             rsp.desired.resources["metallb-pool"].ready = fnv1.READY_TRUE
 
-            resource.update(rsp.desired.resources["metallb-l2"], {
-                "apiVersion": "metallb.io/v1beta1",
-                "kind": "L2Advertisement",
-                "metadata": {"name": "modelplane", "namespace": metallb_ns},
-                "spec": {"ipAddressPools": ["modelplane"]},
-            })
+            resource.update(
+                rsp.desired.resources["metallb-l2"],
+                {
+                    "apiVersion": "metallb.io/v1beta1",
+                    "kind": "L2Advertisement",
+                    "metadata": {"name": "modelplane", "namespace": metallb_ns},
+                    "spec": {"ipAddressPools": ["modelplane"]},
+                },
+            )
             rsp.desired.resources["metallb-l2"].ready = fnv1.READY_TRUE
 
     # Gate Envoy Gateway on the ProviderConfig being observed.
@@ -160,30 +173,41 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gw_exists = "gateway" in req.observed.resources
 
     if envoy_gw_ready or gw_class_exists:
-        resource.update(rsp.desired.resources["gateway-class"], {
-            "apiVersion": "gateway.networking.k8s.io/v1",
-            "kind": "GatewayClass",
-            "metadata": {"name": "envoy"},
-            "spec": {
-                "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+        resource.update(
+            rsp.desired.resources["gateway-class"],
+            {
+                "apiVersion": "gateway.networking.k8s.io/v1",
+                "kind": "GatewayClass",
+                "metadata": {"name": "envoy"},
+                "spec": {
+                    "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                },
             },
-        })
+        )
 
     if envoy_gw_ready or gw_exists:
-        resource.update(rsp.desired.resources["gateway"], {
-            "apiVersion": "gateway.networking.k8s.io/v1",
-            "kind": "Gateway",
-            "metadata": {"name": metadata.GATEWAY_NAME, "namespace": metadata.NAMESPACE_SYSTEM},
-            "spec": {
-                "gatewayClassName": "envoy",
-                "listeners": [{
-                    "name": "http",
-                    "protocol": "HTTP",
-                    "port": gw_port,
-                    "allowedRoutes": {"namespaces": {"from": "All"}},
-                }],
+        resource.update(
+            rsp.desired.resources["gateway"],
+            {
+                "apiVersion": "gateway.networking.k8s.io/v1",
+                "kind": "Gateway",
+                "metadata": {
+                    "name": metadata.GATEWAY_NAME,
+                    "namespace": metadata.NAMESPACE_SYSTEM,
+                },
+                "spec": {
+                    "gatewayClassName": "envoy",
+                    "listeners": [
+                        {
+                            "name": "http",
+                            "protocol": "HTTP",
+                            "port": gw_port,
+                            "allowedRoutes": {"namespaces": {"from": "All"}},
+                        }
+                    ],
+                },
             },
-        })
+        )
 
     # Read the observed Gateway's status to extract the external address.
     gateway_address = None
@@ -219,8 +243,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # ControllerReady: the gateway controller is running.
     conditions.set_condition(
-        rsp, CONDITION_TYPE_CONTROLLER_READY, envoy_ready,
-        CONDITION_REASON_CONTROLLER_HEALTHY if envoy_ready else CONDITION_REASON_INSTALLING,
+        rsp,
+        CONDITION_TYPE_CONTROLLER_READY,
+        envoy_ready,
+        CONDITION_REASON_CONTROLLER_HEALTHY
+        if envoy_ready
+        else CONDITION_REASON_INSTALLING,
     )
 
     if conditions.has_condition(req, "gateway-class", "Accepted"):

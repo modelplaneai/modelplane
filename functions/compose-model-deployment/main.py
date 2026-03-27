@@ -40,7 +40,6 @@ CONDITION_REASON_CONFIGURING = "Configuring"
 CONDITION_REASON_WAITING_FOR_PLACEMENTS = "WaitingForPlacements"
 
 
-
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     """Compose ModelPlacements and control plane routing resources."""
     xr = v1alpha1.ModelDeployment(
@@ -96,12 +95,22 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     placement_dicts = request.get_required_resources(req, "all-placements")
 
     if not env_dicts:
-        conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, False, CONDITION_REASON_NO_ENVIRONMENTS)
+        conditions.set_condition(
+            rsp,
+            CONDITION_TYPE_PLACEMENTS_SCHEDULED,
+            False,
+            CONDITION_REASON_NO_ENVIRONMENTS,
+        )
         response.warning(rsp, "No InferenceEnvironments found")
         return
 
     if model_dict is None:
-        conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, False, CONDITION_REASON_MODEL_NOT_FOUND)
+        conditions.set_condition(
+            rsp,
+            CONDITION_TYPE_PLACEMENTS_SCHEDULED,
+            False,
+            CONDITION_REASON_MODEL_NOT_FOUND,
+        )
         response.warning(rsp, f"Model {model_name} not found")
         return
 
@@ -112,13 +121,15 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         for e in env_dicts
     ]
     if model_kind == "Model":
-        model_resource = defaults.cluster_model(mv1alpha1.ModelModel.model_validate(model_dict))
-    else:
-        model_resource = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
-    inference_gw = (
-        defaults.inference_gateway(
-            igwv1alpha1.InferenceGateway.model_validate(gw_dict)
+        model_resource = defaults.cluster_model(
+            mv1alpha1.ModelModel.model_validate(model_dict)
         )
+    else:
+        model_resource = defaults.cluster_model(
+            cmv1alpha1.ClusterModel.model_validate(model_dict)
+        )
+    inference_gw = (
+        defaults.inference_gateway(igwv1alpha1.InferenceGateway.model_validate(gw_dict))
         if gw_dict
         else None
     )
@@ -132,8 +143,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # Transition: emit which environments were matched (first time only).
     matched_names = [c.name for c in matched]
     prev_placement_count = sum(
-        1 for c in matched
-        if f"placement-{c.name}" in req.observed.resources
+        1 for c in matched if f"placement-{c.name}" in req.observed.resources
     )
     if matched and prev_placement_count == 0:
         response.normal(
@@ -182,7 +192,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         sched_reason = CONDITION_REASON_SCHEDULING
         sched_msg = ""
 
-    conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, scheduled, sched_reason, sched_msg)
+    conditions.set_condition(
+        rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, scheduled, sched_reason, sched_msg
+    )
 
     # Compose an HTTPRoute that aggregates all placements' backends.
     # Backends are composed by ModelPlacement — we read their names from
@@ -194,21 +206,27 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             p = mpv1alpha1.ModelPlacement.model_validate(
                 resource.struct_to_dict(observed.resource)
             )
-            backend_name = p.status.routing.backendName if p.status and p.status.routing else None
+            backend_name = (
+                p.status.routing.backendName if p.status and p.status.routing else None
+            )
             if backend_name:
-                backend_refs.append({
-                    "group": "gateway.envoyproxy.io",
-                    "kind": "Backend",
-                    "name": backend_name,
-                    "port": 80,
-                    "weight": 1,
-                })
+                backend_refs.append(
+                    {
+                        "group": "gateway.envoyproxy.io",
+                        "kind": "Backend",
+                        "name": backend_name,
+                        "port": 80,
+                        "weight": 1,
+                    }
+                )
 
     if matched:
         # Rewrite /{ns}/{deployment}/ to /{remote-ns}/{model-name}/.
         # The LLMIS name is the ClusterModel name on all remote clusters,
         # so the rewrite is the same for every backend.
-        rewrite_prefix = f"/{metadata.NAMESPACE_REMOTE}/{naming.to_dns_label(model_name)}/"
+        rewrite_prefix = (
+            f"/{metadata.NAMESPACE_REMOTE}/{naming.to_dns_label(model_name)}/"
+        )
 
         # Gateway parentRef — defaults for Envoy Gateway, could be read
         # from InferenceGateway status in future.
@@ -217,33 +235,42 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
         httproute_spec: dict = {
             "parentRefs": [{"name": gw_name, "namespace": gw_ns}],
-            "rules": [{
-                "matches": [{
-                    "path": {
-                        "type": "PathPrefix",
-                        "value": f"/{xr_ns}/{xr_name}/",
-                    },
-                }],
-                "filters": [{
-                    "type": "URLRewrite",
-                    "urlRewrite": {
-                        "path": {
-                            "type": "ReplacePrefixMatch",
-                            "replacePrefixMatch": rewrite_prefix,
-                        },
-                    },
-                }],
-            }],
+            "rules": [
+                {
+                    "matches": [
+                        {
+                            "path": {
+                                "type": "PathPrefix",
+                                "value": f"/{xr_ns}/{xr_name}/",
+                            },
+                        }
+                    ],
+                    "filters": [
+                        {
+                            "type": "URLRewrite",
+                            "urlRewrite": {
+                                "path": {
+                                    "type": "ReplacePrefixMatch",
+                                    "replacePrefixMatch": rewrite_prefix,
+                                },
+                            },
+                        }
+                    ],
+                }
+            ],
         }
         if backend_refs:
             httproute_spec["rules"][0]["backendRefs"] = backend_refs
 
-        resource.update(rsp.desired.resources["httproute"], {
-            "apiVersion": "gateway.networking.k8s.io/v1",
-            "kind": "HTTPRoute",
-            "metadata": {"namespace": xr_ns},
-            "spec": httproute_spec,
-        })
+        resource.update(
+            rsp.desired.resources["httproute"],
+            {
+                "apiVersion": "gateway.networking.k8s.io/v1",
+                "kind": "HTTPRoute",
+                "metadata": {"namespace": xr_ns},
+                "spec": httproute_spec,
+            },
+        )
 
     # Read the control plane gateway address for the unified endpoint URL.
     gateway_ip = inference_gw.status.address if inference_gw else None
@@ -261,7 +288,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if "httproute" in rsp.desired.resources:
         # The HTTPRoute is only truly ready when it has backendRefs (not
         # just Accepted). An empty-backendRefs HTTPRoute returns 404.
-        route_ready = conditions.has_parent_condition(req, "httproute", "Accepted") and bool(backend_refs)
+        route_ready = conditions.has_parent_condition(
+            req, "httproute", "Accepted"
+        ) and bool(backend_refs)
         if route_ready:
             rsp.desired.resources["httproute"].ready = fnv1.READY_TRUE
 
@@ -277,7 +306,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         pr_reason = CONDITION_REASON_MODEL_STARTING
         pr_msg = f"{placements_ready} of {len(matched)} ready"
 
-    conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_READY, all_placements_ready, pr_reason, pr_msg)
+    conditions.set_condition(
+        rsp, CONDITION_TYPE_PLACEMENTS_READY, all_placements_ready, pr_reason, pr_msg
+    )
 
     # RoutingReady: the control plane HTTPRoute is configured.
     if not matched:
@@ -289,7 +320,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         rr_reason = CONDITION_REASON_WAITING_FOR_PLACEMENTS
 
-    conditions.set_condition(rsp, conditions.CONDITION_TYPE_ROUTING_READY, route_ready, rr_reason)
+    conditions.set_condition(
+        rsp, conditions.CONDITION_TYPE_ROUTING_READY, route_ready, rr_reason
+    )
 
     # Write status for the user.
     status = v1alpha1.Status(

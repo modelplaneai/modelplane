@@ -18,101 +18,106 @@ test = compositiontest.CompositionTest(
         # Simulate a second reconcile where both ProviderConfigs are
         # observed. This unblocks the gated Helm releases.
         observedResources=[
-            libresource.model_to_fixture(k8spcv1alpha1.ProviderConfig(
-                metadata=metav1.ObjectMeta(
-                    name="gpu-us-central1-kserve-cluster",
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "provider-config-kubernetes",
-                    },
-                ),
-                spec=k8spcv1alpha1.Spec(
-                    credentials=k8spcv1alpha1.Credentials(source="Secret"),
-                ),
-            )),
-            libresource.model_to_fixture(helmpcv1beta1.ProviderConfig(
-                metadata=metav1.ObjectMeta(
-                    name="gpu-us-central1-kserve-cluster",
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "provider-config-helm",
-                    },
-                ),
-                spec=helmpcv1beta1.Spec(
-                    credentials=helmpcv1beta1.Credentials(source="Secret"),
-                ),
-            )),
+            libresource.model_to_fixture(
+                k8spcv1alpha1.ProviderConfig(
+                    metadata=metav1.ObjectMeta(
+                        name="gpu-us-central1-kserve-cluster",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "provider-config-kubernetes",
+                        },
+                    ),
+                    spec=k8spcv1alpha1.Spec(
+                        credentials=k8spcv1alpha1.Credentials(source="Secret"),
+                    ),
+                )
+            ),
+            libresource.model_to_fixture(
+                helmpcv1beta1.ProviderConfig(
+                    metadata=metav1.ObjectMeta(
+                        name="gpu-us-central1-kserve-cluster",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "provider-config-helm",
+                        },
+                    ),
+                    spec=helmpcv1beta1.Spec(
+                        credentials=helmpcv1beta1.Credentials(source="Secret"),
+                    ),
+                )
+            ),
         ],
         assertResources=[
             # Assert cert-manager Release is composed.
-            libresource.model_to_dict(helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "cert-manager",
-                    },
-                ),
-                spec=helmv1beta1.Spec(
-                    forProvider=helmv1beta1.ForProvider(
-                        chart=helmv1beta1.Chart(
-                            name="cert-manager",
-                            repository="https://charts.jetstack.io",
-                            version="v1.17.1",
+            libresource.model_to_dict(
+                helmv1beta1.Release(
+                    metadata=metav1.ObjectMeta(
+                        annotations={
+                            "crossplane.io/composition-resource-name": "cert-manager",
+                        },
+                    ),
+                    spec=helmv1beta1.Spec(
+                        forProvider=helmv1beta1.ForProvider(
+                            chart=helmv1beta1.Chart(
+                                name="cert-manager",
+                                repository="https://charts.jetstack.io",
+                                version="v1.17.1",
+                            ),
+                            namespace="cert-manager",
                         ),
-                        namespace="cert-manager",
+                        providerConfigRef=helmv1beta1.ProviderConfigRef(
+                            kind="ProviderConfig",
+                            name="gpu-us-central1-kserve-cluster",
+                        ),
                     ),
-                    providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        kind="ProviderConfig",
-                        name="gpu-us-central1-kserve-cluster",
-                    ),
-                ),
-            )),
+                )
+            ),
             # Assert Envoy Gateway Release is composed.
-            libresource.model_to_dict(helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "envoy-gateway",
-                    },
-                ),
-                spec=helmv1beta1.Spec(
-                    forProvider=helmv1beta1.ForProvider(
-                        chart=helmv1beta1.Chart(
-                            name="gateway-helm",
-                            repository="oci://docker.io/envoyproxy",
-                            version="v1.3.0",
+            libresource.model_to_dict(
+                helmv1beta1.Release(
+                    metadata=metav1.ObjectMeta(
+                        annotations={
+                            "crossplane.io/composition-resource-name": "envoy-gateway",
+                        },
+                    ),
+                    spec=helmv1beta1.Spec(
+                        forProvider=helmv1beta1.ForProvider(
+                            chart=helmv1beta1.Chart(
+                                name="gateway-helm",
+                                repository="oci://docker.io/envoyproxy",
+                                version="v1.3.0",
+                            ),
+                            namespace="envoy-gateway-system",
                         ),
-                        namespace="envoy-gateway-system",
+                        providerConfigRef=helmv1beta1.ProviderConfigRef(
+                            kind="ProviderConfig",
+                            name="gpu-us-central1-kserve-cluster",
+                        ),
                     ),
-                    providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        kind="ProviderConfig",
-                        name="gpu-us-central1-kserve-cluster",
-                    ),
-                ),
-            )),
+                )
+            ),
             # Assert LeaderWorkerSet Release is composed.
-            libresource.model_to_dict(helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "leader-worker-set",
-                    },
-                ),
-                spec=helmv1beta1.Spec(
-                    forProvider=helmv1beta1.ForProvider(
-                        chart=helmv1beta1.Chart(
-                            name="lws",
-                            repository="oci://registry.k8s.io/lws/charts",
-                            version="v0.7.0",
+            libresource.model_to_dict(
+                helmv1beta1.Release(
+                    metadata=metav1.ObjectMeta(
+                        annotations={
+                            "crossplane.io/composition-resource-name": "leader-worker-set",
+                        },
+                    ),
+                    spec=helmv1beta1.Spec(
+                        forProvider=helmv1beta1.ForProvider(
+                            chart=helmv1beta1.Chart(
+                                name="lws",
+                                repository="oci://registry.k8s.io/lws/charts",
+                                version="v0.7.0",
+                            ),
+                            namespace="lws-system",
                         ),
-                        namespace="lws-system",
+                        providerConfigRef=helmv1beta1.ProviderConfigRef(
+                            kind="ProviderConfig",
+                            name="gpu-us-central1-kserve-cluster",
+                        ),
                     ),
-                    providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        kind="ProviderConfig",
-                        name="gpu-us-central1-kserve-cluster",
-                    ),
-                ),
-            )),
+                )
+            ),
         ],
     ),
 )

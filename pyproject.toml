@@ -1,0 +1,33 @@
+# Tool configuration for ruff and pyright. The up CLI handles building and
+# packaging composition functions — this file is only for linting and
+# type-checking.
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import ordering)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade (modern Python idioms)
+    "A",      # flake8-builtins (shadowing builtins)
+    "B",      # flake8-bugbear (common gotchas)
+    "PL",     # pylint subset
+    "SIM",    # flake8-simplify (simplifiable constructs)
+    "RET",    # flake8-return (return statement issues)
+    "ARG",    # flake8-unused-arguments
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Generated models are not under our control.
+".up/python/models/**" = ["ALL"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+# Type-check the function code and shared library. Exclude generated models
+# and the tests directory (up CLI's test runner has its own structure).
+include = ["functions", "lib"]
+exclude = [".up"]

@@ -66,13 +66,24 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         match_name=ie_name,
     )
 
-
     model_dict = request.get_required_resource(req, "model")
     ie_dict = request.get_required_resource(req, "environment")
     if model_dict is None or ie_dict is None:
-        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_REFERENCES)
-        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
-        conditions.set_condition(rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
+        conditions.set_condition(
+            rsp,
+            CONDITION_TYPE_MODEL_ACCEPTED,
+            False,
+            CONDITION_REASON_WAITING_FOR_REFERENCES,
+        )
+        conditions.set_condition(
+            rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL
+        )
+        conditions.set_condition(
+            rsp,
+            conditions.CONDITION_TYPE_ROUTING_READY,
+            False,
+            CONDITION_REASON_WAITING_FOR_MODEL,
+        )
         response.normal(rsp, "Waiting for model and environment to be resolved")
         return
 
@@ -81,16 +92,30 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     )
 
     if not ie.status.providerConfigRef.name:
-        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_ENVIRONMENT)
-        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
-        conditions.set_condition(rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
+        conditions.set_condition(
+            rsp,
+            CONDITION_TYPE_MODEL_ACCEPTED,
+            False,
+            CONDITION_REASON_WAITING_FOR_ENVIRONMENT,
+        )
+        conditions.set_condition(
+            rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL
+        )
+        conditions.set_condition(
+            rsp,
+            conditions.CONDITION_TYPE_ROUTING_READY,
+            False,
+            CONDITION_REASON_WAITING_FOR_MODEL,
+        )
         response.normal(rsp, "Waiting for environment providerConfigRef")
         return
 
     if model_kind == "Model":
         model = defaults.cluster_model(mv1alpha1.ModelModel.model_validate(model_dict))
     else:
-        model = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
+        model = defaults.cluster_model(
+            cmv1alpha1.ClusterModel.model_validate(model_dict)
+        )
 
     # Compute how many GPUs the model needs by dividing model VRAM by the
     # per-GPU VRAM of the first eligible pool in the environment.
@@ -98,9 +123,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     for pool in ie.status.capacity.gpuPools:
         pool_memory = quantities.parse_quantity(pool.memory or "0Gi")
         if pool_memory > 0:
-            gpus_per_replica = max(1, math.ceil(
-                quantities.parse_quantity(model.spec.resources.vram) / pool_memory
-            ))
+            gpus_per_replica = max(
+                1,
+                math.ceil(
+                    quantities.parse_quantity(model.spec.resources.vram) / pool_memory
+                ),
+            )
             break
 
     # Use the ClusterModel name (sanitized to DNS-1035) as the LLMIS name on
@@ -147,7 +175,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 readiness=k8sobjv1alpha1.Readiness(
                     policy="DeriveFromCelQuery",
                     celQuery=(
-                        'object.status.conditions.exists('
+                        "object.status.conditions.exists("
                         'c, c.type == "Ready" && c.status == "True")'
                     ),
                 ),
@@ -161,7 +189,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         },
                         "spec": {
                             "model": {
-                                "uri": f"hf://{model.spec.huggingFace.repo}" if model.spec.huggingFace else "",
+                                "uri": f"hf://{model.spec.huggingFace.repo}"
+                                if model.spec.huggingFace
+                                else "",
                                 "name": model.spec.model.name,
                             },
                             "replicas": 1,
@@ -177,14 +207,19 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # Compose a Backend on the control plane pointing to the remote cluster's
     # KServe gateway. ModelDeployment aggregates these into an HTTPRoute.
     if ie.status.gateway.address:
-        resource.update(rsp.desired.resources["backend"], {
-            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-            "kind": "Backend",
-            "metadata": {"namespace": xr.metadata.namespace},
-            "spec": {
-                "endpoints": [{"ip": {"address": ie.status.gateway.address, "port": 80}}],
+        resource.update(
+            rsp.desired.resources["backend"],
+            {
+                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                "kind": "Backend",
+                "metadata": {"namespace": xr.metadata.namespace},
+                "spec": {
+                    "endpoints": [
+                        {"ip": {"address": ie.status.gateway.address, "port": 80}}
+                    ],
+                },
             },
-        })
+        )
 
     # Read the Backend's Crossplane-generated name from observed state and
     # surface it in status so ModelDeployment can reference it in the HTTPRoute.
@@ -193,7 +228,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if backend_observed:
         backend_name = (
             resource.struct_to_dict(backend_observed.resource)
-            .get("metadata", {}).get("name")
+            .get("metadata", {})
+            .get("name")
         )
 
     # Write status fields for consumption by compose-model-deployment.
@@ -240,18 +276,26 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         accepted_reason = CONDITION_REASON_WAITING_FOR_CLUSTER
 
-    conditions.set_condition(rsp, CONDITION_TYPE_MODEL_ACCEPTED, llmis_accepted, accepted_reason)
+    conditions.set_condition(
+        rsp, CONDITION_TYPE_MODEL_ACCEPTED, llmis_accepted, accepted_reason
+    )
     conditions.set_condition(
         rsp,
         CONDITION_TYPE_MODEL_READY,
         llmis_ready,
-        CONDITION_REASON_SERVING if llmis_ready else CONDITION_REASON_MODEL_STARTING if llmis_accepted else CONDITION_REASON_WAITING_FOR_MODEL,
+        CONDITION_REASON_SERVING
+        if llmis_ready
+        else CONDITION_REASON_MODEL_STARTING
+        if llmis_accepted
+        else CONDITION_REASON_WAITING_FOR_MODEL,
     )
     conditions.set_condition(
         rsp,
         conditions.CONDITION_TYPE_ROUTING_READY,
         backend_exists,
-        CONDITION_REASON_BACKEND_CONFIGURED if backend_exists else CONDITION_REASON_WAITING_FOR_GATEWAY,
+        CONDITION_REASON_BACKEND_CONFIGURED
+        if backend_exists
+        else CONDITION_REASON_WAITING_FOR_GATEWAY,
     )
 
     # Track per-resource readiness. Crossplane derives the XR's Ready

@@ -15,25 +15,27 @@ test = compositiontest.CompositionTest(
         validate=False,
         assertResources=[
             # Assert the XR spec is echoed back.
-            libresource.model_to_dict(mv1alpha1.ModelModel(
-                metadata=metav1.ObjectMeta(
-                    name="qwen-0.5b-vllm",
-                    namespace="ml-team",
-                ),
-                spec=mv1alpha1.Spec(
-                    model=mv1alpha1.Model(
-                        name="Qwen/Qwen2.5-0.5B-Instruct",
+            libresource.model_to_dict(
+                mv1alpha1.ModelModel(
+                    metadata=metav1.ObjectMeta(
+                        name="qwen-0.5b-vllm",
+                        namespace="ml-team",
                     ),
-                    source="HuggingFace",
-                    huggingFace=mv1alpha1.HuggingFace(
-                        repo="Qwen/Qwen2.5-0.5B-Instruct",
+                    spec=mv1alpha1.Spec(
+                        model=mv1alpha1.Model(
+                            name="Qwen/Qwen2.5-0.5B-Instruct",
+                        ),
+                        source="HuggingFace",
+                        huggingFace=mv1alpha1.HuggingFace(
+                            repo="Qwen/Qwen2.5-0.5B-Instruct",
+                        ),
+                        engine="vLLM",
+                        resources=mv1alpha1.Resources(
+                            vram="2Gi",
+                        ),
                     ),
-                    engine="vLLM",
-                    resources=mv1alpha1.Resources(
-                        vram="2Gi",
-                    ),
-                ),
-            )),
+                )
+            ),
         ],
     ),
 )

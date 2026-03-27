@@ -51,7 +51,9 @@ def schedule(
     # Environments that already have a placement for this deployment.
     existing_envs = set()
     for p in all_placements:
-        if (p.metadata.labels or {}).get(metadata.LABEL_KEY_DEPLOYMENT) == deployment.metadata.name:
+        if (p.metadata.labels or {}).get(
+            metadata.LABEL_KEY_DEPLOYMENT
+        ) == deployment.metadata.name:
             existing_envs.add(p.spec.inferenceEnvironmentRef.name)
 
     candidates = []
@@ -77,7 +79,9 @@ def schedule(
         # Subtract GPUs used by other deployments' placements on this env.
         used_gpus = 0
         for p in all_placements:
-            if (p.metadata.labels or {}).get(metadata.LABEL_KEY_DEPLOYMENT) == deployment.metadata.name:
+            if (p.metadata.labels or {}).get(
+                metadata.LABEL_KEY_DEPLOYMENT
+            ) == deployment.metadata.name:
                 continue  # Don't count our own placements against us.
             if p.spec.inferenceEnvironmentRef.name == env.metadata.name:
                 used_gpus += p.status.resources.gpu.count or 0
@@ -85,16 +89,20 @@ def schedule(
         if eligible_total - used_gpus < best_gpus_needed:
             continue
 
-        candidates.append(Candidate(
-            name=env.metadata.name,
-            gateway_address=env.status.gateway.address,
-        ))
+        candidates.append(
+            Candidate(
+                name=env.metadata.name,
+                gateway_address=env.status.gateway.address,
+            )
+        )
 
     # Prefer environments that already have placements for this deployment.
     # This prevents rescheduling when a new environment comes online.
     # Within each group (existing vs new), sort by name for determinism.
-    candidates.sort(key=lambda c: (
-        0 if c.name in existing_envs else 1,
-        c.name,
-    ))
-    return candidates[:int(deployment.spec.environments)]
+    candidates.sort(
+        key=lambda c: (
+            0 if c.name in existing_envs else 1,
+            c.name,
+        )
+    )
+    return candidates[: int(deployment.spec.environments)]

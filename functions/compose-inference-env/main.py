@@ -143,9 +143,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 ),
             )
         resource.update(
-            rsp.desired.resources["cluster-provider-config-kubernetes"], cpc,
+            rsp.desired.resources["cluster-provider-config-kubernetes"],
+            cpc,
         )
-        rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
+        rsp.desired.resources[
+            "cluster-provider-config-kubernetes"
+        ].ready = fnv1.READY_TRUE
 
     # Gate KServeStack on GKECluster being Ready. This prevents noisy errors
     # from Helm releases trying to connect to a cluster that doesn't exist yet.
@@ -190,24 +193,27 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # GKE cluster deletion can race ahead of Helm release cleanup, leaving
     # orphaned resources on the remote cluster.
     if kserve_stack_exists or (gke_ready and gke_secrets):
-        resource.update(rsp.desired.resources["usage-gke-by-kserve"], {
-            "apiVersion": "protection.crossplane.io/v1beta1",
-            "kind": "Usage",
-            "metadata": {"namespace": ie_ns},
-            "spec": {
-                "of": {
-                    "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                    "kind": "GKECluster",
-                    "resourceSelector": {"matchControllerRef": True},
+        resource.update(
+            rsp.desired.resources["usage-gke-by-kserve"],
+            {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "Usage",
+                "metadata": {"namespace": ie_ns},
+                "spec": {
+                    "of": {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "GKECluster",
+                        "resourceSelector": {"matchControllerRef": True},
+                    },
+                    "by": {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "KServeStack",
+                        "resourceSelector": {"matchControllerRef": True},
+                    },
+                    "replayDeletion": True,
                 },
-                "by": {
-                    "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                    "kind": "KServeStack",
-                    "resourceSelector": {"matchControllerRef": True},
-                },
-                "replayDeletion": True,
             },
-        })
+        )
         rsp.desired.resources["usage-gke-by-kserve"].ready = fnv1.READY_TRUE
 
     # Read the observed KServeStack's status.gateway.address.
@@ -225,11 +231,13 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     for pool in gke.nodePools:
         if pool.role == "GPU" and pool.gpu:
             acc_type = pool.gpu.acceleratorType
-            gpu_pools.append({
-                "acceleratorType": acc_type,
-                "memory": GPU_VRAM.get(acc_type, "0Gi"),
-                "count": pool.gpu.acceleratorCount * pool.nodeCount,
-            })
+            gpu_pools.append(
+                {
+                    "acceleratorType": acc_type,
+                    "memory": GPU_VRAM.get(acc_type, "0Gi"),
+                    "count": pool.gpu.acceleratorCount * pool.nodeCount,
+                }
+            )
 
     # Write status for consumption by compose-model-placement and
     # compose-model-deployment.
@@ -260,8 +268,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             rsp.desired.resources["kserve-stack"].ready = fnv1.READY_TRUE
 
     conditions.set_condition(
-        rsp, CONDITION_TYPE_CLUSTER_READY, gke_ready,
-        CONDITION_REASON_CLUSTER_RUNNING if gke_ready else CONDITION_REASON_PROVISIONING,
+        rsp,
+        CONDITION_TYPE_CLUSTER_READY,
+        gke_ready,
+        CONDITION_REASON_CLUSTER_RUNNING
+        if gke_ready
+        else CONDITION_REASON_PROVISIONING,
     )
 
     if not gke_ready:
@@ -271,4 +283,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     else:
         backend_reason = CONDITION_REASON_INSTALLING
 
-    conditions.set_condition(rsp, CONDITION_TYPE_BACKEND_READY, kserve_ready, backend_reason)
+    conditions.set_condition(
+        rsp, CONDITION_TYPE_BACKEND_READY, kserve_ready, backend_reason
+    )

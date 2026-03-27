@@ -17,77 +17,80 @@ test = compositiontest.CompositionTest(
         # Simulate a second reconcile where the Helm ProviderConfig is
         # observed. This unblocks the gated Helm releases.
         observedResources=[
-            libresource.model_to_fixture(helmpcv1beta1.ProviderConfig(
-                metadata=metav1.ObjectMeta(
-                    name="modelplane-in-cluster",
-                    namespace="modelplane-system",
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "provider-config-helm",
-                    },
-                ),
-                spec=helmpcv1beta1.Spec(
-                    credentials=helmpcv1beta1.Credentials(
-                        source="InjectedIdentity",
+            libresource.model_to_fixture(
+                helmpcv1beta1.ProviderConfig(
+                    metadata=metav1.ObjectMeta(
+                        name="modelplane-in-cluster",
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "provider-config-helm",
+                        },
                     ),
-                ),
-            )),
+                    spec=helmpcv1beta1.Spec(
+                        credentials=helmpcv1beta1.Credentials(
+                            source="InjectedIdentity",
+                        ),
+                    ),
+                )
+            ),
         ],
         assertResources=[
             # Assert MetalLB Release is composed.
-            libresource.model_to_dict(helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(
-                    namespace="modelplane-system",
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "metallb",
-                    },
-                    labels={
-                        "modelplane.ai/release": "metallb",
-                    },
-                ),
-                spec=helmv1beta1.Spec(
-                    forProvider=helmv1beta1.ForProvider(
-                        chart=helmv1beta1.Chart(
-                            name="metallb",
-                            repository="https://metallb.github.io/metallb",
-                            version="0.14.9",
+            libresource.model_to_dict(
+                helmv1beta1.Release(
+                    metadata=metav1.ObjectMeta(
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "metallb",
+                        },
+                        labels={
+                            "modelplane.ai/release": "metallb",
+                        },
+                    ),
+                    spec=helmv1beta1.Spec(
+                        forProvider=helmv1beta1.ForProvider(
+                            chart=helmv1beta1.Chart(
+                                name="metallb",
+                                repository="https://metallb.github.io/metallb",
+                                version="0.14.9",
+                            ),
+                            namespace="metallb-system",
                         ),
-                        namespace="metallb-system",
+                        providerConfigRef=helmv1beta1.ProviderConfigRef(
+                            kind="ProviderConfig",
+                            name="modelplane-in-cluster",
+                        ),
                     ),
-                    providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        kind="ProviderConfig",
-                        name="modelplane-in-cluster",
-                    ),
-                ),
-            )),
+                )
+            ),
             # Assert Envoy Gateway Release is composed.
-            libresource.model_to_dict(helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(
-                    namespace="modelplane-system",
-                    annotations={
-                        "crossplane.io/composition-resource-name":
-                            "envoy-gateway",
-                    },
-                    labels={
-                        "modelplane.ai/release": "envoy-gateway",
-                    },
-                ),
-                spec=helmv1beta1.Spec(
-                    forProvider=helmv1beta1.ForProvider(
-                        chart=helmv1beta1.Chart(
-                            name="gateway-helm",
-                            repository="oci://docker.io/envoyproxy",
-                            version="v1.3.0",
+            libresource.model_to_dict(
+                helmv1beta1.Release(
+                    metadata=metav1.ObjectMeta(
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "envoy-gateway",
+                        },
+                        labels={
+                            "modelplane.ai/release": "envoy-gateway",
+                        },
+                    ),
+                    spec=helmv1beta1.Spec(
+                        forProvider=helmv1beta1.ForProvider(
+                            chart=helmv1beta1.Chart(
+                                name="gateway-helm",
+                                repository="oci://docker.io/envoyproxy",
+                                version="v1.3.0",
+                            ),
+                            namespace="envoy-gateway-system",
                         ),
-                        namespace="envoy-gateway-system",
+                        providerConfigRef=helmv1beta1.ProviderConfigRef(
+                            kind="ProviderConfig",
+                            name="modelplane-in-cluster",
+                        ),
                     ),
-                    providerConfigRef=helmv1beta1.ProviderConfigRef(
-                        kind="ProviderConfig",
-                        name="modelplane-in-cluster",
-                    ),
-                ),
-            )),
+                )
+            ),
         ],
     ),
 )
