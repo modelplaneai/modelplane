@@ -22,6 +22,16 @@ from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
 )
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
+# Condition types and reasons for the InferenceEnvironment XR.
+CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
+CONDITION_TYPE_BACKEND_READY = "BackendReady"
+
+CONDITION_REASON_CLUSTER_RUNNING = "ClusterRunning"
+CONDITION_REASON_PROVISIONING = "Provisioning"
+CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
+CONDITION_REASON_BACKEND_HEALTHY = "BackendHealthy"
+CONDITION_REASON_INSTALLING = "Installing"
+
 # Per-GPU VRAM by GKE accelerator type. Used to compute capacity from the
 # node pool config — the environment reports how much VRAM is available so
 # the deploy function can match models to compatible environments.
@@ -142,7 +152,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # Always emit once it exists in observed state.
     kserve_stack_exists = "kserve-stack" in req.observed.resources
     if (gke_ready and gke_secrets) or kserve_stack_exists:
-        kserve_version = kserve.version or "v0.16.0"
+        kserve_version = kserve.version
         kss_spec_kwargs = {
             "versions": kssv1alpha1.Versions(kserve=kserve_version),
         }
@@ -204,20 +214,21 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     gateway_address = None
     kss_observed = req.observed.resources.get("kserve-stack")
     if kss_observed:
-        kss_dict = resource.struct_to_dict(kss_observed.resource)
-        gateway_address = (
-            kss_dict.get("status", {}).get("gateway", {}).get("address")
+        kss = kssv1alpha1.KServeStack.model_validate(
+            resource.struct_to_dict(kss_observed.resource)
         )
+        if kss.status and kss.status.gateway:
+            gateway_address = kss.status.gateway.address
 
     # Compute GPU capacity from node pool config using the static VRAM table.
     gpu_pools = []
     for pool in gke.nodePools:
         if pool.role == "GPU" and pool.gpu:
-            acc_type = pool.gpu.acceleratorType or ""
+            acc_type = pool.gpu.acceleratorType
             gpu_pools.append({
                 "acceleratorType": acc_type,
                 "memory": GPU_VRAM.get(acc_type, "0Gi"),
-                "count": (pool.gpu.acceleratorCount or 1) * (pool.nodeCount or 1),
+                "count": pool.gpu.acceleratorCount * pool.nodeCount,
             })
 
     # Write status for consumption by compose-model-placement and
@@ -226,7 +237,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         providerConfigRef=v1alpha1.ProviderConfigRef(name=cluster_pc_name),
         namespace=ie_ns,
         capacity=v1alpha1.Capacity(
-            backend=xr.spec.backend or "KServe",
+            backend=xr.spec.backend,
             gpuPools=gpu_pools,
         ),
     )
@@ -236,8 +247,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Track per-resource readiness. Crossplane derives the XR's Ready
     # condition automatically from composed resource readiness.
-    gke_is_ready = conditions.has_condition(req, "gke-cluster", "Ready")
-    if gke_is_ready:
+    if gke_ready:
         rsp.desired.resources["gke-cluster"].ready = fnv1.READY_TRUE
         # Transition: GKE just became ready (KServeStack not yet observed).
         if not kserve_stack_exists:
@@ -249,25 +259,16 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if kserve_ready:
             rsp.desired.resources["kserve-stack"].ready = fnv1.READY_TRUE
 
-    # ClusterReady: the underlying cluster is provisioned and reachable.
-    rsp.conditions.append(fnv1.Condition(
-        type="ClusterReady",
-        status=fnv1.STATUS_CONDITION_TRUE if gke_is_ready else fnv1.STATUS_CONDITION_FALSE,
-        reason="ClusterRunning" if gke_is_ready else "Provisioning",
-        target=fnv1.TARGET_COMPOSITE,
-    ))
+    conditions.set_condition(
+        rsp, CONDITION_TYPE_CLUSTER_READY, gke_ready,
+        CONDITION_REASON_CLUSTER_RUNNING if gke_ready else CONDITION_REASON_PROVISIONING,
+    )
 
-    # BackendReady: the inference backend is installed and healthy.
-    if not gke_is_ready:
-        backend_reason = "WaitingForCluster"
+    if not gke_ready:
+        backend_reason = CONDITION_REASON_WAITING_FOR_CLUSTER
     elif kserve_ready:
-        backend_reason = "BackendHealthy"
+        backend_reason = CONDITION_REASON_BACKEND_HEALTHY
     else:
-        backend_reason = "Installing"
+        backend_reason = CONDITION_REASON_INSTALLING
 
-    rsp.conditions.append(fnv1.Condition(
-        type="BackendReady",
-        status=fnv1.STATUS_CONDITION_TRUE if kserve_ready else fnv1.STATUS_CONDITION_FALSE,
-        reason=backend_reason,
-        target=fnv1.TARGET_COMPOSITE,
-    ))
+    conditions.set_condition(rsp, CONDITION_TYPE_BACKEND_READY, kserve_ready, backend_reason)

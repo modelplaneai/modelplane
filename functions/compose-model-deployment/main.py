@@ -18,10 +18,26 @@ from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
+from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
+# Condition types and reasons for the ModelDeployment XR.
+CONDITION_TYPE_PLACEMENTS_SCHEDULED = "PlacementsScheduled"
+CONDITION_TYPE_PLACEMENTS_READY = "PlacementsReady"
+
+CONDITION_REASON_NO_ENVIRONMENTS = "NoEnvironments"
+CONDITION_REASON_MODEL_NOT_FOUND = "ModelNotFound"
+CONDITION_REASON_INSUFFICIENT_CAPACITY = "InsufficientCapacity"
+CONDITION_REASON_PLACEMENTS_CREATED = "PlacementsCreated"
+CONDITION_REASON_SCHEDULING = "Scheduling"
+CONDITION_REASON_NO_PLACEMENTS_SCHEDULED = "NoPlacementsScheduled"
+CONDITION_REASON_ALL_PLACEMENTS_READY = "AllPlacementsReady"
+CONDITION_REASON_MODEL_STARTING = "ModelStarting"
+CONDITION_REASON_ROUTE_CONFIGURED = "RouteConfigured"
+CONDITION_REASON_CONFIGURING = "Configuring"
+CONDITION_REASON_WAITING_FOR_PLACEMENTS = "WaitingForPlacements"
 
 
 
@@ -31,12 +47,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         **resource.struct_to_dict(req.observed.composite.resource)
     )
 
-    model_kind = xr.spec.modelRef.kind or "ClusterModel"
+    model_kind = xr.spec.modelRef.kind
     model_name = xr.spec.modelRef.name
-    desired_envs = int(xr.spec.environments)  # protobuf delivers as float
-    env_selector = xr.spec.environmentSelector
     xr_name = xr.metadata.name
-    xr_ns = xr.metadata.namespace or ""
+    xr_ns = xr.metadata.namespace
 
     # Declare required resources. InferenceEnvironments are matched by the
     # modelplane.ai/environment=true label — a workaround for the empty
@@ -44,8 +58,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     env_match_labels: dict[str, str] = {
         metadata.LABEL_KEY_ENVIRONMENT: metadata.LABEL_VALUE_ENVIRONMENT,
     }
-    if env_selector and env_selector.matchLabels:
-        env_match_labels.update(env_selector.matchLabels)
+    if xr.spec.environmentSelector and xr.spec.environmentSelector.matchLabels:
+        env_match_labels.update(xr.spec.environmentSelector.matchLabels)
 
     response.require_resources(
         rsp,
@@ -82,22 +96,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     placement_dicts = request.get_required_resources(req, "all-placements")
 
     if not env_dicts:
-        rsp.conditions.append(fnv1.Condition(
-            type="PlacementsScheduled",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="NoEnvironments",
-            target=fnv1.TARGET_COMPOSITE,
-        ))
+        conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, False, CONDITION_REASON_NO_ENVIRONMENTS)
         response.warning(rsp, "No InferenceEnvironments found")
         return
 
     if model_dict is None:
-        rsp.conditions.append(fnv1.Condition(
-            type="PlacementsScheduled",
-            status=fnv1.STATUS_CONDITION_FALSE,
-            reason="ModelNotFound",
-            target=fnv1.TARGET_COMPOSITE,
-        ))
+        conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, False, CONDITION_REASON_MODEL_NOT_FOUND)
         response.warning(rsp, f"Model {model_name} not found")
         return
 
@@ -107,9 +111,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         )
         for e in env_dicts
     ]
-    model_resource = defaults.cluster_model(
-        cmv1alpha1.ClusterModel.model_validate(model_dict)
-    )
+    if model_kind == "Model":
+        model_resource = defaults.cluster_model(mv1alpha1.ModelModel.model_validate(model_dict))
+    else:
+        model_resource = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
     inference_gw = (
         defaults.inference_gateway(
             igwv1alpha1.InferenceGateway.model_validate(gw_dict)
@@ -168,22 +173,16 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     scheduled = len(matched) > 0 and any_placements_observed
 
     if not matched:
-        sched_reason = "InsufficientCapacity"
-        sched_msg = f"0 of {desired_envs} environments matched (checked {len(envs)})"
+        sched_reason = CONDITION_REASON_INSUFFICIENT_CAPACITY
+        sched_msg = f"0 of {int(xr.spec.environments)} environments matched (checked {len(envs)})"
     elif scheduled:
-        sched_reason = "PlacementsCreated"
+        sched_reason = CONDITION_REASON_PLACEMENTS_CREATED
         sched_msg = f"Matched {len(matched)} environments"
     else:
-        sched_reason = "Scheduling"
+        sched_reason = CONDITION_REASON_SCHEDULING
         sched_msg = ""
 
-    rsp.conditions.append(fnv1.Condition(
-        type="PlacementsScheduled",
-        status=fnv1.STATUS_CONDITION_TRUE if scheduled else fnv1.STATUS_CONDITION_FALSE,
-        reason=sched_reason,
-        message=sched_msg,
-        target=fnv1.TARGET_COMPOSITE,
-    ))
+    conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, scheduled, sched_reason, sched_msg)
 
     # Compose an HTTPRoute that aggregates all placements' backends.
     # Backends are composed by ModelPlacement — we read their names from
@@ -192,8 +191,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     for env_info in matched:
         observed = req.observed.resources.get(f"placement-{env_info.name}")
         if observed:
-            p_status = resource.struct_to_dict(observed.resource).get("status", {})
-            backend_name = p_status.get("routing", {}).get("backendName")
+            p = mpv1alpha1.ModelPlacement.model_validate(
+                resource.struct_to_dict(observed.resource)
+            )
+            backend_name = p.status.routing.backendName if p.status and p.status.routing else None
             if backend_name:
                 backend_refs.append({
                     "group": "gateway.envoyproxy.io",
@@ -267,39 +268,28 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # PlacementsReady: all placements are serving traffic.
     all_placements_ready = len(matched) > 0 and placements_ready == len(matched)
     if not matched:
-        pr_reason = "NoPlacementsScheduled"
+        pr_reason = CONDITION_REASON_NO_PLACEMENTS_SCHEDULED
         pr_msg = ""
     elif all_placements_ready:
-        pr_reason = "AllPlacementsReady"
+        pr_reason = CONDITION_REASON_ALL_PLACEMENTS_READY
         pr_msg = f"{placements_ready} of {len(matched)} ready"
     else:
-        pr_reason = "ModelStarting"
+        pr_reason = CONDITION_REASON_MODEL_STARTING
         pr_msg = f"{placements_ready} of {len(matched)} ready"
 
-    rsp.conditions.append(fnv1.Condition(
-        type="PlacementsReady",
-        status=fnv1.STATUS_CONDITION_TRUE if all_placements_ready else fnv1.STATUS_CONDITION_FALSE,
-        reason=pr_reason,
-        message=pr_msg,
-        target=fnv1.TARGET_COMPOSITE,
-    ))
+    conditions.set_condition(rsp, CONDITION_TYPE_PLACEMENTS_READY, all_placements_ready, pr_reason, pr_msg)
 
     # RoutingReady: the control plane HTTPRoute is configured.
     if not matched:
-        rr_reason = "NoPlacementsScheduled"
+        rr_reason = CONDITION_REASON_NO_PLACEMENTS_SCHEDULED
     elif route_ready:
-        rr_reason = "RouteConfigured"
+        rr_reason = CONDITION_REASON_ROUTE_CONFIGURED
     elif "httproute" in rsp.desired.resources:
-        rr_reason = "Configuring"
+        rr_reason = CONDITION_REASON_CONFIGURING
     else:
-        rr_reason = "WaitingForPlacements"
+        rr_reason = CONDITION_REASON_WAITING_FOR_PLACEMENTS
 
-    rsp.conditions.append(fnv1.Condition(
-        type="RoutingReady",
-        status=fnv1.STATUS_CONDITION_TRUE if route_ready else fnv1.STATUS_CONDITION_FALSE,
-        reason=rr_reason,
-        target=fnv1.TARGET_COMPOSITE,
-    ))
+    conditions.set_condition(rsp, conditions.CONDITION_TYPE_ROUTING_READY, route_ready, rr_reason)
 
     # Write status for the user.
     status = v1alpha1.Status(

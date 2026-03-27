@@ -3,6 +3,9 @@
 from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+# Condition types shared across multiple functions.
+CONDITION_TYPE_ROUTING_READY = "RoutingReady"
+
 
 def has_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
     """Check if an observed composed resource has a condition set to True.

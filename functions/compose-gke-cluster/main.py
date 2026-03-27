@@ -233,7 +233,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     secretRef=k8spcv1alpha1.SecretRef(
                         name=kubeconfig_secret_name,
                         namespace=ns,
-                        key="kubeconfig",
+                        key=secrets.SECRET_KEY_KUBECONFIG,
                     ),
                 ),
                 identity=k8spcv1alpha1.Identity(
@@ -242,7 +242,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     secretRef=k8spcv1alpha1.SecretRef(
                         name=sa_key_secret_name,
                         namespace=ns,
-                        key="private_key",
+                        key=secrets.SECRET_KEY_GCP_SA,
                     ),
                 ),
             ),
@@ -259,7 +259,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     secretRef=helmpcv1beta1.SecretRef(
                         name=kubeconfig_secret_name,
                         namespace=ns,
-                        key="kubeconfig",
+                        key=secrets.SECRET_KEY_KUBECONFIG,
                     ),
                 ),
                 identity=helmpcv1beta1.Identity(
@@ -268,7 +268,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     secretRef=helmpcv1beta1.SecretRef(
                         name=sa_key_secret_name,
                         namespace=ns,
-                        key="private_key",
+                        key=secrets.SECRET_KEY_GCP_SA,
                     ),
                 ),
             ),
@@ -277,8 +277,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     libresource.update_status(rsp.desired.composite, v1alpha1.Status(
         secrets=[
-            v1alpha1.Secret(type=secrets.SECRET_TYPE_KUBECONFIG, name=kubeconfig_secret_name, key="kubeconfig"),
-            v1alpha1.Secret(type=secrets.SECRET_TYPE_GCP_SA_KEY, name=sa_key_secret_name, key="private_key"),
+            v1alpha1.Secret(type=secrets.SECRET_TYPE_KUBECONFIG, name=kubeconfig_secret_name, key=secrets.SECRET_KEY_KUBECONFIG),
+            v1alpha1.Secret(type=secrets.SECRET_TYPE_GCP_SA_KEY, name=sa_key_secret_name, key=secrets.SECRET_KEY_GCP_SA),
         ],
     ))
 

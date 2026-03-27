@@ -15,6 +15,12 @@ from .lib import metadata
 from .lib import resource as libresource
 from .model.ai.modelplane.inferencegateway import v1alpha1
 
+# Condition types and reasons for the InferenceGateway XR.
+CONDITION_TYPE_CONTROLLER_READY = "ControllerReady"
+
+CONDITION_REASON_CONTROLLER_HEALTHY = "ControllerHealthy"
+CONDITION_REASON_INSTALLING = "Installing"
+
 
 
 
@@ -132,7 +138,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             helm.helm_release(
                 chart="gateway-helm",
                 repo="oci://docker.io/envoyproxy",
-                version=eg_version or "v1.3.0",
+                version=eg_version,
                 namespace="envoy-gateway-system",
                 provider_config=pc_name,
                 values={
@@ -212,12 +218,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             response.normal(rsp, "Envoy Gateway ready, composing Gateway")
 
     # ControllerReady: the gateway controller is running.
-    rsp.conditions.append(fnv1.Condition(
-        type="ControllerReady",
-        status=fnv1.STATUS_CONDITION_TRUE if envoy_ready else fnv1.STATUS_CONDITION_FALSE,
-        reason="ControllerHealthy" if envoy_ready else "Installing",
-        target=fnv1.TARGET_COMPOSITE,
-    ))
+    conditions.set_condition(
+        rsp, CONDITION_TYPE_CONTROLLER_READY, envoy_ready,
+        CONDITION_REASON_CONTROLLER_HEALTHY if envoy_ready else CONDITION_REASON_INSTALLING,
+    )
 
     if conditions.has_condition(req, "gateway-class", "Accepted"):
         rsp.desired.resources["gateway-class"].ready = fnv1.READY_TRUE

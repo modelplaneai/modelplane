@@ -19,8 +19,24 @@ from .lib import quantities
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
+from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+
+# Condition types and reasons for the ModelPlacement XR.
+CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
+CONDITION_TYPE_MODEL_READY = "ModelReady"
+
+CONDITION_REASON_WAITING_FOR_REFERENCES = "WaitingForReferences"
+CONDITION_REASON_WAITING_FOR_ENVIRONMENT = "WaitingForEnvironment"
+CONDITION_REASON_WAITING_FOR_MODEL = "WaitingForModel"
+CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
+CONDITION_REASON_WAITING_FOR_GATEWAY = "WaitingForGateway"
+CONDITION_REASON_DEPLOYING = "Deploying"
+CONDITION_REASON_ACCEPTED = "Accepted"
+CONDITION_REASON_SERVING = "Serving"
+CONDITION_REASON_MODEL_STARTING = "ModelStarting"
+CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -29,7 +45,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         **resource.struct_to_dict(req.observed.composite.resource)
     )
 
-    model_kind = xr.spec.modelRef.kind or "ClusterModel"
+    model_kind = xr.spec.modelRef.kind
     model_name = xr.spec.modelRef.name
     ie_name = xr.spec.inferenceEnvironmentRef.name
 
@@ -54,9 +70,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     model_dict = request.get_required_resource(req, "model")
     ie_dict = request.get_required_resource(req, "environment")
     if model_dict is None or ie_dict is None:
-        conditions.set_condition(rsp, "ModelAccepted", False, "WaitingForReferences")
-        conditions.set_condition(rsp, "ModelReady", False, "WaitingForModel")
-        conditions.set_condition(rsp, "RoutingReady", False, "WaitingForModel")
+        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_REFERENCES)
+        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
+        conditions.set_condition(rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
         response.normal(rsp, "Waiting for model and environment to be resolved")
         return
 
@@ -65,15 +81,16 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     )
 
     if not ie.status.providerConfigRef.name:
-        conditions.set_condition(rsp, "ModelAccepted", False, "WaitingForEnvironment")
-        conditions.set_condition(rsp, "ModelReady", False, "WaitingForModel")
-        conditions.set_condition(rsp, "RoutingReady", False, "WaitingForModel")
+        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_ENVIRONMENT)
+        conditions.set_condition(rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
+        conditions.set_condition(rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
         response.normal(rsp, "Waiting for environment providerConfigRef")
         return
 
-    model = defaults.cluster_model(
-        cmv1alpha1.ClusterModel.model_validate(model_dict)
-    )
+    if model_kind == "Model":
+        model = defaults.cluster_model(mv1alpha1.ModelModel.model_validate(model_dict))
+    else:
+        model = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
 
     # Compute how many GPUs the model needs by dividing model VRAM by the
     # per-GPU VRAM of the first eligible pool in the environment.
@@ -217,24 +234,24 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # ModelReady: the LLMIS is actually serving traffic.
     # RoutingReady: the Backend resource exists on the control plane.
     if not llmis_exists:
-        accepted_reason = "Deploying"
+        accepted_reason = CONDITION_REASON_DEPLOYING
     elif llmis_accepted:
-        accepted_reason = "Accepted"
+        accepted_reason = CONDITION_REASON_ACCEPTED
     else:
-        accepted_reason = "WaitingForCluster"
+        accepted_reason = CONDITION_REASON_WAITING_FOR_CLUSTER
 
-    conditions.set_condition(rsp, "ModelAccepted", llmis_accepted, accepted_reason)
+    conditions.set_condition(rsp, CONDITION_TYPE_MODEL_ACCEPTED, llmis_accepted, accepted_reason)
     conditions.set_condition(
         rsp,
-        "ModelReady",
+        CONDITION_TYPE_MODEL_READY,
         llmis_ready,
-        "Serving" if llmis_ready else "ModelStarting" if llmis_accepted else "WaitingForModel",
+        CONDITION_REASON_SERVING if llmis_ready else CONDITION_REASON_MODEL_STARTING if llmis_accepted else CONDITION_REASON_WAITING_FOR_MODEL,
     )
     conditions.set_condition(
         rsp,
-        "RoutingReady",
+        conditions.CONDITION_TYPE_ROUTING_READY,
         backend_exists,
-        "BackendConfigured" if backend_exists else "WaitingForGateway",
+        CONDITION_REASON_BACKEND_CONFIGURED if backend_exists else CONDITION_REASON_WAITING_FOR_GATEWAY,
     )
 
     # Track per-resource readiness. Crossplane derives the XR's Ready

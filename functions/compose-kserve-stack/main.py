@@ -212,7 +212,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             helm.helm_release(
                 chart="cert-manager",
                 repo="https://charts.jetstack.io",
-                version=v.certManager or "v1.17.1",
+                version=v.certManager,
                 namespace="cert-manager",
                 provider_config=pc_name,
                 values={"crds": {"enabled": True, "keep": False}},
@@ -224,7 +224,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             helm.helm_release(
                 chart="gateway-helm",
                 repo="oci://docker.io/envoyproxy",
-                version=v.envoyGateway or "v1.3.0",
+                version=v.envoyGateway,
                 namespace="envoy-gateway-system",
                 provider_config=pc_name,
                 values={
@@ -242,7 +242,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             helm.helm_release(
                 chart="lws",
                 repo="oci://registry.k8s.io/lws/charts",
-                version=v.leaderWorkerSet or "v0.7.0",
+                version=v.leaderWorkerSet,
                 namespace="lws-system",
                 provider_config=pc_name,
             ),
@@ -257,7 +257,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
             )
 
         gw = xr.spec.gateway or v1alpha1.Gateway()
-        gw_class_name = gw.className or "envoy"
+        gw_class_name = gw.className
 
         if gw.listeners:
             listeners = [
@@ -313,7 +313,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         kserve_crds = helm.helm_release(
             chart="kserve-llmisvc-crd",
             repo="oci://ghcr.io/kserve/charts",
-            version=v.kserve or "v0.16.0",
+            version=v.kserve,
             namespace="kserve",
             provider_config=pc_name,
         )
@@ -342,7 +342,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         kserve_release = helm.helm_release(
             chart="kserve-llmisvc-resources",
             repo="oci://ghcr.io/kserve/charts",
-            version=v.kserve or "v0.16.0",
+            version=v.kserve,
             namespace="kserve",
             provider_config=pc_name,
         )
@@ -388,6 +388,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Read the observed Gateway Object's status to extract the external IP
     # and write it to the XR's status.gateway.address.
+    gateway_address = None
     gateway_observed = req.observed.resources.get("gateway")
     if gateway_observed:
         gw_dict = resource.struct_to_dict(gateway_observed.resource)
@@ -400,13 +401,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         )
         if addresses:
             gateway_address = addresses[0].get("value")
-            if gateway_address:
-                libresource.update_status(
-                    rsp.desired.composite,
-                    v1alpha1.Status(
-                        gateway=v1alpha1.GatewayModel(address=gateway_address),
-                    ),
-                )
+
+    status = v1alpha1.Status()
+    if gateway_address:
+        status.gateway = v1alpha1.GatewayModel(address=gateway_address)
+    libresource.update_status(rsp.desired.composite, status)
 
     # Transition: cert-manager is ready (triggers KServe composition).
     if cert_manager_ready and not conditions.has_condition(req, "kserve-controller", "Ready"):
