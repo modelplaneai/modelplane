@@ -247,17 +247,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # Read the control plane gateway address for the unified endpoint URL.
     gateway_ip = inference_gw.status.address if inference_gw else None
 
-    # Track readiness of composed resources.
-    not_ready = []
-
+    # Track per-resource readiness. Crossplane derives the XR's Ready
+    # condition automatically from composed resource readiness.
     placements_ready = 0
     for env_info in matched:
         placement_key = f"placement-{env_info.name}"
         if conditions.has_condition(req, placement_key, "Ready"):
             rsp.desired.resources[placement_key].ready = fnv1.READY_TRUE
             placements_ready += 1
-        else:
-            not_ready.append(placement_key)
 
     route_ready = False
     if "httproute" in rsp.desired.resources:
@@ -266,8 +263,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         route_ready = conditions.has_parent_condition(req, "httproute", "Accepted") and bool(backend_refs)
         if route_ready:
             rsp.desired.resources["httproute"].ready = fnv1.READY_TRUE
-        else:
-            not_ready.append("httproute")
 
     # PlacementsReady: all placements are serving traffic.
     all_placements_ready = len(matched) > 0 and placements_ready == len(matched)
@@ -317,35 +312,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         )
     libresource.update_status(rsp.desired.composite, status)
 
-    # Track previous placement count for transition detection.
-    prev_ready = int(
-        resource.struct_to_dict(req.observed.composite.resource)
-        .get("status", {}).get("placements", {}).get("ready", 0)
-    )
-
-    if placements_ready > 0 and not not_ready:
-        rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not conditions.was_ready(req):
-            endpoint = status.get("endpoint", {}).get("url", "pending")
-            response.normal(
-                rsp,
-                f"{placements_ready} placements ready, endpoint: {endpoint}",
-            )
-    else:
-        # Explicitly not ready. Without this, an XR with no composed
-        # resources (e.g. no environments matched) would be trivially ready.
+    # When no placements are scheduled, explicitly mark not ready. Without
+    # this, an XR with no composed resources would be trivially ready.
+    if not matched:
         rsp.desired.composite.ready = fnv1.READY_FALSE
-
-        # Emit progress transition when placement count changes.
-        if placements_ready > prev_ready:
-            response.normal(
-                rsp, f"{placements_ready} of {len(matched)} placements ready"
-            )
-        msg_parts = []
-        if not_ready:
-            msg_parts.append(f"Unready: {', '.join(not_ready)}")
-        if len(matched) < desired_envs:
-            msg_parts.append(
-                f"{len(matched)} of {desired_envs} environments matched"
-            )
-        response.normal(rsp, "; ".join(msg_parts) if msg_parts else "Waiting")

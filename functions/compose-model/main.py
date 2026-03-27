@@ -1,8 +1,9 @@
-"""Validate a ClusterModel or Model and set Ready.
+"""Validate a ClusterModel or Model.
 
 This function composes no resources. Both ClusterModel and Model are data
 records — catalog entries that describe how a model should be served. The
-function validates the spec and sets Ready.
+function validates the spec. Crossplane automatically marks the XR as
+Ready since there are no composed resources to wait for.
 """
 
 from crossplane.function import resource, response
@@ -13,7 +14,7 @@ from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-    """Validate the model spec and set the XR as ready."""
+    """Validate the model spec."""
     d = resource.struct_to_dict(req.observed.composite.resource)
     if d.get("kind") == "Model":
         xr = mv1alpha1.ModelModel(**d)
@@ -22,5 +23,3 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     if xr.spec.engine == "vLLM" and not xr.spec.vllm:
         response.warning(rsp, "engine is vLLM but spec.vllm is not set; using defaults")
-
-    rsp.desired.composite.ready = fnv1.READY_TRUE

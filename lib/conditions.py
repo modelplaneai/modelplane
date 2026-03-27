@@ -61,14 +61,3 @@ def set_condition(
         )
     )
 
-
-def was_ready(req: fnv1.RunFunctionRequest) -> bool:
-    """Check if the XR was Ready on the previous reconcile.
-
-    Useful for detecting the transition to Ready so transition events are
-    emitted exactly once.
-    """
-    return (
-        resource.get_condition(req.observed.composite.resource, "Ready").status
-        == "True"
-    )

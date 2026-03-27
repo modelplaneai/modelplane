@@ -216,7 +216,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # ModelAccepted: the backend accepted the model workload (Object synced).
     # ModelReady: the LLMIS is actually serving traffic.
     # RoutingReady: the Backend resource exists on the control plane.
-    # Ready: all of the above (via rsp.desired.composite.ready).
     if not llmis_exists:
         accepted_reason = "Deploying"
     elif llmis_accepted:
@@ -238,11 +237,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         "BackendConfigured" if backend_exists else "WaitingForGateway",
     )
 
+    # Track per-resource readiness. Crossplane derives the XR's Ready
+    # condition automatically from composed resource readiness.
     if llmis_ready:
         rsp.desired.resources["llm-inference-service"].ready = fnv1.READY_TRUE
-        rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not conditions.was_ready(req):
-            endpoint = f"http://{ie.status.gateway.address}/{llmis_namespace}/{llmis_name}/v1" if ie.status.gateway.address else "pending"
-            response.normal(rsp, f"Ready, endpoint: {endpoint}")
-    else:
-        response.normal(rsp, "Waiting for: llm-inference-service")
+    if backend_exists:
+        rsp.desired.resources["backend"].ready = fnv1.READY_TRUE

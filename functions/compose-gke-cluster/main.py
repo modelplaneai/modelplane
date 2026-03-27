@@ -6,7 +6,7 @@ account with container.admin IAM, and ProviderConfigs for provider-kubernetes
 and provider-helm to reach the cluster.
 """
 
-from crossplane.function import resource, response
+from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
@@ -289,19 +289,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if sa_email:
         managed_resources.append("iam-binding")
 
-    not_ready = []
     for r in managed_resources:
         if conditions.has_condition(req, r, "Ready"):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
-        else:
-            not_ready.append(r)
 
     rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
-
-    if not not_ready:
-        rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not conditions.was_ready(req):
-            response.normal(rsp, "All GCP resources ready")
-    else:
-        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")

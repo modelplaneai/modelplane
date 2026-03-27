@@ -195,16 +195,14 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         status.address = gateway_address
     libresource.update_status(rsp.desired.composite, status)
 
-    # Track readiness. GatewayClass and Gateway use Accepted (not Ready) —
-    # on kind the Gateway won't be Programmed (no LoadBalancer), but Accepted
-    # means the controller has scheduled it and it's usable.
-    not_ready = []
-
+    # Track per-resource readiness. Crossplane derives the XR's Ready
+    # condition automatically from composed resource readiness.
+    # GatewayClass and Gateway use Accepted (not Ready) — on kind the
+    # Gateway won't be Programmed (no LoadBalancer), but Accepted means
+    # the controller has scheduled it and it's usable.
     if lb == "MetalLB" and address_pool:
         if conditions.has_condition(req, "metallb", "Ready"):
             rsp.desired.resources["metallb"].ready = fnv1.READY_TRUE
-        else:
-            not_ready.append("metallb")
 
     envoy_ready = conditions.has_condition(req, "envoy-gateway", "Ready")
     if envoy_ready:
@@ -212,8 +210,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # Transition: Envoy Gateway just became ready (Gateway not yet observed).
         if not gw_exists:
             response.normal(rsp, "Envoy Gateway ready, composing Gateway")
-    else:
-        not_ready.append("envoy-gateway")
 
     # ControllerReady: the gateway controller is running.
     rsp.conditions.append(fnv1.Condition(
@@ -225,18 +221,6 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     if conditions.has_condition(req, "gateway-class", "Accepted"):
         rsp.desired.resources["gateway-class"].ready = fnv1.READY_TRUE
-    else:
-        not_ready.append("gateway-class")
 
     if conditions.has_condition(req, "gateway", "Accepted"):
         rsp.desired.resources["gateway"].ready = fnv1.READY_TRUE
-    else:
-        not_ready.append("gateway")
-
-    if not not_ready:
-        rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not conditions.was_ready(req):
-            addr = f", address: {gateway_address}" if gateway_address else ""
-            response.normal(rsp, f"Ready{addr}")
-    else:
-        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")

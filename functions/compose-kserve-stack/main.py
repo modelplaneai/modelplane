@@ -379,17 +379,11 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         "gateway",
     ]
 
-    all_ready = True
-    not_ready = []
+    # Track per-resource readiness. Crossplane derives the XR's Ready
+    # condition automatically from composed resource readiness.
     for r in all_resources:
-        if r not in rsp.desired.resources:
-            all_ready = False
-            not_ready.append(r)
-        elif conditions.has_condition(req, r, "Ready"):
+        if r in rsp.desired.resources and conditions.has_condition(req, r, "Ready"):
             rsp.desired.resources[r].ready = fnv1.READY_TRUE
-        else:
-            all_ready = False
-            not_ready.append(r)
 
     # Read the observed Gateway Object's status to extract the external IP
     # and write it to the XR's status.gateway.address.
@@ -417,11 +411,3 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     if cert_manager_ready and not conditions.has_condition(req, "kserve-controller", "Ready"):
         if "kserve-controller" not in req.observed.resources:
             response.normal(rsp, "cert-manager ready, composing KServe")
-
-    if all_ready:
-        rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not conditions.was_ready(req):
-            addr = f", gateway: {gateway_address}" if gateway_address else ""
-            response.normal(rsp, f"Ready{addr}")
-    else:
-        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")

@@ -233,28 +233,20 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         status.gateway = v1alpha1.Gateway(address=gateway_address)
     libresource.update_status(rsp.desired.composite, status)
 
-    # Track readiness. Emit transition events when gating dependencies
-    # become ready so kubectl describe shows provisioning progress.
-    not_ready = []
-
+    # Track per-resource readiness. Crossplane derives the XR's Ready
+    # condition automatically from composed resource readiness.
     gke_is_ready = conditions.has_condition(req, "gke-cluster", "Ready")
     if gke_is_ready:
         rsp.desired.resources["gke-cluster"].ready = fnv1.READY_TRUE
         # Transition: GKE just became ready (KServeStack not yet observed).
         if not kserve_stack_exists:
             response.normal(rsp, "GKE cluster ready, composing KServeStack")
-    else:
-        not_ready.append("gke-cluster")
 
     kserve_ready = False
     if "kserve-stack" in rsp.desired.resources:
         kserve_ready = conditions.has_condition(req, "kserve-stack", "Ready")
         if kserve_ready:
             rsp.desired.resources["kserve-stack"].ready = fnv1.READY_TRUE
-        else:
-            not_ready.append("kserve-stack")
-    else:
-        not_ready.append("kserve-stack")
 
     # ClusterReady: the underlying cluster is provisioned and reachable.
     rsp.conditions.append(fnv1.Condition(
@@ -278,11 +270,3 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         reason=backend_reason,
         target=fnv1.TARGET_COMPOSITE,
     ))
-
-    if not not_ready:
-        rsp.desired.composite.ready = fnv1.READY_TRUE
-        if not conditions.was_ready(req):
-            addr = f", gateway: {gateway_address}" if gateway_address else ""
-            response.normal(rsp, f"Ready{addr}")
-    else:
-        response.normal(rsp, f"Waiting for: {', '.join(not_ready)}")
