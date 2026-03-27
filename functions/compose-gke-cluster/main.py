@@ -10,6 +10,7 @@ from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
+from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
@@ -275,22 +276,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         ),
     )
 
-    resource.update(rsp.desired.composite, {
-        "status": {
-            "secrets": [
-                {
-                    "type": "Kubeconfig",
-                    "name": kubeconfig_secret_name,
-                    "key": "kubeconfig",
-                },
-                {
-                    "type": "GCPServiceAccountKey",
-                    "name": sa_key_secret_name,
-                    "key": "private_key",
-                },
-            ],
-        },
-    })
+    libresource.update_status(rsp.desired.composite, v1alpha1.Status(
+        secrets=[
+            v1alpha1.Secret(type="Kubeconfig", name=kubeconfig_secret_name, key="kubeconfig"),
+            v1alpha1.Secret(type="GCPServiceAccountKey", name=sa_key_secret_name, key="private_key"),
+        ],
+    ))
 
     managed_resources = ["network", "subnet", "cluster", "service-account", "service-account-key"]
     managed_resources += [f"nodepool-{pool.name}" for pool in spec.nodePools]

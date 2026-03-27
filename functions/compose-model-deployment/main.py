@@ -15,6 +15,7 @@ from .lib import conditions
 from .lib import defaults
 from .lib import naming
 from .lib import quantities
+from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
@@ -368,15 +369,15 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     ))
 
     # Write status for the user.
-    status: dict = {
-        "model": {"name": resolved_model_name},
-        "placements": {"total": len(matched), "ready": placements_ready},
-    }
+    status = v1alpha1.Status(
+        model=v1alpha1.Model(name=resolved_model_name),
+        placements=v1alpha1.Placements(total=len(matched), ready=placements_ready),
+    )
     if gateway_ip:
-        status["endpoint"] = {
-            "url": f"http://{gateway_ip}/{xr_ns}/{xr_name}/v1/chat/completions",
-        }
-    resource.update(rsp.desired.composite, {"status": status})
+        status.endpoint = v1alpha1.Endpoint(
+            url=f"http://{gateway_ip}/{xr_ns}/{xr_name}/v1/chat/completions",
+        )
+    libresource.update_status(rsp.desired.composite, status)
 
     # Track previous placement count for transition detection.
     prev_ready = int(

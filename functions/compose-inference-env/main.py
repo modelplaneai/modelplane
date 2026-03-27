@@ -11,6 +11,7 @@ from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
+from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
@@ -241,17 +242,17 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Write status for consumption by compose-model-placement and
     # compose-model-deployment.
-    status: dict = {
-        "providerConfigRef": {"name": cluster_pc_name},
-        "namespace": ie_ns,
-        "capacity": {
-            "backend": xr.spec.backend or "KServe",
-            "gpuPools": gpu_pools,
-        },
-    }
+    status = v1alpha1.Status(
+        providerConfigRef=v1alpha1.ProviderConfigRef(name=cluster_pc_name),
+        namespace=ie_ns,
+        capacity=v1alpha1.Capacity(
+            backend=xr.spec.backend or "KServe",
+            gpuPools=gpu_pools,
+        ),
+    )
     if gateway_address:
-        status["gateway"] = {"address": gateway_address}
-    resource.update(rsp.desired.composite, {"status": status})
+        status.gateway = v1alpha1.Gateway(address=gateway_address)
+    libresource.update_status(rsp.desired.composite, status)
 
     # Track readiness. Emit transition events when gating dependencies
     # become ready so kubectl describe shows provisioning progress.

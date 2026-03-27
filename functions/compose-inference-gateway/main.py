@@ -11,6 +11,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
 from .lib import helm
+from .lib import resource as libresource
 from .model.ai.modelplane.inferencegateway import v1alpha1
 
 # The namespace where the Gateway and Envoy proxy resources live. Created
@@ -192,10 +193,10 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
 
     # Write status. Only the address — no gateway-specific fields. This
     # contract works for any routing backend (Envoy Gateway, LiteLLM, etc.).
-    status: dict = {}
+    status = v1alpha1.Status()
     if gateway_address:
-        status["address"] = gateway_address
-    resource.update(rsp.desired.composite, {"status": status})
+        status.address = gateway_address
+    libresource.update_status(rsp.desired.composite, status)
 
     # Track readiness. GatewayClass and Gateway use Accepted (not Ready) —
     # on kind the Gateway won't be Programmed (no LoadBalancer), but Accepted

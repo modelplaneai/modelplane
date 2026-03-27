@@ -15,6 +15,7 @@ from .lib import conditions
 from .lib import defaults
 from .lib import naming
 from .lib import quantities
+from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1
@@ -178,17 +179,17 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         )
 
     # Write status fields for consumption by compose-model-deployment.
-    status: dict = {
-        "model": {"name": model.spec.model.name},
-        "resources": {"gpu": {"count": gpus_per_replica}},
-    }
+    status = v1alpha1.Status(
+        model=v1alpha1.Model(name=model.spec.model.name),
+        resources=v1alpha1.Resources(gpu=v1alpha1.Gpu(count=gpus_per_replica)),
+    )
     if ie.status.gateway.address:
-        status["endpoint"] = {
-            "url": f"http://{ie.status.gateway.address}/{llmis_namespace}/{llmis_name}/v1",
-        }
+        status.endpoint = v1alpha1.Endpoint(
+            url=f"http://{ie.status.gateway.address}/{llmis_namespace}/{llmis_name}/v1",
+        )
     if backend_name:
-        status["routing"] = {"backendName": backend_name}
-    resource.update(rsp.desired.composite, {"status": status})
+        status.routing = v1alpha1.Routing(backendName=backend_name)
+    libresource.update_status(rsp.desired.composite, status)
 
     # Transition: first time composing the LLMInferenceService.
     llmis_exists = "llm-inference-service" in req.observed.resources

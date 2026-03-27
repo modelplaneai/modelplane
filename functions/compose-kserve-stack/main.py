@@ -19,6 +19,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .lib import conditions
 from .lib import helm
 from .lib import k8s
+from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
@@ -404,11 +405,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         if addresses:
             gateway_address = addresses[0].get("value")
             if gateway_address:
-                resource.update(rsp.desired.composite, {
-                    "status": {
-                        "gateway": {"address": gateway_address},
-                    },
-                })
+                libresource.update_status(
+                    rsp.desired.composite,
+                    v1alpha1.Status(
+                        gateway=v1alpha1.GatewayModel(address=gateway_address),
+                    ),
+                )
 
     # Transition: cert-manager is ready (triggers KServe composition).
     if cert_manager_ready and not conditions.has_condition(req, "kserve-controller", "Ready"):
