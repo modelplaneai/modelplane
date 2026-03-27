@@ -1,4 +1,7 @@
 from .lib import resource as libresource
+from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
+from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
+from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -19,55 +22,51 @@ test = compositiontest.CompositionTest(
         # by Crossplane at runtime via response.require_resources().
         extraResources=[
             # A ready InferenceEnvironment with KServe backend and one L4 pool.
-            {
-                "apiVersion": "modelplane.ai/v1alpha1",
-                "kind": "InferenceEnvironment",
-                "metadata": {
-                    "name": "demo-us-central",
-                    "labels": {"modelplane.ai/environment": "true"},
-                },
-                "spec": {"backend": "KServe"},
-                "status": {
-                    "providerConfigRef": {"name": "demo-us-central-cluster"},
-                    "gateway": {"address": "34.55.100.10"},
-                    "capacity": {
-                        "backend": "KServe",
-                        "gpuPools": [{
-                            "acceleratorType": "nvidia-l4",
-                            "count": 2,
-                            "memory": "24Gi",
-                        }],
-                    },
-                },
-            },
+            libresource.model_to_fixture(iev1alpha1.InferenceEnvironment(
+                metadata=metav1.ObjectMeta(
+                    name="demo-us-central",
+                    labels={"modelplane.ai/environment": "true"},
+                ),
+                spec=iev1alpha1.Spec(backend="KServe"),
+                status=iev1alpha1.Status(
+                    providerConfigRef=iev1alpha1.ProviderConfigRef(
+                        name="demo-us-central-cluster",
+                    ),
+                    gateway=iev1alpha1.Gateway(address="34.55.100.10"),
+                    capacity=iev1alpha1.Capacity(
+                        backend="KServe",
+                        gpuPools=[iev1alpha1.GpuPool(
+                            acceleratorType="nvidia-l4",
+                            count=2,
+                            memory="24Gi",
+                        )],
+                    ),
+                ),
+            )),
             # The ClusterModel referenced by spec.modelRef.
-            {
-                "apiVersion": "modelplane.ai/v1alpha1",
-                "kind": "ClusterModel",
-                "metadata": {"name": "qwen-0.5b-vllm"},
-                "spec": {
-                    "model": {"name": "Qwen/Qwen2.5-0.5B-Instruct"},
-                    "source": "HuggingFace",
-                    "huggingFace": {"repo": "Qwen/Qwen2.5-0.5B-Instruct"},
-                    "engine": "vLLM",
-                    "vllm": {"image": "vllm/vllm-openai:v0.7.3"},
-                    "resources": {
-                        "vram": "2Gi",
-                        "cpu": "3",
-                        "memory": "10Gi",
-                    },
-                },
-            },
+            libresource.model_to_fixture(cmv1alpha1.ClusterModel(
+                metadata=metav1.ObjectMeta(name="qwen-0.5b-vllm"),
+                spec=cmv1alpha1.Spec(
+                    model=cmv1alpha1.Model(name="Qwen/Qwen2.5-0.5B-Instruct"),
+                    source="HuggingFace",
+                    huggingFace=cmv1alpha1.HuggingFace(
+                        repo="Qwen/Qwen2.5-0.5B-Instruct",
+                    ),
+                    engine="vLLM",
+                    vllm=cmv1alpha1.Vllm(image="vllm/vllm-openai:v0.7.3"),
+                    resources=cmv1alpha1.Resources(
+                        vram="2Gi",
+                        cpu="3",
+                        memory="10Gi",
+                    ),
+                ),
+            )),
             # The InferenceGateway for the control plane routing endpoint.
-            {
-                "apiVersion": "modelplane.ai/v1alpha1",
-                "kind": "InferenceGateway",
-                "metadata": {"name": "default"},
-                "spec": {"backend": "EnvoyGateway"},
-                "status": {
-                    "address": "10.0.0.1",
-                },
-            },
+            libresource.model_to_fixture(igwv1alpha1.InferenceGateway(
+                metadata=metav1.ObjectMeta(name="default"),
+                spec=igwv1alpha1.Spec(backend="EnvoyGateway"),
+                status=igwv1alpha1.Status(address="10.0.0.1"),
+            )),
         ],
         assertResources=[
             # Assert the XR has status populated with model name and placement

@@ -1,5 +1,6 @@
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
+from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
@@ -21,44 +22,46 @@ test = compositiontest.CompositionTest(
         # Ready with secrets. This triggers KServeStack and
         # ClusterProviderConfig composition.
         observedResources=[
-            {
-                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                "kind": "GKECluster",
-                "metadata": {
-                    "name": "demo-us-central",
-                    "namespace": "modelplane-system",
-                    "annotations": {
+            libresource.model_to_fixture(gkev1alpha1.GKECluster(
+                metadata=metav1.ObjectMeta(
+                    name="demo-us-central",
+                    namespace="modelplane-system",
+                    annotations={
                         "crossplane.io/composition-resource-name": "gke-cluster",
                     },
-                },
-                "spec": {
-                    "project": "my-gcp-project",
-                    "region": "us-central1",
-                    "nodePools": [
-                        {"name": "system", "role": "System", "machineType": "e2-standard-4"},
+                ),
+                spec=gkev1alpha1.Spec(
+                    project="my-gcp-project",
+                    region="us-central1",
+                    nodePools=[
+                        gkev1alpha1.NodePool(
+                            name="system",
+                            role="System",
+                            machineType="e2-standard-4",
+                        ),
                     ],
-                },
-                "status": {
-                    "conditions": [{
-                        "type": "Ready",
-                        "status": "True",
-                        "reason": "Available",
-                        "lastTransitionTime": "2025-01-01T00:00:00Z",
-                    }],
-                    "secrets": [
-                        {
-                            "type": "Kubeconfig",
-                            "name": "demo-us-central-kubeconfig",
-                            "key": "kubeconfig",
-                        },
-                        {
-                            "type": "GCPServiceAccountKey",
-                            "name": "demo-us-central-sa-key",
-                            "key": "credentials.json",
-                        },
+                ),
+                status=gkev1alpha1.Status(
+                    conditions=[gkev1alpha1.Condition(
+                        type="Ready",
+                        status="True",
+                        reason="Available",
+                        lastTransitionTime="2025-01-01T00:00:00Z",
+                    )],
+                    secrets=[
+                        gkev1alpha1.Secret(
+                            type="Kubeconfig",
+                            name="demo-us-central-kubeconfig",
+                            key="kubeconfig",
+                        ),
+                        gkev1alpha1.Secret(
+                            type="GCPServiceAccountKey",
+                            name="demo-us-central-sa-key",
+                            key="credentials.json",
+                        ),
                     ],
-                },
-            },
+                ),
+            )),
         ],
         assertResources=[
             # Assert the XR has status populated with providerConfigRef,
