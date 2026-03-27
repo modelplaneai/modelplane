@@ -1,39 +1,36 @@
 from .lib import resource as libresource
-from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
+from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
 
 test = compositiontest.CompositionTest(
     metadata=metav1.ObjectMeta(
-        name="clustermodel-basic",
+        name="model-basic",
     ),
     spec=compositiontest.Spec(
-        compositionPath="apis/clustermodels/composition.yaml",
-        xrPath="tests/test-cluster-model/xr.yaml",
-        xrdPath="apis/clustermodels/definition.yaml",
+        compositionPath="apis/models/composition.yaml",
+        xrPath="tests/test-model/xr.yaml",
+        xrdPath="apis/models/definition.yaml",
         timeoutSeconds=120,
         validate=False,
         assertResources=[
-            libresource.model_to_dict(cmv1alpha1.ClusterModel(
+            # Assert the XR spec is echoed back.
+            libresource.model_to_dict(mv1alpha1.ModelModel(
                 metadata=metav1.ObjectMeta(
                     name="qwen-0.5b-vllm",
+                    namespace="ml-team",
                 ),
-                spec=cmv1alpha1.Spec(
-                    model=cmv1alpha1.Model(
+                spec=mv1alpha1.Spec(
+                    model=mv1alpha1.Model(
                         name="Qwen/Qwen2.5-0.5B-Instruct",
                     ),
                     source="HuggingFace",
-                    huggingFace=cmv1alpha1.HuggingFace(
+                    huggingFace=mv1alpha1.HuggingFace(
                         repo="Qwen/Qwen2.5-0.5B-Instruct",
                     ),
                     engine="vLLM",
-                    vllm=cmv1alpha1.Vllm(
-                        image="vllm/vllm-openai:v0.7.3",
-                    ),
-                    resources=cmv1alpha1.Resources(
+                    resources=mv1alpha1.Resources(
                         vram="2Gi",
-                        cpu="3",
-                        memory="10Gi",
                     ),
                 ),
             )),

@@ -1,14 +1,15 @@
+from .lib import resource as libresource
+from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
-from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as k8s
-from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkeclusterv1alpha1
+from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
+from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
 from .model.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
 from .model.io.upbound.m.gcp.container.cluster import v1beta1 as clusterv1beta1
 from .model.io.upbound.m.gcp.container.nodepool import v1beta1 as nodepoolv1beta1
-from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
-from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import v1beta1 as sakeyv1beta1
 
 test = compositiontest.CompositionTest(
-    metadata=k8s.ObjectMeta(
+    metadata=metav1.ObjectMeta(
         name="gkecluster-basic",
     ),
     spec=compositiontest.Spec(
@@ -18,18 +19,16 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         assertResources=[
-            gkeclusterv1alpha1.GKECluster(
-                apiVersion="infrastructure.modelplane.ai/v1alpha1",
-                kind="GKECluster",
-                metadata=k8s.ObjectMeta(
+            libresource.model_to_dict(gkev1alpha1.GKECluster(
+                metadata=metav1.ObjectMeta(
                     name="gpu-us-central1",
                     namespace="gpu-us-central1",
                 ),
-                spec=gkeclusterv1alpha1.Spec(
+                spec=gkev1alpha1.Spec(
                     project="acme-ml-platform",
                     region="us-central1",
                     nodePools=[
-                        gkeclusterv1alpha1.NodePool(
+                        gkev1alpha1.NodePool(
                             name="system",
                             role="System",
                             machineType="e2-standard-4",
@@ -38,7 +37,7 @@ test = compositiontest.CompositionTest(
                             minNodeCount=1,
                             maxNodeCount=4,
                         ),
-                        gkeclusterv1alpha1.NodePool(
+                        gkev1alpha1.NodePool(
                             name="gpu-l4",
                             role="GPU",
                             machineType="g2-standard-4",
@@ -46,7 +45,7 @@ test = compositiontest.CompositionTest(
                             nodeCount=1,
                             minNodeCount=0,
                             maxNodeCount=2,
-                            gpu=gkeclusterv1alpha1.Gpu(
+                            gpu=gkev1alpha1.Gpu(
                                 acceleratorType="nvidia-l4",
                                 acceleratorCount=1,
                             ),
@@ -54,25 +53,23 @@ test = compositiontest.CompositionTest(
                         ),
                     ],
                 ),
-                status=gkeclusterv1alpha1.Status(
+                status=gkev1alpha1.Status(
                     secrets=[
-                        gkeclusterv1alpha1.Secret(
+                        gkev1alpha1.Secret(
                             type="Kubeconfig",
                             name="gpu-us-central1-kubeconfig",
                             key="kubeconfig",
                         ),
-                        gkeclusterv1alpha1.Secret(
+                        gkev1alpha1.Secret(
                             type="GCPServiceAccountKey",
                             name="gpu-us-central1-sa-key",
                             key="private_key",
                         ),
                     ],
                 ),
-            ).model_dump(exclude_unset=True),
-            networkv1beta1.Network(
-                apiVersion="compute.gcp.m.upbound.io/v1beta1",
-                kind="Network",
-                metadata=k8s.ObjectMeta(
+            )),
+            libresource.model_to_dict(networkv1beta1.Network(
+                metadata=metav1.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "network",
                     },
@@ -83,11 +80,9 @@ test = compositiontest.CompositionTest(
                         autoCreateSubnetworks=False,
                     ),
                 ),
-            ).model_dump(exclude_unset=True),
-            clusterv1beta1.Cluster(
-                apiVersion="container.gcp.m.upbound.io/v1beta1",
-                kind="Cluster",
-                metadata=k8s.ObjectMeta(
+            )),
+            libresource.model_to_dict(clusterv1beta1.Cluster(
+                metadata=metav1.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "cluster",
                     },
@@ -122,11 +117,9 @@ test = compositiontest.CompositionTest(
                         namespace="gpu-us-central1",
                     ),
                 ),
-            ).model_dump(exclude_unset=True),
-            nodepoolv1beta1.NodePool(
-                apiVersion="container.gcp.m.upbound.io/v1beta1",
-                kind="NodePool",
-                metadata=k8s.ObjectMeta(
+            )),
+            libresource.model_to_dict(nodepoolv1beta1.NodePool(
+                metadata=metav1.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "nodepool-system",
                     },
@@ -156,11 +149,9 @@ test = compositiontest.CompositionTest(
                         ),
                     ),
                 ),
-            ).model_dump(exclude_unset=True),
-            nodepoolv1beta1.NodePool(
-                apiVersion="container.gcp.m.upbound.io/v1beta1",
-                kind="NodePool",
-                metadata=k8s.ObjectMeta(
+            )),
+            libresource.model_to_dict(nodepoolv1beta1.NodePool(
+                metadata=metav1.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "nodepool-gpu-l4",
                     },
@@ -201,11 +192,9 @@ test = compositiontest.CompositionTest(
                         ),
                     ),
                 ),
-            ).model_dump(exclude_unset=True),
-            sav1beta1.ServiceAccount(
-                apiVersion="cloudplatform.gcp.m.upbound.io/v1beta1",
-                kind="ServiceAccount",
-                metadata=k8s.ObjectMeta(
+            )),
+            libresource.model_to_dict(sav1beta1.ServiceAccount(
+                metadata=metav1.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "service-account",
                     },
@@ -216,11 +205,9 @@ test = compositiontest.CompositionTest(
                         displayName="Crossplane GKECluster gpu-us-central1",
                     ),
                 ),
-            ).model_dump(exclude_unset=True),
-            sakeyv1beta1.ServiceAccountKey(
-                apiVersion="cloudplatform.gcp.m.upbound.io/v1beta1",
-                kind="ServiceAccountKey",
-                metadata=k8s.ObjectMeta(
+            )),
+            libresource.model_to_dict(sakeyv1beta1.ServiceAccountKey(
+                metadata=metav1.ObjectMeta(
                     annotations={
                         "crossplane.io/composition-resource-name": "service-account-key",
                     },
@@ -236,7 +223,7 @@ test = compositiontest.CompositionTest(
                         namespace="gpu-us-central1",
                     ),
                 ),
-            ).model_dump(exclude_unset=True),
+            )),
         ],
     ),
 )

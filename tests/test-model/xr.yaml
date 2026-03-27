@@ -1,0 +1,14 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: Model
+metadata:
+  name: qwen-0.5b-vllm
+  namespace: ml-team
+spec:
+  model:
+    name: Qwen/Qwen2.5-0.5B-Instruct
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen2.5-0.5B-Instruct
+  engine: vLLM
+  resources:
+    vram: "2Gi"
