@@ -13,6 +13,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .lib import conditions
 from .lib import metadata
 from .lib import resource as libresource
+from .lib import secrets
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
@@ -100,9 +101,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     sa_key_secret = None
     if gke_secrets:
         for s in gke_secrets:
-            if s.type == "Kubeconfig":
+            if s.type == secrets.SECRET_TYPE_KUBECONFIG:
                 kubeconfig_secret = s
-            elif s.type == "GCPServiceAccountKey":
+            elif s.type == secrets.SECRET_TYPE_GCP_SA_KEY:
                 sa_key_secret = s
 
     cluster_pc_name = f"{name}-cluster-kubeconfig"
