@@ -13,6 +13,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
 from .lib import defaults
+from .lib import metadata
 from .lib import naming
 from .lib import quantities
 from .lib import resource as libresource
@@ -89,7 +90,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # all remote clusters. This means the remote path is the same regardless
     # of which environment, fixing multi-environment routing.
     llmis_name = naming.to_dns_label(model_name)
-    llmis_namespace = "default"
+    llmis_namespace = metadata.NAMESPACE_REMOTE
 
     # Build the container spec for the vLLM model server. Always set
     # --served-model-name so vLLM registers the model under the name

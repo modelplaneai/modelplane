@@ -19,6 +19,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .lib import conditions
 from .lib import helm
 from .lib import k8s
+from .lib import metadata
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -298,7 +299,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         for ln in listeners
                     ],
                 },
-            }, metadata=metav1.ObjectMeta(labels={"modelplane.ai/resource": "gateway"})),
+            }, metadata=metav1.ObjectMeta(labels={metadata.LABEL_KEY_RESOURCE: "gateway"})),
         )
 
     # Gate KServe CRDs and controller on cert-manager being ready. The kserve
@@ -394,9 +395,9 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # and write it to the XR's status.gateway.address.
     gateway_observed = req.observed.resources.get("gateway")
     if gateway_observed:
-        gw = resource.struct_to_dict(gateway_observed.resource)
+        gw_dict = resource.struct_to_dict(gateway_observed.resource)
         addresses = (
-            gw.get("status", {})
+            gw_dict.get("status", {})
             .get("atProvider", {})
             .get("manifest", {})
             .get("status", {})

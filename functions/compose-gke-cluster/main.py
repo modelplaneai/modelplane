@@ -10,6 +10,7 @@ from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
+from .lib import metadata
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -133,12 +134,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                 ),
             ]
             node_config.labels = {
-                "modelplane.ai/gpu": pool.gpu.acceleratorType or "unknown",
-                "modelplane.ai/pool": pool.name,
+                metadata.LABEL_KEY_GPU: pool.gpu.acceleratorType or "unknown",
+                metadata.LABEL_KEY_POOL: pool.name,
             }
         else:
             node_config.labels = {
-                "modelplane.ai/pool": pool.name,
+                metadata.LABEL_KEY_POOL: pool.name,
             }
 
         np = nodepoolv1beta1.NodePool(

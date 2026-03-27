@@ -11,14 +11,11 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
 from .lib import helm
+from .lib import metadata
 from .lib import resource as libresource
 from .model.ai.modelplane.inferencegateway import v1alpha1
 
-# The namespace where the Gateway and Envoy proxy resources live. Created
-# as a prerequisite — not composed by this function.
-_NAMESPACE = "modelplane-system"
 
-_GATEWAY_NAME = "modelplane"
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -42,7 +39,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     resource.update(rsp.desired.resources["provider-config-helm"], {
         "apiVersion": "helm.m.crossplane.io/v1beta1",
         "kind": "ProviderConfig",
-        "metadata": {"name": pc_name, "namespace": _NAMESPACE},
+        "metadata": {"name": pc_name, "namespace": metadata.NAMESPACE_SYSTEM},
         "spec": {"credentials": {"source": "InjectedIdentity"}},
     })
     rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
@@ -54,7 +51,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         resource.update(rsp.desired.resources[f"usage-pc-by-{release_key}"], {
             "apiVersion": "protection.crossplane.io/v1beta1",
             "kind": "Usage",
-            "metadata": {"namespace": _NAMESPACE},
+            "metadata": {"namespace": metadata.NAMESPACE_SYSTEM},
             "spec": {
                 "of": {
                     "apiVersion": "helm.m.crossplane.io/v1beta1",
@@ -66,7 +63,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     "kind": "Release",
                     "resourceSelector": {
                         "matchControllerRef": True,
-                        "matchLabels": {"modelplane.ai/release": release_key},
+                        "matchLabels": {metadata.LABEL_KEY_RELEASE: release_key},
                     },
                 },
                 "replayDeletion": True,
@@ -100,8 +97,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     version="0.14.9",
                     namespace=metallb_ns,
                     provider_config=pc_name,
-                    labels={"modelplane.ai/release": "metallb"},
-                    metadata_namespace=_NAMESPACE,
+                    labels={metadata.LABEL_KEY_RELEASE: "metallb"},
+                    metadata_namespace=metadata.NAMESPACE_SYSTEM,
                 ),
             )
             _pc_usage("metallb")
@@ -145,8 +142,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                         },
                     },
                 },
-                labels={"modelplane.ai/release": "envoy-gateway"},
-                metadata_namespace=_NAMESPACE,
+                labels={metadata.LABEL_KEY_RELEASE: "envoy-gateway"},
+                metadata_namespace=metadata.NAMESPACE_SYSTEM,
             ),
         )
         _pc_usage("envoy-gateway")
@@ -170,7 +167,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         resource.update(rsp.desired.resources["gateway"], {
             "apiVersion": "gateway.networking.k8s.io/v1",
             "kind": "Gateway",
-            "metadata": {"name": _GATEWAY_NAME, "namespace": _NAMESPACE},
+            "metadata": {"name": metadata.GATEWAY_NAME, "namespace": metadata.NAMESPACE_SYSTEM},
             "spec": {
                 "gatewayClassName": "envoy",
                 "listeners": [{

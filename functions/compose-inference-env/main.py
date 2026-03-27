@@ -11,6 +11,7 @@ from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions
+from .lib import metadata
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
@@ -52,43 +53,21 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # avoids the terminating-namespace problem: when an IE is deleted, a per-IE
     # namespace would enter Terminating state and block ProviderConfigUsage
     # creation, preventing managed resources from reconciling their deletion.
-    ie_ns = "modelplane-system"
+    ie_ns = metadata.NAMESPACE_SYSTEM
 
-    # Compose a GKECluster. Only pass through fields the user explicitly set —
-    # let the GKECluster XRD handle its own defaults for optional fields.
+    # Compose a GKECluster. The IE and GKECluster NodePool schemas share
+    # field names, so we dump each pool and reconstruct as a GKECluster pool.
     gke_node_pools = []
     for pool in gke.nodePools:
-        np_kwargs: dict = {
-            "name": pool.name,
-            "role": pool.role,
-            "machineType": pool.machineType,
-        }
-        if pool.diskSizeGb is not None:
-            np_kwargs["diskSizeGb"] = pool.diskSizeGb
-        if pool.nodeCount is not None:
-            np_kwargs["nodeCount"] = pool.nodeCount
-        if pool.minNodeCount is not None:
-            np_kwargs["minNodeCount"] = pool.minNodeCount
-        if pool.maxNodeCount is not None:
-            np_kwargs["maxNodeCount"] = pool.maxNodeCount
-        if pool.gpu:
-            gpu_kwargs: dict = {}
-            if pool.gpu.acceleratorType is not None:
-                gpu_kwargs["acceleratorType"] = pool.gpu.acceleratorType
-            if pool.gpu.acceleratorCount is not None:
-                gpu_kwargs["acceleratorCount"] = pool.gpu.acceleratorCount
-            np_kwargs["gpu"] = gkev1alpha1.Gpu(**gpu_kwargs)
-        if pool.zones is not None:
-            np_kwargs["zones"] = pool.zones
-        gke_node_pools.append(gkev1alpha1.NodePool(**np_kwargs))
+        d = pool.model_dump()
+        if "gpu" in d and d["gpu"] is not None:
+            d["gpu"] = gkev1alpha1.Gpu(**d["gpu"])
+        else:
+            d.pop("gpu", None)
+        gke_node_pools.append(gkev1alpha1.NodePool(**d))
 
-    gke_spec_kwargs: dict = {
-        "project": gke.project,
-        "region": gke.region,
-        "nodePools": gke_node_pools,
-    }
-    if gke.kubernetesVersion is not None:
-        gke_spec_kwargs["kubernetesVersion"] = gke.kubernetesVersion
+    gke_spec_kwargs = gke.model_dump()
+    gke_spec_kwargs["nodePools"] = gke_node_pools
 
     resource.update(
         rsp.desired.resources["gke-cluster"],

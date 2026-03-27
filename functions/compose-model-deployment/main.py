@@ -12,6 +12,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from . import scheduling
 from .lib import conditions
 from .lib import defaults
+from .lib import metadata
 from .lib import naming
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
@@ -21,8 +22,7 @@ from .model.ai.modelplane.modeldeployment import v1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# The namespace used for LLMInferenceService on all remote clusters.
-_REMOTE_NAMESPACE = "default"
+
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
@@ -42,7 +42,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     # modelplane.ai/environment=true label — a workaround for the empty
     # match_labels protobuf bug (see build log).
     env_match_labels: dict[str, str] = {
-        "modelplane.ai/environment": "true",
+        metadata.LABEL_KEY_ENVIRONMENT: metadata.LABEL_VALUE_ENVIRONMENT,
     }
     if env_selector and env_selector.matchLabels:
         env_match_labels.update(env_selector.matchLabels)
@@ -73,7 +73,7 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         name="all-placements",
         api_version="modelplane.ai/v1alpha1",
         kind="ModelPlacement",
-        match_labels={"modelplane.ai/placement": "true"},
+        match_labels={metadata.LABEL_KEY_PLACEMENT: metadata.LABEL_VALUE_PLACEMENT},
     )
 
     env_dicts = request.get_required_resources(req, "environments")
@@ -148,8 +148,8 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
                     name=pname,
                     namespace=xr_ns,
                     labels={
-                        "modelplane.ai/placement": "true",
-                        "modelplane.ai/deployment": xr_name,
+                        metadata.LABEL_KEY_PLACEMENT: metadata.LABEL_VALUE_PLACEMENT,
+                        metadata.LABEL_KEY_DEPLOYMENT: xr_name,
                     },
                 ),
                 spec=mpv1alpha1.Spec(
@@ -207,12 +207,12 @@ def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         # Rewrite /{ns}/{deployment}/ to /{remote-ns}/{model-name}/.
         # The LLMIS name is the ClusterModel name on all remote clusters,
         # so the rewrite is the same for every backend.
-        rewrite_prefix = f"/{_REMOTE_NAMESPACE}/{naming.to_dns_label(model_name)}/"
+        rewrite_prefix = f"/{metadata.NAMESPACE_REMOTE}/{naming.to_dns_label(model_name)}/"
 
         # Gateway parentRef — defaults for Envoy Gateway, could be read
         # from InferenceGateway status in future.
-        gw_name = "modelplane"
-        gw_ns = "modelplane-system"
+        gw_name = metadata.GATEWAY_NAME
+        gw_ns = metadata.NAMESPACE_SYSTEM
 
         httproute_spec: dict = {
             "parentRefs": [{"name": gw_name, "namespace": gw_ns}],
