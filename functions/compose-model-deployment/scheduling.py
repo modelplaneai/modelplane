@@ -8,8 +8,7 @@ prefers environments with existing placements.
 import math
 from dataclasses import dataclass
 
-from .lib import metadata
-from .lib import quantities
+from .lib import metadata, quantities
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
@@ -51,9 +50,7 @@ def schedule(
     # Environments that already have a placement for this deployment.
     existing_envs = set()
     for p in all_placements:
-        if (p.metadata.labels or {}).get(
-            metadata.LABEL_KEY_DEPLOYMENT
-        ) == deployment.metadata.name:
+        if (p.metadata.labels or {}).get(metadata.LABEL_KEY_DEPLOYMENT) == deployment.metadata.name:
             existing_envs.add(p.spec.inferenceEnvironmentRef.name)
 
     candidates = []
@@ -79,9 +76,7 @@ def schedule(
         # Subtract GPUs used by other deployments' placements on this env.
         used_gpus = 0
         for p in all_placements:
-            if (p.metadata.labels or {}).get(
-                metadata.LABEL_KEY_DEPLOYMENT
-            ) == deployment.metadata.name:
+            if (p.metadata.labels or {}).get(metadata.LABEL_KEY_DEPLOYMENT) == deployment.metadata.name:
                 continue  # Don't count our own placements against us.
             if p.spec.inferenceEnvironmentRef.name == env.metadata.name:
                 used_gpus += p.status.resources.gpu.count or 0

@@ -113,10 +113,7 @@ test = compositiontest.CompositionTest(
                         ),
                         readiness=k8sobjv1alpha1.Readiness(
                             policy="DeriveFromCelQuery",
-                            celQuery=(
-                                "object.status.conditions.exists("
-                                'c, c.type == "Ready" && c.status == "True")'
-                            ),
+                            celQuery=('object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")'),
                         ),
                         forProvider=k8sobjv1alpha1.ForProvider(
                             manifest={

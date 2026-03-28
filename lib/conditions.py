@@ -51,9 +51,7 @@ def set_condition(
     rsp.conditions.append(
         fnv1.Condition(
             type=type,
-            status=(
-                fnv1.STATUS_CONDITION_TRUE if status else fnv1.STATUS_CONDITION_FALSE
-            ),
+            status=(fnv1.STATUS_CONDITION_TRUE if status else fnv1.STATUS_CONDITION_FALSE),
             reason=reason,
             message=message,
             target=fnv1.TARGET_COMPOSITE,

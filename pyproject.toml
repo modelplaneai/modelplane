@@ -4,6 +4,9 @@
 
 [tool.ruff]
 target-version = "py312"
+# Match ruff format's default. The formatter won't produce lines longer than
+# this, but string literals in deeply nested dicts can still exceed it.
+line-length = 120
 
 [tool.ruff.lint]
 select = [
@@ -20,6 +23,10 @@ select = [
     "RET",    # flake8-return (return statement issues)
     "ARG",    # flake8-unused-arguments
 ]
+
+[tool.ruff.lint.pylint]
+# Builder functions like helm_release use named parameters for clarity.
+max-args = 8
 
 [tool.ruff.lint.per-file-ignores]
 # Generated models are not under our control.

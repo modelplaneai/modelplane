@@ -18,9 +18,7 @@ def inference_environment(
     """Return a copy with status fields defaulted."""
     ie = ie.model_copy(deep=True)
     ie.status = ie.status or iev1alpha1.Status()
-    ie.status.providerConfigRef = (
-        ie.status.providerConfigRef or iev1alpha1.ProviderConfigRef()
-    )
+    ie.status.providerConfigRef = ie.status.providerConfigRef or iev1alpha1.ProviderConfigRef()
     ie.status.gateway = ie.status.gateway or iev1alpha1.Gateway()
     ie.status.capacity = ie.status.capacity or iev1alpha1.Capacity()
     ie.status.capacity.gpuPools = ie.status.capacity.gpuPools or []
