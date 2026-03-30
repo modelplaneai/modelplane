@@ -18,9 +18,9 @@ spec:
     - name: READY
       type: string
       jsonPath: .status.conditions[?(@.type=='Ready')].status
-    - name: REGION
+    - name: BACKEND
       type: string
-      jsonPath: .spec.kserve.cluster.gke.region
+      jsonPath: .spec.backend
     - name: GATEWAY
       type: string
       jsonPath: .status.gateway.address
@@ -57,8 +57,68 @@ spec:
                       source:
                         type: string
                         description: >-
-                          Cluster provisioning method. MVP supports GKE only.
-                        enum: [GKE]
+                          Cluster provisioning method.
+                        enum: [GKE, Existing]
+                      existing:
+                        type: object
+                        description: >-
+                          Bring-your-own cluster configuration. Required when
+                          source is Existing. Modelplane manages the backend
+                          stack (KServe, gateway, etc.) on the cluster but
+                          does not provision the cluster itself.
+                        required: [secretRef]
+                        properties:
+                          secretRef:
+                            type: object
+                            description: >-
+                              Reference to a Secret containing a kubeconfig
+                              for the existing cluster. The Secret must exist
+                              in the modelplane-system namespace.
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                                description: Name of the kubeconfig Secret.
+                                minLength: 1
+                                maxLength: 253
+                              key:
+                                type: string
+                                description: >-
+                                  Key within the Secret that holds the
+                                  kubeconfig data.
+                                default: kubeconfig
+                                minLength: 1
+                                maxLength: 253
+                          nodePools:
+                            type: array
+                            description: >-
+                              Declared GPU capacity of the existing cluster.
+                              Used by the scheduler to match models to
+                              compatible environments. If omitted, the
+                              environment reports no GPU capacity and only
+                              models with no GPU requirements can be
+                              scheduled.
+                            maxItems: 8
+                            x-kubernetes-list-type: map
+                            x-kubernetes-list-map-keys: [name]
+                            items:
+                              type: object
+                              required: [name]
+                              properties:
+                                name:
+                                  type: string
+                                  maxLength: 40
+                                nodeCount:
+                                  type: integer
+                                  default: 1
+                                gpu:
+                                  type: object
+                                  properties:
+                                    acceleratorType:
+                                      type: string
+                                    acceleratorCount:
+                                      type: integer
+                                      default: 1
                       gke:
                         type: object
                         description: >-

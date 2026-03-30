@@ -1,0 +1,23 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceEnvironment
+metadata:
+  name: byo-us-east
+  labels:
+    modelplane.ai/environment: "true"
+    modelplane.ai/region: us-east
+spec:
+  backend: KServe
+  kserve:
+    version: v0.16.0
+    cluster:
+      source: Existing
+      existing:
+        secretRef:
+          name: byo-cluster-kubeconfig
+          key: kubeconfig
+        nodePools:
+        - name: gpu-h100
+          nodeCount: 2
+          gpu:
+            acceleratorType: nvidia-h100-80gb
+            acceleratorCount: 8
