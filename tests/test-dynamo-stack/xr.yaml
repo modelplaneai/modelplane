@@ -1,0 +1,14 @@
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: DynamoStack
+metadata:
+  name: dynamo-us-central-dynamo
+  namespace: modelplane-system
+spec:
+  secrets:
+  - type: Kubeconfig
+    name: dynamo-cluster-kubeconfig
+    key: kubeconfig
+  versions:
+    dynamo: "1.0.0"
+    certManager: v1.17.1
+    envoyGateway: v1.3.0

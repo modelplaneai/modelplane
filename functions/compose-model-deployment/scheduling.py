@@ -17,6 +17,7 @@ from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 # Maps InferenceEnvironment backends to the engines they support.
 _COMPAT = {
     "KServe": ["vLLM"],
+    "Dynamo": ["vLLM", "SGLang", "TensorRT-LLM"],
 }
 
 

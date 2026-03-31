@@ -103,7 +103,7 @@ test = compositiontest.CompositionTest(
                 k8sobjv1alpha1.Object(
                     metadata=metav1.ObjectMeta(
                         annotations={
-                            "crossplane.io/composition-resource-name": "llm-inference-service",
+                            "crossplane.io/composition-resource-name": "model-serving",
                         },
                     ),
                     spec=k8sobjv1alpha1.Spec(
