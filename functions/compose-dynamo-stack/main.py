@@ -121,10 +121,21 @@ class Composer:
         return True
 
     def compose_usages(self):
-        """Protect ProviderConfigs from deletion until all resources that
-        reference them are gone."""
+        """Compose Usages for deletion ordering.
+
+        Two concerns: ProviderConfigs must outlive the resources that reference
+        them, and the Envoy Gateway controller must outlive the Gateway and
+        GatewayClass resources it manages (they have finalizers the controller
+        must process).
+
+        The deletion chain is:
+          Gateway Object → GatewayClass Object → envoy-gateway Release
+          All Releases → helm ProviderConfig
+          All Objects → k8s ProviderConfig
+        """
         pc = _pc_name(self.xr)
 
+        # Helm ProviderConfig protected by all Releases.
         resource.update(
             self.rsp.desired.resources["usage-helm-pc"],
             {
@@ -147,6 +158,7 @@ class Composer:
         )
         self.rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
 
+        # K8s ProviderConfig protected by all Objects.
         resource.update(
             self.rsp.desired.resources["usage-k8s-pc"],
             {
@@ -168,6 +180,68 @@ class Composer:
             },
         )
         self.rsp.desired.resources["usage-k8s-pc"].ready = fnv1.READY_TRUE
+
+        # GatewayClass Object protected by Gateway Object. The GatewayClass
+        # has a gateway-exists-finalizer that the EG controller won't remove
+        # while Gateways reference it.
+        resource.update(
+            self.rsp.desired.resources["usage-gateway-class-by-gateway"],
+            {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "Usage",
+                "spec": {
+                    "of": {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway-class"},
+                        },
+                    },
+                    "by": {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway"},
+                        },
+                    },
+                    "replayDeletion": True,
+                },
+            },
+        )
+        self.rsp.desired.resources["usage-gateway-class-by-gateway"].ready = fnv1.READY_TRUE
+
+        # Envoy Gateway Release protected by GatewayClass Object. The EG
+        # controller must be running to process the GatewayClass's
+        # gateway-exists-finalizer during deletion.
+        resource.update(
+            self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"],
+            {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "Usage",
+                "spec": {
+                    "of": {
+                        "apiVersion": "helm.m.crossplane.io/v1beta1",
+                        "kind": "Release",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "envoy-gateway"},
+                        },
+                    },
+                    "by": {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway-class"},
+                        },
+                    },
+                    "replayDeletion": True,
+                },
+            },
+        )
+        self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
 
     def compose_cert_manager(self):
         """Compose cert-manager. Gated on ProviderConfigs being observed."""
@@ -203,6 +277,7 @@ class Composer:
                 version=v.envoyGateway,
                 namespace="envoy-gateway-system",
                 provider_config=_pc_name(self.xr),
+                labels={metadata.LABEL_KEY_RESOURCE: "envoy-gateway"},
                 values={
                     "config": {
                         "envoyGateway": {
@@ -225,22 +300,19 @@ class Composer:
             return
 
         v = self.xr.spec.versions or v1alpha1.Versions()
-        dynamo_release = helm.helm_release(
-            chart="dynamo-platform",
-            # NGC doesn't publish a standard Helm repo index. The chart is
-            # downloaded directly by URL: the Helm provider resolves
-            # <repo>/charts/<chart>-<version>.tgz from this base URL.
-            repo="https://helm.ngc.nvidia.com/nvidia/ai-dynamo",
-            version=v.dynamo,
-            namespace="dynamo-system",
-            provider_config=_pc_name(self.xr),
+        resource.update(
+            self.rsp.desired.resources["dynamo-platform"],
+            helm.helm_release(
+                chart="dynamo-platform",
+                # NGC doesn't publish a standard Helm repo index. The chart is
+                # downloaded directly by URL: the Helm provider resolves
+                # <repo>/charts/<chart>-<version>.tgz from this base URL.
+                repo="https://helm.ngc.nvidia.com/nvidia/ai-dynamo",
+                version=v.dynamo,
+                namespace="dynamo-system",
+                provider_config=_pc_name(self.xr),
+            ),
         )
-        # Don't uninstall Dynamo when DynamoStack is deleted. The operator's
-        # CRDs and webhook configurations can block clean Helm uninstall.
-        # Since the cluster is being torn down anyway, leaving Dynamo
-        # installed is harmless.
-        dynamo_release.spec.managementPolicies = ["Create", "Observe", "Update"]
-        resource.update(self.rsp.desired.resources["dynamo-platform"], dynamo_release)
 
         # Transition: cert-manager is ready, Dynamo not yet composed.
         if not cert_manager_ready:
@@ -277,7 +349,7 @@ class Composer:
                             "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
                         },
                     },
-                    management_policies=["Create", "Observe", "Update"],
+                    metadata=metav1.ObjectMeta(labels={metadata.LABEL_KEY_RESOURCE: "gateway-class"}),
                 ),
             )
 
@@ -335,8 +407,6 @@ class Composer:
         always_ready = [
             "provider-config-kubernetes",
             "provider-config-helm",
-            "gateway-class",
-            "dynamo-platform",
         ]
         for r in always_ready:
             if r in self.rsp.desired.resources:
@@ -345,6 +415,8 @@ class Composer:
         condition_ready = [
             "cert-manager",
             "envoy-gateway",
+            "dynamo-platform",
+            "gateway-class",
             "gateway",
         ]
         for r in condition_ready:
