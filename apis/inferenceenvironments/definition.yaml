@@ -111,6 +111,7 @@ spec:
                                 nodeCount:
                                   type: integer
                                   default: 1
+                                  minimum: 1
                                 gpu:
                                   type: object
                                   properties:
@@ -119,6 +120,7 @@ spec:
                                     acceleratorCount:
                                       type: integer
                                       default: 1
+                                      minimum: 1
                       gke:
                         type: object
                         description: >-
