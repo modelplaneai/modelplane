@@ -22,7 +22,7 @@ metadata:
 spec:
   modelRef:
     kind: ClusterModel
-    name: llama-8b-vllm
+    name: llama-8b
   environments: 1
 ```
 
@@ -165,11 +165,10 @@ register their own fine-tuned models privately within their namespace.
 apiVersion: modelplane.ai/v1alpha1
 kind: ClusterModel
 metadata:
-  name: llama-3.1-70b-instruct-vllm  # No namespace — cluster-scoped
+  name: llama-3.1-70b-instruct       # No namespace — cluster-scoped
   labels:
     modelplane.ai/family: llama
     modelplane.ai/size: 70b
-    modelplane.ai/engine: vLLM
 spec:
   # Model identity
   model:
@@ -184,28 +183,23 @@ spec:
       namespace: platform-system
       name: hf-token
 
-  # Hardware requirements — what this model needs to run
+  # Hardware requirements — total VRAM the model needs. The scheduler divides
+  # this by per-GPU VRAM of each candidate environment to compute GPU count.
   resources:
-    gpu:
-      type: nvidia.com/gpu           # GPU resource key
-      count: 4                       # Minimum GPUs required
-      memory: 80Gi                   # Per-GPU VRAM (informational, for scheduling)
-    memory: "128Gi"                  # System memory (resource.Quantity string)
-    cpu: "16"                        # CPU cores (resource.Quantity string, e.g. "16" or "500m")
+    vram: "140Gi"
 
-  # Engine configuration — how this model must be served.
-  engine: vLLM                       # vLLM | SGLang | ...
-  vLLM:
-    image: vllm/vllm-openai:latest
-    maxModelLen: 32768               # Context window length
-    prefixCaching: true              # KV cache prefix reuse
-    gpuMemoryUtilization: 0.9        # Fraction of GPU VRAM to use (0.0–1.0)
-    quantization: none               # none | awq | gptq | fp8
-    parallelism:
-      tensor: 4                      # Tensor parallelism across GPUs
-
-  # Estimated model size on disk (used for cache PV provisioning)
-  modelSize: 150Gi
+  # Serving profiles — how this model is served on each backend. Each profile
+  # is a complete, tested configuration for a specific (backend, engine) pair.
+  # Array order is priority: the first profile that matches wins.
+  serving:
+  - name: vllm-kserve
+    backend: KServe                  # Required discriminator — matches IE backend
+    engine:                          # Required for K8s backends (KServe, Dynamo)
+      name: vLLM
+      image: vllm/vllm-openai:v0.8.0
+      args:                          # Opaque — passed through to the engine
+      - "--max-model-len=32768"
+      - "--gpu-memory-utilization=0.9"
 
 status:
   conditions:
@@ -216,18 +210,63 @@ status:
       observedGeneration: 1
 ```
 
+Each serving profile binds a model to a specific backend and engine. The
+`backend` field is a required discriminator that determines what other fields
+are valid. For Kubernetes backends (KServe, Dynamo), the `engine` block is
+required. Future SaaS backends (e.g., Together AI) may not expose engine
+configuration at all — `backend` gates this.
 
-Each inference engine (vLLM, SGLang, TensorRT-LLM) has its own configuration
-knobs with engine-specific names and semantics. Engine config lives on
-`ClusterModel` / `Model` because it makes each catalog entry a complete,
-deployable unit. The platform team offers a model packaged for a use case:
+The `engine` block carries the container image, the engine name (which tells
+the placement function engine-specific mechanics like Dynamo's
+`backendFramework` and module paths), and opaque CLI args. Modelplane does not
+interpret engine args — they're passed through to the container. Engine flags
+evolve with every engine release; treating them as opaque avoids a perpetual
+schema maintenance burden. The only things Modelplane derives from the model
+are the model name/URI on the container and the GPU count from VRAM.
 
-- `llama-70b-fp16-interactive` (full precision, tuned for chatbot latency)
-- `llama-70b-fp8-batch` (quantized, high throughput, cheaper GPUs)
+An organization running both KServe and Dynamo (e.g., during a backend
+migration) adds a second profile:
 
-The ML team picks from the catalog without needing to understand what the engine
-flags mean. Advanced ML teams that want to tune engine flags for a model can do
-so by creating a namespaced `Model`.
+```yaml
+  serving:
+  - name: vllm-kserve
+    backend: KServe
+    engine:
+      name: vLLM
+      image: vllm/vllm-openai:v0.8.0
+      args: ["--max-model-len=32768", "--gpu-memory-utilization=0.9"]
+  - name: vllm-dynamo
+    backend: Dynamo
+    engine:
+      name: vLLM
+      image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.1
+      args: ["--max-model-len=32768"]
+```
+
+Most organizations standardize on one backend and one engine, so most
+ClusterModels have a single serving profile. Profile proliferation is bounded
+by the number of backends in use — typically one or two.
+
+Profiles can also carry an optional `environmentSelector` for capability-based
+matching. A profile that uses FP8 quantization (requiring Hopper GPUs) can
+require environments with a specific label, separate from the backend match:
+
+```yaml
+  - name: vllm-kserve-fp8
+    backend: KServe
+    environmentSelector:
+      matchLabels:
+        modelplane.ai/gpu-arch: hopper
+    engine:
+      name: vLLM
+      image: vllm/vllm-openai:v0.8.0
+      args: ["--quantization=fp8", "--max-model-len=32768"]
+```
+
+The ML team picks from the catalog without needing to understand engine
+profiles. The ClusterModel name no longer encodes the engine — it's just the
+model. Advanced ML teams that want to tune engine flags can create a namespaced
+`Model` with their own serving profiles.
 
 
 ### InferenceGateway (`inferencegateways.modelplane.ai/v1alpha1`)
@@ -309,7 +348,7 @@ metadata:
     modelplane.ai/tier: production
     modelplane.ai/region: us-east
 spec:
-  backend: KServe                        # KServe | (KubeAI in v0.2)
+  backend: KServe                        # KServe | Dynamo | (KubeAI in v0.2)
   kserve:
     version: v0.16.0
 
@@ -455,7 +494,7 @@ spec:
   # What model to deploy
   modelRef:
     kind: ClusterModel          # ClusterModel | Model
-    name: llama-3.1-70b-instruct-vllm
+    name: llama-3.1-70b-instruct
 
   # How many environments to deploy to (required)
   environments: 1
@@ -474,9 +513,12 @@ status:
     name: meta-llama/Llama-3.1-70B-Instruct
 ```
 
-Modelplane matches model requirements (GPU count, VRAM from Model
-`spec.resources`) and engine compatibility (Model engine vs.
-InferenceEnvironment backend) against available environments.
+Modelplane matches model serving profiles against available environments. For
+each candidate environment, Modelplane walks the ClusterModel's `serving[]`
+array and selects the first profile whose `backend` matches the environment's
+backend and whose `environmentSelector` (if any) matches the environment's
+labels. Environments with no matching profile are eliminated. VRAM-based
+capacity filtering ensures the model fits on the environment's GPUs.
 
 For power users who need to target specific environments, `environmentSelector`
 is an optional escape hatch:
@@ -490,7 +532,7 @@ metadata:
 spec:
   modelRef:
     kind: ClusterModel
-    name: llama-3.1-70b-instruct-vllm
+    name: llama-3.1-70b-instruct
 
   # Deploy to 2 of the matching environments
   environments: 2
@@ -541,17 +583,20 @@ A `ModelPlacement` is the resource that actually deploys a model and registers
 it with the routing layer. When Modelplane creates a ModelPlacement, it
 composes the backend-specific resources that run the model on a specific
 InferenceEnvironment — for a KServe backend, that means creating an
-`LLMInferenceService` on the target cluster. It also reads the
+`LLMInferenceService` on the target cluster; for Dynamo, a
+`DynamoGraphDeployment`. It also reads the
 InferenceGateway and composes routing resources so the gateway can reach the
 model — for an Envoy Gateway backend, that means a Backend and HTTPRoute on
 the control plane.
 
-ModelPlacement is the only function that knows about specific backends. It's
-where backend-specific model serving and routing logic lives. Adding a new
-backend means updating this one function. An InferenceEnvironment provisions
-infrastructure and installs the backend stack, but no models are running until
-a ModelPlacement targets it. A ClusterModel describes how a model should be
-served, but it's inert until referenced by a ModelPlacement.
+ModelPlacement is the only function that knows about specific backends. It
+reads the ClusterModel's matched serving profile to get the engine name,
+container image, and args, then composes the appropriate backend-specific
+resource. Adding a new backend means updating this one function. An
+InferenceEnvironment provisions infrastructure and installs the backend stack,
+but no models are running until a ModelPlacement targets it. A ClusterModel
+describes how a model should be served, but it's inert until referenced by a
+ModelPlacement.
 
 ModelDeployments create ModelPlacements automatically — one per matched
 InferenceEnvironment. ML teams aren't intended to create them directly, but
@@ -569,7 +614,7 @@ spec:
   # What to deploy
   modelRef:
     kind: ClusterModel
-    name: llama-3.1-70b-instruct-vllm
+    name: llama-3.1-70b-instruct
 
   # Where to deploy it
   inferenceEnvironmentRef:
@@ -580,24 +625,18 @@ status:
     - type: Ready                    # Model is serving traffic on this environment
       status: "True"
       reason: Available
-    - type: Compatible               # Model engine is supported by this backend
-      status: "True"
-      reason: BackendSupportsEngine
     - type: ModelCached              # Weights were found in cache at startup
       status: "True"
       reason: CacheAvailable
     - type: EndpointAvailable        # Per-environment endpoint is reachable
       status: "True"
       reason: GatewayRouteConfigured
-  resolvedEngine:
-    engine: vLLM
-    vLLM:
-      image: vllm/vllm-openai:v0.16.0
-      maxModelLen: 32768
-      prefixCaching: true
-      gpuMemoryUtilization: 0.9
-      parallelism:
-        tensor: 4
+  servingProfile:                    # Resolved by compose-model-deployment
+    name: vllm-kserve
+    backend: KServe
+    engine:
+      name: vLLM
+      image: vllm/vllm-openai:v0.8.0
   model:
     name: meta-llama/Llama-3.1-70B-Instruct
   endpoint:
@@ -611,11 +650,12 @@ llama-70b-global-us-east    gpu-cluster-us-east  True
 llama-70b-global-us-west    gpu-cluster-us-west  True
 ```
 
-ModelPlacement's spec is just `modelRef` and `inferenceEnvironmentRef`. Engine
-config comes from the Model, scaling is determined by the backend of the
-`InferenceEnvironment`. The resolved engine config — the Model's engine settings
-as actually applied to the backend — lives in `status.resolvedEngine`. It's
-computed output, not user intent.
+ModelPlacement's spec is just `modelRef` and `inferenceEnvironmentRef`. The
+deploy function resolves which serving profile to use during placement creation.
+The matched profile — including backend, engine name, and image — is written to
+`status.servingProfile` as computed output. The placement function reads the
+full profile (including opaque args) from the ClusterModel to compose the
+backend-specific resources.
 
 ### Composition architecture
 
@@ -629,7 +669,7 @@ and to the internal XRs that Modelplane composes under the hood:
 flowchart TD
     subgraph platform["Platform team creates"]
         IG["InferenceGateway"]
-        CM["ClusterModel\n<i>per model + engine</i>"]
+        CM["ClusterModel\n<i>per model</i>"]
         IE1["InferenceEnvironment A"]
         IE2["InferenceEnvironment B"]
     end
@@ -669,8 +709,8 @@ Five composition functions, one per concern:
 | `function-modelplane-gateway` | Composes the control plane routing infrastructure. Dispatches on gateway backend (Envoy Gateway, LiteLLM). Surfaces `status.address` for ModelPlacements. |
 | `function-modelplane-env` | Dispatches on inference backend and cloud provider discriminators. Composes `GKECluster` and `KServeStack` XRs, wires them together, populates `status.capacity`. Adding a new backend or cloud provider means adding a branch here. |
 | `function-modelplane-model` | Validates model catalog entries for both `ClusterModel` and `Model`. Registration and validation only — caching is an environment concern. |
-| `function-modelplane-deploy` | Backend-agnostic fan-out and routing aggregation. Resolves target environments, stamps placements, composes a Gateway API HTTPRoute that load-balances across all placements' backends, aggregates status. |
-| `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model, InferenceEnvironment, and InferenceGateway. Composes backend-specific model serving resources (LLMInferenceService for KServe) and routing endpoint resources (Envoy Gateway Backend). Adding a new inference or routing backend means updating this one function. |
+| `function-modelplane-deploy` | Backend-agnostic fan-out and routing aggregation. Resolves target environments, matches serving profiles to environments (by backend and optional label selector), stamps placements, composes a Gateway API HTTPRoute that load-balances across all placements' backends, aggregates status. |
+| `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model (including its matched serving profile), InferenceEnvironment, and InferenceGateway. Uses the profile's engine name, image, and args to compose backend-specific model serving resources (LLMInferenceService for KServe, DynamoGraphDeployment for Dynamo) and routing endpoint resources (Envoy Gateway Backend). Adding a new inference or routing backend means updating this one function. |
 
 The `GKECluster` and `KServeStack` XRs are internal implementation details —
 they have their own XRDs and composition functions but are not part of
@@ -685,22 +725,33 @@ composition and routing.
 
 ## Alternatives considered
 
-### Engine and ClusterEngine CRs
+### Separate engine configuration CRs
 
-I considered separate Engine and ClusterEngine CRs that would separate model
-identity from serving configuration. The ML team's ModelDeployment would
-reference both a model and an engine profile. This has real strengths:
+I considered separate Engine CRs that would decouple engine configuration from
+model identity. This has real appeal: the platform team maintains models and
+engine profiles as independent catalogs, engine config updates happen in one
+place, and the model catalog is purely about model identity.
 
-- The platform team maintains models and engine profiles as independent catalogs
-  (N models + M engine profiles instead of N×M ClusterModels)
-- Engine config updates happen in one place rather than per ClusterModel
+The problem is that engine args are inherently both model-specific and
+engine-specific. `--max-model-len=32768` is a vLLM flag that varies per model.
+If an engine profile must contain all engine configuration (no merging from
+multiple sources), two different models would almost never share a profile.
+If instead the model carries per-engine arg overrides to merge with a shared
+profile, the model is engine-aware anyway — and you've reinvented serving
+profiles split across two resources.
 
-I decided to keep engine config on ClusterModel/Model. The bundled approach
-makes each catalog entry a complete, tested, deployable unit. The platform team
-blesses specific model+engine combinations rather than letting any model pair
-with any engine profile and discovering incompatibilities at placement time. It
-keeps the consumer API minimal (one ref, not two) and the information model
-simpler (five CRDs, not seven).
+Additionally, centralized engine version management (upgrade one profile,
+all models change) is the wrong operational model. In practice you want to
+upgrade engine versions per-model: test with one model, roll out gradually,
+keep others pinned. A shared profile upgrades every model simultaneously with
+no way to canary.
+
+Serving profiles on ClusterModel preserve the "complete deployable unit"
+property while handling multiple backends. Each profile is a tested
+combination of (model, backend, engine, image, args). The ML team still sees
+one ref — no engine concepts leak to consumers. See
+[#18](https://github.com/modelplaneai/modelplane/issues/18) for the full
+design rationale.
 
 ### Namespace-as-environment
 
@@ -798,10 +849,10 @@ infer them when possible and let the spec override.
 provisions a cluster, it knows the GPU capacity from the node pool config. For
 bring-your-own clusters, capacity is unknown — and even for provisioned
 clusters, node autoscaling means declared capacity may not reflect reality. The
-deploy function currently uses capacity to match models to compatible
-environments. For BYO clusters this information isn't available. One option is
-to make capacity purely informational and have the deploy function only check
-engine/backend compatibility, letting the actual scheduling happen at the
-Kubernetes level when the ModelPlacement composes an LLMInferenceService. If the
-cluster can't schedule the pods, the placement reports that via status
-conditions rather than being rejected upfront.
+deploy function uses capacity to check whether the model's VRAM requirements
+fit on the environment's GPUs. For BYO clusters this information isn't
+available. One option is to make capacity purely informational and have the
+deploy function only check serving profile compatibility (backend match), letting
+the actual scheduling happen at the Kubernetes level when the ModelPlacement
+composes backend-specific resources. If the cluster can't schedule the pods, the
+placement reports that via status conditions rather than being rejected upfront.
