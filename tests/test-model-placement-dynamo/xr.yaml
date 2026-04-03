@@ -5,6 +5,6 @@ metadata:
   namespace: ml-team
 spec:
   modelRef:
-    name: qwen-0.5b-vllm
+    name: qwen-0.5b
   inferenceEnvironmentRef:
     name: dynamo-us-central

@@ -74,18 +74,28 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # The ClusterModel requesting vLLM engine.
+            # The ClusterModel with a KServe profile — won't match
+            # incompatible-env's SomeOtherBackend.
             libresource.model_to_fixture(
                 cmv1alpha1.ClusterModel(
-                    metadata=metav1.ObjectMeta(name="qwen-0.5b-vllm"),
+                    metadata=metav1.ObjectMeta(name="qwen-0.5b"),
                     spec=cmv1alpha1.Spec(
                         model=cmv1alpha1.Model(name="Qwen/Qwen2.5-0.5B-Instruct"),
                         source="HuggingFace",
                         huggingFace=cmv1alpha1.HuggingFace(
                             repo="Qwen/Qwen2.5-0.5B-Instruct",
                         ),
-                        engine="vLLM",
                         resources=cmv1alpha1.Resources(vram="2Gi"),
+                        serving=[
+                            cmv1alpha1.ServingItem(
+                                name="vllm-kserve",
+                                backend="KServe",
+                                engine=cmv1alpha1.Engine(
+                                    name="vLLM",
+                                    image="vllm/vllm-openai:v0.7.3",
+                                ),
+                            ),
+                        ],
                     ),
                 )
             ),
@@ -116,7 +126,7 @@ test = compositiontest.CompositionTest(
                     spec=mpv1alpha1.Spec(
                         modelRef=mpv1alpha1.ModelRef(
                             kind="ClusterModel",
-                            name="qwen-0.5b-vllm",
+                            name="qwen-0.5b",
                         ),
                         inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
                             name="compatible-env",
@@ -132,7 +142,7 @@ test = compositiontest.CompositionTest(
                         namespace="ml-team",
                     ),
                     spec=mdv1alpha1.Spec(
-                        modelRef=mdv1alpha1.ModelRef(name="qwen-0.5b-vllm"),
+                        modelRef=mdv1alpha1.ModelRef(name="qwen-0.5b"),
                         environments=1,
                     ),
                     status=mdv1alpha1.Status(

@@ -21,9 +21,6 @@ spec:
     - name: MODEL
       type: string
       jsonPath: .spec.model.name
-    - name: ENGINE
-      type: string
-      jsonPath: .spec.engine
     - name: VRAM
       type: string
       jsonPath: .spec.resources.vram
@@ -37,7 +34,7 @@ spec:
         properties:
           spec:
             type: object
-            required: [model, source, engine, resources]
+            required: [model, source, resources, serving]
             properties:
               model:
                 type: object
@@ -79,46 +76,86 @@ spec:
                         type: string
                       key:
                         type: string
-              engine:
-                type: string
-                description: Inference engine.
-                enum: [vLLM]
-              vllm:
-                type: object
-                description: >-
-                  vLLM-specific configuration. Only applies when engine is vLLM.
-                properties:
-                  image:
-                    type: string
-                    default: "vllm/vllm-openai:v0.7.3"
-                  extraArgs:
-                    type: array
-                    description: >-
-                      Additional CLI arguments passed to vLLM
-                      (e.g. ["--max-model-len=4096"]).
-                    items:
-                      type: string
               resources:
                 type: object
                 required: [vram]
                 description: >-
-                  Hardware requirements. The model specifies total VRAM
-                  needed. The scheduler computes GPU count per-environment
-                  based on available per-GPU VRAM.
+                  Hardware requirements. The scheduler divides total VRAM by
+                  per-GPU VRAM of each candidate pool to compute GPU count.
                 properties:
                   vram:
                     type: string
                     description: >-
                       Total VRAM the model needs (e.g. "24Gi", "140Gi").
-                      The scheduler divides this by the per-GPU VRAM of
-                      each candidate pool to determine how many GPUs are
-                      required.
                   cpu:
                     type: string
                     default: "4"
                   memory:
                     type: string
                     default: "16Gi"
+              serving:
+                type: array
+                description: >-
+                  Serving profiles. Each profile is a complete configuration
+                  for serving this model on a specific (backend, engine) pair.
+                  Array order is priority: the first profile matching a
+                  candidate environment wins.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
+                items:
+                  type: object
+                  required: [name, backend]
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Unique name for this profile (e.g. "vllm-kserve",
+                        "vllm-dynamo").
+                      minLength: 1
+                      maxLength: 63
+                    backend:
+                      type: string
+                      description: >-
+                        Backend this profile targets. Must match the
+                        InferenceEnvironment's spec.backend.
+                      enum: [KServe, Dynamo]
+                    environmentSelector:
+                      type: object
+                      description: >-
+                        Optional label selector for capability-based matching.
+                        When set, this profile only matches IEs whose labels
+                        satisfy the selector.
+                      properties:
+                        matchLabels:
+                          type: object
+                          additionalProperties:
+                            type: string
+                    engine:
+                      type: object
+                      description: >-
+                        Engine configuration. Required for Kubernetes backends
+                        (KServe, Dynamo).
+                      required: [name, image]
+                      properties:
+                        name:
+                          type: string
+                          description: >-
+                            Engine name (e.g. "vLLM", "SGLang"). Tells the
+                            placement function engine-specific mechanics.
+                          enum: [vLLM, SGLang]
+                        image:
+                          type: string
+                          description: >-
+                            Container image for the engine runtime.
+                        args:
+                          type: array
+                          description: >-
+                            Opaque CLI arguments passed through to the engine
+                            container. Modelplane does not interpret these.
+                          items:
+                            type: string
           status:
             type: object
             description: >-

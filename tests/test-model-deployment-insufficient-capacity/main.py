@@ -58,8 +58,17 @@ test = compositiontest.CompositionTest(
                         huggingFace=cmv1alpha1.HuggingFace(
                             repo="meta-llama/Llama-3-70B",
                         ),
-                        engine="vLLM",
                         resources=cmv1alpha1.Resources(vram="140Gi"),
+                        serving=[
+                            cmv1alpha1.ServingItem(
+                                name="vllm-kserve",
+                                backend="KServe",
+                                engine=cmv1alpha1.Engine(
+                                    name="vLLM",
+                                    image="vllm/vllm-openai:v0.7.3",
+                                ),
+                            ),
+                        ],
                     ),
                 )
             ),
