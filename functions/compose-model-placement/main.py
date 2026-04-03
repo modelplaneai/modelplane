@@ -454,22 +454,33 @@ class Composer:
 
     def derive_conditions(self):
         """Derive ModelAccepted, ModelReady, and RoutingReady conditions."""
-        serving_exists = MODEL_RESOURCE_KEY in self.req.observed.resources
-        serving_synced = conditions.has_condition(self.req, MODEL_RESOURCE_KEY, "Synced")
-        serving_accepted = serving_exists and serving_synced
+
+        # Check if the remote resource was created by reading the Object's
+        # atProvider.manifest. provider-kubernetes populates this field after
+        # successfully observing the remote resource at least once.
+        serving_accepted = False
+        serving_observed = self.req.observed.resources.get(MODEL_RESOURCE_KEY)
+        if serving_observed:
+            obj = k8sobjv1alpha1.Object.model_validate(
+                resource.struct_to_dict(serving_observed.resource)
+            )
+            serving_accepted = bool(
+                obj.status and obj.status.atProvider and obj.status.atProvider.manifest
+            )
+
         serving_ready = conditions.has_condition(self.req, MODEL_RESOURCE_KEY, "Ready")
         backend_exists = "backend" in self.req.observed.resources
 
         # ProfileMatched: a serving profile was resolved for this environment.
         conditions.set_condition(self.rsp, CONDITION_TYPE_PROFILE_MATCHED, True, CONDITION_REASON_PROFILE_RESOLVED)
 
-        # ModelAccepted: the backend accepted the model workload (Object synced).
-        if not serving_exists:
-            accepted_reason = CONDITION_REASON_DEPLOYING
-        elif serving_accepted:
+        # ModelAccepted: the remote resource was created on the cluster.
+        if serving_accepted:
             accepted_reason = CONDITION_REASON_ACCEPTED
+        elif serving_observed:
+            accepted_reason = CONDITION_REASON_DEPLOYING
         else:
-            accepted_reason = CONDITION_REASON_WAITING_FOR_CLUSTER
+            accepted_reason = CONDITION_REASON_DEPLOYING
         conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, serving_accepted, accepted_reason)
 
         # ModelReady: the model is actually serving traffic.
@@ -490,7 +501,7 @@ class Composer:
         )
 
         # Per-resource readiness.
-        if serving_ready:
+        if MODEL_RESOURCE_KEY in self.rsp.desired.resources and serving_ready:
             self.rsp.desired.resources[MODEL_RESOURCE_KEY].ready = fnv1.READY_TRUE
         if backend_exists:
             self.rsp.desired.resources["backend"].ready = fnv1.READY_TRUE
