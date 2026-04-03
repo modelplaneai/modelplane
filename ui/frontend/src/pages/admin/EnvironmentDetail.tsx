@@ -4,7 +4,7 @@ import { useEnvironments } from "../../hooks/useEnvironments";
 import { useEvents } from "../../hooks/useEvents";
 import { useApi } from "../../api/context";
 import { deriveStatus } from "../../lib/status";
-import { relativeAge } from "../../lib/format";
+import { relativeAge, envRegion, envVersion, envClusterSource } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -45,7 +45,7 @@ export function EnvironmentDetail() {
   const status = deriveStatus(env.status?.conditions);
   const conditions = env.status?.conditions ?? [];
   const age = relativeAge(env.metadata.creationTimestamp);
-  const region = env.spec.kserve?.cluster?.gke?.region;
+  const region = envRegion(env);
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
   const events = eventsData?.items ?? [];
 
@@ -61,10 +61,13 @@ export function EnvironmentDetail() {
   const totalGpus = gpuPools.reduce((s, p) => s + p.count, 0);
 
   // Infrastructure details from the spec.
-  const kserve = env.spec.kserve;
-  const gke = kserve?.cluster?.gke;
-  const clusterSource = kserve?.cluster?.source;
-  const nodePools = gke?.nodePools ?? [];
+  const version = envVersion(env);
+  const clusterSource = envClusterSource(env);
+  const cluster = env.spec.kserve?.cluster ?? env.spec.dynamo?.cluster;
+  const gke = cluster?.gke;
+  const existing = cluster?.existing;
+  const nodePools = env.spec.kserve?.cluster?.gke?.nodePools ?? [];
+  const existingNodePools = existing?.nodePools ?? [];
 
   return (
     <div className="space-y-8">
@@ -194,8 +197,8 @@ export function EnvironmentDetail() {
             <div className="space-y-2">
               <p className="font-mono text-[11px] uppercase tracking-wider text-muted">Backend</p>
               <p className="text-text font-medium">{env.spec.backend}</p>
-              {kserve?.version && (
-                <p className="text-sm text-muted">Version: <span className="text-muted-hi">{kserve.version}</span></p>
+              {version && (
+                <p className="text-sm text-muted">Version: <span className="text-muted-hi">{version}</span></p>
               )}
               {env.status?.providerConfigRef?.name && (
                 <p className="text-sm text-muted">
@@ -231,14 +234,23 @@ export function EnvironmentDetail() {
           )}
         </div>
 
-        {/* Node pools */}
-        {nodePools.length > 0 && (
+        {/* Node pools — GKE pools have machineType, existing pools don't */}
+        {(nodePools.length > 0 || existingNodePools.length > 0) && (
           <div className="grid grid-cols-2 gap-3 mt-4">
             {nodePools.map((np) => (
               <Card key={np.name}>
                 <p className="text-text font-medium text-sm">{np.name}</p>
                 <p className="text-xs text-muted">
                   {np.machineType} &middot; {np.nodeCount ?? 1} node{(np.nodeCount ?? 1) !== 1 ? "s" : ""}
+                  {np.gpu && ` · ${np.gpu.acceleratorCount ?? 1}x ${np.gpu.acceleratorType}`}
+                </p>
+              </Card>
+            ))}
+            {existingNodePools.map((np) => (
+              <Card key={np.name}>
+                <p className="text-text font-medium text-sm">{np.name}</p>
+                <p className="text-xs text-muted">
+                  {np.nodeCount ?? 1} node{(np.nodeCount ?? 1) !== 1 ? "s" : ""}
                   {np.gpu && ` · ${np.gpu.acceleratorCount ?? 1}x ${np.gpu.acceleratorType}`}
                 </p>
               </Card>

@@ -17,20 +17,22 @@ interface FormState {
   name: string;
   modelName: string;
   repo: string;
+  backend: string;
   engine: string;
   vram: string;
   image: string;
-  extraArgs: string;
+  args: string;
 }
 
 const emptyForm: FormState = {
   name: "",
   modelName: "",
   repo: "",
+  backend: "KServe",
   engine: "vLLM",
   vram: "",
   image: "",
-  extraArgs: "",
+  args: "",
 };
 
 function RegisterModelModal({
@@ -58,11 +60,12 @@ function RegisterModelModal({
     setError(null);
     setSubmitting(true);
 
-    const extraArgs = form.extraArgs
+    const args = form.args
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const profileName = `${form.engine.toLowerCase()}-${form.backend.toLowerCase()}`;
     const cm: Partial<ClusterModel> = {
       apiVersion: "modelplane.ai/v1alpha1",
       kind: "ClusterModel",
@@ -71,16 +74,18 @@ function RegisterModelModal({
         model: { name: form.modelName },
         source: "HuggingFace",
         huggingFace: { repo: form.repo },
-        engine: form.engine,
         resources: { vram: form.vram },
-        ...(form.image || extraArgs.length
-          ? {
-              vllm: {
-                ...(form.image ? { image: form.image } : {}),
-                ...(extraArgs.length ? { extraArgs } : {}),
-              },
-            }
-          : {}),
+        serving: [
+          {
+            name: profileName,
+            backend: form.backend,
+            engine: {
+              name: form.engine,
+              image: form.image || `vllm/vllm-openai:latest`,
+              ...(args.length ? { args } : {}),
+            },
+          },
+        ],
       },
     };
 
@@ -143,17 +148,6 @@ function RegisterModelModal({
         </div>
 
         <div>
-          <label className={labelClass}>Engine</label>
-          <select
-            value={form.engine}
-            onChange={set("engine")}
-            className={inputClass}
-          >
-            <option value="vLLM">vLLM</option>
-          </select>
-        </div>
-
-        <div>
           <label className={labelClass}>VRAM</label>
           <input
             type="text"
@@ -165,24 +159,43 @@ function RegisterModelModal({
           />
         </div>
 
+        <SectionLabel>SERVING PROFILE</SectionLabel>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Backend</label>
+            <select value={form.backend} onChange={set("backend")} className={inputClass}>
+              <option value="KServe">KServe</option>
+              <option value="Dynamo">Dynamo</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Engine</label>
+            <select value={form.engine} onChange={set("engine")} className={inputClass}>
+              <option value="vLLM">vLLM</option>
+              <option value="SGLang">SGLang</option>
+            </select>
+          </div>
+        </div>
+
         <div>
-          <label className={labelClass}>Image (optional)</label>
+          <label className={labelClass}>Image</label>
           <input
             type="text"
             value={form.image}
             onChange={set("image")}
-            placeholder="vllm/vllm-openai:latest"
+            placeholder="vllm/vllm-openai:v0.7.3"
             className={inputClass}
           />
         </div>
 
         <div>
-          <label className={labelClass}>Extra Args (optional, comma-separated)</label>
+          <label className={labelClass}>Args (optional, comma-separated)</label>
           <input
             type="text"
-            value={form.extraArgs}
-            onChange={set("extraArgs")}
-            placeholder="--max-model-len=2048, --dtype=half"
+            value={form.args}
+            onChange={set("args")}
+            placeholder="--max-model-len=4096, --enable-prefix-caching"
             className={inputClass}
           />
         </div>
@@ -259,7 +272,7 @@ export function CatalogPage() {
           <tr className="font-mono text-[11px] uppercase tracking-wider text-muted">
             <th className="text-left px-4 py-2 font-normal">Name</th>
             <th className="text-left px-4 py-2 font-normal">Model</th>
-            <th className="text-left px-4 py-2 font-normal">Engine</th>
+            <th className="text-left px-4 py-2 font-normal">Backends</th>
             <th className="text-left px-4 py-2 font-normal">VRAM</th>
             <th className="text-right px-4 py-2 font-normal" />
           </tr>
@@ -283,8 +296,14 @@ export function CatalogPage() {
                 <td className="px-4 py-3 text-sm text-muted-hi">
                   {m.spec.model.name}
                 </td>
-                <td className="px-4 py-3 text-sm text-muted-hi">
-                  {m.spec.engine}
+                <td className="px-4 py-3 text-sm">
+                  <div className="flex flex-wrap gap-1">
+                    {(m.spec.serving ?? []).map((p) => (
+                      <span key={p.name} className="text-xs font-mono text-cyan bg-cyan/10 px-1.5 py-0.5 rounded">
+                        {p.engine?.name ?? p.backend}
+                      </span>
+                    ))}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-sm font-mono text-muted-hi">
                   {m.spec.resources.vram}

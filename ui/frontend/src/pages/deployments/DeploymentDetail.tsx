@@ -223,6 +223,14 @@ function PlacementCard({ placement }: { placement: ModelPlacement }) {
                 {placement.spec.inferenceEnvironmentRef.name}
               </span>
             </span>
+            {placement.status?.servingProfile && (
+              <>
+                <Badge variant="neutral">{placement.status.servingProfile.backend}</Badge>
+                {placement.status.servingProfile.engine?.name && (
+                  <Badge variant="cyan">{placement.status.servingProfile.engine.name}</Badge>
+                )}
+              </>
+            )}
             {gpuCount !== undefined && (
               <Badge variant="neutral">
                 {gpuCount} GPU{gpuCount !== 1 ? "s" : ""}

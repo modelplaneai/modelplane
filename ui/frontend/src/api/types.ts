@@ -65,6 +65,36 @@ export interface InferenceEnvironment {
             };
           }>;
         };
+        existing?: {
+          nodePools?: Array<{
+            name: string;
+            nodeCount?: number;
+            gpu?: {
+              acceleratorType: string;
+              acceleratorCount?: number;
+            };
+          }>;
+        };
+      };
+    };
+    dynamo?: {
+      version?: string;
+      cluster?: {
+        source: string;
+        gke?: {
+          project: string;
+          region: string;
+        };
+        existing?: {
+          nodePools?: Array<{
+            name: string;
+            nodeCount?: number;
+            gpu?: {
+              acceleratorType: string;
+              acceleratorCount?: number;
+            };
+          }>;
+        };
       };
     };
   };
@@ -77,6 +107,17 @@ export interface InferenceEnvironment {
   };
 }
 
+export interface ServingProfile {
+  name: string;
+  backend: string;
+  environmentSelector?: { matchLabels?: Record<string, string> };
+  engine?: {
+    name: string;
+    image: string;
+    args?: string[];
+  };
+}
+
 export interface ClusterModel {
   apiVersion: "modelplane.ai/v1alpha1";
   kind: "ClusterModel";
@@ -85,9 +126,8 @@ export interface ClusterModel {
     model: { name: string };
     source: string;
     huggingFace?: { repo: string; revision?: string };
-    engine: string;
-    vllm?: { image?: string; extraArgs?: string[] };
     resources: { vram: string; cpu?: string; memory?: string };
+    serving?: ServingProfile[];
   };
   status?: {
     conditions?: Condition[];
@@ -143,5 +183,10 @@ export interface ModelPlacement {
     endpoint?: { url: string };
     resources?: { gpu?: { count: number } };
     model?: { name: string };
+    servingProfile?: {
+      name: string;
+      backend: string;
+      engine?: { name: string; image: string };
+    };
   };
 }

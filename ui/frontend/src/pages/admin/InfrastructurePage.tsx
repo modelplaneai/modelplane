@@ -8,6 +8,7 @@ import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
 import { ConditionList } from "../../components/ConditionList";
 import { deriveStatus, statusText } from "../../lib/status";
+import { envRegion } from "../../lib/format";
 import type { InferenceGateway, InferenceEnvironment, ModelPlacement, KubeList } from "../../api/types";
 
 export function InfrastructurePage() {
@@ -171,7 +172,7 @@ function EnvironmentRow({
   placements: ModelPlacement[];
 }) {
   const status = deriveStatus(env.status?.conditions);
-  const region = env.spec.kserve?.cluster?.gke?.region ?? "—";
+  const region = envRegion(env) ?? "—";
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
   const totalGpus = gpuPools.reduce((s, p) => s + p.count, 0);
   const gpuSummary = gpuPools.length > 0

@@ -5,7 +5,7 @@ import { useEnvironments } from "../../hooks/useEnvironments";
 import { useNamespace } from "../../hooks/useNamespace";
 import { useApi } from "../../api/context";
 import { deriveStatus } from "../../lib/status";
-import { modelDisplayName, isValidKubernetesName, toKubernetesName } from "../../lib/format";
+import { modelDisplayName, isValidKubernetesName, toKubernetesName, envRegion } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -342,7 +342,9 @@ function ModelCard({
             {modelDisplayName(model.spec.model.name)}
           </h3>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="cyan">{model.spec.engine}</Badge>
+            {(model.spec.serving ?? []).map((p) => (
+              <Badge key={p.name} variant="cyan">{p.backend}</Badge>
+            ))}
             <Badge variant="neutral">{model.spec.resources.vram}</Badge>
           </div>
           {model.spec.huggingFace?.repo && (
@@ -368,7 +370,7 @@ function EnvironmentCard({
   dimmed: boolean;
 }) {
   const status = deriveStatus(env.status?.conditions);
-  const region = env.spec.kserve?.cluster?.gke?.region;
+  const region = envRegion(env);
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
 
   return (
