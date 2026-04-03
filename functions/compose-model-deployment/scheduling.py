@@ -1,24 +1,19 @@
 """Schedule model placements across inference environments.
 
-Filters environments by engine compatibility and GPU capacity, accounts for
-GPU usage by other deployments, and returns a stable list of candidates that
-prefers environments with existing placements.
+Matches serving profiles against environments by backend and optional label
+selector, filters by GPU capacity, accounts for GPU usage by other
+deployments, and returns a stable list of candidates that prefers
+environments with existing placements.
 """
 
 import math
 from dataclasses import dataclass
 
-from .lib import metadata, quantities
+from .lib import metadata, quantities, serving
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
-
-# Maps InferenceEnvironment backends to the engines they support.
-_COMPAT = {
-    "KServe": ["vLLM"],
-    "Dynamo": ["vLLM", "SGLang", "TensorRT-LLM"],
-}
 
 
 @dataclass
@@ -27,6 +22,7 @@ class Candidate:
 
     name: str
     gateway_address: str | None
+    profile_name: str
 
 
 def schedule(
@@ -41,10 +37,13 @@ def schedule(
     functions before calling this — the function assumes Optional fields
     are populated with zero values.
 
-    Filters environments by engine compatibility and VRAM capacity, subtracts
-    GPUs used by other deployments' placements, sorts to prefer environments
-    that already have placements for this deployment (stability), and returns
-    at most deployment.spec.environments candidates.
+    For each candidate environment, walks the model's serving[] array to
+    find the first profile whose backend matches the environment and whose
+    environmentSelector (if any) matches the environment's labels. Filters
+    by VRAM capacity, subtracts GPUs used by other deployments' placements,
+    sorts to prefer environments that already have placements for this
+    deployment (stability), and returns at most deployment.spec.environments
+    candidates.
     """
     model_vram_bytes = quantities.parse_quantity(model.spec.resources.vram)
 
@@ -56,7 +55,9 @@ def schedule(
 
     candidates = []
     for env in envs:
-        if model.spec.engine not in _COMPAT.get(env.status.capacity.backend or "", []):
+        # Find the first serving profile that matches this environment.
+        profile = serving.match_profile(model, env)
+        if not profile:
             continue
 
         # Find the pool that needs the fewest GPUs for this model.
@@ -89,6 +90,7 @@ def schedule(
             Candidate(
                 name=env.metadata.name,
                 gateway_address=env.status.gateway.address,
+                profile_name=profile.name,
             )
         )
 
@@ -102,3 +104,6 @@ def schedule(
         )
     )
     return candidates[: int(deployment.spec.environments)]
+
+
+

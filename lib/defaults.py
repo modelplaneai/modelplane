@@ -28,16 +28,9 @@ def inference_environment(
 def cluster_model(
     model: cmv1alpha1.ClusterModel,
 ) -> cmv1alpha1.ClusterModel:
-    """Return a copy with optional spec fields defaulted.
-
-    Most spec defaults (cpu, memory, image) are already applied by Pydantic
-    from the OpenAPI schema. This function only handles fields where the
-    parent object is Optional (spec.vllm) or where we want a different zero
-    value (extraArgs as [] instead of None).
-    """
+    """Return a copy with optional spec fields defaulted."""
     model = model.model_copy(deep=True)
-    model.spec.vllm = model.spec.vllm or cmv1alpha1.Vllm()
-    model.spec.vllm.extraArgs = model.spec.vllm.extraArgs or []
+    model.spec.serving = model.spec.serving or []
     return model
 
 

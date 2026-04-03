@@ -17,7 +17,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 cmv1alpha1.ClusterModel(
                     metadata=metav1.ObjectMeta(
-                        name="qwen-0.5b-vllm",
+                        name="qwen-0.5b",
                     ),
                     spec=cmv1alpha1.Spec(
                         model=cmv1alpha1.Model(
@@ -27,10 +27,16 @@ test = compositiontest.CompositionTest(
                         huggingFace=cmv1alpha1.HuggingFace(
                             repo="Qwen/Qwen2.5-0.5B-Instruct",
                         ),
-                        engine="vLLM",
-                        vllm=cmv1alpha1.Vllm(
-                            image="vllm/vllm-openai:v0.7.3",
-                        ),
+                        serving=[
+                            cmv1alpha1.ServingItem(
+                                name="vllm-kserve",
+                                backend="KServe",
+                                engine=cmv1alpha1.Engine(
+                                    name="vLLM",
+                                    image="vllm/vllm-openai:v0.7.3",
+                                ),
+                            ),
+                        ],
                         resources=cmv1alpha1.Resources(
                             vram="2Gi",
                             cpu="3",

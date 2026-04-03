@@ -1,9 +1,9 @@
 """Deploy a model on a single InferenceEnvironment.
 
 This function reads the referenced ClusterModel (or Model) and
-InferenceEnvironment via required resources, computes GPU count from model
-VRAM vs pool VRAM, and composes backend-specific resources on the remote
-cluster.
+InferenceEnvironment via required resources, resolves the matching serving
+profile, computes GPU count from model VRAM vs pool VRAM, and composes
+backend-specific resources on the remote cluster.
 
 For KServe backends, it creates an LLMInferenceService. For Dynamo backends,
 it creates a DynamoGraphDeployment and an HTTPRoute to expose the Dynamo
@@ -17,7 +17,7 @@ import math
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, defaults, metadata, naming, quantities
+from .lib import conditions, defaults, metadata, naming, quantities, serving
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
@@ -29,41 +29,40 @@ from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 BACKEND_KSERVE = "KServe"
 BACKEND_DYNAMO = "Dynamo"
 
-# Engine name to Dynamo backendFramework value.
+# Dynamo engine-specific mappings. The engine name from the serving profile
+# determines the backendFramework, Python module, and working directory.
 ENGINE_TO_DYNAMO_FRAMEWORK = {
     "vLLM": "vllm",
     "SGLang": "sglang",
-    "TensorRT-LLM": "trtllm",
 }
 
-# Dynamo module paths per engine for the worker command.
 ENGINE_TO_DYNAMO_MODULE = {
     "vLLM": "dynamo.vllm",
     "SGLang": "dynamo.sglang",
-    "TensorRT-LLM": "dynamo.trtllm",
 }
 
-# Dynamo worker working directories per engine.
 ENGINE_TO_DYNAMO_WORKDIR = {
     "vLLM": "/workspace/examples/backends/vllm",
     "SGLang": "/workspace/examples/backends/sglang",
-    "TensorRT-LLM": "/workspace/examples/backends/trtllm",
 }
 
 # Condition types and reasons for the ModelPlacement XR.
 CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
 CONDITION_TYPE_MODEL_READY = "ModelReady"
+CONDITION_TYPE_PROFILE_MATCHED = "ProfileMatched"
 
 CONDITION_REASON_WAITING_FOR_REFERENCES = "WaitingForReferences"
 CONDITION_REASON_WAITING_FOR_ENVIRONMENT = "WaitingForEnvironment"
 CONDITION_REASON_WAITING_FOR_MODEL = "WaitingForModel"
 CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_WAITING_FOR_GATEWAY = "WaitingForGateway"
+CONDITION_REASON_NO_MATCHING_PROFILE = "NoMatchingProfile"
 CONDITION_REASON_DEPLOYING = "Deploying"
 CONDITION_REASON_ACCEPTED = "Accepted"
 CONDITION_REASON_SERVING = "Serving"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
+CONDITION_REASON_PROFILE_RESOLVED = "ProfileResolved"
 
 # Composed resource key for the model serving resource, regardless of backend.
 MODEL_RESOURCE_KEY = "model-serving"
@@ -75,9 +74,10 @@ class Composer:
         self.rsp = rsp
         self.xr = v1alpha1.ModelPlacement(**resource.struct_to_dict(req.observed.composite.resource))
 
-        # Required resources — set by _resolve_inputs.
+        # Required resources and resolved profile — set by resolve_inputs.
         self.model = None
         self.ie = None
+        self.profile = None
 
     def compose(self):
         if not self.resolve_inputs():
@@ -89,8 +89,9 @@ class Composer:
         self.derive_conditions()
 
     def resolve_inputs(self):
-        """Declare and fetch required resources. Returns False if critical
-        inputs are missing."""
+        """Declare and fetch required resources, then resolve the serving
+        profile. Returns False if critical inputs are missing or no profile
+        matches."""
         response.require_resources(
             self.rsp,
             name="model",
@@ -137,6 +138,19 @@ class Composer:
         else:
             self.model = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
 
+        # Resolve the serving profile by walking the model's serving[] array.
+        self.profile = serving.match_profile(self.model, self.ie)
+        if not self.profile:
+            conditions.set_condition(
+                self.rsp, CONDITION_TYPE_PROFILE_MATCHED, False, CONDITION_REASON_NO_MATCHING_PROFILE
+            )
+            response.warning(
+                self.rsp,
+                f"No serving profile matches environment {self.xr.spec.inferenceEnvironmentRef.name}"
+                f" (backend: {self.ie.status.capacity.backend})",
+            )
+            return False
+
         return True
 
     def compute_gpus(self):
@@ -153,11 +167,10 @@ class Composer:
 
     def compose_model_serving(self, gpus):
         """Compose the backend-specific model serving resource on the remote
-        cluster. Dispatches on the IE's backend."""
-        backend = self.ie.status.capacity.backend
-        if backend == BACKEND_KSERVE:
+        cluster. Dispatches on the serving profile's backend."""
+        if self.profile.backend == BACKEND_KSERVE:
             self.compose_kserve_llmis(gpus)
-        elif backend == BACKEND_DYNAMO:
+        elif self.profile.backend == BACKEND_DYNAMO:
             self.compose_dynamo_dgd(gpus)
             self.compose_dynamo_httproute()
 
@@ -166,13 +179,11 @@ class Composer:
         on the remote cluster."""
         llmis_name = naming.to_dns_label(self.xr.spec.modelRef.name)
 
-        args = [f"--served-model-name={self.model.spec.model.name}"]
-        if self.model.spec.vllm.extraArgs:
-            args.extend(self.model.spec.vllm.extraArgs)
+        args = list(self.profile.engine.args or [])
 
         container: dict = {
             "name": "main",
-            "image": self.model.spec.vllm.image,
+            "image": self.profile.engine.image,
             "args": args,
             "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
             "resources": {
@@ -229,13 +240,12 @@ class Composer:
         The DGD manifest is an inline dict because there's no generated
         Pydantic model for nvidia.com/v1alpha1 DynamoGraphDeployment."""
         dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
-        engine = self.model.spec.engine or "vLLM"
-        framework = ENGINE_TO_DYNAMO_FRAMEWORK.get(engine, "vllm")
-        module = ENGINE_TO_DYNAMO_MODULE.get(engine, "dynamo.vllm")
-        workdir = ENGINE_TO_DYNAMO_WORKDIR.get(engine, "/workspace/examples/backends/vllm")
-        image = self.model.spec.vllm.image if self.model.spec.vllm else ""
+        engine_name = self.profile.engine.name
+        framework = ENGINE_TO_DYNAMO_FRAMEWORK.get(engine_name, "vllm")
+        module = ENGINE_TO_DYNAMO_MODULE.get(engine_name, "dynamo.vllm")
+        workdir = ENGINE_TO_DYNAMO_WORKDIR.get(engine_name, "/workspace/examples/backends/vllm")
 
-        worker_args = ["--model", self.model.spec.model.name]
+        worker_args = list(self.profile.engine.args or [])
 
         dgd_manifest = {
             "apiVersion": "nvidia.com/v1alpha1",
@@ -270,7 +280,7 @@ class Composer:
                         "replicas": 1,
                         "extraPodSpec": {
                             "mainContainer": {
-                                "image": image,
+                                "image": self.profile.engine.image,
                             },
                         },
                     },
@@ -284,7 +294,7 @@ class Composer:
                         },
                         "extraPodSpec": {
                             "mainContainer": {
-                                "image": image,
+                                "image": self.profile.engine.image,
                                 "workingDir": workdir,
                                 "command": ["python3", "-m", module],
                                 "args": worker_args,
@@ -409,6 +419,14 @@ class Composer:
         status = v1alpha1.Status(
             model=v1alpha1.Model(name=self.model.spec.model.name),
             resources=v1alpha1.Resources(gpu=v1alpha1.Gpu(count=gpus)),
+            servingProfile=v1alpha1.ServingProfile(
+                name=self.profile.name,
+                backend=self.profile.backend,
+                engine=v1alpha1.Engine(
+                    name=self.profile.engine.name,
+                    image=self.profile.engine.image,
+                ),
+            ),
         )
         if self.ie.status.gateway.address:
             status.endpoint = v1alpha1.Endpoint(
@@ -427,11 +445,11 @@ class Composer:
 
         # Transition: first time composing the model serving resource.
         if MODEL_RESOURCE_KEY not in self.req.observed.resources:
-            backend = self.ie.status.capacity.backend or "unknown"
             response.normal(
                 self.rsp,
-                f"Composing {backend} deployment for {self.model.spec.model.name}"
-                f" on {self.xr.spec.inferenceEnvironmentRef.name}, GPUs: {gpus}",
+                f"Composing {self.profile.backend} deployment for {self.model.spec.model.name}"
+                f" on {self.xr.spec.inferenceEnvironmentRef.name}"
+                f" (profile: {self.profile.name}, engine: {self.profile.engine.name}, GPUs: {gpus})",
             )
 
     def derive_conditions(self):
@@ -441,6 +459,9 @@ class Composer:
         serving_accepted = serving_exists and serving_synced
         serving_ready = conditions.has_condition(self.req, MODEL_RESOURCE_KEY, "Ready")
         backend_exists = "backend" in self.req.observed.resources
+
+        # ProfileMatched: a serving profile was resolved for this environment.
+        conditions.set_condition(self.rsp, CONDITION_TYPE_PROFILE_MATCHED, True, CONDITION_REASON_PROFILE_RESOLVED)
 
         # ModelAccepted: the backend accepted the model workload (Object synced).
         if not serving_exists:
