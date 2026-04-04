@@ -9,8 +9,6 @@ same gateway infrastructure (cert-manager, Envoy Gateway, Gateway/GatewayClass)
 and differ only in the inference backend they install.
 """
 
-from pathlib import Path
-
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
@@ -18,7 +16,6 @@ from .lib import conditions, helm, k8s, metadata, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.dynamostack import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
-from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from .model.io.crossplane.m.kubernetes.providerconfig import (
     v1alpha1 as k8spcv1alpha1,
 )
