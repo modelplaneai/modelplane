@@ -343,6 +343,14 @@ class Composer:
                         kind="ClusterProviderConfig",
                         name=self.ie.status.providerConfigRef.name,
                     ),
+                    readiness=k8sobjv1alpha1.Readiness(
+                        policy="DeriveFromCelQuery",
+                        celQuery=(
+                            "object.status.parents.exists(p,"
+                            ' p.conditions.exists(c, c.type == "Accepted"'
+                            ' && c.status == "True"))'
+                        ),
+                    ),
                     forProvider=k8sobjv1alpha1.ForProvider(
                         manifest={
                             "apiVersion": "gateway.networking.k8s.io/v1",
@@ -501,9 +509,8 @@ class Composer:
             self.rsp.desired.resources[MODEL_RESOURCE_KEY].ready = fnv1.READY_TRUE
         if backend_exists:
             self.rsp.desired.resources["backend"].ready = fnv1.READY_TRUE
-        # The Dynamo HTTPRoute Object has no meaningful readiness condition.
-        # Mark it always-ready once it exists to avoid blocking the XR.
-        if "dynamo-httproute" in self.rsp.desired.resources:
+        dynamo_route_ready = conditions.has_condition(self.req, "dynamo-httproute", "Ready")
+        if "dynamo-httproute" in self.rsp.desired.resources and dynamo_route_ready:
             self.rsp.desired.resources["dynamo-httproute"].ready = fnv1.READY_TRUE
 
 
