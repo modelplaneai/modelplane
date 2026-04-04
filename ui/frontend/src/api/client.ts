@@ -95,15 +95,6 @@ export function deleteModelDeployment(
   return del(`${MP}/namespaces/${ns}/modeldeployments/${name}`);
 }
 
-export function createClusterModel(
-  cm: Partial<ClusterModel>,
-): Promise<ClusterModel> {
-  return post(`${MP}/clustermodels`, cm);
-}
-
-export function deleteClusterModel(name: string): Promise<void> {
-  return del(`${MP}/clustermodels/${name}`);
-}
 
 export function listNamespaces(): Promise<
   KubeList<{ metadata: ObjectMeta }>

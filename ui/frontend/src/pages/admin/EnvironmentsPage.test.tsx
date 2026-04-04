@@ -31,7 +31,7 @@ describe("EnvironmentsPage", () => {
     });
     expect(screen.getByText("eu-west")).toBeInTheDocument();
 
-    // Region renders from spec.kserve.cluster.gke.region.
+    // Region renders from the modelplane.ai/region label.
     expect(screen.getByText("us-central1")).toBeInTheDocument();
     expect(screen.getByText("europe-west1")).toBeInTheDocument();
 

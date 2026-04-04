@@ -1,7 +1,7 @@
 apiVersion: modelplane.ai/v1alpha1
 kind: ClusterModel
 metadata:
-  name: qwen-0.5b-vllm
+  name: qwen-0.5b
   labels:
     modelplane.ai/family: qwen
     modelplane.ai/size: 0.5b
@@ -11,10 +11,13 @@ spec:
   source: HuggingFace
   huggingFace:
     repo: Qwen/Qwen2.5-0.5B-Instruct
-  engine: vLLM
-  vllm:
-    image: vllm/vllm-openai:v0.7.3
   resources:
     vram: "2Gi"
     cpu: "3"
     memory: "10Gi"
+  serving:
+  - name: vllm-kserve
+    backend: KServe
+    engine:
+      name: vLLM
+      image: vllm/vllm-openai:v0.7.3

@@ -1,9 +1,15 @@
 """Deploy a model on a single InferenceEnvironment.
 
 This function reads the referenced ClusterModel (or Model) and
-InferenceEnvironment via required resources, computes GPU count from model
-VRAM vs pool VRAM, and composes a provider-kubernetes Object wrapping an
-LLMInferenceService on the remote cluster.
+InferenceEnvironment via required resources, resolves the matching serving
+profile, computes GPU count from model VRAM vs pool VRAM, and composes
+backend-specific resources on the remote cluster.
+
+For KServe backends, it creates an LLMInferenceService. For Dynamo backends,
+it creates a DynamoGraphDeployment and an HTTPRoute to expose the Dynamo
+Frontend through the remote cluster's Envoy Gateway. In both cases, it also
+composes an Envoy Gateway Backend on the control plane for ModelDeployment
+to route through.
 """
 
 import math
@@ -11,7 +17,7 @@ import math
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, defaults, metadata, naming, quantities
+from .lib import conditions, defaults, metadata, naming, quantities, serving
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
@@ -19,20 +25,47 @@ from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
+# Backend discriminator values.
+BACKEND_KSERVE = "KServe"
+BACKEND_DYNAMO = "Dynamo"
+
+# Dynamo engine-specific mappings. The engine name from the serving profile
+# determines the backendFramework, Python module, and working directory.
+ENGINE_TO_DYNAMO_FRAMEWORK = {
+    "vLLM": "vllm",
+    "SGLang": "sglang",
+}
+
+ENGINE_TO_DYNAMO_MODULE = {
+    "vLLM": "dynamo.vllm",
+    "SGLang": "dynamo.sglang",
+}
+
+ENGINE_TO_DYNAMO_WORKDIR = {
+    "vLLM": "/workspace/examples/backends/vllm",
+    "SGLang": "/workspace/examples/backends/sglang",
+}
+
 # Condition types and reasons for the ModelPlacement XR.
 CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
 CONDITION_TYPE_MODEL_READY = "ModelReady"
+CONDITION_TYPE_PROFILE_MATCHED = "ProfileMatched"
 
 CONDITION_REASON_WAITING_FOR_REFERENCES = "WaitingForReferences"
 CONDITION_REASON_WAITING_FOR_ENVIRONMENT = "WaitingForEnvironment"
 CONDITION_REASON_WAITING_FOR_MODEL = "WaitingForModel"
 CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_WAITING_FOR_GATEWAY = "WaitingForGateway"
+CONDITION_REASON_NO_MATCHING_PROFILE = "NoMatchingProfile"
 CONDITION_REASON_DEPLOYING = "Deploying"
 CONDITION_REASON_ACCEPTED = "Accepted"
 CONDITION_REASON_SERVING = "Serving"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
+CONDITION_REASON_PROFILE_RESOLVED = "ProfileResolved"
+
+# Composed resource key for the model serving resource, regardless of backend.
+MODEL_RESOURCE_KEY = "model-serving"
 
 
 class Composer:
@@ -41,22 +74,24 @@ class Composer:
         self.rsp = rsp
         self.xr = v1alpha1.ModelPlacement(**resource.struct_to_dict(req.observed.composite.resource))
 
-        # Required resources — set by _resolve_inputs.
+        # Required resources and resolved profile — set by resolve_inputs.
         self.model = None
         self.ie = None
+        self.profile = None
 
     def compose(self):
         if not self.resolve_inputs():
             return
         gpus = self.compute_gpus()
-        self.compose_llmis(gpus)
+        self.compose_model_serving(gpus)
         self.compose_backend()
         self.write_status(gpus)
         self.derive_conditions()
 
     def resolve_inputs(self):
-        """Declare and fetch required resources. Returns False if critical
-        inputs are missing."""
+        """Declare and fetch required resources, then resolve the serving
+        profile. Returns False if critical inputs are missing or no profile
+        matches."""
         response.require_resources(
             self.rsp,
             name="model",
@@ -103,6 +138,19 @@ class Composer:
         else:
             self.model = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
 
+        # Resolve the serving profile by walking the model's serving[] array.
+        self.profile = serving.match_profile(self.model, self.ie)
+        if not self.profile:
+            conditions.set_condition(
+                self.rsp, CONDITION_TYPE_PROFILE_MATCHED, False, CONDITION_REASON_NO_MATCHING_PROFILE
+            )
+            response.warning(
+                self.rsp,
+                f"No serving profile matches environment {self.xr.spec.inferenceEnvironmentRef.name}"
+                f" (backend: {self.ie.status.capacity.backend})",
+            )
+            return False
+
         return True
 
     def compute_gpus(self):
@@ -117,24 +165,25 @@ class Composer:
                 )
         return 1
 
-    def compose_llmis(self, gpus):
+    def compose_model_serving(self, gpus):
+        """Compose the backend-specific model serving resource on the remote
+        cluster. Dispatches on the serving profile's backend."""
+        if self.profile.backend == BACKEND_KSERVE:
+            self.compose_kserve_llmis(gpus)
+        elif self.profile.backend == BACKEND_DYNAMO:
+            self.compose_dynamo_dgd(gpus)
+            self.compose_dynamo_httproute()
+
+    def compose_kserve_llmis(self, gpus):
         """Compose a provider-kubernetes Object wrapping an LLMInferenceService
         on the remote cluster."""
-        # Use the ClusterModel name (sanitized to DNS-1035) as the LLMIS name
-        # on all remote clusters. This means the remote path is the same
-        # regardless of which environment, fixing multi-environment routing.
         llmis_name = naming.to_dns_label(self.xr.spec.modelRef.name)
 
-        # Build the container spec for the vLLM model server. Always set
-        # --served-model-name so vLLM registers the model under the name
-        # from the ClusterModel spec, not the local path (/mnt/models).
-        args = [f"--served-model-name={self.model.spec.model.name}"]
-        if self.model.spec.vllm.extraArgs:
-            args.extend(self.model.spec.vllm.extraArgs)
+        args = list(self.profile.engine.args or [])
 
         container: dict = {
             "name": "main",
-            "image": self.model.spec.vllm.image,
+            "image": self.profile.engine.image,
             "args": args,
             "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
             "resources": {
@@ -147,10 +196,8 @@ class Composer:
             },
         }
 
-        # Use DeriveFromCelQuery so the Object's Ready condition reflects the
-        # LLMIS actually serving traffic, not just being created.
         resource.update(
-            self.rsp.desired.resources["llm-inference-service"],
+            self.rsp.desired.resources[MODEL_RESOURCE_KEY],
             k8sobjv1alpha1.Object(
                 spec=k8sobjv1alpha1.Spec(
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
@@ -186,10 +233,178 @@ class Composer:
             ),
         )
 
+    def compose_dynamo_dgd(self, gpus):
+        """Compose a provider-kubernetes Object wrapping a
+        DynamoGraphDeployment on the remote cluster.
+
+        The DGD manifest is an inline dict because there's no generated
+        Pydantic model for nvidia.com/v1alpha1 DynamoGraphDeployment."""
+        dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
+        engine_name = self.profile.engine.name
+        framework = ENGINE_TO_DYNAMO_FRAMEWORK.get(engine_name, "vllm")
+        module = ENGINE_TO_DYNAMO_MODULE.get(engine_name, "dynamo.vllm")
+        workdir = ENGINE_TO_DYNAMO_WORKDIR.get(engine_name, "/workspace/examples/backends/vllm")
+
+        worker_args = list(self.profile.engine.args or [])
+
+        dgd_manifest = {
+            "apiVersion": "nvidia.com/v1alpha1",
+            "kind": "DynamoGraphDeployment",
+            "metadata": {
+                "name": dgd_name,
+                "namespace": metadata.NAMESPACE_REMOTE,
+            },
+            "spec": {
+                "backendFramework": framework,
+                # The Dynamo vLLM runtime image sets LD_LIBRARY_PATH without
+                # /usr/local/nvidia/lib64, which is where GKE's device plugin
+                # mounts the host NVIDIA driver (libcuda.so, NVML). Without
+                # this, vLLM fails with "NVML Shared Library Not Found".
+                "envs": [
+                    {
+                        "name": "LD_LIBRARY_PATH",
+                        "value": (
+                            "/usr/local/nvidia/lib64"
+                            ":/usr/local/cuda/lib64"
+                            ":/opt/vllm/tools/ep_kernels/ep_kernels_workspace/nvshmem_install/lib"
+                            ":/opt/nvidia/nvda_nixl/lib/x86_64-linux-gnu"
+                            ":/opt/nvidia/nvda_nixl/lib/x86_64-linux-gnu/plugins"
+                            ":/usr/local/ucx/lib"
+                            ":/usr/local/ucx/lib/ucx"
+                        ),
+                    },
+                ],
+                "services": {
+                    "Frontend": {
+                        "componentType": "frontend",
+                        "replicas": 1,
+                        "extraPodSpec": {
+                            "mainContainer": {
+                                "image": self.profile.engine.image,
+                            },
+                        },
+                    },
+                    "Worker": {
+                        "componentType": "worker",
+                        "replicas": 1,
+                        "resources": {
+                            "limits": {
+                                "gpu": str(gpus),
+                            },
+                        },
+                        "extraPodSpec": {
+                            "mainContainer": {
+                                "image": self.profile.engine.image,
+                                "workingDir": workdir,
+                                "command": ["python3", "-m", module],
+                                "args": worker_args,
+                            },
+                        },
+                    },
+                },
+            },
+        }
+
+        resource.update(
+            self.rsp.desired.resources[MODEL_RESOURCE_KEY],
+            k8sobjv1alpha1.Object(
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=self.ie.status.providerConfigRef.name,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(
+                        policy="DeriveFromCelQuery",
+                        celQuery='object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")',
+                    ),
+                    forProvider=k8sobjv1alpha1.ForProvider(manifest=dgd_manifest),
+                ),
+            ),
+        )
+
+    def compose_dynamo_httproute(self):
+        """Compose an HTTPRoute on the remote cluster that routes from the
+        Envoy Gateway to the Dynamo Frontend service. Unlike KServe (which
+        auto-creates HTTPRoutes via its LLMInferenceService controller),
+        Dynamo doesn't manage Gateway API routing — we compose it explicitly.
+
+        The HTTPRoute manifest is an inline dict because there's no generated
+        Pydantic model for Gateway API types."""
+        dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
+        # The Dynamo operator creates a Service named <dgd-name>-frontend
+        # for the Frontend component.
+        frontend_svc = f"{dgd_name}-frontend"
+
+        resource.update(
+            self.rsp.desired.resources["dynamo-httproute"],
+            k8sobjv1alpha1.Object(
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=self.ie.status.providerConfigRef.name,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(
+                        policy="DeriveFromCelQuery",
+                        celQuery=(
+                            "object.status.parents.exists(p,"
+                            ' p.conditions.exists(c, c.type == "Accepted"'
+                            ' && c.status == "True"))'
+                        ),
+                    ),
+                    forProvider=k8sobjv1alpha1.ForProvider(
+                        manifest={
+                            "apiVersion": "gateway.networking.k8s.io/v1",
+                            "kind": "HTTPRoute",
+                            "metadata": {
+                                "name": dgd_name,
+                                "namespace": metadata.NAMESPACE_REMOTE,
+                            },
+                            "spec": {
+                                "parentRefs": [
+                                    {
+                                        "name": "dynamo-ingress-gateway",
+                                        "namespace": "dynamo-system",
+                                    },
+                                ],
+                                "rules": [
+                                    {
+                                        "matches": [
+                                            {
+                                                "path": {
+                                                    "type": "PathPrefix",
+                                                    "value": f"/{metadata.NAMESPACE_REMOTE}/{dgd_name}/",
+                                                },
+                                            },
+                                        ],
+                                        "filters": [
+                                            {
+                                                "type": "URLRewrite",
+                                                "urlRewrite": {
+                                                    "path": {
+                                                        "type": "ReplacePrefixMatch",
+                                                        "replacePrefixMatch": "/",
+                                                    },
+                                                },
+                                            },
+                                        ],
+                                        "backendRefs": [
+                                            {
+                                                "name": frontend_svc,
+                                                "port": 8000,
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ),
+                ),
+            ),
+        )
+
     def compose_backend(self):
         """Compose a Backend on the control plane pointing to the remote
-        cluster's KServe gateway. ModelDeployment aggregates these into an
-        HTTPRoute."""
+        cluster's gateway. ModelDeployment aggregates these into an HTTPRoute."""
         if not self.ie.status.gateway.address:
             return
 
@@ -207,15 +422,23 @@ class Composer:
 
     def write_status(self, gpus):
         """Write status fields for consumption by compose-model-deployment."""
-        llmis_name = naming.to_dns_label(self.xr.spec.modelRef.name)
+        model_name = naming.to_dns_label(self.xr.spec.modelRef.name)
 
         status = v1alpha1.Status(
             model=v1alpha1.Model(name=self.model.spec.model.name),
             resources=v1alpha1.Resources(gpu=v1alpha1.Gpu(count=gpus)),
+            servingProfile=v1alpha1.ServingProfile(
+                name=self.profile.name,
+                backend=self.profile.backend,
+                engine=v1alpha1.Engine(
+                    name=self.profile.engine.name,
+                    image=self.profile.engine.image,
+                ),
+            ),
         )
         if self.ie.status.gateway.address:
             status.endpoint = v1alpha1.Endpoint(
-                url=f"http://{self.ie.status.gateway.address}/{metadata.NAMESPACE_REMOTE}/{llmis_name}/v1",
+                url=f"http://{self.ie.status.gateway.address}/{metadata.NAMESPACE_REMOTE}/{model_name}/v1",
             )
 
         # Read the Backend's Crossplane-generated name from observed state so
@@ -228,39 +451,50 @@ class Composer:
 
         libresource.update_status(self.rsp.desired.composite, status)
 
-        # Transition: first time composing the LLMInferenceService.
-        if "llm-inference-service" not in self.req.observed.resources:
+        # Transition: first time composing the model serving resource.
+        if MODEL_RESOURCE_KEY not in self.req.observed.resources:
             response.normal(
                 self.rsp,
-                f"Composing LLMInferenceService for {self.model.spec.model.name}"
-                f" on {self.xr.spec.inferenceEnvironmentRef.name}, GPUs: {gpus}",
+                f"Composing {self.profile.backend} deployment for {self.model.spec.model.name}"
+                f" on {self.xr.spec.inferenceEnvironmentRef.name}"
+                f" (profile: {self.profile.name}, engine: {self.profile.engine.name}, GPUs: {gpus})",
             )
 
     def derive_conditions(self):
         """Derive ModelAccepted, ModelReady, and RoutingReady conditions."""
-        llmis_exists = "llm-inference-service" in self.req.observed.resources
-        llmis_synced = conditions.has_condition(self.req, "llm-inference-service", "Synced")
-        llmis_accepted = llmis_exists and llmis_synced
-        llmis_ready = conditions.has_condition(self.req, "llm-inference-service", "Ready")
+
+        # Check if the remote resource was created by reading the Object's
+        # atProvider.manifest. provider-kubernetes populates this field after
+        # successfully observing the remote resource at least once.
+        serving_accepted = False
+        serving_observed = self.req.observed.resources.get(MODEL_RESOURCE_KEY)
+        if serving_observed:
+            obj = k8sobjv1alpha1.Object.model_validate(resource.struct_to_dict(serving_observed.resource))
+            serving_accepted = bool(obj.status and obj.status.atProvider and obj.status.atProvider.manifest)
+
+        serving_ready = conditions.has_condition(self.req, MODEL_RESOURCE_KEY, "Ready")
         backend_exists = "backend" in self.req.observed.resources
 
-        # ModelAccepted: the backend accepted the model workload (Object synced).
-        if not llmis_exists:
-            accepted_reason = CONDITION_REASON_DEPLOYING
-        elif llmis_accepted:
-            accepted_reason = CONDITION_REASON_ACCEPTED
-        else:
-            accepted_reason = CONDITION_REASON_WAITING_FOR_CLUSTER
-        conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, llmis_accepted, accepted_reason)
+        # ProfileMatched: a serving profile was resolved for this environment.
+        conditions.set_condition(self.rsp, CONDITION_TYPE_PROFILE_MATCHED, True, CONDITION_REASON_PROFILE_RESOLVED)
 
-        # ModelReady: the LLMIS is actually serving traffic.
-        if llmis_ready:
+        # ModelAccepted: the remote resource was created on the cluster.
+        if serving_accepted:
+            accepted_reason = CONDITION_REASON_ACCEPTED
+        elif serving_observed:
+            accepted_reason = CONDITION_REASON_DEPLOYING
+        else:
+            accepted_reason = CONDITION_REASON_DEPLOYING
+        conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, serving_accepted, accepted_reason)
+
+        # ModelReady: the model is actually serving traffic.
+        if serving_ready:
             ready_reason = CONDITION_REASON_SERVING
-        elif llmis_accepted:
+        elif serving_accepted:
             ready_reason = CONDITION_REASON_MODEL_STARTING
         else:
             ready_reason = CONDITION_REASON_WAITING_FOR_MODEL
-        conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, llmis_ready, ready_reason)
+        conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, serving_ready, ready_reason)
 
         # RoutingReady: the Backend resource exists on the control plane.
         conditions.set_condition(
@@ -271,12 +505,15 @@ class Composer:
         )
 
         # Per-resource readiness.
-        if llmis_ready:
-            self.rsp.desired.resources["llm-inference-service"].ready = fnv1.READY_TRUE
+        if MODEL_RESOURCE_KEY in self.rsp.desired.resources and serving_ready:
+            self.rsp.desired.resources[MODEL_RESOURCE_KEY].ready = fnv1.READY_TRUE
         if backend_exists:
             self.rsp.desired.resources["backend"].ready = fnv1.READY_TRUE
+        dynamo_route_ready = conditions.has_condition(self.req, "dynamo-httproute", "Ready")
+        if "dynamo-httproute" in self.rsp.desired.resources and dynamo_route_ready:
+            self.rsp.desired.resources["dynamo-httproute"].ready = fnv1.READY_TRUE
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-    """Compose an LLMInferenceService on the remote cluster."""
+    """Compose model serving resources on the remote cluster."""
     Composer(req, rsp).compose()

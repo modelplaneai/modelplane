@@ -24,8 +24,15 @@ class Composer:
             self.xr = cmv1alpha1.ClusterModel(**d)
 
     def compose(self):
-        if self.xr.spec.engine == "vLLM" and not self.xr.spec.vllm:
-            response.warning(self.rsp, "engine is vLLM but spec.vllm is not set; using defaults")
+        if not self.xr.spec.serving:
+            response.warning(self.rsp, "spec.serving is empty — no backends will match this model")
+            return
+        for profile in self.xr.spec.serving:
+            if not profile.engine:
+                response.warning(
+                    self.rsp,
+                    f"serving profile '{profile.name}' has no engine configuration",
+                )
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):

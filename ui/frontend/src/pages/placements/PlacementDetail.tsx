@@ -3,7 +3,7 @@ import { usePlacements } from "../../hooks/usePlacements";
 import { useEnvironments } from "../../hooks/useEnvironments";
 import { useEvents } from "../../hooks/useEvents";
 import { deriveStatus } from "../../lib/status";
-import { relativeAge } from "../../lib/format";
+import { relativeAge, envRegion } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -52,7 +52,7 @@ export function PlacementDetail() {
 
   // Find the referenced InferenceEnvironment for extra context.
   const env = (envsData?.items ?? []).find((e) => e.metadata.name === envName);
-  const region = env?.spec.kserve?.cluster?.gke?.region;
+  const region = env ? envRegion(env) : undefined;
   const backend = env?.spec.backend;
   const gpuPools = env?.status?.capacity?.gpuPools ?? [];
 

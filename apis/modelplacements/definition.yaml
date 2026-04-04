@@ -62,6 +62,24 @@ spec:
           status:
             type: object
             properties:
+              servingProfile:
+                type: object
+                description: >-
+                  The serving profile resolved by the placement function.
+                  Shows which (backend, engine, image) was selected for
+                  this placement.
+                properties:
+                  name:
+                    type: string
+                  backend:
+                    type: string
+                  engine:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      image:
+                        type: string
               endpoint:
                 type: object
                 properties:
@@ -70,7 +88,7 @@ spec:
                     description: >-
                       Per-placement endpoint URL on the remote cluster's
                       gateway. Format:
-                      http://<gateway-ip>/<namespace>/<llmis-name>/v1
+                      http://<gateway-ip>/<namespace>/<model-name>/v1
               model:
                 type: object
                 properties:

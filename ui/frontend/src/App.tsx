@@ -8,6 +8,7 @@ import { PlacementDetail } from "./pages/placements/PlacementDetail";
 import { InfrastructurePage } from "./pages/admin/InfrastructurePage";
 import { EnvironmentDetail } from "./pages/admin/EnvironmentDetail";
 import { CatalogPage } from "./pages/admin/CatalogPage";
+import { ModelDetail } from "./pages/admin/ModelDetail";
 import { NamespaceContext } from "./hooks/useNamespace";
 import { DEFAULT_NAMESPACE } from "./lib/config";
 
@@ -39,6 +40,10 @@ export default function App() {
             element={<EnvironmentDetail />}
           />
           <Route path="/admin/catalog" element={<CatalogPage />} />
+          <Route
+            path="/admin/catalog/:name"
+            element={<ModelDetail />}
+          />
         </Routes>
       </main>
     </NamespaceContext.Provider>

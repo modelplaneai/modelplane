@@ -11,6 +11,7 @@ import { Card } from "../../components/Card";
 import { ConditionList } from "../../components/ConditionList";
 import { EventTimeline } from "../../components/EventTimeline";
 import { deriveStatus, statusText } from "../../lib/status";
+import { envRegion, envVersion } from "../../lib/format";
 import type { InferenceEnvironment, ModelPlacement, KubeList } from "../../api/types";
 
 function EnvironmentDetailRow({ env, placements }: { env: InferenceEnvironment; placements: ModelPlacement[] }) {
@@ -40,7 +41,7 @@ function EnvironmentDetailRow({ env, placements }: { env: InferenceEnvironment; 
                 Backend Version
               </p>
               <p className="text-sm text-text">
-                {env.spec.kserve?.version ?? "—"}
+                {envVersion(env) ?? "—"}
               </p>
             </div>
             <div>
@@ -238,7 +239,7 @@ export function EnvironmentsPage() {
                     {env.spec.backend}
                   </td>
                   <td className="px-4 py-3 text-sm text-muted-hi">
-                    {env.spec.kserve?.cluster?.gke?.region ?? "—"}
+                    {envRegion(env) ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-sm font-mono text-muted-hi">
                     {env.status?.gateway?.address ?? "—"}
