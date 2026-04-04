@@ -177,14 +177,21 @@ class Composer:
         return True
 
     def compose_usages(self):
-        """Protect ProviderConfigs from deletion until all resources that
-        reference them are gone."""
+        """Compose Usages for deletion ordering.
+
+        Two concerns: ProviderConfigs must outlive the resources that reference
+        them, and the Envoy Gateway controller must outlive the Gateway and
+        GatewayClass resources it manages (they have finalizers the controller
+        must process).
+
+        The deletion chain is:
+          Gateway Object → GatewayClass Object → envoy-gateway Release
+          All Releases → helm ProviderConfig
+          All Objects → k8s ProviderConfig
+        """
         pc = _pc_name(self.xr)
 
-        # Protect the Helm ProviderConfig from deletion until all Helm Releases
-        # that reference it are gone. Without this, deleting the KServeStack
-        # deletes the ProviderConfig and Releases simultaneously — the Releases
-        # can't uninstall their charts because the ProviderConfig is gone.
+        # Helm ProviderConfig protected by all Releases.
         resource.update(
             self.rsp.desired.resources["usage-helm-pc"],
             {
@@ -207,8 +214,7 @@ class Composer:
         )
         self.rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
 
-        # Same for the Kubernetes ProviderConfig — protect it until all Objects
-        # that reference it are gone.
+        # K8s ProviderConfig protected by all Objects.
         resource.update(
             self.rsp.desired.resources["usage-k8s-pc"],
             {
@@ -230,6 +236,68 @@ class Composer:
             },
         )
         self.rsp.desired.resources["usage-k8s-pc"].ready = fnv1.READY_TRUE
+
+        # GatewayClass Object protected by Gateway Object. The GatewayClass
+        # has a gateway-exists-finalizer that the EG controller won't remove
+        # while Gateways reference it.
+        resource.update(
+            self.rsp.desired.resources["usage-gateway-class-by-gateway"],
+            {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "Usage",
+                "spec": {
+                    "of": {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway-class"},
+                        },
+                    },
+                    "by": {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway"},
+                        },
+                    },
+                    "replayDeletion": True,
+                },
+            },
+        )
+        self.rsp.desired.resources["usage-gateway-class-by-gateway"].ready = fnv1.READY_TRUE
+
+        # Envoy Gateway Release protected by GatewayClass Object. The EG
+        # controller must be running to process the GatewayClass's
+        # gateway-exists-finalizer during deletion.
+        resource.update(
+            self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"],
+            {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "Usage",
+                "spec": {
+                    "of": {
+                        "apiVersion": "helm.m.crossplane.io/v1beta1",
+                        "kind": "Release",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "envoy-gateway"},
+                        },
+                    },
+                    "by": {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "resourceSelector": {
+                            "matchControllerRef": True,
+                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway-class"},
+                        },
+                    },
+                    "replayDeletion": True,
+                },
+            },
+        )
+        self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
 
     def compose_cert_manager(self):
         """Compose cert-manager. Gated on ProviderConfigs being observed."""
@@ -265,6 +333,7 @@ class Composer:
                 version=v.envoyGateway,
                 namespace="envoy-gateway-system",
                 provider_config=_pc_name(self.xr),
+                labels={metadata.LABEL_KEY_RESOURCE: "envoy-gateway"},
                 values={
                     "config": {
                         "envoyGateway": {
@@ -324,11 +393,6 @@ class Composer:
         else:
             listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
 
-        # Don't delete the GatewayClass when KServeStack is deleted. The
-        # remote GatewayClass has a gateway-exists-finalizer that blocks
-        # deletion while any Gateway references it, causing the Object to
-        # hang indefinitely. GatewayClass is cluster-level infrastructure
-        # config — leaving it behind is harmless.
         if pc_observed or "gateway-class" in self.req.observed.resources:
             resource.update(
                 self.rsp.desired.resources["gateway-class"],
@@ -342,7 +406,7 @@ class Composer:
                             "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
                         },
                     },
-                    management_policies=["Create", "Observe", "Update"],
+                    metadata=metav1.ObjectMeta(labels={metadata.LABEL_KEY_RESOURCE: "gateway-class"}),
                 ),
             )
 
@@ -387,16 +451,16 @@ class Composer:
         pc = _pc_name(self.xr)
 
         if gate or "kserve-crds" in self.req.observed.resources:
-            kserve_crds = helm.helm_release(
-                chart="kserve-llmisvc-crd",
-                repo="oci://ghcr.io/kserve/charts",
-                version=v.kserve,
-                namespace="kserve",
-                provider_config=pc,
+            resource.update(
+                self.rsp.desired.resources["kserve-crds"],
+                helm.helm_release(
+                    chart="kserve-llmisvc-crd",
+                    repo="oci://ghcr.io/kserve/charts",
+                    version=v.kserve,
+                    namespace="kserve",
+                    provider_config=pc,
+                ),
             )
-            # Don't uninstall KServe CRDs — same rationale as the controller.
-            kserve_crds.spec.managementPolicies = ["Create", "Observe", "Update"]
-            resource.update(self.rsp.desired.resources["kserve-crds"], kserve_crds)
 
         if gate or "kserve-controller" in self.req.observed.resources:
             patch_cm_name = f"{self.xr.metadata.name}-storage-patch"
@@ -415,16 +479,6 @@ class Composer:
                         key="patches",
                     ),
                 ),
-            ]
-            # Don't uninstall the KServe controller when KServeStack is deleted.
-            # KServe's webhooks prevent clean Helm uninstall (the webhook server
-            # pod is deleted before the webhook configurations, causing all
-            # resource deletions to fail validation). Since the GKE cluster is
-            # being deleted anyway, leaving KServe installed is harmless.
-            kserve_release.spec.managementPolicies = [
-                "Create",
-                "Observe",
-                "Update",
             ]
             resource.update(self.rsp.desired.resources["kserve-controller"], kserve_release)
 
@@ -487,23 +541,20 @@ class Composer:
             "provider-config-kubernetes",
             "provider-config-helm",
             "kserve-storage-patch",
-            "gateway-class",
-            "kserve-crds",
-            "kserve-controller",
         ]
         for r in always_ready:
             if r in self.rsp.desired.resources:
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
-        # These resources have external readiness conditions. Crossplane derives
-        # the XR's Ready condition automatically from composed resource
-        # readiness.
         condition_ready = [
             "cert-manager",
             "envoy-gateway",
             "leader-worker-set",
+            "kserve-crds",
+            "kserve-controller",
             "inference-ext-crd-inferencemodels",
             "inference-ext-crd-inferencepools",
+            "gateway-class",
             "gateway",
         ]
         for r in condition_ready:

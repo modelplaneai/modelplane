@@ -1,0 +1,13 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: dynamostacks.infrastructure.modelplane.ai
+spec:
+  compositeTypeRef:
+    apiVersion: infrastructure.modelplane.ai/v1alpha1
+    kind: DynamoStack
+  mode: Pipeline
+  pipeline:
+  - functionRef:
+      name: negzupboundio-modelplane-infracompose-dynamo-stack
+    step: compose-dynamo-stack

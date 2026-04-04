@@ -51,7 +51,9 @@ export function ModelsPage() {
               <h3 className="text-text font-medium">{modelDisplayName(model.spec.model.name)}</h3>
 
               <div className="flex flex-wrap gap-2">
-                <Badge variant="cyan">{model.spec.engine}</Badge>
+                {(model.spec.serving ?? []).map((p) => (
+                  <Badge key={p.name} variant="cyan">{p.backend}</Badge>
+                ))}
                 <Badge variant="neutral">{model.spec.resources.vram}</Badge>
               </div>
 

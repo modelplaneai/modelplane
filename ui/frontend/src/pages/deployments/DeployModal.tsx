@@ -108,7 +108,9 @@ export function DeployModal({ open, onClose, preselectedModel }: DeployModalProp
           <div className="bg-bg-mid border border-border rounded-lg p-3 space-y-1">
             <p className="text-sm text-text">{modelDisplayName(selected.spec.model.name)}</p>
             <div className="flex gap-2">
-              <Badge variant="cyan">{selected.spec.engine}</Badge>
+              {(selected.spec.serving ?? []).map((p) => (
+                <Badge key={p.name} variant="cyan">{p.backend}</Badge>
+              ))}
               <Badge variant="neutral">{selected.spec.resources.vram}</Badge>
             </div>
             {selected.spec.huggingFace?.repo && (

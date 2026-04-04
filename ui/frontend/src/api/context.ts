@@ -24,8 +24,6 @@ export interface ApiClient {
   getModelDeployment(ns: string, name: string): Promise<ModelDeployment>;
   createModelDeployment(ns: string, md: Partial<ModelDeployment>): Promise<ModelDeployment>;
   deleteModelDeployment(ns: string, name: string): Promise<void>;
-  createClusterModel(cm: Partial<ClusterModel>): Promise<ClusterModel>;
-  deleteClusterModel(name: string): Promise<void>;
   listNamespaces(): Promise<KubeList<{ metadata: ObjectMeta }>>;
   listEvents(ns: string, kind: string, name: string, uid?: string): Promise<KubeList<KubeEvent>>;
 }

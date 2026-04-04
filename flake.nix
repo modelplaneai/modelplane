@@ -72,7 +72,7 @@
           pname = "modelplane-ui-frontend";
           version = "0.1.0";
           src = ./ui/frontend;
-          npmDepsHash = "sha256-EC/m8CuocYTKehAl8ONdm+8rXS9w8ajyLyc2u28mKNM=";
+          npmDepsHash = "sha256-Albak9di8Y9d9hEx3jrmz2rnsgW5SlRrjkTbsN1K/lA=";
           installPhase = ''
             runHook preInstall
             cp -r dist $out
@@ -252,7 +252,7 @@
             pname = "modelplane-ui-frontend-checks";
             version = "0.1.0";
             src = ./ui/frontend;
-            npmDepsHash = "sha256-EC/m8CuocYTKehAl8ONdm+8rXS9w8ajyLyc2u28mKNM=";
+            npmDepsHash = "sha256-Albak9di8Y9d9hEx3jrmz2rnsgW5SlRrjkTbsN1K/lA=";
 
             buildPhase = ''
               echo "Running TypeScript type check..."

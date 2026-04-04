@@ -1,0 +1,22 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceEnvironment
+metadata:
+  name: dynamo-us-central
+  labels:
+    modelplane.ai/environment: "true"
+spec:
+  backend: Dynamo
+  dynamo:
+    version: "1.0.0"
+    cluster:
+      source: Existing
+      existing:
+        secretRef:
+          name: dynamo-cluster-kubeconfig
+          key: kubeconfig
+        nodePools:
+        - name: gpu-h100
+          nodeCount: 2
+          gpu:
+            acceleratorType: nvidia-h100-80gb
+            acceleratorCount: 8
