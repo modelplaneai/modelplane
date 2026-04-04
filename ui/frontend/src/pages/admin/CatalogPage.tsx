@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useModels } from "../../hooks/useModels";
 import { SectionLabel } from "../../components/SectionLabel";
 
@@ -55,8 +56,12 @@ export function CatalogPage() {
           {models.map((m) => {
             const name = m.metadata.name;
             return (
-              <tr key={name} className="border-b border-border">
-                <td className="px-4 py-3 text-sm text-text">{name}</td>
+              <tr key={name} className="border-b border-border hover:bg-bg-card-hover transition-colors cursor-pointer">
+                <td className="px-4 py-3 text-sm text-text">
+                  <Link to={`/admin/catalog/${name}`} className="hover:text-cyan transition-colors">
+                    {name}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 text-sm text-muted-hi">
                   {m.spec.model.name}
                 </td>
