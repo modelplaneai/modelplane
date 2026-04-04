@@ -23,8 +23,6 @@ export function nopClient(overrides?: Partial<ApiClient>): ApiClient {
     getModelDeployment: async () => ({ apiVersion: "modelplane.ai/v1alpha1", kind: "ModelDeployment", metadata: { name: "" }, spec: { modelRef: { kind: "", name: "" }, environments: 0 } }),
     createModelDeployment: async (_, md) => md as ModelDeployment,
     deleteModelDeployment: async () => {},
-    createClusterModel: async (cm) => cm as ClusterModel,
-    deleteClusterModel: async () => {},
     listNamespaces: async () => emptyList(),
     listEvents: async () => emptyList(),
     ...overrides,
