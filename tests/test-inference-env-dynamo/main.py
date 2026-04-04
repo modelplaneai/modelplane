@@ -1,6 +1,6 @@
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
-from .model.ai.modelplane.infrastructure.dynamostack import v1alpha1 as dsv1alpha1
+from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1 as dsv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
@@ -46,14 +46,14 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # Assert DynamoStack is composed with the user-supplied kubeconfig.
+            # Assert DynamoBackend is composed with the user-supplied kubeconfig.
             libresource.model_to_dict(
-                dsv1alpha1.DynamoStack(
+                dsv1alpha1.DynamoBackend(
                     metadata=metav1.ObjectMeta(
                         name="dynamo-us-central-dynamo",
                         namespace="modelplane-system",
                         annotations={
-                            "crossplane.io/composition-resource-name": "dynamo-stack",
+                            "crossplane.io/composition-resource-name": "dynamo-backend",
                         },
                     ),
                     spec=dsv1alpha1.Spec(

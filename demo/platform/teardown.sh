@@ -25,7 +25,7 @@ kubectl delete -f "$PLATFORM_DIR/cluster-model.yaml" --ignore-not-found --wait=t
 
 # Delete IEs with foreground cascading deletion. This blocks until the IE
 # and ALL its composed resources are fully deleted. The Usage resource
-# ensures correct deletion order: KServeStack (Helm releases) deletes
+# ensures correct deletion order: KServeBackend (Helm releases) deletes
 # before GKECluster, so Helm can cleanly uninstall from the still-running
 # cluster.
 #

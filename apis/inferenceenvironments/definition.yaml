@@ -64,7 +64,7 @@ spec:
                         description: >-
                           Bring-your-own cluster configuration. Required when
                           source is Existing. Modelplane manages the backend
-                          stack (KServe, gateway, etc.) on the cluster but
+                          (KServe, gateway, etc.) on the cluster but
                           does not provision the cluster itself.
                         required: [secretRef]
                         properties:
@@ -402,4 +402,4 @@ spec:
               namespace:
                 type: string
                 description: >-
-                  Namespace where the internal XRs (cluster, backend stack) were created.
+                  Namespace where the internal XRs (cluster, backend) were created.

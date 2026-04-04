@@ -1,5 +1,5 @@
 apiVersion: infrastructure.modelplane.ai/v1alpha1
-kind: DynamoStack
+kind: DynamoBackend
 metadata:
   name: dynamo-us-central-dynamo
   namespace: modelplane-system

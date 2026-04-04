@@ -7,12 +7,12 @@ from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositionte
 
 test = compositiontest.CompositionTest(
     metadata=metav1.ObjectMeta(
-        name="kservestack-second-pass",
+        name="kservebackend-second-pass",
     ),
     spec=compositiontest.Spec(
-        compositionPath="apis/kservestacks/composition.yaml",
-        xrPath="tests/test-kservestack-second-pass/xr.yaml",
-        xrdPath="apis/kservestacks/definition.yaml",
+        compositionPath="apis/kservebackends/composition.yaml",
+        xrPath="tests/test-kservebackend-second-pass/xr.yaml",
+        xrdPath="apis/kservebackends/definition.yaml",
         timeoutSeconds=120,
         validate=False,
         # Simulate a second reconcile where both ProviderConfigs are

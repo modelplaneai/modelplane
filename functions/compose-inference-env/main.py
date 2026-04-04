@@ -2,11 +2,11 @@
 
 This function orchestrates the internal XRs that make up an inference
 environment. It dispatches on two axes: the backend (KServe, Dynamo, etc.)
-determines which stack XR to install, and the cluster source (GKE, Existing)
+determines which backend XR to install, and the cluster source (GKE, Existing)
 determines how the cluster is obtained.
 
 For provisioned clusters (source: GKE), it composes a GKECluster and threads
-its secrets into the backend stack and ClusterProviderConfig. For BYO clusters
+its secrets into the backend and ClusterProviderConfig. For BYO clusters
 (source: Existing), it wires the user-supplied kubeconfig directly into the
 same resources — skipping cluster provisioning entirely.
 """
@@ -17,9 +17,9 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .lib import conditions, metadata, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
-from .model.ai.modelplane.infrastructure.dynamostack import v1alpha1 as dsv1alpha1
+from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1 as dsv1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
-from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
+from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
@@ -29,10 +29,10 @@ from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 BACKEND_KSERVE = "KServe"
 BACKEND_DYNAMO = "Dynamo"
 
-# Maps backends to their stack XR kinds (for Usage resources).
-BACKEND_STACK_KINDS = {
-    BACKEND_KSERVE: "KServeStack",
-    BACKEND_DYNAMO: "DynamoStack",
+# Maps backends to their XR kinds (for Usage resources).
+BACKEND_XR_KINDS = {
+    BACKEND_KSERVE: "KServeBackend",
+    BACKEND_DYNAMO: "DynamoBackend",
 }
 
 # Cluster source discriminator values from the XRD enum.
@@ -75,22 +75,22 @@ class Composer:
                 response.warning(self.rsp, "spec.kserve.cluster is required when backend is KServe")
                 return
             cluster = self.xr.spec.kserve.cluster
-            # The composed resource key for the backend stack XR. Shared
-            # methods (derive_conditions, observed_gateway_address, etc.) use
-            # this to check readiness and read observed state without knowing
-            # which backend they're serving.
+            # The composed resource key for the backend XR. Shared methods
+            # (derive_conditions, observed_gateway_address, etc.) use this to
+            # check readiness and read observed state without knowing which
+            # backend they're serving.
             #
-            # This implies a contract: any backend stack XR must have a Ready
+            # This implies a contract: any backend XR must have a Ready
             # condition and surface status.gateway.address. Both are reasonable
             # — Ready is standard for Crossplane XRs, and the gateway address
             # is how ModelDeployment routes to the environment.
-            self.backend_stack_resource_key = "kserve-stack"
+            self.backend_resource_key = "kserve-backend"
         elif backend == BACKEND_DYNAMO:
             if not self.xr.spec.dynamo or not self.xr.spec.dynamo.cluster:
                 response.warning(self.rsp, "spec.dynamo.cluster is required when backend is Dynamo")
                 return
             cluster = self.xr.spec.dynamo.cluster
-            self.backend_stack_resource_key = "dynamo-stack"
+            self.backend_resource_key = "dynamo-backend"
         else:
             response.warning(self.rsp, f"unsupported backend: {backend}")
             return
@@ -106,7 +106,7 @@ class Composer:
     def compose_gke(self, gke):
         """Compose an InferenceEnvironment backed by a Modelplane-provisioned
         GKE cluster. Composes the GKECluster XR, waits for it to be ready,
-        then wires its secrets into the backend stack."""
+        then wires its secrets into the backend."""
         if not gke:
             response.warning(self.rsp, "GKE configuration is required when source is GKE")
             return
@@ -117,7 +117,7 @@ class Composer:
         kubeconfig = self.observed_gke_secret(secrets.SECRET_TYPE_KUBECONFIG)
         sa_key = self.observed_gke_secret(secrets.SECRET_TYPE_GCP_SA_KEY)
         cpc_exists = "cluster-provider-config-kubernetes" in self.req.observed.resources
-        stack_exists = self.backend_stack_resource_key in self.req.observed.resources
+        backend_exists = self.backend_resource_key in self.req.observed.resources
 
         if (gke_ready and kubeconfig) or cpc_exists:
             self.compose_cluster_provider_config(
@@ -126,16 +126,16 @@ class Composer:
                 sa_key,
             )
 
-        stack_secrets = self.resolve_gke_stack_secrets(gke_ready, stack_exists)
-        if stack_secrets or stack_exists:
-            if stack_secrets:
-                self.compose_backend_stack(stack_secrets)
+        backend_secrets = self.resolve_gke_backend_secrets(gke_ready, backend_exists)
+        if backend_secrets or backend_exists:
+            if backend_secrets:
+                self.compose_backend(backend_secrets)
             self.compose_gke_usage()
 
         if gke_ready:
             self.rsp.desired.resources["gke-cluster"].ready = fnv1.READY_TRUE
-            if not stack_exists:
-                response.normal(self.rsp, "GKE cluster ready, composing backend stack")
+            if not backend_exists:
+                response.normal(self.rsp, "GKE cluster ready, composing backend")
 
         self.write_status(self.gke_gpu_pools(gke))
         self.derive_conditions(cluster_ready=gke_ready)
@@ -145,7 +145,7 @@ class Composer:
         No gating needed — the kubeconfig secret is provided by the user.
 
         If identitySecretRef is provided, the identity is passed to the
-        ClusterProviderConfig and backend stack for cloud IAM auth (e.g.
+        ClusterProviderConfig and backend for cloud IAM auth (e.g.
         GKE clusters where the kubeconfig uses GCP IAM instead of embedded
         credentials). Without it, the kubeconfig must be self-contained."""
         if not existing:
@@ -157,26 +157,26 @@ class Composer:
 
         self.compose_cluster_provider_config(existing.secretRef.name, existing.secretRef.key, sa_key=identity)
 
-        stack_secrets = [
+        backend_secrets = [
             {"type": secrets.SECRET_TYPE_KUBECONFIG, "name": existing.secretRef.name, "key": existing.secretRef.key},
         ]
         if identity:
-            stack_secrets.append(
+            backend_secrets.append(
                 {"type": secrets.SECRET_TYPE_GCP_SA_KEY, "name": identity.name, "key": identity.key},
             )
-        self.compose_backend_stack(stack_secrets)
+        self.compose_backend(backend_secrets)
 
         self.write_status(self.existing_gpu_pools(existing))
         self.derive_conditions(cluster_ready=True)
 
-    def compose_backend_stack(self, stack_secrets):
-        """Compose the backend-specific stack XR. Dispatches on the backend
-        discriminator to compose the right stack type."""
+    def compose_backend(self, backend_secrets):
+        """Compose the backend-specific XR. Dispatches on the backend
+        discriminator to compose the right backend type."""
         backend = self.xr.spec.backend
         if backend == BACKEND_KSERVE:
-            self.compose_kserve_stack(stack_secrets)
+            self.compose_kserve_backend(backend_secrets)
         elif backend == BACKEND_DYNAMO:
-            self.compose_dynamo_stack(stack_secrets)
+            self.compose_dynamo_backend(backend_secrets)
 
     def compose_cluster_provider_config(self, kubeconfig_name, kubeconfig_key, sa_key=None):
         """Compose a ClusterProviderConfig for provider-kubernetes so that
@@ -210,34 +210,34 @@ class Composer:
         )
         self.rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
 
-    def compose_kserve_stack(self, stack_secrets):
-        """Compose a KServeStack XR with the given secrets."""
+    def compose_kserve_backend(self, backend_secrets):
+        """Compose a KServeBackend XR with the given secrets."""
         resource.update(
-            self.rsp.desired.resources["kserve-stack"],
-            kssv1alpha1.KServeStack(
+            self.rsp.desired.resources["kserve-backend"],
+            kssv1alpha1.KServeBackend(
                 metadata=metav1.ObjectMeta(
                     name=f"{self.xr.metadata.name}-kserve",
                     namespace=metadata.NAMESPACE_SYSTEM,
                 ),
                 spec=kssv1alpha1.Spec(
                     versions=kssv1alpha1.Versions(kserve=self.xr.spec.kserve.version),
-                    secrets=[kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in stack_secrets],
+                    secrets=[kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in backend_secrets],
                 ),
             ),
         )
 
-    def compose_dynamo_stack(self, stack_secrets):
-        """Compose a DynamoStack XR with the given secrets."""
+    def compose_dynamo_backend(self, backend_secrets):
+        """Compose a DynamoBackend XR with the given secrets."""
         resource.update(
-            self.rsp.desired.resources["dynamo-stack"],
-            dsv1alpha1.DynamoStack(
+            self.rsp.desired.resources["dynamo-backend"],
+            dsv1alpha1.DynamoBackend(
                 metadata=metav1.ObjectMeta(
                     name=f"{self.xr.metadata.name}-dynamo",
                     namespace=metadata.NAMESPACE_SYSTEM,
                 ),
                 spec=dsv1alpha1.Spec(
                     versions=dsv1alpha1.Versions(dynamo=self.xr.spec.dynamo.version),
-                    secrets=[dsv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in stack_secrets],
+                    secrets=[dsv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in backend_secrets],
                 ),
             ),
         )
@@ -261,9 +261,9 @@ class Composer:
 
     def derive_conditions(self, cluster_ready):
         """Derive ClusterReady and BackendReady conditions."""
-        stack_ready = conditions.has_condition(self.req, self.backend_stack_resource_key, "Ready")
-        if self.backend_stack_resource_key in self.rsp.desired.resources and stack_ready:
-            self.rsp.desired.resources[self.backend_stack_resource_key].ready = fnv1.READY_TRUE
+        backend_ready = conditions.has_condition(self.req, self.backend_resource_key, "Ready")
+        if self.backend_resource_key in self.rsp.desired.resources and backend_ready:
+            self.rsp.desired.resources[self.backend_resource_key].ready = fnv1.READY_TRUE
 
         conditions.set_condition(
             self.rsp,
@@ -274,12 +274,12 @@ class Composer:
 
         if not cluster_ready:
             backend_reason = CONDITION_REASON_WAITING_FOR_CLUSTER
-        elif stack_ready:
+        elif backend_ready:
             backend_reason = CONDITION_REASON_BACKEND_HEALTHY
         else:
             backend_reason = CONDITION_REASON_INSTALLING
 
-        conditions.set_condition(self.rsp, CONDITION_TYPE_BACKEND_READY, stack_ready, backend_reason)
+        conditions.set_condition(self.rsp, CONDITION_TYPE_BACKEND_READY, backend_ready, backend_reason)
 
     def compose_gke_cluster(self, gke):
         """Compose a GKECluster XR from the GKE config."""
@@ -307,10 +307,10 @@ class Composer:
         )
 
     def compose_gke_usage(self):
-        """Block GKECluster deletion until the backend stack is deleted."""
-        stack_kind = BACKEND_STACK_KINDS.get(self.xr.spec.backend, "KServeStack")
+        """Block GKECluster deletion until the backend is deleted."""
+        backend_kind = BACKEND_XR_KINDS.get(self.xr.spec.backend, "KServeBackend")
         resource.update(
-            self.rsp.desired.resources["usage-gke-by-stack"],
+            self.rsp.desired.resources["usage-gke-by-backend"],
             {
                 "apiVersion": "protection.crossplane.io/v1beta1",
                 "kind": "Usage",
@@ -323,19 +323,19 @@ class Composer:
                     },
                     "by": {
                         "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                        "kind": stack_kind,
+                        "kind": backend_kind,
                         "resourceSelector": {"matchControllerRef": True},
                     },
                     "replayDeletion": True,
                 },
             },
         )
-        self.rsp.desired.resources["usage-gke-by-stack"].ready = fnv1.READY_TRUE
+        self.rsp.desired.resources["usage-gke-by-backend"].ready = fnv1.READY_TRUE
 
-    def resolve_gke_stack_secrets(self, gke_ready, stack_exists):
-        """Resolve secrets for the backend stack from GKECluster status. Falls
-        back to the observed stack's spec.secrets if GKECluster secrets aren't
-        available but the stack already exists. Returns a list of dicts with
+    def resolve_gke_backend_secrets(self, gke_ready, backend_exists):
+        """Resolve secrets for the backend from GKECluster status. Falls
+        back to the observed backend's spec.secrets if GKECluster secrets aren't
+        available but the backend already exists. Returns a list of dicts with
         type/name/key — the backend-specific compose methods convert to their
         own Pydantic types."""
         gke_secrets = self.observed_gke_secrets()
@@ -343,8 +343,8 @@ class Composer:
         if gke_ready and gke_secrets:
             return [{"type": s.type, "name": s.name, "key": s.key} for s in gke_secrets]
 
-        if stack_exists:
-            observed = self.req.observed.resources.get(self.backend_stack_resource_key)
+        if backend_exists:
+            observed = self.req.observed.resources.get(self.backend_resource_key)
             if observed:
                 d = resource.struct_to_dict(observed.resource)
                 observed_secrets = d.get("spec", {}).get("secrets", [])
@@ -401,10 +401,10 @@ class Composer:
         return next((s for s in gke_secrets if s.type == secret_type), None)
 
     def observed_gateway_address(self):
-        """Read the backend stack's gateway address from observed state.
+        """Read the backend's gateway address from observed state.
         Uses dict access instead of a typed model so it works for any
-        backend stack that follows the status.gateway.address contract."""
-        observed = self.req.observed.resources.get(self.backend_stack_resource_key)
+        backend that follows the status.gateway.address contract."""
+        observed = self.req.observed.resources.get(self.backend_resource_key)
         if not observed:
             return None
         d = resource.struct_to_dict(observed.resource)

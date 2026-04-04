@@ -140,7 +140,7 @@ Modelplane defines six Crossplane composite resources (XRs). The API group is
 | CRD | Scope | Created by | Purpose |
 |-----|-------|------------|---------|
 | `InferenceGateway` | Cluster | Platform team | Control plane routing infrastructure |
-| `InferenceEnvironment` | Cluster | Platform team | Inference environment with backend stack |
+| `InferenceEnvironment` | Cluster | Platform team | Inference environment with backend |
 | `ClusterModel` | Cluster | Platform team | Model catalog |
 | `Model` | Namespace | ML team | Private fine-tuned models |
 | `ModelDeployment` | Namespace | ML team | Multi-environment deployment |
@@ -388,7 +388,7 @@ status:
     - type: ClusterReady                 # Underlying cluster is provisioned and healthy
       status: "True"
       reason: ClusterRunning
-    - type: StackInstalled               # Backend and all dependencies are installed
+    - type: BackendInstalled              # Backend and all dependencies are installed
       status: "True"
       reason: AllReleasesDeployed
     - type: GatewayReady                 # Envoy gateway is healthy and has an address
@@ -458,7 +458,7 @@ spec:
     storageCapacity: 500Gi
 ```
 
-Modelplane still installs and manages the backend stack (KServe, gateway, model
+Modelplane still installs and manages the backend (KServe, gateway, model
 caching) on the cluster. It just doesn't provision the cluster itself. This
 covers enterprise platform teams that manage clusters via Terraform, Cluster
 API, or their own Crossplane Compositions and don't want Modelplane recreating
@@ -593,7 +593,7 @@ ModelPlacement is the only function that knows about specific backends. It
 reads the ClusterModel's matched serving profile to get the engine name,
 container image, and args, then composes the appropriate backend-specific
 resource. Adding a new backend means updating this one function. An
-InferenceEnvironment provisions infrastructure and installs the backend stack,
+InferenceEnvironment provisions infrastructure and installs the backend,
 but no models are running until a ModelPlacement targets it. A ClusterModel
 describes how a model should be served, but it's inert until referenced by a
 ModelPlacement.
@@ -683,8 +683,8 @@ flowchart TD
         MP2["ModelPlacement B"]
         GKE1["GKECluster A"]
         GKE2["GKECluster B"]
-        KS1["KServeStack A"]
-        KS2["KServeStack B"]
+        KS1["KServeBackend A"]
+        KS2["KServeBackend B"]
     end
 
     MD -- "modelRef" --> CM
@@ -707,12 +707,12 @@ Five composition functions, one per concern:
 | Function | Responsibility |
 |----------|---------------|
 | `function-modelplane-gateway` | Composes the control plane routing infrastructure. Dispatches on gateway backend (Envoy Gateway, LiteLLM). Surfaces `status.address` for ModelPlacements. |
-| `function-modelplane-env` | Dispatches on inference backend and cloud provider discriminators. Composes `GKECluster` and `KServeStack` XRs, wires them together, populates `status.capacity`. Adding a new backend or cloud provider means adding a branch here. |
+| `function-modelplane-env` | Dispatches on inference backend and cloud provider discriminators. Composes `GKECluster` and `KServeBackend` XRs, wires them together, populates `status.capacity`. Adding a new backend or cloud provider means adding a branch here. |
 | `function-modelplane-model` | Validates model catalog entries for both `ClusterModel` and `Model`. Registration and validation only — caching is an environment concern. |
 | `function-modelplane-deploy` | Backend-agnostic fan-out and routing aggregation. Resolves target environments, matches serving profiles to environments (by backend and optional label selector), stamps placements, composes a Gateway API HTTPRoute that load-balances across all placements' backends, aggregates status. |
 | `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model (including its matched serving profile), InferenceEnvironment, and InferenceGateway. Uses the profile's engine name, image, and args to compose backend-specific model serving resources (LLMInferenceService for KServe, DynamoGraphDeployment for Dynamo) and routing endpoint resources (Envoy Gateway Backend). Adding a new inference or routing backend means updating this one function. |
 
-The `GKECluster` and `KServeStack` XRs are internal implementation details —
+The `GKECluster` and `KServeBackend` XRs are internal implementation details —
 they have their own XRDs and composition functions but are not part of
 Modelplane's public API. They provide clean boundaries: the env function
 delegates to specialist XRs and wires them together.
@@ -765,7 +765,7 @@ infrastructure.
 ### Custom InferenceEnvironment Compositions
 
 I considered letting platform teams provide their own Compositions for
-InferenceEnvironment (or for the internal GKECluster and KServeStack XRs) as
+InferenceEnvironment (or for the internal GKECluster and KServeBackend XRs) as
 the customization mechanism for bring-your-own infrastructure. This is how
 Crossplane customization normally works — the XRD is the contract, the
 Composition is swappable.
@@ -780,7 +780,7 @@ function. That's too much surface area to customize from outside the project.
 
 The bring-your-own-cluster path (`source: Existing` with a kubeconfig Secret)
 covers the realistic customization need: the platform team controls cluster
-provisioning, Modelplane controls the backend stack and model deployment.
+provisioning, Modelplane controls the backend and model deployment.
 Adding new backends (Dynamo, KubeAI) is a contribution to Modelplane, not a
 per-platform-team customization.
 

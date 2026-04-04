@@ -1,17 +1,17 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: kservestacks.infrastructure.modelplane.ai
+  name: kservebackends.infrastructure.modelplane.ai
 spec:
   group: infrastructure.modelplane.ai
   names:
     categories:
     - crossplane
     - modelplane
-    kind: KServeStack
-    plural: kservestacks
+    kind: KServeBackend
+    plural: kservebackends
     shortNames:
-    - kss
+    - ksb
   scope: Namespaced
   versions:
   - name: v1alpha1
@@ -32,12 +32,12 @@ spec:
     schema:
       openAPIV3Schema:
         description: >-
-          A KServeStack installs the full KServe inference stack on a
+          A KServeBackend installs the full KServe inference backend on a
           Kubernetes cluster, including cert-manager, Gateway API, Envoy
           Gateway, LeaderWorkerSet, and KServe itself.
         properties:
           spec:
-            description: KServeStackSpec defines the desired state of KServeStack.
+            description: KServeBackendSpec defines the desired state of KServeBackend.
             required:
             - secrets
             properties:
@@ -46,7 +46,7 @@ spec:
                 description: >-
                   Secrets used to authenticate to the target cluster. Typically
                   sourced from a GKECluster's status.secrets. All secrets must
-                  be in the same namespace as this KServeStack. A Kubeconfig
+                  be in the same namespace as this KServeBackend. A Kubeconfig
                   secret is required. If a cloud-specific credential secret is
                   present (e.g. GCPServiceAccountKey), the ProviderConfigs
                   will use it for identity-based authentication instead of
@@ -154,7 +154,7 @@ spec:
                           - TCP
             type: object
           status:
-            description: KServeStackStatus defines the observed state of KServeStack.
+            description: KServeBackendStatus defines the observed state of KServeBackend.
             properties:
               gateway:
                 type: object

@@ -1,5 +1,5 @@
 apiVersion: infrastructure.modelplane.ai/v1alpha1
-kind: KServeStack
+kind: KServeBackend
 metadata:
   name: gpu-us-central1-kserve
   namespace: gpu-us-central1
