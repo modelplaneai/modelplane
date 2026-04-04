@@ -104,6 +104,3 @@ def schedule(
         )
     )
     return candidates[: int(deployment.spec.environments)]
-
-
-

@@ -17,8 +17,8 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .lib import conditions, metadata, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
-from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.dynamostack import v1alpha1 as dsv1alpha1
+from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,

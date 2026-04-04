@@ -461,12 +461,8 @@ class Composer:
         serving_accepted = False
         serving_observed = self.req.observed.resources.get(MODEL_RESOURCE_KEY)
         if serving_observed:
-            obj = k8sobjv1alpha1.Object.model_validate(
-                resource.struct_to_dict(serving_observed.resource)
-            )
-            serving_accepted = bool(
-                obj.status and obj.status.atProvider and obj.status.atProvider.manifest
-            )
+            obj = k8sobjv1alpha1.Object.model_validate(resource.struct_to_dict(serving_observed.resource))
+            serving_accepted = bool(obj.status and obj.status.atProvider and obj.status.atProvider.manifest)
 
         serving_ready = conditions.has_condition(self.req, MODEL_RESOURCE_KEY, "Ready")
         backend_exists = "backend" in self.req.observed.resources

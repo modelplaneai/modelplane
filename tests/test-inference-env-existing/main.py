@@ -51,7 +51,6 @@ test = compositiontest.CompositionTest(
             ),
             # Assert no GKECluster is composed — cluster is user-managed.
             # (Absence is verified by not including a GKECluster assertion.)
-
             # Assert KServeStack is composed with the user-supplied kubeconfig.
             libresource.model_to_dict(
                 kssv1alpha1.KServeStack(
