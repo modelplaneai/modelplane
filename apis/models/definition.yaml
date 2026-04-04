@@ -106,6 +106,9 @@ spec:
                 items:
                   type: object
                   required: [name, backend]
+                  x-kubernetes-validations:
+                  - rule: "self.backend in ['KServe', 'Dynamo'] ? has(self.engine) : true"
+                    message: "engine is required for KServe and Dynamo backends"
                   properties:
                     name:
                       type: string
