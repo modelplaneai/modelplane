@@ -1,5 +1,5 @@
 from .lib import resource as libresource
-from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
+from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1 as dsv1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -7,45 +7,38 @@ from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositionte
 
 test = compositiontest.CompositionTest(
     metadata=metav1.ObjectMeta(
-        name="kservestack-basic",
+        name="dynamobackend-basic",
     ),
     spec=compositiontest.Spec(
-        compositionPath="apis/kservestacks/composition.yaml",
-        xrPath="tests/test-kservestack/xr.yaml",
-        xrdPath="apis/kservestacks/definition.yaml",
+        compositionPath="apis/dynamobackends/composition.yaml",
+        xrPath="tests/test-dynamo-backend/xr.yaml",
+        xrdPath="apis/dynamobackends/definition.yaml",
         timeoutSeconds=120,
         validate=False,
         assertResources=[
             # Assert the XR spec is echoed back.
             libresource.model_to_dict(
-                kssv1alpha1.KServeStack(
+                dsv1alpha1.DynamoBackend(
                     metadata=metav1.ObjectMeta(
-                        name="gpu-us-central1-kserve",
-                        namespace="gpu-us-central1",
+                        name="dynamo-us-central-dynamo",
+                        namespace="modelplane-system",
                     ),
-                    spec=kssv1alpha1.Spec(
+                    spec=dsv1alpha1.Spec(
                         secrets=[
-                            kssv1alpha1.Secret(
+                            dsv1alpha1.Secret(
                                 type="Kubeconfig",
-                                name="gpu-us-central1-kubeconfig",
+                                name="dynamo-cluster-kubeconfig",
                                 key="kubeconfig",
-                            ),
-                            kssv1alpha1.Secret(
-                                type="GCPServiceAccountKey",
-                                name="gpu-us-central1-sa-key",
-                                key="private_key",
                             ),
                         ],
                     ),
                 )
             ),
             # Assert ProviderConfigs are composed on the first pass.
-            # Helm releases are gated on ProviderConfigs being observed,
-            # so they don't appear until the second reconcile.
             libresource.model_to_dict(
                 k8spcv1alpha1.ProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="gpu-us-central1-kserve-cluster",
+                        name="dynamo-us-central-dynamo-cluster",
                         annotations={
                             "crossplane.io/composition-resource-name": "provider-config-kubernetes",
                         },
@@ -58,7 +51,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 helmpcv1beta1.ProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="gpu-us-central1-kserve-cluster",
+                        name="dynamo-us-central-dynamo-cluster",
                         annotations={
                             "crossplane.io/composition-resource-name": "provider-config-helm",
                         },

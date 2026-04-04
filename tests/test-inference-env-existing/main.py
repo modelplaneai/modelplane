@@ -1,6 +1,6 @@
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
-from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
+from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
@@ -51,14 +51,14 @@ test = compositiontest.CompositionTest(
             ),
             # Assert no GKECluster is composed — cluster is user-managed.
             # (Absence is verified by not including a GKECluster assertion.)
-            # Assert KServeStack is composed with the user-supplied kubeconfig.
+            # Assert KServeBackend is composed with the user-supplied kubeconfig.
             libresource.model_to_dict(
-                kssv1alpha1.KServeStack(
+                kssv1alpha1.KServeBackend(
                     metadata=metav1.ObjectMeta(
                         name="byo-us-east-kserve",
                         namespace="modelplane-system",
                         annotations={
-                            "crossplane.io/composition-resource-name": "kserve-stack",
+                            "crossplane.io/composition-resource-name": "kserve-backend",
                         },
                     ),
                     spec=kssv1alpha1.Spec(

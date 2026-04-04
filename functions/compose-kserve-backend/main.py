@@ -1,25 +1,77 @@
-"""Install Dynamo and supporting components on a remote cluster.
+"""Install KServe and supporting components on a remote cluster.
 
-This function composes the NVIDIA Dynamo inference framework on a Kubernetes
-cluster: cert-manager, Envoy Gateway, the dynamo-platform Helm chart (operator,
-etcd, NATS), and a Gateway for inference traffic routing.
+This function composes the full KServe inference backend on a GKE cluster:
+cert-manager, Envoy Gateway, LeaderWorkerSet, KServe CRDs and controller,
+inference extension CRDs, and a Gateway. Resources are composed as Helm
+releases and provider-kubernetes Objects, all targeting the remote cluster
+via ProviderConfigs.
 
-The structure mirrors compose-kserve-stack. Both stack functions install the
-same gateway infrastructure (cert-manager, Envoy Gateway, Gateway/GatewayClass)
-and differ only in the inference backend they install.
+Usage resources protect ProviderConfigs from premature deletion during
+teardown, ensuring Helm releases can uninstall before losing connectivity.
 """
+
+import json
+from pathlib import Path
 
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions, helm, k8s, metadata, secrets
 from .lib import resource as libresource
-from .model.ai.modelplane.infrastructure.dynamostack import v1alpha1
+from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from .model.io.crossplane.m.kubernetes.providerconfig import (
     v1alpha1 as k8spcv1alpha1,
 )
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+_HERE = Path(__file__).parent
+
+# Gateway API Inference Extension CRDs (InferenceModel, InferencePool).
+# Not part of any Helm chart — applied as raw provider-kubernetes Objects.
+_INFERENCE_EXTENSION_CRDS = json.loads((_HERE / "inference_extension_crds.json").read_text())
+
+# KServe storage initializer config override. Enables modelcar support
+# for model caching, which the default KServe config doesn't include.
+_STORAGE_INITIALIZER_CONFIG = json.dumps(
+    {
+        "image": "kserve/storage-initializer:latest",
+        "memoryRequest": "100Mi",
+        "memoryLimit": "4Gi",
+        "cpuRequest": "100m",
+        "cpuLimit": "1",
+        "caBundleConfigMapName": "",
+        "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
+        "enableModelcar": True,
+        "cpuModelcar": "10m",
+        "memoryModelcar": "15Mi",
+        "uidModelcar": 1010,
+    }
+)
+
+# Kustomize patch applied via Helm's patchesFrom to override the
+# inferenceservice-config ConfigMap with the storage initializer config.
+_KUSTOMIZE_STORAGE_PATCH = json.dumps(
+    {
+        "patches": [
+            {
+                "patch": json.dumps(
+                    {
+                        "apiVersion": "v1",
+                        "kind": "ConfigMap",
+                        "metadata": {"name": "inferenceservice-config"},
+                        "data": {"storageInitializer": _STORAGE_INITIALIZER_CONFIG},
+                    }
+                ),
+                "target": {
+                    "kind": "ConfigMap",
+                    "name": "inferenceservice-config",
+                },
+            }
+        ],
+    }
+)
 
 
 def _pc_name(xr):
@@ -31,7 +83,7 @@ class Composer:
     def __init__(self, req, rsp):
         self.req = req
         self.rsp = rsp
-        self.xr = v1alpha1.DynamoStack(**resource.struct_to_dict(req.observed.composite.resource))
+        self.xr = v1alpha1.KServeBackend(**resource.struct_to_dict(req.observed.composite.resource))
 
     def compose(self):
         if not self.compose_provider_configs():
@@ -39,8 +91,11 @@ class Composer:
         self.compose_usages()
         self.compose_cert_manager()
         self.compose_envoy_gateway()
-        self.compose_dynamo_platform()
+        self.compose_leader_worker_set()
+        self.compose_inference_ext_crds()
         self.compose_gateway()
+        self.compose_kserve()
+        self.compose_storage_patch()
         self.write_status()
         self.mark_readiness()
 
@@ -54,6 +109,10 @@ class Composer:
             response.warning(self.rsp, "spec.secrets must include a Kubeconfig entry")
             return False
 
+        # The kubeconfig provides the cluster endpoint and CA cert. If a
+        # cloud-specific credential secret is present, it's layered on as an
+        # identity block so the provider authenticates via the cloud's IAM
+        # instead of relying on whatever auth is baked into the kubeconfig.
         k8s_pc_spec = k8spcv1alpha1.Spec(
             credentials=k8spcv1alpha1.Credentials(
                 source="Secret",
@@ -285,40 +344,41 @@ class Composer:
             ),
         )
 
-    def compose_dynamo_platform(self):
-        """Compose the dynamo-platform Helm chart. Gated on ProviderConfigs
-        being observed AND cert-manager being ready. The Dynamo operator may
-        create Certificate resources that require cert-manager."""
+    def compose_leader_worker_set(self):
+        """Compose LeaderWorkerSet. Gated on ProviderConfigs being observed."""
         pc_observed = self.provider_configs_observed()
-        cert_manager_ready = conditions.has_condition(self.req, "cert-manager", "Ready")
-        gate = pc_observed and cert_manager_ready
-
-        if not (gate or "dynamo-platform" in self.req.observed.resources):
+        if not (pc_observed or "leader-worker-set" in self.req.observed.resources):
             return
 
         v = self.xr.spec.versions or v1alpha1.Versions()
         resource.update(
-            self.rsp.desired.resources["dynamo-platform"],
+            self.rsp.desired.resources["leader-worker-set"],
             helm.helm_release(
-                chart="dynamo-platform",
-                # NGC doesn't publish a standard Helm repo index. The chart is
-                # downloaded directly by URL: the Helm provider resolves
-                # <repo>/charts/<chart>-<version>.tgz from this base URL.
-                repo="https://helm.ngc.nvidia.com/nvidia/ai-dynamo",
-                version=v.dynamo,
-                namespace="dynamo-system",
+                chart="lws",
+                repo="oci://registry.k8s.io/lws/charts",
+                version=v.leaderWorkerSet,
+                namespace="lws-system",
                 provider_config=_pc_name(self.xr),
             ),
         )
 
-        # Transition: cert-manager is ready, Dynamo not yet composed.
-        if not cert_manager_ready:
-            return
-        if conditions.has_condition(self.req, "dynamo-platform", "Ready"):
-            return
-        if "dynamo-platform" in self.req.observed.resources:
-            return
-        response.normal(self.rsp, "cert-manager ready, composing Dynamo platform")
+    def compose_inference_ext_crds(self):
+        """Compose inference extension CRDs. Gated on ProviderConfigs being
+        observed."""
+        pc_observed = self.provider_configs_observed()
+
+        for crd in _INFERENCE_EXTENSION_CRDS:
+            crd_name = crd["metadata"]["name"]
+            short = crd_name.split(".")[0]
+            key = f"inference-ext-crd-{short}"
+
+            if not (pc_observed or key in self.req.observed.resources):
+                continue
+
+            resource.update(
+                self.rsp.desired.resources[key],
+                k8s.k8s_object(_pc_name(self.xr), crd),
+            )
 
     def compose_gateway(self):
         """Compose the GatewayClass and Gateway on the remote cluster. Gated on
@@ -359,8 +419,8 @@ class Composer:
                         "apiVersion": "gateway.networking.k8s.io/v1",
                         "kind": "Gateway",
                         "metadata": {
-                            "name": "dynamo-ingress-gateway",
-                            "namespace": "dynamo-system",
+                            "name": "kserve-ingress-gateway",
+                            "namespace": "kserve",
                         },
                         "spec": {
                             "gatewayClassName": gw.className,
@@ -376,6 +436,78 @@ class Composer:
                     metadata=metav1.ObjectMeta(labels={metadata.LABEL_KEY_RESOURCE: "gateway"}),
                 ),
             )
+
+    def compose_kserve(self):
+        """Compose KServe CRDs and controller. Gated on ProviderConfigs being
+        observed AND cert-manager being ready. The kserve chart creates
+        Certificate and Issuer resources, and the kserve controller registers a
+        validating webhook that Helm calls during install. Both fail if
+        cert-manager isn't fully up."""
+        pc_observed = self.provider_configs_observed()
+        cert_manager_ready = conditions.has_condition(self.req, "cert-manager", "Ready")
+        gate = pc_observed and cert_manager_ready
+
+        v = self.xr.spec.versions or v1alpha1.Versions()
+        pc = _pc_name(self.xr)
+
+        if gate or "kserve-crds" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["kserve-crds"],
+                helm.helm_release(
+                    chart="kserve-llmisvc-crd",
+                    repo="oci://ghcr.io/kserve/charts",
+                    version=v.kserve,
+                    namespace="kserve",
+                    provider_config=pc,
+                ),
+            )
+
+        if gate or "kserve-controller" in self.req.observed.resources:
+            patch_cm_name = f"{self.xr.metadata.name}-storage-patch"
+            kserve_release = helm.helm_release(
+                chart="kserve-llmisvc-resources",
+                repo="oci://ghcr.io/kserve/charts",
+                version=v.kserve,
+                namespace="kserve",
+                provider_config=pc,
+            )
+            kserve_release.spec.forProvider.patchesFrom = [
+                helmv1beta1.PatchesFromItem(
+                    configMapKeyRef=helmv1beta1.ConfigMapKeyRef(
+                        name=patch_cm_name,
+                        namespace=self.xr.metadata.namespace,
+                        key="patches",
+                    ),
+                ),
+            ]
+            resource.update(self.rsp.desired.resources["kserve-controller"], kserve_release)
+
+        # Transition: cert-manager is ready, KServe not yet composed.
+        if not cert_manager_ready:
+            return
+        if conditions.has_condition(self.req, "kserve-controller", "Ready"):
+            return
+        if "kserve-controller" in self.req.observed.resources:
+            return
+        response.normal(self.rsp, "cert-manager ready, composing KServe")
+
+    def compose_storage_patch(self):
+        """Compose the storage initializer config patch ConfigMap. This is a
+        local resource (not remote), so it's not gated."""
+        resource.update(
+            self.rsp.desired.resources["kserve-storage-patch"],
+            {
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {
+                    "name": f"{self.xr.metadata.name}-storage-patch",
+                    "namespace": self.xr.metadata.namespace,
+                },
+                "data": {
+                    "patches": _KUSTOMIZE_STORAGE_PATCH,
+                },
+            },
+        )
 
     def write_status(self):
         """Extract the gateway address from the observed Gateway Object and
@@ -400,10 +532,15 @@ class Composer:
         libresource.update_status(self.rsp.desired.composite, status)
 
     def mark_readiness(self):
-        """Mark composed resources as ready."""
+        """Mark composed resources as ready. Resources that don't need external
+        readiness tracking are always marked ready. Others are marked ready when
+        their observed condition is True."""
+        # These resources don't have meaningful readiness signals — mark them
+        # ready unconditionally so they don't block the XR.
         always_ready = [
             "provider-config-kubernetes",
             "provider-config-helm",
+            "kserve-storage-patch",
         ]
         for r in always_ready:
             if r in self.rsp.desired.resources:
@@ -412,7 +549,11 @@ class Composer:
         condition_ready = [
             "cert-manager",
             "envoy-gateway",
-            "dynamo-platform",
+            "leader-worker-set",
+            "kserve-crds",
+            "kserve-controller",
+            "inference-ext-crd-inferencemodels",
+            "inference-ext-crd-inferencepools",
             "gateway-class",
             "gateway",
         ]
@@ -421,7 +562,10 @@ class Composer:
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
     def provider_configs_observed(self):
-        """Check if both ProviderConfigs have been persisted by Crossplane."""
+        """Check if both ProviderConfigs have been persisted by Crossplane from
+        a previous reconcile. Resources targeting the remote cluster are gated
+        on this to avoid transient 'ProviderConfig not found' errors on first
+        creation."""
         return (
             "provider-config-helm" in self.req.observed.resources
             and "provider-config-kubernetes" in self.req.observed.resources
@@ -429,5 +573,5 @@ class Composer:
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-    """Compose the Dynamo inference stack on a remote cluster."""
+    """Compose the KServe inference backend on a remote cluster."""
     Composer(req, rsp).compose()

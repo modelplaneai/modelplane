@@ -37,7 +37,7 @@ Modelplane is the control plane layer above the inference engine. It does not co
 
 | Release | Status |
 |:---:|:---:|
-| v0.1 | Current — GKECluster, KServeStack, KServe backend |
+| v0.1 | Current — GKECluster, KServeBackend, KServe backend |
 | v0.2 | Planned — KubeAI backend, scale-to-zero |
 
 ## Get involved
