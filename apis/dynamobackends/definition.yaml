@@ -1,17 +1,17 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: dynamostacks.infrastructure.modelplane.ai
+  name: dynamobackends.infrastructure.modelplane.ai
 spec:
   group: infrastructure.modelplane.ai
   names:
     categories:
     - crossplane
     - modelplane
-    kind: DynamoStack
-    plural: dynamostacks
+    kind: DynamoBackend
+    plural: dynamobackends
     shortNames:
-    - ds
+    - db
   scope: Namespaced
   versions:
   - name: v1alpha1
@@ -32,12 +32,12 @@ spec:
     schema:
       openAPIV3Schema:
         description: >-
-          A DynamoStack installs the NVIDIA Dynamo inference framework on a
+          A DynamoBackend installs the NVIDIA Dynamo inference framework on a
           Kubernetes cluster, including cert-manager, Envoy Gateway, and the
           dynamo-platform Helm chart (operator, etcd, NATS).
         properties:
           spec:
-            description: DynamoStackSpec defines the desired state of DynamoStack.
+            description: DynamoBackendSpec defines the desired state of DynamoBackend.
             required:
             - secrets
             properties:
@@ -138,7 +138,7 @@ spec:
                           - TCP
             type: object
           status:
-            description: DynamoStackStatus defines the observed state of DynamoStack.
+            description: DynamoBackendStatus defines the observed state of DynamoBackend.
             properties:
               gateway:
                 type: object

@@ -1,13 +1,13 @@
 """Secret type and key constants shared across composition functions.
 
 The GKECluster function writes secrets to XR status with these types. Other
-functions (compose-inference-env, compose-kserve-stack) match on the type
+functions (compose-inference-env, compose-kserve-backend) match on the type
 string to find the right secret. Changing a type here without updating all
 consumers would silently break the lookup.
 """
 
 # Secret types written by compose-gke-cluster, read by compose-inference-env
-# and compose-kserve-stack.
+# and compose-kserve-backend.
 SECRET_TYPE_KUBECONFIG = "Kubeconfig"
 SECRET_TYPE_GCP_SA_KEY = "GCPServiceAccountKey"
 

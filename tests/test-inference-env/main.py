@@ -1,7 +1,7 @@
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
-from .model.ai.modelplane.infrastructure.kservestack import v1alpha1 as kssv1alpha1
+from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
@@ -19,7 +19,7 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         # Simulate a second reconcile where the GKECluster is observed and
-        # Ready with secrets. This triggers KServeStack and
+        # Ready with secrets. This triggers KServeBackend and
         # ClusterProviderConfig composition.
         observedResources=[
             libresource.model_to_fixture(
@@ -112,14 +112,14 @@ test = compositiontest.CompositionTest(
                     "region": "us-central1",
                 },
             },
-            # Assert KServeStack is composed (gated on GKE being ready).
+            # Assert KServeBackend is composed (gated on GKE being ready).
             libresource.model_to_dict(
-                kssv1alpha1.KServeStack(
+                kssv1alpha1.KServeBackend(
                     metadata=metav1.ObjectMeta(
                         name="demo-us-central-kserve",
                         namespace="modelplane-system",
                         annotations={
-                            "crossplane.io/composition-resource-name": "kserve-stack",
+                            "crossplane.io/composition-resource-name": "kserve-backend",
                         },
                     ),
                     spec=kssv1alpha1.Spec(
