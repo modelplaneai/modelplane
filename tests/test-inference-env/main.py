@@ -89,7 +89,7 @@ test = compositiontest.CompositionTest(
                                 iev1alpha1.GpuPool(
                                     acceleratorType="nvidia-l4",
                                     memory="24Gi",
-                                    count=1,
+                                    count=2,
                                 ),
                             ],
                         ),
