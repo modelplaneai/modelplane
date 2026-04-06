@@ -17,6 +17,7 @@
 - **Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting.
 - **Align with the best ML deployment UX in the industry.** ML engineers already know Truss, HuggingFace CLI, and Cog. The CLI should feel familiar — scaffold, edit, deploy, predict — not like a Kubernetes tool with ML branding.
 - **Support the v0.1 user journeys.** J1 (deploy first model), J3 (cross-backend comparison), and the CLI section of the v0.1 scope doc are the acceptance criteria.
+- **Build for long-term stability.** This is the v0.1 CLI, but the command surface is designed to be the stable, long-term interface for ML teams. Commands and flags introduced now should not need breaking changes as ModelPlane adds backends, providers, and features. We invest in getting the UX right now so it can grow without churn.
 
 ### Non-Goals
 
