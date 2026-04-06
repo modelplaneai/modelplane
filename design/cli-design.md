@@ -1,13 +1,25 @@
 # ModelPlane CLI (`mp`) — Design Proposal
 
 **Authors:** Dennis Ramdass
+
 **Status:** Draft — For Team Review
-**Date:** April 2025
+
+**Date:** April 2026
+
 **Related:** ModelPlane v0.1 Scope Document
 
 ---
 
-## 1. Problem Statement
+## 1. Goals
+
+- **ML-first UX for the 80% case.** An ML engineer should be able to deploy a catalog model and test it in under 60 seconds, without writing YAML or knowing what a namespace is. The CLI is their primary interface to ModelPlane.
+- **No new abstractions to learn.** When configuration is needed beyond the happy path, the CLI uses the same Model CRD YAML that the platform team already knows — not a custom format that drifts out of sync.
+- **Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting.
+- **Support the v0.1 user journeys.** J1 (deploy first model), J3 (cross-backend comparison), and the CLI section of the v0.1 scope doc are the acceptance criteria.
+
+---
+
+## 2. Problem Statement
 
 The v0.1 release doc identifies a clear gap: *"ML engineers are allergic to kubectl — even a thin wrapper adds meaningful value."* Today, deploying a model on ModelPlane requires writing Kubernetes YAML and using `kubectl apply`. This is a non-starter for ML teams who think in terms of models, not manifests.
 
@@ -22,7 +34,7 @@ The CLI focuses on these four capabilities and delegates everything else to kube
 
 ---
 
-## 2. Design Decisions
+## 3. Design Decisions
 
 ### Decision 1: Own the workflow, delegate the CRUD
 
@@ -110,7 +122,7 @@ spec:
 
 ---
 
-## 3. Command Reference
+## 4. Command Reference
 
 ### Commands with real value (native implementation)
 
@@ -137,7 +149,7 @@ These exist so ML engineers have a single CLI to reach for. Each one shows the k
 
 ---
 
-## 4. Workflows
+## 5. Workflows
 
 ### A. Deploy from Catalog (ML Engineer — the 80% case)
 
@@ -198,7 +210,7 @@ Replicas:    2/2
 
 ---
 
-## 5. Open Questions for Team Discussion
+## 6. Open Questions for Team Discussion
 
 1. **Command naming:** The v0.1 doc uses `modelplane model deploy` (noun-verb). This proposal uses `mp deploy` (flat verbs). Flat is faster to type and more Truss-like. Hierarchical is more discoverable. Preference?
 
