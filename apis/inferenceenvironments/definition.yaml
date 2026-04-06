@@ -134,6 +134,13 @@ spec:
                                   type: integer
                                   default: 1
                                   minimum: 1
+                                maxNodeCount:
+                                  type: integer
+                                  description: >-
+                                    Maximum node count for autoscaled pools.
+                                    Used instead of nodeCount when computing
+                                    GPU capacity for scheduling.
+                                  minimum: 1
                                 gpu:
                                   type: object
                                   properties:
@@ -284,6 +291,13 @@ spec:
                                 nodeCount:
                                   type: integer
                                   default: 1
+                                  minimum: 1
+                                maxNodeCount:
+                                  type: integer
+                                  description: >-
+                                    Maximum node count for autoscaled pools.
+                                    Used instead of nodeCount when computing
+                                    GPU capacity for scheduling.
                                   minimum: 1
                                 gpu:
                                   type: object
