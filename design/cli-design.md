@@ -15,7 +15,15 @@
 - **ML-first UX for the 80% case.** An ML engineer should be able to deploy a catalog model and test it in under 60 seconds, without writing YAML or knowing what a namespace is. The CLI is their primary interface to ModelPlane.
 - **No new abstractions to learn.** When configuration is needed beyond the happy path, the CLI uses the same Model CRD YAML that the platform team already knows — not a custom format that drifts out of sync.
 - **Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting.
+- **Align with the best ML deployment UX in the industry.** ML engineers already know Truss, HuggingFace CLI, and Cog. The CLI should feel familiar — scaffold, edit, deploy, predict — not like a Kubernetes tool with ML branding.
 - **Support the v0.1 user journeys.** J1 (deploy first model), J3 (cross-backend comparison), and the CLI section of the v0.1 scope doc are the acceptance criteria.
+
+### Non-Goals
+
+- **Replace kubectl for platform teams.** Infra engineers are comfortable with kubectl and GitOps. The CLI is not their primary tool.
+- **Full lifecycle management.** Autoscaling policies, observability dashboards, and fleet-wide operations are out of scope for v0.1. The CLI covers deploy, check, and test.
+- **Custom model packaging.** Unlike Truss or Cog, the CLI does not build containers or package model code. ModelPlane delegates model pulling to backends (KServe, Dynamo). The CLI deploys — it doesn't build.
+- **Multi-cluster orchestration from the CLI.** Placement across environments is handled by the ModelPlane control plane, not the CLI. The CLI submits intent (`--env`, `--replicas`); the scheduler does the rest.
 
 ---
 
