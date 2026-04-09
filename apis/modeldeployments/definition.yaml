@@ -67,6 +67,73 @@ spec:
                   matchLabels:
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+              scaling:
+                type: object
+                description: >-
+                  Scaling configuration. Determines how many replicas of
+                  the model to run. If omitted, the model runs with a
+                  fixed replica count of 1.
+                required: [signal]
+                properties:
+                  signal:
+                    type: string
+                    description: >-
+                      Scaling signal type. Determines which config block
+                      is used. Backends that don't support the requested
+                      signal are not scheduling candidates.
+                    enum: [Fixed, Concurrency]
+                  fixed:
+                    type: object
+                    description: >-
+                      Run a fixed number of replicas with no
+                      autoscaling. Required when signal is Fixed.
+                    required: [replicas]
+                    properties:
+                      replicas:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                        description: Number of replicas to run.
+                  concurrency:
+                    type: object
+                    description: >-
+                      Scale based on in-flight request concurrency per
+                      replica. Required when signal is Concurrency.
+                    properties:
+                      minReplicas:
+                        type: integer
+                        minimum: 0
+                        default: 1
+                        description: >-
+                          Minimum replica count. Set to 0 for
+                          scale-to-zero.
+                      maxReplicas:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                        description: >-
+                          Maximum replica count. Must be >= minReplicas.
+                      target:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                        description: >-
+                          Target concurrent requests per replica before
+                          scaling.
+                      utilization:
+                        type: integer
+                        minimum: 1
+                        maximum: 100
+                        default: 70
+                        description: >-
+                          Target utilization percentage. Scaling triggers
+                          at target * utilization / 100.
+                      scaleDownDelay:
+                        type: integer
+                        minimum: 0
+                        default: 300
+                        description: >-
+                          Seconds to wait before removing idle replicas.
           status:
             type: object
             properties:

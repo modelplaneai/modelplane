@@ -173,6 +173,8 @@ class Composer:
         elif self.profile.backend == BACKEND_DYNAMO:
             self.compose_dynamo_dgd(gpus)
             self.compose_dynamo_httproute()
+            if self.has_autoscaling():
+                self.compose_dynamo_keda_scaledobject()
 
     def compose_kserve_llmis(self, gpus):
         """Compose a provider-kubernetes Object wrapping an LLMInferenceService
@@ -233,6 +235,25 @@ class Composer:
             ),
         )
 
+    def has_autoscaling(self):
+        """Check if the placement has autoscaling (not fixed) configured."""
+        return (
+            self.xr.spec.scaling is not None
+            and self.xr.spec.scaling.signal is not None
+            and self.xr.spec.scaling.signal != "Fixed"
+        )
+
+    def worker_replicas(self):
+        """Return the desired worker replica count from scaling config."""
+        scaling = self.xr.spec.scaling
+        if scaling is None or scaling.signal is None:
+            return 1
+        if scaling.signal == "Fixed" and scaling.fixed:
+            return scaling.fixed.replicas or 1
+        if scaling.signal == "Concurrency" and scaling.concurrency:
+            return scaling.concurrency.minReplicas or 1
+        return 1
+
     def compose_dynamo_dgd(self, gpus):
         """Compose a provider-kubernetes Object wrapping a
         DynamoGraphDeployment on the remote cluster.
@@ -246,6 +267,33 @@ class Composer:
         workdir = ENGINE_TO_DYNAMO_WORKDIR.get(engine_name, "/workspace/examples/backends/vllm")
 
         worker_args = list(self.profile.engine.args or [])
+
+        worker_replicas = self.worker_replicas()
+
+        # Build the Worker service spec.
+        worker_service = {
+            "componentType": "worker",
+            "replicas": worker_replicas,
+            "resources": {
+                "limits": {
+                    "gpu": str(gpus),
+                },
+            },
+            "extraPodSpec": {
+                "mainContainer": {
+                    "image": self.profile.engine.image,
+                    "workingDir": workdir,
+                    "command": ["python3", "-m", module],
+                    "args": worker_args,
+                },
+            },
+        }
+
+        # Enable the scaling adapter when autoscaling is configured. This
+        # tells the Dynamo operator to create a DGDSA for the Worker service,
+        # which KEDA's ScaledObject targets via the Scale subresource.
+        if self.has_autoscaling():
+            worker_service["scalingAdapter"] = {"enabled": True}
 
         dgd_manifest = {
             "apiVersion": "nvidia.com/v1alpha1",
@@ -277,30 +325,14 @@ class Composer:
                 "services": {
                     "Frontend": {
                         "componentType": "frontend",
-                        "replicas": 1,
+                        "replicas": 2,
                         "extraPodSpec": {
                             "mainContainer": {
                                 "image": self.profile.engine.image,
                             },
                         },
                     },
-                    "Worker": {
-                        "componentType": "worker",
-                        "replicas": 1,
-                        "resources": {
-                            "limits": {
-                                "gpu": str(gpus),
-                            },
-                        },
-                        "extraPodSpec": {
-                            "mainContainer": {
-                                "image": self.profile.engine.image,
-                                "workingDir": workdir,
-                                "command": ["python3", "-m", module],
-                                "args": worker_args,
-                            },
-                        },
-                    },
+                    "Worker": worker_service,
                 },
             },
         }
@@ -318,6 +350,83 @@ class Composer:
                         celQuery='object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")',
                     ),
                     forProvider=k8sobjv1alpha1.ForProvider(manifest=dgd_manifest),
+                ),
+            ),
+        )
+
+    def compose_dynamo_keda_scaledobject(self):
+        """Compose a KEDA ScaledObject on the remote cluster that targets the
+        Dynamo Worker's DynamoGraphDeploymentScalingAdapter.
+
+        The ScaledObject is a separate provider-kubernetes Object because KEDA
+        resources are external to the DGD — Dynamo doesn't manage them."""
+        dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
+        scaling = self.xr.spec.scaling
+        concurrency = scaling.concurrency
+
+        # KEDA threshold = target * utilization / 100. KEDA scales when the
+        # per-replica metric exceeds this threshold.
+        target = concurrency.target or 1
+        utilization = concurrency.utilization or 70
+        threshold = str(max(1, target * utilization // 100))
+
+        # The Dynamo operator computes a "dynamo namespace" for each DGD
+        # service as {k8s-namespace}-{dgd-name} (with dots replaced by
+        # hyphens). This value appears as the dynamo_namespace label on
+        # Prometheus metrics. We reproduce the formula here for the PromQL
+        # query. The DGD spec has a dynamoNamespace field that could pin
+        # the value, but it's deprecated -- the operator will remove it in
+        # a future version.
+        dynamo_ns_label = f"{metadata.NAMESPACE_REMOTE}-{dgd_name}"
+
+        scaledobject_manifest = {
+            "apiVersion": "keda.sh/v1alpha1",
+            "kind": "ScaledObject",
+            "metadata": {
+                "name": f"{dgd_name}-worker-scaler",
+                "namespace": metadata.NAMESPACE_REMOTE,
+            },
+            "spec": {
+                "scaleTargetRef": {
+                    "apiVersion": "nvidia.com/v1alpha1",
+                    "kind": "DynamoGraphDeploymentScalingAdapter",
+                    "name": f"{dgd_name}-worker",
+                },
+                "minReplicaCount": concurrency.minReplicas or 1,
+                "maxReplicaCount": concurrency.maxReplicas or 1,
+                "pollingInterval": 15,
+                "cooldownPeriod": concurrency.scaleDownDelay or 300,
+                "triggers": [
+                    {
+                        "type": "prometheus",
+                        "metadata": {
+                            "serverAddress": metadata.PROMETHEUS_URL,
+                            "metricName": "dynamo_frontend_inflight_requests",
+                            "query": (
+                                f'sum(dynamo_frontend_inflight_requests{{dynamo_namespace="{dynamo_ns_label}"}})'
+                            ),
+                            "threshold": threshold,
+                        },
+                    },
+                ],
+            },
+        }
+
+        resource.update(
+            self.rsp.desired.resources["keda-scaledobject"],
+            k8sobjv1alpha1.Object(
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=self.ie.status.providerConfigRef.name,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(
+                        policy="DeriveFromCelQuery",
+                        celQuery=('object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")'),
+                    ),
+                    forProvider=k8sobjv1alpha1.ForProvider(
+                        manifest=scaledobject_manifest,
+                    ),
                 ),
             ),
         )
@@ -512,6 +621,9 @@ class Composer:
         dynamo_route_ready = conditions.has_condition(self.req, "dynamo-httproute", "Ready")
         if "dynamo-httproute" in self.rsp.desired.resources and dynamo_route_ready:
             self.rsp.desired.resources["dynamo-httproute"].ready = fnv1.READY_TRUE
+        keda_ready = conditions.has_condition(self.req, "keda-scaledobject", "Ready")
+        if "keda-scaledobject" in self.rsp.desired.resources and keda_ready:
+            self.rsp.desired.resources["keda-scaledobject"].ready = fnv1.READY_TRUE
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):

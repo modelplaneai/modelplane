@@ -76,3 +76,23 @@ spec:
   runtime:
     configRef:
       name: provider-helm-modelplane
+---
+# Pull secret for Modelplane packages. Matches all packages from the
+# negzupboundio organization and adds the pull secret automatically.
+# Create the secret first:
+#   kubectl create secret generic upbound-pull-secret \
+#     --from-file=.dockerconfigjson=<path-to-docker-config.json> \
+#     --type=kubernetes.io/dockerconfigjson \
+#     -n crossplane-system
+apiVersion: pkg.crossplane.io/v1beta1
+kind: ImageConfig
+metadata:
+  name: modelplane-pull-secret
+spec:
+  matchImages:
+  - type: Prefix
+    prefix: xpkg.upbound.io/negzupboundio/
+  registry:
+    authentication:
+      pullSecretRef:
+        name: upbound-pull-secret

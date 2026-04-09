@@ -15,6 +15,15 @@ from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 
+# Backend capabilities: which scaling signals each backend supports. The
+# placement function contains the composition logic for each backend, so
+# Modelplane already knows what each backend can do. This table makes it
+# explicit for the scheduler.
+BACKEND_SCALING_SIGNALS: dict[str, set[str]] = {
+    "KServe": {"Fixed", "Concurrency"},
+    "Dynamo": {"Fixed", "Concurrency"},
+}
+
 
 @dataclass
 class Candidate:
@@ -23,6 +32,21 @@ class Candidate:
     name: str
     gateway_address: str | None
     profile_name: str
+
+
+def _supports_scaling(
+    deployment: mdv1alpha1.ModelDeployment,
+    env: iev1alpha1.InferenceEnvironment,
+) -> bool:
+    """Check whether the environment supports the deployment's scaling signal.
+
+    Returns True if no scaling is configured (no filtering needed).
+    """
+    if not deployment.spec.scaling or not deployment.spec.scaling.signal:
+        return True
+    env_backend = env.status.capacity.backend or ""
+    supported = BACKEND_SCALING_SIGNALS.get(env_backend, set())
+    return deployment.spec.scaling.signal in supported
 
 
 def schedule(
@@ -48,16 +72,22 @@ def schedule(
     model_vram_bytes = quantities.parse_quantity(model.spec.resources.vram)
 
     # Environments that already have a placement for this deployment.
-    existing_envs = set()
-    for p in all_placements:
-        if (p.metadata.labels or {}).get(metadata.LABEL_KEY_DEPLOYMENT) == deployment.metadata.name:
-            existing_envs.add(p.spec.inferenceEnvironmentRef.name)
+    existing_envs = {
+        p.spec.inferenceEnvironmentRef.name
+        for p in all_placements
+        if (p.metadata.labels or {}).get(metadata.LABEL_KEY_DEPLOYMENT) == deployment.metadata.name
+    }
 
     candidates = []
     for env in envs:
         # Find the first serving profile that matches this environment.
         profile = serving.match_profile(model, env)
         if not profile:
+            continue
+
+        # Check scaling signal capability. Fixed replicas work on any
+        # backend; autoscaling signals need backend support.
+        if not _supports_scaling(deployment, env):
             continue
 
         # Find the pool that needs the fewest GPUs for this model.

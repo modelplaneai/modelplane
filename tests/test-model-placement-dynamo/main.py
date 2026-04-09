@@ -147,7 +147,7 @@ test = compositiontest.CompositionTest(
                                     "services": {
                                         "Frontend": {
                                             "componentType": "frontend",
-                                            "replicas": 1,
+                                            "replicas": 2,
                                             "extraPodSpec": {
                                                 "mainContainer": {
                                                     "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.0",

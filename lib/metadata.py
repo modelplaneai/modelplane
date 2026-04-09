@@ -24,3 +24,8 @@ NAMESPACE_REMOTE = "default"
 # The control plane gateway name. Used as the Gateway resource name,
 # the MetalLB IP pool name, and the HTTPRoute parentRef.
 GATEWAY_NAME = "modelplane"
+
+# Prometheus server address on backend clusters. The kube-prometheus-stack
+# chart is installed with fullnameOverride="prometheus" in the monitoring
+# namespace, giving a predictable service name.
+PROMETHEUS_URL = "http://prometheus-prometheus.monitoring.svc.cluster.local:9090"

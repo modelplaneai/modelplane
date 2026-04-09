@@ -39,6 +39,8 @@ class Composer:
         self.compose_usages()
         self.compose_cert_manager()
         self.compose_envoy_gateway()
+        self.compose_prometheus()
+        self.compose_keda()
         self.compose_dynamo_platform()
         self.compose_gateway()
         self.write_status()
@@ -285,6 +287,65 @@ class Composer:
             ),
         )
 
+    def compose_prometheus(self):
+        """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
+        observed. Prometheus scrapes Dynamo frontend metrics for autoscaling."""
+        pc_observed = self.provider_configs_observed()
+        if not (pc_observed or "prometheus" in self.req.observed.resources):
+            return
+
+        v = self.xr.spec.versions or v1alpha1.Versions()
+        resource.update(
+            self.rsp.desired.resources["prometheus"],
+            helm.helm_release(
+                chart="kube-prometheus-stack",
+                repo="https://prometheus-community.github.io/helm-charts",
+                version=v.prometheus,
+                namespace="monitoring",
+                provider_config=_pc_name(self.xr),
+                values={
+                    # Fix the service name so other resources (KEDA
+                    # ScaledObjects, dynamo-platform) can reference
+                    # Prometheus at a known address.
+                    "fullnameOverride": "prometheus",
+                    # Discover PodMonitors across all namespaces. The Dynamo
+                    # operator auto-creates PodMonitors for DGD services.
+                    "prometheus": {
+                        "prometheusSpec": {
+                            "podMonitorSelectorNilUsesHelmValues": False,
+                            "podMonitorNamespaceSelector": {},
+                        },
+                    },
+                    # Disable components we don't need for autoscaling.
+                    "grafana": {"enabled": False},
+                    "alertmanager": {"enabled": False},
+                },
+            ),
+        )
+
+    def compose_keda(self):
+        """Compose KEDA. Gated on ProviderConfigs being observed AND
+        cert-manager being ready. KEDA uses admission webhooks that require
+        cert-manager for TLS."""
+        pc_observed = self.provider_configs_observed()
+        cert_manager_ready = conditions.has_condition(self.req, "cert-manager", "Ready")
+        gate = pc_observed and cert_manager_ready
+
+        if not (gate or "keda" in self.req.observed.resources):
+            return
+
+        v = self.xr.spec.versions or v1alpha1.Versions()
+        resource.update(
+            self.rsp.desired.resources["keda"],
+            helm.helm_release(
+                chart="keda",
+                repo="https://kedacore.github.io/charts",
+                version=v.keda,
+                namespace="keda",
+                provider_config=_pc_name(self.xr),
+            ),
+        )
+
     def compose_dynamo_platform(self):
         """Compose the dynamo-platform Helm chart. Gated on ProviderConfigs
         being observed AND cert-manager being ready. The Dynamo operator may
@@ -308,6 +369,15 @@ class Composer:
                 version=v.dynamo,
                 namespace="dynamo-system",
                 provider_config=_pc_name(self.xr),
+                values={
+                    "dynamo-operator": {
+                        "dynamo": {
+                            "metrics": {
+                                "prometheusEndpoint": metadata.PROMETHEUS_URL,
+                            },
+                        },
+                    },
+                },
             ),
         )
 
@@ -412,6 +482,8 @@ class Composer:
         condition_ready = [
             "cert-manager",
             "envoy-gateway",
+            "prometheus",
+            "keda",
             "dynamo-platform",
             "gateway-class",
             "gateway",

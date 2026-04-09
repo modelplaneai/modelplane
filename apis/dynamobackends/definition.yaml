@@ -92,6 +92,18 @@ spec:
                     description: Envoy Gateway chart version.
                     minLength: 1
                     maxLength: 32
+                  keda:
+                    type: string
+                    default: "2.17.1"
+                    description: KEDA chart version.
+                    minLength: 1
+                    maxLength: 32
+                  prometheus:
+                    type: string
+                    default: "72.6.2"
+                    description: kube-prometheus-stack chart version.
+                    minLength: 1
+                    maxLength: 32
               gateway:
                 type: object
                 description: >-

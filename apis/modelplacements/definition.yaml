@@ -59,6 +59,58 @@ spec:
                 properties:
                   name:
                     type: string
+              scaling:
+                type: object
+                description: >-
+                  Scaling configuration. Copied from the parent
+                  ModelDeployment. If omitted, the model runs with a
+                  fixed replica count of 1.
+                required: [signal]
+                properties:
+                  signal:
+                    type: string
+                    description: >-
+                      Scaling signal type. Determines which config block
+                      is used.
+                    enum: [Fixed, Concurrency]
+                  fixed:
+                    type: object
+                    description: >-
+                      Run a fixed number of replicas with no
+                      autoscaling. Required when signal is Fixed.
+                    required: [replicas]
+                    properties:
+                      replicas:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                  concurrency:
+                    type: object
+                    description: >-
+                      Scale based on in-flight request concurrency per
+                      replica. Required when signal is Concurrency.
+                    properties:
+                      minReplicas:
+                        type: integer
+                        minimum: 0
+                        default: 1
+                      maxReplicas:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                      target:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                      utilization:
+                        type: integer
+                        minimum: 1
+                        maximum: 100
+                        default: 70
+                      scaleDownDelay:
+                        type: integer
+                        minimum: 0
+                        default: 300
           status:
             type: object
             properties:
