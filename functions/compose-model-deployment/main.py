@@ -162,17 +162,6 @@ class Composer:
         for env_info in matched:
             placement_key = f"placement-{env_info.name}"
 
-            mp_spec = mpv1alpha1.Spec(
-                modelRef=mpv1alpha1.ModelRef(
-                    kind=self.xr.spec.modelRef.kind,
-                    name=self.xr.spec.modelRef.name,
-                ),
-                inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
-                    name=env_info.name,
-                ),
-                scaling=self.xr.spec.scaling,
-            )
-
             resource.update(
                 self.rsp.desired.resources[placement_key],
                 mpv1alpha1.ModelPlacement(
@@ -184,7 +173,16 @@ class Composer:
                             metadata.LABEL_KEY_DEPLOYMENT: self.xr.metadata.name,
                         },
                     ),
-                    spec=mp_spec,
+                    spec=mpv1alpha1.Spec(
+                        modelRef=mpv1alpha1.ModelRef(
+                            kind=self.xr.spec.modelRef.kind,
+                            name=self.xr.spec.modelRef.name,
+                        ),
+                        inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
+                            name=env_info.name,
+                        ),
+                        scaling=self.xr.spec.scaling,
+                    ),
                 ),
             )
 

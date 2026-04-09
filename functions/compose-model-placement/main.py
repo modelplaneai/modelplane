@@ -17,17 +17,13 @@ import math
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, defaults, metadata, naming, prometheus, quantities, serving
+from .lib import backends, conditions, defaults, metadata, naming, prometheus, quantities, serving
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
-
-# Backend discriminator values.
-BACKEND_KSERVE = "KServe"
-BACKEND_DYNAMO = "Dynamo"
 
 # Dynamo engine-specific mappings. The engine name from the serving profile
 # determines the backendFramework, Python module, and working directory.
@@ -168,9 +164,9 @@ class Composer:
     def compose_model_serving(self, gpus):
         """Compose the backend-specific model serving resource on the remote
         cluster. Dispatches on the serving profile's backend."""
-        if self.profile.backend == BACKEND_KSERVE:
+        if self.profile.backend == backends.KSERVE:
             self.compose_kserve_llmis(gpus)
-        elif self.profile.backend == BACKEND_DYNAMO:
+        elif self.profile.backend == backends.DYNAMO:
             self.compose_dynamo_dgd(gpus)
             self.compose_dynamo_httproute()
             if self.has_autoscaling():

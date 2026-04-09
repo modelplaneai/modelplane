@@ -14,7 +14,7 @@ same resources — skipping cluster provisioning entirely.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, metadata, secrets
+from .lib import backends, conditions, metadata, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
 from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1 as dsv1alpha1
@@ -25,14 +25,10 @@ from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
 )
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# Backend discriminator values from the XRD enum.
-BACKEND_KSERVE = "KServe"
-BACKEND_DYNAMO = "Dynamo"
-
 # Maps backends to their XR kinds (for Usage resources).
 BACKEND_XR_KINDS = {
-    BACKEND_KSERVE: "KServeBackend",
-    BACKEND_DYNAMO: "DynamoBackend",
+    backends.KSERVE: "KServeBackend",
+    backends.DYNAMO: "DynamoBackend",
 }
 
 # Cluster source discriminator values from the XRD enum.
@@ -70,7 +66,7 @@ class Composer:
 
     def compose(self):
         backend = self.xr.spec.backend
-        if backend == BACKEND_KSERVE:
+        if backend == backends.KSERVE:
             if not self.xr.spec.kserve or not self.xr.spec.kserve.cluster:
                 response.warning(self.rsp, "spec.kserve.cluster is required when backend is KServe")
                 return
@@ -85,7 +81,7 @@ class Composer:
             # — Ready is standard for Crossplane XRs, and the gateway address
             # is how ModelDeployment routes to the environment.
             self.backend_resource_key = "kserve-backend"
-        elif backend == BACKEND_DYNAMO:
+        elif backend == backends.DYNAMO:
             if not self.xr.spec.dynamo or not self.xr.spec.dynamo.cluster:
                 response.warning(self.rsp, "spec.dynamo.cluster is required when backend is Dynamo")
                 return
@@ -173,9 +169,9 @@ class Composer:
         """Compose the backend-specific XR. Dispatches on the backend
         discriminator to compose the right backend type."""
         backend = self.xr.spec.backend
-        if backend == BACKEND_KSERVE:
+        if backend == backends.KSERVE:
             self.compose_kserve_backend(backend_secrets)
-        elif backend == BACKEND_DYNAMO:
+        elif backend == backends.DYNAMO:
             self.compose_dynamo_backend(backend_secrets)
 
     def compose_cluster_provider_config(self, kubeconfig_name, kubeconfig_key, sa_key=None):

@@ -9,7 +9,7 @@ environments with existing placements.
 import math
 from dataclasses import dataclass
 
-from .lib import metadata, quantities, serving
+from .lib import backends, metadata, quantities, serving
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
@@ -20,8 +20,8 @@ from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 # Modelplane already knows what each backend can do. This table makes it
 # explicit for the scheduler.
 BACKEND_SCALING_SIGNALS: dict[str, set[str]] = {
-    "KServe": {"Fixed", "Concurrency"},
-    "Dynamo": {"Fixed", "Concurrency"},
+    backends.KSERVE: {"Fixed", "Concurrency"},
+    backends.DYNAMO: {"Fixed", "Concurrency"},
 }
 
 
