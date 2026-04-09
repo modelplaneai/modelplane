@@ -17,7 +17,7 @@ import math
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, defaults, metadata, naming, quantities, serving
+from .lib import conditions, defaults, metadata, naming, prometheus, quantities, serving
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
@@ -400,7 +400,7 @@ class Composer:
                     {
                         "type": "prometheus",
                         "metadata": {
-                            "serverAddress": metadata.PROMETHEUS_URL,
+                            "serverAddress": prometheus.URL,
                             "metricName": "dynamo_frontend_inflight_requests",
                             "query": (
                                 f'sum(dynamo_frontend_inflight_requests{{dynamo_namespace="{dynamo_ns_label}"}})'

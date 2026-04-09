@@ -1,7 +1,6 @@
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
-from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
@@ -144,7 +143,10 @@ test = compositiontest.CompositionTest(
                                             "metadata": {
                                                 "serverAddress": "http://prometheus-prometheus.monitoring.svc.cluster.local:9090",
                                                 "metricName": "dynamo_frontend_inflight_requests",
-                                                "query": 'sum(dynamo_frontend_inflight_requests{dynamo_namespace="default-model-qwen-0-5b"})',
+                                                "query": (
+                                                    "sum(dynamo_frontend_inflight_requests"
+                                                    '{dynamo_namespace="default-model-qwen-0-5b"})'
+                                                ),
                                                 "threshold": "7",
                                             },
                                         },

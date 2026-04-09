@@ -12,7 +12,7 @@ and differ only in the inference backend they install.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, helm, k8s, metadata, secrets
+from .lib import conditions, helm, k8s, metadata, prometheus, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -297,30 +297,7 @@ class Composer:
         v = self.xr.spec.versions or v1alpha1.Versions()
         resource.update(
             self.rsp.desired.resources["prometheus"],
-            helm.helm_release(
-                chart="kube-prometheus-stack",
-                repo="https://prometheus-community.github.io/helm-charts",
-                version=v.prometheus,
-                namespace="monitoring",
-                provider_config=_pc_name(self.xr),
-                values={
-                    # Fix the service name so other resources (KEDA
-                    # ScaledObjects, dynamo-platform) can reference
-                    # Prometheus at a known address.
-                    "fullnameOverride": "prometheus",
-                    # Discover PodMonitors across all namespaces. The Dynamo
-                    # operator auto-creates PodMonitors for DGD services.
-                    "prometheus": {
-                        "prometheusSpec": {
-                            "podMonitorSelectorNilUsesHelmValues": False,
-                            "podMonitorNamespaceSelector": {},
-                        },
-                    },
-                    # Disable components we don't need for autoscaling.
-                    "grafana": {"enabled": False},
-                    "alertmanager": {"enabled": False},
-                },
-            ),
+            prometheus.helm_release(v.prometheus, _pc_name(self.xr)),
         )
 
     def compose_keda(self):
@@ -373,7 +350,7 @@ class Composer:
                     "dynamo-operator": {
                         "dynamo": {
                             "metrics": {
-                                "prometheusEndpoint": metadata.PROMETHEUS_URL,
+                                "prometheusEndpoint": prometheus.URL,
                             },
                         },
                     },
