@@ -12,7 +12,7 @@ and differ only in the inference backend they install.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, helm, k8s, metadata, prometheus, secrets
+from .lib import conditions, helm, k8s, keda, metadata, prometheus, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -289,7 +289,7 @@ class Composer:
 
     def compose_prometheus(self):
         """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
-        observed. Prometheus scrapes Dynamo frontend metrics for autoscaling."""
+        observed. Prometheus scrapes Envoy Gateway metrics for autoscaling."""
         pc_observed = self.provider_configs_observed()
         if not (pc_observed or "prometheus" in self.req.observed.resources):
             return
@@ -314,13 +314,7 @@ class Composer:
         v = self.xr.spec.versions or v1alpha1.Versions()
         resource.update(
             self.rsp.desired.resources["keda"],
-            helm.helm_release(
-                chart="keda",
-                repo="https://kedacore.github.io/charts",
-                version=v.keda,
-                namespace="keda",
-                provider_config=_pc_name(self.xr),
-            ),
+            keda.helm_release(v.keda, _pc_name(self.xr)),
         )
 
     def compose_dynamo_platform(self):

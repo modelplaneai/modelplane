@@ -121,8 +121,7 @@ test = compositiontest.CompositionTest(
                             name="demo-us-central-cluster",
                         ),
                         readiness=k8sobjv1alpha1.Readiness(
-                            policy="DeriveFromCelQuery",
-                            celQuery=('object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")'),
+                            policy="DeriveFromObject",
                         ),
                         forProvider=k8sobjv1alpha1.ForProvider(
                             manifest={

@@ -30,12 +30,49 @@ def helm_release(version: str, provider_config: str) -> helmv1beta1.Release:
         provider_config=provider_config,
         values={
             "fullnameOverride": FULLNAME_OVERRIDE,
-            # Discover PodMonitors across all namespaces. Backend operators
-            # (Dynamo, KServe) auto-create PodMonitors for their services.
             "prometheus": {
                 "prometheusSpec": {
+                    # Discover PodMonitors across all namespaces. Backend
+                    # operators (Dynamo) auto-create PodMonitors for their
+                    # services.
                     "podMonitorSelectorNilUsesHelmValues": False,
                     "podMonitorNamespaceSelector": {},
+                    # Scrape Envoy Gateway proxy pods for upstream request
+                    # metrics (envoy_cluster_upstream_rq_active). Both
+                    # KServe and Dynamo backends use Envoy Gateway for
+                    # ingress, and this metric measures in-flight requests
+                    # at the proxy level -- the same signal regardless of
+                    # backend engine.
+                    "additionalScrapeConfigs": [
+                        {
+                            "job_name": "envoy-gateway-proxy",
+                            "kubernetes_sd_configs": [
+                                {
+                                    "role": "pod",
+                                    "namespaces": {
+                                        "names": ["envoy-gateway-system"],
+                                    },
+                                },
+                            ],
+                            "relabel_configs": [
+                                {
+                                    "source_labels": [
+                                        "__meta_kubernetes_pod_label_app_kubernetes_io_component",
+                                    ],
+                                    "action": "keep",
+                                    "regex": "proxy",
+                                },
+                                {
+                                    "source_labels": ["__address__"],
+                                    "action": "replace",
+                                    "regex": "([^:]+)(?::\\d+)?",
+                                    "replacement": "$1:19001",
+                                    "target_label": "__address__",
+                                },
+                            ],
+                            "metrics_path": "/stats/prometheus",
+                        },
+                    ],
                 },
             },
             # Disable components we don't need for autoscaling.
