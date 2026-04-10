@@ -246,14 +246,18 @@ class Composer:
         scaling = self.xr.spec.scaling
         concurrency = scaling.concurrency
 
-        target = concurrency.target or 1
-        utilization = concurrency.utilization or 70
+        target = concurrency.target if concurrency.target is not None else 1
+        utilization = concurrency.utilization if concurrency.utilization is not None else 70
         threshold = str(max(1, target * utilization // 100))
 
         # Envoy names its upstream clusters after the HTTPRoute:
         # httproute/{namespace}/{route-name}/rule/{index}. KServe's
         # LLMInferenceService creates a route named {name}-kserve-route.
         envoy_cluster = f"httproute/{metadata.NAMESPACE_REMOTE}/{llmis_name}-kserve-route/rule/0"
+
+        min_replicas = concurrency.minReplicas if concurrency.minReplicas is not None else 1
+        max_replicas = concurrency.maxReplicas if concurrency.maxReplicas is not None else 1
+        cooldown = concurrency.scaleDownDelay if concurrency.scaleDownDelay is not None else 300
 
         scaledobject_manifest = {
             "apiVersion": "keda.sh/v1alpha1",
@@ -268,10 +272,10 @@ class Composer:
                     "kind": "Deployment",
                     "name": f"{llmis_name}-kserve",
                 },
-                "minReplicaCount": concurrency.minReplicas or 1,
-                "maxReplicaCount": concurrency.maxReplicas or 1,
+                "minReplicaCount": min_replicas,
+                "maxReplicaCount": max_replicas,
                 "pollingInterval": 15,
-                "cooldownPeriod": concurrency.scaleDownDelay or 300,
+                "cooldownPeriod": cooldown,
                 "triggers": [
                     {
                         "type": "prometheus",
@@ -313,14 +317,17 @@ class Composer:
         )
 
     def worker_replicas(self):
-        """Return the desired worker replica count from scaling config."""
+        """Return the desired worker replica count from scaling config.
+
+        For Concurrency scaling, this returns minReplicas (which may be 0
+        for scale-to-zero). KEDA manages scaling from there."""
         scaling = self.xr.spec.scaling
         if scaling is None or scaling.signal is None:
             return 1
         if scaling.signal == "Fixed" and scaling.fixed:
-            return scaling.fixed.replicas or 1
+            return scaling.fixed.replicas if scaling.fixed.replicas is not None else 1
         if scaling.signal == "Concurrency" and scaling.concurrency:
-            return scaling.concurrency.minReplicas or 1
+            return scaling.concurrency.minReplicas if scaling.concurrency.minReplicas is not None else 1
         return 1
 
     def compose_dynamo_dgd(self, gpus):
@@ -436,14 +443,18 @@ class Composer:
 
         # KEDA threshold = target * utilization / 100. KEDA scales when the
         # per-replica metric exceeds this threshold.
-        target = concurrency.target or 1
-        utilization = concurrency.utilization or 70
+        target = concurrency.target if concurrency.target is not None else 1
+        utilization = concurrency.utilization if concurrency.utilization is not None else 70
         threshold = str(max(1, target * utilization // 100))
 
         # Envoy names its upstream clusters after the HTTPRoute:
         # httproute/{namespace}/{route-name}/rule/{index}. The Dynamo
         # HTTPRoute is named {dgd-name} in NAMESPACE_REMOTE.
         envoy_cluster = f"httproute/{metadata.NAMESPACE_REMOTE}/{dgd_name}/rule/0"
+
+        min_replicas = concurrency.minReplicas if concurrency.minReplicas is not None else 1
+        max_replicas = concurrency.maxReplicas if concurrency.maxReplicas is not None else 1
+        cooldown = concurrency.scaleDownDelay if concurrency.scaleDownDelay is not None else 300
 
         scaledobject_manifest = {
             "apiVersion": "keda.sh/v1alpha1",
@@ -458,10 +469,10 @@ class Composer:
                     "kind": "DynamoGraphDeploymentScalingAdapter",
                     "name": f"{dgd_name}-worker",
                 },
-                "minReplicaCount": concurrency.minReplicas or 1,
-                "maxReplicaCount": concurrency.maxReplicas or 1,
+                "minReplicaCount": min_replicas,
+                "maxReplicaCount": max_replicas,
                 "pollingInterval": 15,
-                "cooldownPeriod": concurrency.scaleDownDelay or 300,
+                "cooldownPeriod": cooldown,
                 "triggers": [
                     {
                         "type": "prometheus",
