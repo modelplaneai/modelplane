@@ -7,11 +7,11 @@ from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositionte
 
 test = compositiontest.CompositionTest(
     metadata=metav1.ObjectMeta(
-        name="model-placement-dynamo-autoscaling",
+        name="model-placement-kserve-autoscaling",
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/modelplacements/composition.yaml",
-        xrPath="tests/test-model-placement-dynamo-autoscaling/xr.yaml",
+        xrPath="tests/test-model-placement-kserve-autoscaling/xr.yaml",
         xrdPath="apis/modelplacements/definition.yaml",
         timeoutSeconds=120,
         validate=False,
@@ -27,12 +27,11 @@ test = compositiontest.CompositionTest(
                         ),
                         serving=[
                             cmv1alpha1.ServingItem(
-                                name="vllm-dynamo",
-                                backend="Dynamo",
+                                name="vllm-kserve",
+                                backend="KServe",
                                 engine=cmv1alpha1.Engine(
                                     name="vLLM",
-                                    image="nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.0",
-                                    args=["--model", "Qwen/Qwen2.5-0.5B-Instruct"],
+                                    image="vllm/vllm-openai:v0.7.3",
                                 ),
                             ),
                         ],
@@ -47,22 +46,22 @@ test = compositiontest.CompositionTest(
             libresource.model_to_fixture(
                 iev1alpha1.InferenceEnvironment(
                     metadata=metav1.ObjectMeta(
-                        name="dynamo-us-central",
+                        name="kserve-us-east",
                         labels={"modelplane.ai/environment": "true"},
                     ),
-                    spec=iev1alpha1.Spec(backend="Dynamo"),
+                    spec=iev1alpha1.Spec(backend="KServe"),
                     status=iev1alpha1.Status(
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
-                            name="dynamo-us-central-cluster",
+                            name="kserve-us-east-cluster",
                         ),
-                        gateway=iev1alpha1.Gateway(address="34.55.100.20"),
+                        gateway=iev1alpha1.Gateway(address="34.55.100.10"),
                         capacity=iev1alpha1.Capacity(
-                            backend="Dynamo",
+                            backend="KServe",
                             gpuPools=[
                                 iev1alpha1.GpuPool(
-                                    acceleratorType="nvidia-h100-80gb",
-                                    count=16,
-                                    memory="80Gi",
+                                    acceleratorType="nvidia-l4",
+                                    count=8,
+                                    memory="24Gi",
                                 )
                             ],
                         ),
@@ -71,7 +70,8 @@ test = compositiontest.CompositionTest(
             ),
         ],
         assertResources=[
-            # Assert the DGD has scalingAdapter enabled and minReplicas on Worker.
+            # Assert the LLMInferenceService has replicas set to minReplicas
+            # and Prometheus scraping annotations.
             libresource.model_to_dict(
                 k8sobjv1alpha1.Object(
                     metadata=metav1.ObjectMeta(
@@ -82,27 +82,21 @@ test = compositiontest.CompositionTest(
                     spec=k8sobjv1alpha1.Spec(
                         forProvider=k8sobjv1alpha1.ForProvider(
                             manifest={
-                                "apiVersion": "nvidia.com/v1alpha1",
-                                "kind": "DynamoGraphDeployment",
+                                "apiVersion": "serving.kserve.io/v1alpha1",
+                                "kind": "LLMInferenceService",
                                 "metadata": {
                                     "name": "model-qwen-0-5b",
                                     "namespace": "default",
                                 },
                                 "spec": {
-                                    "services": {
-                                        "Worker": {
-                                            "componentType": "worker",
-                                            "replicas": 1,
-                                            "scalingAdapter": {"enabled": True},
-                                        },
-                                    },
+                                    "replicas": 1,
                                 },
                             },
                         ),
                     ),
                 )
             ),
-            # Assert the KEDA ScaledObject is composed with the correct config.
+            # Assert the KEDA ScaledObject targets the KServe Deployment.
             libresource.model_to_dict(
                 k8sobjv1alpha1.Object(
                     metadata=metav1.ObjectMeta(
@@ -113,27 +107,24 @@ test = compositiontest.CompositionTest(
                     spec=k8sobjv1alpha1.Spec(
                         providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                             kind="ClusterProviderConfig",
-                            name="dynamo-us-central-cluster",
-                        ),
-                        readiness=k8sobjv1alpha1.Readiness(
-                            policy="DeriveFromObject",
+                            name="kserve-us-east-cluster",
                         ),
                         forProvider=k8sobjv1alpha1.ForProvider(
                             manifest={
                                 "apiVersion": "keda.sh/v1alpha1",
                                 "kind": "ScaledObject",
                                 "metadata": {
-                                    "name": "model-qwen-0-5b-worker-scaler",
+                                    "name": "model-qwen-0-5b-scaler",
                                     "namespace": "default",
                                 },
                                 "spec": {
                                     "scaleTargetRef": {
-                                        "apiVersion": "nvidia.com/v1alpha1",
-                                        "kind": "DynamoGraphDeploymentScalingAdapter",
-                                        "name": "model-qwen-0-5b-worker",
+                                        "apiVersion": "apps/v1",
+                                        "kind": "Deployment",
+                                        "name": "model-qwen-0-5b-kserve",
                                     },
                                     "minReplicaCount": 1,
-                                    "maxReplicaCount": 3,
+                                    "maxReplicaCount": 5,
                                     "pollingInterval": 15,
                                     "cooldownPeriod": 300,
                                     "triggers": [
@@ -146,7 +137,7 @@ test = compositiontest.CompositionTest(
                                                     "envoy_cluster_upstream_rq_active"
                                                     "{envoy_cluster_name="
                                                     '"httproute/default'
-                                                    "/model-qwen-0-5b"
+                                                    "/model-qwen-0-5b-kserve-route"
                                                     '/rule/0"}'
                                                 ),
                                                 "threshold": "7",

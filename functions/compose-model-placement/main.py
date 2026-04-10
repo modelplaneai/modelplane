@@ -166,6 +166,8 @@ class Composer:
         cluster. Dispatches on the serving profile's backend."""
         if self.profile.backend == backends.KSERVE:
             self.compose_kserve_llmis(gpus)
+            if self.has_autoscaling():
+                self.compose_kserve_keda_scaledobject()
         elif self.profile.backend == backends.DYNAMO:
             self.compose_dynamo_dgd(gpus)
             self.compose_dynamo_httproute()
@@ -203,8 +205,7 @@ class Composer:
                         name=self.ie.status.providerConfigRef.name,
                     ),
                     readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromCelQuery",
-                        celQuery='object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")',
+                        policy="DeriveFromObject",
                     ),
                     forProvider=k8sobjv1alpha1.ForProvider(
                         manifest={
@@ -221,11 +222,83 @@ class Composer:
                                     else "",
                                     "name": self.model.spec.model.name,
                                 },
-                                "replicas": 1,
+                                "replicas": self.worker_replicas(),
                                 "template": {"containers": [container]},
                                 "router": {"gateway": {}, "route": {}},
                             },
                         },
+                    ),
+                ),
+            ),
+        )
+
+    def compose_kserve_keda_scaledobject(self):
+        """Compose a KEDA ScaledObject on the remote cluster that targets the
+        KServe Deployment for autoscaling.
+
+        KServe's LLMInferenceService (v1alpha1) creates a Deployment named
+        {llmis-name}-kserve. The ScaledObject uses Envoy Gateway's
+        envoy_cluster_upstream_rq_active metric to measure in-flight
+        requests at the proxy level. KServe creates an HTTPRoute named
+        {llmis-name}-kserve-route, and Envoy uses that as the cluster
+        name in its metrics."""
+        llmis_name = naming.to_dns_label(self.xr.spec.modelRef.name)
+        scaling = self.xr.spec.scaling
+        concurrency = scaling.concurrency
+
+        target = concurrency.target or 1
+        utilization = concurrency.utilization or 70
+        threshold = str(max(1, target * utilization // 100))
+
+        # Envoy names its upstream clusters after the HTTPRoute:
+        # httproute/{namespace}/{route-name}/rule/{index}. KServe's
+        # LLMInferenceService creates a route named {name}-kserve-route.
+        envoy_cluster = f"httproute/{metadata.NAMESPACE_REMOTE}/{llmis_name}-kserve-route/rule/0"
+
+        scaledobject_manifest = {
+            "apiVersion": "keda.sh/v1alpha1",
+            "kind": "ScaledObject",
+            "metadata": {
+                "name": f"{llmis_name}-scaler",
+                "namespace": metadata.NAMESPACE_REMOTE,
+            },
+            "spec": {
+                "scaleTargetRef": {
+                    "apiVersion": "apps/v1",
+                    "kind": "Deployment",
+                    "name": f"{llmis_name}-kserve",
+                },
+                "minReplicaCount": concurrency.minReplicas or 1,
+                "maxReplicaCount": concurrency.maxReplicas or 1,
+                "pollingInterval": 15,
+                "cooldownPeriod": concurrency.scaleDownDelay or 300,
+                "triggers": [
+                    {
+                        "type": "prometheus",
+                        "metadata": {
+                            "serverAddress": prometheus.URL,
+                            "metricName": "envoy_cluster_upstream_rq_active",
+                            "query": (f'envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}}'),
+                            "threshold": threshold,
+                        },
+                    },
+                ],
+            },
+        }
+
+        resource.update(
+            self.rsp.desired.resources["keda-scaledobject"],
+            k8sobjv1alpha1.Object(
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=self.ie.status.providerConfigRef.name,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(
+                        policy="DeriveFromObject",
+                    ),
+                    forProvider=k8sobjv1alpha1.ForProvider(
+                        manifest=scaledobject_manifest,
                     ),
                 ),
             ),
@@ -342,8 +415,7 @@ class Composer:
                         name=self.ie.status.providerConfigRef.name,
                     ),
                     readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromCelQuery",
-                        celQuery='object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")',
+                        policy="DeriveFromObject",
                     ),
                     forProvider=k8sobjv1alpha1.ForProvider(manifest=dgd_manifest),
                 ),
@@ -354,8 +426,10 @@ class Composer:
         """Compose a KEDA ScaledObject on the remote cluster that targets the
         Dynamo Worker's DynamoGraphDeploymentScalingAdapter.
 
-        The ScaledObject is a separate provider-kubernetes Object because KEDA
-        resources are external to the DGD — Dynamo doesn't manage them."""
+        The ScaledObject uses Envoy Gateway's envoy_cluster_upstream_rq_active
+        metric to measure in-flight requests at the proxy level. The Dynamo
+        HTTPRoute is named {dgd-name}, and Envoy uses that as the cluster
+        name in its metrics."""
         dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
         scaling = self.xr.spec.scaling
         concurrency = scaling.concurrency
@@ -366,14 +440,10 @@ class Composer:
         utilization = concurrency.utilization or 70
         threshold = str(max(1, target * utilization // 100))
 
-        # The Dynamo operator computes a "dynamo namespace" for each DGD
-        # service as {k8s-namespace}-{dgd-name} (with dots replaced by
-        # hyphens). This value appears as the dynamo_namespace label on
-        # Prometheus metrics. We reproduce the formula here for the PromQL
-        # query. The DGD spec has a dynamoNamespace field that could pin
-        # the value, but it's deprecated -- the operator will remove it in
-        # a future version.
-        dynamo_ns_label = f"{metadata.NAMESPACE_REMOTE}-{dgd_name}"
+        # Envoy names its upstream clusters after the HTTPRoute:
+        # httproute/{namespace}/{route-name}/rule/{index}. The Dynamo
+        # HTTPRoute is named {dgd-name} in NAMESPACE_REMOTE.
+        envoy_cluster = f"httproute/{metadata.NAMESPACE_REMOTE}/{dgd_name}/rule/0"
 
         scaledobject_manifest = {
             "apiVersion": "keda.sh/v1alpha1",
@@ -397,10 +467,8 @@ class Composer:
                         "type": "prometheus",
                         "metadata": {
                             "serverAddress": prometheus.URL,
-                            "metricName": "dynamo_frontend_inflight_requests",
-                            "query": (
-                                f'sum(dynamo_frontend_inflight_requests{{dynamo_namespace="{dynamo_ns_label}"}})'
-                            ),
+                            "metricName": "envoy_cluster_upstream_rq_active",
+                            "query": (f'envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}}'),
                             "threshold": threshold,
                         },
                     },
@@ -417,8 +485,7 @@ class Composer:
                         name=self.ie.status.providerConfigRef.name,
                     ),
                     readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromCelQuery",
-                        celQuery=('object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")'),
+                        policy="DeriveFromObject",
                     ),
                     forProvider=k8sobjv1alpha1.ForProvider(
                         manifest=scaledobject_manifest,
