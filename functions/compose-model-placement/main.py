@@ -259,6 +259,13 @@ class Composer:
         max_replicas = concurrency.maxReplicas if concurrency.maxReplicas is not None else 1
         cooldown = concurrency.scaleDownDelay if concurrency.scaleDownDelay is not None else 300
 
+        if max_replicas < min_replicas:
+            response.warning(
+                self.rsp,
+                f"maxReplicas ({max_replicas}) is less than minReplicas ({min_replicas}), skipping ScaledObject",
+            )
+            return
+
         scaledobject_manifest = {
             "apiVersion": "keda.sh/v1alpha1",
             "kind": "ScaledObject",
@@ -455,6 +462,13 @@ class Composer:
         min_replicas = concurrency.minReplicas if concurrency.minReplicas is not None else 1
         max_replicas = concurrency.maxReplicas if concurrency.maxReplicas is not None else 1
         cooldown = concurrency.scaleDownDelay if concurrency.scaleDownDelay is not None else 300
+
+        if max_replicas < min_replicas:
+            response.warning(
+                self.rsp,
+                f"maxReplicas ({max_replicas}) is less than minReplicas ({min_replicas}), skipping ScaledObject",
+            )
+            return
 
         scaledobject_manifest = {
             "apiVersion": "keda.sh/v1alpha1",
