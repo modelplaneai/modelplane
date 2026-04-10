@@ -282,7 +282,7 @@ class Composer:
                         "metadata": {
                             "serverAddress": prometheus.URL,
                             "metricName": "envoy_cluster_upstream_rq_active",
-                            "query": (f'envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}}'),
+                            "query": (f'sum(envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}})'),
                             "threshold": threshold,
                         },
                     },
@@ -479,7 +479,7 @@ class Composer:
                         "metadata": {
                             "serverAddress": prometheus.URL,
                             "metricName": "envoy_cluster_upstream_rq_active",
-                            "query": (f'envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}}'),
+                            "query": (f'sum(envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}})'),
                             "threshold": threshold,
                         },
                     },

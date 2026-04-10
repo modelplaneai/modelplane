@@ -134,11 +134,11 @@ test = compositiontest.CompositionTest(
                                                 "serverAddress": "http://prometheus-prometheus.monitoring.svc.cluster.local:9090",
                                                 "metricName": "envoy_cluster_upstream_rq_active",
                                                 "query": (
-                                                    "envoy_cluster_upstream_rq_active"
+                                                    "sum(envoy_cluster_upstream_rq_active"
                                                     "{envoy_cluster_name="
                                                     '"httproute/default'
                                                     "/model-qwen-0-5b-kserve-route"
-                                                    '/rule/0"}'
+                                                    '/rule/0"})'
                                                 ),
                                                 "threshold": "7",
                                             },
