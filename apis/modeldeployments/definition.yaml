@@ -92,13 +92,13 @@ spec:
                       replicas:
                         type: integer
                         minimum: 1
-                        default: 1
                         description: Number of replicas to run.
                   concurrency:
                     type: object
                     description: >-
                       Scale based on in-flight request concurrency per
                       replica. Required when signal is Concurrency.
+                    required: [maxReplicas, target]
                     properties:
                       minReplicas:
                         type: integer
@@ -110,13 +110,11 @@ spec:
                       maxReplicas:
                         type: integer
                         minimum: 1
-                        default: 1
                         description: >-
                           Maximum replica count. Must be >= minReplicas.
                       target:
                         type: integer
                         minimum: 1
-                        default: 1
                         description: >-
                           Target concurrent requests per replica before
                           scaling.
