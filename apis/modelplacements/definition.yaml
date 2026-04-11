@@ -83,12 +83,12 @@ spec:
                       replicas:
                         type: integer
                         minimum: 1
-                        default: 1
                   concurrency:
                     type: object
                     description: >-
                       Scale based on in-flight request concurrency per
                       replica. Required when signal is Concurrency.
+                    required: [maxReplicas, target]
                     properties:
                       minReplicas:
                         type: integer
@@ -97,11 +97,9 @@ spec:
                       maxReplicas:
                         type: integer
                         minimum: 1
-                        default: 1
                       target:
                         type: integer
                         minimum: 1
-                        default: 1
                       utilization:
                         type: integer
                         minimum: 1
