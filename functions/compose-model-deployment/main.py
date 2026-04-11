@@ -184,9 +184,7 @@ class Composer:
                         # Convert via model_dump because the MD and MP
                         # Scaling types are different Pydantic classes
                         # (generated from different XRDs).
-                        scaling=mpv1alpha1.Scaling.model_validate(self.xr.spec.scaling.model_dump(exclude_none=True))
-                        if self.xr.spec.scaling
-                        else None,
+                        scaling=mpv1alpha1.Scaling.model_validate(self.xr.spec.scaling.model_dump(exclude_none=True)),
                     ),
                 ),
             )

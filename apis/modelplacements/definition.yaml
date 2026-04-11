@@ -62,16 +62,16 @@ spec:
               scaling:
                 type: object
                 description: >-
-                  Scaling configuration. Copied from the parent
-                  ModelDeployment. If omitted, the model runs with a
-                  fixed replica count of 1.
+                  How the model scales. Copied from the parent
+                  ModelDeployment.
+                default: {"signal": "Fixed", "fixed": {"replicas": 1}}
                 required: [signal]
                 properties:
                   signal:
                     type: string
                     description: >-
-                      Scaling signal type. Determines which config block
-                      is used.
+                      Scaling signal type. Each signal has a
+                      corresponding config block that must be set.
                     enum: [Fixed, Concurrency]
                   fixed:
                     type: object
@@ -83,32 +83,50 @@ spec:
                       replicas:
                         type: integer
                         minimum: 1
+                        description: Number of replicas to run.
                   concurrency:
                     type: object
                     description: >-
-                      Scale based on in-flight request concurrency per
-                      replica. Required when signal is Concurrency.
+                      Autoscale based on in-flight request concurrency.
+                      Required when signal is Concurrency.
                     required: [maxReplicas, target]
                     properties:
                       minReplicas:
                         type: integer
                         minimum: 0
                         default: 1
+                        description: >-
+                          Minimum number of replicas. Set to 0 to allow
+                          scale-to-zero when there is no traffic.
                       maxReplicas:
                         type: integer
                         minimum: 1
+                        description: >-
+                          Maximum number of replicas. Must be >=
+                          minReplicas.
                       target:
                         type: integer
                         minimum: 1
+                        description: >-
+                          Target number of concurrent in-flight requests
+                          per replica. Scaling triggers when average
+                          concurrency exceeds target * utilization / 100.
                       utilization:
                         type: integer
                         minimum: 1
                         maximum: 100
                         default: 70
+                        description: >-
+                          Target utilization percentage. Provides
+                          headroom before the target is fully saturated.
+                          Defaults to 70.
                       scaleDownDelay:
                         type: integer
                         minimum: 0
                         default: 300
+                        description: >-
+                          Seconds to wait before removing replicas after
+                          load decreases. Defaults to 300 (5 minutes).
           status:
             type: object
             properties:

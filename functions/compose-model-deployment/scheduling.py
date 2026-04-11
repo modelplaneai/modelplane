@@ -38,12 +38,7 @@ def _supports_scaling(
     deployment: mdv1alpha1.ModelDeployment,
     env: iev1alpha1.InferenceEnvironment,
 ) -> bool:
-    """Check whether the environment supports the deployment's scaling signal.
-
-    Returns True if no scaling is configured (no filtering needed).
-    """
-    if not deployment.spec.scaling or not deployment.spec.scaling.signal:
-        return True
+    """Check whether the environment supports the deployment's scaling signal."""
     env_backend = env.status.capacity.backend or ""
     supported = BACKEND_SCALING_SIGNALS.get(env_backend, set())
     return deployment.spec.scaling.signal in supported

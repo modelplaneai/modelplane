@@ -317,11 +317,7 @@ class Composer:
 
     def has_autoscaling(self):
         """Check if the placement has autoscaling (not fixed) configured."""
-        return (
-            self.xr.spec.scaling is not None
-            and self.xr.spec.scaling.signal is not None
-            and self.xr.spec.scaling.signal != "Fixed"
-        )
+        return self.xr.spec.scaling.signal != "Fixed"
 
     def worker_replicas(self):
         """Return the desired worker replica count from scaling config.
@@ -329,8 +325,6 @@ class Composer:
         For Concurrency scaling, this returns minReplicas (which may be 0
         for scale-to-zero). KEDA manages scaling from there."""
         scaling = self.xr.spec.scaling
-        if scaling is None or scaling.signal is None:
-            return 1
         if scaling.signal == "Fixed" and scaling.fixed:
             return scaling.fixed.replicas if scaling.fixed.replicas is not None else 1
         if scaling.signal == "Concurrency" and scaling.concurrency:
