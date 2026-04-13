@@ -17,14 +17,14 @@
 - **Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting.
 - **Align with the best ML deployment UX in the industry.** ML engineers already know Truss, HuggingFace CLI, and Cog. The CLI should feel familiar — scaffold, edit, deploy, predict — not like a Kubernetes tool with ML branding.
 - **Support the v0.1 user journeys.** J1 (deploy first model), J3 (cross-backend comparison), and the CLI section of the v0.1 scope doc are the acceptance criteria.
-- **Build for long-term stability.** This is the v0.1 CLI, but the command surface is designed to be the stable, long-term interface for ML teams. Commands and flags introduced now should not need breaking changes as ModelPlane adds backends, providers, and features. We invest in getting the UX right now so it can grow without churn.
+- **Build for long-term stability.** v0.1 ships the command surface that ML teams will use long-term. Commands and flags introduced here should not need breaking changes as ModelPlane adds backends, providers, and features.
 
 ### Non-Goals
 
 - **Replace kubectl for platform teams.** Infra engineers are comfortable with kubectl and GitOps. The CLI is not their primary tool.
-- **Full lifecycle management.** Autoscaling policies, observability dashboards, and fleet-wide operations are out of scope for v0.1. The CLI covers deploy, check, and test.
+- **Full lifecycle management.** Observability dashboards, rollout strategies (canary, blue/green), and fleet-wide operations are out of scope for v0.1. The CLI covers deploy (including scaling intent), check, and test.
 - **Custom model packaging.** Unlike Truss or Cog, the CLI does not build containers or package model code. ModelPlane delegates model pulling to backends (KServe, Dynamo). The CLI deploys — it doesn't build.
-- **Multi-cluster orchestration from the CLI.** Placement across environments is handled by the ModelPlane control plane, not the CLI. The CLI submits intent (`--env`, `--replicas`); the scheduler does the rest.
+- **Multi-cluster orchestration from the CLI.** Placement across environments is handled by the ModelPlane control plane. The CLI submits intent; the scheduler does the rest.
 
 ---
 
@@ -63,7 +63,7 @@ The CLI focuses on these four capabilities and delegates everything else to kube
 
 **Why:** ModelPlane CRDs already define `additionalPrinterColumns` that give clean kubectl output. Reimplementing list/table formatting in Python adds code to maintain, introduces subtle output differences, and teaches users a format they can't use with kubectl. The delegating commands exist so ML engineers have a single tool to reach for (`mp`), but they're honest about being shortcuts.
 
-**What this means in practice:** The delegating commands are ~10 lines of Python each (run subprocess, exit with its return code). The total CLI is ~500 lines of real logic concentrated in `deploy.py`, `predict.py`, `status.py`, and `init.py`.
+**What this means in practice:** The delegating commands are thin shells around `subprocess`. Real logic lives in `deploy.py`, `predict.py`, `status.py`, and `init.py`.
 
 ### Decision 2: No custom config format — use CRD YAML directly
 
@@ -106,36 +106,32 @@ spec:
 
 **Why:** The catalog path is the 80% case — platform teams curate approved models, ML teams pick one. The file path is the escape hatch for fine-tuned models or experimental configs. Most users should never need a file.
 
-### Decision 4: `--env` for environment targeting, `--envs` for fan-out
+### Decision 4: Targeting and fan-out
 
-**What:** Two orthogonal flags:
+**What:** Two orthogonal flags on `mp deploy`:
 - `--env prod-gpu-east` targets a specific InferenceEnvironment by name (sets `environmentSelector.matchLabels`).
-- `--envs 2` fans out across N environments (auto-scheduled). Maps to `spec.environments`.
+- `--envs 2` fans out across N environments, auto-scheduled. Maps to `spec.environments`.
 
-**Why:** The v0.1 user journeys require both: J1 deploys to a specific environment, J3 deploys across backends for comparison.
+**Why:** The v0.1 user journeys require both — J1 deploys to a specific environment, J3 deploys across backends for comparison.
 
-**On naming:** `--envs` (not `--replicas`) is deliberate. The CRD now has a separate `spec.scaling` block where `replicas` and `maxReplicas` describe **per-placement pod counts**, not how many environments to fan out to. Reusing `--replicas` for fan-out would collide with the autoscaling vocabulary in Decision 5. `--envs` matches `spec.environments` directly.
+### Decision 5: Scaling as deployment intent
 
-### Decision 5: Scaling is a property of the deployment, expressed as intent
-
-**What:** v0.1 supports two scaling signals on `ModelDeployment.spec.scaling`:
+**What:** `ModelDeployment.spec.scaling` has two signals:
 
 - **Fixed** (default): a static number of pod replicas per placement.
-- **Concurrency**: autoscale per placement based on in-flight request concurrency, with min/max replicas and a target concurrency per replica. Backed by Envoy's `upstream_rq_active` metric so the same signal works on both KServe and Dynamo, mediated by KEDA + Prometheus.
+- **Concurrency**: autoscale per placement based on in-flight request concurrency, with min/max replicas and a target per replica. Works across KServe and Dynamo via Envoy's `upstream_rq_active` metric, mediated by KEDA and Prometheus.
 
-The CLI exposes this through deploy flags — no separate `mp scale` or `mp autoscale` command. Scaling is a *property of the deployment*, not a verb.
+The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp autoscale` verb — scaling is a property of the deployment, not a separate operation.
 
 | Flag | Maps to | Notes |
 |------|---------|-------|
-| `--replicas N` | `scaling: {signal: Fixed, fixed: {replicas: N}}` | Per-placement pod count. Default is 1. |
-| `--min N --max M --target T` | `scaling: {signal: Concurrency, concurrency: {minReplicas: N, maxReplicas: M, target: T}}` | All three required together to opt into autoscaling. |
-| `--scale-to-zero` | `scaling.concurrency.minReplicas: 0` | Convenience for `--min 0`. Requires `--max` and `--target`. |
-| `--utilization P` | `scaling.concurrency.utilization: P` | Optional; defaults to 70 (scale at 70% of target). |
-| `--scale-down-delay S` | `scaling.concurrency.scaleDownDelay: S` | Optional; defaults to 300s. |
+| `--replicas N` | `scaling: {signal: Fixed, fixed: {replicas: N}}` | Per-placement pod count. Defaults to 1 when no scaling flags are given. |
+| `--min N --max M --target T` | `scaling: {signal: Concurrency, concurrency: {minReplicas: N, maxReplicas: M, target: T}}` | All three required to opt into autoscaling. `target` is in-flight requests per replica — the CRD field name and the underlying Envoy metric. |
+| `--scale-to-zero` | `scaling.concurrency.minReplicas: 0` | Shorthand for `--min 0`. Still requires `--max` and `--target`. |
+| `--utilization P` | `scaling.concurrency.utilization: P` | Optional. Defaults to 70 (scale at 70% of target). |
+| `--scale-down-delay S` | `scaling.concurrency.scaleDownDelay: S` | Optional. Defaults to 300s. |
 
-**Why:** The CRD already encodes scaling intent via a signal-based design (`Fixed` today, more signals possible later without breaking changes). The CLI mirrors that intent: passing `--max` without `--target` is a usage error, not a silent default — matching the CRD's `required: [maxReplicas, target]` validation. There is intentionally no `mp scale NAME --replicas 5` verb; users patch the deployment via `mp update` (post-v0.1) or edit the YAML and re-apply, which is the same model as every other CRD field.
-
-**Why `--target` and not `--concurrency`:** The CRD field is `target`, and the signal is Envoy's in-flight request counter — not "concurrency" in the loose vLLM batch-size sense. Mirroring the CRD field name keeps the mental model consistent end-to-end.
+**Why:** The CRD models scaling as a signal enum — `Fixed` today, with room for `Utilization`, `RPS`, or custom metrics later. The CLI mirrors that intent rather than introducing a separate vocabulary. To change scaling on a running deployment, edit the YAML and re-deploy or patch the CRD directly.
 
 ### Decision 6: Smart `predict` — one command for any model type
 
@@ -170,16 +166,15 @@ mp predict NAME -i "input" [--raw]            # Smart predict
 **`deploy-flags`** (apply to both catalog and file deploys):
 
 ```
-  --env NAME              Target a specific InferenceEnvironment by name
-  --envs N                Fan out across N environments (default 1)
+  --env NAME                   Target a specific InferenceEnvironment
+  --envs N                     Fan out across N environments (default 1)
 
-  # Scaling — pick one mode (default: --replicas 1, signal: Fixed)
-  --replicas N            Fixed pod count per placement
-  --min N --max M         Autoscale (signal: Concurrency); --target also required
-  --target T              Target in-flight requests per replica
-  --scale-to-zero         Shorthand for --min 0 (requires --max and --target)
-  --utilization P         Scale at P% of target (default 70)
-  --scale-down-delay S    Seconds before removing replicas (default 300)
+  # Scaling (default: --replicas 1)
+  --replicas N                 Fixed pod count per placement
+  --min N --max M --target T   Autoscale on in-flight request concurrency
+  --scale-to-zero              Shorthand for --min 0 (still needs --max, --target)
+  --utilization P              Scale at P% of target (default 70)
+  --scale-down-delay S         Seconds before removing replicas (default 300)
 ```
 
 ### Commands that delegate to kubectl
@@ -671,8 +666,6 @@ This is the same principle Crossplane applies to cloud infrastructure: the XRD e
 
 The principle throughout: lifecycle operations that are **properties of the model or deployment** (quantization, adapters, version, scaling) live in the CRD as declarative fields and are surfaced as `mp deploy` flags — not as separate verbs. Operations that **act on a deployment** (benchmark, evaluate, update) are CLI commands. Operations that **produce artifacts** (fine-tuning, offline quantization, compilation) are out of scope — the CLI deploys the result, not the pipeline.
 
-**On scaling specifically:** the Concurrency signal landed in v0.1 with cross-backend support (KServe + Dynamo, mediated by Envoy's `upstream_rq_active` metric via KEDA + Prometheus). This satisfies the §6.6 promotion criteria — supported by two backends, stable across both, with portable user-facing semantics — so it ships as first-class CRD fields rather than passthrough flags. New scaling signals (Utilization, RPS, custom metrics) can be added by extending the `signal` enum without breaking the existing Fixed/Concurrency users.
-
 ---
 
 ## 7. Open Questions for Team Discussion
@@ -685,9 +678,9 @@ The principle throughout: lifecycle operations that are **properties of the mode
 
 4. **`--env` label convention:** `--env` works by reading the target environment's labels. Should we formalize a `modelplane.ai/env-name` label convention for robustness?
 
-5. **Scale-to-zero ergonomics:** Today, opting into scale-to-zero requires `--scale-to-zero --max M --target T` (CRD requires `maxReplicas` and `target`). Should the CLI infer reasonable defaults for `--max` and `--target` when `--scale-to-zero` is the only scaling flag, or keep them required to mirror the CRD validation? The latter is more honest; the former is more ergonomic.
+5. **Scale-to-zero ergonomics:** Opting into scale-to-zero requires `--scale-to-zero --max M --target T` since the CRD requires `maxReplicas` and `target`. Should the CLI infer reasonable defaults when `--scale-to-zero` is the only scaling flag, or keep them required to mirror CRD validation? The latter is more honest; the former is more ergonomic.
 
-6. **`mp scale` convenience verb:** The current proposal has no `mp scale NAME --max 10` command — users re-run `mp deploy` or patch the YAML. Industry tools (kubectl, knative) all have a scale verb. Worth adding as a thin wrapper around `kubectl patch`, or does it muddy the "scaling is a property" model?
+6. **`mp scale` convenience verb:** There is no `mp scale NAME --max 10` command — users re-run `mp deploy` or patch the YAML. Industry tools (kubectl, knative) all have a scale verb. Worth adding as a thin wrapper around `kubectl patch`, or does it muddy the "scaling is a property" model?
 
 ---
 
