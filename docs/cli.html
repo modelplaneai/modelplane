@@ -1,153 +1,112 @@
 <!DOCTYPE html>
+<!--
+  AUTO-GENERATED — do not edit by hand.
+  Source: docs/build.py + cli/src/mp Click command tree.
+  Regenerate: python3 docs/build.py
+-->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>mp — ModelPlane CLI</title>
   <style>
-    :root {
-      --bg: #ffffff;
-      --fg: #1a1a1a;
-      --muted: #6b7280;
-      --border: #e5e7eb;
-      --code-bg: #f3f4f6;
-      --accent: #2563eb;
-      --accent-light: #eff6ff;
-      --success: #059669;
-      --warn-bg: #fef3c7;
-      --warn-fg: #92400e;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #111827;
-        --fg: #f9fafb;
-        --muted: #9ca3af;
-        --border: #374151;
-        --code-bg: #1f2937;
-        --accent: #60a5fa;
-        --accent-light: #1e293b;
-        --success: #34d399;
-        --warn-bg: #422006;
-        --warn-fg: #fcd34d;
-      }
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      color: var(--fg);
-      background: var(--bg);
-      line-height: 1.7;
-      max-width: 820px;
-      margin: 0 auto;
-      padding: 3rem 1.5rem;
-    }
-    h1 { font-size: 2rem; margin-bottom: 0.25rem; }
-    h1 code { font-size: 2rem; color: var(--accent); }
-    .subtitle { color: var(--muted); font-size: 1.1rem; margin-bottom: 2.5rem; }
-    h2 {
-      font-size: 1.4rem;
-      margin-top: 3rem;
-      margin-bottom: 1rem;
-      padding-bottom: 0.4rem;
-      border-bottom: 1px solid var(--border);
-    }
-    h3 { font-size: 1.1rem; margin-top: 1.8rem; margin-bottom: 0.6rem; }
-    p { margin-bottom: 1rem; }
-    code {
-      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-      font-size: 0.9em;
-      background: var(--code-bg);
-      padding: 0.15em 0.4em;
-      border-radius: 4px;
-    }
-    pre {
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
-      overflow-x: auto;
-      margin-bottom: 1.25rem;
-      line-height: 1.5;
-    }
-    pre code { background: none; padding: 0; font-size: 0.85rem; }
-    .command-block {
-      background: var(--accent-light);
-      border: 1px solid var(--accent);
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
-      margin-bottom: 1.25rem;
-    }
-    .command-block .sig {
-      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--accent);
-      margin-bottom: 0.4rem;
-    }
-    .command-block .desc { color: var(--muted); font-size: 0.9rem; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 1.25rem;
-      font-size: 0.9rem;
-    }
-    th, td {
-      text-align: left;
-      padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid var(--border);
-      vertical-align: top;
-    }
-    th { font-weight: 600; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    .badge {
-      display: inline-block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      padding: 0.1em 0.5em;
-      border-radius: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-    .badge-native { background: #dbeafe; color: #1d4ed8; }
-    .badge-kubectl { background: #f3f4f6; color: #6b7280; }
-    @media (prefers-color-scheme: dark) {
-      .badge-native { background: #1e3a5f; color: #93c5fd; }
-      .badge-kubectl { background: #374151; color: #9ca3af; }
-    }
-    .note {
-      background: var(--accent-light);
-      border-left: 3px solid var(--accent);
-      padding: 0.75rem 1rem;
-      margin-bottom: 1.25rem;
-      border-radius: 0 6px 6px 0;
-      font-size: 0.9rem;
-    }
-    .preview {
-      background: var(--warn-bg);
-      color: var(--warn-fg);
-      border-left: 3px solid var(--warn-fg);
-      padding: 0.75rem 1rem;
-      margin-bottom: 1.5rem;
-      border-radius: 0 6px 6px 0;
-      font-size: 0.9rem;
-    }
-    .prompt { color: var(--success); user-select: none; }
-    .comment { color: var(--muted); }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
-    footer { margin-top: 3rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
-    nav.toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; font-size: 0.9rem; }
-    nav.toc ul { list-style: none; column-count: 2; column-gap: 1.5rem; }
-    nav.toc li { margin-bottom: 0.3rem; break-inside: avoid; }
-  </style>
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --code-bg: #f3f4f6;
+  --accent: #2563eb;
+  --accent-light: #eff6ff;
+  --success: #059669;
+  --warn-bg: #fef3c7;
+  --warn-fg: #92400e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111827;
+    --fg: #f9fafb;
+    --muted: #9ca3af;
+    --border: #374151;
+    --code-bg: #1f2937;
+    --accent: #60a5fa;
+    --accent-light: #1e293b;
+    --success: #34d399;
+    --warn-bg: #422006;
+    --warn-fg: #fcd34d;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--fg); background: var(--bg); line-height: 1.7;
+  max-width: 820px; margin: 0 auto; padding: 3rem 1.5rem;
+}
+h1 { font-size: 2rem; margin-bottom: 0.25rem; }
+h1 code { font-size: 2rem; color: var(--accent); }
+.subtitle { color: var(--muted); font-size: 1.1rem; margin-bottom: 2.5rem; }
+h2 { font-size: 1.4rem; margin-top: 3rem; margin-bottom: 1rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.1rem; margin-top: 1.8rem; margin-bottom: 0.6rem; }
+p { margin-bottom: 1rem; }
+code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.9em; background: var(--code-bg);
+  padding: 0.15em 0.4em; border-radius: 4px;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 1rem 1.25rem; overflow-x: auto; margin-bottom: 1.25rem; line-height: 1.5;
+}
+pre code { background: none; padding: 0; font-size: 0.85rem; }
+.command-block {
+  background: var(--accent-light); border: 1px solid var(--accent); border-radius: 8px;
+  padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+}
+.command-block .sig {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.95rem; font-weight: 600; color: var(--accent); margin-bottom: 0.4rem;
+}
+.command-block .desc { color: var(--muted); font-size: 0.9rem; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; font-size: 0.9rem; }
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.badge {
+  display: inline-block; font-size: 0.75rem; font-weight: 600;
+  padding: 0.1em 0.5em; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.03em;
+}
+.badge-native { background: #dbeafe; color: #1d4ed8; }
+.badge-kubectl { background: #f3f4f6; color: #6b7280; }
+@media (prefers-color-scheme: dark) {
+  .badge-native { background: #1e3a5f; color: #93c5fd; }
+  .badge-kubectl { background: #374151; color: #9ca3af; }
+}
+.note {
+  background: var(--accent-light); border-left: 3px solid var(--accent);
+  padding: 0.75rem 1rem; margin-bottom: 1.25rem; border-radius: 0 6px 6px 0; font-size: 0.9rem;
+}
+.generated {
+  background: var(--warn-bg); color: var(--warn-fg); border-left: 3px solid var(--warn-fg);
+  padding: 0.75rem 1rem; margin-bottom: 1.5rem; border-radius: 0 6px 6px 0; font-size: 0.9rem;
+}
+.prompt { color: var(--success); user-select: none; }
+.comment { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+footer { margin-top: 3rem; color: var(--muted); font-size: 0.85rem; text-align: center; }
+nav.toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; font-size: 0.9rem; }
+nav.toc ul { list-style: none; column-count: 2; column-gap: 1.5rem; }
+nav.toc li { margin-bottom: 0.3rem; break-inside: avoid; }
+</style>
 </head>
 <body>
 
 <h1><code>mp</code></h1>
 <p class="subtitle">The ModelPlane CLI &mdash; deploy and run AI models without kubectl</p>
 
-<div class="preview">
-  <strong>v0.1 preview.</strong> This page mirrors the v0.1 design proposal. Once the CLI is implemented, this page will be regenerated from the Click command tree on every release &mdash; the same source of truth as <code>mp --help</code>. Treat anything here as authoritative for design intent; flag spellings and exit codes are stable across the v0.1.x series.
+<div class="generated">
+  <strong>Auto-generated</strong> from the <code>mp</code> Click command tree on every release. If anything here disagrees with <code>mp --help</code>, treat <code>--help</code> as authoritative and file a bug.
 </div>
 
 <nav class="toc">
@@ -161,7 +120,10 @@
     <li><a href="#mp-status"><code>mp status</code></a></li>
     <li><a href="#mp-predict"><code>mp predict</code></a></li>
     <li><a href="#mp-logs"><code>mp logs</code></a></li>
-    <li><a href="#kubectl-shortcuts">kubectl shortcuts</a></li>
+    <li><a href="#mp-models"><code>mp models</code></a></li>
+    <li><a href="#mp-envs"><code>mp envs</code></a></li>
+    <li><a href="#mp-deployments"><code>mp deployments</code></a></li>
+    <li><a href="#mp-delete"><code>mp delete</code></a></li>
     <li><a href="#agents-and-scripting">Agents and scripting</a></li>
     <li><a href="#configuration">Configuration</a></li>
   </ul>
@@ -178,26 +140,15 @@ Team set to: ml-team
 
 <span class="comment"># See what models are available</span>
 <span class="prompt">$</span> mp models
-NAME              READY   MODEL                          VRAM   AGE
-qwen-0.5b-vllm    True    Qwen/Qwen2.5-0.5B-Instruct     2Gi    5d
 
 <span class="comment"># Deploy one</span>
 <span class="prompt">$</span> mp deploy qwen-0.5b-vllm --env prod-gpu-east
-Deploying qwen-0.5b-vllm...
-Deployment created. Run `mp status qwen-0.5b-vllm` to check progress.
 
 <span class="comment"># Wait for it</span>
 <span class="prompt">$</span> mp status qwen-0.5b-vllm --watch
-Deployment:  qwen-0.5b-vllm
-Model:       Qwen/Qwen2.5-0.5B-Instruct
-Status:      Ready
-Replicas:    1/1
-Endpoint:    http://172.18.255.200/ml-team/qwen-0.5b-vllm/v1
 
 <span class="comment"># Test it</span>
-<span class="prompt">$</span> mp predict qwen-0.5b-vllm -i "Explain attention in transformers"
-Attention mechanisms allow models to weigh the relevance of different
-parts of the input when producing each part of the output...</code></pre>
+<span class="prompt">$</span> mp predict qwen-0.5b-vllm -i "Explain attention in transformers"</code></pre>
 
 <hr>
 
@@ -206,317 +157,163 @@ parts of the input when producing each part of the output...</code></pre>
 <p>The CLI has two kinds of commands: <strong>native commands</strong> that do things kubectl can't, and <strong>convenience shortcuts</strong> that delegate to kubectl transparently.</p>
 
 <table>
-  <thead>
-    <tr><th>Command</th><th>Purpose</th><th></th></tr>
-  </thead>
+  <thead><tr><th>Command</th><th>Purpose</th><th></th></tr></thead>
   <tbody>
-    <tr><td><code>mp init</code></td><td>Scaffold a Model YAML or set team context</td><td><span class="badge badge-native">Native</span></td></tr>
-    <tr><td><code>mp deploy</code></td><td>Deploy from catalog or YAML file (with optional autoscaling)</td><td><span class="badge badge-native">Native</span></td></tr>
-    <tr><td><code>mp predict</code></td><td>Send input to a deployed model; supports streaming</td><td><span class="badge badge-native">Native</span></td></tr>
-    <tr><td><code>mp status NAME</code></td><td>Rich status with <code>--watch</code> and <code>--all-envs</code></td><td><span class="badge badge-native">Native</span></td></tr>
-    <tr><td><code>mp logs NAME</code></td><td>Tail logs from a deployment&rsquo;s pods</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
-    <tr><td><code>mp models</code></td><td>List catalog models</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
-    <tr><td><code>mp envs</code></td><td>List inference environments</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
-    <tr><td><code>mp deployments</code></td><td>List deployments</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
-    <tr><td><code>mp delete NAME</code></td><td>Delete a deployment</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
+    <tr><td><code>mp init</code></td><td>Scaffold a new model YAML, or set your team context.</td><td><span class="badge badge-native">Native</span></td></tr>
+    <tr><td><code>mp deploy</code></td><td>Deploy a model from the catalog or from a YAML file.</td><td><span class="badge badge-native">Native</span></td></tr>
+    <tr><td><code>mp status</code></td><td>Check deployment status.</td><td><span class="badge badge-native">Native</span></td></tr>
+    <tr><td><code>mp predict</code></td><td>Send input to a deployed model and get a response.</td><td><span class="badge badge-native">Native</span></td></tr>
+    <tr><td><code>mp logs</code></td><td>Tail logs from all pods serving a deployment.</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
+    <tr><td><code>mp models</code></td><td>List available models from the catalog.</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
+    <tr><td><code>mp envs</code></td><td>List available inference environments.</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
+    <tr><td><code>mp deployments</code></td><td>List all model deployments for your team.</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
+    <tr><td><code>mp delete</code></td><td>Delete a model deployment.</td><td><span class="badge badge-kubectl">kubectl</span></td></tr>
   </tbody>
 </table>
-
-<p>All native commands accept <code>--output json</code> (alias <code>-o json</code>) for machine-readable output. See <a href="#agents-and-scripting">Agents and scripting</a>.</p>
 
 <hr>
 
 <h2 id="mp-init"><code>mp init</code></h2>
-<p>Two modes: scaffold a Model YAML template, or set your team context.</p>
-
-<h3>Set team context</h3>
+<p>Scaffold a new model YAML, or set your team context.</p>
+<pre><code>Scaffold a model:    mp init my-model
+Set team context:    mp init --team ml-team</code></pre>
 <div class="command-block">
-  <div class="sig">mp init --team &lt;name&gt;</div>
-  <div class="desc">Saves your team name to <code>~/.config/modelplane/config.yaml</code>. Run once &mdash; subsequent commands use it automatically.</div>
+  <div class="sig">mp init [&lt;name&gt;] [options]</div>
 </div>
-<pre><code><span class="prompt">$</span> mp init --team ml-team
-Team set to: ml-team
-Config saved to: /home/user/.config/modelplane/config.yaml</code></pre>
-
-<p>Override on any command with <code>--team NAME</code> or the <code>MP_TEAM</code> environment variable.</p>
-
-<h3>Scaffold a model</h3>
-<div class="command-block">
-  <div class="sig">mp init &lt;name&gt;</div>
-  <div class="desc">Creates <code>&lt;name&gt;/model.yaml</code> &mdash; a fully commented Model CRD template with all available options.</div>
-</div>
-<pre><code><span class="prompt">$</span> mp init my-llama
-Created my-llama/model.yaml
-Edit it, then run: mp deploy -f my-llama/model.yaml</code></pre>
-
-<p>The generated file looks like this:</p>
-<pre><code>apiVersion: modelplane.ai/v1alpha1
-kind: Model
-metadata:
-  name: my-llama
-spec:
-  model:
-    name: organization/model-name
-
-  source: HuggingFace
-  huggingFace:
-    repo: organization/model-name
-    # revision: main
-    # secretRef:
-    #   name: hf-token
-    #   namespace: ml-team
-    #   key: token
-
-  resources:
-    vram: 24Gi
-    # cpu: "4"
-    # memory: 16Gi
-
-  serving:
-  - name: vllm-kserve
-    backend: KServe          <span class="comment"># or Dynamo</span>
-    engine:
-      name: vLLM             <span class="comment"># or SGLang</span>
-      image: vllm/vllm-openai:latest
-      # args:
-      #   - --max-model-len=32768
-      #   - --quantization=fp8</code></pre>
-
-<p>Edit the file to fill in your model details, then deploy with <code>mp deploy -f</code>.</p>
+<h3>Options</h3>
+<table>
+  <thead><tr><th>Flag</th><th>Description</th><th>Default</th></tr></thead>
+  <tbody>
+    <tr><td><code>--team</code> <span class="comment">TEXT</span></td><td>Set team context instead of scaffolding a model.</td><td></td></tr>
+  </tbody>
+</table>
 
 <hr>
 
 <h2 id="mp-deploy"><code>mp deploy</code></h2>
-<p>Deploy a model from the catalog or from a YAML file. The same set of flags works for both.</p>
-
-<h3>From the catalog</h3>
+<p>Deploy a model from the catalog or from a YAML file.</p>
+<pre><code>From catalog:    mp deploy llama3-8b [--env prod-gpu-east]
+From YAML file:  mp deploy -f model.yaml [--env prod-gpu-east]</code></pre>
+<pre><code>Autoscale:       mp deploy llama3-8b --min 1 --max 6 --target 32
+Scale to zero:   mp deploy llama3-8b --scale-to-zero --max 4 --target 16</code></pre>
 <div class="command-block">
-  <div class="sig">mp deploy &lt;model&gt; [deploy-flags]</div>
-  <div class="desc">Deploy a ClusterModel registered by your platform team. Zero config required.</div>
+  <div class="sig">mp deploy [&lt;model&gt;] [options]</div>
 </div>
-<pre><code><span class="comment"># Single environment, single replica (default)</span>
-<span class="prompt">$</span> mp deploy llama-8b-vllm --env prod-gpu-east
-
-<span class="comment"># Fan out to two environments (auto-scheduled across backends)</span>
-<span class="prompt">$</span> mp deploy llama-8b-vllm --envs 2
-
-<span class="comment"># Override the deployment name</span>
-<span class="prompt">$</span> mp deploy llama-8b-vllm --name my-llama-test --env prod-gpu-east</code></pre>
-
-<h3>From a YAML file</h3>
-<div class="command-block">
-  <div class="sig">mp deploy -f &lt;path&gt; [deploy-flags]</div>
-  <div class="desc">Deploy from a Model CRD YAML file. Creates the Model resource and a ModelDeployment in one step.</div>
-</div>
-<pre><code><span class="prompt">$</span> mp deploy -f my-llama/model.yaml --env prod-gpu-east
-Deploying my-llama...
-Deployment created. Run `mp status my-llama` to check progress.</code></pre>
-
-<h3>Targeting and fan-out</h3>
+<h3>Options</h3>
 <table>
   <thead><tr><th>Flag</th><th>Description</th><th>Default</th></tr></thead>
   <tbody>
-    <tr><td><code>--env NAME</code></td><td>Target a specific InferenceEnvironment</td><td>auto-scheduled</td></tr>
-    <tr><td><code>--envs N</code></td><td>Number of environments to fan out across</td><td><code>1</code></td></tr>
-    <tr><td><code>--name NAME</code></td><td>Override the deployment name</td><td>model name</td></tr>
-    <tr><td><code>--team NAME</code></td><td>Override the team (namespace)</td><td>from config</td></tr>
+    <tr><td><code>-f, --file</code> <span class="comment">PATH</span></td><td>Path to a Model YAML file.</td><td></td></tr>
+    <tr><td><code>--env</code> <span class="comment">TEXT</span></td><td>Target a specific InferenceEnvironment by name.</td><td></td></tr>
+    <tr><td><code>--envs</code> <span class="comment">INTEGER</span></td><td>Number of environments to fan out across.</td><td><code>1</code></td></tr>
+    <tr><td><code>--name</code> <span class="comment">TEXT</span></td><td>Deployment name (defaults to model name).</td><td></td></tr>
+    <tr><td><code>--team</code> <span class="comment">TEXT</span></td><td>Override team.</td><td></td></tr>
+    <tr><td><code>--replicas</code> <span class="comment">INTEGER</span></td><td>Fixed pod count per placement (signal: Fixed). Default 1.</td><td></td></tr>
+    <tr><td><code>--min</code> <span class="comment">INTEGER</span></td><td>Min replicas for autoscaling (signal: Concurrency).</td><td></td></tr>
+    <tr><td><code>--max</code> <span class="comment">INTEGER</span></td><td>Max replicas for autoscaling (signal: Concurrency).</td><td></td></tr>
+    <tr><td><code>--target</code> <span class="comment">INTEGER</span></td><td>Target in-flight requests per replica (signal: Concurrency).</td><td></td></tr>
+    <tr><td><code>--scale-to-zero</code></td><td>Shorthand for --min 0 (still requires --max and --target).</td><td></td></tr>
+    <tr><td><code>--utilization</code> <span class="comment">INTEGER</span></td><td>Scale at this percent of --target. Default 70.</td><td></td></tr>
+    <tr><td><code>--scale-down-delay</code> <span class="comment">INTEGER</span></td><td>Seconds before removing replicas. Default 300.</td><td></td></tr>
   </tbody>
 </table>
-
-<h3>Scaling</h3>
-<p>Scaling is configured at deploy time. There is no separate <code>mp scale</code> verb &mdash; scaling is a property of the deployment, set on <code>mp deploy</code>.</p>
-
-<table>
-  <thead><tr><th>Flag</th><th>Description</th><th>Default</th></tr></thead>
-  <tbody>
-    <tr><td><code>--replicas N</code></td><td>Fixed pod count per placement (signal: <code>Fixed</code>)</td><td><code>1</code></td></tr>
-    <tr><td><code>--min N</code></td><td>Minimum replicas for autoscaling</td><td><code>1</code></td></tr>
-    <tr><td><code>--max N</code></td><td>Maximum replicas for autoscaling</td><td>(required)</td></tr>
-    <tr><td><code>--target N</code></td><td>Target in-flight requests per replica</td><td>(required)</td></tr>
-    <tr><td><code>--scale-to-zero</code></td><td>Shorthand for <code>--min 0</code> (still requires <code>--max</code> and <code>--target</code>)</td><td>off</td></tr>
-    <tr><td><code>--utilization P</code></td><td>Scale at P% of <code>--target</code></td><td><code>70</code></td></tr>
-    <tr><td><code>--scale-down-delay S</code></td><td>Seconds to wait before removing replicas</td><td><code>300</code></td></tr>
-  </tbody>
-</table>
-
-<p>Pass <code>--min</code>, <code>--max</code>, and <code>--target</code> together to opt into the <code>Concurrency</code> scaling signal. The signal uses Envoy&rsquo;s in-flight request counter at the gateway and works the same on KServe and Dynamo backends.</p>
-
-<h4>Examples</h4>
-<pre><code><span class="comment"># Autoscale: 1 baseline replica, burst up to 6, target 32 in-flight requests/replica</span>
-<span class="prompt">$</span> mp deploy llama-8b-vllm --env prod-gpu-east --min 1 --max 6 --target 32
-
-<span class="comment"># Scale-to-zero for dev/bursty workloads</span>
-<span class="prompt">$</span> mp deploy qwen-0.5b-vllm --env prod-gpu-east --scale-to-zero --max 4 --target 16</code></pre>
 
 <hr>
 
 <h2 id="mp-status"><code>mp status</code></h2>
-<p>Check deployment status with polling and per-environment breakdowns.</p>
-
+<p>Check deployment status.</p>
+<pre><code>Without a name, delegates to: kubectl get modeldeployments -n &lt;team&gt;
+With a name, shows rich status with --watch and --all-envs support.</code></pre>
 <div class="command-block">
-  <div class="sig">mp status &lt;name&gt; [--watch] [--all-envs] [--output json]</div>
-  <div class="desc">Show deployment status. Without a name, delegates to <code>kubectl get modeldeployments</code>.</div>
+  <div class="sig">mp status [&lt;name&gt;] [options]</div>
 </div>
-
-<pre><code><span class="prompt">$</span> mp status qwen-0.5b-vllm
-Deployment:  qwen-0.5b-vllm
-Model:       Qwen/Qwen2.5-0.5B-Instruct
-Status:      Ready
-Replicas:    1/1
-Endpoint:    http://172.18.255.200/ml-team/qwen-0.5b-vllm/v1</code></pre>
-
-<h3><code>--watch</code></h3>
-<p>Polls every 5 seconds until the deployment is Ready (or fails). On a TTY this updates in place; off-TTY it prints one line per state transition.</p>
-<pre><code><span class="prompt">$</span> mp status qwen-0.5b-vllm --watch
-Deployment:  qwen-0.5b-vllm
-Status:      Provisioning (0/1 replicas ready)
-...
-Status:      Ready
-Replicas:    1/1
-Endpoint:    http://172.18.255.200/ml-team/qwen-0.5b-vllm/v1</code></pre>
-
-<h3><code>--all-envs</code></h3>
-<p>Per-placement breakdown &mdash; useful for models deployed across multiple backends.</p>
-<pre><code><span class="prompt">$</span> mp status llama3-8b --all-envs
-Deployment:  llama3-8b
-Model:       meta-llama/Meta-Llama-3-8B-Instruct
-Status:      Ready
-Placements:  2/2
-
-  ENV                  STATUS   ENDPOINT
-  prod-gpu-east        Ready    http://10.0.0.1/.../v1
-  coreweave-research   Ready    http://10.0.0.2/.../v1</code></pre>
-
-<h3>Autoscaled deployments</h3>
-<pre><code><span class="prompt">$</span> mp status llama-8b-vllm
-Deployment:  llama-8b-vllm
-Model:       meta-llama/Llama-3-8B
-Status:      Ready
-Scaling:     Concurrency (1-6 replicas, target 32, util 70%)
-Replicas:    2/2
-Endpoint:    http://172.18.255.200/ml-team/llama-8b-vllm/v1</code></pre>
+<h3>Options</h3>
+<table>
+  <thead><tr><th>Flag</th><th>Description</th><th>Default</th></tr></thead>
+  <tbody>
+    <tr><td><code>--watch, -w</code></td><td>Poll until ready.</td><td></td></tr>
+    <tr><td><code>--all-envs</code></td><td>Show per-environment placement details.</td><td></td></tr>
+    <tr><td><code>--team</code> <span class="comment">TEXT</span></td><td>Override team.</td><td></td></tr>
+  </tbody>
+</table>
 
 <hr>
 
 <h2 id="mp-predict"><code>mp predict</code></h2>
-<p>Send input to a deployed model. Auto-discovers the endpoint, formats the request, and prints the response.</p>
-
+<p>Send input to a deployed model and get a response.</p>
+<p>NAME is the deployment name (see `mp deployments`).</p>
 <div class="command-block">
-  <div class="sig">mp predict &lt;name&gt; -i &lt;input&gt; [--stream] [--raw] [--output json]</div>
-  <div class="desc">Reads the deployment&rsquo;s endpoint from its status, formats the request as OpenAI-compatible chat (or Responses API if the input shape matches), and returns the model&rsquo;s response.</div>
+  <div class="sig">mp predict &lt;name&gt; [options]</div>
 </div>
-
-<h3>Plain text input</h3>
-<pre><code><span class="prompt">$</span> mp predict qwen-0.5b-vllm -i "What is Kubernetes?"
-Kubernetes is an open-source container orchestration platform...</code></pre>
-<p>Plain text is wrapped as an OpenAI chat completion.</p>
-
-<h3>JSON input</h3>
-<pre><code><span class="comment"># Chat completions format &mdash; forwarded to /chat/completions</span>
-<span class="prompt">$</span> mp predict qwen-0.5b-vllm -i '{"messages": [{"role": "user", "content": "Hello"}]}'
-
-<span class="comment"># Responses API format &mdash; forwarded to /responses</span>
-<span class="prompt">$</span> mp predict qwen-0.5b-vllm -i '{"input": "Summarize this text..."}'</code></pre>
-
-<h3>File input</h3>
-<pre><code><span class="prompt">$</span> mp predict qwen-0.5b-vllm -i @prompt.json</code></pre>
-
-<h3>Streaming</h3>
-<pre><code><span class="prompt">$</span> mp predict qwen-0.5b-vllm -i "Write a haiku about kubernetes" --stream
-Containers in pods,
-Orchestrated by control,
-Cluster hums with life.</code></pre>
-<p><code>--stream</code> writes tokens to stdout as they arrive over server-sent events. Pipeable, no buffering.</p>
-
-<h3>Output formats</h3>
+<h3>Options</h3>
 <table>
-  <thead><tr><th>Flag</th><th>What you get</th></tr></thead>
+  <thead><tr><th>Flag</th><th>Description</th><th>Default</th></tr></thead>
   <tbody>
-    <tr><td>(default)</td><td>Just the assistant&rsquo;s text content</td></tr>
-    <tr><td><code>--raw</code></td><td>Full JSON response from the model server, pretty-printed</td></tr>
-    <tr><td><code>--output json</code> / <code>-o json</code></td><td>Wrapped JSON: <code>{deployment, request, response, latency_ms}</code> &mdash; suitable for <code>jq</code> and agent loops</td></tr>
+    <tr><td><code>-i, --input</code> <span class="comment">TEXT</span></td><td>Prompt text, JSON string, or @file.json.</td><td><code>(required)</code></td></tr>
+    <tr><td><code>--raw</code></td><td>Print full JSON response.</td><td></td></tr>
+    <tr><td><code>--team</code> <span class="comment">TEXT</span></td><td>Override team.</td><td></td></tr>
   </tbody>
 </table>
-
-<h3>Multi-LoRA serving (post-v0.1)</h3>
-<p>For deployments serving multiple LoRA adapters on a base model, route to a specific adapter with <code>--model</code>:</p>
-<pre><code><span class="prompt">$</span> mp predict llama3-8b-multitenant -i "Summarize this contract..." --model legal-summarize</code></pre>
 
 <hr>
 
 <h2 id="mp-logs"><code>mp logs</code></h2>
 <div class="note">Delegates to <code>kubectl logs -l modelplane.ai/deployment=&lt;name&gt; -n &lt;team&gt;</code></div>
 <p>Tail logs from all pods serving a deployment.</p>
-<pre><code><span class="prompt">$</span> mp logs qwen-0.5b-vllm --since 1h --follow</code></pre>
-
 <table>
   <thead><tr><th>Flag</th><th>Description</th></tr></thead>
   <tbody>
-    <tr><td><code>--follow, -f</code></td><td>Stream new log lines as they arrive</td></tr>
-    <tr><td><code>--since DURATION</code></td><td>Only logs newer than e.g. <code>5m</code>, <code>1h</code>, <code>2h30m</code></td></tr>
-    <tr><td><code>--tail N</code></td><td>Last N lines per pod</td></tr>
+    <tr><td><code>-f, --follow</code></td><td>Stream new log lines as they arrive.</td></tr>
+    <tr><td><code>--since</code></td><td>Only logs newer than e.g. 5m, 1h, 2h30m.</td></tr>
+    <tr><td><code>--tail</code></td><td>Last N lines per pod.</td></tr>
+    <tr><td><code>--team</code></td><td>Override team.</td></tr>
   </tbody>
 </table>
 
 <hr>
 
-<h2 id="kubectl-shortcuts">kubectl shortcuts</h2>
-
-<p>These commands are thin wrappers around <code>kubectl</code> &mdash; they exist so you have a single CLI to reach for. Each prints the underlying kubectl command in <code>--help</code>, and accepts any <code>kubectl</code> flag (e.g. <code>-o yaml</code>, <code>--field-selector</code>) as a passthrough.</p>
-
-<h3><code>mp models</code></h3>
+<h2 id="mp-models"><code>mp models</code></h2>
 <div class="note">Delegates to <code>kubectl get clustermodels</code></div>
-<pre><code><span class="prompt">$</span> mp models
-NAME              READY   MODEL                          VRAM   AGE
-qwen-0.5b-vllm    True    Qwen/Qwen2.5-0.5B-Instruct     2Gi    5d
-llama-8b-vllm     True    meta-llama/Llama-3-8B          24Gi   5d</code></pre>
+<p>List available models from the catalog.</p>
 
-<h3><code>mp envs</code></h3>
+<hr>
+
+<h2 id="mp-envs"><code>mp envs</code></h2>
 <div class="note">Delegates to <code>kubectl get inferenceenvironments</code></div>
-<pre><code><span class="prompt">$</span> mp envs
-NAME                READY   BACKEND   GATEWAY            AGE
-prod-gpu-east       True    KServe    10.0.0.1           10d
-coreweave-research  True    Dynamo    10.0.0.2           10d</code></pre>
+<p>List available inference environments.</p>
 
-<h3><code>mp deployments</code></h3>
+<hr>
+
+<h2 id="mp-deployments"><code>mp deployments</code></h2>
 <div class="note">Delegates to <code>kubectl get modeldeployments -n &lt;team&gt;</code></div>
-<pre><code><span class="prompt">$</span> mp deployments
-NAME              READY   MODEL                ENVS   ENDPOINT                       AGE
-qwen-0.5b-vllm    True    qwen-0.5b-vllm       1      http://172.18.255.200/.../v1   2d</code></pre>
+<p>List all model deployments for your team.</p>
+<table>
+  <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>--team</code></td><td>Override team.</td></tr>
+  </tbody>
+</table>
 
-<h3><code>mp delete</code></h3>
+<hr>
+
+<h2 id="mp-delete"><code>mp delete</code></h2>
 <div class="note">Delegates to <code>kubectl delete modeldeployment &lt;name&gt; -n &lt;team&gt;</code></div>
-<pre><code><span class="prompt">$</span> mp delete qwen-0.5b-vllm
-Delete deployment 'qwen-0.5b-vllm' in team 'ml-team'? [y/N]: y
-modeldeployment.modelplane.ai "qwen-0.5b-vllm" deleted</code></pre>
-<p>Pass <code>-y</code> to skip the confirmation prompt. In non-TTY contexts (CI, agent invocations), <code>-y</code> is required &mdash; the CLI never blocks on stdin off-TTY.</p>
+<p>Delete a model deployment.</p>
+<table>
+  <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>-y, --yes</code></td><td>Skip confirmation.</td></tr>
+    <tr><td><code>--team</code></td><td>Override team.</td></tr>
+  </tbody>
+</table>
 
 <hr>
 
 <h2 id="agents-and-scripting">Agents and scripting</h2>
 
-<p>The CLI is designed for AI agents and shell scripts as first-class callers, not just humans at a terminal. The properties below are stable across the v0.1.x series and any agent or pipeline can rely on them.</p>
-
-<h3>JSON output</h3>
-<p>Every native command accepts <code>--output json</code> (alias <code>-o json</code>) for machine-readable output:</p>
-<pre><code><span class="prompt">$</span> mp status qwen-0.5b-vllm --output json
-{
-  "name": "qwen-0.5b-vllm",
-  "model": "Qwen/Qwen2.5-0.5B-Instruct",
-  "status": "Ready",
-  "scaling": {"signal": "Fixed", "replicas": {"desired": 1, "ready": 1}},
-  "endpoint": "http://172.18.255.200/ml-team/qwen-0.5b-vllm/v1",
-  "placements": [
-    {"env": "prod-gpu-east", "status": "Ready", "endpoint": "http://10.0.0.1/.../v1"}
-  ]
-}</code></pre>
-
-<p>With <code>--watch --output json</code>, the CLI emits newline-delimited JSON (one object per state transition) suitable for log shippers and agent loops:</p>
-<pre><code><span class="prompt">$</span> mp status qwen-0.5b-vllm --watch -o json | jq -c 'select(.status == "Ready")' | head -1
-{"name":"qwen-0.5b-vllm","status":"Ready","replicas":{"ready":1,"desired":1},...}</code></pre>
+<p>The CLI is designed for AI agents and shell scripts as first-class callers, not just humans at a terminal. The properties below are stable across the v0.1.x series.</p>
 
 <h3>Exit codes</h3>
-<p>Stable and documented. Branch on these without parsing stderr.</p>
 <table>
   <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
   <tbody>
@@ -536,15 +333,11 @@ modeldeployment.modelplane.ai "qwen-0.5b-vllm" deleted</code></pre>
   <li>Color is auto-detected; force with <code>--color always</code> or disable with <code>NO_COLOR=1</code>.</li>
 </ul>
 
-<h3>Streaming</h3>
-<p><code>mp predict --stream</code> writes tokens to stdout as they arrive, with no client-side buffering. Pipe directly into other processes:</p>
-<pre><code><span class="prompt">$</span> mp predict llama-8b -i "Summarize this PDF" --stream | tee summary.txt</code></pre>
-
 <h3>Deterministic startup</h3>
 <p>No telemetry. No version checks on startup. No auto-updates. Every invocation is a function of its arguments, environment, and cluster state &mdash; safe to run inside agents and CI without surprise network calls.</p>
 
 <h3>Self-describing</h3>
-<p><code>mp --help</code> and <code>mp &lt;command&gt; --help</code> are the canonical command reference. This documentation page is rendered from the same Click command tree, so anything <code>--help</code> shows is also documented here. If the two ever disagree, treat <code>--help</code> as authoritative and file a bug.</p>
+<p><code>mp --help</code> and <code>mp &lt;command&gt; --help</code> are the canonical command reference. This page is generated from the same Click command tree, so anything <code>--help</code> shows is also documented here.</p>
 
 <hr>
 
@@ -560,14 +353,13 @@ modeldeployment.modelplane.ai "qwen-0.5b-vllm" deleted</code></pre>
 </ol>
 
 <h3>Cluster access</h3>
-<p>The CLI uses your existing <code>kubeconfig</code> &mdash; the same config kubectl uses. If <code>kubectl get clustermodels</code> works, the CLI will work. Ask your platform team to set up cluster access if needed.</p>
+<p>The CLI uses your existing <code>kubeconfig</code> &mdash; the same config kubectl uses. If <code>kubectl get clustermodels</code> works, the CLI will work.</p>
 
 <h3>Environment variables</h3>
 <table>
   <thead><tr><th>Variable</th><th>Effect</th></tr></thead>
   <tbody>
     <tr><td><code>MP_TEAM</code></td><td>Override the team for all commands</td></tr>
-    <tr><td><code>MP_OUTPUT</code></td><td>Default output format (<code>text</code> or <code>json</code>)</td></tr>
     <tr><td><code>NO_COLOR</code></td><td>Disable colored output</td></tr>
     <tr><td><code>KUBECONFIG</code></td><td>Standard kubectl config path; honored as-is</td></tr>
   </tbody>
@@ -576,7 +368,7 @@ modeldeployment.modelplane.ai "qwen-0.5b-vllm" deleted</code></pre>
 <hr>
 
 <footer>
-  ModelPlane CLI v0.1 preview &mdash; <a href="https://github.com/modelplaneai/modelplane">github.com/modelplaneai/modelplane</a> &mdash; <a href="https://github.com/modelplaneai/modelplane/blob/main/design/cli-design.md">design proposal</a>
+  ModelPlane CLI &mdash; <a href="https://github.com/modelplaneai/modelplane">github.com/modelplaneai/modelplane</a> &mdash; <a href="https://github.com/modelplaneai/modelplane/blob/main/design/cli-design.md">design proposal</a>
 </footer>
 
 </body>
