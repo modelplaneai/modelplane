@@ -18,6 +18,8 @@
 - **Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting.
 - **Align with the best ML deployment UX in the industry.** ML engineers already know Truss, HuggingFace CLI, and Cog. The CLI should feel familiar — scaffold, edit, deploy, predict — not like a Kubernetes tool with ML branding.
 - **Support the v0.1 user journeys.** J1 (deploy first model), J3 (cross-backend comparison), and the CLI section of the v0.1 scope doc are the acceptance criteria.
+- **Agent-friendly by default.** Every data-producing command supports `--output json`. Exit codes are documented. Interactive prompts and progress animations only render on a TTY. AI agents and shell scripts are first-class users from v0.1, not a v0.2 retrofit. See Decision 9.
+- **Docs are generated, not handwritten.** The CLI's command tree is the source of truth for `docs/cli.html`. Drift between `mp --help` and the published docs is impossible by construction. See Decision 9.
 - **Build for long-term stability.** v0.1 ships the command surface ML teams will use long-term — a stability commitment, not a placeholder for a future redesign. The projection principle above is how we keep that commitment as the platform evolves.
 
 ### Non-Goals
@@ -166,6 +168,8 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 - JSON with `messages` → forwarded to `/chat/completions`
 - JSON with `input` → forwarded to `/responses`
 
+`--stream` switches to token-by-token output (server-sent events), pipeable into another process without buffering. `--output json` emits the full response as a single JSON object suitable for `jq` and agent loops.
+
 **Why:** A single command handles all model types and future-proofs against new API shapes (OpenAI Responses API, embeddings, etc.) without adding new CLI commands.
 
 ### Decision 8: `mp init` scaffolds commented CRD YAML (like `truss init`)
@@ -173,6 +177,20 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 **What:** `mp init my-model` creates `my-model/model.yaml` — the actual Model CRD with every field visible as a comment. Users edit and deploy.
 
 **Why:** One of Truss's best UX patterns. Users discover options by reading the scaffold, not by searching docs. `mp init --team` separately handles team context setup.
+
+### Decision 9: Agent-friendly by default, with auto-generated docs
+
+**What:** The CLI is designed so that AI agents and shell scripts are first-class callers, not an afterthought:
+
+1. **Structured output on demand.** Every data-producing command accepts `--output json` (alias `-o json`). The default remains human-readable; the JSON shape is documented and stable across minor versions.
+2. **Stable, documented exit codes.** `0` success; `1` generic error; `2` usage error; `3` not found; `4` backend/cluster error; `5` timeout. Agents branch on exit codes without parsing stderr.
+3. **TTY-aware interactivity.** Confirmation prompts (`mp delete`) and progress animations (`mp status --watch`) only render when stdout is a TTY. Non-TTY invocations either use a documented default or fail fast with exit `2`. The CLI never blocks on stdin in a non-interactive context.
+4. **Streaming.** `mp predict --stream` writes tokens to stdout as they arrive — pipeable, no buffering. `mp status --watch --output json` emits newline-delimited JSON, one object per state transition, suitable for log shippers and agent loops.
+5. **Deterministic startup.** No telemetry. No version checks on startup. No auto-updates. Every invocation is a function of its arguments, environment variables, and cluster state.
+
+**Why:** Agent-driven inference workflows are already common and will be the default within a year. A CLI that requires a TTY, has unstable output formats, or signals state through stderr defeats both agents and scripts. Bolting on agent support later — the kubectl/git/docker pattern — leaves a permanent asymmetry between human and agent UX. Designing for both from v0.1 keeps the surface clean and means the same `--help` output and the same exit codes serve both audiences.
+
+**Auto-generated docs (the corollary):** Because every flag, default, and exit code is part of the agent contract, the CLI's command tree (Click in Python) is the source of truth for the documentation. `docs/cli.html` is rendered from the Click command tree by a CI step, not handwritten. This is the same projection principle as Decision 3, applied one level up: one source of truth, projected outward. Drift between `mp --help`, the docs site, and any agent's understanding of the CLI is impossible by construction. The handwritten v0.1 doc snapshot exists only because the CLI implementation hasn't been written yet — by the time `mp` is publishable, its docs are generated.
 
 ---
 
@@ -186,8 +204,10 @@ mp init --team NAME                           # Set team context (one-time)
 mp deploy MODEL [deploy-flags]                # Deploy from catalog
 mp deploy -f model.yaml [deploy-flags]        # Deploy from YAML file
 mp status NAME [--watch] [--all-envs]         # Rich status, polling, per-env breakdown
-mp predict NAME -i "input" [--raw]            # Smart predict
+mp predict NAME -i "input" [--raw] [--stream] # Smart predict; --stream for token SSE
 ```
+
+All native commands accept `--output json` (alias `-o json`) for machine-readable output. See Decision 9.
 
 **`deploy-flags`** (apply to both catalog and file deploys):
 
@@ -684,6 +704,9 @@ This is the same principle Crossplane applies to cloud infrastructure: the XRD e
 | Fixed scaling (`--replicas`) | Yes | Yes | Yes |
 | Concurrency autoscaling (`--min/--max/--target`) | Yes | Yes | Yes |
 | Scale-to-zero (`--scale-to-zero` / `--min 0`) | Yes | Yes | Yes |
+| Streaming predict (`mp predict --stream`) | Yes | Yes | Yes |
+| JSON output (`--output json`) on all native commands | Yes | Yes | Yes |
+| Auto-generated docs from Click command tree | Yes | Yes | Yes |
 | Performance benchmarking (`mp bench`) | — | Yes | Yes |
 | Quality evaluation (`mp eval`) | — | — | Yes |
 | Version pinning via `revision` | Yes | Yes | Yes |
