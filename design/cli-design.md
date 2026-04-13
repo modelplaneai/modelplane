@@ -167,12 +167,19 @@ This is the meta-principle that makes the rest of the proposal hold together —
 
 ### Decision 6: Scaling as deployment intent *(P1, G2)*
 
-**What:** `ModelDeployment.spec.scaling` has two signals:
+**What:** `ModelDeployment.spec.scaling` uses Crossplane's discriminated-union pattern — a `signal:` enum names the strategy and a sibling block holds its config. The same pattern is used elsewhere in ModelPlane (e.g. `InferenceEnvironment.spec.<backend>`); seeing it once means seeing it everywhere.
 
-- **Fixed** (default): a static number of pod replicas per placement.
-- **Concurrency**: autoscale per placement based on in-flight request concurrency, with min/max replicas and a target per replica. Works across KServe and Dynamo via Envoy's `upstream_rq_active` metric, mediated by KEDA and Prometheus.
+| Signal | Implemented by | Portable? | Notes |
+|---|---|---|---|
+| `Fixed` (default) | All backends | Yes | Static pod count per placement. |
+| `Concurrency` | KServe + Dynamo | Yes | Autoscale on Envoy in-flight requests, mediated by KEDA + Prometheus. |
+| `WVA` (planned) | KServe only | No | KServe Workload Variant Autoscaler — opting in pins the deployment to a KServe environment. |
 
-The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp autoscale` verb — scaling is a property of the deployment, not a separate operation.
+**Portable vs backend-specific signals.** Some signals (Concurrency) have implementations on multiple backends; the scheduler can place a deployment using a portable signal anywhere with capacity. Other signals (WVA) are backend-specific — selecting one implicitly constrains placement to environments running that backend. Both are first-class CRD fields, but they signal different intent: *"I want autoscaling, you pick how"* vs *"I want WVA specifically, KServe only please."* This is a deliberate trade-off the user opts into; ModelPlane doesn't pretend the choice is neutral.
+
+**CLI policy.** Portable signals get CLI flags. Backend-specific signals live in YAML — accessible via `mp deploy -f model.yaml`, not via flags. The CLI doesn't hide a backend abstraction the user has explicitly chosen to engage with: if you're picking WVA, you already know what KServe is and what WVA does. Surfacing `--signal WVA --min 1 --max 5` would suggest the choice is interchangeable with `--min 1 --max 5 --target 32`, which it isn't.
+
+The CLI exposes portable scaling through `mp deploy` flags. There is no `mp scale` or `mp autoscale` verb — scaling is a property of the deployment, not a separate operation.
 
 | Flag | Maps to | Notes |
 |------|---------|-------|
@@ -182,7 +189,7 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 | `--utilization P` | `scaling.concurrency.utilization: P` | Optional. Defaults to 70 (scale at 70% of target). |
 | `--scale-down-delay S` | `scaling.concurrency.scaleDownDelay: S` | Optional. Defaults to 300s. |
 
-**Why:** The CRD models scaling as a signal enum — `Fixed` today, with room for `Utilization`, `RPS`, or custom metrics later. The CLI mirrors that intent rather than introducing a separate vocabulary. To change scaling on a running deployment, edit the YAML and re-deploy or patch the CRD directly.
+**Why:** The CRD models scaling as a signal enum — Fixed and Concurrency today, with room for `Utilization`, `RPS`, custom metrics, and backend-specific variants like `WVA` later. The CLI mirrors the portable subset. To change scaling on a running deployment, edit the YAML and re-deploy or patch the CRD directly.
 
 ### Decision 7: Smart `predict` — one command for any model type *(G1, P4)*
 
@@ -710,6 +717,7 @@ engine:
 | `mp adapters` command | High | Technique-specific CLI surface. Defer until adapter serving pattern proves durable |
 | Canary deployments | Low | Traffic management is model-architecture-agnostic |
 | `scaling` field with `signal: Fixed\|Concurrency` (v0.1) | Low | Signal-based design is engine-agnostic. New signals extend the enum without breaking existing fields. The Envoy in-flight metric works across backends, decoupling intent from engine specifics. |
+| Backend-specific signal variants (e.g. `signal: WVA`) | Medium | First-class CRD fields, but intentionally non-portable — selecting one constrains placement. Discriminated-union design contains the risk: each variant evolves independently, removing one doesn't affect the others. The CLI deliberately doesn't expose backend-specific signals as flags, so the abstraction-leak is opt-in via YAML. See Decision 6. |
 
 **The principle:** ModelPlane's CRD schema should express *intent* (I want this model quantized, I want adapters served, I want this version deployed) without encoding *mechanism* (use this specific quantization algorithm, use this specific adapter format). The composition functions and engines handle mechanism. Intent is stable; mechanism churns.
 
@@ -753,6 +761,10 @@ The principle throughout: lifecycle operations that are **properties of the mode
 5. **Scale-to-zero ergonomics:** Opting into scale-to-zero requires `--scale-to-zero --max M --target T` since the CRD requires `maxReplicas` and `target`. Should the CLI infer reasonable defaults when `--scale-to-zero` is the only scaling flag, or keep them required to mirror CRD validation? The latter is more honest; the former is more ergonomic.
 
 6. **`mp scale` convenience verb:** There is no `mp scale NAME --max 10` command — users re-run `mp deploy` or patch the YAML. Industry tools (kubectl, knative) all have a scale verb. Worth adding as a thin wrapper around `kubectl patch`, or does it muddy the "scaling is a property" model?
+
+7. **When do backend-specific fields earn first-class CRD treatment?** Decision 6 introduces a `WVA` scaling signal that pins a deployment to KServe — a deliberate non-portable variant in an otherwise portable union. As more backend-specific features accumulate (TensorRT-LLM compile cache, Dynamo router knobs, KServe-specific deployment options), what's the threshold for promoting them from `engine.args` passthrough to first-class CRD variants? Strawman: a backend-specific feature earns a first-class CRD variant when (a) it's stable across two engine major versions, (b) at least one customer asks for it, and (c) it's important enough that ML teams would otherwise be writing the engine flag by hand. Below that bar, `engine.args` is the right home.
+
+8. **CLI policy for backend-specific signals.** Decision 6 says portable signals get CLI flags and backend-specific signals stay YAML-only. Is that the right cut, or should we also expose backend-specific signals via flags (with a `--backend-pin` warning, or by namespacing them like `--kserve-wva-min N`)? The YAML-only stance keeps the CLI surface small but means anyone using WVA writes YAML.
 
 ---
 
