@@ -152,17 +152,31 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 <span class="prompt">$</span> mp init --team ml-team
 Team set to: ml-team
 
-<span class="comment"># See what models are available</span>
+<span class="comment"># See what models the platform team has registered</span>
 <span class="prompt">$</span> mp models
+NAME              READY   MODEL                          VRAM   AGE
+qwen-0.5b-vllm    True    Qwen/Qwen2.5-0.5B-Instruct     2Gi    5d
+llama-8b-vllm     True    meta-llama/Llama-3-8B          24Gi   5d
 
-<span class="comment"># Deploy one</span>
+<span class="comment"># Deploy one to a specific environment</span>
 <span class="prompt">$</span> mp deploy qwen-0.5b-vllm --env prod-gpu-east
+Deploying qwen-0.5b-vllm...
+Deployment 'qwen-0.5b-vllm' created. Run `mp status qwen-0.5b-vllm` to check progress.
 
-<span class="comment"># Wait for it</span>
+<span class="comment"># Wait for it to come up</span>
 <span class="prompt">$</span> mp status qwen-0.5b-vllm --watch
+Deployment:  qwen-0.5b-vllm
+Status:      Ready
+Replicas:    1/1
+Endpoint:    http://172.18.255.200/ml-team/qwen-0.5b-vllm/v1
 
 <span class="comment"># Test it</span>
-<span class="prompt">$</span> mp predict qwen-0.5b-vllm -i "Explain attention in transformers"</code></pre>
+<span class="prompt">$</span> mp predict qwen-0.5b-vllm -i "Explain attention in transformers"
+Attention mechanisms allow models to weigh the relevance of different
+parts of the input when producing each part of the output...</code></pre>
+
+<p>For autoscaled deployments, add scaling flags:</p>
+<pre><code><span class="prompt">$</span> mp deploy llama-8b-vllm --env prod-gpu-east --min 1 --max 6 --target 32</code></pre>
 
 <hr>
 
@@ -185,33 +199,29 @@ Team set to: ml-team
 
 <h2 id="agents-and-scripting">Agents and scripting</h2>
 
-<p>The CLI is designed for AI agents and shell scripts as first-class callers, not just humans at a terminal. The properties below are stable across the v0.1.x series.</p>
+<p>The CLI is usable from agents and shell scripts today. The properties below are what&rsquo;s in v0.1; the design proposal lays out additional affordances that land with their implementations.</p>
 
 <h3>Exit codes</h3>
 <table>
   <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
   <tbody>
     <tr><td><code>0</code></td><td>Success</td></tr>
-    <tr><td><code>1</code></td><td>Generic error (network, unexpected exception)</td></tr>
-    <tr><td><code>2</code></td><td>Usage error (bad flags, missing required argument, non-TTY without <code>-y</code>)</td></tr>
-    <tr><td><code>3</code></td><td>Resource not found (deployment, model, environment)</td></tr>
-    <tr><td><code>4</code></td><td>Backend or cluster error (CRD validation failed, kubectl error, model unhealthy)</td></tr>
-    <tr><td><code>5</code></td><td>Timeout (e.g. <code>--watch</code> exceeded its deadline)</td></tr>
+    <tr><td><code>1</code></td><td>Error (any failure today &mdash; cluster errors, missing resources, network failures)</td></tr>
+    <tr><td><code>2</code></td><td>Usage error (Click&rsquo;s default for unknown flags or missing required arguments; also returned by <code>mp deploy</code> for inconsistent scaling flag combinations)</td></tr>
   </tbody>
 </table>
 
-<h3>TTY-aware behavior</h3>
-<ul>
-  <li>Confirmation prompts (<code>mp delete</code>) only render when stdout is a TTY. Off-TTY: pass <code>-y</code> or the command exits <code>2</code>.</li>
-  <li>Progress animations (<code>mp status --watch</code>) only render on a TTY. Off-TTY: one line per state transition.</li>
-  <li>Color is auto-detected; force with <code>--color always</code> or disable with <code>NO_COLOR=1</code>.</li>
-</ul>
+<h3>Non-interactive deletes</h3>
+<p><code>mp delete</code> confirms before deleting. In contexts without a TTY on stdin (CI, agents), pass <code>-y</code> to skip the prompt &mdash; otherwise the command aborts.</p>
 
 <h3>Deterministic startup</h3>
 <p>No telemetry. No version checks on startup. No auto-updates. Every invocation is a function of its arguments, environment, and cluster state &mdash; safe to run inside agents and CI without surprise network calls.</p>
 
 <h3>Self-describing</h3>
 <p><code>mp --help</code> and <code>mp &lt;command&gt; --help</code> are the canonical command reference. This page is generated from the same Click command tree, so anything <code>--help</code> shows is also documented here.</p>
+
+<h3>Coming soon</h3>
+<p>Per the <a href="https://github.com/modelplaneai/modelplane/blob/main/design/cli-design.md">design proposal</a>, the v0.1 target also includes <code>--output json</code> on every native command, <code>mp predict --stream</code>, finer-grained exit codes (3 not-found, 4 backend, 5 timeout), and newline-delimited JSON for <code>mp status --watch --output json</code>. These will appear here automatically once they land in the Click tree.</p>
 
 <hr>
 
@@ -234,7 +244,7 @@ Team set to: ml-team
   <thead><tr><th>Variable</th><th>Effect</th></tr></thead>
   <tbody>
     <tr><td><code>MP_TEAM</code></td><td>Override the team for all commands</td></tr>
-    <tr><td><code>NO_COLOR</code></td><td>Disable colored output</td></tr>
+    <tr><td><code>MP_CONFIG_DIR</code></td><td>Override the config directory (default <code>~/.config/modelplane</code>)</td></tr>
     <tr><td><code>KUBECONFIG</code></td><td>Standard kubectl config path; honored as-is</td></tr>
   </tbody>
 </table>
@@ -242,7 +252,7 @@ Team set to: ml-team
 <hr>
 
 <footer>
-  ModelPlane CLI &mdash; <a href="https://github.com/modelplaneai/modelplane">github.com/modelplaneai/modelplane</a> &mdash; <a href="https://github.com/modelplaneai/modelplane/blob/main/design/cli-design.md">design proposal</a>
+  ModelPlane CLI v{version} &mdash; <a href="https://github.com/modelplaneai/modelplane">github.com/modelplaneai/modelplane</a> &mdash; <a href="https://github.com/modelplaneai/modelplane/blob/main/design/cli-design.md">design proposal</a>
 </footer>
 
 </body>
@@ -453,7 +463,7 @@ def _ordered(commands: dict[str, CommandDoc]) -> Iterable[CommandDoc]:
             yield cmd
 
 
-def render(cli: click.Group) -> str:
+def render(cli: click.Group, version: str) -> str:
     commands = {name: _command_to_doc(cli.commands[name]) for name in cli.commands}
     ordered = list(_ordered(commands))
 
@@ -484,14 +494,16 @@ def render(cli: click.Group) -> str:
         toc_links=toc_links,
         commands_table=commands_table,
         command_sections=command_sections,
+        version=version,
     )
 
 
 def main() -> int:
     sys.path.insert(0, str(CLI_SRC))
+    import mp  # noqa: E402
     from mp.main import cli  # noqa: E402
 
-    html_out = render(cli)
+    html_out = render(cli, version=mp.__version__)
     OUTPUT.write_text(html_out)
     print(f"Wrote {OUTPUT.relative_to(REPO_ROOT)} ({len(html_out):,} bytes)")
     return 0
