@@ -71,7 +71,7 @@ The CLI focuses on these four capabilities and delegates everything else to kube
 
 **Why:** We evaluated the config-file patterns used by Truss, Cog, BentoML, and Modal. These tools invented custom formats because they have no backing Kubernetes CRD — the config file *is* their schema. ModelPlane already has a well-defined schema: the `Model` CRD.
 
-Introducing a second format would mean a translation layer to maintain, two schemas to document, and drift when CRD fields are added (Dynamo, NIM, serving profiles). The Model CRD YAML is already ~12 lines for the common case. The CLI adds value through *workflow* (scaffold → edit → deploy), not format translation.
+Introducing a second format would mean a translation layer to maintain, two schemas to document, and drift when CRD fields are added (new backends, NIM, serving profiles). The Model CRD YAML is around 15 lines for the common case. The CLI adds value through *workflow* (scaffold → edit → deploy), not format translation.
 
 **The actual YAML:**
 
@@ -86,9 +86,14 @@ spec:
   source: HuggingFace
   huggingFace:
     repo: meta-llama/Meta-Llama-3-8B-Instruct
-  engine: vLLM
   resources:
     vram: 24Gi
+  serving:
+  - name: vllm-kserve
+    backend: KServe
+    engine:
+      name: vLLM
+      image: vllm/vllm-openai:latest
 ```
 
 **Industry references:**
@@ -97,7 +102,25 @@ spec:
 - BentoML bentofile.yaml: https://docs.bentoml.com/en/latest/reference/bentoml/bento-build-options.html
 - Modal decorators: https://modal.com/docs/guide/gpu
 
-### Decision 3: Two deployment paths — catalog and file
+### Decision 3: The CLI is a projection of the CRD, not a parallel API
+
+**What:** Every CLI flag is a deterministic write to a known CRD field. The CLI surfaces a curated subset of CRD fields as flags; everything else is reachable via `mp deploy -f model.yaml`. There is no CLI-only configuration, no validation logic the CRD doesn't enforce, and no command that writes anything outside the documented CRD schema.
+
+**Why:** ModelPlane CRDs evolve as backends, engines, scaling signals, and source types are added. If the CLI maintains a parallel data model — flag combinations that translate via Python logic into CRD writes — that translation drifts every time the CRD changes. Users see flags that silently no-op, validation errors that don't match `kubectl apply`, and behavior that diverges from the YAML they read in docs. Treating the CLI as a *projection* of the CRD avoids this entire class of drift and is what makes "Build for long-term stability" achievable while the CRD is still moving.
+
+**Practical implications:**
+
+1. **Flags are curated, not generated.** Auto-generating a flag per CRD path would surface every nested field as `--scaling.concurrency.maxReplicas`, which is unusable. The CLI selects flags for fields ML engineers commonly set inline (`--env`, `--min`, `--max`, `--target`). New CRD fields default to YAML-only; promoting a field to a flag is a separate decision driven by observed usage, not automation.
+
+2. **CRD validation is the only validation.** The CLI does a server-side dry-run before submitting a real apply. Whatever error the OpenAPI schema or admission webhook returns is what the user sees. The CLI does not duplicate `required:`, enums, or value bounds in Python — those would drift the moment the CRD changes.
+
+3. **Flag stability survives CRD churn.** When a CRD field is renamed, the flag → field mapping updates silently and the user-facing flag name stays the same. When a CRD field is removed, the corresponding flag is deprecated for one release before removal. Within those rules, the platform team can evolve the CRD freely without breaking the CLI's command surface.
+
+4. **Drift is caught in CI, not by users.** A small set of golden YAMLs — one per representative deploy shape (catalog, file, autoscaled, scale-to-zero, multi-env) — lives alongside the CLI tests. Each CI run renders the CLI's CRD output for each shape and dry-runs it against the live CRD schema. If a CRD change removes or renames a field a flag depends on, CI fails before any user does.
+
+**What this rules out:** A CLI-side config schema. A "smart" CLI that pre-validates against a hardcoded schema. Magic flag combinations that map to multi-field CRD writes beyond a documented one-to-one or simple typed shorthand (e.g. `--scale-to-zero` → `minReplicas: 0`).
+
+### Decision 4: Two deployment paths — catalog and file
 
 **What:** ML teams deploy in two ways:
 
@@ -106,7 +129,7 @@ spec:
 
 **Why:** The catalog path is the 80% case — platform teams curate approved models, ML teams pick one. The file path is the escape hatch for fine-tuned models or experimental configs. Most users should never need a file.
 
-### Decision 4: Targeting and fan-out
+### Decision 5: Targeting and fan-out
 
 **What:** Two orthogonal flags on `mp deploy`:
 - `--env prod-gpu-east` targets a specific InferenceEnvironment by name (sets `environmentSelector.matchLabels`).
@@ -114,7 +137,7 @@ spec:
 
 **Why:** The v0.1 user journeys require both — J1 deploys to a specific environment, J3 deploys across backends for comparison.
 
-### Decision 5: Scaling as deployment intent
+### Decision 6: Scaling as deployment intent
 
 **What:** `ModelDeployment.spec.scaling` has two signals:
 
@@ -133,7 +156,7 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 
 **Why:** The CRD models scaling as a signal enum — `Fixed` today, with room for `Utilization`, `RPS`, or custom metrics later. The CLI mirrors that intent rather than introducing a separate vocabulary. To change scaling on a running deployment, edit the YAML and re-deploy or patch the CRD directly.
 
-### Decision 6: Smart `predict` — one command for any model type
+### Decision 7: Smart `predict` — one command for any model type
 
 **What:** `mp predict <name> -i "input"` auto-detects the input format and routes to the correct endpoint:
 - Plain text → wrapped as chat completion
@@ -142,7 +165,7 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 
 **Why:** A single command handles all model types and future-proofs against new API shapes (OpenAI Responses API, embeddings, etc.) without adding new CLI commands.
 
-### Decision 7: `mp init` scaffolds commented CRD YAML (like `truss init`)
+### Decision 8: `mp init` scaffolds commented CRD YAML (like `truss init`)
 
 **What:** `mp init my-model` creates `my-model/model.yaml` — the actual Model CRD with every field visible as a comment. Users edit and deploy.
 
@@ -200,9 +223,9 @@ $ mp init --team ml-team
 Team set to: ml-team
 
 $ mp models
-NAME              READY   MODEL                          ENGINE   VRAM   AGE
-qwen-0.5b-vllm   True    Qwen/Qwen2.5-0.5B-Instruct    vLLM     2Gi    5d
-llama-8b-vllm     True    meta-llama/Llama-3-8B          vLLM     24Gi   5d
+NAME              READY   MODEL                          VRAM   AGE
+qwen-0.5b-vllm    True    Qwen/Qwen2.5-0.5B-Instruct     2Gi    5d
+llama-8b-vllm     True    meta-llama/Llama-3-8B          24Gi   5d
 
 $ mp deploy qwen-0.5b-vllm --env prod-gpu-east
 Deploying qwen-0.5b-vllm...
@@ -243,7 +266,7 @@ $ mp status llama3-8b --all-envs
 Deployment:  llama3-8b
 Model:       meta-llama/Meta-Llama-3-8B-Instruct
 Status:      Ready
-Replicas:    2/2
+Placements:  2/2
 
   ENV                  STATUS   ENDPOINT
   prod-gpu-east        Ready    http://10.0.0.1/.../v1
