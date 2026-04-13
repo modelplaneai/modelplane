@@ -14,10 +14,11 @@
 
 - **ML-first UX for the 80% case.** An ML engineer should be able to deploy a catalog model and test it in under 60 seconds, without writing YAML or knowing what a namespace is. The CLI is their primary interface to ModelPlane.
 - **No new abstractions to learn.** When configuration is needed beyond the happy path, the CLI uses the same Model CRD YAML that the platform team already knows — not a custom format that drifts out of sync.
+- **The CLI is a projection of the CRD, not a parallel API.** Every flag is a deterministic write to a known CRD field; everything outside that curated set is reachable via `mp deploy -f`. CRD validation is the only validation. This is the mechanism that lets the CLI promise long-term stability while the CRDs underneath are still evolving — see Decision 3 for the practical rules.
 - **Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting.
 - **Align with the best ML deployment UX in the industry.** ML engineers already know Truss, HuggingFace CLI, and Cog. The CLI should feel familiar — scaffold, edit, deploy, predict — not like a Kubernetes tool with ML branding.
 - **Support the v0.1 user journeys.** J1 (deploy first model), J3 (cross-backend comparison), and the CLI section of the v0.1 scope doc are the acceptance criteria.
-- **Build for long-term stability.** v0.1 ships the command surface that ML teams will use long-term. Commands and flags introduced here should not need breaking changes as ModelPlane adds backends, providers, and features.
+- **Build for long-term stability.** v0.1 ships the command surface ML teams will use long-term — a stability commitment, not a placeholder for a future redesign. The projection principle above is how we keep that commitment as the platform evolves.
 
 ### Non-Goals
 
@@ -104,11 +105,13 @@ spec:
 
 ### Decision 3: The CLI is a projection of the CRD, not a parallel API
 
+This is the meta-principle that makes the rest of the proposal hold together — the Goal of the same name promises CLI stability while the CRDs evolve, and this Decision is how that promise is kept.
+
 **What:** Every CLI flag is a deterministic write to a known CRD field. The CLI surfaces a curated subset of CRD fields as flags; everything else is reachable via `mp deploy -f model.yaml`. There is no CLI-only configuration, no validation logic the CRD doesn't enforce, and no command that writes anything outside the documented CRD schema.
 
-**Why:** ModelPlane CRDs evolve as backends, engines, scaling signals, and source types are added. If the CLI maintains a parallel data model — flag combinations that translate via Python logic into CRD writes — that translation drifts every time the CRD changes. Users see flags that silently no-op, validation errors that don't match `kubectl apply`, and behavior that diverges from the YAML they read in docs. Treating the CLI as a *projection* of the CRD avoids this entire class of drift and is what makes "Build for long-term stability" achievable while the CRD is still moving.
+**Why:** ModelPlane CRDs evolve as backends, engines, scaling signals, and source types are added. If the CLI maintains a parallel data model — flag combinations that translate via Python logic into CRD writes — that translation drifts every time the CRD changes. Users see flags that silently no-op, validation errors that don't match `kubectl apply`, and behavior that diverges from the YAML they read in docs. Projection avoids this entire class of drift.
 
-**Practical implications:**
+**Practical rules:**
 
 1. **Flags are curated, not generated.** Auto-generating a flag per CRD path would surface every nested field as `--scaling.concurrency.maxReplicas`, which is unusable. The CLI selects flags for fields ML engineers commonly set inline (`--env`, `--min`, `--max`, `--target`). New CRD fields default to YAML-only; promoting a field to a flag is a separate decision driven by observed usage, not automation.
 
