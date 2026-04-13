@@ -10,28 +10,49 @@
 
 ---
 
-## 1. Goals
+## 1. Principles
 
-- **ML-first UX for the 80% case.** An ML engineer should be able to deploy a catalog model and test it in under 60 seconds, without writing YAML or knowing what a namespace is. The CLI is their primary interface to ModelPlane.
-- **No new abstractions to learn.** When configuration is needed beyond the happy path, the CLI uses the same Model CRD YAML that the platform team already knows — not a custom format that drifts out of sync.
-- **The CLI is a projection of the CRD, not a parallel API.** Every flag is a deterministic write to a known CRD field; everything outside that curated set is reachable via `mp deploy -f`. CRD validation is the only validation. This is the mechanism that lets the CLI promise long-term stability while the CRDs underneath are still evolving — see Decision 3 for the practical rules.
-- **Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting.
-- **Align with the best ML deployment UX in the industry.** ML engineers already know Truss, HuggingFace CLI, and Cog. The CLI should feel familiar — scaffold, edit, deploy, predict — not like a Kubernetes tool with ML branding.
-- **Support the v0.1 user journeys.** J1 (deploy first model), J3 (cross-backend comparison), and the CLI section of the v0.1 scope doc are the acceptance criteria.
-- **Agent-friendly by default.** Every data-producing command supports `--output json`. Exit codes are documented. Interactive prompts and progress animations only render on a TTY. AI agents and shell scripts are first-class users from v0.1, not a v0.2 retrofit. See Decision 9.
-- **Docs are generated, not handwritten.** The CLI's command tree is the source of truth for `docs/cli.html`. Drift between `mp --help` and the published docs is impossible by construction. See Decision 9.
-- **Build for long-term stability.** v0.1 ships the command surface ML teams will use long-term — a stability commitment, not a placeholder for a future redesign. The projection principle above is how we keep that commitment as the platform evolves.
+The load-bearing rules. Every Decision in §5 cites the Principles it implements.
 
-### Non-Goals
+**P1. The CLI is a projection of the CRD, not a parallel API.** Every flag is a deterministic write to a known CRD field; everything outside the curated flag set is reachable via `mp deploy -f`. CRD validation is the only validation. This is the mechanism that lets the CLI promise long-term stability while the CRDs underneath are still evolving. *(See Decision 3.)*
 
-- **Replace kubectl for platform teams.** Infra engineers are comfortable with kubectl and GitOps. The CLI is not their primary tool.
-- **Full lifecycle management.** Observability dashboards, rollout strategies (canary, blue/green), and fleet-wide operations are out of scope for v0.1. The CLI covers deploy (including scaling intent), check, and test.
-- **Custom model packaging.** Unlike Truss or Cog, the CLI does not build containers or package model code. ModelPlane delegates model pulling to backends (KServe, Dynamo). The CLI deploys — it doesn't build.
-- **Multi-cluster orchestration from the CLI.** Placement across environments is handled by the ModelPlane control plane. The CLI submits intent; the scheduler does the rest.
+**P2. No new abstractions to learn.** Configuration uses the same Model CRD YAML the platform team already knows. No custom config format, no translation layer, no second schema to document. *(See Decision 2.)*
+
+**P3. Don't reimplement kubectl.** For listing, inspecting, and deleting resources, delegate to kubectl transparently. Own only the workflow gaps that kubectl can't fill: zero-config deploy, endpoint discovery, request formatting, log tailing scoped to a deployment. *(See Decision 1.)*
+
+**P4. Agent-friendly by default.** AI agents and shell scripts are first-class callers from v0.1. Every data-producing command supports `--output json`, exit codes are documented, and prompts are TTY-gated. *(See Decision 9.)*
+
+**P5. Docs are generated, not handwritten.** The CLI's Click command tree is the source of truth for `docs/cli.html`. Drift between `mp --help`, the published docs, and any agent's understanding of the CLI is impossible by construction. *(See Decision 9.)*
 
 ---
 
-## 2. Problem Statement
+## 2. Goals
+
+The outcomes we want. The Principles in §1 are how we get them.
+
+**G1. ML-first UX for the 80% case.** An ML engineer can deploy a catalog model and test it in under 60 seconds, without writing YAML or knowing what a namespace is.
+
+**G2. Long-term stability.** v0.1 ships the command surface ML teams will use long-term — a stability commitment, not a placeholder for a future redesign. P1 (projection) and P5 (generated docs) are how we keep that commitment as the platform evolves.
+
+**G3. Industry-aligned UX.** ML engineers know Truss, HuggingFace CLI, and Cog. The CLI feels familiar — scaffold, edit, deploy, predict — not like a Kubernetes tool with ML branding.
+
+**G4. v0.1 user journey support.** J1 (deploy first model) and J3 (cross-backend comparison) from the v0.1 scope doc are the acceptance criteria.
+
+---
+
+## 3. Non-Goals
+
+**NG1. Replace kubectl for platform teams.** Infra engineers are comfortable with kubectl and GitOps. The CLI is not their primary tool.
+
+**NG2. Full lifecycle management.** Observability dashboards, rollout strategies (canary, blue/green), and fleet-wide operations are out of scope for v0.1. The CLI covers deploy (including scaling intent), check, and test.
+
+**NG3. Custom model packaging.** Unlike Truss or Cog, the CLI does not build containers or package model code. ModelPlane delegates model pulling to backends (KServe, Dynamo). The CLI deploys — it doesn't build.
+
+**NG4. Multi-cluster orchestration from the CLI.** Placement across environments is handled by the ModelPlane control plane. The CLI submits intent; the scheduler does the rest.
+
+---
+
+## 4. Problem Statement
 
 The v0.1 release doc identifies a clear gap: *"ML engineers are allergic to kubectl — even a thin wrapper adds meaningful value."* Today, deploying a model on ModelPlane requires writing Kubernetes YAML and using `kubectl apply`. This is a non-starter for ML teams who think in terms of models, not manifests.
 
@@ -46,9 +67,11 @@ The CLI focuses on these four capabilities and delegates everything else to kube
 
 ---
 
-## 3. Design Decisions
+## 5. Design Decisions
 
-### Decision 1: Own the workflow, delegate the CRUD
+Each Decision header lists the Principles (P) and Goals (G) it implements.
+
+### Decision 1: Own the workflow, delegate the CRUD *(P3)*
 
 **What:** The CLI implements four capabilities that kubectl cannot provide. For listing, inspecting, and deleting resources, it delegates directly to kubectl — transparently, with the exact command shown in `--help`.
 
@@ -68,7 +91,7 @@ The CLI focuses on these four capabilities and delegates everything else to kube
 
 **What this means in practice:** The delegating commands are thin shells around `subprocess`. Real logic lives in `deploy.py`, `predict.py`, `status.py`, and `init.py`.
 
-### Decision 2: No custom config format — use CRD YAML directly
+### Decision 2: No custom config format — use CRD YAML directly *(P2)*
 
 **What:** When ML teams define a custom model, they write a standard `Model` CRD YAML. The CLI scaffolds a well-commented template via `mp init`, and deploys it via `mp deploy -f`. There is no intermediate config format.
 
@@ -105,7 +128,7 @@ spec:
 - BentoML bentofile.yaml: https://docs.bentoml.com/en/latest/reference/bentoml/bento-build-options.html
 - Modal decorators: https://modal.com/docs/guide/gpu
 
-### Decision 3: The CLI is a projection of the CRD, not a parallel API
+### Decision 3: The CLI is a projection of the CRD, not a parallel API *(P1, G2)*
 
 This is the meta-principle that makes the rest of the proposal hold together — the Goal of the same name promises CLI stability while the CRDs evolve, and this Decision is how that promise is kept.
 
@@ -125,7 +148,7 @@ This is the meta-principle that makes the rest of the proposal hold together —
 
 **What this rules out:** A CLI-side config schema. A "smart" CLI that pre-validates against a hardcoded schema. Magic flag combinations that map to multi-field CRD writes beyond a documented one-to-one or simple typed shorthand (e.g. `--scale-to-zero` → `minReplicas: 0`).
 
-### Decision 4: Two deployment paths — catalog and file
+### Decision 4: Two deployment paths — catalog and file *(G1, G4)*
 
 **What:** ML teams deploy in two ways:
 
@@ -134,7 +157,7 @@ This is the meta-principle that makes the rest of the proposal hold together —
 
 **Why:** The catalog path is the 80% case — platform teams curate approved models, ML teams pick one. The file path is the escape hatch for fine-tuned models or experimental configs. Most users should never need a file.
 
-### Decision 5: Targeting and fan-out
+### Decision 5: Targeting and fan-out *(G4)*
 
 **What:** Two orthogonal flags on `mp deploy`:
 - `--env prod-gpu-east` targets a specific InferenceEnvironment by name (sets `environmentSelector.matchLabels`).
@@ -142,7 +165,7 @@ This is the meta-principle that makes the rest of the proposal hold together —
 
 **Why:** The v0.1 user journeys require both — J1 deploys to a specific environment, J3 deploys across backends for comparison.
 
-### Decision 6: Scaling as deployment intent
+### Decision 6: Scaling as deployment intent *(P1, G2)*
 
 **What:** `ModelDeployment.spec.scaling` has two signals:
 
@@ -161,7 +184,7 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 
 **Why:** The CRD models scaling as a signal enum — `Fixed` today, with room for `Utilization`, `RPS`, or custom metrics later. The CLI mirrors that intent rather than introducing a separate vocabulary. To change scaling on a running deployment, edit the YAML and re-deploy or patch the CRD directly.
 
-### Decision 7: Smart `predict` — one command for any model type
+### Decision 7: Smart `predict` — one command for any model type *(G1, P4)*
 
 **What:** `mp predict <name> -i "input"` auto-detects the input format and routes to the correct endpoint:
 - Plain text → wrapped as chat completion
@@ -172,13 +195,13 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 
 **Why:** A single command handles all model types and future-proofs against new API shapes (OpenAI Responses API, embeddings, etc.) without adding new CLI commands.
 
-### Decision 8: `mp init` scaffolds commented CRD YAML (like `truss init`)
+### Decision 8: `mp init` scaffolds commented CRD YAML (like `truss init`) *(P2, G3)*
 
 **What:** `mp init my-model` creates `my-model/model.yaml` — the actual Model CRD with every field visible as a comment. Users edit and deploy.
 
 **Why:** One of Truss's best UX patterns. Users discover options by reading the scaffold, not by searching docs. `mp init --team` separately handles team context setup.
 
-### Decision 9: Agent-friendly by default, with auto-generated docs
+### Decision 9: Agent-friendly by default, with auto-generated docs *(P4, P5)*
 
 **What:** The CLI is designed so that AI agents and shell scripts are first-class callers, not an afterthought:
 
@@ -194,7 +217,7 @@ The CLI exposes scaling through `mp deploy` flags. There is no `mp scale` or `mp
 
 ---
 
-## 4. Command Reference
+## 6. Command Reference
 
 ### Commands with real value (native implementation)
 
@@ -237,7 +260,7 @@ These exist so ML engineers have a single CLI to reach for. Each one shows the k
 
 ---
 
-## 5. Workflows
+## 7. Workflows
 
 ### A. Deploy from Catalog (ML Engineer — the 80% case)
 
@@ -328,13 +351,13 @@ Hello! How can I help you today?
 
 ---
 
-## 6. Model Lifecycle Operations — Future Direction
+## 8. Model Lifecycle Operations — Future Direction
 
 v0.1 covers deploy, check, and test. But the ML workflow doesn't end at deployment — teams quantize models to fit smaller GPUs, fine-tune base models on domain data, swap LoRA adapters per use case, benchmark latency against SLAs, and promote models through staging gates. This section proposes how the CLI extends to cover these operations without violating the core design principles: no new abstractions, CRD YAML as the config format, and own the workflow while delegating the CRUD.
 
 The guiding principle: **ModelPlane is a control plane, not a build system.** Quantization, fine-tuning, and optimization produce artifacts (model weights, adapters, engine configs). ModelPlane deploys and manages those artifacts — it doesn't run the training jobs or compilation pipelines. The CLI makes it easy to declare what you want; the backends and engines do the work.
 
-### 6.1 Quantization
+### 8.1 Quantization
 
 **The landscape:** Quantization reduces model precision to lower VRAM requirements and improve throughput. The ecosystem has converged on two patterns: (a) pre-quantized model checkpoints downloaded from HuggingFace (GPTQ, AWQ, GGUF formats), and (b) serving-time quantization flags where the engine quantizes on load (vLLM's `--quantization fp8`, TensorRT-LLM's FP8 pipeline). Baseten's Engine Builder is the most polished platform integration — users set `quantization_type: fp8` in config YAML and the platform handles everything.
 
@@ -409,7 +432,7 @@ $ mp deploy -f llama3-fp8.yaml --env prod-gpu-east
 
 **Why no `mp quantize` command:** ModelPlane doesn't build containers or package model code (Design Decision, Non-Goals). Quantization follows the same principle. Offline quantization tools (llm-compressor, AutoGPTQ, llama.cpp) produce checkpoints that get uploaded to HuggingFace or object storage. Serving-time quantization is an engine flag. The CLI's job is to make both paths easy to declare, not to run the quantization itself.
 
-### 6.2 Fine-Tuning
+### 8.2 Fine-Tuning
 
 **The landscape:** Every major platform follows the same workflow: upload dataset → configure training → train → deploy result. The tools split into CLI-driven (Together AI's `together fine-tuning create`, Fireworks' `firectl sftj create`) and YAML-config-driven (Axolotl, LlamaFactory). LoRA (Low-Rank Adaptation) dominates: adapters are 50-100MB vs. 14GB+ for full fine-tuned weights, train in hours instead of days, and can be hot-swapped at inference time.
 
@@ -455,7 +478,7 @@ $ mp deploy -f my-medical-model/model.yaml --env prod-gpu-east
 
 **Future integration consideration:** If design partners consistently request a tighter train→deploy loop, the CLI could support a `--from-training-job` flag that polls a training job (via MLflow, W&B, or a Kubernetes Job) and automatically creates a Model CRD when it completes. This is orchestration glue, not a training engine.
 
-### 6.3 LoRA Adapter Management
+### 8.3 LoRA Adapter Management
 
 **The landscape:** LoRA adapter serving is becoming a first-class capability in inference engines. vLLM supports multi-LoRA natively (`--enable-lora --lora-modules name=path`), with dynamic loading via REST API and per-request adapter selection via the `model` field in the OpenAI-compatible API. TensorRT-LLM uses a two-level LoRA cache with per-request `task_id` routing. llm-d (CNCF Sandbox) adds cache-aware adapter routing at the gateway level. The pattern is clear: one base model serves many adapters, selected per-request.
 
@@ -463,7 +486,7 @@ $ mp deploy -f my-medical-model/model.yaml --env prod-gpu-east
 
 **CRD extension — `spec.serving[].adapters` (post-v0.1):**
 
-The field is intentionally named `adapters`, not `lora` — LoRA is the dominant adapter technique today, but the CRD should express intent (serve multiple adapted variants of this base model) without encoding mechanism (use LoRA specifically). See Section 6.6 on ecosystem velocity risk.
+The field is intentionally named `adapters`, not `lora` — LoRA is the dominant adapter technique today, but the CRD should express intent (serve multiple adapted variants of this base model) without encoding mechanism (use LoRA specifically). See Section 8.6 on ecosystem velocity risk.
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -534,7 +557,7 @@ Adapter 'french-translation' removed.
 
 Under the hood, this patches the Model CRD's `adapters.modules` array and the control plane reconciles. The CRD remains the source of truth — the CLI command is a convenience wrapper around `kubectl patch`.
 
-### 6.4 Model Evaluation and Benchmarking
+### 8.4 Model Evaluation and Benchmarking
 
 **The landscape:** Two distinct evaluation dimensions: *quality* (does the model give correct answers?) and *performance* (does it meet latency and throughput SLAs?). For quality, EleutherAI's lm-evaluation-harness is the standard — 60+ academic benchmarks, used by the HuggingFace Open LLM Leaderboard. For performance, vLLM's benchmarking CLI measures TTFT (Time to First Token), TPOT (Time Per Output Token), ITL (Inter-Token Latency), and throughput at configurable request rates.
 
@@ -583,7 +606,7 @@ Running: lm_eval --model local-completions \
 | Throughput | Output tokens/second | Capacity planning |
 | Error rate | Failed requests / total | Reliability |
 
-### 6.5 Model Versioning and Promotion
+### 8.5 Model Versioning and Promotion
 
 **The landscape:** Two competing models exist: stage-based (MLflow's None → Staging → Production → Archived) and version-based (HuggingFace Hub's git tags and revisions). MLflow's model is more opinionated, fitting teams with formal release processes. HuggingFace's model is simpler — just git semantics. For Kubernetes-native platforms, versioning maps naturally to CRD annotations and labels.
 
@@ -650,7 +673,7 @@ Run `mp bench llama3-medical --canary` to compare versions.
 
 This composites naturally with `mp bench --all-envs` for data-driven promotion decisions.
 
-### 6.6 Risk: Ecosystem Velocity and Technique Churn
+### 8.6 Risk: Ecosystem Velocity and Technique Churn
 
 **The risk is real.** The ML inference ecosystem moves faster than any CRD schema process can. In the last 18 months: FP8 quantization went from experimental to default, LoRA went from a research paper to a production multi-tenant serving primitive, speculative decoding became a standard latency optimization, and entirely new serving architectures (disaggregated prefill/decode, KV cache–aware routing) emerged. The techniques enumerated in this section — FP8, AWQ, GPTQ, LoRA, the specific lm-evaluation-harness benchmarks — are a snapshot of mid-2026. Some will be table stakes in a year. Others may be superseded by techniques that don't exist yet (MX4 quantization, new adapter architectures beyond LoRA, reasoning-model-specific serving patterns).
 
@@ -692,7 +715,7 @@ engine:
 
 This is the same principle Crossplane applies to cloud infrastructure: the XRD expresses "I want a database with 100GB storage" — not "create an RDS instance with gp3 EBS volumes." When AWS ships a new storage type, the Composition updates; the XRD doesn't change.
 
-### 6.7 Summary — What Ships When
+### 8.7 Summary — What Ships When
 
 | Capability | v0.1 | v0.2 | v0.3+ |
 |-----------|------|------|-------|
@@ -717,7 +740,7 @@ The principle throughout: lifecycle operations that are **properties of the mode
 
 ---
 
-## 7. Open Questions for Team Discussion
+## 9. Open Questions for Team Discussion
 
 1. **Command naming:** The v0.1 doc uses `modelplane model deploy` (noun-verb). This proposal uses `mp deploy` (flat verbs). Flat is faster to type and more Truss-like. Hierarchical is more discoverable. Preference?
 
