@@ -134,6 +134,24 @@ export interface ClusterModel {
   };
 }
 
+export interface ScalingFixed {
+  replicas: number;
+}
+
+export interface ScalingConcurrency {
+  maxReplicas: number;
+  target: number;
+  minReplicas?: number;
+  utilization?: number;
+  scaleDownDelay?: number;
+}
+
+export interface Scaling {
+  signal: "Fixed" | "Concurrency";
+  fixed?: ScalingFixed;
+  concurrency?: ScalingConcurrency;
+}
+
 export interface ModelDeployment {
   apiVersion: "modelplane.ai/v1alpha1";
   kind: "ModelDeployment";
@@ -142,6 +160,7 @@ export interface ModelDeployment {
     modelRef: { kind: string; name: string };
     environments: number;
     environmentSelector?: { matchLabels?: Record<string, string> };
+    scaling?: Scaling;
   };
   status?: {
     conditions?: Condition[];
@@ -177,6 +196,7 @@ export interface ModelPlacement {
   spec: {
     modelRef: { kind: string; name: string };
     inferenceEnvironmentRef: { name: string };
+    scaling?: Scaling;
   };
   status?: {
     conditions?: Condition[];

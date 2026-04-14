@@ -16,7 +16,20 @@ import { ChatWidget } from "../../components/ChatWidget";
 import { Labels } from "../../components/Labels";
 import { ConditionList } from "../../components/ConditionList";
 import { EventTimeline } from "../../components/EventTimeline";
-import type { ModelPlacement } from "../../api/types";
+import type { ModelPlacement, Scaling } from "../../api/types";
+
+function scalingSummary(scaling?: Scaling): string | null {
+  if (!scaling) return null;
+  if (scaling.signal === "Fixed" && scaling.fixed) {
+    return `${scaling.fixed.replicas} replica${scaling.fixed.replicas !== 1 ? "s" : ""}`;
+  }
+  if (scaling.signal === "Concurrency" && scaling.concurrency) {
+    const c = scaling.concurrency;
+    const min = c.minReplicas ?? 1;
+    return `${min}–${c.maxReplicas} replicas, target ${c.target} rq/replica`;
+  }
+  return null;
+}
 
 export function DeploymentDetail() {
   const { ns, name } = useParams<{ ns: string; name: string }>();
@@ -104,6 +117,16 @@ export function DeploymentDetail() {
             <span>&middot;</span>
             <span>{age}</span>
           </div>
+          {scalingSummary(deployment.spec.scaling) && (
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant={deployment.spec.scaling?.signal === "Concurrency" ? "purple" : "neutral"}>
+                {deployment.spec.scaling?.signal === "Concurrency" ? "Autoscaling" : "Fixed"}
+              </Badge>
+              <span className="text-sm text-muted">
+                {scalingSummary(deployment.spec.scaling)}
+              </span>
+            </div>
+          )}
           <Labels labels={deployment.metadata.labels} className="mt-2" />
         </div>
         <Button variant="ghost" onClick={handleDelete} disabled={deleting} className="text-red hover:text-red">
@@ -234,6 +257,16 @@ function PlacementCard({ placement }: { placement: ModelPlacement }) {
             {gpuCount !== undefined && (
               <Badge variant="neutral">
                 {gpuCount} GPU{gpuCount !== 1 ? "s" : ""}
+              </Badge>
+            )}
+            {placement.spec.scaling && (
+              <Badge variant={placement.spec.scaling.signal === "Concurrency" ? "purple" : "neutral"}>
+                {placement.spec.scaling.signal === "Concurrency" && placement.spec.scaling.concurrency
+                  ? `${placement.spec.scaling.concurrency.minReplicas ?? 1}–${placement.spec.scaling.concurrency.maxReplicas}`
+                  : placement.spec.scaling.fixed
+                    ? `${placement.spec.scaling.fixed.replicas}`
+                    : "1"}{" "}
+                replica{(placement.spec.scaling.fixed?.replicas ?? 2) !== 1 ? "s" : ""}
               </Badge>
             )}
           </div>
