@@ -12,7 +12,7 @@ import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { Labels, filterLabels } from "../../components/Labels";
-import type { ClusterModel, InferenceEnvironment } from "../../api/types";
+import type { ClusterModel, InferenceEnvironment, Scaling } from "../../api/types";
 
 // Collect all unique filtered label key=value pairs from a list of resources.
 function collectLabels(resources: Array<{ metadata: { labels?: Record<string, string> } }>): Map<string, Set<string>> {
@@ -51,6 +51,13 @@ export function DeployPage() {
   const [modelLabelFilter, setModelLabelFilter] = useState<Record<string, string>>({});
   const [envLabelFilter, setEnvLabelFilter] = useState<Record<string, string>>({});
   const [envCount, setEnvCount] = useState("1");
+  const [scalingSignal, setScalingSignal] = useState<"Fixed" | "Concurrency">("Fixed");
+  const [fixedReplicas, setFixedReplicas] = useState("1");
+  const [concMaxReplicas, setConcMaxReplicas] = useState("");
+  const [concTarget, setConcTarget] = useState("");
+  const [concMinReplicas, setConcMinReplicas] = useState("");
+  const [concUtilization, setConcUtilization] = useState("");
+  const [concScaleDownDelay, setConcScaleDownDelay] = useState("");
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,6 +119,27 @@ export function DeployPage() {
     return { ...envLabelFilter };
   }
 
+  function buildScaling(): Scaling {
+    if (scalingSignal === "Concurrency") {
+      return {
+        signal: "Concurrency",
+        concurrency: {
+          maxReplicas: Math.max(1, parseInt(concMaxReplicas) || 1),
+          target: Math.max(1, parseInt(concTarget) || 1),
+          ...(concMinReplicas !== "" && { minReplicas: Math.max(0, parseInt(concMinReplicas) || 0) }),
+          ...(concUtilization !== "" && { utilization: Math.min(100, Math.max(1, parseInt(concUtilization) || 70)) }),
+          ...(concScaleDownDelay !== "" && { scaleDownDelay: Math.max(0, parseInt(concScaleDownDelay) || 300) }),
+        },
+      };
+    }
+    return {
+      signal: "Fixed",
+      fixed: { replicas: Math.max(1, parseInt(fixedReplicas) || 1) },
+    };
+  }
+
+  const concValid = scalingSignal !== "Concurrency" || (concMaxReplicas !== "" && concTarget !== "");
+
   async function handleDeploy() {
     if (!selected) return;
     setDeploying(true);
@@ -131,6 +159,7 @@ export function DeployPage() {
           ...(matchLabels && {
             environmentSelector: { matchLabels },
           }),
+          scaling: buildScaling(),
         },
       });
       navigate(`/deployments/${namespace}/${name}`);
@@ -259,6 +288,113 @@ export function DeployPage() {
             )}
           </div>
 
+          {/* Scaling */}
+          <div>
+            <SectionLabel>SCALING</SectionLabel>
+            <div className="flex gap-2 mb-4">
+              {(["Fixed", "Concurrency"] as const).map((sig) => (
+                <button
+                  key={sig}
+                  onClick={() => setScalingSignal(sig)}
+                  className={`text-sm px-3 py-1.5 rounded-lg border transition ${
+                    scalingSignal === sig
+                      ? "border-purple bg-purple/10 text-purple"
+                      : "border-border text-muted hover:text-muted-hi hover:border-border-hi"
+                  }`}
+                >
+                  {sig === "Fixed" ? "Fixed replicas" : "Autoscale on concurrency"}
+                </button>
+              ))}
+            </div>
+
+            {scalingSignal === "Fixed" && (
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted">Replicas</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={fixedReplicas}
+                  onChange={(e) => setFixedReplicas(e.target.value)}
+                  onBlur={() => setFixedReplicas(String(Math.max(1, parseInt(fixedReplicas) || 1)))}
+                  className="w-20 bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
+                />
+              </div>
+            )}
+
+            {scalingSignal === "Concurrency" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 max-w-md">
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Max replicas *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={concMaxReplicas}
+                      onChange={(e) => setConcMaxReplicas(e.target.value)}
+                      placeholder="e.g. 5"
+                      className="w-full bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Target concurrency *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={concTarget}
+                      onChange={(e) => setConcTarget(e.target.value)}
+                      placeholder="e.g. 32"
+                      className="w-full bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted max-w-md">
+                  Target concurrent requests per replica before scaling up.
+                  {concTarget && concUtilization
+                    ? ` Scaling triggers at ~${Math.max(1, Math.floor((parseInt(concTarget) || 1) * (parseInt(concUtilization) || 70) / 100))} concurrent requests per replica.`
+                    : concTarget
+                      ? ` Scaling triggers at ~${Math.max(1, Math.floor((parseInt(concTarget) || 1) * 0.7))} concurrent requests per replica.`
+                      : ""}
+                </p>
+                <div className="grid grid-cols-3 gap-4 max-w-md">
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Min replicas</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={concMinReplicas}
+                      onChange={(e) => setConcMinReplicas(e.target.value)}
+                      placeholder="1"
+                      className="w-full bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Utilization %</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={concUtilization}
+                      onChange={(e) => setConcUtilization(e.target.value)}
+                      placeholder="70"
+                      className="w-full bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Scale-down delay</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={concScaleDownDelay}
+                      onChange={(e) => setConcScaleDownDelay(e.target.value)}
+                      placeholder="300s"
+                      className="w-full bg-bg-mid border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-border-hi"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Error */}
           {error && <p className="text-sm text-red">{error}</p>}
 
@@ -266,7 +402,7 @@ export function DeployPage() {
           <div className="flex gap-3">
             <Button
               onClick={handleDeploy}
-              disabled={deploying || nameInvalid || !displayName}
+              disabled={deploying || nameInvalid || !displayName || !concValid}
             >
               {deploying ? "Deploying…" : "Deploy"}
             </Button>
