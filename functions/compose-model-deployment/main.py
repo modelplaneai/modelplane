@@ -181,6 +181,10 @@ class Composer:
                         inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
                             name=env_info.name,
                         ),
+                        # Convert via model_dump because the MD and MP
+                        # Scaling types are different Pydantic classes
+                        # (generated from different XRDs).
+                        scaling=mpv1alpha1.Scaling.model_validate(self.xr.spec.scaling.model_dump(exclude_none=True)),
                     ),
                 ),
             )

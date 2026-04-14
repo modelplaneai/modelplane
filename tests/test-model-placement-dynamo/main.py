@@ -117,8 +117,7 @@ test = compositiontest.CompositionTest(
                             name="dynamo-us-central-cluster",
                         ),
                         readiness=k8sobjv1alpha1.Readiness(
-                            policy="DeriveFromCelQuery",
-                            celQuery='object.status.conditions.exists(c, c.type == "Ready" && c.status == "True")',
+                            policy="DeriveFromObject",
                         ),
                         forProvider=k8sobjv1alpha1.ForProvider(
                             manifest={
@@ -147,7 +146,7 @@ test = compositiontest.CompositionTest(
                                     "services": {
                                         "Frontend": {
                                             "componentType": "frontend",
-                                            "replicas": 1,
+                                            "replicas": 2,
                                             "extraPodSpec": {
                                                 "mainContainer": {
                                                     "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.0",

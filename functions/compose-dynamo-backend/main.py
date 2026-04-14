@@ -12,7 +12,7 @@ and differ only in the inference backend they install.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, helm, k8s, metadata, secrets
+from .lib import conditions, helm, k8s, keda, metadata, prometheus, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -39,6 +39,8 @@ class Composer:
         self.compose_usages()
         self.compose_cert_manager()
         self.compose_envoy_gateway()
+        self.compose_prometheus()
+        self.compose_keda()
         self.compose_dynamo_platform()
         self.compose_gateway()
         self.write_status()
@@ -285,6 +287,36 @@ class Composer:
             ),
         )
 
+    def compose_prometheus(self):
+        """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
+        observed. Prometheus scrapes Envoy Gateway metrics for autoscaling."""
+        pc_observed = self.provider_configs_observed()
+        if not (pc_observed or "prometheus" in self.req.observed.resources):
+            return
+
+        v = self.xr.spec.versions or v1alpha1.Versions()
+        resource.update(
+            self.rsp.desired.resources["prometheus"],
+            prometheus.helm_release(v.prometheus, _pc_name(self.xr)),
+        )
+
+    def compose_keda(self):
+        """Compose KEDA. Gated on ProviderConfigs being observed AND
+        cert-manager being ready. KEDA uses admission webhooks that require
+        cert-manager for TLS."""
+        pc_observed = self.provider_configs_observed()
+        cert_manager_ready = conditions.has_condition(self.req, "cert-manager", "Ready")
+        gate = pc_observed and cert_manager_ready
+
+        if not (gate or "keda" in self.req.observed.resources):
+            return
+
+        v = self.xr.spec.versions or v1alpha1.Versions()
+        resource.update(
+            self.rsp.desired.resources["keda"],
+            keda.helm_release(v.keda, _pc_name(self.xr)),
+        )
+
     def compose_dynamo_platform(self):
         """Compose the dynamo-platform Helm chart. Gated on ProviderConfigs
         being observed AND cert-manager being ready. The Dynamo operator may
@@ -308,6 +340,15 @@ class Composer:
                 version=v.dynamo,
                 namespace="dynamo-system",
                 provider_config=_pc_name(self.xr),
+                values={
+                    "dynamo-operator": {
+                        "dynamo": {
+                            "metrics": {
+                                "prometheusEndpoint": prometheus.URL,
+                            },
+                        },
+                    },
+                },
             ),
         )
 
@@ -412,6 +453,8 @@ class Composer:
         condition_ready = [
             "cert-manager",
             "envoy-gateway",
+            "prometheus",
+            "keda",
             "dynamo-platform",
             "gateway-class",
             "gateway",

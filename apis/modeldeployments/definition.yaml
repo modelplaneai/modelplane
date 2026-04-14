@@ -67,6 +67,85 @@ spec:
                   matchLabels:
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+              scaling:
+                type: object
+                description: >-
+                  How the model scales. Defaults to a single fixed
+                  replica if not specified.
+                default: {"signal": "Fixed", "fixed": {"replicas": 1}}
+                required: [signal]
+                properties:
+                  signal:
+                    type: string
+                    description: >-
+                      Scaling signal type. Each signal has a
+                      corresponding config block that must be set.
+                      Backends that don't support the requested signal
+                      are not scheduling candidates.
+                    enum: [Fixed, Concurrency]
+                  fixed:
+                    type: object
+                    description: >-
+                      Run a fixed number of replicas with no
+                      autoscaling. Required when signal is Fixed.
+                    required: [replicas]
+                    properties:
+                      replicas:
+                        type: integer
+                        minimum: 1
+                        description: Number of replicas to run.
+                  concurrency:
+                    type: object
+                    description: >-
+                      Autoscale based on in-flight request concurrency.
+                      Required when signal is Concurrency. Replicas
+                      scale between minReplicas and maxReplicas based
+                      on the number of concurrent requests each replica
+                      is handling.
+                    required: [maxReplicas, target]
+                    properties:
+                      minReplicas:
+                        type: integer
+                        minimum: 0
+                        default: 1
+                        description: >-
+                          Minimum number of replicas. Set to 0 to allow
+                          scale-to-zero when there is no traffic.
+                      maxReplicas:
+                        type: integer
+                        minimum: 1
+                        description: >-
+                          Maximum number of replicas. The autoscaler
+                          will not scale above this value. Must be >=
+                          minReplicas.
+                      target:
+                        type: integer
+                        minimum: 1
+                        description: >-
+                          Target number of concurrent in-flight requests
+                          per replica. The autoscaler scales up when the
+                          average concurrency per replica exceeds
+                          target * utilization / 100. For example, with
+                          target 32 and utilization 70, scaling triggers
+                          at ~22 concurrent requests per replica.
+                      utilization:
+                        type: integer
+                        minimum: 1
+                        maximum: 100
+                        default: 70
+                        description: >-
+                          Target utilization percentage. Provides
+                          headroom before the target is fully saturated.
+                          At 70 (the default), scaling triggers at 70%
+                          of the target concurrency.
+                      scaleDownDelay:
+                        type: integer
+                        minimum: 0
+                        default: 300
+                        description: >-
+                          Seconds to wait before removing replicas after
+                          load decreases. Prevents flapping when traffic
+                          is bursty. Defaults to 300 (5 minutes).
           status:
             type: object
             properties:
