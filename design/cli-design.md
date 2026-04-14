@@ -65,6 +65,8 @@ But the answer isn't to reimplement kubectl behind a different name. ModelPlane'
 
 The CLI focuses on these four capabilities and delegates everything else to kubectl.
 
+**The composite gap.** No single self-hostable inference stack combines scale-to-zero, LLM-aware scaling signals, predictive scaling, and disaggregated prefill/decode support. Dynamo has the best signal quality and the only predictive autoscaler, but requires the full Dynamo stack and has no true scale-to-zero. llm-d provides scale-to-zero and KV-aware signals, but is purely reactive and at experimental maturity. KServe offers scale-to-zero in Knative mode *or* LLM-aware signals in LLMIsvc mode — but not both in the same deployment. Teams must choose which gaps they can live with. ModelPlane's value is abstracting this choice — composing the right backend capabilities per deployment while presenting a unified CLI experience. (See [LLM Autoscaling Primer](https://github.com/upbound/scratch/tree/llm-autoscaling-general-knowledge).)
+
 ---
 
 ## 5. Design Decisions
@@ -189,7 +191,21 @@ The CLI exposes portable scaling through `mp deploy` flags. There is no `mp scal
 | `--utilization P` | `scaling.concurrency.utilization: P` | Optional. Defaults to 70 (scale at 70% of target). |
 | `--scale-down-delay S` | `scaling.concurrency.scaleDownDelay: S` | Optional. Defaults to 300s. |
 
-**Why:** The CRD models scaling as a signal enum — Fixed and Concurrency today, with room for `Utilization`, `RPS`, custom metrics, and backend-specific variants like `WVA` later. The CLI mirrors the portable subset. To change scaling on a running deployment, edit the YAML and re-deploy or patch the CRD directly.
+**Why:** The CRD models scaling as a signal enum — Fixed and Concurrency today, with room for more signals later. The CLI mirrors the portable subset. To change scaling on a running deployment, edit the YAML and re-deploy or patch the CRD directly.
+
+**Signal maturity ladder.** Scaling signals range from coarse (request count) to highly informative (SLA-driven latency). More informative signals require deeper integration with the inference engine. v0.1 starts at the first portable rung; later signals will be added as discriminated-union variants following the same §8.6 promotion criteria:
+
+| Signal | What it measures | Status | Notes |
+|---|---|---|---|
+| **Concurrency** (v0.1) | In-flight requests per replica (Envoy `upstream_rq_active`, via KEDA + Prometheus) | Shipped | Portable across KServe + Dynamo. Treats all requests equally regardless of token length. Best for homogeneous workloads and small models. |
+| **WVA** (planned) | Multi-variant autoscaling (KServe-specific) | Planned | Backend-specific; YAML-only. See portable-vs-backend-specific above. |
+| **Token throughput** | Input/output tokens/sec separately | Future | Requires engine-level metrics. Fireworks AI uses this in production. Distinguishes prefill-heavy from decode-heavy pressure. |
+| **KV cache utilization** | % of allocated KV cache blocks in use | Future | Critical floor signal — by the time KV cache saturates, queuing has already started. Requires engine metrics (vLLM, SGLang expose this). |
+| **Queue depth** | Requests waiting to be scheduled | Future | Universally applicable. llm-d and GIE use this today. |
+| **TTFT / ITL targets** | Time-to-first-token and inter-token latency vs SLA thresholds | Future | The only signals that directly measure user-facing experience. Dynamo Planner uses these for SLA-driven scaling. Trailing indicators — most effective paired with a leading signal. |
+| **Predictive** (ARIMA / Prophet / Kalman) | Forecasted future demand from historical traffic | Future | Dynamo Planner is the only predictive autoscaler in the OSS inference ecosystem. Proactive scale-up prevents cold-start latency; proactive scale-down saves cost. |
+
+The signal enum is designed so new signals are additive. Each new signal adds a sibling variant to the discriminated union; existing deployments using Fixed or Concurrency are unaffected. The CLI adds flags only for portable signals; backend-specific and engine-specific signals remain YAML-only per the CLI policy above.
 
 ### Decision 7: Smart `predict` — one command for any model type *(G1, P4)*
 
@@ -723,7 +739,15 @@ engine:
 
 This is the same principle Crossplane applies to cloud infrastructure: the XRD expresses "I want a database with 100GB storage" — not "create an RDS instance with gp3 EBS volumes." When AWS ships a new storage type, the Composition updates; the XRD doesn't change.
 
-### 8.7 Summary — What Ships When
+### 8.7 Scaling Beyond v0.1: Disaggregated Serving and Cross-Cloud
+
+Two scaling dimensions that v0.1 does not address but that the architecture is designed to accommodate:
+
+**Disaggregated prefill/decode** separates workers into compute-bound prefill pools and memory-bandwidth-bound decode pools, with KV cache transferred between them via RDMA. This creates **two independent scaling targets** — a TTFT SLA breach means the prefill pool needs more workers; an ITL SLA breach means the decode pool does. The ratio between prefill and decode workers is itself a tuning parameter that shifts with traffic patterns (RAG-heavy needs more prefill; code-generation needs more decode). Dynamo supports this natively; KServe does it via llm-d integration. For ModelPlane, disaggregated scaling means the `scaling` block would need to express per-component targets, not just a single signal. The discriminated-union design supports this — a `Disaggregated` signal variant with `prefill:` and `decode:` sub-blocks. CLI exposure: YAML-only (inherently complex, not a one-liner).
+
+**Cross-cloud autoscaling** — ModelPlane's multi-env placement model (`--envs N`, `environmentSelector`) is the foundation. Today, scaling decisions are per-placement (each KEDA ScaledObject operates within one cluster). A control-plane-level autoscaler that sees the complete traffic picture across all environments — time-of-day patterns, model-to-model correlations, per-region capacity — could make fleet-level scaling decisions. No self-hostable stack provides LLM-aware cross-cloud autoscaling today; Baseten MCM is the only managed solution. This is a long-term direction where ModelPlane's cross-cluster architecture is structurally positioned to fill a real gap.
+
+### 8.8 Summary — What Ships When
 
 | Capability | v0.1 | v0.2 | v0.3+ |
 |-----------|------|------|-------|
@@ -738,6 +762,9 @@ This is the same principle Crossplane applies to cloud infrastructure: the XRD e
 | Streaming predict (`mp predict --stream`) | Yes | Yes | Yes |
 | JSON output (`--output json`) on all native commands | Yes | Yes | Yes |
 | Auto-generated docs from Click command tree | Yes | Yes | Yes |
+| Token throughput / KV cache scaling signals | — | — | Yes |
+| TTFT/ITL SLA-driven scaling | — | — | Yes |
+| Disaggregated P/D independent scaling | — | — | Yes |
 | Performance benchmarking (`mp bench`) | — | Yes | Yes |
 | Quality evaluation (`mp eval`) | — | — | Yes |
 | Version pinning via `revision` | Yes | Yes | Yes |
@@ -790,4 +817,7 @@ The principle throughout: lifecycle operations that are **properties of the mode
 | llm-compressor (vLLM) | https://github.com/vllm-project/llm-compressor |
 | MLflow Model Registry | https://mlflow.org/docs/latest/ml/model-registry/workflow/ |
 | llm-d architecture | https://llm-d.ai/docs/architecture |
+| Gateway API Inference Extension | https://github.com/kubernetes-sigs/gateway-api-inference-extension |
+| LLM Autoscaling General Knowledge | https://github.com/upbound/scratch/tree/llm-autoscaling-general-knowledge |
+| Inference Engineering (Kiely, 2026) | Baseten Books — Chapter 7 (Production) |
 | ModelPlane v0.1 scope doc | (internal) |
