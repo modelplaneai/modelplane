@@ -35,20 +35,20 @@ info "Deleting InferenceEnvironments (waiting for GKE deprovision)..."
 info "(This takes ~10-15 minutes per IE. Crossplane deletes KServe, then the GKE clusters.)"
 pids=()
 for ie in $(kubectl get ie -o name --ignore-not-found 2>/dev/null); do
-  kubectl delete "$ie" --cascade=foreground --timeout=2400s &
-  pids+=($!)
+	kubectl delete "$ie" --cascade=foreground --timeout=2400s &
+	pids+=($!)
 done
 failed=0
 for pid in "${pids[@]}"; do
-  if ! wait "$pid"; then
-    failed=1
-  fi
+	if ! wait "$pid"; then
+		failed=1
+	fi
 done
-if (( failed )); then
-  echo "ERROR: IE deletion timed out. Crossplane is still cleaning up GKE" >&2
-  echo "resources. Do NOT delete the kind cluster while this is in progress" >&2
-  echo "or the GKE resources will be orphaned. Wait and re-run this script." >&2
-  exit 1
+if ((failed)); then
+	echo "ERROR: IE deletion timed out. Crossplane is still cleaning up GKE" >&2
+	echo "resources. Do NOT delete the kind cluster while this is in progress" >&2
+	echo "or the GKE resources will be orphaned. Wait and re-run this script." >&2
+	exit 1
 fi
 
 info "Deleting InferenceGateway..."
