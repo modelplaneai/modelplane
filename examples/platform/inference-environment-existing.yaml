@@ -1,0 +1,41 @@
+# An InferenceEnvironment using an existing cluster you manage yourself.
+#
+# Provide a kubeconfig Secret so Modelplane can install the inference backend
+# and deploy models. You also need to describe the GPU node pools so the
+# scheduler knows what capacity is available.
+#
+# The kubeconfig Secret must exist in the control plane cluster before creating
+# this InferenceEnvironment.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceEnvironment
+metadata:
+  name: byo-us-east
+  labels:
+    modelplane.ai/environment: "true"
+    modelplane.ai/region: us-east
+spec:
+  backend: KServe
+  kserve:
+    version: v0.16.0
+    cluster:
+      source: Existing
+      existing:
+        # A Secret containing a kubeconfig for the existing cluster.
+        secretRef:
+          name: byo-cluster-kubeconfig
+          key: kubeconfig
+
+        # Optional: a cloud identity Secret for pulling images from private
+        # registries or accessing cloud APIs from the remote cluster.
+        # identitySecretRef:
+        #   name: byo-cluster-sa-key
+        #   key: private_key
+
+        # Describe the GPU node pools in the cluster. Modelplane doesn't manage
+        # these nodes, but needs to know what's available for scheduling.
+        nodePools:
+          - name: gpu-h100
+            nodeCount: 2
+            gpu:
+              acceleratorType: nvidia-h100-80gb
+              acceleratorCount: 8
