@@ -1,0 +1,62 @@
+# A ClusterModel registers a model in the platform catalog. ML teams reference
+# catalog entries by name in their ModelDeployments.
+#
+# The serving array lists how this model can be served, in priority order. Each
+# profile specifies a backend and engine. When the scheduler places a model, it
+# walks the serving array and picks the first profile that matches the target
+# environment's backend.
+#
+# ClusterModels are cluster-scoped. Use the namespaced Model kind if you need
+# per-team model catalogs.
+apiVersion: modelplane.ai/v1alpha1
+kind: ClusterModel
+metadata:
+  name: qwen-2-5-0-5b
+  labels:
+    modelplane.ai/family: qwen
+    modelplane.ai/size: 0.5b
+spec:
+  model:
+    name: Qwen/Qwen2.5-0.5B-Instruct
+
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen2.5-0.5B-Instruct
+    # Set revision to pin a specific commit. Defaults to main.
+    # revision: main
+    #
+    # For gated models, provide a HuggingFace token:
+    # secretRef:
+    #   name: hf-token
+    #   namespace: crossplane-system
+    #   key: token
+
+  # Total resources the model needs. VRAM is used by the scheduler to check
+  # whether a GPU pool has enough capacity for this model.
+  resources:
+    vram: "2Gi"
+    cpu: "3"
+    memory: "10Gi"
+
+  serving:
+    # KServe with vLLM. This profile is selected when the model is placed on
+    # an InferenceEnvironment with backend: KServe.
+    - name: vllm-kserve
+      backend: KServe
+      engine:
+        name: vLLM
+        image: vllm/vllm-openai:v0.7.3
+
+    # Dynamo with vLLM. This profile is selected for backend: Dynamo.
+    - name: vllm-dynamo
+      backend: Dynamo
+      engine:
+        name: vLLM
+        image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.0
+
+    # You can also use SGLang as the engine:
+    # - name: sglang-kserve
+    #   backend: KServe
+    #   engine:
+    #     name: SGLang
+    #     image: lmsysorg/sglang:v0.4.7-cu125
