@@ -1,0 +1,26 @@
+# A ModelDeployment with concurrency-based autoscaling, spread across two
+# environments for availability.
+#
+# Scaling uses KEDA to watch active concurrent requests per replica via
+# Prometheus. When the average concurrency exceeds the target (adjusted by
+# utilization percentage), KEDA scales up. When it drops, KEDA waits
+# scaleDownDelay seconds before scaling down.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-prod
+  namespace: ml-team
+spec:
+  modelRef:
+    name: qwen-2-5-0-5b
+
+  environments: 2
+
+  scaling:
+    signal: Concurrency
+    concurrency:
+      minReplicas: 1
+      maxReplicas: 5
+      target: 10          # Target concurrent requests per replica.
+      utilization: 70     # Scale up at 70% of target (i.e. 7 concurrent requests).
+      scaleDownDelay: 300  # Wait 5 minutes before scaling down.

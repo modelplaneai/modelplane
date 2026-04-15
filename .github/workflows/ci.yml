@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: {}
+  workflow_dispatch: {}
+
+# Cancel in-progress runs for the same PR. Runs on main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Lint
+        run: >
+          nix build
+          .#checks.x86_64-linux.go-lint
+          .#checks.x86_64-linux.python
+          .#checks.x86_64-linux.shell-lint
+          .#checks.x86_64-linux.nix-lint
+          --print-build-logs
+
+  test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Test
+        run: >
+          nix build
+          .#checks.x86_64-linux.go-test
+          .#checks.x86_64-linux.frontend
+          --print-build-logs
+
+  composition-tests:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Build and Test
+        run: nix run .#test-crossplane --print-build-logs
