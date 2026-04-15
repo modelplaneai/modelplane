@@ -64,9 +64,9 @@ See [issues labeled `enhancement`][enhancements] for what's planned.
 
 ## Getting started
 
-You need a Kubernetes cluster with [Crossplane] v2 installed. Modelplane is
-packaged as a Crossplane [Configuration]. Install it, configure cloud
-credentials, create some inference environments, and deploy a model.
+Follow the [getting started guide](docs/getting-started.md) to deploy Modelplane
+on a local kind cluster and serve a model on GKE. The
+[concepts page](docs/concepts.md) explains the key resources and how they relate.
 
 The [`examples/`](examples/) directory has annotated manifests covering the full
 workflow: gateway setup, environment provisioning, model catalog entries, and
