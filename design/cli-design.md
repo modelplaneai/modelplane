@@ -56,6 +56,12 @@ The outcomes we want. The Principles in §1 are how we get them.
 
 The v0.1 release doc identifies a clear gap: *"ML engineers are allergic to kubectl — even a thin wrapper adds meaningful value."* Today, deploying a model on ModelPlane requires writing Kubernetes YAML and using `kubectl apply`. This is a non-starter for ML teams who think in terms of models, not manifests.
 
+The current [getting-started guide](../docs/getting-started.md) makes this concrete. An ML engineer following the guide today writes a ModelDeployment YAML by hand (see [`examples/deployment/model-deployment.yaml`](../examples/deployment/model-deployment.yaml)) and applies it with `kubectl`. The one-liner equivalent is:
+
+```bash
+mp deploy qwen-2-5-0-5b --env gke-us-central
+```
+
 But the answer isn't to reimplement kubectl behind a different name. ModelPlane's CRDs already have clean printer columns — `kubectl get clustermodels` works fine. The real gaps are the things kubectl *can't* do:
 
 1. **Deploy a catalog model in one command** — no YAML, no `kubectl apply`
@@ -100,6 +106,8 @@ Each Decision header lists the Principles (P) and Goals (G) it implements.
 **Why:** We evaluated the config-file patterns used by Truss, Cog, BentoML, and Modal. These tools invented custom formats because they have no backing Kubernetes CRD — the config file *is* their schema. ModelPlane already has a well-defined schema: the `Model` CRD.
 
 Introducing a second format would mean a translation layer to maintain, two schemas to document, and drift when CRD fields are added (new backends, NIM, serving profiles). The Model CRD YAML is around 15 lines for the common case. The CLI adds value through *workflow* (scaffold → edit → deploy), not format translation.
+
+The canonical shapes live in [`examples/`](../examples/). The scaffold produced by `mp init` should match [`examples/platform/cluster-model.yaml`](../examples/platform/cluster-model.yaml) and [`examples/deployment/model-deployment.yaml`](../examples/deployment/model-deployment.yaml) field-for-field so there is one source of truth for what a ModelPlane manifest looks like.
 
 **The actual YAML:**
 
@@ -237,6 +245,8 @@ The signal enum is designed so new signals are additive. Each new signal adds a 
 **Why:** Agent-driven inference workflows are already common and will be the default within a year. A CLI that requires a TTY, has unstable output formats, or signals state through stderr defeats both agents and scripts. Bolting on agent support later — the kubectl/git/docker pattern — leaves a permanent asymmetry between human and agent UX. Designing for both from v0.1 keeps the surface clean and means the same `--help` output and the same exit codes serve both audiences.
 
 **Auto-generated docs (the corollary):** Because every flag, default, and exit code is part of the agent contract, the CLI's Click command tree is the source of truth for the documentation. `docs/cli.html` is rendered by `docs/build.py`, which walks the `mp.main:cli` Click group and emits HTML. Run `make -C docs` to regenerate; `make -C docs check` is the CI gate that fails when the committed `cli.html` doesn't match what would be generated. Static page sections (install, agents-and-scripting, configuration) live in the script alongside the dynamic command rendering. This is the same projection principle as Decision 3, applied one level up: one source of truth (the Click tree), projected outward to docs, `--help`, and any agent's understanding of the CLI. Drift is impossible by construction.
+
+The repository's [CI workflow](../.github/workflows/ci.yml) already runs composition tests via `nix run .#test-crossplane` on every push. The `make -C docs check` gate follows the same pattern and should be added to the CI workflow as a sibling job when the CLI reaches v0.1 release. Follow-up: the docs build currently uses plain `python3`; aligning it with the repo's Nix-based build (`nix run .#docs` or equivalent) is a small ergonomic improvement, not a blocker.
 
 ---
 
@@ -783,7 +793,7 @@ The principle throughout: lifecycle operations that are **properties of the mode
 
 3. **NIM model source:** The Model CRD supports `source: HuggingFace`. NIM models are container microservices — a fundamentally different pattern. How should this be represented in the CRD?
 
-4. **`--env` label convention:** `--env` works by reading the target environment's labels. Should we formalize a `modelplane.ai/env-name` label convention for robustness?
+4. **`--env` label convention:** `--env` works by reading the target environment's labels. The discovery label is already established — [`docs/concepts.md`](../docs/concepts.md) requires `modelplane.ai/environment: "true"` on every discoverable InferenceEnvironment, and the examples under [`examples/platform/`](../examples/platform/) set it. The open question is whether `--env NAME` should match by `metadata.name` directly (current plan) or require a dedicated `modelplane.ai/env-name` label. Matching by name is simpler; the label convention would be more robust if names ever collide across scopes.
 
 5. **Scale-to-zero ergonomics:** Opting into scale-to-zero requires `--scale-to-zero --max M --target T` since the CRD requires `maxReplicas` and `target`. Should the CLI infer reasonable defaults when `--scale-to-zero` is the only scaling flag, or keep them required to mirror CRD validation? The latter is more honest; the former is more ergonomic.
 
@@ -820,4 +830,10 @@ The principle throughout: lifecycle operations that are **properties of the mode
 | Gateway API Inference Extension | https://github.com/kubernetes-sigs/gateway-api-inference-extension |
 | LLM Autoscaling General Knowledge | https://github.com/upbound/scratch/tree/llm-autoscaling-general-knowledge |
 | Inference Engineering (Kiely, 2026) | Baseten Books — Chapter 7 (Production) |
+| ModelPlane concepts | [docs/concepts.md](../docs/concepts.md) |
+| ModelPlane getting started | [docs/getting-started.md](../docs/getting-started.md) |
+| Canonical manifest examples | [examples/](../examples/) |
+| CI workflow (composition tests) | [.github/workflows/ci.yml](../.github/workflows/ci.yml) |
+| CNCF Kubernetes AI Conformance | https://github.com/cncf/k8s-ai-conformance |
+| llm-d benchmark suite (smoke tests) | https://github.com/llm-d/llm-d-benchmark |
 | ModelPlane v0.1 scope doc | (internal) |
