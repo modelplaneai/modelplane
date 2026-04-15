@@ -1,67 +1,107 @@
-![CI](https://github.com/modelplaneai/modelplane/workflows/CI/badge.svg) [![GitHub release](https://img.shields.io/github/release/modelplaneai/modelplane/all.svg)](https://github.com/modelplaneai/modelplane/releases) [![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/release/modelplaneai/modelplane/all.svg)](https://github.com/modelplaneai/modelplane/releases)
+[![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 <img src="docs/images/modelplane-horizontal-color.png" alt="Modelplane" width="300" />
 
 **The open source control plane for AI models.**
 
-Modelplane extends [Crossplane] to manage AI model inference as declarative infrastructure. Platform teams define inference environments and approve models. ML teams deploy with two lines of YAML and get back a working endpoint. The control plane handles placement, scaling, reconciliation, and policy enforcement — continuously, without humans in the operational loop.
+Modelplane extends [Crossplane] to manage AI model inference as declarative
+infrastructure. Platform teams provision GPU clusters, install inference
+backends, and curate a model catalog. ML teams deploy from that catalog and get
+back a working endpoint. The control plane handles placement, scaling, and
+reconciliation continuously.
 
-Modelplane is built on [Crossplane] — [CNCF Graduated] — using the same declarative, reconciliation-based architecture that platform teams at Apple, JPMC, and Nike already trust for cloud infrastructure.
+## Deploy a model
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  modelRef:
+    name: qwen-2-5-0-5b
+  environments: 2
+```
+
+This deploys Qwen 2.5 0.5B to two inference environments and produces a unified,
+OpenAI-compatible endpoint. The platform decides where to place the model based
+on GPU capacity and backend compatibility
 
 ## How it works
 
-Platform teams use Modelplane to provision GPU clusters, install inference stacks, and register approved models in a catalog — specifying the image, engine, and policy for each. ML teams then deploy from that catalog by declaring what they want; the control plane handles placement, scaling, and reconciliation continuously. The result is an OpenAI-compatible endpoint, with no coordination required between the two teams.
+Modelplane draws a clear boundary between two teams.
 
+**Platform teams** create `InferenceEnvironments`, which are Kubernetes clusters
+with an inference backend installed. They also register approved models as
+`Models` in a catalog. Each model specifies its source, VRAM
+requirements, and one or more serving profiles that configure engines like vLLM.
 
-## Infrastructure
+**ML teams** create a `ModelDeployment` referencing a catalog model and specify
+how many environments to deploy across. Modelplane matches serving profiles to
+available environments, checks GPU capacity, and creates a `ModelPlacement` per
+environment. Traffic routes through a unified [Envoy Gateway] endpoint on the
+control plane.
 
-Modelplane runs on any infrastructure where your models need to run:
+Modelplane is the control plane layer above the inference engine. It doesn't
+compete with vLLM, SGLang, or KServe. It manages them.
 
-| Type | Supported |
+## Current status
+
+Modelplane is at v0.1. It's early and evolving fast.
+
+| | What works today |
 |---|---|
-| Major clouds | AWS EKS, GCP GKE, Azure AKS, Oracle OKE |
-| GPU clouds | CoreWeave, Lambda, Crusoe |
-| On-premise | NVIDIA DGX via Base Command Manager, air-gapped |
+| Cluster sources | GKE (provisioned), Existing (bring your own kubeconfig) |
+| Inference backends | [KServe] LLMInferenceService, [NVIDIA Dynamo] |
+| Serving engines | vLLM, SGLang |
+| Scaling | Fixed replicas, concurrency-based autoscaling via KEDA |
+| Routing | Unified OpenAI-compatible endpoint via Envoy Gateway |
 
-## Inference backends
+See [issues labeled `enhancement`][enhancements] for what's planned.
 
-| Backend | Status |
-|---|---|
-| KServe `LLMInferenceService` | v0.1 — current |
-| NVIDIA Dynamo | Planned |
-| KubeAI | Planned |
+## Getting started
 
-Modelplane is the control plane layer above the inference engine. It does not compete with vLLM, SGLang, or KServe — it manages them.
+You need a Kubernetes cluster with [Crossplane] v2 installed. Modelplane is
+packaged as a Crossplane [Configuration]. Install it, configure cloud
+credentials, create some inference environments, and deploy a model.
 
-## Releases
+The [`examples/`](examples/) directory has annotated manifests covering the full
+workflow: gateway setup, environment provisioning, model catalog entries, and
+deployments.
 
-| Release | Status |
-|:---:|:---:|
-| v0.1 | Current — GKECluster, KServeBackend, KServe backend |
-| v0.2 | Planned — KubeAI backend, scale-to-zero |
+Modelplane also has a web UI for browsing the catalog, deploying models,
+monitoring placements, and chatting with deployed models. See
+[`ui/deploy/`](ui/deploy/) for installation manifests.
+
+## Development
+
+Modelplane uses [Nix] for builds and the development environment. You don't need
+Nix installed locally. See [CONTRIBUTING.md] for how to get set up, run checks,
+and submit changes.
 
 ## Get involved
 
-Modelplane is a community project. Contributions, bug reports, and feature requests are welcome.
+Contributions, bug reports, and feature requests are welcome.
 
-- **Issues:** [Open an issue][issues] for bugs, questions, or feature requests
-- **Discussions:** [GitHub Discussions][discussions] for design and community conversation
-- **Slack:** [#modelplane][slack] in the Crossplane Slack workspace
-
-To contribute, see [CONTRIBUTING.md].
+- **Issues:** [GitHub Issues][issues]
+- **Discussions:** [GitHub Discussions][discussions]
+- **Slack:** [#modelplane][slack] in the Crossplane workspace
 
 ## License
 
 Modelplane is under the [Apache 2.0 license](LICENSE).
 
-Apache 2, no cluster limits, no token caps, no usage restrictions of any kind. Run it at any scale, forever, free.
-
----
-
 <!-- Named links -->
 [Crossplane]: https://crossplane.io
-[CNCF Graduated]: https://www.cncf.io/projects/crossplane/
+[Configuration]: https://docs.crossplane.io/latest/concepts/packages/#configuration-packages
+[Envoy Gateway]: https://gateway.envoyproxy.io
+[KServe]: https://kserve.github.io/website/
+[NVIDIA Dynamo]: https://github.com/ai-dynamo/dynamo
 [CONTRIBUTING.md]: CONTRIBUTING.md
+[Nix]: https://nixos.org
 [issues]: https://github.com/modelplaneai/modelplane/issues
+[enhancements]: https://github.com/modelplaneai/modelplane/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement
 [discussions]: https://github.com/modelplaneai/modelplane/discussions
 [slack]: https://crossplane.slack.com
