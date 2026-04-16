@@ -90,6 +90,7 @@ test = compositiontest.CompositionTest(
                                     acceleratorType="nvidia-l4",
                                     memory="24Gi",
                                     count=2,
+                                    countPerNode=1,
                                 ),
                             ],
                         ),

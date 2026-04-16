@@ -13,6 +13,7 @@ to route through.
 """
 
 import math
+from dataclasses import dataclass
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -62,6 +63,16 @@ CONDITION_REASON_PROFILE_RESOLVED = "ProfileResolved"
 
 # Composed resource key for the model serving resource, regardless of backend.
 MODEL_RESOURCE_KEY = "model-serving"
+
+
+@dataclass
+class GpuAllocation:
+    """Result of compute_gpus() — describes how GPUs should be distributed."""
+
+    total: int  # Total GPUs needed (ceil(model_vram / gpu_vram))
+    per_node: int  # GPUs available per node in the selected pool
+    node_count: int  # Nodes needed (ceil(total / per_node))
+    multi_node: bool  # Whether total > per_node (multi-node required)
 
 
 class Composer:
@@ -150,16 +161,31 @@ class Composer:
         return True
 
     def compute_gpus(self):
-        """Compute how many GPUs the model needs by dividing model VRAM by
-        the per-GPU VRAM of the first eligible pool in the environment."""
+        """Compute how many GPUs the model needs and whether multi-node
+        inference is required.
+
+        Returns a GpuAllocation with total GPUs, per-node count, node count,
+        and a multi_node flag. When countPerNode is not available on the
+        environment (old IE status), falls back to single-node assumption.
+        """
         for pool in self.ie.status.capacity.gpuPools:
             pool_memory = quantities.parse_quantity(pool.memory or "0Gi")
             if pool_memory > 0:
-                return max(
+                total = max(
                     1,
                     math.ceil(quantities.parse_quantity(self.model.spec.resources.vram) / pool_memory),
                 )
-        return 1
+                # countPerNode may be absent on old IE statuses that haven't
+                # been reconciled after the XRD upgrade.
+                per_node = int(getattr(pool, "countPerNode", None) or total)
+                node_count = max(1, math.ceil(total / per_node)) if per_node > 0 else 1
+                return GpuAllocation(
+                    total=total,
+                    per_node=min(per_node, total),
+                    node_count=node_count,
+                    multi_node=total > per_node,
+                )
+        return GpuAllocation(total=1, per_node=1, node_count=1, multi_node=False)
 
     def compose_model_serving(self, gpus):
         """Compose the backend-specific model serving resource on the remote
@@ -176,10 +202,19 @@ class Composer:
 
     def compose_kserve_llmis(self, gpus):
         """Compose a provider-kubernetes Object wrapping an LLMInferenceService
-        on the remote cluster."""
+        on the remote cluster.
+
+        For single-node models, each pod gets all required GPUs. For multi-node
+        models (VRAM exceeds a single node), the LLMInferenceService is composed
+        with a parallelism section and a worker section that uses
+        LeaderWorkerSet for cross-node tensor parallelism.
+        """
         llmis_name = naming.to_dns_label(self.xr.spec.modelRef.name)
 
         args = list(self.profile.engine.args or [])
+
+        # Each pod gets per_node GPUs (or total if single-node).
+        gpu_per_pod = gpus.per_node if gpus.multi_node else gpus.total
 
         container: dict = {
             "name": "main",
@@ -188,13 +223,32 @@ class Composer:
             "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
             "resources": {
                 "limits": {
-                    "nvidia.com/gpu": str(gpus),
+                    "nvidia.com/gpu": str(gpu_per_pod),
                     "cpu": self.model.spec.resources.cpu,
                     "memory": self.model.spec.resources.memory,
                 },
                 "requests": {"cpu": "1", "memory": self.model.spec.resources.memory},
             },
         }
+
+        llmis_spec: dict = {
+            "model": {
+                "uri": f"hf://{self.model.spec.huggingFace.repo}" if self.model.spec.huggingFace else "",
+                "name": self.model.spec.model.name,
+            },
+            "replicas": self.worker_replicas(),
+            "template": {"containers": [container]},
+            "router": {"gateway": {}, "route": {}},
+        }
+
+        if gpus.multi_node:
+            llmis_spec["parallelism"] = {"tensor": gpus.total}
+            # Worker pods use the same container spec as the leader.
+            worker_container = dict(container)
+            llmis_spec["worker"] = {
+                "size": gpus.node_count - 1,
+                "template": {"containers": [worker_container]},
+            }
 
         resource.update(
             self.rsp.desired.resources[MODEL_RESOURCE_KEY],
@@ -215,17 +269,7 @@ class Composer:
                                 "name": llmis_name,
                                 "namespace": metadata.NAMESPACE_REMOTE,
                             },
-                            "spec": {
-                                "model": {
-                                    "uri": f"hf://{self.model.spec.huggingFace.repo}"
-                                    if self.model.spec.huggingFace
-                                    else "",
-                                    "name": self.model.spec.model.name,
-                                },
-                                "replicas": self.worker_replicas(),
-                                "template": {"containers": [container]},
-                                "router": {"gateway": {}, "route": {}},
-                            },
+                            "spec": llmis_spec,
                         },
                     ),
                 ),
@@ -347,13 +391,16 @@ class Composer:
 
         worker_replicas = self.worker_replicas()
 
+        # Each Worker pod gets per_node GPUs (or total if single-node).
+        gpu_per_pod = gpus.per_node if gpus.multi_node else gpus.total
+
         # Build the Worker service spec.
         worker_service = {
             "componentType": "worker",
             "replicas": worker_replicas,
             "resources": {
                 "limits": {
-                    "gpu": str(gpus),
+                    "gpu": str(gpu_per_pod),
                 },
             },
             "extraPodSpec": {
@@ -371,6 +418,9 @@ class Composer:
         # which KEDA's ScaledObject targets via the Scale subresource.
         if self.has_autoscaling():
             worker_service["scalingAdapter"] = {"enabled": True}
+
+        if gpus.multi_node:
+            worker_service["multinode"] = {"nodeCount": gpus.node_count}
 
         dgd_manifest = {
             "apiVersion": "nvidia.com/v1alpha1",
@@ -617,7 +667,7 @@ class Composer:
 
         status = v1alpha1.Status(
             model=v1alpha1.Model(name=self.model.spec.model.name),
-            resources=v1alpha1.Resources(gpu=v1alpha1.Gpu(count=gpus)),
+            resources=v1alpha1.Resources(gpu=v1alpha1.Gpu(count=gpus.total)),
             servingProfile=v1alpha1.ServingProfile(
                 name=self.profile.name,
                 backend=self.profile.backend,
