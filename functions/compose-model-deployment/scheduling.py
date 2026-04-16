@@ -44,6 +44,22 @@ def _supports_scaling(
     return deployment.spec.scaling.signal in supported
 
 
+def _pool_has_enough_nodes(pool, gpus_needed: int) -> bool:
+    """Check whether a pool has enough nodes for multi-node inference.
+
+    Returns True if the model fits on a single node or if there are enough
+    nodes for multi-node. When countPerNode is absent (old IE status),
+    assumes single-node and returns True.
+    """
+    count_per_node = int(getattr(pool, "countPerNode", None) or 0)
+    if count_per_node <= 0 or gpus_needed <= count_per_node:
+        return True  # Single-node or unknown topology — allow.
+    pool_total = int(pool.count or 0)
+    nodes_available = pool_total // count_per_node
+    nodes_needed = math.ceil(gpus_needed / count_per_node)
+    return nodes_available >= nodes_needed
+
+
 def schedule(
     deployment: mdv1alpha1.ModelDeployment,
     model: cmv1alpha1.ClusterModel,
@@ -94,17 +110,10 @@ def schedule(
                 continue
             gpus_needed = max(1, math.ceil(model_vram_bytes / pool_mem))
 
-            # Check per-node feasibility. If the model needs more GPUs
-            # than a single node has, verify there are enough nodes.
-            count_per_node = int(getattr(pool, "countPerNode", None) or 0)
-            pool_total = int(pool.count or 0)
-            if count_per_node > 0 and gpus_needed > count_per_node:
-                nodes_available = pool_total // count_per_node
-                nodes_needed = math.ceil(gpus_needed / count_per_node)
-                if nodes_available < nodes_needed:
-                    continue  # Not enough nodes for multi-node inference.
+            if not _pool_has_enough_nodes(pool, gpus_needed):
+                continue
 
-            eligible_total += pool_total
+            eligible_total += int(pool.count or 0)
             if best_gpus_needed is None or gpus_needed < best_gpus_needed:
                 best_gpus_needed = gpus_needed
 
