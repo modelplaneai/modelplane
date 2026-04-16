@@ -40,6 +40,7 @@ test = compositiontest.CompositionTest(
                                     acceleratorType="nvidia-h100-80gb",
                                     memory="80Gi",
                                     count=16,
+                                    countPerNode=8,
                                 ),
                             ],
                         ),

@@ -361,6 +361,7 @@ class Composer:
                     "acceleratorType": pool.gpu.acceleratorType,
                     "memory": GPU_VRAM.get(pool.gpu.acceleratorType, "0Gi"),
                     "count": pool.gpu.acceleratorCount * nodes,
+                    "countPerNode": pool.gpu.acceleratorCount,
                 }
             )
         return gpu_pools
@@ -377,6 +378,7 @@ class Composer:
                     "acceleratorType": pool.gpu.acceleratorType,
                     "memory": GPU_VRAM.get(pool.gpu.acceleratorType, "0Gi"),
                     "count": pool.gpu.acceleratorCount * nodes,
+                    "countPerNode": pool.gpu.acceleratorCount,
                 }
             )
         return gpu_pools

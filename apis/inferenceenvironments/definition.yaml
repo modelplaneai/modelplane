@@ -413,6 +413,13 @@ spec:
                         count:
                           type: integer
                           description: Total GPUs in this pool.
+                        countPerNode:
+                          type: integer
+                          description: >-
+                            GPUs per node in this pool. Used by the
+                            placement function to determine whether a
+                            model requires multi-node inference (when
+                            total GPUs needed exceeds countPerNode).
               namespace:
                 type: string
                 description: >-

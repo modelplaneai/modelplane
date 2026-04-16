@@ -1,0 +1,14 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelPlacement
+metadata:
+  name: llama405b-h100-cluster
+  namespace: ml-team
+spec:
+  modelRef:
+    name: llama-405b
+  inferenceEnvironmentRef:
+    name: h100-cluster
+  scaling:
+    signal: Fixed
+    fixed:
+      replicas: 1
