@@ -12,6 +12,8 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from .lib import conditions, helm, metadata
 from .lib import resource as libresource
 from .model.ai.modelplane.inferencegateway import v1alpha1
+from .model.io.crossplane.protection.usage import v1beta1 as usagev1beta1
+from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 # Condition types and reasons for the InferenceGateway XR.
 CONDITION_TYPE_CONTROLLER_READY = "ControllerReady"
@@ -246,27 +248,25 @@ class Composer:
         the given Helm release is gone."""
         resource.update(
             self.rsp.desired.resources[f"usage-pc-by-{release_key}"],
-            {
-                "apiVersion": "protection.crossplane.io/v1beta1",
-                "kind": "Usage",
-                "metadata": {"namespace": metadata.NAMESPACE_SYSTEM},
-                "spec": {
-                    "of": {
-                        "apiVersion": "helm.m.crossplane.io/v1beta1",
-                        "kind": "ProviderConfig",
-                        "resourceRef": {"name": _PC_NAME},
-                    },
-                    "by": {
-                        "apiVersion": "helm.m.crossplane.io/v1beta1",
-                        "kind": "Release",
-                        "resourceSelector": {
-                            "matchControllerRef": True,
-                            "matchLabels": {metadata.LABEL_KEY_RELEASE: release_key},
-                        },
-                    },
-                    "replayDeletion": True,
-                },
-            },
+            usagev1beta1.Usage(
+                metadata=metav1.ObjectMeta(namespace=metadata.NAMESPACE_SYSTEM),
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="ProviderConfig",
+                        resourceRef=usagev1beta1.ResourceRefModel(name=_PC_NAME),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="Release",
+                        resourceSelector=usagev1beta1.ResourceSelector(
+                            matchControllerRef=True,
+                            matchLabels={metadata.LABEL_KEY_RELEASE: release_key},
+                        ),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
         )
         self.rsp.desired.resources[f"usage-pc-by-{release_key}"].ready = fnv1.READY_TRUE
 
