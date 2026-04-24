@@ -9,5 +9,5 @@ spec:
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: negzupboundio-modelplane-infracompose-model-deployment
+      name: modelplane-modelplanecompose-model-deployment
     step: compose-model-deployment

@@ -1,7 +1,7 @@
 apiVersion: meta.dev.upbound.io/v2alpha1
 kind: Project
 metadata:
-  name: modelplane-infra
+  name: modelplane
 spec:
   apiDependencies:
   - git:
@@ -39,5 +39,5 @@ spec:
   maintainer: Upbound User <user@example.com>
   readme: |
     This is where you can add a readme for your project.
-  repository: xpkg.upbound.io/negzupboundio/modelplane-infra
+  repository: xpkg.upbound.io/modelplane/modelplane
   source: github.com/modelplaneai/modelplane

@@ -9,5 +9,5 @@ spec:
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: negzupboundio-modelplane-infracompose-dynamo-backend
+      name: modelplane-modelplanecompose-dynamo-backend
     step: compose-dynamo-backend
