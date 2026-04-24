@@ -24,6 +24,7 @@ from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from .model.io.crossplane.m.kubernetes.providerconfig import (
     v1alpha1 as k8spcv1alpha1,
 )
+from .model.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 _HERE = Path(__file__).parent
@@ -196,46 +197,42 @@ class Composer:
         # Helm ProviderConfig protected by all Releases.
         resource.update(
             self.rsp.desired.resources["usage-helm-pc"],
-            {
-                "apiVersion": "protection.crossplane.io/v1beta1",
-                "kind": "Usage",
-                "spec": {
-                    "of": {
-                        "apiVersion": "helm.m.crossplane.io/v1beta1",
-                        "kind": "ProviderConfig",
-                        "resourceRef": {"name": pc},
-                    },
-                    "by": {
-                        "apiVersion": "helm.m.crossplane.io/v1beta1",
-                        "kind": "Release",
-                        "resourceSelector": {"matchControllerRef": True},
-                    },
-                    "replayDeletion": True,
-                },
-            },
+            usagev1beta1.Usage(
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="ProviderConfig",
+                        resourceRef=usagev1beta1.ResourceRefModel(name=pc),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="Release",
+                        resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
         )
         self.rsp.desired.resources["usage-helm-pc"].ready = fnv1.READY_TRUE
 
         # K8s ProviderConfig protected by all Objects.
         resource.update(
             self.rsp.desired.resources["usage-k8s-pc"],
-            {
-                "apiVersion": "protection.crossplane.io/v1beta1",
-                "kind": "Usage",
-                "spec": {
-                    "of": {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "ProviderConfig",
-                        "resourceRef": {"name": pc},
-                    },
-                    "by": {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "resourceSelector": {"matchControllerRef": True},
-                    },
-                    "replayDeletion": True,
-                },
-            },
+            usagev1beta1.Usage(
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                        kind="ProviderConfig",
+                        resourceRef=usagev1beta1.ResourceRefModel(name=pc),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                        kind="Object",
+                        resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
         )
         self.rsp.desired.resources["usage-k8s-pc"].ready = fnv1.READY_TRUE
 
@@ -244,29 +241,27 @@ class Composer:
         # while Gateways reference it.
         resource.update(
             self.rsp.desired.resources["usage-gateway-class-by-gateway"],
-            {
-                "apiVersion": "protection.crossplane.io/v1beta1",
-                "kind": "Usage",
-                "spec": {
-                    "of": {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "resourceSelector": {
-                            "matchControllerRef": True,
-                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway-class"},
-                        },
-                    },
-                    "by": {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "resourceSelector": {
-                            "matchControllerRef": True,
-                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway"},
-                        },
-                    },
-                    "replayDeletion": True,
-                },
-            },
+            usagev1beta1.Usage(
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                        kind="Object",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(
+                            matchControllerRef=True,
+                            matchLabels={metadata.LABEL_KEY_RESOURCE: "gateway-class"},
+                        ),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                        kind="Object",
+                        resourceSelector=usagev1beta1.ResourceSelector(
+                            matchControllerRef=True,
+                            matchLabels={metadata.LABEL_KEY_RESOURCE: "gateway"},
+                        ),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
         )
         self.rsp.desired.resources["usage-gateway-class-by-gateway"].ready = fnv1.READY_TRUE
 
@@ -275,29 +270,27 @@ class Composer:
         # gateway-exists-finalizer during deletion.
         resource.update(
             self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"],
-            {
-                "apiVersion": "protection.crossplane.io/v1beta1",
-                "kind": "Usage",
-                "spec": {
-                    "of": {
-                        "apiVersion": "helm.m.crossplane.io/v1beta1",
-                        "kind": "Release",
-                        "resourceSelector": {
-                            "matchControllerRef": True,
-                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "envoy-gateway"},
-                        },
-                    },
-                    "by": {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "resourceSelector": {
-                            "matchControllerRef": True,
-                            "matchLabels": {metadata.LABEL_KEY_RESOURCE: "gateway-class"},
-                        },
-                    },
-                    "replayDeletion": True,
-                },
-            },
+            usagev1beta1.Usage(
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="Release",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(
+                            matchControllerRef=True,
+                            matchLabels={metadata.LABEL_KEY_RESOURCE: "envoy-gateway"},
+                        ),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                        kind="Object",
+                        resourceSelector=usagev1beta1.ResourceSelector(
+                            matchControllerRef=True,
+                            matchLabels={metadata.LABEL_KEY_RESOURCE: "gateway-class"},
+                        ),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
         )
         self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
 
