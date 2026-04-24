@@ -132,7 +132,7 @@ metadata:
 spec:
   matchImages:
     - type: Prefix
-      prefix: xpkg.upbound.io/negzupboundio/
+      prefix: xpkg.upbound.io/modelplane/
   registry:
     authentication:
       pullSecretRef:
@@ -144,12 +144,12 @@ EOF
 
 Modelplane is packaged as a Crossplane
 [Configuration](https://docs.crossplane.io/latest/concepts/packages/#configuration-packages).
-The package registry requires authentication. Apply the pull secret from the
-repo, then install the Configuration. This pulls the providers and composition
-functions it depends on.
+The package registry requires authentication. Create a pull secret using the
+[Upbound CLI](https://docs.upbound.io/reference/cli/), then install the
+Configuration. This pulls the providers and composition functions it depends on.
 
 ```bash
-kubectl apply -f docs/pull-secret.yaml
+up ctp pull-secret create -n crossplane-system upbound-pull-secret --organization modelplane
 ```
 
 ```bash
@@ -159,7 +159,7 @@ kind: Configuration
 metadata:
   name: modelplane-infra
 spec:
-  package: xpkg.upbound.io/negzupboundio/modelplane-infra:v0.1.0-dev.107
+  package: xpkg.upbound.io/modelplane/modelplane:v0.1.0-dev.125.g0cba874
 EOF
 ```
 

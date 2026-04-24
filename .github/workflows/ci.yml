@@ -64,3 +64,35 @@ jobs:
 
       - name: Build and Test
         run: nix run .#test-crossplane --print-build-logs
+
+  push-package:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test, composition-tests]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for git rev-list --count.
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      # up login authenticates the up CLI for API operations (e.g. build
+      # dependency resolution). The registry requires a separate Docker-style
+      # login with the robot's access ID as the username.
+      - name: Login to Upbound
+        run: nix develop --command up login --token - <<< "${{ secrets.UP_ROBOT_TOKEN }}"
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: xpkg.upbound.io
+          username: ${{ secrets.UP_ROBOT_ID }}
+          password: ${{ secrets.UP_ROBOT_TOKEN }}
+
+      - name: Build and Push
+        run: |
+          nix run .#build-crossplane --print-build-logs
+          nix run .#push-crossplane --print-build-logs
