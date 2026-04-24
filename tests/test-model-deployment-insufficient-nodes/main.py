@@ -1,3 +1,11 @@
+"""Test that the scheduler rejects environments with insufficient nodes.
+
+A 405B model (810GiB VRAM) needs ceil(810/80) = 11 H100 GPUs. The
+environment has only 1 node with 8 GPUs (countPerNode=8, count=8).
+Multi-node would require 2 nodes but only 1 is available. The
+scheduler should produce 0 placements.
+"""
+
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
@@ -8,58 +16,53 @@ from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositionte
 
 test = compositiontest.CompositionTest(
     metadata=metav1.ObjectMeta(
-        name="model-deployment-insufficient-capacity",
+        name="model-deployment-insufficient-nodes",
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/modeldeployments/composition.yaml",
-        xrPath="tests/test-model-deployment-insufficient-capacity/xr.yaml",
+        xrPath="tests/test-model-deployment-insufficient-nodes/xr.yaml",
         xrdPath="apis/modeldeployments/definition.yaml",
         timeoutSeconds=120,
         validate=False,
-        # extraResources is the up CLI's name for required resources.
-        # These are resources the function reads but doesn't own, resolved
-        # by Crossplane at runtime via response.require_resources().
         extraResources=[
-            # An environment with a single 24Gi L4 GPU — not enough for
-            # a 140Gi model that needs 6+ GPUs but only 1 is available.
+            # 1-node H100 cluster: 8 GPUs total, 8 per node. Not enough
+            # nodes for a model that needs 11 GPUs (requires 2 nodes).
             libresource.model_to_fixture(
                 iev1alpha1.InferenceEnvironment(
                     metadata=metav1.ObjectMeta(
-                        name="small-env",
+                        name="small-h100",
                         labels={"modelplane.ai/environment": "true"},
                     ),
                     spec=iev1alpha1.Spec(backend="KServe"),
                     status=iev1alpha1.Status(
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
-                            name="small-cluster",
+                            name="small-h100-cluster",
                         ),
                         gateway=iev1alpha1.Gateway(address="10.0.0.1"),
                         capacity=iev1alpha1.Capacity(
                             backend="KServe",
                             gpuPools=[
                                 iev1alpha1.GpuPool(
-                                    acceleratorType="nvidia-l4",
-                                    countPerNode=1,
+                                    acceleratorType="nvidia-h100-80gb",
+                                    countPerNode=8,
                                     nodes=1,
-                                    memory="24Gi",
+                                    memory="80Gi",
                                 )
                             ],
                         ),
                     ),
                 )
             ),
-            # A 140Gi model — needs ceil(140/24) = 6 GPUs, but only 1
-            # is available. Should not be scheduled.
             libresource.model_to_fixture(
                 cmv1alpha1.ClusterModel(
-                    metadata=metav1.ObjectMeta(name="llama-70b"),
+                    metadata=metav1.ObjectMeta(name="llama-405b"),
                     spec=cmv1alpha1.Spec(
-                        model=cmv1alpha1.Model(name="meta-llama/Llama-3-70B"),
+                        model=cmv1alpha1.Model(name="meta-llama/Llama-3.1-405B"),
                         source="HuggingFace",
                         huggingFace=cmv1alpha1.HuggingFace(
-                            repo="meta-llama/Llama-3-70B",
+                            repo="meta-llama/Llama-3.1-405B",
                         ),
-                        resources=cmv1alpha1.Resources(vram="140Gi"),
+                        resources=cmv1alpha1.Resources(vram="810Gi"),
                         serving=[
                             cmv1alpha1.ServingItem(
                                 name="vllm-kserve",
@@ -73,7 +76,6 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # The InferenceGateway.
             libresource.model_to_fixture(
                 igwv1alpha1.InferenceGateway(
                     metadata=metav1.ObjectMeta(name="default"),
@@ -83,19 +85,20 @@ test = compositiontest.CompositionTest(
             ),
         ],
         assertResources=[
-            # Assert no placements — the model doesn't fit.
+            # Assert no placements — the model needs 2 nodes but only 1
+            # is available.
             libresource.model_to_dict(
                 mdv1alpha1.ModelDeployment(
                     metadata=metav1.ObjectMeta(
-                        name="llama-demo",
+                        name="llama405b-demo",
                         namespace="ml-team",
                     ),
                     spec=mdv1alpha1.Spec(
-                        modelRef=mdv1alpha1.ModelRef(name="llama-70b"),
+                        modelRef=mdv1alpha1.ModelRef(name="llama-405b"),
                         environments=1,
                     ),
                     status=mdv1alpha1.Status(
-                        model=mdv1alpha1.Model(name="meta-llama/Llama-3-70B"),
+                        model=mdv1alpha1.Model(name="meta-llama/Llama-3.1-405B"),
                         placements=mdv1alpha1.Placements(total=0, ready=0),
                     ),
                 )

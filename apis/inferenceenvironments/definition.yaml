@@ -410,9 +410,15 @@ spec:
                         memory:
                           type: string
                           description: Per-GPU VRAM (e.g. "24Gi").
-                        count:
+                        countPerNode:
                           type: integer
-                          description: Total GPUs in this pool.
+                          description: GPUs per node in this pool.
+                        nodes:
+                          type: integer
+                          description: >-
+                            Number of nodes in this pool. Derived from
+                            maxNodeCount (if autoscaling) or nodeCount
+                            in the node pool spec.
               namespace:
                 type: string
                 description: >-

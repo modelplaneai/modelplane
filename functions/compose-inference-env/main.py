@@ -355,12 +355,12 @@ class Composer:
         for pool in gke.nodePools:
             if pool.role != "GPU" or not pool.gpu:
                 continue
-            nodes = pool.maxNodeCount or pool.nodeCount
             gpu_pools.append(
                 {
                     "acceleratorType": pool.gpu.acceleratorType,
                     "memory": GPU_VRAM.get(pool.gpu.acceleratorType, "0Gi"),
-                    "count": pool.gpu.acceleratorCount * nodes,
+                    "countPerNode": pool.gpu.acceleratorCount,
+                    "nodes": pool.maxNodeCount or pool.nodeCount,
                 }
             )
         return gpu_pools
@@ -371,12 +371,12 @@ class Composer:
         for pool in existing.nodePools or []:
             if not pool.gpu or not pool.gpu.acceleratorType:
                 continue
-            nodes = pool.maxNodeCount or pool.nodeCount
             gpu_pools.append(
                 {
                     "acceleratorType": pool.gpu.acceleratorType,
                     "memory": GPU_VRAM.get(pool.gpu.acceleratorType, "0Gi"),
-                    "count": pool.gpu.acceleratorCount * nodes,
+                    "countPerNode": pool.gpu.acceleratorCount,
+                    "nodes": pool.maxNodeCount or pool.nodeCount,
                 }
             )
         return gpu_pools
