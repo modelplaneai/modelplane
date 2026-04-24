@@ -72,7 +72,11 @@ class GpuAllocation:
     total: int  # Total GPUs needed (ceil(model_vram / gpu_vram))
     per_node: int  # GPUs available per node in the selected pool
     node_count: int  # Nodes needed (ceil(total / per_node))
-    multi_node: bool  # Whether total > per_node (multi-node required)
+
+    @property
+    def multi_node(self) -> bool:
+        """Whether the model requires more GPUs than a single node has."""
+        return self.total > self.per_node
 
 
 class Composer:
@@ -164,9 +168,8 @@ class Composer:
         """Compute how many GPUs the model needs and whether multi-node
         inference is required.
 
-        Returns a GpuAllocation with total GPUs, per-node count, node count,
-        and a multi_node flag. When countPerNode is not available on the
-        environment (old IE status), falls back to single-node assumption.
+        Returns a GpuAllocation with total GPUs needed, per-node GPU count
+        from the pool, and the number of nodes required.
         """
         for pool in self.ie.status.capacity.gpuPools:
             pool_memory = quantities.parse_quantity(pool.memory or "0Gi")
@@ -175,17 +178,14 @@ class Composer:
                     1,
                     math.ceil(quantities.parse_quantity(self.model.spec.resources.vram) / pool_memory),
                 )
-                # countPerNode may be absent on old IE statuses that haven't
-                # been reconciled after the XRD upgrade.
-                per_node = int(getattr(pool, "countPerNode", None) or total)
+                per_node = int(pool.countPerNode)
                 node_count = max(1, math.ceil(total / per_node)) if per_node > 0 else 1
                 return GpuAllocation(
                     total=total,
                     per_node=min(per_node, total),
                     node_count=node_count,
-                    multi_node=total > per_node,
                 )
-        return GpuAllocation(total=1, per_node=1, node_count=1, multi_node=False)
+        return GpuAllocation(total=1, per_node=1, node_count=1)
 
     def compose_model_serving(self, gpus):
         """Compose the backend-specific model serving resource on the remote

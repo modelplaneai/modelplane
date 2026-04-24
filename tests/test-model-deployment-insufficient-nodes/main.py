@@ -44,8 +44,8 @@ test = compositiontest.CompositionTest(
                             gpuPools=[
                                 iev1alpha1.GpuPool(
                                     acceleratorType="nvidia-h100-80gb",
-                                    count=8,
                                     countPerNode=8,
+                                    nodes=1,
                                     memory="80Gi",
                                 )
                             ],
