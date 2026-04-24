@@ -3,6 +3,12 @@ kind: Project
 metadata:
   name: modelplane-infra
 spec:
+  apiDependencies:
+  - git:
+      path: cluster/crds
+      ref: release-2.2
+      repository: https://github.com/crossplane/crossplane
+    type: crd
   dependsOn:
   - apiVersion: pkg.crossplane.io/v1
     kind: Provider
@@ -34,4 +40,4 @@ spec:
   readme: |
     This is where you can add a readme for your project.
   repository: xpkg.upbound.io/negzupboundio/modelplane-infra
-  source: github.com/upbound/project-template-scratch
+  source: github.com/modelplaneai/modelplane

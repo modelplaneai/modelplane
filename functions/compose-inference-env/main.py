@@ -23,6 +23,7 @@ from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1a
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
+from .model.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 # Maps backends to their XR kinds (for Usage resources).
@@ -307,24 +308,22 @@ class Composer:
         backend_kind = BACKEND_XR_KINDS.get(self.xr.spec.backend, "KServeBackend")
         resource.update(
             self.rsp.desired.resources["usage-gke-by-backend"],
-            {
-                "apiVersion": "protection.crossplane.io/v1beta1",
-                "kind": "Usage",
-                "metadata": {"namespace": metadata.NAMESPACE_SYSTEM},
-                "spec": {
-                    "of": {
-                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                        "kind": "GKECluster",
-                        "resourceSelector": {"matchControllerRef": True},
-                    },
-                    "by": {
-                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                        "kind": backend_kind,
-                        "resourceSelector": {"matchControllerRef": True},
-                    },
-                    "replayDeletion": True,
-                },
-            },
+            usagev1beta1.Usage(
+                metadata=metav1.ObjectMeta(namespace=metadata.NAMESPACE_SYSTEM),
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="GKECluster",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(matchControllerRef=True),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind=backend_kind,
+                        resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
         )
         self.rsp.desired.resources["usage-gke-by-backend"].ready = fnv1.READY_TRUE
 
