@@ -1,0 +1,9 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama405b-demo
+  namespace: ml-team
+spec:
+  modelRef:
+    name: llama-405b
+  environments: 1
