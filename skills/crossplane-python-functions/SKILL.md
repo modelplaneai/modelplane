@@ -80,11 +80,14 @@ is sufficient — Crossplane sees the new digests and updates the Functions
 automatically:
 
 ```bash
-up project build
-up project push --tag v0.1.0-dev.N    # bump N every time
+nix run .#build-crossplane
+nix run .#push-crossplane              # auto-generates v0.1.0-dev.<count>.g<hash>
 kubectl patch configuration <name> --type=merge \
-  -p '{"spec":{"package":"xpkg.upbound.io/<org>/<project>:v0.1.0-dev.N"}}'
+  -p '{"spec":{"package":"xpkg.upbound.io/<org>/<project>:<tag>"}}'
 ```
+
+The push command auto-generates a unique dev tag from git metadata
+(commit count + short hash). Pass `-- --tag v1.0.0` to override.
 
 Three commands, no Function deletion needed. Crossplane handles the rest
 via digest comparison in the ConfigurationRevision's dependencies.

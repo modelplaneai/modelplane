@@ -9,5 +9,5 @@ spec:
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: negzupboundio-modelplane-infracompose-inference-env
+      name: modelplane-modelplanecompose-inference-env
     step: compose-inference-env
