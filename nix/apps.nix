@@ -91,6 +91,12 @@
     };
 
   # Push the Crossplane project to a registry.
+  #
+  # Auto-generates a dev version tag from git metadata:
+  #   v0.1.0-dev.<commit-count>.g<short-hash>
+  #
+  # Pass --tag to override, e.g.:
+  #   nix run .#push-crossplane -- --tag v0.1.0
   pushCrossplane =
     { up }:
     {
@@ -99,9 +105,21 @@
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
           name = "modelplane-push-crossplane";
-          runtimeInputs = [ up ];
+          runtimeInputs = [
+            up
+            pkgs.git
+          ];
           inheritPath = false;
           text = ''
+            # Auto-generate a dev tag from git metadata unless --tag is
+            # passed explicitly.
+            if [[ ! " $* " =~ " --tag " ]]; then
+              count=$(git rev-list --count HEAD)
+              hash=$(git rev-parse --short HEAD)
+              tag="v0.1.0-dev.''${count}.g''${hash}"
+              echo "Pushing with tag: $tag"
+              set -- --tag "$tag" "$@"
+            fi
             up project push "$@"
           '';
         }

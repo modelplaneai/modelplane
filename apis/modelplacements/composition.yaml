@@ -9,5 +9,5 @@ spec:
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: negzupboundio-modelplane-infracompose-model-placement
+      name: modelplane-modelplanecompose-model-placement
     step: compose-model-placement
