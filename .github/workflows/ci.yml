@@ -79,8 +79,15 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@v31
 
-      # The registry requires Docker-style auth with the robot's access ID
-      # as the username. Public dependency resolution doesn't need auth.
+      # action-up handles robot token auth for both the API and the
+      # registry. docker/login-action is also needed because up project
+      # push uses Docker's credential store for OCI pushes.
+      - name: Login to Upbound
+        uses: upbound/action-up@v1
+        with:
+          api-token: ${{ secrets.UP_ROBOT_TOKEN }}
+          organization: modelplane
+
       - name: Login to registry
         uses: docker/login-action@v3
         with:
