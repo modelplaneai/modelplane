@@ -79,12 +79,8 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@v31
 
-      # up login authenticates the up CLI for API operations (e.g. build
-      # dependency resolution). The registry requires a separate Docker-style
-      # login with the robot's access ID as the username.
-      - name: Login to Upbound
-        run: nix develop --command up login --token - <<< "${{ secrets.UP_ROBOT_TOKEN }}"
-
+      # The registry requires Docker-style auth with the robot's access ID
+      # as the username. Public dependency resolution doesn't need auth.
       - name: Login to registry
         uses: docker/login-action@v3
         with:
