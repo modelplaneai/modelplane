@@ -134,12 +134,10 @@ spec:
                 type: object
                 description: >-
                   The serving profile resolved by the placement function.
-                  Shows which (backend, engine, image) was selected for
-                  this placement.
+                  Shows which (engine, image) was selected for this
+                  placement.
                 properties:
                   name:
-                    type: string
-                  backend:
                     type: string
                   engine:
                     type: object

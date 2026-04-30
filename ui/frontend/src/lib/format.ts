@@ -33,22 +33,18 @@ export function toKubernetesName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-// envRegion extracts the region from an InferenceEnvironment's labels. This is
-// backend-agnostic — it works for KServe, Dynamo, and Existing clusters.
+// envRegion extracts the region from an InferenceEnvironment's labels.
 export function envRegion(env: { metadata: { labels?: Record<string, string> } }): string | undefined {
   return env.metadata.labels?.["modelplane.ai/region"];
 }
 
-// envVersion extracts the backend version from an InferenceEnvironment.
-export function envVersion(env: { spec: { backend: string; kserve?: { version?: string }; dynamo?: { version?: string } } }): string | undefined {
-  if (env.spec.backend === "KServe") return env.spec.kserve?.version;
-  if (env.spec.backend === "Dynamo") return env.spec.dynamo?.version;
-  return undefined;
+// envClusterSource extracts the cluster source from an InferenceEnvironment.
+export function envClusterSource(env: { spec: { cluster?: { source: string } } }): string | undefined {
+  return env.spec.cluster?.source;
 }
 
-// envClusterSource extracts the cluster source from an InferenceEnvironment.
-export function envClusterSource(env: { spec: { backend: string; kserve?: { cluster?: { source: string } }; dynamo?: { cluster?: { source: string } } } }): string | undefined {
-  if (env.spec.backend === "KServe") return env.spec.kserve?.cluster?.source;
-  if (env.spec.backend === "Dynamo") return env.spec.dynamo?.cluster?.source;
-  return undefined;
+// poolGpuCount is the total number of GPUs in a pool: GPUs per node times
+// number of nodes.
+export function poolGpuCount(pool: { countPerNode: number; nodes: number }): number {
+  return pool.countPerNode * pool.nodes;
 }

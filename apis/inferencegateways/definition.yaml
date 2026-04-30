@@ -23,7 +23,7 @@ spec:
       jsonPath: .spec.backend
     - name: ADDRESS
       type: string
-      jsonPath: .status.gateway.address
+      jsonPath: .status.address
     - name: AGE
       type: date
       jsonPath: .metadata.creationTimestamp

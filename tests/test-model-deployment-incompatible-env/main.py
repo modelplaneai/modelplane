@@ -21,21 +21,23 @@ test = compositiontest.CompositionTest(
         # These are resources the function reads but doesn't own, resolved
         # by Crossplane at runtime via response.require_resources().
         extraResources=[
-            # Compatible: KServe backend supports vLLM.
+            # Compatible: labels match the model's environmentSelector.
             libresource.model_to_fixture(
                 iev1alpha1.InferenceEnvironment(
                     metadata=metav1.ObjectMeta(
                         name="compatible-env",
-                        labels={"modelplane.ai/environment": "true"},
+                        labels={
+                            "modelplane.ai/environment": "true",
+                            "modelplane.ai/region": "us-central",
+                        },
                     ),
-                    spec=iev1alpha1.Spec(backend="KServe"),
+                    spec=iev1alpha1.Spec(cluster=iev1alpha1.Cluster(source="Existing")),
                     status=iev1alpha1.Status(
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
                             name="compatible-cluster",
                         ),
                         gateway=iev1alpha1.Gateway(address="10.0.0.1"),
                         capacity=iev1alpha1.Capacity(
-                            backend="KServe",
                             gpuPools=[
                                 iev1alpha1.GpuPool(
                                     acceleratorType="nvidia-l4",
@@ -48,22 +50,21 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # Incompatible: no backend set — engine compatibility check
-            # should filter this out.
+            # Incompatible: missing the modelplane.ai/region label that
+            # the model's environmentSelector requires.
             libresource.model_to_fixture(
                 iev1alpha1.InferenceEnvironment(
                     metadata=metav1.ObjectMeta(
                         name="incompatible-env",
                         labels={"modelplane.ai/environment": "true"},
                     ),
-                    spec=iev1alpha1.Spec(backend="KServe"),
+                    spec=iev1alpha1.Spec(cluster=iev1alpha1.Cluster(source="Existing")),
                     status=iev1alpha1.Status(
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
                             name="incompatible-cluster",
                         ),
                         gateway=iev1alpha1.Gateway(address="10.0.0.2"),
                         capacity=iev1alpha1.Capacity(
-                            backend="SomeOtherBackend",
                             gpuPools=[
                                 iev1alpha1.GpuPool(
                                     acceleratorType="nvidia-l4",
@@ -76,8 +77,8 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # The ClusterModel with a KServe profile — won't match
-            # incompatible-env's SomeOtherBackend.
+            # The ClusterModel with an environmentSelector requiring
+            # us-central — won't match incompatible-env.
             libresource.model_to_fixture(
                 cmv1alpha1.ClusterModel(
                     metadata=metav1.ObjectMeta(name="qwen-0.5b"),
@@ -90,8 +91,10 @@ test = compositiontest.CompositionTest(
                         resources=cmv1alpha1.Resources(vram="2Gi"),
                         serving=[
                             cmv1alpha1.ServingItem(
-                                name="vllm-kserve",
-                                backend="KServe",
+                                name="vllm",
+                                environmentSelector=cmv1alpha1.EnvironmentSelector(
+                                    matchLabels={"modelplane.ai/region": "us-central"},
+                                ),
                                 engine=cmv1alpha1.Engine(
                                     name="vLLM",
                                     image="vllm/vllm-openai:v0.7.3",

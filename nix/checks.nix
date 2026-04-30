@@ -81,7 +81,7 @@
       pname = "modelplane-ui-frontend-checks";
       inherit version;
       src = "${self}/ui/frontend";
-      npmDepsHash = "sha256-Albak9di8Y9d9hEx3jrmz2rnsgW5SlRrjkTbsN1K/lA=";
+      npmDepsHash = "sha256-zIma/8cqbWJKZN55ASsvBghT1LJvX6x63Z92j8R5W+Y=";
 
       buildPhase = ''
         echo "Running TypeScript type check..."

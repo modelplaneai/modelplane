@@ -32,7 +32,6 @@ test = compositiontest.CompositionTest(
                         serving=[
                             mv1alpha1.ServingItem(
                                 name="vllm-kserve",
-                                backend="KServe",
                                 engine=mv1alpha1.Engine(
                                     name="vLLM",
                                     image="vllm/vllm-openai:v0.7.3",

@@ -85,6 +85,7 @@
           build = import ./nix/build.nix { inherit pkgs self; };
           apps = import ./nix/apps.nix { inherit pkgs; };
           up = build.up { inherit system; };
+          dockerCredentialUp = build.dockerCredentialUp { inherit system; };
           fe = build.frontend { inherit version; };
           px = build.proxy {
             inherit version;
@@ -92,9 +93,9 @@
           };
         in
         {
-          build-crossplane = apps.buildCrossplane { inherit up; };
-          test-crossplane = apps.testCrossplane { inherit up; };
-          push-crossplane = apps.pushCrossplane { inherit up; };
+          build-crossplane = apps.buildCrossplane { inherit up dockerCredentialUp; };
+          test-crossplane = apps.testCrossplane { inherit up dockerCredentialUp; };
+          push-crossplane = apps.pushCrossplane { inherit up dockerCredentialUp; };
           lint = apps.lint { };
           load-image = apps.loadImage { image = build.image { proxy = px; }; };
           dev-proxy = apps.devProxy { };
@@ -108,12 +109,14 @@
         let
           build = import ./nix/build.nix { inherit pkgs self; };
           up = build.up { inherit system; };
+          dockerCredentialUp = build.dockerCredentialUp { inherit system; };
         in
         {
           default = pkgs.mkShell {
             buildInputs = [
               # Crossplane / Upbound
               up
+              dockerCredentialUp
 
               # Kubernetes
               pkgs.kubectl

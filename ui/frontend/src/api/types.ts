@@ -23,7 +23,11 @@ export interface KubeList<T> {
 export interface GPUPool {
   acceleratorType: string;
   memory: string;
-  count: number;
+  // countPerNode is the number of GPUs on each node in this pool. Total GPU
+  // count is countPerNode * nodes.
+  countPerNode: number;
+  // nodes is the number of nodes in this pool.
+  nodes: number;
 }
 
 export interface InferenceGateway {
@@ -46,55 +50,31 @@ export interface InferenceEnvironment {
   kind: "InferenceEnvironment";
   metadata: ObjectMeta;
   spec: {
-    backend: string;
-    kserve?: {
-      version?: string;
-      cluster?: {
-        source: string;
-        gke?: {
-          project: string;
-          region: string;
-          nodePools?: Array<{
-            name: string;
-            role: string;
-            machineType: string;
-            nodeCount?: number;
-            gpu?: {
-              acceleratorType: string;
-              acceleratorCount?: number;
-            };
-          }>;
-        };
-        existing?: {
-          nodePools?: Array<{
-            name: string;
-            nodeCount?: number;
-            gpu?: {
-              acceleratorType: string;
-              acceleratorCount?: number;
-            };
-          }>;
-        };
+    cluster?: {
+      source: string;
+      gke?: {
+        project: string;
+        region: string;
+        nodePools?: Array<{
+          name: string;
+          role: string;
+          machineType: string;
+          nodeCount?: number;
+          gpu?: {
+            acceleratorType: string;
+            acceleratorCount?: number;
+          };
+        }>;
       };
-    };
-    dynamo?: {
-      version?: string;
-      cluster?: {
-        source: string;
-        gke?: {
-          project: string;
-          region: string;
-        };
-        existing?: {
-          nodePools?: Array<{
-            name: string;
-            nodeCount?: number;
-            gpu?: {
-              acceleratorType: string;
-              acceleratorCount?: number;
-            };
-          }>;
-        };
+      existing?: {
+        nodePools?: Array<{
+          name: string;
+          nodeCount?: number;
+          gpu?: {
+            acceleratorType: string;
+            acceleratorCount?: number;
+          };
+        }>;
       };
     };
   };
@@ -102,14 +82,13 @@ export interface InferenceEnvironment {
     conditions?: Condition[];
     providerConfigRef?: { name: string };
     gateway?: { address: string };
-    capacity?: { backend: string; gpuPools?: GPUPool[] };
+    capacity?: { gpuPools?: GPUPool[] };
     namespace?: string;
   };
 }
 
 export interface ServingProfile {
   name: string;
-  backend: string;
   environmentSelector?: { matchLabels?: Record<string, string> };
   engine?: {
     name: string;
@@ -205,7 +184,6 @@ export interface ModelPlacement {
     model?: { name: string };
     servingProfile?: {
       name: string;
-      backend: string;
       engine?: { name: string; image: string };
     };
   };

@@ -3,13 +3,10 @@
 This function reads the referenced ClusterModel (or Model) and
 InferenceEnvironment via required resources, resolves the matching serving
 profile, computes GPU count from model VRAM vs pool VRAM, and composes
-backend-specific resources on the remote cluster.
+resources on the remote cluster.
 
-For KServe backends, it creates an LLMInferenceService. For Dynamo backends,
-it creates a DynamoGraphDeployment and an HTTPRoute to expose the Dynamo
-Frontend through the remote cluster's Envoy Gateway. In both cases, it also
-composes an Envoy Gateway Backend on the control plane for ModelDeployment
-to route through.
+It creates a KServe LLMInferenceService on the remote cluster and an Envoy
+Gateway Backend on the control plane for ModelDeployment to route through.
 """
 
 import math
@@ -18,30 +15,13 @@ from dataclasses import dataclass
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import backends, conditions, defaults, metadata, naming, prometheus, quantities, serving
+from .lib import conditions, defaults, metadata, naming, prometheus, quantities, serving
 from .lib import resource as libresource
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
-
-# Dynamo engine-specific mappings. The engine name from the serving profile
-# determines the backendFramework, Python module, and working directory.
-ENGINE_TO_DYNAMO_FRAMEWORK = {
-    "vLLM": "vllm",
-    "SGLang": "sglang",
-}
-
-ENGINE_TO_DYNAMO_MODULE = {
-    "vLLM": "dynamo.vllm",
-    "SGLang": "dynamo.sglang",
-}
-
-ENGINE_TO_DYNAMO_WORKDIR = {
-    "vLLM": "/workspace/examples/backends/vllm",
-    "SGLang": "/workspace/examples/backends/sglang",
-}
 
 # Condition types and reasons for the ModelPlacement XR.
 CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
@@ -157,8 +137,7 @@ class Composer:
             )
             response.warning(
                 self.rsp,
-                f"No serving profile matches environment {self.xr.spec.inferenceEnvironmentRef.name}"
-                f" (backend: {self.ie.status.capacity.backend})",
+                f"No serving profile matches environment {self.xr.spec.inferenceEnvironmentRef.name}",
             )
             return False
 
@@ -188,17 +167,10 @@ class Composer:
         return GpuAllocation(total=1, per_node=1, node_count=1)
 
     def compose_model_serving(self, gpus):
-        """Compose the backend-specific model serving resource on the remote
-        cluster. Dispatches on the serving profile's backend."""
-        if self.profile.backend == backends.KSERVE:
-            self.compose_kserve_llmis(gpus)
-            if self.has_autoscaling():
-                self.compose_kserve_keda_scaledobject()
-        elif self.profile.backend == backends.DYNAMO:
-            self.compose_dynamo_dgd(gpus)
-            self.compose_dynamo_httproute()
-            if self.has_autoscaling():
-                self.compose_dynamo_keda_scaledobject()
+        """Compose the model serving resource on the remote cluster."""
+        self.compose_kserve_llmis(gpus)
+        if self.has_autoscaling():
+            self.compose_kserve_keda_scaledobject()
 
     def compose_kserve_llmis(self, gpus):
         """Compose a provider-kubernetes Object wrapping an LLMInferenceService
@@ -375,274 +347,6 @@ class Composer:
             return scaling.concurrency.minReplicas if scaling.concurrency.minReplicas is not None else 1
         return 1
 
-    def compose_dynamo_dgd(self, gpus):
-        """Compose a provider-kubernetes Object wrapping a
-        DynamoGraphDeployment on the remote cluster.
-
-        The DGD manifest is an inline dict because there's no generated
-        Pydantic model for nvidia.com/v1alpha1 DynamoGraphDeployment."""
-        dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
-        engine_name = self.profile.engine.name
-        framework = ENGINE_TO_DYNAMO_FRAMEWORK.get(engine_name, "vllm")
-        module = ENGINE_TO_DYNAMO_MODULE.get(engine_name, "dynamo.vllm")
-        workdir = ENGINE_TO_DYNAMO_WORKDIR.get(engine_name, "/workspace/examples/backends/vllm")
-
-        worker_args = list(self.profile.engine.args or [])
-
-        worker_replicas = self.worker_replicas()
-
-        # Each Worker pod gets per_node GPUs (or total if single-node).
-        gpu_per_pod = gpus.per_node if gpus.multi_node else gpus.total
-
-        # Build the Worker service spec.
-        worker_service = {
-            "componentType": "worker",
-            "replicas": worker_replicas,
-            "resources": {
-                "limits": {
-                    "gpu": str(gpu_per_pod),
-                },
-            },
-            "extraPodSpec": {
-                "mainContainer": {
-                    "image": self.profile.engine.image,
-                    "workingDir": workdir,
-                    "command": ["python3", "-m", module],
-                    "args": worker_args,
-                },
-            },
-        }
-
-        # Enable the scaling adapter when autoscaling is configured. This
-        # tells the Dynamo operator to create a DGDSA for the Worker service,
-        # which KEDA's ScaledObject targets via the Scale subresource.
-        if self.has_autoscaling():
-            worker_service["scalingAdapter"] = {"enabled": True}
-
-        if gpus.multi_node:
-            worker_service["multinode"] = {"nodeCount": gpus.node_count}
-
-        dgd_manifest = {
-            "apiVersion": "nvidia.com/v1alpha1",
-            "kind": "DynamoGraphDeployment",
-            "metadata": {
-                "name": dgd_name,
-                "namespace": metadata.NAMESPACE_REMOTE,
-            },
-            "spec": {
-                "backendFramework": framework,
-                # The Dynamo vLLM runtime image sets LD_LIBRARY_PATH without
-                # /usr/local/nvidia/lib64, which is where GKE's device plugin
-                # mounts the host NVIDIA driver (libcuda.so, NVML). Without
-                # this, vLLM fails with "NVML Shared Library Not Found".
-                "envs": [
-                    {
-                        "name": "LD_LIBRARY_PATH",
-                        "value": (
-                            "/usr/local/nvidia/lib64"
-                            ":/usr/local/cuda/lib64"
-                            ":/opt/vllm/tools/ep_kernels/ep_kernels_workspace/nvshmem_install/lib"
-                            ":/opt/nvidia/nvda_nixl/lib/x86_64-linux-gnu"
-                            ":/opt/nvidia/nvda_nixl/lib/x86_64-linux-gnu/plugins"
-                            ":/usr/local/ucx/lib"
-                            ":/usr/local/ucx/lib/ucx"
-                        ),
-                    },
-                ],
-                "services": {
-                    "Frontend": {
-                        "componentType": "frontend",
-                        "replicas": 2,
-                        "extraPodSpec": {
-                            "mainContainer": {
-                                "image": self.profile.engine.image,
-                            },
-                        },
-                    },
-                    "Worker": worker_service,
-                },
-            },
-        }
-
-        resource.update(
-            self.rsp.desired.resources[MODEL_RESOURCE_KEY],
-            k8sobjv1alpha1.Object(
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=self.ie.status.providerConfigRef.name,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromObject",
-                    ),
-                    forProvider=k8sobjv1alpha1.ForProvider(manifest=dgd_manifest),
-                ),
-            ),
-        )
-
-    def compose_dynamo_keda_scaledobject(self):
-        """Compose a KEDA ScaledObject on the remote cluster that targets the
-        Dynamo Worker's DynamoGraphDeploymentScalingAdapter.
-
-        The ScaledObject uses Envoy Gateway's envoy_cluster_upstream_rq_active
-        metric to measure in-flight requests at the proxy level. The Dynamo
-        HTTPRoute is named {dgd-name}, and Envoy uses that as the cluster
-        name in its metrics."""
-        dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
-        scaling = self.xr.spec.scaling
-        concurrency = scaling.concurrency
-
-        # KEDA threshold = target * utilization / 100. KEDA scales when the
-        # per-replica metric exceeds this threshold.
-        target = concurrency.target if concurrency.target is not None else 1
-        utilization = concurrency.utilization if concurrency.utilization is not None else 70
-        threshold = str(max(1, target * utilization // 100))
-
-        # Envoy names its upstream clusters after the HTTPRoute:
-        # httproute/{namespace}/{route-name}/rule/{index}. The Dynamo
-        # HTTPRoute is named {dgd-name} in NAMESPACE_REMOTE.
-        envoy_cluster = f"httproute/{metadata.NAMESPACE_REMOTE}/{dgd_name}/rule/0"
-
-        min_replicas = concurrency.minReplicas if concurrency.minReplicas is not None else 1
-        max_replicas = concurrency.maxReplicas if concurrency.maxReplicas is not None else 1
-        cooldown = concurrency.scaleDownDelay if concurrency.scaleDownDelay is not None else 300
-
-        if max_replicas < min_replicas:
-            response.warning(
-                self.rsp,
-                f"maxReplicas ({max_replicas}) is less than minReplicas ({min_replicas}), skipping ScaledObject",
-            )
-            return
-
-        scaledobject_manifest = {
-            "apiVersion": "keda.sh/v1alpha1",
-            "kind": "ScaledObject",
-            "metadata": {
-                "name": f"{dgd_name}-worker-scaler",
-                "namespace": metadata.NAMESPACE_REMOTE,
-            },
-            "spec": {
-                "scaleTargetRef": {
-                    "apiVersion": "nvidia.com/v1alpha1",
-                    "kind": "DynamoGraphDeploymentScalingAdapter",
-                    "name": f"{dgd_name}-worker",
-                },
-                "minReplicaCount": min_replicas,
-                "maxReplicaCount": max_replicas,
-                "pollingInterval": 15,
-                "cooldownPeriod": cooldown,
-                "triggers": [
-                    {
-                        "type": "prometheus",
-                        "metadata": {
-                            "serverAddress": prometheus.URL,
-                            "metricName": "envoy_cluster_upstream_rq_active",
-                            "query": (f'sum(envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}})'),
-                            "threshold": threshold,
-                        },
-                    },
-                ],
-            },
-        }
-
-        resource.update(
-            self.rsp.desired.resources["keda-scaledobject"],
-            k8sobjv1alpha1.Object(
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=self.ie.status.providerConfigRef.name,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromObject",
-                    ),
-                    forProvider=k8sobjv1alpha1.ForProvider(
-                        manifest=scaledobject_manifest,
-                    ),
-                ),
-            ),
-        )
-
-    def compose_dynamo_httproute(self):
-        """Compose an HTTPRoute on the remote cluster that routes from the
-        Envoy Gateway to the Dynamo Frontend service. Unlike KServe (which
-        auto-creates HTTPRoutes via its LLMInferenceService controller),
-        Dynamo doesn't manage Gateway API routing — we compose it explicitly.
-
-        The HTTPRoute manifest is an inline dict because there's no generated
-        Pydantic model for Gateway API types."""
-        dgd_name = naming.to_dns_label(self.xr.spec.modelRef.name)
-        # The Dynamo operator creates a Service named <dgd-name>-frontend
-        # for the Frontend component.
-        frontend_svc = f"{dgd_name}-frontend"
-
-        resource.update(
-            self.rsp.desired.resources["dynamo-httproute"],
-            k8sobjv1alpha1.Object(
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=self.ie.status.providerConfigRef.name,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromCelQuery",
-                        celQuery=(
-                            "object.status.parents.exists(p,"
-                            ' p.conditions.exists(c, c.type == "Accepted"'
-                            ' && c.status == "True"))'
-                        ),
-                    ),
-                    forProvider=k8sobjv1alpha1.ForProvider(
-                        manifest={
-                            "apiVersion": "gateway.networking.k8s.io/v1",
-                            "kind": "HTTPRoute",
-                            "metadata": {
-                                "name": dgd_name,
-                                "namespace": metadata.NAMESPACE_REMOTE,
-                            },
-                            "spec": {
-                                "parentRefs": [
-                                    {
-                                        "name": "dynamo-ingress-gateway",
-                                        "namespace": "dynamo-system",
-                                    },
-                                ],
-                                "rules": [
-                                    {
-                                        "matches": [
-                                            {
-                                                "path": {
-                                                    "type": "PathPrefix",
-                                                    "value": f"/{metadata.NAMESPACE_REMOTE}/{dgd_name}/",
-                                                },
-                                            },
-                                        ],
-                                        "filters": [
-                                            {
-                                                "type": "URLRewrite",
-                                                "urlRewrite": {
-                                                    "path": {
-                                                        "type": "ReplacePrefixMatch",
-                                                        "replacePrefixMatch": "/",
-                                                    },
-                                                },
-                                            },
-                                        ],
-                                        "backendRefs": [
-                                            {
-                                                "name": frontend_svc,
-                                                "port": 8000,
-                                            },
-                                        ],
-                                    },
-                                ],
-                            },
-                        },
-                    ),
-                ),
-            ),
-        )
-
     def compose_backend(self):
         """Compose a Backend on the control plane pointing to the remote
         cluster's gateway. ModelDeployment aggregates these into an HTTPRoute."""
@@ -670,7 +374,6 @@ class Composer:
             resources=v1alpha1.Resources(gpu=v1alpha1.Gpu(count=gpus.total)),
             servingProfile=v1alpha1.ServingProfile(
                 name=self.profile.name,
-                backend=self.profile.backend,
                 engine=v1alpha1.Engine(
                     name=self.profile.engine.name,
                     image=self.profile.engine.image,
@@ -696,7 +399,7 @@ class Composer:
         if MODEL_RESOURCE_KEY not in self.req.observed.resources:
             response.normal(
                 self.rsp,
-                f"Composing {self.profile.backend} deployment for {self.model.spec.model.name}"
+                f"Composing deployment for {self.model.spec.model.name}"
                 f" on {self.xr.spec.inferenceEnvironmentRef.name}"
                 f" (profile: {self.profile.name}, engine: {self.profile.engine.name}, GPUs: {gpus})",
             )
@@ -750,9 +453,6 @@ class Composer:
             self.rsp.desired.resources[MODEL_RESOURCE_KEY].ready = fnv1.READY_TRUE
         if backend_exists:
             self.rsp.desired.resources["backend"].ready = fnv1.READY_TRUE
-        dynamo_route_ready = conditions.has_condition(self.req, "dynamo-httproute", "Ready")
-        if "dynamo-httproute" in self.rsp.desired.resources and dynamo_route_ready:
-            self.rsp.desired.resources["dynamo-httproute"].ready = fnv1.READY_TRUE
         keda_ready = conditions.has_condition(self.req, "keda-scaledobject", "Ready")
         if "keda-scaledobject" in self.rsp.desired.resources and keda_ready:
             self.rsp.desired.resources["keda-scaledobject"].ready = fnv1.READY_TRUE

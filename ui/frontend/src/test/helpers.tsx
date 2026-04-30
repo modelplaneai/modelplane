@@ -90,7 +90,7 @@ export function clusterModel(overrides?: {
       huggingFace: { repo: overrides?.repo ?? "TestOrg/TestModel" },
       resources: { vram: overrides?.vram ?? "2Gi" },
       serving: overrides?.serving ?? [
-        { name: "vllm-kserve", backend: "KServe", engine: { name: "vLLM", image: "vllm/vllm-openai:v0.7.3" } },
+        { name: "vllm-kserve", engine: { name: "vLLM", image: "vllm/vllm-openai:v0.7.3" } },
       ],
     },
     status: { conditions: [{ type: "Ready", status: "True" }] },
@@ -131,12 +131,10 @@ export function modelDeployment(overrides?: {
 
 export function inferenceEnvironment(overrides?: {
   name?: string;
-  backend?: string;
   region?: string;
   gateway?: string;
   ready?: boolean;
 }): InferenceEnvironment {
-  const backend = overrides?.backend ?? "KServe";
   return {
     apiVersion: "modelplane.ai/v1alpha1",
     kind: "InferenceEnvironment",
@@ -148,18 +146,7 @@ export function inferenceEnvironment(overrides?: {
       },
     },
     spec: {
-      backend,
-      ...(backend === "KServe" ? {
-        kserve: {
-          version: "v0.16.0",
-          cluster: { source: "GKE", gke: { project: "test-project", region: overrides?.region ?? "us-central1" } },
-        },
-      } : {
-        dynamo: {
-          version: "1.0.0",
-          cluster: { source: "Existing" },
-        },
-      }),
+      cluster: { source: "GKE", gke: { project: "test-project", region: overrides?.region ?? "us-central1" } },
     },
     status: {
       conditions: [{
@@ -169,8 +156,7 @@ export function inferenceEnvironment(overrides?: {
       }],
       gateway: overrides?.gateway ? { address: overrides.gateway } : undefined,
       capacity: {
-        backend,
-        gpuPools: [{ acceleratorType: "nvidia-l4", memory: "24Gi", count: 1 }],
+        gpuPools: [{ acceleratorType: "nvidia-l4", memory: "24Gi", countPerNode: 1, nodes: 1 }],
       },
       namespace: "ie-test-env",
     },

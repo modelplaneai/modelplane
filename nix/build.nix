@@ -25,6 +25,28 @@ let
       hash = "sha256-Z2lbmnDxhgXDh+JN6yxIYtelQ2//Pg/HHHCgXQZBh/g=";
     };
   };
+
+  # The Docker credential helper for xpkg.upbound.io. up shells out to it to
+  # authenticate when fetching package dependencies.
+  dockerCredentialUpBins = {
+    "x86_64-linux" = {
+      url = "https://cli.upbound.io/stable/v${upVersion}/bin/linux_amd64/docker-credential-up";
+      hash = "sha256-weGga6mxaNqoJx1X+mgtaOlxeXSRdHBSGUjX82V8S9A=";
+    };
+    "aarch64-linux" = {
+      url = "https://cli.upbound.io/stable/v${upVersion}/bin/linux_arm64/docker-credential-up";
+      hash = "sha256-3r3ZqIAKIAt/Ec9WSRbVt/rnut1k+Kx4mLNjPgTtzUc=";
+    };
+    "x86_64-darwin" = {
+      # TODO(negz): Prefetch and verify this hash.
+      url = "https://cli.upbound.io/stable/v${upVersion}/bin/darwin_amd64/docker-credential-up";
+      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    };
+    "aarch64-darwin" = {
+      url = "https://cli.upbound.io/stable/v${upVersion}/bin/darwin_arm64/docker-credential-up";
+      hash = "sha256-mSIOSuc/nKgo0hw66gpVrZlGR0l+7ZAu16YBb/4K/GE=";
+    };
+  };
 in
 {
   # The Upbound up CLI.
@@ -45,6 +67,25 @@ in
       '';
     };
 
+  # The docker-credential-up binary. Required by up to authenticate with
+  # xpkg.upbound.io when fetching package dependencies.
+  dockerCredentialUp =
+    { system }:
+    let
+      bin = dockerCredentialUpBins.${system};
+    in
+    pkgs.stdenvNoCC.mkDerivation {
+      pname = "docker-credential-up";
+      version = upVersion;
+      src = pkgs.fetchurl {
+        inherit (bin) url hash;
+      };
+      dontUnpack = true;
+      installPhase = ''
+        install -Dm755 $src $out/bin/docker-credential-up
+      '';
+    };
+
   # The web UI frontend (Vite + React).
   frontend =
     { version }:
@@ -52,7 +93,7 @@ in
       pname = "modelplane-ui-frontend";
       inherit version;
       src = "${self}/ui/frontend";
-      npmDepsHash = "sha256-Albak9di8Y9d9hEx3jrmz2rnsgW5SlRrjkTbsN1K/lA=";
+      npmDepsHash = "sha256-zIma/8cqbWJKZN55ASsvBghT1LJvX6x63Z92j8R5W+Y=";
       installPhase = ''
         runHook preInstall
         cp -r dist $out

@@ -97,7 +97,7 @@ spec:
                 type: array
                 description: >-
                   Serving profiles. Each profile is a complete configuration
-                  for serving this model on a specific (backend, engine) pair.
+                  for serving this model with a specific engine and image.
                   Array order is priority: the first profile matching a
                   candidate environment wins.
                 minItems: 1
@@ -106,24 +106,14 @@ spec:
                 x-kubernetes-list-map-keys: [name]
                 items:
                   type: object
-                  required: [name, backend]
-                  x-kubernetes-validations:
-                  - rule: "self.backend in ['KServe', 'Dynamo'] ? has(self.engine) : true"
-                    message: "engine is required for KServe and Dynamo backends"
+                  required: [name, engine]
                   properties:
                     name:
                       type: string
                       description: >-
-                        Unique name for this profile (e.g. "vllm-kserve",
-                        "vllm-dynamo").
+                        Unique name for this profile (e.g. "vllm").
                       minLength: 1
                       maxLength: 63
-                    backend:
-                      type: string
-                      description: >-
-                        Backend this profile targets. Must match the
-                        InferenceEnvironment's spec.backend.
-                      enum: [KServe, Dynamo]
                     environmentSelector:
                       type: object
                       description: >-
@@ -138,16 +128,15 @@ spec:
                     engine:
                       type: object
                       description: >-
-                        Engine configuration. Required for Kubernetes backends
-                        (KServe, Dynamo).
+                        Engine configuration.
                       required: [name, image]
                       properties:
                         name:
                           type: string
                           description: >-
-                            Engine name (e.g. "vLLM", "SGLang"). Tells the
-                            placement function engine-specific mechanics.
-                          enum: [vLLM, SGLang]
+                            Engine name. Tells the placement function
+                            engine-specific mechanics.
+                          enum: [vLLM]
                         image:
                           type: string
                           description: >-

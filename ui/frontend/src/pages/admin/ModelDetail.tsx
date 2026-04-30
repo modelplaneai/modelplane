@@ -100,7 +100,6 @@ export function ModelDetail() {
               <Card key={p.name}>
                 <div className="flex items-center gap-3 mb-3">
                   <p className="text-text font-medium text-sm">{p.name}</p>
-                  <Badge variant="purple">{p.backend}</Badge>
                   {p.engine?.name && <Badge variant="cyan">{p.engine.name}</Badge>}
                 </div>
                 {p.engine && (

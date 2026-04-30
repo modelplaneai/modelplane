@@ -8,10 +8,8 @@
 
 Modelplane is an open-source, Crossplane-based inference platform from Upbound.
 It gives platform teams a declarative API for inference infrastructure and gives
-ML teams a self-service interface to deploy models. The resource model is built
-for a world where inference backends are heterogeneous: KServe on a GKE cluster
-today, NVIDIA Dynamo on CoreWeave tomorrow. An ML team deploys a model like
-this:
+ML teams a self-service interface to deploy models. An ML team deploys a model
+like this:
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -28,10 +26,10 @@ spec:
 
 The platform team pre-configures the inference environment and model catalog
 that make this possible. Under the hood, each ModelDeployment composes
-`ModelPlacements` (one per target environment) that handle the backend-specific
-work of actually running the model. The ML team gets a unified OpenAI-compatible
-endpoint; Modelplane handles per-environment composition, status aggregation,
-and routing.
+`ModelPlacements` (one per target environment) that deploy the model on each
+cluster and wire it into the routing layer. The ML team gets a unified
+OpenAI-compatible endpoint; Modelplane handles per-environment composition,
+status aggregation, and routing.
 
 ## Background
 
@@ -39,11 +37,9 @@ Open-weight inference is going to be the default for enterprises. Cost control,
 governance, and data secrecy will push them away from hosted proprietary models
 and toward running open-weight models on infrastructure they control. Kubernetes
 is the primary substrate, with KServe, vLLM, and the broader ecosystem maturing
-fast. But it won't be the only way enterprises run inference. GPU clouds like
-CoreWeave and Lambda Labs, managed inference services like BaseTen and NVIDIA
-NIM, and hyperscaler AI endpoints are all part of the picture.
+fast.
 
-Projects like KServe, KubeAI, OME, llm-d, and NVIDIA Dynamo are getting good at
+Projects like KServe, KubeAI, llm-d, and NVIDIA Dynamo are getting good at
 running models on Kubernetes, but they're not platforms in the same way
 Kubernetes isn't a platform. They're scoped to one cluster, they expose
 infrastructure concepts to their consumers, and they have no opinions about
@@ -54,10 +50,9 @@ governance model on top of it.
 Platform teams at companies like Apple and JPMC already use Crossplane to do
 this kind of work for cloud infrastructure: unifying AWS, GCP, and Azure behind
 declarative APIs on a central control plane. These teams are now being asked to
-provide inference infrastructure to internal ML teams. KServe and its peers are
-to Modelplane what cloud provider APIs are to Crossplane: powerful backends that
-need a platform layer above them to become self-service with guardrails.
-Modelplane is an opinionated platform layer, built on Crossplane v2.
+provide inference infrastructure to internal ML teams. Modelplane is what they'd
+build: an opinionated platform layer on top of Crossplane v2, managing a fleet
+of inference environments across clusters and regions.
 
 ## Goals
 
@@ -116,8 +111,7 @@ organization requires?
 ### ML / application team (consumer)
 
 The consumer team needs to run inference against open-weight models as part of
-their product or research. They don't want to learn Kubernetes, Helm, KServe, or
-Coreweave. In the Modelplane model, they:
+their product or research. They don't want to learn Kubernetes, Helm, or GPU infrastructure. In the Modelplane model, they:
 
 - Create a `ModelDeployment` resource in their namespace specifying what model
   they want and optionally which environments to target
@@ -140,7 +134,7 @@ Modelplane defines six Crossplane composite resources (XRs). The API group is
 | CRD | Scope | Created by | Purpose |
 |-----|-------|------------|---------|
 | `InferenceGateway` | Cluster | Platform team | Control plane routing infrastructure |
-| `InferenceEnvironment` | Cluster | Platform team | Inference environment with backend |
+| `InferenceEnvironment` | Cluster | Platform team | Inference environment with cluster and inference stack |
 | `ClusterModel` | Cluster | Platform team | Model catalog |
 | `Model` | Namespace | ML team | Private fine-tuned models |
 | `ModelDeployment` | Namespace | ML team | Multi-environment deployment |
@@ -188,14 +182,13 @@ spec:
   resources:
     vram: "140Gi"
 
-  # Serving profiles — how this model is served on each backend. Each profile
-  # is a complete, tested configuration for a specific (backend, engine) pair.
+  # Serving profiles — how this model is served. Each profile is a complete,
+  # tested configuration for a specific (engine, image, args) combination.
   # Array order is priority: the first profile that matches wins.
   serving:
-  - name: vllm-kserve
-    backend: KServe                  # Required discriminator — matches IE backend
-    engine:                          # Required for K8s backends (KServe, Dynamo)
-      name: vLLM
+  - name: vllm
+    engine:
+      name: vLLM                     # Currently only vLLM is supported
       image: vllm/vllm-openai:v0.8.0
       args:                          # Opaque — passed through to the engine
       - "--max-model-len=32768"
@@ -210,50 +203,21 @@ status:
       observedGeneration: 1
 ```
 
-Each serving profile binds a model to a specific backend and engine. The
-`backend` field is a required discriminator that determines what other fields
-are valid. For Kubernetes backends (KServe, Dynamo), the `engine` block is
-required. Future SaaS backends (e.g., Together AI) may not expose engine
-configuration at all — `backend` gates this.
+Each serving profile is a complete, tested engine configuration for serving the
+model. The `engine` block carries the container image and opaque CLI args. Modelplane does not interpret engine args; they're passed
+through to the container. Engine flags evolve with every engine release; treating
+them as opaque avoids a perpetual schema maintenance burden. The only things
+Modelplane derives from the model are the model name/URI on the container and
+the GPU count from VRAM.
 
-The `engine` block carries the container image, the engine name (which tells
-the placement function engine-specific mechanics like Dynamo's
-`backendFramework` and module paths), and opaque CLI args. Modelplane does not
-interpret engine args — they're passed through to the container. Engine flags
-evolve with every engine release; treating them as opaque avoids a perpetual
-schema maintenance burden. The only things Modelplane derives from the model
-are the model name/URI on the container and the GPU count from VRAM.
-
-An organization running both KServe and Dynamo (e.g., during a backend
-migration) adds a second profile:
+Most ClusterModels have a single serving profile. Multiple profiles are useful
+when a model needs different engine configurations for different hardware. A
+profile that uses FP8 quantization (requiring Hopper GPUs) can require specific
+environments via `environmentSelector`:
 
 ```yaml
   serving:
-  - name: vllm-kserve
-    backend: KServe
-    engine:
-      name: vLLM
-      image: vllm/vllm-openai:v0.8.0
-      args: ["--max-model-len=32768", "--gpu-memory-utilization=0.9"]
-  - name: vllm-dynamo
-    backend: Dynamo
-    engine:
-      name: vLLM
-      image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.0.1
-      args: ["--max-model-len=32768"]
-```
-
-Most organizations standardize on one backend and one engine, so most
-ClusterModels have a single serving profile. Profile proliferation is bounded
-by the number of backends in use — typically one or two.
-
-Profiles can also carry an optional `environmentSelector` for capability-based
-matching. A profile that uses FP8 quantization (requiring Hopper GPUs) can
-require environments with a specific label, separate from the backend match:
-
-```yaml
-  - name: vllm-kserve-fp8
-    backend: KServe
+  - name: vllm-fp8
     environmentSelector:
       matchLabels:
         modelplane.ai/gpu-arch: hopper
@@ -261,6 +225,11 @@ require environments with a specific label, separate from the backend match:
       name: vLLM
       image: vllm/vllm-openai:v0.8.0
       args: ["--quantization=fp8", "--max-model-len=32768"]
+  - name: vllm-default
+    engine:
+      name: vLLM
+      image: vllm/vllm-openai:v0.8.0
+      args: ["--max-model-len=32768", "--gpu-memory-utilization=0.9"]
 ```
 
 The ML team picks from the catalog without needing to understand engine
@@ -310,34 +279,56 @@ surface the same `status.address` without any Gateway API concepts leaking
 through.
 
 ModelPlacements read the InferenceGateway to configure routing for their
-environment. They compose backend-specific routing resources (e.g., Gateway API
-HTTPRoutes for Envoy Gateway, or config entries for LiteLLM) so that the
-gateway routes traffic to the remote cluster where the model runs.
+environment. They compose an Envoy Gateway Backend and HTTPRoute on the control
+plane so the gateway routes traffic to the remote cluster where the model runs.
 
 ### InferenceEnvironment (`inferenceenvironments.modelplane.ai/v1alpha1`)
 
 An `InferenceEnvironment` represents a target where inference workloads can run.
-It is cluster-scoped — InferenceEnvironments are infrastructure managed by
+It is cluster-scoped: InferenceEnvironments are infrastructure managed by
 platform teams, not owned by any single namespace.
 
-The `backend` discriminator is the top-level intent: "I want an inference
-environment running KServe" (or Dynamo, or a managed inference API). Everything
-else — including the cluster the backend runs on — is a property of the
-backend's configuration. A KServe backend needs a Kubernetes cluster, so
-`spec.kserve.cluster` carries a second discriminated union for cluster
-provisioning (`source: GKE` paired with `gke: {...}`, or `source: Existing`
-for bring-your-own). A hosted backend wouldn't have a `cluster` block at all
-— just credentials and region config.
+`spec.cluster` configures how the cluster is obtained. The `source` discriminator
+selects provisioning or bring-your-own: `source: GKE` tells Modelplane to
+provision a GKE cluster; `source: Existing` brings a pre-existing cluster via
+kubeconfig. Either way, Modelplane installs its inference stack on the cluster.
+Users configure the cluster; Modelplane handles what runs on it.
+
+Modelplane is opinionated about its inference stack. The Kubernetes inference
+ecosystem is fragmented at the orchestration layer (KServe, KubeAI, KubeRay,
+NVIDIA Dynamo), but converging on shared building blocks: [Gateway API Inference
+Extension][gaie] for model-aware routing (7 gateway implementations,
+multi-vendor maintainers), [LeaderWorkerSet][lws] for multi-node topologies, and
+[vLLM][vllm] as the dominant serving engine. Even NVIDIA Dynamo is [adopting
+Gateway API Inference Extension][dynamo-gaie] rather than building a competing
+routing standard. [KServe][kserve] is the most mature orchestration layer
+integrating these primitives. It's a CNCF Incubating project with vendor-neutral
+governance, its [LLMInferenceService][llmis] API supports NVIDIA and AMD GPUs,
+and [llm-d][llmd] extends it with disaggregated serving.
+
+Modelplane uses KServe as its inference stack. Users don't select or see it;
+it's an implementation detail. This lets Modelplane expose the full depth of
+KServe's capabilities without worrying about portability across stacks, and
+since the stack isn't in the API, it can be replaced or evolved without breaking
+the user contract. See [Alternatives: Multiple inference
+backends](#multiple-inference-backends) for the rationale.
+
+[gaie]: https://github.com/kubernetes-sigs/gateway-api-inference-extension
+[lws]: https://github.com/kubernetes-sigs/lws
+[vllm]: https://github.com/vllm-project/vllm
+[kserve]: https://github.com/kserve/kserve
+[llmis]: https://kserve.github.io/website/master/modelserving/llm/llminferenceservice/
+[llmd]: https://github.com/llm-d/llm-d
+[dynamo-gaie]: https://github.com/ai-dynamo/dynamo/tree/main/deploy/inference-gateway
 
 v0.1 assumes dedicated inference environments. The environment exists solely for
 Modelplane workloads, with no shared scheduling or noisy-neighbor concerns. This
 simplifies RBAC, resource accounting, and composition significantly.
 
 The cloud-specific config is designed for progressive disclosure. The only
-required GKE fields are `project` and `region` — if `nodePools` is omitted,
+required GKE fields are `project` and `region`. If `nodePools` is omitted,
 Modelplane provisions a default system pool (e2-standard-4, 2 nodes) and a
-single GPU pool (g2-standard-4, 1x nvidia-l4). The resolved configuration — spec
-with defaults filled in — is written to `status.resolved`.
+single GPU pool (g2-standard-4, 1x nvidia-l4).
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -348,37 +339,24 @@ metadata:
     modelplane.ai/tier: production
     modelplane.ai/region: us-east
 spec:
-  backend: KServe                        # KServe | Dynamo | (KubeAI in v0.2)
-  kserve:
-    version: v0.16.0
-
-    # Cluster provisioning — not every backend needs a cluster. KServe does.
-    # The source discriminator selects provisioning or bring-your-own.
-    cluster:
-      source: GKE                        # GKE | EKS | Existing
-      gke:
-        project: acme-ml-platform
-        region: us-east1
-        # nodePools is optional. If omitted, Modelplane provisions a default
-        # system pool and a single L4 GPU pool. The resolved config (with
-        # defaults filled in) appears in status.resolved.
-        nodePools:
-        - name: system
-          machineType: e2-standard-4
-          nodeCount: 2
-        - name: gpu
-          machineType: a3-highgpu-8g
-          gpu:
-            acceleratorType: nvidia-h100-80gb
-            acceleratorCount: 8
-          nodeCount: 2
-          maxNodeCount: 8
-
-  # Model caching — configure the LocalModelNodeGroup
-  modelCache:
-    enabled: true
-    storageClass: local-nvme
-    storageCapacity: 500Gi               # Per-node cache volume size
+  cluster:
+    source: GKE                          # GKE | Existing
+    gke:
+      project: acme-ml-platform
+      region: us-east1
+      # nodePools is optional. If omitted, Modelplane provisions a default
+      # system pool and a single L4 GPU pool.
+      nodePools:
+      - name: system
+        machineType: e2-standard-4
+        nodeCount: 2
+      - name: gpu
+        machineType: a3-highgpu-8g
+        gpu:
+          acceleratorType: nvidia-h100-80gb
+          acceleratorCount: 8
+        nodeCount: 2
+        maxNodeCount: 8
 
 status:
   conditions:
@@ -388,54 +366,24 @@ status:
     - type: ClusterReady                 # Underlying cluster is provisioned and healthy
       status: "True"
       reason: ClusterRunning
-    - type: BackendInstalled              # Backend and all dependencies are installed
+    - type: BackendReady                 # Inference stack is installed and healthy
       status: "True"
-      reason: AllReleasesDeployed
+      reason: BackendHealthy
     - type: GatewayReady                 # Envoy gateway is healthy and has an address
       status: "True"
       reason: AddressAssigned
-    - type: ModelCacheReady              # LocalModelNodeGroup is operational
-      status: "True"
-      reason: NodeGroupCreated
-  # Resolved configuration — the spec with defaults filled in. Same shape as
-  # spec, same discriminated unions.
-  resolved:
-    backend: KServe
-    kserve:
-      version: v0.16.0
-      cluster:
-        provider: GKE
-        gke:
-          project: acme-ml-platform
-          region: us-east1
-          nodePools:
-          - name: system
-            machineType: e2-standard-4
-            nodeCount: 2
-          - name: gpu
-            machineType: a3-highgpu-8g
-            gpu:
-              acceleratorType: nvidia-h100-80gb
-              acceleratorCount: 8
-            nodeCount: 2
-            maxNodeCount: 8
-  # Discovered capacity — populated by reading the provisioned cluster's
-  # node/GPU info.
   capacity:
-    gpuTypes:
-      - type: nvidia.com/gpu
-        model: H100
-        vram: 80Gi
-        available: 16
-    nodeGroups:
-      - name: gpu
+    gpuPools:
+      - acceleratorType: nvidia-h100-80gb
+        memory: 80Gi
+        countPerNode: 8
+        nodes: 8
   gateway:
     address: 10.0.1.50
 ```
 
 Platform teams with existing Kubernetes clusters can bring their own
-infrastructure instead of having Modelplane provision it. The `cluster` block
-accepts `source: Existing` as an alternative to a cloud provider:
+infrastructure instead of having Modelplane provision it:
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -443,26 +391,18 @@ kind: InferenceEnvironment
 metadata:
   name: gpu-us-east-byo
 spec:
-  backend: KServe
-  kserve:
-    version: v0.16.0
-    cluster:
-      source: Existing
-      existing:
-        secretRef:
-          name: gpu-cluster-kubeconfig
-          key: kubeconfig
-  modelCache:
-    enabled: true
-    storageClass: local-nvme
-    storageCapacity: 500Gi
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        name: gpu-cluster-kubeconfig
+        key: kubeconfig
 ```
 
-Modelplane still installs and manages the backend (KServe, gateway, model
-caching) on the cluster. It just doesn't provision the cluster itself. This
-covers enterprise platform teams that manage clusters via Terraform, Cluster
-API, or their own Crossplane Compositions and don't want Modelplane recreating
-them.
+Modelplane still installs and manages the inference stack on the cluster. It
+just doesn't provision the cluster itself. This covers enterprise platform teams
+that manage clusters via Terraform, Cluster API, or their own Crossplane
+Compositions and don't want Modelplane recreating them.
 
 Labels on InferenceEnvironment serve a dual purpose: informational metadata and
 selection targets. ModelDeployments can target environments by label selector
@@ -475,12 +415,9 @@ A `ModelDeployment` is the primary consumer-facing API. ML teams create one to
 deploy a model across one or more InferenceEnvironments. Modelplane creates a
 `ModelPlacement` for each matched environment and aggregates their status.
 
-ModelDeployment is deliberately backend-agnostic. It handles environment
-discovery, scheduling, fan-out, and routing aggregation. It composes a
-Gateway API HTTPRoute that load-balances across all its placements' backends
-— but it doesn't know or care what kind of backend they are. The
-backend-specific routing resources (e.g., Envoy Gateway Backends) are
-composed by ModelPlacement.
+ModelDeployment handles environment discovery, scheduling, fan-out, and routing
+aggregation. It composes a Gateway API HTTPRoute that load-balances across all
+its placements' Envoy Gateway Backends, which are composed by ModelPlacement.
 
 The simplest possible deployment:
 
@@ -515,10 +452,10 @@ status:
 
 Modelplane matches model serving profiles against available environments. For
 each candidate environment, Modelplane walks the ClusterModel's `serving[]`
-array and selects the first profile whose `backend` matches the environment's
-backend and whose `environmentSelector` (if any) matches the environment's
-labels. Environments with no matching profile are eliminated. VRAM-based
-capacity filtering ensures the model fits on the environment's GPUs.
+array and selects the first profile whose `environmentSelector` (if any)
+matches the environment's labels. Environments with no matching profile are
+eliminated. VRAM-based capacity filtering ensures the model fits on the
+environment's GPUs.
 
 For power users who need to target specific environments, `environmentSelector`
 is an optional escape hatch:
@@ -564,10 +501,9 @@ Each ModelDeployment gets a unique endpoint derived from the InferenceGateway
 address and the deployment's namespace and name:
 `http://<gateway-address>/<namespace>/<deployment-name>/v1/chat/completions`.
 The control plane gateway matches the path prefix and rewrites it to the
-remote KServe path, load-balancing across all placements' backends. Since every
-placement uses the ClusterModel name as the LLMInferenceService name on its
-remote cluster, the rewrite target is the same for all backends — fixing
-multi-environment routing.
+remote KServe path, load-balancing across all placements. Since every placement
+uses the ClusterModel name as the LLMInferenceService name on its remote
+cluster, the rewrite target is uniform across environments.
 
 Future versions with model-name-aware routing (e.g., LiteLLM as the
 InferenceGateway backend) could simplify this to a single gateway-wide
@@ -581,22 +517,16 @@ the unified gateway endpoint.
 
 A `ModelPlacement` is the resource that actually deploys a model and registers
 it with the routing layer. When Modelplane creates a ModelPlacement, it
-composes the backend-specific resources that run the model on a specific
-InferenceEnvironment — for a KServe backend, that means creating an
-`LLMInferenceService` on the target cluster; for Dynamo, a
-`DynamoGraphDeployment`. It also reads the
-InferenceGateway and composes routing resources so the gateway can reach the
-model — for an Envoy Gateway backend, that means a Backend and HTTPRoute on
-the control plane.
+composes an `LLMInferenceService` on the target cluster and routing resources
+(an Envoy Gateway Backend and HTTPRoute) on the control plane so the gateway
+can reach the model.
 
-ModelPlacement is the only function that knows about specific backends. It
-reads the ClusterModel's matched serving profile to get the engine name,
-container image, and args, then composes the appropriate backend-specific
-resource. Adding a new backend means updating this one function. An
-InferenceEnvironment provisions infrastructure and installs the backend,
-but no models are running until a ModelPlacement targets it. A ClusterModel
-describes how a model should be served, but it's inert until referenced by a
-ModelPlacement.
+The placement function reads the ClusterModel's matched serving profile to get
+the engine name, container image, and args, then composes the
+LLMInferenceService with those parameters. An InferenceEnvironment provisions
+infrastructure and installs the inference stack, but no models are running
+until a ModelPlacement targets it. A ClusterModel describes how a model should
+be served, but it's inert until referenced by a ModelPlacement.
 
 ModelDeployments create ModelPlacements automatically — one per matched
 InferenceEnvironment. ML teams aren't intended to create them directly, but
@@ -632,8 +562,7 @@ status:
       status: "True"
       reason: GatewayRouteConfigured
   servingProfile:                    # Resolved by compose-model-deployment
-    name: vllm-kserve
-    backend: KServe
+    name: vllm
     engine:
       name: vLLM
       image: vllm/vllm-openai:v0.8.0
@@ -652,10 +581,10 @@ llama-70b-global-us-west    gpu-cluster-us-west  True
 
 ModelPlacement's spec is just `modelRef` and `inferenceEnvironmentRef`. The
 deploy function resolves which serving profile to use during placement creation.
-The matched profile — including backend, engine name, and image — is written to
+The matched profile, including engine name and image, is written to
 `status.servingProfile` as computed output. The placement function reads the
 full profile (including opaque args) from the ClusterModel to compose the
-backend-specific resources.
+LLMInferenceService.
 
 ### Composition architecture
 
@@ -707,10 +636,10 @@ Five composition functions, one per concern:
 | Function | Responsibility |
 |----------|---------------|
 | `function-modelplane-gateway` | Composes the control plane routing infrastructure. Dispatches on gateway backend (Envoy Gateway, LiteLLM). Surfaces `status.address` for ModelPlacements. |
-| `function-modelplane-env` | Dispatches on inference backend and cloud provider discriminators. Composes `GKECluster` and `KServeBackend` XRs, wires them together, populates `status.capacity`. Adding a new backend or cloud provider means adding a branch here. |
+| `function-modelplane-env` | Dispatches on cloud provider discriminator. Composes `GKECluster` and `KServeBackend` XRs, wires them together, populates `status.capacity`. Adding a new cloud provider means adding a branch here. |
 | `function-modelplane-model` | Validates model catalog entries for both `ClusterModel` and `Model`. Registration and validation only — caching is an environment concern. |
-| `function-modelplane-deploy` | Backend-agnostic fan-out and routing aggregation. Resolves target environments, matches serving profiles to environments (by backend and optional label selector), stamps placements, composes a Gateway API HTTPRoute that load-balances across all placements' backends, aggregates status. |
-| `function-modelplane-placement` | The only function that knows about specific backends. Reads the referenced Model (including its matched serving profile), InferenceEnvironment, and InferenceGateway. Uses the profile's engine name, image, and args to compose backend-specific model serving resources (LLMInferenceService for KServe, DynamoGraphDeployment for Dynamo) and routing endpoint resources (Envoy Gateway Backend). Adding a new inference or routing backend means updating this one function. |
+| `function-modelplane-deploy` | Fan-out and routing aggregation. Resolves target environments, matches serving profiles to environments (by optional label selector and VRAM capacity), stamps placements, composes a Gateway API HTTPRoute that load-balances across all placements, aggregates status. |
+| `function-modelplane-placement` | Reads the referenced Model (including its matched serving profile), InferenceEnvironment, and InferenceGateway. Uses the serving profile's engine configuration to compose an LLMInferenceService on the remote cluster and routing resources (Envoy Gateway Backend) on the control plane. |
 
 The `GKECluster` and `KServeBackend` XRs are internal implementation details —
 they have their own XRDs and composition functions but are not part of
@@ -747,9 +676,8 @@ keep others pinned. A shared profile upgrades every model simultaneously with
 no way to canary.
 
 Serving profiles on ClusterModel preserve the "complete deployable unit"
-property while handling multiple backends. Each profile is a tested
-combination of (model, backend, engine, image, args). The ML team still sees
-one ref — no engine concepts leak to consumers. See
+property. Each profile is a tested combination of (model, engine, image, args).
+The ML team still sees one ref; no engine concepts leak to consumers. See
 [#18](https://github.com/modelplaneai/modelplane/issues/18) for the full
 design rationale.
 
@@ -773,16 +701,44 @@ Composition is swappable.
 The problem is that Modelplane's composition functions cross resource
 boundaries. The deploy function reads InferenceEnvironments to decide where to
 place models. The placement function reads the InferenceEnvironment to figure
-out how to deploy a model on its backend. A custom InferenceEnvironment
-Composition doesn't help if the platform team wants an unsupported backend —
-they'd also need a custom placement function, and potentially a custom deploy
+out how to deploy a model on it. A custom InferenceEnvironment Composition
+doesn't help if the platform team wants a different inference stack; they'd
+also need a custom placement function, and potentially a custom deploy
 function. That's too much surface area to customize from outside the project.
 
 The bring-your-own-cluster path (`source: Existing` with a kubeconfig Secret)
 covers the realistic customization need: the platform team controls cluster
-provisioning, Modelplane controls the backend and model deployment.
-Adding new backends (Dynamo, KubeAI) is a contribution to Modelplane, not a
-per-platform-team customization.
+provisioning, Modelplane controls the inference stack and model deployment.
+
+### Multiple inference backends
+
+I considered exposing the inference backend (KServe, Dynamo, etc.) as a
+user-selectable field on InferenceEnvironment, with serving profiles on
+ClusterModel carrying a `backend` discriminator to match models to compatible
+environments. The original v0.1 design worked this way, supporting both KServe
+and NVIDIA Dynamo.
+
+The problem is lowest-common-denominator convergence
+([#26](https://github.com/modelplaneai/modelplane/issues/26)). ModelDeployment
+is backend-agnostic: the ML team says "deploy this model" without knowing
+what's underneath. But backends don't all support the same features. If the API
+can only express features that every backend supports, the surface shrinks as
+backends are added. Autoscaling made this concrete
+([#5](https://github.com/modelplaneai/modelplane/issues/5),
+[#27](https://github.com/modelplaneai/modelplane/issues/27)). Fixed replicas
+and concurrency-based autoscaling are portable, but richer strategies
+(SLA-driven, KV-cache-aware) are backend-specific. Exposing them portably means
+reducing to the common subset and losing the knobs that make them useful.
+
+Being opinionated about the inference stack lets Modelplane expose the full
+depth of its capabilities without worrying about portability. It also
+substantially reduces the maintenance surface: every composition function that
+touches model serving had backend dispatch logic; every feature needed testing
+on each backend; every new backend multiplied the integration work.
+
+Since the stack isn't exposed in the API, this doesn't close the door on
+changing it. If something better than KServe emerges, or if we want to replace
+KServe components with our own, users don't see the change.
 
 ## Future work
 
@@ -795,14 +751,18 @@ placements automatically.
 
 **Intelligent routing.** v0.1 uses Envoy Gateway for basic model-name routing
 across environments. Future versions should support cost-aware and
-performance-aware routing — selecting backends based on GPU pricing, latency,
-throughput, and queue depth. LiteLLM is a natural candidate for the
-InferenceGateway backend here: it supports load balancing across
-OpenAI-compatible endpoints with cost tracking, rate limiting, and fallbacks.
-The InferenceGateway API's `backend` discriminator is designed for this
-evolution — adding `backend: LiteLLM` would mean ModelPlacement composes
-LiteLLM config entries instead of Gateway API HTTPRoutes. The routing
-concern stays in ModelPlacement either way.
+performance-aware routing: selecting environments based on GPU pricing, latency,
+throughput, and queue depth.
+
+**External inference endpoints.** Enterprises won't run all inference on their
+own infrastructure. SaaS providers like BaseTen, Together AI, and Fireworks AI
+are part of the picture. Rather than modeling SaaS providers as backends (which
+would require a backend abstraction), ModelDeployment could accept optional
+external OpenAI-compatible endpoints that get added to its routing alongside
+ModelPlacements. The ML team would say "deploy to 2 of my
+environments, and also route to this BaseTen endpoint." This is a routing
+concern, not a backend concern; it keeps the single-backend architecture intact
+while enabling hybrid self-hosted and SaaS deployments.
 
 **Policy.** Typed policy resources (PlacementPolicy, ResourcePolicy,
 RoutingPolicy, ModelPolicy, etc.). These could be namespace-scoped, one per
@@ -825,8 +785,8 @@ Prometheus/Grafana dashboards for inference metrics.
 
 **Autoscaling complexity:** KEDA + Prometheus + vLLM custom metrics is a lot of
 machinery for the placement function to compose. Should v0.1 ship with simpler
-backend-managed scaling (fixed replicas + HPA on a basic metric) and defer KEDA
-integration to v0.2?
+scaling (fixed replicas + HPA on a basic metric) and defer KEDA integration to
+v0.2?
 
 **InferenceEnvironment lifecycle coupling:** If a platform team deletes an
 InferenceEnvironment, what happens to ModelPlacements targeting it?
@@ -851,8 +811,7 @@ bring-your-own clusters, capacity is unknown — and even for provisioned
 clusters, node autoscaling means declared capacity may not reflect reality. The
 deploy function uses capacity to check whether the model's VRAM requirements
 fit on the environment's GPUs. For BYO clusters this information isn't
-available. One option is to make capacity purely informational and have the
-deploy function only check serving profile compatibility (backend match), letting
-the actual scheduling happen at the Kubernetes level when the ModelPlacement
-composes backend-specific resources. If the cluster can't schedule the pods, the
+available. One option is to make capacity purely informational and let the actual
+scheduling happen at the Kubernetes level when the ModelPlacement composes
+the LLMInferenceService. If the cluster can't schedule the pods, the
 placement reports that via status conditions rather than being rejected upfront.

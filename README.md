@@ -7,8 +7,8 @@
 **The open source control plane for AI models.**
 
 Modelplane extends [Crossplane] to manage AI model inference as declarative
-infrastructure. Platform teams provision GPU clusters, install inference
-backends, and curate a model catalog. ML teams deploy from that catalog and get
+infrastructure. Platform teams provision GPU clusters, configure inference
+environments, and curate a model catalog. ML teams deploy from that catalog and get
 back a working endpoint. The control plane handles placement, scaling, and
 reconciliation continuously.
 
@@ -28,16 +28,16 @@ spec:
 
 This deploys Qwen 2.5 0.5B to two inference environments and produces a unified,
 OpenAI-compatible endpoint. The platform decides where to place the model based
-on GPU capacity and backend compatibility
+on GPU capacity.
 
 ## How it works
 
 Modelplane draws a clear boundary between two teams.
 
 **Platform teams** create `InferenceEnvironments`, which are Kubernetes clusters
-with an inference backend installed. They also register approved models as
-`Models` in a catalog. Each model specifies its source, VRAM
-requirements, and one or more serving profiles that configure engines like vLLM.
+configured for model serving. They also register approved models as `Models` in
+a catalog. Each model specifies its source, VRAM requirements, and one or more
+serving profiles that configure vLLM.
 
 **ML teams** create a `ModelDeployment` referencing a catalog model and specify
 how many environments to deploy across. Modelplane matches serving profiles to
@@ -46,7 +46,7 @@ environment. Traffic routes through a unified [Envoy Gateway] endpoint on the
 control plane.
 
 Modelplane is the control plane layer above the inference engine. It doesn't
-compete with vLLM, SGLang, or KServe. It manages them.
+compete with vLLM or KServe. It manages them.
 
 ## Current status
 
@@ -55,10 +55,9 @@ Modelplane is at v0.1. It's early and evolving fast.
 | | What works today |
 |---|---|
 | Cluster sources | GKE (provisioned), Existing (bring your own kubeconfig) |
-| Inference backends | [KServe] LLMInferenceService, [NVIDIA Dynamo] |
-| Serving engines | vLLM, SGLang |
-| Scaling | Fixed replicas, concurrency-based autoscaling via KEDA |
-| Routing | Unified OpenAI-compatible endpoint via Envoy Gateway |
+| Serving engines | vLLM |
+| Scaling | Fixed replicas, concurrency-based autoscaling |
+| Routing | Unified OpenAI-compatible endpoint |
 
 See [issues labeled `enhancement`][enhancements] for what's planned.
 
@@ -99,7 +98,6 @@ Modelplane is under the [Apache 2.0 license](LICENSE).
 [Configuration]: https://docs.crossplane.io/latest/concepts/packages/#configuration-packages
 [Envoy Gateway]: https://gateway.envoyproxy.io
 [KServe]: https://kserve.github.io/website/
-[NVIDIA Dynamo]: https://github.com/ai-dynamo/dynamo
 [CONTRIBUTING.md]: CONTRIBUTING.md
 [Nix]: https://nixos.org
 [issues]: https://github.com/modelplaneai/modelplane/issues

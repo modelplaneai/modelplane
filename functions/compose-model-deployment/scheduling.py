@@ -1,28 +1,23 @@
 """Schedule model placements across inference environments.
 
-Matches serving profiles against environments by backend and optional label
-selector, filters by GPU capacity, accounts for GPU usage by other
-deployments, and returns a stable list of candidates that prefers
-environments with existing placements.
+Matches serving profiles against environments by optional label selector,
+filters by GPU capacity, accounts for GPU usage by other deployments, and
+returns a stable list of candidates that prefers environments with existing
+placements.
 """
 
 import math
 from dataclasses import dataclass
 
-from .lib import backends, metadata, quantities, serving
+from .lib import metadata, quantities, serving
 from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
 from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
 
-# Backend capabilities: which scaling signals each backend supports. The
-# placement function contains the composition logic for each backend, so
-# Modelplane already knows what each backend can do. This table makes it
-# explicit for the scheduler.
-BACKEND_SCALING_SIGNALS: dict[str, set[str]] = {
-    backends.KSERVE: {"Fixed", "Concurrency"},
-    backends.DYNAMO: {"Fixed", "Concurrency"},
-}
+# Supported scaling signals. All environments use the same backend, so
+# scaling capabilities are uniform.
+SUPPORTED_SCALING_SIGNALS = {"Fixed", "Concurrency"}
 
 
 @dataclass
@@ -32,16 +27,6 @@ class Candidate:
     name: str
     gateway_address: str | None
     profile_name: str
-
-
-def _supports_scaling(
-    deployment: mdv1alpha1.ModelDeployment,
-    env: iev1alpha1.InferenceEnvironment,
-) -> bool:
-    """Check whether the environment supports the deployment's scaling signal."""
-    env_backend = env.status.capacity.backend or ""
-    supported = BACKEND_SCALING_SIGNALS.get(env_backend, set())
-    return deployment.spec.scaling.signal in supported
 
 
 def _pool_has_enough_nodes(pool, gpus_needed: int) -> bool:
@@ -70,12 +55,11 @@ def schedule(
     are populated with zero values.
 
     For each candidate environment, walks the model's serving[] array to
-    find the first profile whose backend matches the environment and whose
-    environmentSelector (if any) matches the environment's labels. Filters
-    by VRAM capacity, subtracts GPUs used by other deployments' placements,
-    sorts to prefer environments that already have placements for this
-    deployment (stability), and returns at most deployment.spec.environments
-    candidates.
+    find the first profile whose environmentSelector (if any) matches the
+    environment's labels. Filters by VRAM capacity, subtracts GPUs used by
+    other deployments' placements, sorts to prefer environments that already
+    have placements for this deployment (stability), and returns at most
+    deployment.spec.environments candidates.
     """
     model_vram_bytes = quantities.parse_quantity(model.spec.resources.vram)
 
@@ -93,9 +77,8 @@ def schedule(
         if not profile:
             continue
 
-        # Check scaling signal capability. Fixed replicas work on any
-        # backend; autoscaling signals need backend support.
-        if not _supports_scaling(deployment, env):
+        # Check scaling signal capability.
+        if deployment.spec.scaling.signal not in SUPPORTED_SCALING_SIGNALS:
             continue
 
         # Find the pool that needs the fewest GPUs for this model.

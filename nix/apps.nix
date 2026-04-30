@@ -52,14 +52,17 @@
 
   # Build the Crossplane project (XRDs, functions, and compositions).
   buildCrossplane =
-    { up }:
+    { up, dockerCredentialUp }:
     {
       type = "app";
       meta.description = "Build the Crossplane project";
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
           name = "modelplane-build-crossplane";
-          runtimeInputs = [ up ];
+          runtimeInputs = [
+            up
+            dockerCredentialUp
+          ];
           inheritPath = false;
           text = ''
             up project build "$@"
@@ -71,14 +74,17 @@
   # Build the Crossplane project and run composition tests. These need Docker
   # for the function-python runtime, so they can't run in the Nix sandbox.
   testCrossplane =
-    { up }:
+    { up, dockerCredentialUp }:
     {
       type = "app";
       meta.description = "Build the Crossplane project and run composition tests";
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
           name = "modelplane-test-crossplane";
-          runtimeInputs = [ up ];
+          runtimeInputs = [
+            up
+            dockerCredentialUp
+          ];
           inheritPath = false;
           text = ''
             up project build
@@ -98,7 +104,7 @@
   # Pass --tag to override, e.g.:
   #   nix run .#push-crossplane -- --tag v0.1.0
   pushCrossplane =
-    { up }:
+    { up, dockerCredentialUp }:
     {
       type = "app";
       meta.description = "Push the Crossplane project to a registry";
@@ -107,6 +113,7 @@
           name = "modelplane-push-crossplane";
           runtimeInputs = [
             up
+            dockerCredentialUp
             pkgs.git
           ];
           inheritPath = false;

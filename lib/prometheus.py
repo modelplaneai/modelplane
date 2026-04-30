@@ -1,9 +1,8 @@
 """Prometheus configuration for backend clusters.
 
-Both KServe and Dynamo backends install kube-prometheus-stack for autoscaling
-metrics. This module provides shared configuration and a helper to compose the
-Helm release so that every backend uses the same chart, namespace, and service
-name.
+The KServe backend installs kube-prometheus-stack for autoscaling metrics.
+This module provides shared configuration and a helper to compose the Helm
+release.
 """
 
 from ..model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
@@ -32,17 +31,13 @@ def helm_release(version: str, provider_config: str) -> helmv1beta1.Release:
             "fullnameOverride": FULLNAME_OVERRIDE,
             "prometheus": {
                 "prometheusSpec": {
-                    # Discover PodMonitors across all namespaces. Backend
-                    # operators (Dynamo) auto-create PodMonitors for their
-                    # services.
+                    # Discover PodMonitors across all namespaces.
                     "podMonitorSelectorNilUsesHelmValues": False,
                     "podMonitorNamespaceSelector": {},
                     # Scrape Envoy Gateway proxy pods for upstream request
-                    # metrics (envoy_cluster_upstream_rq_active). Both
-                    # KServe and Dynamo backends use Envoy Gateway for
-                    # ingress, and this metric measures in-flight requests
-                    # at the proxy level -- the same signal regardless of
-                    # backend engine.
+                    # metrics (envoy_cluster_upstream_rq_active). Envoy
+                    # Gateway is used for ingress, and this metric measures
+                    # in-flight requests at the proxy level.
                     "additionalScrapeConfigs": [
                         {
                             "job_name": "envoy-gateway-proxy",

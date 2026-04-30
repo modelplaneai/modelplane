@@ -4,7 +4,7 @@ import { useEnvironments } from "../../hooks/useEnvironments";
 import { useEvents } from "../../hooks/useEvents";
 import { useApi } from "../../api/context";
 import { deriveStatus } from "../../lib/status";
-import { relativeAge, envRegion, envVersion, envClusterSource } from "../../lib/format";
+import { relativeAge, envRegion, envClusterSource, poolGpuCount } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -58,15 +58,14 @@ export function EnvironmentDetail() {
     (sum, p) => sum + (p.status?.resources?.gpu?.count ?? 0),
     0,
   );
-  const totalGpus = gpuPools.reduce((s, p) => s + p.count, 0);
+  const totalGpus = gpuPools.reduce((s, p) => s + poolGpuCount(p), 0);
 
   // Infrastructure details from the spec.
-  const version = envVersion(env);
   const clusterSource = envClusterSource(env);
-  const cluster = env.spec.kserve?.cluster ?? env.spec.dynamo?.cluster;
+  const cluster = env.spec.cluster;
   const gke = cluster?.gke;
   const existing = cluster?.existing;
-  const nodePools = env.spec.kserve?.cluster?.gke?.nodePools ?? [];
+  const nodePools = cluster?.gke?.nodePools ?? [];
   const existingNodePools = existing?.nodePools ?? [];
 
   return (
@@ -83,7 +82,7 @@ export function EnvironmentDetail() {
           <StatusDot status={status} />
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
-          <Badge variant="neutral">{env.spec.backend}</Badge>
+          {clusterSource && <Badge variant="neutral">{clusterSource}</Badge>}
           {region && <span>{region}</span>}
           <span>&middot;</span>
           <span>{age}</span>
@@ -118,7 +117,7 @@ export function EnvironmentDetail() {
                       {pool.acceleratorType}
                     </p>
                     <p className="text-xs text-muted">
-                      {pool.memory} VRAM/GPU &middot; {pool.count} available
+                      {pool.memory} VRAM/GPU &middot; {poolGpuCount(pool)} available
                     </p>
                   </div>
                 ))}
@@ -188,17 +187,24 @@ export function EnvironmentDetail() {
         </div>
       )}
 
-      {/* Backend + Cluster */}
+      {/* Infrastructure */}
       <div>
         <SectionLabel>INFRASTRUCTURE</SectionLabel>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Backend */}
+          {/* Cluster */}
           <Card>
             <div className="space-y-2">
-              <p className="font-mono text-[11px] uppercase tracking-wider text-muted">Backend</p>
-              <p className="text-text font-medium">{env.spec.backend}</p>
-              {version && (
-                <p className="text-sm text-muted">Version: <span className="text-muted-hi">{version}</span></p>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-muted">Cluster</p>
+              <p className="text-text font-medium">{clusterSource ?? "—"}</p>
+              {gke && (
+                <>
+                  <p className="text-sm text-muted">
+                    Project: <span className="text-muted-hi font-mono">{gke.project}</span>
+                  </p>
+                  <p className="text-sm text-muted">
+                    Region: <span className="text-muted-hi font-mono">{gke.region}</span>
+                  </p>
+                </>
               )}
               {env.status?.providerConfigRef?.name && (
                 <p className="text-sm text-muted">
@@ -212,26 +218,6 @@ export function EnvironmentDetail() {
               )}
             </div>
           </Card>
-
-          {/* Cluster */}
-          {clusterSource && (
-            <Card>
-              <div className="space-y-2">
-                <p className="font-mono text-[11px] uppercase tracking-wider text-muted">Cluster</p>
-                <p className="text-text font-medium">{clusterSource}</p>
-                {gke && (
-                  <>
-                    <p className="text-sm text-muted">
-                      Project: <span className="text-muted-hi font-mono">{gke.project}</span>
-                    </p>
-                    <p className="text-sm text-muted">
-                      Region: <span className="text-muted-hi font-mono">{gke.region}</span>
-                    </p>
-                  </>
-                )}
-              </div>
-            </Card>
-          )}
         </div>
 
         {/* Node pools — GKE pools have machineType, existing pools don't */}

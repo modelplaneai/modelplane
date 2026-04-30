@@ -17,7 +17,6 @@ spec:
     memory: "10Gi"
   serving:
   - name: vllm-kserve
-    backend: KServe
     engine:
       name: vLLM
       image: vllm/vllm-openai:v0.7.3

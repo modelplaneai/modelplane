@@ -1,6 +1,6 @@
 # A ModelDeployment deploys a model from the catalog to one or more inference
-# environments. The scheduler picks environments based on backend compatibility,
-# GPU capacity, and optional label selectors.
+# environments. The scheduler picks environments based on GPU capacity and
+# optional label selectors.
 #
 # Once placed, the control plane creates a unified OpenAI-compatible endpoint:
 #   http://<gateway-address>/<namespace>/<name>/v1/chat/completions
