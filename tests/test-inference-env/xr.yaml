@@ -24,6 +24,7 @@ spec:
         gpu:
           acceleratorType: nvidia-l4
           acceleratorCount: 1
+          memory: 24Gi
         nodeCount: 1
         minNodeCount: 0
         maxNodeCount: 2

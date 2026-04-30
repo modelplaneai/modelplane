@@ -51,6 +51,7 @@ test = compositiontest.CompositionTest(
                                 gpu=gkev1alpha1.Gpu(
                                     acceleratorType="nvidia-l4",
                                     acceleratorCount=1,
+                                    memory="24Gi",
                                 ),
                                 zones=["us-central1-a", "us-central1-c"],
                             ),

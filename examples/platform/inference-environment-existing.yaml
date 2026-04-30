@@ -30,9 +30,11 @@ spec:
 
       # Describe the GPU node pools in the cluster. Modelplane doesn't manage
       # these nodes, but needs to know what's available for scheduling.
+      # memory is the per-GPU VRAM, used to match models to environments.
       nodePools:
         - name: gpu-h100
           nodeCount: 2
           gpu:
             acceleratorType: nvidia-h100-80gb
             acceleratorCount: 8
+            memory: 80Gi

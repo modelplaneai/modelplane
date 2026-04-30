@@ -43,6 +43,7 @@ test = compositiontest.CompositionTest(
                                         gpu=iev1alpha1.Gpu(
                                             acceleratorType="nvidia-h100-80gb",
                                             acceleratorCount=8,
+                                            memory="80Gi",
                                         ),
                                     ),
                                 ],

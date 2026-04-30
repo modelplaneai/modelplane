@@ -29,6 +29,7 @@ spec:
     gpu:
       acceleratorType: nvidia-l4
       acceleratorCount: 1
+      memory: 24Gi
     zones:
     - us-central1-a
     - us-central1-c

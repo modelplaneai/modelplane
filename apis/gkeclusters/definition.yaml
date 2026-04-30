@@ -156,6 +156,9 @@ spec:
                       type: object
                       description: >-
                         GPU configuration. Required when role is GPU.
+                      required:
+                      - acceleratorType
+                      - memory
                       properties:
                         acceleratorType:
                           type: string
@@ -170,6 +173,14 @@ spec:
                           description: Number of GPUs per node.
                           minimum: 1
                           maximum: 16
+                        memory:
+                          type: string
+                          description: >-
+                            Per-GPU VRAM (e.g. "80Gi"). Reported on the
+                            consuming InferenceEnvironment's status and
+                            used by the scheduler.
+                          minLength: 1
+                          maxLength: 16
                     zones:
                       type: array
                       description: >-

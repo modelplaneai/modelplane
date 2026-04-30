@@ -63,6 +63,7 @@ export interface InferenceEnvironment {
           gpu?: {
             acceleratorType: string;
             acceleratorCount?: number;
+            memory: string;
           };
         }>;
       };
@@ -73,6 +74,7 @@ export interface InferenceEnvironment {
           gpu?: {
             acceleratorType: string;
             acceleratorCount?: number;
+            memory: string;
           };
         }>;
       };

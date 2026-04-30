@@ -126,13 +126,31 @@ spec:
                               minimum: 1
                             gpu:
                               type: object
+                              required: [acceleratorType, memory]
                               properties:
                                 acceleratorType:
                                   type: string
+                                  description: >-
+                                    GPU accelerator type (e.g.
+                                    nvidia-h100-80gb, nvidia-tesla-a100).
+                                    Used as an informational label.
+                                  minLength: 1
+                                  maxLength: 63
                                 acceleratorCount:
                                   type: integer
+                                  description: Number of GPUs per node.
                                   default: 1
                                   minimum: 1
+                                  maximum: 16
+                                memory:
+                                  type: string
+                                  description: >-
+                                    Per-GPU VRAM (e.g. "80Gi"). Used by the
+                                    scheduler to determine how many GPUs a
+                                    model needs and whether a pool has
+                                    enough capacity.
+                                  minLength: 1
+                                  maxLength: 16
                   gke:
                     type: object
                     description: >-
@@ -182,12 +200,34 @@ spec:
                               default: 8
                             gpu:
                               type: object
+                              description: >-
+                                GPU configuration. Required when role is GPU.
+                              required: [acceleratorType, memory]
                               properties:
                                 acceleratorType:
                                   type: string
+                                  description: >-
+                                    GPU accelerator type (e.g.
+                                    nvidia-h100-80gb, nvidia-tesla-a100).
+                                    Passed to GCP when provisioning the
+                                    node pool.
+                                  minLength: 1
+                                  maxLength: 63
                                 acceleratorCount:
                                   type: integer
+                                  description: Number of GPUs per node.
                                   default: 1
+                                  minimum: 1
+                                  maximum: 16
+                                memory:
+                                  type: string
+                                  description: >-
+                                    Per-GPU VRAM (e.g. "80Gi"). Used by the
+                                    scheduler to determine how many GPUs a
+                                    model needs and whether a pool has
+                                    enough capacity.
+                                  minLength: 1
+                                  maxLength: 16
                             zones:
                               type: array
                               items:
@@ -219,9 +259,8 @@ spec:
                   gpuPools:
                     type: array
                     description: >-
-                      GPU pools with per-device VRAM. The env function
-                      resolves VRAM from a static lookup table keyed by
-                      acceleratorType.
+                      GPU pools with per-device VRAM, derived from the
+                      node pool config.
                     items:
                       type: object
                       properties:

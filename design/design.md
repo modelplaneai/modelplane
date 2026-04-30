@@ -355,6 +355,7 @@ spec:
         gpu:
           acceleratorType: nvidia-h100-80gb
           acceleratorCount: 8
+          memory: 80Gi
         nodeCount: 2
         maxNodeCount: 8
 

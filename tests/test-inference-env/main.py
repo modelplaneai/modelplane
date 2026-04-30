@@ -94,6 +94,7 @@ test = compositiontest.CompositionTest(
                                         gpu=iev1alpha1.GpuModel(
                                             acceleratorType="nvidia-l4",
                                             acceleratorCount=1,
+                                            memory="24Gi",
                                         ),
                                         maxNodeCount=2,
                                         zones=["us-central1-a", "us-central1-c"],

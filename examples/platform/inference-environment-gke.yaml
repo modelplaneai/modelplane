@@ -30,14 +30,16 @@ spec:
           minNodeCount: 1
           maxNodeCount: 2
 
-        # GPU node pool for model serving. The acceleratorType and count are
-        # used by the scheduler to compute available capacity.
+        # GPU node pool for model serving. acceleratorType and acceleratorCount
+        # are passed to GCP when provisioning the pool. memory is the per-GPU
+        # VRAM and is used by the scheduler to compute available capacity.
         - name: gpu-l4
           role: GPU
           machineType: g2-standard-8
           gpu:
             acceleratorType: nvidia-l4
             acceleratorCount: 1
+            memory: 24Gi
           nodeCount: 1
           minNodeCount: 0
           maxNodeCount: 4

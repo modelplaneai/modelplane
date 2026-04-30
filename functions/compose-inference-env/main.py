@@ -42,18 +42,6 @@ CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_BACKEND_HEALTHY = "BackendHealthy"
 CONDITION_REASON_INSTALLING = "Installing"
 
-# Per-GPU VRAM by accelerator type. Used to compute capacity from the node
-# pool config so the deploy function can match models to environments.
-GPU_VRAM = {
-    "nvidia-l4": "24Gi",
-    "nvidia-t4": "16Gi",
-    "nvidia-a100-40gb": "40Gi",
-    "nvidia-a100-80gb": "80Gi",
-    "nvidia-h100-80gb": "80Gi",
-    "nvidia-h100-mega-80gb": "80Gi",
-    "nvidia-v100": "16Gi",
-}
-
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "kserve-backend"
 
@@ -308,7 +296,7 @@ class Composer:
             gpu_pools.append(
                 {
                     "acceleratorType": pool.gpu.acceleratorType,
-                    "memory": GPU_VRAM.get(pool.gpu.acceleratorType, "0Gi"),
+                    "memory": pool.gpu.memory,
                     "countPerNode": pool.gpu.acceleratorCount,
                     "nodes": pool.maxNodeCount or pool.nodeCount,
                 }
@@ -324,7 +312,7 @@ class Composer:
             gpu_pools.append(
                 {
                     "acceleratorType": pool.gpu.acceleratorType,
-                    "memory": GPU_VRAM.get(pool.gpu.acceleratorType, "0Gi"),
+                    "memory": pool.gpu.memory,
                     "countPerNode": pool.gpu.acceleratorCount,
                     "nodes": pool.maxNodeCount or pool.nodeCount,
                 }
