@@ -3,7 +3,7 @@ import { usePlacements } from "../../hooks/usePlacements";
 import { useEnvironments } from "../../hooks/useEnvironments";
 import { useEvents } from "../../hooks/useEvents";
 import { deriveStatus } from "../../lib/status";
-import { relativeAge, envRegion, envClusterSource } from "../../lib/format";
+import { relativeAge, envRegion, envClusterSource, poolGpuCount } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -106,7 +106,7 @@ export function PlacementDetail() {
               <div className="flex flex-wrap gap-2">
                 {gpuPools.map((pool, i) => (
                   <span key={i} className="text-xs text-muted">
-                    {pool.acceleratorType} &middot; {pool.memory}/GPU &middot; {pool.count} available
+                    {pool.acceleratorType} &middot; {pool.memory}/GPU &middot; {poolGpuCount(pool)} available
                   </span>
                 ))}
               </div>

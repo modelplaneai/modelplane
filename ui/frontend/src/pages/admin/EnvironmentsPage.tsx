@@ -11,7 +11,7 @@ import { Card } from "../../components/Card";
 import { ConditionList } from "../../components/ConditionList";
 import { EventTimeline } from "../../components/EventTimeline";
 import { deriveStatus, statusText } from "../../lib/status";
-import { envRegion, envClusterSource } from "../../lib/format";
+import { envRegion, envClusterSource, poolGpuCount } from "../../lib/format";
 import type { InferenceEnvironment, ModelPlacement, KubeList } from "../../api/types";
 
 function EnvironmentDetailRow({ env, placements }: { env: InferenceEnvironment; placements: ModelPlacement[] }) {
@@ -79,7 +79,7 @@ function EnvironmentDetailRow({ env, placements }: { env: InferenceEnvironment; 
                     {pool.acceleratorType}
                   </p>
                   <p className="text-xs text-muted">
-                    {pool.memory} VRAM/GPU &middot; {pool.count} available
+                    {pool.memory} VRAM/GPU &middot; {poolGpuCount(pool)} available
                   </p>
                 </div>
               ))}

@@ -42,3 +42,9 @@ export function envRegion(env: { metadata: { labels?: Record<string, string> } }
 export function envClusterSource(env: { spec: { cluster?: { source: string } } }): string | undefined {
   return env.spec.cluster?.source;
 }
+
+// poolGpuCount is the total number of GPUs in a pool: GPUs per node times
+// number of nodes.
+export function poolGpuCount(pool: { countPerNode: number; nodes: number }): number {
+  return pool.countPerNode * pool.nodes;
+}

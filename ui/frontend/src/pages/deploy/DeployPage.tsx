@@ -5,7 +5,7 @@ import { useEnvironments } from "../../hooks/useEnvironments";
 import { useNamespace } from "../../hooks/useNamespace";
 import { useApi } from "../../api/context";
 import { deriveStatus } from "../../lib/status";
-import { modelDisplayName, isValidKubernetesName, toKubernetesName, envRegion, envClusterSource } from "../../lib/format";
+import { modelDisplayName, isValidKubernetesName, toKubernetesName, envRegion, envClusterSource, poolGpuCount } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -527,7 +527,7 @@ function EnvironmentCard({
             <div className="flex flex-wrap gap-2">
               {gpuPools.map((pool, i) => (
                 <span key={i} className="text-xs text-muted">
-                  {pool.count}x {pool.acceleratorType} ({pool.memory}/GPU)
+                  {poolGpuCount(pool)}x {pool.acceleratorType} ({pool.memory}/GPU)
                 </span>
               ))}
             </div>

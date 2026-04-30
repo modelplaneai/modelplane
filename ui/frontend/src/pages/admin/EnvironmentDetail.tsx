@@ -4,7 +4,7 @@ import { useEnvironments } from "../../hooks/useEnvironments";
 import { useEvents } from "../../hooks/useEvents";
 import { useApi } from "../../api/context";
 import { deriveStatus } from "../../lib/status";
-import { relativeAge, envRegion, envClusterSource } from "../../lib/format";
+import { relativeAge, envRegion, envClusterSource, poolGpuCount } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -58,7 +58,7 @@ export function EnvironmentDetail() {
     (sum, p) => sum + (p.status?.resources?.gpu?.count ?? 0),
     0,
   );
-  const totalGpus = gpuPools.reduce((s, p) => s + p.count, 0);
+  const totalGpus = gpuPools.reduce((s, p) => s + poolGpuCount(p), 0);
 
   // Infrastructure details from the spec.
   const clusterSource = envClusterSource(env);
@@ -117,7 +117,7 @@ export function EnvironmentDetail() {
                       {pool.acceleratorType}
                     </p>
                     <p className="text-xs text-muted">
-                      {pool.memory} VRAM/GPU &middot; {pool.count} available
+                      {pool.memory} VRAM/GPU &middot; {poolGpuCount(pool)} available
                     </p>
                   </div>
                 ))}

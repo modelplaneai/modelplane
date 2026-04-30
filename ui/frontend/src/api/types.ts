@@ -23,7 +23,11 @@ export interface KubeList<T> {
 export interface GPUPool {
   acceleratorType: string;
   memory: string;
-  count: number;
+  // countPerNode is the number of GPUs on each node in this pool. Total GPU
+  // count is countPerNode * nodes.
+  countPerNode: number;
+  // nodes is the number of nodes in this pool.
+  nodes: number;
 }
 
 export interface InferenceGateway {

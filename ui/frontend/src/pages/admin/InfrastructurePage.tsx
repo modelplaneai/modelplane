@@ -8,7 +8,7 @@ import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
 import { ConditionList } from "../../components/ConditionList";
 import { deriveStatus, statusText } from "../../lib/status";
-import { envRegion, envClusterSource } from "../../lib/format";
+import { envRegion, envClusterSource, poolGpuCount } from "../../lib/format";
 import type { InferenceGateway, InferenceEnvironment, ModelPlacement, KubeList } from "../../api/types";
 
 export function InfrastructurePage() {
@@ -31,7 +31,7 @@ export function InfrastructurePage() {
   // Compute summary stats.
   const totalGpus = environments.reduce((sum, env) => {
     const pools = env.status?.capacity?.gpuPools ?? [];
-    return sum + pools.reduce((s, p) => s + p.count, 0);
+    return sum + pools.reduce((s, p) => s + poolGpuCount(p), 0);
   }, 0);
 
   const usedGpus = placements.reduce(
@@ -174,9 +174,9 @@ function EnvironmentRow({
   const status = deriveStatus(env.status?.conditions);
   const region = envRegion(env) ?? "—";
   const gpuPools = env.status?.capacity?.gpuPools ?? [];
-  const totalGpus = gpuPools.reduce((s, p) => s + p.count, 0);
+  const totalGpus = gpuPools.reduce((s, p) => s + poolGpuCount(p), 0);
   const gpuSummary = gpuPools.length > 0
-    ? gpuPools.map((p) => `${p.count}x ${p.acceleratorType}`).join(", ")
+    ? gpuPools.map((p) => `${poolGpuCount(p)}x ${p.acceleratorType}`).join(", ")
     : "—";
 
   return (

@@ -156,7 +156,7 @@ export function inferenceEnvironment(overrides?: {
       }],
       gateway: overrides?.gateway ? { address: overrides.gateway } : undefined,
       capacity: {
-        gpuPools: [{ acceleratorType: "nvidia-l4", memory: "24Gi", count: 1 }],
+        gpuPools: [{ acceleratorType: "nvidia-l4", memory: "24Gi", countPerNode: 1, nodes: 1 }],
       },
       namespace: "ie-test-env",
     },
