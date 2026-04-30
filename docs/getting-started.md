@@ -15,6 +15,8 @@ You need the following tools installed:
 - [kind](https://kind.sigs.k8s.io/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [Helm](https://helm.sh/docs/intro/install/)
+- The [Upbound CLI](https://docs.upbound.io/reference/cli/) (`up`), used to
+  create a pull secret for the Modelplane package registry.
 
 You also need:
 
@@ -148,6 +150,12 @@ The package registry requires authentication. Create a pull secret using the
 [Upbound CLI](https://docs.upbound.io/reference/cli/), then install the
 Configuration. This pulls the providers and composition functions it depends on.
 
+`up ctp pull-secret create` uses the credentials of the currently active `up`
+profile. Make sure you're logged in as a user account with access to the
+`modelplane` organization (run `up login` if not). Robot account profiles can
+push packages but typically can't pull them, so the resulting secret won't
+work.
+
 ```bash
 up ctp pull-secret create -n crossplane-system upbound-pull-secret --organization modelplane
 ```
@@ -227,13 +235,13 @@ kubectl apply -f examples/platform/cluster-model.yaml
 Edit the example to set your GCP project ID, then apply it:
 
 ```bash
-# Edit examples/platform/inference-environment-gke-kserve.yaml and set
-# spec.kserve.cluster.gke.project to your GCP project ID.
-kubectl apply -f examples/platform/inference-environment-gke-kserve.yaml
+# Edit examples/platform/inference-environment-gke.yaml and set
+# spec.cluster.gke.project to your GCP project ID.
+kubectl apply -f examples/platform/inference-environment-gke.yaml
 ```
 
-This provisions a GKE cluster with an L4 GPU and installs KServe and its
-dependencies. It's the longest step, taking roughly 20-30 minutes.
+This provisions a GKE cluster with an L4 GPU and installs the inference stack.
+It's the longest step, taking roughly 20-30 minutes.
 
 ```bash
 kubectl get ie --watch
