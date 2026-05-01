@@ -30,6 +30,14 @@ test = compositiontest.CompositionTest(
                     ),
                     spec=iev1alpha1.Spec(cluster=iev1alpha1.Cluster(source="Existing")),
                     status=iev1alpha1.Status(
+                        conditions=[
+                            iev1alpha1.Condition(
+                                type="Ready",
+                                status="True",
+                                reason="Available",
+                                lastTransitionTime="2025-01-01T00:00:00Z",
+                            )
+                        ],
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
                             name="demo-us-central-cluster",
                         ),

@@ -1,0 +1,9 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  modelRef:
+    name: qwen-0.5b
+  environments: 1

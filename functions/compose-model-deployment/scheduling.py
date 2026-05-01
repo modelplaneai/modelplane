@@ -42,6 +42,28 @@ def _pool_has_enough_nodes(pool, gpus_needed: int) -> bool:
     return int(pool.nodes or 0) >= nodes_needed
 
 
+def _best_pool_fit(env: iev1alpha1.InferenceEnvironment, model_vram_bytes: int) -> tuple[int, int] | None:
+    """Find the pool requiring the fewest GPUs and the total eligible GPU
+    count across all pools that can fit the model. Returns None if no pool
+    can fit the model on this environment.
+    """
+    best_gpus_needed = None
+    eligible_total = 0
+    for pool in env.status.capacity.gpuPools:
+        pool_mem = quantities.parse_quantity(pool.memory or "0Gi")
+        if pool_mem <= 0:
+            continue
+        gpus_needed = max(1, math.ceil(model_vram_bytes / pool_mem))
+        if not _pool_has_enough_nodes(pool, gpus_needed):
+            continue
+        eligible_total += int(pool.countPerNode or 0) * int(pool.nodes or 0)
+        if best_gpus_needed is None or gpus_needed < best_gpus_needed:
+            best_gpus_needed = gpus_needed
+    if best_gpus_needed is None:
+        return None
+    return best_gpus_needed, eligible_total
+
+
 def schedule(
     deployment: mdv1alpha1.ModelDeployment,
     model: cmv1alpha1.ClusterModel,
@@ -72,6 +94,14 @@ def schedule(
 
     candidates = []
     for env in envs:
+        # Skip environments that aren't Ready. An IE that's still provisioning
+        # its cluster or installing its inference stack can't serve traffic,
+        # even if its declared capacity (computed from the node pool spec)
+        # would otherwise match. Scheduling on a not-yet-Ready IE creates a
+        # placement that fails until the IE's ProviderConfig comes online.
+        if not any(c.type == "Ready" and c.status == "True" for c in env.status.conditions or []):
+            continue
+
         # Find the first serving profile that matches this environment.
         profile = serving.match_profile(model, env)
         if not profile:
@@ -81,24 +111,10 @@ def schedule(
         if deployment.spec.scaling.signal not in SUPPORTED_SCALING_SIGNALS:
             continue
 
-        # Find the pool that needs the fewest GPUs for this model.
-        best_gpus_needed = None
-        eligible_total = 0
-        for pool in env.status.capacity.gpuPools:
-            pool_mem = quantities.parse_quantity(pool.memory or "0Gi")
-            if pool_mem <= 0:
-                continue
-            gpus_needed = max(1, math.ceil(model_vram_bytes / pool_mem))
-
-            if not _pool_has_enough_nodes(pool, gpus_needed):
-                continue
-
-            eligible_total += int(pool.countPerNode or 0) * int(pool.nodes or 0)
-            if best_gpus_needed is None or gpus_needed < best_gpus_needed:
-                best_gpus_needed = gpus_needed
-
-        if best_gpus_needed is None:
+        fit = _best_pool_fit(env, model_vram_bytes)
+        if fit is None:
             continue
+        best_gpus_needed, eligible_total = fit
 
         # Subtract GPUs used by other deployments' placements on this env.
         used_gpus = 0
