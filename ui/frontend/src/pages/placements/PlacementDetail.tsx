@@ -3,7 +3,7 @@ import { usePlacements } from "../../hooks/usePlacements";
 import { useEnvironments } from "../../hooks/useEnvironments";
 import { useEvents } from "../../hooks/useEvents";
 import { deriveStatus } from "../../lib/status";
-import { relativeAge, envRegion } from "../../lib/format";
+import { relativeAge, envRegion, envClusterSource } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -53,7 +53,7 @@ export function PlacementDetail() {
   // Find the referenced InferenceEnvironment for extra context.
   const env = (envsData?.items ?? []).find((e) => e.metadata.name === envName);
   const region = env ? envRegion(env) : undefined;
-  const backend = env?.spec.backend;
+  const clusterSource = env ? envClusterSource(env) : undefined;
   const gpuPools = env?.status?.capacity?.gpuPools ?? [];
 
   return (
@@ -99,7 +99,7 @@ export function PlacementDetail() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-text font-medium">{envName}</span>
-              {backend && <Badge variant="neutral">{backend}</Badge>}
+              {clusterSource && <Badge variant="neutral">{clusterSource}</Badge>}
               {region && <Badge variant="cyan">{region}</Badge>}
             </div>
             {gpuPools.length > 0 && (

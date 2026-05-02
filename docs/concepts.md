@@ -57,18 +57,17 @@ kubectl get ig default
 
 ## InferenceEnvironment
 
-An InferenceEnvironment represents a Kubernetes cluster with an inference
-backend installed. Platform teams create these to provide GPU capacity for model
-serving.
+An InferenceEnvironment represents a Kubernetes cluster configured for model
+serving. Platform teams create these to provide GPU capacity.
 
 Each environment has:
 
 - A **cluster source**: `GKE` (Modelplane provisions the full cluster) or
   `Existing` (bring a cluster you manage yourself).
-- An **inference backend**: `KServe` or `Dynamo`. Modelplane installs the
-  backend and its dependencies (cert-manager, Envoy Gateway, Prometheus, KEDA)
-  on the cluster.
 - One or more **GPU node pools** describing the available accelerators.
+
+Modelplane installs the inference stack (including cert-manager, Envoy Gateway,
+Prometheus, and KEDA) on the cluster automatically.
 
 The environment's GPU capacity is used by the scheduler when placing models. For
 `GKE` clusters, the capacity is computed from the node pool configuration. For
@@ -85,12 +84,11 @@ platform catalog. It describes:
 
 - Where to download weights from (currently HuggingFace).
 - How much VRAM the model needs.
-- One or more **serving profiles**, each specifying a backend (KServe or Dynamo)
-  and an engine (vLLM or SGLang) with a container image.
+- One or more **serving profiles**, each specifying an engine (currently vLLM)
+  and a container image.
 
 Serving profiles are listed in priority order. When the scheduler places a model
-on an environment, it walks the list and picks the first profile whose backend
-matches the environment's backend.
+on an environment, it picks the first applicable profile.
 
 ML teams don't need to know about serving profiles. They reference a catalog
 model by name and the platform decides how to serve it.
@@ -105,7 +103,7 @@ When a ModelDeployment is created, the scheduler:
 1. Discovers all InferenceEnvironments with the `modelplane.ai/environment`
    label.
 2. Applies any `environmentSelector` label filter from the deployment.
-3. Matches the model's serving profiles against each environment's backend.
+3. Selects a serving profile from the model's catalog entry.
 4. Checks GPU capacity (model VRAM vs available pool VRAM, minus other
    placements).
 5. Creates a ModelPlacement for each selected environment.
@@ -134,10 +132,7 @@ don't create these directly.
 
 Each placement represents a model deployed to a specific environment. It
 resolves the serving profile, computes how many GPUs the model needs, and
-creates the backend-specific resources:
-
-- **KServe**: an `LLMInferenceService` on the remote cluster.
-- **Dynamo**: a `DynamoGraphDeployment` on the remote cluster.
+creates the inference resources (an `LLMInferenceService`) on the remote cluster.
 
 The placement also creates an Envoy Gateway `Backend` on the control plane to
 route traffic from the gateway to the remote cluster's inference endpoint.

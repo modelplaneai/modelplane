@@ -24,7 +24,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/modelplacements/composition.yaml",
-        xrPath="tests/test-model-placement-kserve-multinode/xr.yaml",
+        xrPath="tests/test-model-placement-multinode/xr.yaml",
         xrdPath="apis/modelplacements/definition.yaml",
         timeoutSeconds=120,
         validate=False,
@@ -42,7 +42,6 @@ test = compositiontest.CompositionTest(
                         serving=[
                             cmv1alpha1.ServingItem(
                                 name="vllm-kserve",
-                                backend="KServe",
                                 engine=cmv1alpha1.Engine(
                                     name="vLLM",
                                     image="vllm/vllm-openai:v0.7.3",
@@ -64,14 +63,13 @@ test = compositiontest.CompositionTest(
                         name="h100-cluster",
                         labels={"modelplane.ai/environment": "true"},
                     ),
-                    spec=iev1alpha1.Spec(backend="KServe"),
+                    spec=iev1alpha1.Spec(cluster=iev1alpha1.Cluster(source="Existing")),
                     status=iev1alpha1.Status(
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
                             name="h100-cluster-kubeconfig",
                         ),
                         gateway=iev1alpha1.Gateway(address="10.0.0.1"),
                         capacity=iev1alpha1.Capacity(
-                            backend="KServe",
                             gpuPools=[
                                 iev1alpha1.GpuPool(
                                     acceleratorType="nvidia-h100-80gb",

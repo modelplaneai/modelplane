@@ -11,7 +11,7 @@ import { Card } from "../../components/Card";
 import { ConditionList } from "../../components/ConditionList";
 import { EventTimeline } from "../../components/EventTimeline";
 import { deriveStatus, statusText } from "../../lib/status";
-import { envRegion, envVersion } from "../../lib/format";
+import { envRegion, envClusterSource } from "../../lib/format";
 import type { InferenceEnvironment, ModelPlacement, KubeList } from "../../api/types";
 
 function EnvironmentDetailRow({ env, placements }: { env: InferenceEnvironment; placements: ModelPlacement[] }) {
@@ -38,10 +38,10 @@ function EnvironmentDetailRow({ env, placements }: { env: InferenceEnvironment; 
           <div className="space-y-3">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
-                Backend Version
+                Cluster Source
               </p>
               <p className="text-sm text-text">
-                {envVersion(env) ?? "—"}
+                {envClusterSource(env) ?? "—"}
               </p>
             </div>
             <div>
@@ -201,7 +201,7 @@ export function EnvironmentsPage() {
         <thead>
           <tr className="font-mono text-[11px] uppercase tracking-wider text-muted">
             <th className="text-left px-4 py-2 font-normal">Name</th>
-            <th className="text-left px-4 py-2 font-normal">Backend</th>
+            <th className="text-left px-4 py-2 font-normal">Cluster</th>
             <th className="text-left px-4 py-2 font-normal">Region</th>
             <th className="text-left px-4 py-2 font-normal">Gateway</th>
             <th className="text-left px-4 py-2 font-normal">Status</th>
@@ -236,7 +236,7 @@ export function EnvironmentsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-muted-hi">
-                    {env.spec.backend}
+                    {envClusterSource(env) ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-sm text-muted-hi">
                     {envRegion(env) ?? "—"}

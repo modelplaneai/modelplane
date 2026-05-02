@@ -11,7 +11,7 @@ test = compositiontest.CompositionTest(
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/kservebackends/composition.yaml",
-        xrPath="tests/test-kservebackend/xr.yaml",
+        xrPath="tests/test-backend/xr.yaml",
         xrdPath="apis/kservebackends/definition.yaml",
         timeoutSeconds=120,
         validate=False,

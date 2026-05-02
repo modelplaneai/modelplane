@@ -5,7 +5,7 @@ import { useEnvironments } from "../../hooks/useEnvironments";
 import { useNamespace } from "../../hooks/useNamespace";
 import { useApi } from "../../api/context";
 import { deriveStatus } from "../../lib/status";
-import { modelDisplayName, isValidKubernetesName, toKubernetesName, envRegion } from "../../lib/format";
+import { modelDisplayName, isValidKubernetesName, toKubernetesName, envRegion, envClusterSource } from "../../lib/format";
 import { SectionLabel } from "../../components/SectionLabel";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/Card";
@@ -479,7 +479,7 @@ function ModelCard({
           </h3>
           <div className="flex flex-wrap gap-2">
             {(model.spec.serving ?? []).map((p) => (
-              <Badge key={p.name} variant="cyan">{p.backend}</Badge>
+              <Badge key={p.name} variant="cyan">{p.engine?.name}</Badge>
             ))}
             <Badge variant="neutral">{model.spec.resources.vram}</Badge>
           </div>
@@ -518,7 +518,7 @@ function EnvironmentCard({
             <span className="text-text font-medium text-sm">
               {env.metadata.name}
             </span>
-            <Badge variant="neutral">{env.spec.backend}</Badge>
+            <Badge variant="neutral">{envClusterSource(env)}</Badge>
             {region && (
               <span className="text-xs text-muted">{region}</span>
             )}

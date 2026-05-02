@@ -76,7 +76,31 @@ test = compositiontest.CompositionTest(
                         name="demo-us-central",
                     ),
                     spec=iev1alpha1.Spec(
-                        backend="KServe",
+                        cluster=iev1alpha1.Cluster(
+                            source="GKE",
+                            gke=iev1alpha1.Gke(
+                                project="my-gcp-project",
+                                region="us-central1",
+                                nodePools=[
+                                    iev1alpha1.NodePoolModel(
+                                        name="system",
+                                        role="System",
+                                        machineType="e2-standard-4",
+                                    ),
+                                    iev1alpha1.NodePoolModel(
+                                        name="gpu-l4",
+                                        role="GPU",
+                                        machineType="g2-standard-8",
+                                        gpu=iev1alpha1.GpuModel(
+                                            acceleratorType="nvidia-l4",
+                                            acceleratorCount=1,
+                                        ),
+                                        maxNodeCount=2,
+                                        zones=["us-central1-a", "us-central1-c"],
+                                    ),
+                                ],
+                            ),
+                        ),
                     ),
                     status=iev1alpha1.Status(
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
@@ -84,7 +108,6 @@ test = compositiontest.CompositionTest(
                         ),
                         namespace="modelplane-system",
                         capacity=iev1alpha1.Capacity(
-                            backend="KServe",
                             gpuPools=[
                                 iev1alpha1.GpuPool(
                                     acceleratorType="nvidia-l4",

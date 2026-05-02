@@ -29,7 +29,25 @@ test = compositiontest.CompositionTest(
                         name="byo-us-east",
                     ),
                     spec=iev1alpha1.Spec(
-                        backend="KServe",
+                        cluster=iev1alpha1.Cluster(
+                            source="Existing",
+                            existing=iev1alpha1.Existing(
+                                secretRef=iev1alpha1.SecretRef(
+                                    name="byo-cluster-kubeconfig",
+                                    key="kubeconfig",
+                                ),
+                                nodePools=[
+                                    iev1alpha1.NodePool(
+                                        name="gpu-h100",
+                                        nodeCount=2,
+                                        gpu=iev1alpha1.Gpu(
+                                            acceleratorType="nvidia-h100-80gb",
+                                            acceleratorCount=8,
+                                        ),
+                                    ),
+                                ],
+                            ),
+                        ),
                     ),
                     status=iev1alpha1.Status(
                         providerConfigRef=iev1alpha1.ProviderConfigRef(
@@ -37,7 +55,6 @@ test = compositiontest.CompositionTest(
                         ),
                         namespace="modelplane-system",
                         capacity=iev1alpha1.Capacity(
-                            backend="KServe",
                             gpuPools=[
                                 iev1alpha1.GpuPool(
                                     acceleratorType="nvidia-h100-80gb",

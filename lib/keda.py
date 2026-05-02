@@ -1,8 +1,7 @@
 """KEDA configuration for backend clusters.
 
-Both KServe and Dynamo backends install KEDA for autoscaling. This module
-provides shared configuration and a helper to compose the Helm release so
-that every backend uses the same chart and namespace.
+The KServe backend installs KEDA for autoscaling. This module provides
+shared configuration and a helper to compose the Helm release.
 """
 
 from ..model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1

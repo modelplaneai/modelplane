@@ -18,9 +18,6 @@ spec:
     - name: READY
       type: string
       jsonPath: .status.conditions[?(@.type=='Ready')].status
-    - name: BACKEND
-      type: string
-      jsonPath: .spec.backend
     - name: GATEWAY
       type: string
       jsonPath: .status.gateway.address
@@ -34,339 +31,167 @@ spec:
         properties:
           spec:
             type: object
-            required: [backend]
+            required: [cluster]
             properties:
-              backend:
-                type: string
-                description: >-
-                  Inference backend to deploy.
-                enum: [KServe, Dynamo]
-              kserve:
+              cluster:
                 type: object
-                description: >-
-                  KServe backend configuration. Required when backend is KServe.
-                required: [cluster]
+                required: [source]
                 properties:
-                  version:
+                  source:
                     type: string
-                    default: "v0.16.0"
-                  cluster:
+                    description: >-
+                      Cluster provisioning method.
+                    enum: [GKE, Existing]
+                  existing:
                     type: object
-                    required: [source]
+                    description: >-
+                      Bring-your-own cluster configuration. Required when
+                      source is Existing. Modelplane manages the inference
+                      stack on the cluster but does not provision the
+                      cluster itself.
+                    required: [secretRef]
                     properties:
-                      source:
-                        type: string
-                        description: >-
-                          Cluster provisioning method.
-                        enum: [GKE, Existing]
-                      existing:
+                      secretRef:
                         type: object
                         description: >-
-                          Bring-your-own cluster configuration. Required when
-                          source is Existing. Modelplane manages the backend
-                          (KServe, gateway, etc.) on the cluster but
-                          does not provision the cluster itself.
-                        required: [secretRef]
+                          Reference to a Secret containing a kubeconfig
+                          for the existing cluster. The Secret must exist
+                          in the modelplane-system namespace.
+                        required: [name]
                         properties:
-                          secretRef:
-                            type: object
-                            description: >-
-                              Reference to a Secret containing a kubeconfig
-                              for the existing cluster. The Secret must exist
-                              in the modelplane-system namespace.
-                            required: [name]
-                            properties:
-                              name:
-                                type: string
-                                description: Name of the kubeconfig Secret.
-                                minLength: 1
-                                maxLength: 253
-                              key:
-                                type: string
-                                description: >-
-                                  Key within the Secret that holds the
-                                  kubeconfig data.
-                                default: kubeconfig
-                                minLength: 1
-                                maxLength: 253
-                          identitySecretRef:
-                            type: object
-                            description: >-
-                              Optional reference to a Secret containing cloud
-                              provider credentials for IAM-based authentication.
-                              Required for GKE clusters where the kubeconfig
-                              uses GCP IAM auth instead of embedded credentials.
-                            required: [name]
-                            properties:
-                              name:
-                                type: string
-                                description: Name of the identity Secret.
-                                minLength: 1
-                                maxLength: 253
-                              key:
-                                type: string
-                                description: >-
-                                  Key within the Secret that holds the
-                                  credential data.
-                                default: private_key
-                                minLength: 1
-                                maxLength: 253
-                          nodePools:
-                            type: array
-                            description: >-
-                              Declared GPU capacity of the existing cluster.
-                              Used by the scheduler to match models to
-                              compatible environments. If omitted, the
-                              environment reports no GPU capacity and only
-                              models with no GPU requirements can be
-                              scheduled.
-                            maxItems: 8
-                            x-kubernetes-list-type: map
-                            x-kubernetes-list-map-keys: [name]
-                            items:
-                              type: object
-                              required: [name]
-                              properties:
-                                name:
-                                  type: string
-                                  maxLength: 40
-                                nodeCount:
-                                  type: integer
-                                  default: 1
-                                  minimum: 1
-                                maxNodeCount:
-                                  type: integer
-                                  description: >-
-                                    Maximum node count for autoscaled pools.
-                                    Used instead of nodeCount when computing
-                                    GPU capacity for scheduling.
-                                  minimum: 1
-                                gpu:
-                                  type: object
-                                  properties:
-                                    acceleratorType:
-                                      type: string
-                                    acceleratorCount:
-                                      type: integer
-                                      default: 1
-                                      minimum: 1
-                      gke:
-                        type: object
-                        description: >-
-                          GKE cluster configuration. Required when source is GKE.
-                        required: [project, region, nodePools]
-                        properties:
-                          project:
+                          name:
                             type: string
-                            minLength: 6
-                            maxLength: 30
-                          region:
-                            type: string
+                            description: Name of the kubeconfig Secret.
                             minLength: 1
-                            maxLength: 32
-                          kubernetesVersion:
+                            maxLength: 253
+                          key:
                             type: string
-                            default: "1.35"
-                          nodePools:
-                            type: array
-                            minItems: 1
-                            maxItems: 8
-                            x-kubernetes-list-type: map
-                            x-kubernetes-list-map-keys: [name]
-                            items:
+                            description: >-
+                              Key within the Secret that holds the
+                              kubeconfig data.
+                            default: kubeconfig
+                            minLength: 1
+                            maxLength: 253
+                      identitySecretRef:
+                        type: object
+                        description: >-
+                          Optional reference to a Secret containing cloud
+                          provider credentials for IAM-based authentication.
+                          Required for GKE clusters where the kubeconfig
+                          uses GCP IAM auth instead of embedded credentials.
+                        required: [name]
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the identity Secret.
+                            minLength: 1
+                            maxLength: 253
+                          key:
+                            type: string
+                            description: >-
+                              Key within the Secret that holds the
+                              credential data.
+                            default: private_key
+                            minLength: 1
+                            maxLength: 253
+                      nodePools:
+                        type: array
+                        description: >-
+                          Declared GPU capacity of the existing cluster.
+                          Used by the scheduler to match models to
+                          compatible environments. If omitted, the
+                          environment reports no GPU capacity and only
+                          models with no GPU requirements can be
+                          scheduled.
+                        maxItems: 8
+                        x-kubernetes-list-type: map
+                        x-kubernetes-list-map-keys: [name]
+                        items:
+                          type: object
+                          required: [name]
+                          properties:
+                            name:
+                              type: string
+                              maxLength: 40
+                            nodeCount:
+                              type: integer
+                              default: 1
+                              minimum: 1
+                            maxNodeCount:
+                              type: integer
+                              description: >-
+                                Maximum node count for autoscaled pools.
+                                Used instead of nodeCount when computing
+                                GPU capacity for scheduling.
+                              minimum: 1
+                            gpu:
                               type: object
-                              required: [name, role, machineType]
                               properties:
-                                name:
+                                acceleratorType:
                                   type: string
-                                  maxLength: 40
-                                role:
-                                  type: string
-                                  enum: [System, GPU]
-                                machineType:
-                                  type: string
-                                diskSizeGb:
-                                  type: integer
-                                  default: 100
-                                nodeCount:
+                                acceleratorCount:
                                   type: integer
                                   default: 1
-                                minNodeCount:
-                                  type: integer
-                                  default: 0
-                                maxNodeCount:
-                                  type: integer
-                                  default: 8
-                                gpu:
-                                  type: object
-                                  properties:
-                                    acceleratorType:
-                                      type: string
-                                    acceleratorCount:
-                                      type: integer
-                                      default: 1
-                                zones:
-                                  type: array
-                                  items:
-                                    type: string
-              dynamo:
-                type: object
-                description: >-
-                  Dynamo backend configuration. Required when backend is Dynamo.
-                required: [cluster]
-                properties:
-                  version:
-                    type: string
-                    default: "1.0.0"
-                  cluster:
+                                  minimum: 1
+                  gke:
                     type: object
-                    required: [source]
+                    description: >-
+                      GKE cluster configuration. Required when source is GKE.
+                    required: [project, region, nodePools]
                     properties:
-                      source:
+                      project:
                         type: string
-                        description: >-
-                          Cluster provisioning method.
-                        enum: [GKE, Existing]
-                      existing:
-                        type: object
-                        description: >-
-                          Bring-your-own cluster configuration. Required when
-                          source is Existing.
-                        required: [secretRef]
-                        properties:
-                          secretRef:
-                            type: object
-                            description: >-
-                              Reference to a Secret containing a kubeconfig
-                              for the existing cluster.
-                            required: [name]
-                            properties:
-                              name:
-                                type: string
-                                description: Name of the kubeconfig Secret.
-                                minLength: 1
-                                maxLength: 253
-                              key:
-                                type: string
-                                description: >-
-                                  Key within the Secret that holds the
-                                  kubeconfig data.
-                                default: kubeconfig
-                                minLength: 1
-                                maxLength: 253
-                          identitySecretRef:
-                            type: object
-                            description: >-
-                              Optional reference to a Secret containing cloud
-                              provider credentials for IAM-based authentication.
-                            required: [name]
-                            properties:
-                              name:
-                                type: string
-                                description: Name of the identity Secret.
-                                minLength: 1
-                                maxLength: 253
-                              key:
-                                type: string
-                                description: >-
-                                  Key within the Secret that holds the
-                                  credential data.
-                                default: private_key
-                                minLength: 1
-                                maxLength: 253
-                          nodePools:
-                            type: array
-                            description: >-
-                              Declared GPU capacity of the existing cluster.
-                            maxItems: 8
-                            x-kubernetes-list-type: map
-                            x-kubernetes-list-map-keys: [name]
-                            items:
+                        minLength: 6
+                        maxLength: 30
+                      region:
+                        type: string
+                        minLength: 1
+                        maxLength: 32
+                      kubernetesVersion:
+                        type: string
+                        default: "1.35"
+                      nodePools:
+                        type: array
+                        minItems: 1
+                        maxItems: 8
+                        x-kubernetes-list-type: map
+                        x-kubernetes-list-map-keys: [name]
+                        items:
+                          type: object
+                          required: [name, role, machineType]
+                          properties:
+                            name:
+                              type: string
+                              maxLength: 40
+                            role:
+                              type: string
+                              enum: [System, GPU]
+                            machineType:
+                              type: string
+                            diskSizeGb:
+                              type: integer
+                              default: 100
+                            nodeCount:
+                              type: integer
+                              default: 1
+                            minNodeCount:
+                              type: integer
+                              default: 0
+                            maxNodeCount:
+                              type: integer
+                              default: 8
+                            gpu:
                               type: object
-                              required: [name]
                               properties:
-                                name:
+                                acceleratorType:
                                   type: string
-                                  maxLength: 40
-                                nodeCount:
+                                acceleratorCount:
                                   type: integer
                                   default: 1
-                                  minimum: 1
-                                maxNodeCount:
-                                  type: integer
-                                  description: >-
-                                    Maximum node count for autoscaled pools.
-                                    Used instead of nodeCount when computing
-                                    GPU capacity for scheduling.
-                                  minimum: 1
-                                gpu:
-                                  type: object
-                                  properties:
-                                    acceleratorType:
-                                      type: string
-                                    acceleratorCount:
-                                      type: integer
-                                      default: 1
-                                      minimum: 1
-                      gke:
-                        type: object
-                        description: >-
-                          GKE cluster configuration. Required when source is GKE.
-                        required: [project, region, nodePools]
-                        properties:
-                          project:
-                            type: string
-                            minLength: 6
-                            maxLength: 30
-                          region:
-                            type: string
-                            minLength: 1
-                            maxLength: 32
-                          kubernetesVersion:
-                            type: string
-                            default: "1.35"
-                          nodePools:
-                            type: array
-                            minItems: 1
-                            maxItems: 8
-                            x-kubernetes-list-type: map
-                            x-kubernetes-list-map-keys: [name]
-                            items:
-                              type: object
-                              required: [name, role, machineType]
-                              properties:
-                                name:
-                                  type: string
-                                  maxLength: 40
-                                role:
-                                  type: string
-                                  enum: [System, GPU]
-                                machineType:
-                                  type: string
-                                diskSizeGb:
-                                  type: integer
-                                  default: 100
-                                nodeCount:
-                                  type: integer
-                                  default: 1
-                                minNodeCount:
-                                  type: integer
-                                  default: 0
-                                maxNodeCount:
-                                  type: integer
-                                  default: 8
-                                gpu:
-                                  type: object
-                                  properties:
-                                    acceleratorType:
-                                      type: string
-                                    acceleratorCount:
-                                      type: integer
-                                      default: 1
-                                zones:
-                                  type: array
-                                  items:
-                                    type: string
+                            zones:
+                              type: array
+                              items:
+                                type: string
           status:
             type: object
             properties:
@@ -391,11 +216,6 @@ spec:
                 description: >-
                   Declared capacity computed from the node pool config.
                 properties:
-                  backend:
-                    type: string
-                    description: >-
-                      The backend type (copied from spec.backend).
-                      Used by the deploy function for engine compatibility.
                   gpuPools:
                     type: array
                     description: >-

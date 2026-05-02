@@ -8,7 +8,7 @@ import { Card } from "../../components/Card";
 import { Badge } from "../../components/Badge";
 import { ConditionList } from "../../components/ConditionList";
 import { deriveStatus, statusText } from "../../lib/status";
-import { envRegion } from "../../lib/format";
+import { envRegion, envClusterSource } from "../../lib/format";
 import type { InferenceGateway, InferenceEnvironment, ModelPlacement, KubeList } from "../../api/types";
 
 export function InfrastructurePage() {
@@ -133,7 +133,7 @@ export function InfrastructurePage() {
           <thead>
             <tr className="font-mono text-[11px] uppercase tracking-wider text-muted">
               <th className="text-left px-4 py-2 font-normal">Name</th>
-              <th className="text-left px-4 py-2 font-normal">Backend</th>
+              <th className="text-left px-4 py-2 font-normal">Cluster</th>
               <th className="text-left px-4 py-2 font-normal">Region</th>
               <th className="text-left px-4 py-2 font-normal">GPUs</th>
               <th className="text-left px-4 py-2 font-normal">Placements</th>
@@ -190,7 +190,7 @@ function EnvironmentRow({
           <span className="font-medium">{env.metadata.name}</span>
         </Link>
       </td>
-      <td className="px-4 py-3 text-sm text-muted-hi">{env.spec.backend}</td>
+      <td className="px-4 py-3 text-sm text-muted-hi">{envClusterSource(env) ?? "—"}</td>
       <td className="px-4 py-3 text-sm text-muted-hi">{region}</td>
       <td className="px-4 py-3 text-sm text-muted-hi" title={gpuSummary}>
         {totalGpus > 0 ? totalGpus : "—"}

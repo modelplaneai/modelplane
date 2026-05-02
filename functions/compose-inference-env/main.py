@@ -1,9 +1,8 @@
 """Compose an InferenceEnvironment.
 
 This function orchestrates the internal XRs that make up an inference
-environment. It dispatches on two axes: the backend (KServe, Dynamo, etc.)
-determines which backend XR to install, and the cluster source (GKE, Existing)
-determines how the cluster is obtained.
+environment. It dispatches on the cluster source (GKE, Existing) to determine
+how the cluster is obtained, then composes a KServeBackend on it.
 
 For provisioned clusters (source: GKE), it composes a GKECluster and threads
 its secrets into the backend and ClusterProviderConfig. For BYO clusters
@@ -14,10 +13,9 @@ same resources — skipping cluster provisioning entirely.
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import backends, conditions, metadata, secrets
+from .lib import conditions, metadata, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceenvironment import v1alpha1
-from .model.ai.modelplane.infrastructure.dynamobackend import v1alpha1 as dsv1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
@@ -26,11 +24,9 @@ from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
 from .model.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# Maps backends to their XR kinds (for Usage resources).
-BACKEND_XR_KINDS = {
-    backends.KSERVE: "KServeBackend",
-    backends.DYNAMO: "DynamoBackend",
-}
+# KServe version installed on remote clusters. Hardcoded as an internal
+# implementation detail — users don't choose or see this.
+KSERVE_VERSION = "v0.16.0"
 
 # Cluster source discriminator values from the XRD enum.
 CLUSTER_SOURCE_GKE = "GKE"
@@ -58,6 +54,9 @@ GPU_VRAM = {
     "nvidia-v100": "16Gi",
 }
 
+# Composed resource key for the backend XR.
+BACKEND_RESOURCE_KEY = "kserve-backend"
+
 
 class Composer:
     def __init__(self, req, rsp):
@@ -66,30 +65,9 @@ class Composer:
         self.xr = v1alpha1.InferenceEnvironment(**resource.struct_to_dict(req.observed.composite.resource))
 
     def compose(self):
-        backend = self.xr.spec.backend
-        if backend == backends.KSERVE:
-            if not self.xr.spec.kserve or not self.xr.spec.kserve.cluster:
-                response.warning(self.rsp, "spec.kserve.cluster is required when backend is KServe")
-                return
-            cluster = self.xr.spec.kserve.cluster
-            # The composed resource key for the backend XR. Shared methods
-            # (derive_conditions, observed_gateway_address, etc.) use this to
-            # check readiness and read observed state without knowing which
-            # backend they're serving.
-            #
-            # This implies a contract: any backend XR must have a Ready
-            # condition and surface status.gateway.address. Both are reasonable
-            # — Ready is standard for Crossplane XRs, and the gateway address
-            # is how ModelDeployment routes to the environment.
-            self.backend_resource_key = "kserve-backend"
-        elif backend == backends.DYNAMO:
-            if not self.xr.spec.dynamo or not self.xr.spec.dynamo.cluster:
-                response.warning(self.rsp, "spec.dynamo.cluster is required when backend is Dynamo")
-                return
-            cluster = self.xr.spec.dynamo.cluster
-            self.backend_resource_key = "dynamo-backend"
-        else:
-            response.warning(self.rsp, f"unsupported backend: {backend}")
+        cluster = self.xr.spec.cluster
+        if not cluster:
+            response.warning(self.rsp, "spec.cluster is required")
             return
 
         source = cluster.source
@@ -114,7 +92,7 @@ class Composer:
         kubeconfig = self.observed_gke_secret(secrets.SECRET_TYPE_KUBECONFIG)
         sa_key = self.observed_gke_secret(secrets.SECRET_TYPE_GCP_SA_KEY)
         cpc_exists = "cluster-provider-config-kubernetes" in self.req.observed.resources
-        backend_exists = self.backend_resource_key in self.req.observed.resources
+        backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
         if (gke_ready and kubeconfig) or cpc_exists:
             self.compose_cluster_provider_config(
@@ -126,7 +104,7 @@ class Composer:
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready, backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_backend(backend_secrets)
+                self.compose_kserve_backend(backend_secrets)
             self.compose_gke_usage()
 
         if gke_ready:
@@ -161,19 +139,26 @@ class Composer:
             backend_secrets.append(
                 {"type": secrets.SECRET_TYPE_GCP_SA_KEY, "name": identity.name, "key": identity.key},
             )
-        self.compose_backend(backend_secrets)
+        self.compose_kserve_backend(backend_secrets)
 
         self.write_status(self.existing_gpu_pools(existing))
         self.derive_conditions(cluster_ready=True)
 
-    def compose_backend(self, backend_secrets):
-        """Compose the backend-specific XR. Dispatches on the backend
-        discriminator to compose the right backend type."""
-        backend = self.xr.spec.backend
-        if backend == backends.KSERVE:
-            self.compose_kserve_backend(backend_secrets)
-        elif backend == backends.DYNAMO:
-            self.compose_dynamo_backend(backend_secrets)
+    def compose_kserve_backend(self, backend_secrets):
+        """Compose a KServeBackend XR with the given secrets."""
+        resource.update(
+            self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
+            kssv1alpha1.KServeBackend(
+                metadata=metav1.ObjectMeta(
+                    name=f"{self.xr.metadata.name}-kserve",
+                    namespace=metadata.NAMESPACE_SYSTEM,
+                ),
+                spec=kssv1alpha1.Spec(
+                    versions=kssv1alpha1.Versions(kserve=KSERVE_VERSION),
+                    secrets=[kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in backend_secrets],
+                ),
+            ),
+        )
 
     def compose_cluster_provider_config(self, kubeconfig_name, kubeconfig_key, sa_key=None):
         """Compose a ClusterProviderConfig for provider-kubernetes so that
@@ -207,38 +192,6 @@ class Composer:
         )
         self.rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
 
-    def compose_kserve_backend(self, backend_secrets):
-        """Compose a KServeBackend XR with the given secrets."""
-        resource.update(
-            self.rsp.desired.resources["kserve-backend"],
-            kssv1alpha1.KServeBackend(
-                metadata=metav1.ObjectMeta(
-                    name=f"{self.xr.metadata.name}-kserve",
-                    namespace=metadata.NAMESPACE_SYSTEM,
-                ),
-                spec=kssv1alpha1.Spec(
-                    versions=kssv1alpha1.Versions(kserve=self.xr.spec.kserve.version),
-                    secrets=[kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in backend_secrets],
-                ),
-            ),
-        )
-
-    def compose_dynamo_backend(self, backend_secrets):
-        """Compose a DynamoBackend XR with the given secrets."""
-        resource.update(
-            self.rsp.desired.resources["dynamo-backend"],
-            dsv1alpha1.DynamoBackend(
-                metadata=metav1.ObjectMeta(
-                    name=f"{self.xr.metadata.name}-dynamo",
-                    namespace=metadata.NAMESPACE_SYSTEM,
-                ),
-                spec=dsv1alpha1.Spec(
-                    versions=dsv1alpha1.Versions(dynamo=self.xr.spec.dynamo.version),
-                    secrets=[dsv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in backend_secrets],
-                ),
-            ),
-        )
-
     def write_status(self, gpu_pools):
         """Write the InferenceEnvironment status."""
         status = v1alpha1.Status(
@@ -247,7 +200,6 @@ class Composer:
             ),
             namespace=metadata.NAMESPACE_SYSTEM,
             capacity=v1alpha1.Capacity(
-                backend=self.xr.spec.backend,
                 gpuPools=gpu_pools,
             ),
         )
@@ -258,9 +210,9 @@ class Composer:
 
     def derive_conditions(self, cluster_ready):
         """Derive ClusterReady and BackendReady conditions."""
-        backend_ready = conditions.has_condition(self.req, self.backend_resource_key, "Ready")
-        if self.backend_resource_key in self.rsp.desired.resources and backend_ready:
-            self.rsp.desired.resources[self.backend_resource_key].ready = fnv1.READY_TRUE
+        backend_ready = conditions.has_condition(self.req, BACKEND_RESOURCE_KEY, "Ready")
+        if BACKEND_RESOURCE_KEY in self.rsp.desired.resources and backend_ready:
+            self.rsp.desired.resources[BACKEND_RESOURCE_KEY].ready = fnv1.READY_TRUE
 
         conditions.set_condition(
             self.rsp,
@@ -305,7 +257,6 @@ class Composer:
 
     def compose_gke_usage(self):
         """Block GKECluster deletion until the backend is deleted."""
-        backend_kind = BACKEND_XR_KINDS.get(self.xr.spec.backend, "KServeBackend")
         resource.update(
             self.rsp.desired.resources["usage-gke-by-backend"],
             usagev1beta1.Usage(
@@ -318,7 +269,7 @@ class Composer:
                     ),
                     by=usagev1beta1.By(
                         apiVersion="infrastructure.modelplane.ai/v1alpha1",
-                        kind=backend_kind,
+                        kind="KServeBackend",
                         resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
                     ),
                     replayDeletion=True,
@@ -339,7 +290,7 @@ class Composer:
             return [{"type": s.type, "name": s.name, "key": s.key} for s in gke_secrets]
 
         if backend_exists:
-            observed = self.req.observed.resources.get(self.backend_resource_key)
+            observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
             if observed:
                 d = resource.struct_to_dict(observed.resource)
                 observed_secrets = d.get("spec", {}).get("secrets", [])
@@ -401,7 +352,7 @@ class Composer:
         """Read the backend's gateway address from observed state.
         Uses dict access instead of a typed model so it works for any
         backend that follows the status.gateway.address contract."""
-        observed = self.req.observed.resources.get(self.backend_resource_key)
+        observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
         if not observed:
             return None
         d = resource.struct_to_dict(observed.resource)

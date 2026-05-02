@@ -38,7 +38,7 @@ export function CatalogPage() {
           <tr className="font-mono text-[11px] uppercase tracking-wider text-muted">
             <th className="text-left px-4 py-2 font-normal">Name</th>
             <th className="text-left px-4 py-2 font-normal">Model</th>
-            <th className="text-left px-4 py-2 font-normal">Backends</th>
+            <th className="text-left px-4 py-2 font-normal">Engines</th>
             <th className="text-left px-4 py-2 font-normal">VRAM</th>
           </tr>
         </thead>
@@ -69,7 +69,7 @@ export function CatalogPage() {
                   <div className="flex flex-wrap gap-1">
                     {(m.spec.serving ?? []).map((p) => (
                       <span key={p.name} className="text-xs font-mono text-cyan bg-cyan/10 px-1.5 py-0.5 rounded">
-                        {p.engine?.name ?? p.backend}
+                        {p.engine?.name}
                       </span>
                     ))}
                   </div>

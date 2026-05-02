@@ -248,7 +248,6 @@ function PlacementCard({ placement }: { placement: ModelPlacement }) {
             </span>
             {placement.status?.servingProfile && (
               <>
-                <Badge variant="neutral">{placement.status.servingProfile.backend}</Badge>
                 {placement.status.servingProfile.engine?.name && (
                   <Badge variant="cyan">{placement.status.servingProfile.engine.name}</Badge>
                 )}

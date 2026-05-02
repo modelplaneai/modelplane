@@ -35,8 +35,8 @@ describe("EnvironmentsPage", () => {
     expect(screen.getByText("us-central1")).toBeInTheDocument();
     expect(screen.getByText("europe-west1")).toBeInTheDocument();
 
-    // Backend renders from spec.backend.
-    expect(screen.getAllByText("KServe")).toHaveLength(2);
+    // Cluster source renders from spec.cluster.source.
+    expect(screen.getAllByText("GKE")).toHaveLength(2);
 
     // Gateway address renders for the first environment.
     expect(screen.getByText("10.0.0.1")).toBeInTheDocument();
@@ -83,9 +83,6 @@ describe("EnvironmentsPage", () => {
     expect(screen.getByText("GPU Pools")).toBeInTheDocument();
     expect(screen.getByText("nvidia-l4")).toBeInTheDocument();
     expect(screen.getByText(/24Gi VRAM\/GPU/)).toBeInTheDocument();
-
-    // Backend version from spec.kserve.version.
-    expect(screen.getByText("v0.16.0")).toBeInTheDocument();
 
     // Internal namespace from status.namespace.
     expect(screen.getByText("ie-test-env")).toBeInTheDocument();

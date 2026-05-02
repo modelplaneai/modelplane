@@ -216,8 +216,7 @@ kubectl get ig default --watch
 
 ## Register a model
 
-Register Qwen 2.5 0.5B in the catalog with serving profiles for both KServe and
-Dynamo:
+Register Qwen 2.5 0.5B in the catalog:
 
 ```bash
 kubectl apply -f examples/platform/cluster-model.yaml
@@ -250,8 +249,8 @@ kubectl create namespace ml-team
 kubectl apply -f examples/deployment/model-deployment.yaml
 ```
 
-The scheduler matches the model's KServe serving profile to the environment,
-checks GPU capacity, and creates a ModelPlacement. Wait for the placement to
+The scheduler matches the model's serving profile to the environment, checks GPU
+capacity, and creates a ModelPlacement. Wait for the placement to
 become ready:
 
 ```bash
