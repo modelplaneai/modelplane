@@ -41,9 +41,7 @@ test = e2etestv1alpha1.E2ETest(
                         labels={"rbac.crossplane.io/aggregate-to-crossplane": "true"},
                     ),
                     rules=[
-                        rbacv1.PolicyRule(
-                            apiGroups=[""], resources=["namespaces"], verbs=["*"]
-                        ),
+                        rbacv1.PolicyRule(apiGroups=[""], resources=["namespaces"], verbs=["*"]),
                         rbacv1.PolicyRule(
                             apiGroups=["gateway.networking.k8s.io"],
                             resources=["gateways", "gatewayclasses", "httproutes"],
