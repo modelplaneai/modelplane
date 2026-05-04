@@ -52,7 +52,11 @@ class Composer:
                 "spec": {"credentials": {"source": "InjectedIdentity"}},
             },
         )
-        self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
+        # Gate READY_TRUE on observation: prevents the XR from briefly reaching
+        # Ready=True on the first reconcile when provider-config-helm is the
+        # only desired resource and Crossplane auto-derives readiness from it.
+        if "provider-config-helm" in self.req.observed.resources:
+            self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
     def compose_metallb(self):
         """Optional MetalLB for kind/bare-metal clusters that don't have a

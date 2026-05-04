@@ -4,6 +4,9 @@ metadata:
   name: modelplane
 spec:
   apiDependencies:
+  - k8s:
+      version: v1.33.0
+    type: k8s
   - git:
       path: cluster/crds
       ref: release-2.2
