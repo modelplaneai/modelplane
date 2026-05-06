@@ -33,6 +33,7 @@ These XRDs cover the **spec shape** for design alignment. Things that are intent
 - `status` schemas are minimal — just the conditions and a representative status field per resource. `matchTrace`, `compatibility`, and granular cold-start status will be elaborated when the controller code lands.
 - Validation rules (CEL expressions on the schema, `oneOf` discriminator constraints, cross-field invariants) are sketched but not exhaustive.
 - The corresponding Crossplane Compositions are **not** in this directory — those are implementation. The XRDs declare the API contract.
+- `KServeBackend` (already an internal XR in `apis/kservebackends/`) is not duplicated here, but it's where engine + features land in the substrate / runtime split — `InferenceCluster` is hardware, `KServeBackend` is the inference stack on that cluster, and the matcher reads engine features from the latter.
 - Internal types used by the IR adapter pipeline beyond `ModelPlacement` (e.g. per-engine sub-types) are TBD.
 
 ## Where each piece ends up after alignment

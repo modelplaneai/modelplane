@@ -1,8 +1,11 @@
 # InferenceCluster — a customer Kubernetes cluster running KServe + DRA + Kueue + KEDA.
 # Each InferenceCluster is a workload plane; Modelplane composes ModelPlacements onto it.
 #
-# Replaces the existing InferenceEnvironment XRD. Adds three-level attributes,
-# engine.features for capability matching, and provisioning.mode for DRA-vs-device-plugin.
+# Replaces the existing InferenceEnvironment XRD. Pure substrate: cluster source,
+# node pools, three-level attributes, provisioning.mode. No engine or runtime
+# concerns — those live on the KServeBackend internal XR (apis/kservebackends/),
+# which represents the inference stack installed on this cluster. The matcher
+# reads engine features from the associated KServeBackend, not from here.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
@@ -80,21 +83,11 @@ spec:
                     Domain-namespaced keys (e.g. modelplane.ai/region, acme.example/team).
                     Typed values per CapabilityVocabulary; unrecognized keys pass through.
 
-                # ---- engine + feature declaration ----
-                engine:
-                  type: object
-                  required: [name]
-                  properties:
-                    name:
-                      type: string
-                      enum: [vLLM, SGLang, TensorRT-LLM, TGI]
-                    version: { type: string }
-                    features:
-                      type: array
-                      items: { type: string }
-                      description: |
-                        Engine feature names declared by this cluster. Matched against
-                        ModelDeployment.spec.requires.engineFeatures (set membership).
+                # Engine + features intentionally NOT here — they live on the
+                # associated KServeBackend (apis/kservebackends/) which represents
+                # the inference stack installed on this cluster. Substrate / runtime
+                # split: this CR is hardware; KServeBackend is runtime. A cluster
+                # may have multiple KServeBackends (e.g. vLLM + SGLang side-by-side).
 
                 # ---- node pools ----
                 nodePools:
@@ -104,6 +97,15 @@ spec:
                     required: [name]
                     properties:
                       name: { type: string }
+
+                      # nodeSelector — labels the composer uses to constrain pods
+                      # to this pool's nodes. Modelplane-provisioned pools auto-apply
+                      # `modelplane.ai/pool: <name>`. BYO pools require the operator
+                      # to label their nodes themselves (or use cloud-provider native
+                      # labels like cloud.google.com/gke-nodepool, eks.amazonaws.com/nodegroup).
+                      nodeSelector:
+                        type: object
+                        additionalProperties: { type: string }
 
                       # provisioning is for creating the pool (CSP-specific)
                       provisioning:

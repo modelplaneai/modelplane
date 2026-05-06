@@ -3,8 +3,9 @@
 # Demonstrates:
 #   - SaaS endpoint registered as a fleet member; routing-only
 #   - Environment-level attributes only (no nodes / devices)
-#   - Engine features declared so the matcher can route disagg-aware traffic
-#     to clusters and basic OpenAI-compatible traffic to Together
+#   - Pure routing target — no engine info; providers are opaque
+#   - Match is supportedModels[] + env-level attributes. Workloads requiring
+#     engine features are excluded automatically (matchTrace surfaces this)
 #   - Supported model list refreshed periodically by the controller
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceProvider
@@ -27,22 +28,6 @@ spec:
     "modelplane.ai/tier":         "production"
     "modelplane.ai/billingModel": "per-token"
     "modelplane.ai/networkAccess": "internet-routable"
-
-  engine:
-    name: TogetherInference
-    features:
-      # Together effectively provides these via its API; from the matcher's
-      # perspective they're available even when not user-toggleable.
-      - chunked-prefill
-      - kv-cache-routing
-      - structured-output
-      - tool-calling
-      - multi-lora
-      # Deliberately NOT declared (workloads requiring these are excluded
-      # from this provider, with field-level reasons in matchTrace):
-      #   - prefill-decode-disagg  (internal disagg topology not exposed)
-      #   - eagle-speculation / ngram-speculation (internal optimizations)
-      #   - fp8-kv-cache  (internal — user can't constrain KV precision)
 
   supportedModels:
     - meta-llama/Llama-3.1-70B-Instruct

@@ -3,10 +3,11 @@
 # Demonstrates:
 #   - source: Existing (BYO cluster via kubeconfig Secret)
 #   - provisioning.mode: dra (cluster has K8s 1.34+ with NVIDIA DRA driver)
-#   - environment-level attributes (region, tier, compliance, fabric)
-#   - One node pool (frontier-multinode) with declared device attributes for
-#     scale-to-zero matching
-#   - Engine declaration with full feature set
+#   - environment-level attributes (region, tier, compliance, billing)
+#   - One node pool (frontier-multinode) with explicit nodeSelector and declared
+#     device attributes for scale-to-zero matching
+#   - Pure substrate — no engine info. Engine + features live on the associated
+#     KServeBackend (apis/kservebackends/), composed onto this cluster separately.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
@@ -32,23 +33,12 @@ spec:
     "modelplane.ai/compliance":   ["soc2-type2", "iso-27001"]
     "modelplane.ai/billingModel": "per-gpu-hour"
 
-  engine:
-    name: vLLM
-    version: v0.8.0
-    features:
-      - prefill-decode-disagg
-      - kv-cache-routing
-      - eagle-speculation
-      - ngram-speculation
-      - multi-lora
-      - structured-output
-      - tool-calling
-      - chunked-prefill
-      - fp8-kv-cache
-      - mxfp4-quantization
-
   nodePools:
     - name: frontier-multinode
+      # Composer uses this to constrain pods to the pool's nodes.
+      # BYO cluster — operator labels their nodes with this themselves.
+      nodeSelector:
+        "modelplane.ai/pool": "frontier-multinode"
       provisioning: {}                    # BYO cluster — pool already exists
       nodeAttributes:
         "node.kubernetes.io/instance-type":    "HGX-H200-IB"

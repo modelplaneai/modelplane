@@ -120,13 +120,16 @@ spec:
                 # ---- requires (typed claim) ----
                 # Field-level matching semantics:
                 #   Environment-level (apply to both InferenceCluster and
-                #   InferenceProvider): engineFeatures, attributes
+                #   InferenceProvider): attributes
+                #   Cluster-runtime-only (matched against the cluster's
+                #   KServeBackend; not applied to providers): engineFeatures
                 #   Node-level (clusters only): interNode
                 #   Device-level (clusters only): minVramPerDevice, architecture,
                 #   fabric, precision
-                # When matching against an InferenceProvider, node and device-level
-                # fields are skipped (matchTrace surfaces this as "skipped: provider
-                # has no node/device attributes").
+                # When matching against an InferenceProvider, only env-level
+                # attributes and supportedModels apply. Workloads requiring engine
+                # features won't match providers — matchTrace surfaces this as
+                # "skipped: provider doesn't expose engine features."
                 requires:
                   type: object
                   properties:

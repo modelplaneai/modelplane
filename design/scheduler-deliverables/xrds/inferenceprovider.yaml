@@ -1,9 +1,13 @@
 # InferenceProvider — a SaaS or observed inference endpoint (Together, Baseten,
 # Bedrock, customer-run KServe). Routing-only; Modelplane never lifecycles it.
 #
-# Exposes engine.features and attributes the same way InferenceCluster does so
-# the fleet scheduler matches across both uniformly. Created directly OR composed
-# by a Crossplane provider/Composition that wraps an external account.
+# Pure routing target. The matcher only evaluates env-level attributes and the
+# supportedModels catalog; we deliberately don't declare engine.features because
+# providers are opaque (we don't know what's inside). Workloads requiring engine
+# features (e.g. requires.engineFeatures: [prefill-decode-disagg]) will be
+# excluded from providers — matchTrace surfaces "skipped: provider doesn't expose
+# engine features." Created directly OR composed by a Crossplane provider /
+# Composition that wraps an external account.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
@@ -69,23 +73,9 @@ spec:
                     compliance, billingModel etc. The fleet scheduler matches against
                     these for environment-level claims; node and device claims no-op.
 
-                # ---- engine + feature declaration ----
-                engine:
-                  type: object
-                  required: [name]
-                  properties:
-                    name:
-                      type: string
-                      description: |
-                        Engine the provider runs (vLLM-equivalent, proprietary, etc.).
-                        Free-form because providers don't always expose this detail.
-                    version: { type: string }
-                    features:
-                      type: array
-                      items: { type: string }
-                      description: |
-                        Capabilities the provider exposes. Matched against
-                        ModelDeployment.spec.requires.engineFeatures (set membership).
+                # Engine + features intentionally NOT declared here — providers
+                # are opaque routes. Workloads requiring engine features won't
+                # match against providers (matcher surfaces this in matchTrace).
 
                 # ---- catalog of models the provider serves ----
                 supportedModels:
