@@ -1,0 +1,78 @@
+# Default CapabilityVocabulary — installed by Modelplane.
+#
+# Platform teams can replace this singleton (name: default) or apply a sibling
+# vocabulary that extends it. The matcher reads this CR to validate `requires`
+# blocks, resolve "or-better" ordering, rewrite aliased keys, and validate
+# engineFeatures strings.
+apiVersion: modelplane.ai/v1alpha1
+kind: CapabilityVocabulary
+metadata:
+  name: default
+spec:
+  attributeKeys:
+    # ---- ordered hardware vocabulary ----
+    - name: modelplane.ai/interNodeFabric
+      type: orderedString
+      values:
+        - { name: none,                  throughputGbps: 0 }
+        - { name: rocev2-100g,           throughputGbps: 100 }
+        - { name: rocev2-400g,           throughputGbps: 400 }
+        - { name: ib-200g,               throughputGbps: 200 }
+        - { name: ib-400g,               throughputGbps: 400 }
+        - { name: ib-quantum-2,          throughputGbps: 800 }
+        - { name: nvlink-only-multinode, throughputGbps: 1800 }
+
+    # ---- closed enums for stable keys ----
+    - name: modelplane.ai/tier
+      type: enum
+      values: [{ name: production }, { name: staging }, { name: development }]
+    - name: modelplane.ai/billingModel
+      type: enum
+      values:
+        - { name: per-gpu-hour }
+        - { name: per-token }
+        - { name: per-request }
+        - { name: provisioned-throughput }
+    - name: modelplane.ai/pricing
+      type: enum
+      values:
+        - { name: on-demand }
+        - { name: spot }
+        - { name: reserved }
+        - { name: committed }
+
+    # ---- free-form keys with documented conventions ----
+    - name: modelplane.ai/region
+      type: string
+    - name: modelplane.ai/provider
+      type: string
+    - name: modelplane.ai/failureDomain
+      type: string
+
+    # ---- list-typed keys ----
+    - name: modelplane.ai/compliance
+      type: list
+
+  engineFeatures:
+    - { name: prefill-decode-disagg,  description: "Disaggregated prefill/decode (xPyD)" }
+    - { name: kv-cache-routing,       description: "Prefix-aware request routing" }
+    - { name: eagle-speculation,      description: "EAGLE speculative decoding" }
+    - { name: draft-target-speculation, description: "Draft-target speculative decoding" }
+    - { name: medusa-speculation,     description: "Medusa speculative decoding" }
+    - { name: ngram-speculation,      description: "N-gram / lookahead speculation" }
+    - { name: multi-lora,             description: "Multi-LoRA + LoRA-aware routing" }
+    - { name: structured-output,      description: "Guided / constrained generation" }
+    - { name: tool-calling,           description: "Function calling / tool-use parsing" }
+    - { name: chunked-prefill,        description: "Chunked prefill with continuous batching" }
+    - { name: fp8-kv-cache,           description: "FP8 KV-cache quantization" }
+    - { name: mxfp4-quantization,     description: "MXFP4 weight quantization (Blackwell-native)" }
+    - { name: nvfp4-quantization,     description: "NVFP4 weight quantization (NVIDIA Blackwell)" }
+
+  kvCacheTiers:
+    - { name: G1, medium: device-vram, bandwidth: "TB/s",     scope: pod-local }
+    - { name: G2, medium: host-ram,    bandwidth: "100GB/s",  scope: node-local }
+    - { name: G3, medium: local-ssd,   bandwidth: "10GB/s",   scope: node-local }
+    - { name: G4, medium: networked,   bandwidth: "GB/s",     scope: cluster-shared }
+
+  aliases:
+    - { from: modelplane.ai/region, to: topology.kubernetes.io/region }

@@ -1,0 +1,114 @@
+# InferenceProvider — a SaaS or observed inference endpoint (Together, Baseten,
+# Bedrock, customer-run KServe). Routing-only; Modelplane never lifecycles it.
+#
+# Exposes engine.features and attributes the same way InferenceCluster does so
+# the fleet scheduler matches across both uniformly. Created directly OR composed
+# by a Crossplane provider/Composition that wraps an external account.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: inferenceproviders.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: InferenceProvider
+    plural: inferenceproviders
+    shortNames: [ip]
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: READY
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Ready')].status
+        - name: ENDPOINT
+          type: string
+          jsonPath: .spec.endpoint.url
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [endpoint]
+              properties:
+                # ---- endpoint identity ----
+                endpoint:
+                  type: object
+                  required: [url]
+                  properties:
+                    url:
+                      type: string
+                      description: OpenAI-compatible base URL.
+                    auth:
+                      type: object
+                      properties:
+                        secretRef:
+                          type: object
+                          required: [name, key]
+                          properties:
+                            name:      { type: string }
+                            namespace: { type: string }
+                            key:       { type: string }
+
+                # ---- environment-level attributes (only level that applies) ----
+                # No node or device attributes — providers don't expose either.
+                attributes:
+                  type: object
+                  additionalProperties:
+                    x-kubernetes-preserve-unknown-fields: true
+                  description: |
+                    Same shape as InferenceCluster.spec.attributes. Region, tier,
+                    compliance, billingModel etc. The fleet scheduler matches against
+                    these for environment-level claims; node and device claims no-op.
+
+                # ---- engine + feature declaration ----
+                engine:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                      description: |
+                        Engine the provider runs (vLLM-equivalent, proprietary, etc.).
+                        Free-form because providers don't always expose this detail.
+                    version: { type: string }
+                    features:
+                      type: array
+                      items: { type: string }
+                      description: |
+                        Capabilities the provider exposes. Matched against
+                        ModelDeployment.spec.requires.engineFeatures (set membership).
+
+                # ---- catalog of models the provider serves ----
+                supportedModels:
+                  type: array
+                  items: { type: string }
+                  description: |
+                    Canonical model names (HuggingFace IDs or provider-native).
+                    Refreshed periodically; deployments with unmatched names are
+                    excluded from this provider with a clear matchTrace reason.
+
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:               { type: string }
+                      status:             { type: string }
+                      reason:             { type: string }
+                      message:            { type: string }
+                      lastTransitionTime: { type: string, format: date-time }
+                lastHealthCheck:
+                  type: string
+                  format: date-time

@@ -1,0 +1,124 @@
+# CapabilityVocabulary — singleton CR governing the modelplane.ai/* attribute
+# vocabulary. Replaces what would otherwise be a ConfigMap. Updates flow without
+# CRD bumps. Modelplane ships a default install (name: default); platform teams
+# can override or extend.
+#
+# Read by the matcher to validate `requires` blocks, resolve ordered comparisons
+# (e.g. "ib-400g-or-better"), rewrite aliased keys, and validate engineFeatures
+# strings against well-known names.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: capabilityvocabularies.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: CapabilityVocabulary
+    plural: capabilityvocabularies
+    shortNames: [cv]
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              properties:
+                # ---- attribute keys ----
+                attributeKeys:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, type]
+                    properties:
+                      name:
+                        type: string
+                        description: Domain-namespaced key, e.g. modelplane.ai/tier.
+                      type:
+                        type: string
+                        enum: [enum, orderedString, string, list, integer, quantity]
+                      values:
+                        type: array
+                        description: |
+                          For type=enum: closed list of valid values.
+                          For type=orderedString: ordered list with optional metadata
+                          (e.g. throughputGbps for fabric).
+                          Otherwise unused.
+                        items:
+                          x-kubernetes-preserve-unknown-fields: true
+
+                # ---- engine features ----
+                engineFeatures:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                        description: |
+                          Well-known feature name (e.g. prefill-decode-disagg,
+                          eagle-speculation, multi-lora). Matched against
+                          ModelDeployment.spec.requires.engineFeatures and
+                          InferenceCluster/Provider.spec.engine.features.
+                      description: { type: string }
+                      since:
+                        type: string
+                        description: First Modelplane version that recognized this feature.
+
+                # ---- KV cache tiers ----
+                kvCacheTiers:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                        enum: [G1, G2, G3, G4]
+                      medium:
+                        type: string
+                        description: device-vram | host-ram | local-ssd | networked
+                      bandwidth:
+                        type: string
+                        description: Approximate bandwidth (e.g. "TB/s", "100GB/s").
+                      scope:
+                        type: string
+                        enum: [pod-local, node-local, cluster-shared, fleet-shared]
+
+                # ---- aliases ----
+                aliases:
+                  type: array
+                  items:
+                    type: object
+                    required: [from, to]
+                    properties:
+                      from: { type: string }
+                      to:   { type: string }
+                      deprecated:
+                        type: boolean
+                        default: false
+
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:               { type: string }
+                      status:             { type: string }
+                      reason:             { type: string }
+                      message:            { type: string }
+                      lastTransitionTime: { type: string, format: date-time }

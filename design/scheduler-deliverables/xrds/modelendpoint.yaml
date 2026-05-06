@@ -1,0 +1,105 @@
+# ModelEndpoint — weighted routing across ModelDeployments. Per #60.
+#
+# Decouples routing (what users hit) from deployment (what runs). Enables
+# canary, A/B, and hybrid SaaS routing. Routes select ModelPlacements by label;
+# weights distribute equally across selected placements. Replicas inside a
+# placement are fungible — KServe's Service round-robins across pods.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelendpoints.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelEndpoint
+    plural: modelendpoints
+    shortNames: [me]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: READY
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Ready')].status
+        - name: ADDRESS
+          type: string
+          jsonPath: .status.address
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [routes]
+              properties:
+                routes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [type]
+                    properties:
+                      type:
+                        type: string
+                        enum: [Placement, External]
+                      weight:
+                        type: integer
+                        minimum: 0
+                        maximum: 100
+                        default: 1
+                      # ---- Placement: selects ModelPlacements by label ----
+                      placement:
+                        type: object
+                        properties:
+                          selector:
+                            type: object
+                            properties:
+                              matchLabels:
+                                type: object
+                                additionalProperties: { type: string }
+                          # alternate to selector — explicit ref
+                          ref:
+                            type: object
+                            properties:
+                              namespace: { type: string }
+                              name:      { type: string }
+                      # ---- External: SaaS endpoint not registered as InferenceProvider ----
+                      external:
+                        type: object
+                        properties:
+                          url: { type: string }
+                          secretRef:
+                            type: object
+                            properties:
+                              name:      { type: string }
+                              namespace: { type: string }
+
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:               { type: string }
+                      status:             { type: string }
+                      reason:             { type: string }
+                      message:            { type: string }
+                      lastTransitionTime: { type: string, format: date-time }
+                address:
+                  type: string
+                  description: External address of the endpoint (HTTP URL).
+                routes:
+                  type: array
+                  description: Per-route resolution status (matched placements, weights applied).
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true

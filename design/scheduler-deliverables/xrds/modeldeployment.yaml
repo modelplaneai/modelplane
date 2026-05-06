@@ -1,0 +1,302 @@
+# ModelDeployment — the ML/App team's self-contained workload spec.
+#
+# Replaces the previous ModelDeployment + ClusterModel/Model split. Carries
+# topology, requires, engine, scaling, and adapters in one place. Modelplane's
+# matcher composition function fans this out into one ModelPlacement (the IR)
+# per matched fleet member.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modeldeployments.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelDeployment
+    plural: modeldeployments
+    shortNames: [md]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: READY
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Ready')].status
+        - name: MODEL
+          type: string
+          jsonPath: .spec.model.name
+        - name: PLACEMENTS
+          type: string
+          jsonPath: .status.placements.ready
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [model, source, topology, engine]
+              properties:
+                # ---- model identity ----
+                model:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                      description: Engine-facing model name (passed via --model).
+
+                source:
+                  type: string
+                  enum: [HuggingFace, S3, GCS, PVC]
+                huggingFace:
+                  type: object
+                  properties:
+                    repo:     { type: string }
+                    revision: { type: string }
+                    secretRef:
+                      type: object
+                      properties:
+                        name:      { type: string }
+                        namespace: { type: string }
+
+                # ---- topology ----
+                topology:
+                  type: object
+                  required: [nodes, devicesPerNode]
+                  properties:
+                    nodes:
+                      type: integer
+                      minimum: 1
+                      description: Nodes per replica.
+                    devicesPerNode:
+                      type: integer
+                      minimum: 1
+                    parallelism:
+                      type: object
+                      properties:
+                        tensor:
+                          type: integer
+                          minimum: 1
+                        pipeline:
+                          type: integer
+                          minimum: 1
+                          default: 1
+                        expert:
+                          type: string
+                          enum: [enabled, disabled]
+                          default: disabled
+                    roles:
+                      type: object
+                      description: |
+                        Optional. Presence enables disaggregated serving (xPyD).
+                        Each role inherits root topology fields if not overridden;
+                        only `replicas` differs in the simple case.
+                      properties:
+                        prefill:
+                          type: object
+                          properties:
+                            nodes:          { type: integer, minimum: 1 }
+                            devicesPerNode: { type: integer, minimum: 1 }
+                            parallelism:
+                              type: object
+                              x-kubernetes-preserve-unknown-fields: true
+                            replicas:       { type: integer, minimum: 1 }
+                        decode:
+                          type: object
+                          properties:
+                            nodes:          { type: integer, minimum: 1 }
+                            devicesPerNode: { type: integer, minimum: 1 }
+                            parallelism:
+                              type: object
+                              x-kubernetes-preserve-unknown-fields: true
+                            replicas:       { type: integer, minimum: 1 }
+
+                # ---- requires (typed claim) ----
+                # Field-level matching semantics:
+                #   Environment-level (apply to both InferenceCluster and
+                #   InferenceProvider): engineFeatures, attributes
+                #   Node-level (clusters only): interNode
+                #   Device-level (clusters only): minVramPerDevice, architecture,
+                #   fabric, precision
+                # When matching against an InferenceProvider, node and device-level
+                # fields are skipped (matchTrace surfaces this as "skipped: provider
+                # has no node/device attributes").
+                requires:
+                  type: object
+                  properties:
+                    minVramPerDevice:
+                      type: string
+                      description: Quantity, e.g. 80Gi.
+                    architecture:
+                      type: array
+                      items:
+                        type: string
+                        enum: [Ampere, Ada, Hopper, Blackwell, Rubin, MI300X, MI355X, TPUv5, TPUv6]
+                    fabric:
+                      type: string
+                      description: Intra-node interconnect (nvlink-domain, pcie, etc.).
+                    interNode:
+                      type: string
+                      description: |
+                        Inter-node fabric vocabulary key from CapabilityVocabulary.
+                        Supports "or-better" suffix for ordered comparison.
+                    precision:
+                      type: array
+                      items:
+                        type: string
+                        enum: [bf16, fp16, fp8, mxfp8, int8, fp6, fp4, mxfp4, nvfp4, int4]
+                    engineFeatures:
+                      type: array
+                      items: { type: string }
+                    attributes:
+                      type: object
+                      additionalProperties: { type: string }
+                      description: User-defined namespaced keys, matched on equality.
+                    matches:
+                      type: object
+                      properties:
+                        cel:
+                          type: string
+                          description: |
+                            Break-glass — CEL expression over device.attributes /
+                            cluster.attributes. Used only when typed surface can't
+                            express the constraint.
+
+                # ---- engine ----
+                engine:
+                  type: object
+                  required: [name, image]
+                  properties:
+                    name:
+                      type: string
+                      enum: [vLLM, SGLang, TensorRT-LLM, TGI]
+                    image: { type: string }
+                    args:
+                      type: array
+                      items: { type: string }
+                    quantization:
+                      type: object
+                      properties:
+                        precision:
+                          type: string
+                          enum: [bf16, fp8, mxfp8, int8, fp4, mxfp4, nvfp4, int4]
+                        target:
+                          type: array
+                          items:
+                            type: string
+                            enum: [weights, activations, kvCache, attention]
+                    speculation:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: [EAGLE, DraftTarget, Medusa, NGram, Lookahead]
+                        eagle:
+                          type: object
+                          properties:
+                            headRef:
+                              type: object
+                              properties:
+                                kind: { type: string }
+                                name: { type: string }
+                        draftTarget:
+                          type: object
+                          properties:
+                            draftModelRef:
+                              type: object
+                              properties:
+                                kind: { type: string }
+                                name: { type: string }
+                            numSpeculativeTokens: { type: integer }
+                        ngram:
+                          type: object
+                          properties:
+                            n:                    { type: integer, minimum: 1 }
+                            maxSpeculativeTokens: { type: integer, minimum: 1 }
+                    advanced:
+                      type: array
+                      description: Break-glass for novel knobs the IR doesn't model.
+                      items:
+                        type: object
+                        required: [name]
+                        properties:
+                          name:   { type: string }
+                          config:
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+
+                # ---- placement targeting ----
+                environments:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                  description: Number of fleet members to deploy to.
+                environmentSelector:
+                  type: object
+                  properties:
+                    matchLabels:
+                      type: object
+                      additionalProperties: { type: string }
+
+                # ---- scaling ----
+                scaling:
+                  type: object
+                  properties:
+                    signal:
+                      type: string
+                      enum: [Concurrency, Utilization, Both]
+                      default: Concurrency
+                    concurrency:
+                      type: object
+                      properties:
+                        minReplicas:    { type: integer, minimum: 0 }
+                        maxReplicas:    { type: integer, minimum: 1 }
+                        target:         { type: integer, minimum: 1 }
+                        window:         { type: string, default: "60s" }
+                        scaleDownDelay: { type: string, default: "300s" }
+
+                # ---- LoRA adapters ----
+                adapters:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, source]
+                    properties:
+                      name: { type: string }
+                      source:
+                        type: object
+                        properties:
+                          huggingFace:
+                            type: object
+                            properties:
+                              repo:     { type: string }
+                              revision: { type: string }
+
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:               { type: string }
+                      status:             { type: string }
+                      reason:             { type: string }
+                      message:            { type: string }
+                      lastTransitionTime: { type: string, format: date-time }
+                placements:
+                  type: object
+                  properties:
+                    total: { type: integer }
+                    ready: { type: integer }
+                matchTrace:
+                  type: object
+                  description: Per-fleet-member compatibility report; field-level reasons.
+                  x-kubernetes-preserve-unknown-fields: true

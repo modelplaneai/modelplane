@@ -1,0 +1,63 @@
+# Example InferenceCluster — production Coreweave H200 cluster.
+#
+# Demonstrates:
+#   - source: Existing (BYO cluster via kubeconfig Secret)
+#   - provisioning.mode: dra (cluster has K8s 1.34+ with NVIDIA DRA driver)
+#   - environment-level attributes (region, tier, compliance, fabric)
+#   - One node pool (frontier-multinode) with declared device attributes for
+#     scale-to-zero matching
+#   - Engine declaration with full feature set
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: prod-coreweave-us-east
+  labels:
+    modelplane.ai/environment: "true"
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        namespace: platform-system
+        name: coreweave-h200-kubeconfig
+        key: kubeconfig
+
+  provisioning:
+    mode: dra
+
+  attributes:
+    "modelplane.ai/region":       "us-east"
+    "modelplane.ai/provider":     "coreweave"
+    "modelplane.ai/tier":         "production"
+    "modelplane.ai/compliance":   ["soc2-type2", "iso-27001"]
+    "modelplane.ai/billingModel": "per-gpu-hour"
+
+  engine:
+    name: vLLM
+    version: v0.8.0
+    features:
+      - prefill-decode-disagg
+      - kv-cache-routing
+      - eagle-speculation
+      - ngram-speculation
+      - multi-lora
+      - structured-output
+      - tool-calling
+      - chunked-prefill
+      - fp8-kv-cache
+      - mxfp4-quantization
+
+  nodePools:
+    - name: frontier-multinode
+      provisioning: {}                    # BYO cluster — pool already exists
+      nodeAttributes:
+        "node.kubernetes.io/instance-type":    "HGX-H200-IB"
+        "modelplane.ai/pricing":               "reserved"
+        "modelplane.ai/interNodeFabric":       "ib-quantum-2"
+        "modelplane.ai/failureDomain":         "us-east1-a"
+      deviceAttributes:
+        "gpu.nvidia.com/architecture":         "Hopper"
+        "gpu.nvidia.com/productName":          "NVIDIA H200 141GB HBM3e"
+        "gpu.nvidia.com/cudaComputeCapability": "9.0.0"
+        "gpu.nvidia.com/memory":               "141Gi"
+        "gpu.nvidia.com/perDeviceCount":       "8"

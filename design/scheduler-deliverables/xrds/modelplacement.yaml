@@ -1,0 +1,137 @@
+# ModelPlacement — the intermediate representation (IR) between ModelDeployment
+# (user-facing) and the rendered upstream object (KServe LLMInferenceService or
+# routing config for an InferenceProvider).
+#
+# One ModelPlacement per matched fleet member, owned by a ModelDeployment. The
+# matcher composition function emits ModelPlacements; the version-pinned KServe
+# adapter watches them and renders LLMInferenceService objects on the chosen
+# InferenceCluster (or routing-only objects for an InferenceProvider).
+#
+# Platform-internal-by-convention. ML/App teams shouldn't create these directly.
+# Schema absorbs upstream KServe schema churn; user-facing types stay stable.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelplacements.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelPlacement
+    plural: modelplacements
+    shortNames: [mp]
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: READY
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Ready')].status
+        - name: TARGET
+          type: string
+          jsonPath: .spec.target.name
+        - name: KIND
+          type: string
+          jsonPath: .spec.target.kind
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [target, model, topology, engine]
+              properties:
+                # ---- which fleet member this placement targets ----
+                target:
+                  type: object
+                  required: [kind, name]
+                  properties:
+                    kind:
+                      type: string
+                      enum: [InferenceCluster, InferenceProvider]
+                    name: { type: string }
+                    pool:
+                      type: string
+                      description: Node pool within the cluster (clusters only).
+
+                # ---- resolved fields from the parent ModelDeployment ----
+                model:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                topology:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                engine:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                requires:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+
+                # ---- resolved DRA claim (pre-rendered) ----
+                resourceClaim:
+                  type: object
+                  description: |
+                    DRA ResourceClaim spec the adapter will compose into pods.
+                    Empty when target is InferenceProvider or when the
+                    InferenceCluster's provisioning.mode is device-plugin.
+                  properties:
+                    deviceClassName: { type: string }
+                    count:           { type: integer, minimum: 1 }
+                    selectors:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          cel: { type: string }
+                    constraints:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          matchAttribute: { type: string }
+                          requests:
+                            type: array
+                            items: { type: string }
+
+                # ---- adapter hint ----
+                kserveVersion:
+                  type: string
+                  description: |
+                    Version of KServe LLMInferenceService schema the adapter must
+                    target. Detected from the InferenceCluster fingerprint.
+
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:               { type: string }
+                      status:             { type: string }
+                      reason:             { type: string }
+                      message:            { type: string }
+                      lastTransitionTime: { type: string, format: date-time }
+                matchTrace:
+                  type: object
+                  description: Why this placement was chosen; per-claim evaluation.
+                  x-kubernetes-preserve-unknown-fields: true
+                rendered:
+                  type: object
+                  description: Reference to the upstream object the adapter produced.
+                  properties:
+                    apiVersion: { type: string }
+                    kind:       { type: string }
+                    name:       { type: string }
+                endpoint:
+                  type: object
+                  properties:
+                    internalURL: { type: string }

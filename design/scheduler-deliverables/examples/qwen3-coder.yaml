@@ -1,0 +1,87 @@
+# Qwen3-Coder — code completion, n-gram speculation, multi-LoRA
+#
+# Demonstrates:
+#   - Single-node MoE (TP=8, expert parallelism within one NVLink domain)
+#   - n-gram speculation (excels at code per Inference Engineering Ch 5.2.4)
+#   - Long context (256K)
+#   - `adapters` block for multi-LoRA with LoRA-aware routing
+#   - User-defined `requires.attributes` for team affinity / cost tracking
+#   - FP8 weight + KV quantization
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen3-coder
+  namespace: dev-tools
+spec:
+  model:
+    name: Qwen/Qwen3-Coder-480B-A35B-Instruct
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen3-Coder-480B-A35B-Instruct
+
+  topology:
+    nodes: 1
+    devicesPerNode: 8
+    parallelism:
+      tensor: 8
+      expert: enabled
+
+  requires:
+    minVramPerDevice: 141Gi
+    architecture: [Hopper, Blackwell]
+    fabric: nvlink-domain
+    precision: [fp8]
+    engineFeatures:
+      - ngram-speculation
+      - multi-lora
+      - kv-cache-routing
+      - chunked-prefill
+      - fp8-kv-cache
+    attributes:
+      "acme.example/team": dev-tools
+      "acme.example/cost-center": engineering
+
+  engine:
+    name: vLLM
+    image: vllm/vllm-openai:v0.8.0
+    args:
+      - "--max-model-len=262144"
+      - "--gpu-memory-utilization=0.92"
+      - "--max-num-seqs=128"
+      - "--enable-prefix-caching"
+    quantization:
+      precision: fp8
+      target: [weights, kvCache]
+    speculation:
+      type: NGram
+      ngram:
+        n: 3
+        maxSpeculativeTokens: 8
+
+  environments: 1
+  environmentSelector:
+    matchLabels:
+      modelplane.ai/tier: production
+
+  scaling:
+    signal: Concurrency
+    concurrency:
+      minReplicas: 1
+      maxReplicas: 6
+      target: 16
+      window: 60s
+      scaleDownDelay: 300s
+
+  adapters:                               # multi-LoRA + LoRA-aware routing
+    - name: acme-style
+      source:
+        huggingFace:
+          repo: acme/qwen3-coder-style-lora
+    - name: legacy-cobol
+      source:
+        huggingFace:
+          repo: acme/qwen3-coder-cobol-lora
+    - name: terraform-modules
+      source:
+        huggingFace:
+          repo: acme/qwen3-coder-tf-lora

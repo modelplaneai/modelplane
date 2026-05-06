@@ -1,0 +1,164 @@
+# InferenceCluster — a customer Kubernetes cluster running KServe + DRA + Kueue + KEDA.
+# Each InferenceCluster is a workload plane; Modelplane composes ModelPlacements onto it.
+#
+# Replaces the existing InferenceEnvironment XRD. Adds three-level attributes,
+# engine.features for capability matching, and provisioning.mode for DRA-vs-device-plugin.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: inferenceclusters.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: InferenceCluster
+    plural: inferenceclusters
+    shortNames: [ic]
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: READY
+          type: string
+          jsonPath: .status.conditions[?(@.type=='Ready')].status
+        - name: PROVISIONING
+          type: string
+          jsonPath: .spec.provisioning.mode
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [cluster, provisioning]
+              properties:
+                # ---- cluster source ----
+                cluster:
+                  type: object
+                  required: [source]
+                  properties:
+                    source:
+                      type: string
+                      enum: [GKE, EKS, AKS, Existing]
+                    gke:
+                      type: object
+                      properties:
+                        project: { type: string }
+                        region:  { type: string }
+                    existing:
+                      type: object
+                      properties:
+                        secretRef:
+                          type: object
+                          required: [name, key]
+                          properties:
+                            name:      { type: string }
+                            namespace: { type: string }
+                            key:       { type: string }
+
+                # ---- DRA vs device-plugin ----
+                provisioning:
+                  type: object
+                  required: [mode]
+                  properties:
+                    mode:
+                      type: string
+                      enum: [dra, device-plugin, hybrid]
+
+                # ---- environment-level attributes (level 1 of three-level cascade) ----
+                attributes:
+                  type: object
+                  additionalProperties:
+                    x-kubernetes-preserve-unknown-fields: true
+                  description: |
+                    Domain-namespaced keys (e.g. modelplane.ai/region, acme.example/team).
+                    Typed values per CapabilityVocabulary; unrecognized keys pass through.
+
+                # ---- engine + feature declaration ----
+                engine:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                      enum: [vLLM, SGLang, TensorRT-LLM, TGI]
+                    version: { type: string }
+                    features:
+                      type: array
+                      items: { type: string }
+                      description: |
+                        Engine feature names declared by this cluster. Matched against
+                        ModelDeployment.spec.requires.engineFeatures (set membership).
+
+                # ---- node pools ----
+                nodePools:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: { type: string }
+
+                      # provisioning is for creating the pool (CSP-specific)
+                      provisioning:
+                        type: object
+                        properties:
+                          gke:
+                            type: object
+                            properties:
+                              machineType: { type: string }
+                              gpu:
+                                type: object
+                                properties:
+                                  type:  { type: string }
+                                  count: { type: integer }
+                              autoscaling:
+                                type: object
+                                properties:
+                                  min: { type: integer, minimum: 0 }
+                                  max: { type: integer, minimum: 0 }
+                          eks:
+                            type: object
+                            properties:
+                              instanceType: { type: string }
+                              capacityType: { type: string, enum: [on-demand, spot] }
+
+                      # node-level attributes (level 2)
+                      nodeAttributes:
+                        type: object
+                        additionalProperties:
+                          x-kubernetes-preserve-unknown-fields: true
+
+                      # device-level attributes (level 3) — used for scale-zero pools
+                      # where runtime ResourceSlices don't exist yet
+                      deviceAttributes:
+                        type: object
+                        additionalProperties:
+                          x-kubernetes-preserve-unknown-fields: true
+
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:               { type: string }
+                      status:             { type: string }
+                      reason:             { type: string }
+                      message:            { type: string }
+                      lastTransitionTime: { type: string, format: date-time }
+                capacity:
+                  type: object
+                  description: Roll-up of declared capacity per pool.
+                gateway:
+                  type: object
+                  properties:
+                    address: { type: string }

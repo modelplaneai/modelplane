@@ -1,0 +1,32 @@
+# Weighted ModelEndpoint across kimi-k2, qwen3-coder, and gpt-oss-20b.
+#
+# Demonstrates:
+#   - Weighted routing across multiple ModelDeployments (the canary/A-B pattern from #60)
+#   - Same shape works for canary (v1 vs v2 of one model) and hybrid (chat-vs-coder)
+#   - Routes select ModelPlacements by label; Modelplane's matcher controls
+#     which placements exist via the underlying ModelDeployments
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: assistant
+  namespace: app-team
+spec:
+  routes:
+    - type: Placement
+      weight: 70
+      placement:
+        selector:
+          matchLabels:
+            modelplane.ai/deployment: gpt-oss-20b
+    - type: Placement
+      weight: 25
+      placement:
+        selector:
+          matchLabels:
+            modelplane.ai/deployment: qwen3-coder
+    - type: Placement
+      weight: 5
+      placement:
+        selector:
+          matchLabels:
+            modelplane.ai/deployment: kimi-k2

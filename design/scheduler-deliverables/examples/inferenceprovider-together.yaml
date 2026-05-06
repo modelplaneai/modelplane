@@ -1,0 +1,54 @@
+# Example InferenceProvider — Together AI as a fleet member.
+#
+# Demonstrates:
+#   - SaaS endpoint registered as a fleet member; routing-only
+#   - Environment-level attributes only (no nodes / devices)
+#   - Engine features declared so the matcher can route disagg-aware traffic
+#     to clusters and basic OpenAI-compatible traffic to Together
+#   - Supported model list refreshed periodically by the controller
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceProvider
+metadata:
+  name: together-prod
+  labels:
+    modelplane.ai/environment: "true"
+spec:
+  endpoint:
+    url: https://api.together.xyz/v1
+    auth:
+      secretRef:
+        namespace: platform-system
+        name: together-api-key
+        key: api-key
+
+  attributes:
+    "modelplane.ai/region":       "us-east"
+    "modelplane.ai/provider":     "togetherai"
+    "modelplane.ai/tier":         "production"
+    "modelplane.ai/billingModel": "per-token"
+    "modelplane.ai/networkAccess": "internet-routable"
+
+  engine:
+    name: TogetherInference
+    features:
+      # Together effectively provides these via its API; from the matcher's
+      # perspective they're available even when not user-toggleable.
+      - chunked-prefill
+      - kv-cache-routing
+      - structured-output
+      - tool-calling
+      - multi-lora
+      # Deliberately NOT declared (workloads requiring these are excluded
+      # from this provider, with field-level reasons in matchTrace):
+      #   - prefill-decode-disagg  (internal disagg topology not exposed)
+      #   - eagle-speculation / ngram-speculation (internal optimizations)
+      #   - fp8-kv-cache  (internal — user can't constrain KV precision)
+
+  supportedModels:
+    - meta-llama/Llama-3.1-70B-Instruct
+    - meta-llama/Llama-3.1-405B-Instruct
+    - moonshotai/Kimi-K2-Instruct
+    - deepseek-ai/DeepSeek-V3
+    - Qwen/Qwen3-Coder-480B-A35B-Instruct
+    - Qwen/Qwen3-72B-Instruct
+    - openai/gpt-oss-20b
