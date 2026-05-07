@@ -299,11 +299,11 @@ For bespoke hardware (custom AMD partitions, internal accelerators, experimental
 
 ## Appendix: deliverables
 
-Full proposed XRDs and example resources live in [`modelplane-api/`](modelplane-api/). That directory is a **design-time preview**: nothing there is wired up yet, and once we align on the API the XRDs move into [`apis/`](../apis/) and examples move into the repo-root `examples/`. See [`modelplane-api/README.md`](modelplane-api/README.md) for the full layout and what's deliberately incomplete.
+Full proposed XRDs and example resources live in [`modelplane-api/`](modelplane-api/). The directory is a **design-time preview**: nothing there is wired up yet — XRDs aren't installed by `up` packs, examples aren't run by CI. Once we align on the API, XRDs move into [`apis/`](../apis/) (one directory per CRD, alongside the matching Composition) and examples move into the repo-root `examples/`.
 
 **XRDs** (proposed CompositeResourceDefinitions):
 
-- [`xrds/inferencecluster.yaml`](modelplane-api/xrds/inferencecluster.yaml) — cluster-scoped substrate, env + node + device attributes, `provisioning.mode`
+- [`xrds/inferencecluster.yaml`](modelplane-api/xrds/inferencecluster.yaml) — cluster-scoped substrate, env + node + device attributes, `provisioning.mode`, `scheduler.type`, `backend.{type, version}`
 - [`xrds/modelservice.yaml`](modelplane-api/xrds/modelservice.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
 - [`xrds/capabilityvocabulary.yaml`](modelplane-api/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
 - [`xrds/modeldeployment.yaml`](modelplane-api/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
@@ -312,13 +312,33 @@ Full proposed XRDs and example resources live in [`modelplane-api/`](modelplane-
 
 **Substrate examples** (platform-team setup):
 
-- [`examples/inferencecluster-prod-coreweave.yaml`](modelplane-api/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster, DRA-enabled
+- [`examples/inferencecluster-prod-coreweave.yaml`](modelplane-api/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster; BYO `kueue` + BYO `kserve@v0.18.0`
 - [`examples/modelservice-together.yaml`](modelplane-api/examples/modelservice-together.yaml) — Together AI as a routing target
 - [`examples/capabilityvocabulary-default.yaml`](modelplane-api/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs
 
 **Workload examples** (ML/App team deployments):
 
-- [`examples/kimi-k2.yaml`](modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node, 5P3D disaggregation, FP8 weights + KV
-- [`examples/qwen3-coder.yaml`](modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context
-- [`examples/gpt-oss-20b.yaml`](modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, MXFP4-native on Blackwell, scale-to-zero, fan-out across 2 regions
-- [`examples/assistant-endpoint.yaml`](modelplane-api/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across all three (70 / 25 / 5)
+- [`examples/kimi-k2.yaml`](modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node, 5P3D disaggregation, FP8 weights + KV; demonstrates the DRA `matchAttributes` break-glass path (NVLink-domain co-location)
+- [`examples/qwen3-coder.yaml`](modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context; DRA path
+- [`examples/gpt-oss-20b.yaml`](modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, scale-to-zero; demonstrates the labels-first match path (no DRA needed)
+- [`examples/assistant-endpoint.yaml`](modelplane-api/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across the three deployments + Together routing
+
+**What's deliberately incomplete** (will be filled in during the move to `apis/`):
+
+- `status` schemas are minimal — just conditions + a representative status field per resource. `matchTrace`, `compatibility`, and granular cold-start status will be elaborated when the controller code lands.
+- Validation rules (CEL on the schema, `oneOf` discriminator constraints, cross-field invariants) are sketched but not exhaustive.
+- The corresponding Crossplane Compositions are not in this directory — those are implementation. The XRDs declare the API contract.
+- `KServeBackend` (already an internal XR in `apis/kservebackends/`) is not duplicated here, but it's where engine + features land in the substrate / runtime split.
+- Dedicated-SaaS placement (Nic-owned) is intentionally absent. `ModelService` is rough-sketch routing-only.
+
+**Where each XRD lands after alignment:**
+
+| File here | Lands in |
+|---|---|
+| `xrds/inferencecluster.yaml` | `apis/inferenceclusters/definition.yaml` (replacing `apis/inferenceenvironments/`) |
+| `xrds/modelservice.yaml` | `apis/modelservices/definition.yaml` |
+| `xrds/capabilityvocabulary.yaml` | `apis/capabilityvocabularies/definition.yaml` |
+| `xrds/modeldeployment.yaml` | `apis/modeldeployments/definition.yaml` (expanded) |
+| `xrds/modelendpoint.yaml` | `apis/modelendpoints/definition.yaml` |
+| `xrds/modelplacement.yaml` | `apis/modelplacements/definition.yaml` (expanded as the IR) |
+| `examples/*.yaml` | `examples/` at repo root, or `examples/compositions/` for platform-team starters |
