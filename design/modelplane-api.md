@@ -30,7 +30,7 @@ VRAM-divided-by-per-GPU-memory worked for Llama-8B on an L4. It can't deploy Kim
 
 ## Architecture: control plane + fleet
 
-A diagram of the API and an example fleet topology lives in [`proposed-modelplane-api/diagram.excalidraw`](proposed-modelplane-api/diagram.excalidraw) — adapted from Bassam's whiteboard with current naming and the two-level claim cascade.
+A diagram of the API and an example fleet topology lives in [`proposed-modelplane-api/diagram.excalidraw`](proposed-modelplane-api/diagram.excalidraw) — Bassam's whiteboard.
 
 
 ```
