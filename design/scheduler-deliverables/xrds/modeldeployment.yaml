@@ -156,7 +156,28 @@ spec:
                             description: Devices per node — together with `count` implies node count.
                           selector:
                             type: object
+                            description: |
+                              Two paths — pick whichever fits the cluster:
+                                matchLabels  — plain node labels (no DRA needed).
+                                               Used when cluster.provisioning.mode
+                                               is device-plugin. Composer emits
+                                               pod with nvidia.com/gpu: <count>
+                                               and a nodeSelector from these labels.
+                                matchAttributes — DRA-style typed attributes.
+                                               Used when cluster.provisioning.mode
+                                               is dra. Composer emits a
+                                               ResourceClaimTemplate with these.
+                              cel — break-glass; only meaningful with DRA.
                             properties:
+                              matchLabels:
+                                type: object
+                                additionalProperties: { type: string }
+                                description: |
+                                  Plain node-label match (pre-DRA simple path).
+                                  Operator-curated labels like nvidia.com/gpu.family
+                                  or modelplane.ai/accelerator. No interconnect /
+                                  NVLink-domain constraints expressible at this level
+                                  — for those, use matchAttributes + DRA.
                               matchAttributes:
                                 type: object
                                 additionalProperties:

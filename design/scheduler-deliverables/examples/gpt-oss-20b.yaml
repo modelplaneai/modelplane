@@ -1,9 +1,10 @@
-# gpt-oss-20b — small MoE, hardware-heterogeneous, scale-to-zero
+# gpt-oss-20b — small MoE, plain-label matching, scale-to-zero
 #
 # Demonstrates:
 #   - Single-GPU deployment (20B MoE with ~3.6B active params; fits one device)
-#   - Broad architecture acceptance: Ada / Hopper / Blackwell, with native MXFP4
-#     on Blackwell and BF16/FP8 fallback elsewhere
+#   - Plain node-label matching via deviceClaim.selector.matchLabels — no DRA
+#     required. Targets clusters running provisioning.mode: device-plugin.
+#     Composer emits the pod with nvidia.com/gpu: 1 + a nodeSelector.
 #   - Scale-to-zero (`minReplicas: 0`) for low-traffic / dev workloads
 #   - For multi-region spread, create a second ModelDeployment targeting a
 #     different region and route across both via a ModelEndpoint (or compose
@@ -34,9 +35,11 @@ spec:
         count: 1
         perNode: 1
         selector:
-          matchAttributes:
-            gpu.nvidia.com/architecture: [Ada, Hopper, Blackwell]
-            gpu.nvidia.com/memory: ">=48Gi"
+          # Plain node-label match (pre-DRA simple path). For richer typed
+          # constraints (e.g. NVLink-domain co-location), use matchAttributes
+          # against DRA-published keys instead — see kimi-k2.yaml for that path.
+          matchLabels:
+            nvidia.com/gpu.family: hopper
 
   requiredEngineFeatures:
     - chunked-prefill

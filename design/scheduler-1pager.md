@@ -54,8 +54,8 @@ The matcher considers only `InferenceCluster` candidates — `ModelService` is r
 - `ClusterModel` / `Model` deleted; workload spec self-contained on `ModelDeployment`.
 - **Replica == placement** — one `ModelPlacement` per logical replica of a `ModelDeployment`. Each replica is independently scheduled by the matcher against the MD's `clusterClaim`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler.
 - Declared attributes are authoritative for scheduling; runtime DRA is drift detection only.
-- Two-level matching cascade: `clusterClaim` (env-level attrs) → `deviceClaim` (DRA-shaped, matches node + device attrs uniformly).
-- **In-cluster scheduling delegated.** Modelplane is agnostic about the in-cluster scheduler — KAI, Kueue, Volcano, or vanilla K8s scheduler all work. Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. Modelplane reads a cluster-level capacity signal where present; never replaces the in-cluster scheduling logic.
+- Two-level matching cascade: `clusterClaim` (env-level attrs) → `deviceClaim`. The `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (pre-DRA simple path; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional — customers who don't want it can use labels.
+- **In-cluster scheduling delegated.** Modelplane decides which cluster; in-cluster scheduling — bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, capacity tracking — is the in-cluster scheduler's job. We ship Kueue as the default substrate (`managed-kueue` mode, like `managed-kserve`); BYO schedulers (KAI, Volcano, existing Kueue installs) are supported via a capacity-signal contract.
 - `ModelPlacement` is the **intermediate representation (IR)** — version-pinned adapters consume it and absorb KServe `LLMInferenceService` schema churn.
 - Namespace = environment / lifecycle scope. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
 - Failover modes are active-active or active-passive.
@@ -150,11 +150,11 @@ huggingFace: { repo, revision, secretRef }
 # Two-level claim cascade, filters InferenceCluster only:
 clusterClaim:                     # env-level attrs (region, tier, compliance)
   selector: { matchLabels, matchAttributes, cel }
-deviceClaim:                      # DRA-shaped; selector matches both node-level
-  requests:                       # (fabric) and device-level (architecture, memory)
-    - name, count, perNode        # attrs uniformly
-      selector: { matchAttributes, cel }
-      constraints: [{ matchAttribute, requests }]
+deviceClaim:                      # selector dual-path: matchLabels (no DRA) or
+  requests:                       # matchAttributes (DRA). Composer picks based
+    - name, count, perNode        # on cluster.provisioning.mode.
+      selector: { matchLabels, matchAttributes, cel }
+      constraints: [{ matchAttribute, requests }]   # DRA-only
 requiredEngineFeatures: [string]  # set-membership against cluster's KServeBackend
 
 # Deployment shape (not claims):
@@ -223,13 +223,23 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 |---|---|
 | `ModelDeployment` chunky for ML/App teams | Crossplane Compositions; starter Compositions in `examples/` |
 
+## Open questions (Nic to call)
+
+- **Default in-cluster scheduler.** Lean: ship Kueue as `managed-kueue` (KServe pattern) + BYO support for KAI / Volcano via the capacity-signal contract. Confirm or pick a different default?
+- **Label-vs-DRA matching path.** `deviceClaim.selector` supports both `matchLabels` (no DRA needed) and `matchAttributes` (DRA-typed). Composer picks output based on cluster `provisioning.mode`. Confirm dual-path is the right shape, or commit to one?
+- **`requires.engineFeatures` rename.** It's implicitly cluster-only (matched against `KServeBackend`). Rename to make that explicit, or leave?
+- **Dedicated-SaaS placement.** `ModelService` is routing-only; "create a dedicated Together / Baseten endpoint" is a placement concept Nic owns. Rough sketch only here pending Nic's design.
+- **`ModelObjective`-style intent layer.** Optional CR above `ModelDeployment` for SLO targets (TTFT, ITL, cost ceiling) reconciled by a planner — Dynamo's DGDR / DGD pattern. Worth a layer, or punt?
+- **vLLM recipe consumption.** Reference `recipes.vllm.ai` from `ModelDeployment.spec.recipe` (compose-time resolution) vs. fork into a Modelplane catalog repo. PM-shaped call.
+- **WG-Device-Management engagement.** Concrete deliverable (e.g. KEP-5316 comment with Modelplane's federation perspective by Q3) or hold?
+
 ## What ships v1 vs v2 (themed)
 
 **v1 — Foundation**
 
 | Theme | Scope |
 |---|---|
-| Substrate | Six CRDs (5 user-facing + `ModelPlacement` IR); env + node + device attributes on `InferenceCluster` |
+| Substrate | Six CRDs (5 user-facing + `ModelPlacement` IR); env + node + device attributes on `InferenceCluster`; `managed-kueue` install on `InferenceCluster` |
 | Matching | Two-level claim cascade (`clusterClaim` + DRA-shaped `deviceClaim`); typed `matchAttributes` shorthand + CEL escape; `matchTrace` |
 | Workload API | Self-contained `ModelDeployment`; replica == placement (`spec.replicas` + scale subresource); `roles.{prefill, decode}` for xPyD disaggregation; `engine.{quantization, speculation, advanced}`; five-factor `scaling`; `adapters` |
 | Composition | Matcher → `ModelPlacement` IR → version-pinned KServe adapter; DRA + device-plugin emission |

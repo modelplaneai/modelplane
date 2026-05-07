@@ -47,7 +47,9 @@ Workloads use a two-level claim cascade: `clusterClaim` filters `InferenceCluste
 
 `ModelService` is **not** a fleet-member candidate — it's routing-only, valid only as a `ModelEndpoint` route target. The matcher does not consider `ModelService` for placements; a separate concept for *placing* against dedicated SaaS endpoints (provisioning a Together / Baseten dedicated inference) is on Nic to define.
 
-**In-cluster scheduler delegation.** Modelplane is agnostic about which in-cluster scheduler runs on each `InferenceCluster` — KAI, Kueue, Volcano, or vanilla K8s scheduler all work. Modelplane decides *which cluster* a workload runs on; bin-packing, gang-scheduling, fractional-GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. Modelplane reads a cluster-level capacity *signal* (Kueue `ClusterQueue.status`, KAI queue status, or DRA `ResourceSlice` aggregation) when present; never replaces the in-cluster scheduling logic.
+**In-cluster scheduler delegation.** Modelplane decides *which cluster* a workload runs on; bin-packing, gang-scheduling, fractional-GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. We ship Kueue as the default substrate (`managed-kueue` mode, like `managed-kserve`); BYO schedulers (KAI, Volcano, existing Kueue installs) are supported via a capacity-signal contract. The signal Modelplane reads is `ClusterQueue.status` for Kueue or the equivalent from BYO schedulers — Modelplane never replaces the in-cluster scheduling logic.
+
+**Label-vs-DRA matching.** `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (no DRA required; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional — customers who don't want it can use plain labels. The richer constraints (NVLink-domain co-location, etc.) are only expressible via DRA matchAttributes.
 
 ## Replica == Placement (per Bassam's whiteboard)
 
