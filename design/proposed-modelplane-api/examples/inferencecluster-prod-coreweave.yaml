@@ -11,7 +11,7 @@
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: prod-coreweave-us-east
+  name: prod-coreweave-us-east-1
   labels:
     modelplane.ai/environment: "true"
 spec:
@@ -41,7 +41,7 @@ spec:
   # compliance / billing.
   attributes:
     cloud.provider:               coreweave
-    cloud.region:                 us-east
+    cloud.region:                 us-east-1
     network.fabric:               ib                       # Quantum-2
     network.bandwidthGbps:        3200
     network.airgapped:            false
@@ -52,34 +52,24 @@ spec:
 
   nodePools:
     - name: frontier-multinode
+      # Pool + Device hardware attrs (gpuCount, interconnect, vendor,
+      # product, vramGiB, capabilities, ...) inherited from the
+      # h200-nvl-8x InferenceClass. Inline overrides below carry the
+      # cluster-specific host shape (cpu, memoryGiB, nics) and BYO
+      # nodeSelector convention.
+      class: h200-nvl-8x
       # Composer uses this to constrain pods to the pool's nodes.
       # BYO cluster — operator labels their nodes with this themselves.
       nodeSelector:
         "modelplane.ai/pool": "frontier-multinode"
       provisioning: {}                  # BYO cluster — pool already exists
-      # Pool-layer attributes (per-host shape). cloud.instanceType is the
-      # canonical macro key — vocab unpacks gpuCount, interconnect, cpu,
-      # memoryGiB, etc. We spell them out for clarity.
       nodeAttributes:
-        cloud.instanceType:        coreweave:gd-8xh200ib-i128
-        gpuCount:                  8
-        interconnect.type:         nvswitch
-        interconnect.bandwidthGBs: 900
-        cpu.vendor:                intel
-        cpu.cores:                 64                      # 128 vCPU
-        cpu.platform:              sapphire-rapids
-        memoryGiB:                 2048
-        nics.count:                8
-        nics.bandwidthGbps:        400
-        host.virtualization:       none                    # bare metal
-        modelplane.ai/pricing:     reserved
-      # Device-layer attributes (per-GPU; uniform across pool's devices).
-      # Capability flags do the matching work; architecture is metadata.
-      deviceAttributes:
-        vendor:        nvidia
-        product:       H200
-        architecture:  hopper
-        formFactor:    sxm
-        vramGiB:       141
-        mig:           true
-        capabilities:  [fp8, transformer-engine, mig]
+        cloud.instanceType:  coreweave:gd-8xh200ib-i128
+        cpu.vendor:          intel
+        cpu.cores:           64                       # 128 vCPU
+        cpu.platform:        sapphire-rapids
+        memoryGiB:           2048
+        nics.count:          8
+        nics.bandwidthGbps:  400
+        host.virtualization: none                     # bare metal
+        modelplane.ai/pricing: reserved

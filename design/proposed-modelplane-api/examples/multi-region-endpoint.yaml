@@ -1,4 +1,4 @@
-# Multi-region ModelEndpoint — Kimi K2 across us-east + eu-west.
+# Multi-region ModelEndpoint — Kimi K2 across us-east-1 + eu-west-1.
 #
 # Two ModelDeployments, one per region (kimi-k2.yaml + kimi-k2-eu.yaml).
 # Each MD's clusterSelector pins it to its region; the matcher places
@@ -25,11 +25,11 @@ spec:
     - type: Deployment
       weight: 50
       deployment:
-        ref: { name: kimi-k2 }            # us-east MD; covers all its placements
+        ref: { name: kimi-k2 }            # us-east-1 MD; covers all its placements
     - type: Deployment
       weight: 45
       deployment:
-        ref: { name: kimi-k2-eu }         # eu-west MD; covers all its placements
+        ref: { name: kimi-k2-eu }         # eu-west-1 MD; covers all its placements
     - type: ModelService
       weight: 5
       modelService:

@@ -1,0 +1,22 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: mi300x-8x
+spec:
+  description: 8× AMD Instinct MI300X, xGMI Infinity Fabric, 192 GiB HBM3 per GPU.
+  expands:
+    vendor: amd
+    product: MI300X
+    architecture: cdna3
+    formFactor: sxm
+    vramGiB: 192
+    mig: false
+    capabilities: [fp8]              # no FP4 on MI300X
+    gpuCount: 8
+    interconnect.type: xgmi
+    interconnect.bandwidthGBs: 128
+  aliases:
+    - azure:Standard_ND_MI300X_v5
+    - oci:BM.GPU.MI300X.8
+    - crusoe:mi300x-8x
+  since: v0.1

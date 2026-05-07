@@ -1,0 +1,19 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: l40s-8x
+spec:
+  description: 8× NVIDIA L40S PCIe, 48 GiB GDDR6 per GPU, no NVLink.
+  expands:
+    vendor: nvidia
+    product: L40S
+    architecture: ada
+    formFactor: pcie
+    vramGiB: 48
+    capabilities: [fp8]
+    gpuCount: 8
+    interconnect.type: pcie
+  aliases:
+    - aws:g6e.48xlarge
+    - coreweave:gd-8xl40s-i128
+  since: v0.1

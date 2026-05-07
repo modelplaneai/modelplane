@@ -37,24 +37,14 @@ spec:
 
   nodePools:
     - name: a3-megagpu-8g
+      class: h100-nvl-8x
       nodeSelector:
         cloud.google.com/gke-machine-type: a3-megagpu-8g
         modelplane.ai/pool: a3-megagpu-8g
       nodeAttributes:
-        cloud.instanceType:        gcp:a3-megagpu-8g
-        gpuCount:                  8
-        interconnect.type:         nvswitch
-        interconnect.bandwidthGBs: 900
-        cpu.vendor:                intel
-        cpu.cores:                 104             # 208 vCPU
-        cpu.platform:              sapphire-rapids
-        memoryGiB:                 1872
-        host.virtualization:       kvm             # GCE
-      deviceAttributes:
-        vendor:        nvidia
-        product:       H100
-        architecture:  hopper
-        formFactor:    sxm
-        vramGiB:       80
-        mig:           true
-        capabilities:  [fp8, transformer-engine, mig]
+        cloud.instanceType:  gcp:a3-megagpu-8g
+        cpu.vendor:          intel
+        cpu.cores:           104             # 208 vCPU
+        cpu.platform:        sapphire-rapids
+        memoryGiB:           1872
+        host.virtualization: kvm             # GCE

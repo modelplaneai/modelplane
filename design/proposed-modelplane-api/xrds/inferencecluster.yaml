@@ -148,6 +148,15 @@ spec:
                     properties:
                       name: { type: string }
 
+                      # Optional reference to an InferenceClass — bundles the
+                      # Pool + Device hardware attributes (vendor, product,
+                      # vramGiB, capabilities, gpuCount, interconnect, ...).
+                      # Inline nodeAttributes / deviceAttributes still work
+                      # alongside and override / supplement the class.
+                      class:
+                        type: string
+                        description: Name of an InferenceClass.
+
                       # nodeSelector — labels the composer uses to constrain pods
                       # to this pool's nodes. Modelplane-provisioned pools auto-apply
                       # `modelplane.ai/pool: <name>`. BYO pools require the operator

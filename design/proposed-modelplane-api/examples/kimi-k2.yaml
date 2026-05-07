@@ -54,7 +54,7 @@ spec:
   clusterSelector:
     matchAttributes:
       modelplane.ai/tier:    production
-      cloud.region:          us-east
+      cloud.region:          us-east-1
       network.fabric:        [ib, roce]
       network.bandwidthGbps: ">=400"
 

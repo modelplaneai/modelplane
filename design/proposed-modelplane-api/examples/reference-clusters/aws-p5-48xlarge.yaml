@@ -4,10 +4,8 @@
 # customer's environment, swap `cluster.source` to point at their EKS
 # cluster, and the matcher can immediately schedule against this pool.
 #
-# All attributes declared against the default CapabilityVocabulary; the
-# cloud.instanceType macro (`aws:p5.48xlarge`) implies the Pool/Device
-# attributes — they're spelled out here for clarity but a generated
-# cluster could just declare instanceType and let the vocab unpack.
+# Hardware attrs inherited from the `h100-nvl-8x` InferenceClass; per-cluster
+# host shape (cpu, memory, nics) and the provider SKU string declared inline.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
@@ -44,26 +42,21 @@ spec:
 
   nodePools:
     - name: p5-48xlarge
+      # Hardware bundle (Pool + Device attrs: gpuCount, interconnect,
+      # vendor, product, vramGiB, capabilities, ...) inherited from the
+      # InferenceClass. Inline overrides below carry per-cluster specifics
+      # (host shape: cpu, memoryGiB, nics, host.virtualization, the
+      # provider's actual SKU string).
+      class: h100-nvl-8x
       nodeSelector:
         node.kubernetes.io/instance-type: p5.48xlarge
         modelplane.ai/pool: p5-48xlarge
       nodeAttributes:
-        cloud.instanceType:        aws:p5.48xlarge   # macro; vocab implies the rest
-        gpuCount:                  8
-        interconnect.type:         nvswitch
-        interconnect.bandwidthGBs: 900
-        cpu.vendor:                intel
-        cpu.cores:                 96                # 192 vCPU on p5.48xl
-        cpu.platform:              sapphire-rapids
-        memoryGiB:                 2048
-        nics.count:                32
-        nics.bandwidthGbps:        100               # EFA per-NIC
-        host.virtualization:       kvm               # Nitro
-      deviceAttributes:
-        vendor:        nvidia
-        product:       H100
-        architecture:  hopper
-        formFactor:    sxm
-        vramGiB:       80
-        mig:           true
-        capabilities:  [fp8, transformer-engine, mig]
+        cloud.instanceType:  aws:p5.48xlarge
+        cpu.vendor:          intel
+        cpu.cores:           96                # 192 vCPU on p5.48xl
+        cpu.platform:        sapphire-rapids
+        memoryGiB:           2048
+        nics.count:          32
+        nics.bandwidthGbps:  100               # EFA per-NIC
+        host.virtualization: kvm               # Nitro

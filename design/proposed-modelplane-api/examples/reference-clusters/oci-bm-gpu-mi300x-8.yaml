@@ -39,22 +39,12 @@ spec:
 
   nodePools:
     - name: bm-gpu-mi300x-8
+      class: mi300x-8x
       nodeSelector:
         oci.oraclecloud.com/instance-shape: BM.GPU.MI300X.8
         modelplane.ai/pool: bm-gpu-mi300x-8
       nodeAttributes:
-        cloud.instanceType:        oci:BM.GPU.MI300X.8
-        gpuCount:                  8
-        interconnect.type:         xgmi             # AMD Infinity Fabric
-        interconnect.bandwidthGBs: 128              # bidirectional GPU-GPU
-        cpu.vendor:                intel
-        memoryGiB:                 2048
-        host.virtualization:       none             # bare metal
-      deviceAttributes:
-        vendor:        amd
-        product:       MI300X
-        architecture:  cdna3
-        formFactor:    sxm
-        vramGiB:       192
-        mig:           false
-        capabilities:  [fp8]                        # no FP4 on MI300X
+        cloud.instanceType:  oci:BM.GPU.MI300X.8
+        cpu.vendor:          intel
+        memoryGiB:           2048
+        host.virtualization: none             # bare metal

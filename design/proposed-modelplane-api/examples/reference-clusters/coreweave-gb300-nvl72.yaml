@@ -40,23 +40,14 @@ spec:
 
   nodePools:
     - name: gb300-4x
+      class: b300-grace-4x
       nodeSelector:
         coreweave.com/instance-type: gb300-4x
         modelplane.ai/pool: gb300-4x
-      # Per-instance shape: 2 superchips, each 1 Grace + 2 B300 = 4 GPUs total.
+      # Per-instance host: 2 superchips = 2 Grace CPUs (cpu.vendor + gpuCount
+      # are part of the class). Inline overrides for cluster-specific shape.
       nodeAttributes:
-        cloud.instanceType:        coreweave:gb300-4x
-        gpuCount:                  4                 # per-instance (rack-wide is 72)
-        interconnect.type:         nvswitch          # NVLink Switch (rack-scale; see cluster.scaleUnit)
-        interconnect.bandwidthGBs: 1800
-        cpu.vendor:                nvidia-grace
-        cpu.cores:                 144               # 2× 72-core Grace
-        memoryGiB:                 960
-        host.virtualization:       none              # bare metal
-      deviceAttributes:
-        vendor:        nvidia
-        product:       B300
-        architecture:  blackwell-ultra
-        formFactor:    nvl
-        vramGiB:       279
-        capabilities:  [fp4, fp8, transformer-engine]
+        cloud.instanceType:  coreweave:gb300-4x
+        cpu.cores:           144               # 2× 72-core Grace
+        memoryGiB:           960
+        host.virtualization: none              # bare metal

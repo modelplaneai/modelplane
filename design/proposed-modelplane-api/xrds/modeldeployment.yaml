@@ -461,7 +461,72 @@ spec:
                   properties:
                     total: { type: integer }
                     ready: { type: integer }
+                # ---- matchTrace ----
+                # Per-cluster compatibility report. Populated when no
+                # InferenceCluster matches (Ready=False) so the user can see
+                # exactly why each candidate was excluded. The structured
+                # shape below covers engine-feature mismatches; cluster /
+                # device selector mismatches use additional fields not
+                # exhaustively typed here.
                 matchTrace:
                   type: object
-                  description: Per-fleet-member compatibility report; field-level reasons.
                   x-kubernetes-preserve-unknown-fields: true
+                  properties:
+                    requiredFeatures:
+                      type: object
+                      description: |
+                        Engine features the matcher computed as required for
+                        this MD. `derived` come from rules over declared
+                        config (roles → prefill-decode-disagg,
+                        engine.optimizations.kvCacheRouting → kv-cache-routing,
+                        adapters[] → multi-lora, etc.). `explicit` are the
+                        names from engine.advanced[] verbatim (break-glass).
+                      properties:
+                        derived:
+                          type: array
+                          items: { type: string }
+                        explicit:
+                          type: array
+                          items: { type: string }
+                    candidates:
+                      type: array
+                      description: One entry per InferenceCluster the matcher considered.
+                      items:
+                        type: object
+                        properties:
+                          cluster:        { type: string }
+                          missingFeatures:
+                            type: array
+                            items: { type: string }
+                            description: |
+                              Features in requiredFeatures.{derived ∪ explicit}
+                              not present in this cluster's
+                              KServeBackend.spec.engine.features.
+                          suggestions:
+                            type: object
+                            additionalProperties: { type: string }
+                            description: |
+                              For unknown feature names (not in any cluster's
+                              backend, not in the matcher's well-known list),
+                              fuzzy-match against the well-known list and
+                              surface the closest match — catches typos like
+                              "chunked-prfill" → "chunked-prefill". Custom
+                              features (acme.com/turbo-mode) won't have a
+                              suggestion: matcher accepts them as-is, just
+                              flags that no cluster supports them yet.
+                          missingClusterAttributes:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:      { type: string }
+                                expected: { x-kubernetes-preserve-unknown-fields: true }
+                                actual:   { x-kubernetes-preserve-unknown-fields: true }
+                          missingDeviceAttributes:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:      { type: string }
+                                expected: { x-kubernetes-preserve-unknown-fields: true }
+                                actual:   { x-kubernetes-preserve-unknown-fields: true }

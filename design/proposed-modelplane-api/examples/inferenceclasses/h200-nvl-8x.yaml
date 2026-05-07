@@ -1,0 +1,26 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: h200-nvl-8x
+spec:
+  description: 8× NVIDIA H200 SXM, NVLink Switch, 141 GiB HBM3e per GPU.
+  expands:
+    vendor: nvidia
+    product: H200
+    architecture: hopper
+    formFactor: sxm
+    vramGiB: 141
+    mig: true
+    capabilities: [fp8, transformer-engine, mig]
+    gpuCount: 8
+    interconnect.type: nvswitch
+    interconnect.bandwidthGBs: 900
+  aliases:
+    - aws:p5e.48xlarge
+    - aws:p5en.48xlarge
+    - gcp:a3-ultragpu-8g
+    - azure:Standard_ND96isr_H200_v5
+    - oci:BM.GPU.H200.8
+    - coreweave:gd-8xh200ib-i128
+    - dgx:DGX-H200
+  since: v0.1

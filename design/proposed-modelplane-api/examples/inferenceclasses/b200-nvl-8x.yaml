@@ -1,0 +1,24 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: b200-nvl-8x
+spec:
+  description: 8× NVIDIA B200 SXM, NVLink 5, 180 GiB HBM3e per GPU.
+  expands:
+    vendor: nvidia
+    product: B200
+    architecture: blackwell
+    formFactor: sxm
+    vramGiB: 180
+    capabilities: [fp4, fp8, transformer-engine]
+    gpuCount: 8
+    interconnect.type: nvswitch
+    interconnect.bandwidthGBs: 1800
+  aliases:
+    - aws:p6-b200.48xlarge
+    - gcp:a4-highgpu-8g
+    - oci:BM.GPU.B200.8
+    - coreweave:b200-8x
+    - lambda:hgx-b200-sxm6
+    - dgx:DGX-B200
+  since: v0.1

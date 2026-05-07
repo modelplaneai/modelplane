@@ -1,0 +1,20 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: b300-nvl-8x
+spec:
+  description: 8× NVIDIA B300 SXM (HGX form, no Grace), 288 GiB HBM3e per GPU.
+  expands:
+    vendor: nvidia
+    product: B300
+    architecture: blackwell-ultra
+    formFactor: sxm
+    vramGiB: 288
+    capabilities: [fp4, fp8, transformer-engine]
+    gpuCount: 8
+    interconnect.type: nvswitch
+    interconnect.bandwidthGBs: 1800
+  aliases:
+    - aws:p6-b300
+    - dgx:DGX-B300
+  since: v0.1

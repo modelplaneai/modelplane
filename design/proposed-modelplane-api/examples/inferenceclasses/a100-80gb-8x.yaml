@@ -1,0 +1,24 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: a100-80gb-8x
+spec:
+  description: 8× NVIDIA A100 SXM, NVLink 3, 80 GiB HBM per GPU.
+  expands:
+    vendor: nvidia
+    product: A100
+    architecture: ampere
+    formFactor: sxm
+    vramGiB: 80
+    mig: true
+    capabilities: [mig]              # no FP8 / transformer-engine on Ampere
+    gpuCount: 8
+    interconnect.type: nvswitch
+    interconnect.bandwidthGBs: 600
+  aliases:
+    - aws:p4de.24xlarge
+    - gcp:a2-ultragpu-8g
+    - azure:Standard_ND96amsr_A100_v4
+    - oci:BM.GPU.A100-v2.8
+    - coreweave:gd-8xa100-i128
+  since: v0.1

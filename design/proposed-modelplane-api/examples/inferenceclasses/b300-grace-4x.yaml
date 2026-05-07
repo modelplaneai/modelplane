@@ -1,0 +1,25 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: b300-grace-4x
+spec:
+  description: |
+    4 GPUs per instance — 2 superchips, each 1 Grace CPU + 2 B300 GPUs.
+    Many such instances form one NVL72 rack (72 B300 GPUs sharing one
+    NVLink Switch domain). Pair with cluster.scaleUnit: nvl72 on the
+    InferenceCluster to capture the rack-scale topology.
+  expands:
+    vendor: nvidia
+    product: B300
+    architecture: blackwell-ultra
+    formFactor: nvl
+    vramGiB: 279
+    capabilities: [fp4, fp8, transformer-engine]
+    gpuCount: 4
+    interconnect.type: nvswitch
+    interconnect.bandwidthGBs: 1800
+    cpu.vendor: nvidia-grace
+  aliases:
+    - oci:BM.GPU.GB300.4
+    - coreweave:gb300-4x
+  since: v0.1

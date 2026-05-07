@@ -48,6 +48,7 @@ spec:
 
   nodePools:
     - name: p5-48xlarge
+      class: h100-nvl-8x
       # Labels are the load-bearing path here. Workloads use
       # deviceSelector.matchLabels against these (see gpt-oss-20b.yaml).
       nodeSelector:
@@ -60,20 +61,9 @@ spec:
         nvidia.com/gpu.memory:  "81920"            # MB
       provisioning: {}                # BYO — pool already exists
       nodeAttributes:
-        cloud.instanceType:        aws:p5.48xlarge
-        gpuCount:                  8
-        interconnect.type:         nvswitch
-        interconnect.bandwidthGBs: 900
-        cpu.vendor:                intel
-        cpu.cores:                 96
-        cpu.platform:              sapphire-rapids
-        memoryGiB:                 2048
-        host.virtualization:       kvm             # Nitro
-      deviceAttributes:
-        vendor:        nvidia
-        product:       H100
-        architecture:  hopper
-        formFactor:    sxm
-        vramGiB:       80
-        mig:           true
-        capabilities:  [fp8, transformer-engine, mig]
+        cloud.instanceType:  aws:p5.48xlarge
+        cpu.vendor:          intel
+        cpu.cores:           96
+        cpu.platform:        sapphire-rapids
+        memoryGiB:           2048
+        host.virtualization: kvm             # Nitro

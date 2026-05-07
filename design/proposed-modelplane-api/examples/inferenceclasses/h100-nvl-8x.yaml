@@ -1,0 +1,27 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: h100-nvl-8x
+spec:
+  description: 8× NVIDIA H100 SXM, NVLink Switch, 80 GiB HBM3 per GPU.
+  expands:
+    vendor: nvidia
+    product: H100
+    architecture: hopper
+    formFactor: sxm
+    vramGiB: 80
+    mig: true
+    capabilities: [fp8, transformer-engine, mig]
+    gpuCount: 8
+    interconnect.type: nvswitch
+    interconnect.bandwidthGBs: 900
+  aliases:
+    - aws:p5.48xlarge
+    - gcp:a3-highgpu-8g
+    - gcp:a3-megagpu-8g
+    - azure:Standard_ND96isr_H100_v5
+    - oci:BM.GPU.H100.8
+    - coreweave:gd-8xh100ib-i128
+    - lambda:hgx-h100-sxm
+    - dgx:DGX-H100
+  since: v0.1

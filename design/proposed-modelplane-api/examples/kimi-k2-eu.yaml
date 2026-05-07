@@ -2,7 +2,7 @@
 #
 # Demonstrates multi-region spread: multiple ModelDeployments + a
 # ModelEndpoint that routes across them. Same workload spec as
-# kimi-k2.yaml, pinned to eu-west via cloud.region.
+# kimi-k2.yaml, pinned to eu-west-1 via cloud.region.
 #
 # The two MDs are independent (each with its own placements and KEDA
 # scaling). The ModelEndpoint (multi-region-endpoint.yaml) routes
@@ -28,7 +28,7 @@ spec:
   clusterSelector:
     matchAttributes:
       modelplane.ai/tier:    production
-      cloud.region:          eu-west            # only difference from kimi-k2.yaml
+      cloud.region:          eu-west-1          # only difference from kimi-k2.yaml
       network.fabric:        [ib, roce]
       network.bandwidthGbps: ">=400"
 

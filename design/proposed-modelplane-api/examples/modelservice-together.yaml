@@ -30,7 +30,7 @@ spec:
   # matcher — ModelService is never a placement target.
   attributes:
     cloud.provider:              togetherai
-    cloud.region:                us-east
+    cloud.region:                us-east-1
     modelplane.ai/tier:          production
     modelplane.ai/billingModel:  per-token
 
