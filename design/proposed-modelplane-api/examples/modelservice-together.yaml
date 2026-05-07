@@ -31,6 +31,10 @@ spec:
     "modelplane.ai/billingModel":  "per-token"
     "modelplane.ai/networkAccess": "internet-routable"
 
+  # Consumed by ModelEndpoint route filtering: when a request targets
+  # model X, ME can only route to a ModelService whose supportedModels
+  # contains X. A controller refreshes this list from Together's
+  # GET /v1/models API.
   supportedModels:
     - meta-llama/Llama-3.1-70B-Instruct
     - meta-llama/Llama-3.1-405B-Instruct

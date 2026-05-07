@@ -87,7 +87,12 @@ spec:
                 deviceSelector:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
-                requiredEngineFeatures:
+                # Required-feature set derived by the matcher from the parent
+                # MD's declared config (roles, engine.{quantization, speculation,
+                # optimizations, advanced[]}, parallelism, adapters[]). Carried
+                # on the IR so the backend adapter can verify support before
+                # rendering. Not user-authored.
+                derivedFeatures:
                   type: array
                   items: { type: string }
                 parallelism:

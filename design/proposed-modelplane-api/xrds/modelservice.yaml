@@ -79,14 +79,22 @@ spec:
                     addressable by ModelEndpoint route logic.
 
                 # ---- catalog of models this service serves ----
+                # Consumed by the ModelEndpoint composer for route filtering:
+                # when a request targets model X, ME can only route to a
+                # ModelService whose supportedModels contains X. Without this
+                # the user has to keep ME and MS in sync manually.
+                #
+                # Auto-refresh plan: a controller polls the SaaS catalog API
+                # (`GET /v1/models` for OpenAI-compatible providers) and updates
+                # the field. Operator-maintained as a fallback for providers
+                # without a public catalog endpoint.
                 supportedModels:
                   type: array
                   items: { type: string }
                   description: |
                     Canonical model names (HuggingFace IDs or provider-native).
-                    The ModelEndpoint composer fails the route if the referenced
-                    ModelDeployment's model.name isn't in this catalog. Refreshed
-                    periodically (controller-driven in v2; operator-maintained v1).
+                    Auto-refreshed by a controller from the provider's catalog
+                    API where available; operator-maintained otherwise.
 
             status:
               type: object

@@ -1,12 +1,22 @@
 # ModelEndpoint — weighted routing across ModelDeployments. Per #60.
 #
 # Decouples routing (what users hit) from deployment (what runs). Enables
-# canary, A/B, and hybrid SaaS routing. Each route entry targets a
-# ModelDeployment (or an external URL); the composer resolves
-# Deployment → its ModelPlacement → cluster-side Service → pod replicas.
-# Replicas inside a placement are fungible — KServe + KEDA + the cluster
-# Service round-robin across pods. Multi-cluster spread happens via multiple
-# ModelDeployments + multiple route entries on this resource (one per MD).
+# canary, A/B, and hybrid SaaS routing.
+#
+# A `Deployment` route refers to a ModelDeployment, NOT a single replica or
+# placement: when traffic is sent to that route, it spreads across ALL the
+# MD's ModelPlacements (every replica, on every InferenceCluster the matcher
+# put them on). Replicas inside a placement are fungible — KServe + KEDA +
+# the cluster Service round-robin across pods. Cross-cluster spread of one
+# logical service happens via multiple MDs + multiple route entries here.
+#
+# Three route target types:
+#   Deployment    — references a ModelDeployment by ref or selector. Covers
+#                   all of its placements transitively (this is how an MD's
+#                   replicas across clusters/regions all get traffic).
+#   ModelService  — routing to a SaaS endpoint (Together, Bedrock, etc.).
+#                   ModelService is never a placement target — only a route.
+#   External      — ad-hoc URL not registered as a ModelService.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:

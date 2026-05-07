@@ -9,11 +9,24 @@
 #   - 16 devices per replica (count: 16, perNode: 8 → 2 nodes), constrained to
 #     a single NVLink domain via matchAttribute (break-glass)
 #   - Parallelism: TP=8 within node, PP=2 across nodes, expert parallelism for MoE
-#   - 5P3D disaggregation: 5 prefill replicas + 3 decode replicas
-#     (each role inherits root deviceSelector + parallelism; only replicas differ)
-#   - requiredEngineFeatures: cluster-runtime constraint matched against the
-#     cluster's KServeBackend
-#   - FP8 weight + KV cache quantization (engine.quantization)
+#     (Modelplane-canonical; backend adapter translates to KServe LWS / Dynamo
+#      graph / vLLM args. Matcher excludes backends that can't honor it.)
+#   - 5P3D disaggregation via roles.{prefill, decode} — implies the
+#     `prefill-decode-disagg` engine feature; matcher excludes backends without it.
+#   - engine.optimizations: chunkedPrefill + kvCacheRouting — typed knobs that
+#     imply `chunked-prefill` and `kv-cache-routing` features.
+#   - FP8 weight + KV cache quantization (engine.quantization) — implies
+#     `fp8-kv-cache` engine feature.
+#
+# Required-feature derivation (no requiredEngineFeatures field needed):
+#   roles present                                  → prefill-decode-disagg
+#   engine.optimizations.chunkedPrefill: true      → chunked-prefill
+#   engine.optimizations.kvCacheRouting: true      → kv-cache-routing
+#   engine.quantization.target contains kvCache    → fp8-kv-cache
+#   parallelism.expert: enabled                    → expert-parallelism
+# Matcher unions these and matches against the cluster's
+# KServeBackend.spec.engine.features. Single source of truth: declare what
+# you want; matcher derives the runtime-feature requirement.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -50,13 +63,7 @@ spec:
           - matchAttribute: gpu.nvidia.com/nvlinkDomain   # TP=8 in one NVLink domain
             requests: [gpus]
 
-  requiredEngineFeatures:
-    - prefill-decode-disagg
-    - kv-cache-routing
-    - chunked-prefill
-    - fp8-kv-cache
-
-  parallelism:
+  parallelism:                          # Modelplane-canonical; backend adapter translates
     tensor: 8
     pipeline: 2
     expert: enabled
@@ -68,14 +75,17 @@ spec:
   engine:
     name: vLLM
     image: vllm/vllm-openai:v0.8.0
-    args:
+    args:                               # backend adapter passes these straight through
       - "--max-model-len=131072"
       - "--gpu-memory-utilization=0.90"
       - "--max-num-seqs=256"
       - "--distributed-executor-backend=ray"
-    quantization:
+    quantization:                       # implies fp8-kv-cache feature (target=kvCache)
       precision: fp8
       target: [weights, kvCache]
+    optimizations:                      # typed knobs; each implies a derived feature
+      chunkedPrefill: true              # → chunked-prefill
+      kvCacheRouting: true              # → kv-cache-routing (gateway prefix-aware routing)
 
   scaling:
     signal: Concurrency

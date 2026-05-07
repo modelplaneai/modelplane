@@ -73,9 +73,12 @@ spec:
                         type: string
                         description: |
                           Well-known feature name (e.g. prefill-decode-disagg,
-                          eagle-speculation, multi-lora). Matched against
-                          ModelDeployment.spec.requiredEngineFeatures and
-                          KServeBackend.spec.engine.features on each cluster.
+                          eagle-speculation, multi-lora). Matcher derives the
+                          required-feature set for each ModelDeployment from its
+                          declared config (roles, engine.{quantization,
+                          speculation, optimizations, advanced[]}, parallelism,
+                          adapters[]) and matches the union against each
+                          InferenceCluster's KServeBackend.spec.engine.features.
                       description: { type: string }
                       since:
                         type: string

@@ -3,13 +3,18 @@
 # Demonstrates:
 #   - Two-level selector cascade (clusterSelector + deviceSelector)
 #   - 8 devices per replica in a single NVLink domain
-#   - Parallelism: TP=8 + expert parallelism for MoE
-#   - n-gram speculation (excels at code per Inference Engineering Ch 5.2.4)
-#   - Long context (256K)
-#   - `adapters` block for multi-LoRA with LoRA-aware routing
+#   - Parallelism: TP=8 + expert parallelism for MoE (Modelplane-canonical)
+#   - n-gram speculation via engine.speculation (excels at code per
+#     Inference Engineering Ch 5.2.4) — implies `ngram-speculation` feature.
+#   - engine.optimizations.prefixCaching — implies `prefix-caching` feature.
+#   - Long context (256K) — set via engine.args (backend adapter passthrough)
 #   - User-defined attributes for team affinity / cost-center tracking
-#     (matched via clusterSelector.matchAttributes)
-#   - FP8 weight + KV quantization
+#     (matched via clusterSelector.matchAttributes — pass-through user keys)
+#   - FP8 weight + KV quantization — implies `fp8-kv-cache` feature
+#   - `adapters` block: two consumers — backend adapter (engine LoRA load,
+#     vLLM --lora-modules) + gateway (LoRA-aware request routing matching
+#     the request's adapter hint to a replica that has it loaded). Presence
+#     of this list implies the `multi-lora` feature.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -43,14 +48,7 @@ spec:
           - matchAttribute: gpu.nvidia.com/nvlinkDomain
             requests: [gpus]
 
-  requiredEngineFeatures:
-    - ngram-speculation
-    - multi-lora
-    - kv-cache-routing
-    - chunked-prefill
-    - fp8-kv-cache
-
-  parallelism:
+  parallelism:                          # Modelplane-canonical
     tensor: 8
     expert: enabled
 
@@ -61,15 +59,17 @@ spec:
       - "--max-model-len=262144"
       - "--gpu-memory-utilization=0.92"
       - "--max-num-seqs=128"
-      - "--enable-prefix-caching"
-    quantization:
+    quantization:                       # → fp8-kv-cache feature
       precision: fp8
       target: [weights, kvCache]
-    speculation:
+    speculation:                        # → ngram-speculation feature
       type: NGram
       ngram:
         n: 3
         maxSpeculativeTokens: 8
+    optimizations:
+      chunkedPrefill: true              # → chunked-prefill
+      prefixCaching: true               # → prefix-caching
 
   scaling:
     signal: Concurrency
@@ -80,7 +80,15 @@ spec:
       window: 60s
       scaleDownDelay: 300s
 
-  adapters:                             # multi-LoRA + LoRA-aware routing
+  # Two consumers:
+  #   1. Backend adapter: passes these into the engine at startup
+  #      (vLLM --lora-modules name=path); engine loads them as servable variants.
+  #   2. Gateway: LoRA-aware routing — request specifies adapter via
+  #      `model: qwen3-coder:<adapter-name>` (or header), router picks a
+  #      replica that has the adapter loaded.
+  # Presence implies the `multi-lora` engine feature → matcher excludes
+  # backends without it.
+  adapters:
     - name: acme-style
       source:
         huggingFace:

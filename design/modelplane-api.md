@@ -78,7 +78,7 @@ Two layers under Modelplane are pluggable: the in-cluster scheduler (admission /
 | In-cluster scheduler | **`managed-kueue`** (installs Kueue + `ClusterQueue` per pool) | `InferenceCluster.spec.scheduler.type: kueue \| kai \| volcano \| none` | (1) admission CR — `Workload` for Kueue, `PodGroup` for KAI / Volcano. (2) capacity-signal status field — `ClusterQueue.status.flavorsUsage[]` or scheduler-equivalent. |
 | Inference backend | **`managed-kserve`** (installs KServe at the pinned version + composes `KServeBackend`) | `InferenceCluster.spec.backend.{type, version}: kserve \| dynamo \| raw-vllm` | An IR adapter watches `ModelPlacement` and renders backend-specific upstream objects per cluster: `LLMInferenceService` for KServe (per version), `DynamoGraphDeployment` for Dynamo, `Deployment+Service` for raw-vllm. Adapter writes back to `ModelPlacement.status.rendered`. |
 
-**Opinionated:** the IR (`ModelPlacement`) — schema is Modelplane-controlled, plugins adapt to it. The matching logic (`clusterSelector` / `deviceSelector` / `requiredEngineFeatures`) and the user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) are universal — they don't change when a plugin swaps.
+**Opinionated:** the IR (`ModelPlacement`) — schema is Modelplane-controlled, plugins adapt to it. The matching logic (`clusterSelector` / `deviceSelector` + matcher-derived feature set) and the user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) are universal — they don't change when a plugin swaps.
 
 **Pluggable:** thin adapters per scheduler + per backend version. Modelplane ships Kueue + KServe (v0.16 / v0.17 / v0.18) by default; KAI / Volcano / Dynamo are future work. The IR contract is documented well enough that someone can write a Dynamo adapter without reverse-engineering us.
 
@@ -184,7 +184,7 @@ Namespace scope (per environment — prod / staging / dev / per-team):
 | `engine.advanced[]` typed-name break-glass | ML/App team or Composition author | Novel knobs the IR doesn't model yet, with structure for adapters |
 | `<level>Claim.selector.cel` CEL escape hatch | ML/App team | Boolean / set-arithmetic constraints not expressible in typed `matchAttributes` |
 | `<level>Claim.selector.matchAttributes` user-defined keys | Both teams | Org-specific match dimensions (cost center, team, security clearance) |
-| `requiredEngineFeatures` custom feature names | Platform team (declares on `KServeBackend`) + ML/App team (uses) | Engine forks add features Modelplane vocabulary doesn't ship |
+| `engine.advanced[]` named feature break-glass | Platform team (declares on `KServeBackend`) + ML/App team (uses) | Engine forks add features Modelplane's typed `engine.optimizations` doesn't ship yet — promote to typed over time |
 | Custom composition functions | Platform team / community / vendors | Replace Modelplane's matcher / composer with custom placement policy, cost model, or IR adapter — without forking the project |
 | Custom Crossplane providers | Platform team / community / vendors | Programmatically create `InferenceCluster` (new cloud) or `ModelService` (new SaaS) from external systems |
 | Forking the project | Community / vendors | Needs that don't fit the upstream roadmap; ship a derivative with different defaults, additional CRDs, alternative engine support |
@@ -211,9 +211,7 @@ deviceSelector:                   # node + device attrs over declared pool capac
       matchAttributes: [...]      # break-glass; typed attribute predicates
       cel: ...
       constraints: [{ matchAttribute, requests }]   # NVLink-domain co-location, etc
-requiredEngineFeatures: [string]  # set-membership against cluster's KServeBackend
-
-# Deployment shape (not selectors):
+# Deployment shape (Modelplane-canonical, backend adapter translates):
 parallelism: { tensor, pipeline, expert }
 roles:                            # disaggregated serving (xPyD)
   prefill: { deviceSelector, parallelism, replicas }   # any unset inherits root
@@ -224,7 +222,8 @@ engine:
   quantization: { precision, target }
   speculation:
     type: EAGLE | DraftTarget | Medusa | NGram | Lookahead
-  advanced: [{ name, config }]    # break-glass
+  optimizations: { chunkedPrefill, prefixCaching, kvCacheRouting }   # typed knobs
+  advanced: [{ name, config }]    # named break-glass — promote to optimizations over time
 
 scaling:                          # composer turns this into a stock KEDA ScaledObject
   signal: Concurrency | Utilization | Both
@@ -237,6 +236,8 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 **`ModelService` is routing-only.** It's not a fleet-member candidate; the matcher only considers `InferenceCluster`. Workloads requiring engine features that no `InferenceCluster` exposes are excluded with field-level reasons in `matchTrace`. A separate concept for *placement* against dedicated SaaS endpoints is on Nic to define.
 
 **Namespace = environment.** Each namespace is the lifecycle scope: 0..1 `ModelEndpoint`, 0..N `ModelDeployment` / `ModelService`, 0..N `ModelPlacement`. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace. `CapabilityVocabulary` is cluster-scoped (single source of truth for hardware semantics).
+
+**Consumer-index discipline.** Every field on the user-facing API has at least one named consumer (matcher / composer / backend adapter / gateway). Each XRD spec carries a `Field-level consumer index` block at the top documenting *who reads what for what purpose*. If a field has no real consumer, it gets removed. This is why `requiredEngineFeatures` is gone — every required feature is derivable from a more concrete declaration (`roles` → disagg, `engine.optimizations.kvCacheRouting` → kv-cache-routing, `adapters[]` → multi-lora, etc.), and the matcher unions them at federation time. Single source of truth: declare *what you want*; matcher derives *what backend features that requires*.
 
 ## Capability vocabulary
 

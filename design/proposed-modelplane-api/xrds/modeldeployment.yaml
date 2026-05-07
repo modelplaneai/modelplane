@@ -57,6 +57,37 @@ spec:
             spec:
               type: object
               required: [model, source, deviceSelector, engine]
+              # Field-level consumer index (every field on this CR has one):
+              #   replicas               — KEDA writes; composer reconciles MPs
+              #   model                  — engine adapter (--model arg); status reporting
+              #   source / huggingFace   — engine adapter (model fetch at startup)
+              #   clusterSelector        — federation matcher (filters ICs)
+              #   deviceSelector         — federation matcher (filters pools);
+              #                            backend adapter (in-cluster grounding via DRA)
+              #   parallelism            — backend adapter (translates to backend-native
+              #                            shape: KServe LWS, Dynamo graph, vLLM args);
+              #                            matcher (excludes backends that can't honor it)
+              #   roles                  — backend adapter (xPyD; renders separate prefill
+              #                            and decode workloads); matcher (excludes
+              #                            backends without disagg support)
+              #   engine.{quantization,
+              #           speculation,
+              #           advanced[],
+              #           args}          — backend adapter (engine flags); matcher
+              #                            (excludes backends that can't honor them —
+              #                            features required are derived from these)
+              #   scaling                — composer (renders KEDA ScaledObject targeting
+              #                            this MD's scale subresource)
+              #   adapters               — backend adapter (engine LoRA load:
+              #                            vLLM --lora-modules); gateway (LoRA-aware
+              #                            request routing — match request adapter to
+              #                            replica that has it loaded)
+              #
+              # No requiredEngineFeatures field. Required features are derived from
+              # the union of declared config (roles, engine.*, parallelism, adapters)
+              # and matched against the chosen IC's KServeBackend.spec.engine.features.
+              # Single source of truth: user declares *what they want*; matcher
+              # derives *what backend features that requires*.
               properties:
                 # ---- replica count (KEDA-writable via scale subresource) ----
                 # Replica == placement. The composer reconciles `replicas`
@@ -214,14 +245,13 @@ spec:
                                   type: array
                                   items: { type: string }
 
-                # ---- cluster-runtime constraint ----
-                # Set-membership match against the chosen InferenceCluster's
-                # KServeBackend.spec.engine.features.
-                requiredEngineFeatures:
-                  type: array
-                  items: { type: string }
-
-                # ---- deployment shape (not claims) ----
+                # ---- parallelism (Modelplane-canonical) ----
+                # Tensor / pipeline / expert parallelism are Modelplane abstractions —
+                # we promise to honor them across every backend we ship. The backend
+                # adapter translates: KServe → LWS group + per-pod ranks, Dynamo →
+                # the equivalent graph topology, raw-vllm → CLI args. Matcher excludes
+                # any backend that can't honor the requested combination
+                # (e.g. backends without expert-parallelism for MoE models).
                 parallelism:
                   type: object
                   properties:
@@ -316,9 +346,30 @@ spec:
                           properties:
                             n:                    { type: integer, minimum: 1 }
                             maxSpeculativeTokens: { type: integer, minimum: 1 }
+                    optimizations:
+                      type: object
+                      description: |
+                        Typed engine optimizations Modelplane recognizes and the
+                        matcher derives required features from. Setting these
+                        excludes backends that don't expose the corresponding
+                        engine feature. Backend adapter translates to engine flags
+                        (e.g. vLLM `--enable-chunked-prefill`, `--enable-prefix-caching`).
+                      properties:
+                        chunkedPrefill: { type: boolean }
+                        prefixCaching:  { type: boolean }
+                        kvCacheRouting:
+                          type: boolean
+                          description: |
+                            Prefix-aware request routing in front of the engine —
+                            gateway picks the replica that already has the prefix
+                            cached. Implies the `kv-cache-routing` feature.
                     advanced:
                       type: array
-                      description: Break-glass for novel knobs the IR doesn't model.
+                      description: |
+                        Break-glass for novel knobs the IR doesn't model yet. Each
+                        entry is a typed name; the matcher uses these names directly
+                        when deriving required features. Promote frequently-used
+                        names to `engine.optimizations` (typed) over time.
                       items:
                         type: object
                         required: [name]
@@ -357,6 +408,16 @@ spec:
                         scaleDownDelay: { type: string, default: "300s" }
 
                 # ---- LoRA adapters ----
+                # Two consumers:
+                #   1. Backend adapter: passes adapters into the engine at startup
+                #      (e.g. vLLM `--lora-modules name=path` for each entry). Engine
+                #      loads them and exposes them as servable model variants.
+                #   2. Gateway / router: routes incoming requests carrying an adapter
+                #      hint (`model: <md>:<adapter-name>` or header) to a replica
+                #      that has the adapter loaded. LoRA-aware routing.
+                # Required-feature derivation: presence of this list implies the
+                # `multi-lora` engine feature is required; matcher excludes backends
+                # that don't expose it.
                 adapters:
                   type: array
                   items:
