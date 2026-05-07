@@ -1,0 +1,36 @@
+# Multi-region ModelEndpoint — Kimi K2 across us-east + eu-west.
+#
+# Two ModelDeployments, one per region (kimi-k2.yaml + kimi-k2-eu.yaml).
+# Each MD's clusterSelector pins it to its region; the matcher places
+# replicas on InferenceClusters in that region. This ME routes traffic
+# across both with a fallback to Together for burst.
+#
+# Region affinity for end users (EU traffic to EU MD) is a gateway
+# concern, not the matcher's — typically a header / ingress rule that
+# weights the routes per request. The static weights below are the
+# default split.
+#
+# Demonstrates:
+#   - Concrete multi-region pattern (the doc references this often).
+#   - One ME per namespace, routes to multiple MDs in that namespace.
+#   - SaaS spillover via ModelService (together-prod) — burst absorption
+#     when both regional clusters are at capacity.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: kimi-k2-global
+  namespace: app-team
+spec:
+  routes:
+    - type: Deployment
+      weight: 50
+      deployment:
+        ref: { name: kimi-k2 }            # us-east MD; covers all its placements
+    - type: Deployment
+      weight: 45
+      deployment:
+        ref: { name: kimi-k2-eu }         # eu-west MD; covers all its placements
+    - type: ModelService
+      weight: 5
+      modelService:
+        ref: { name: together-prod }      # SaaS spillover

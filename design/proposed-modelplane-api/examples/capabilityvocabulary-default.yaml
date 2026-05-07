@@ -354,8 +354,23 @@ spec:
         interconnect.type: pcie
       aliases:
         - aws:g6e.48xlarge
-        - oci:BM.GPU.L40S.4
         - coreweave:gd-8xl40s-i128
+      since: v0.1
+
+    - name: L40S-4x
+      expands:
+        vendor: nvidia
+        product: L40S
+        architecture: ada
+        formFactor: pcie
+        vramGiB: 48
+        capabilities: [fp8]
+        gpuCount: 4
+        interconnect.type: pcie
+      aliases:
+        - aws:g6e.12xlarge
+        - aws:g6e.24xlarge
+        - oci:BM.GPU.L40S.4
       since: v0.1
 
     - name: A100-80GB-8x

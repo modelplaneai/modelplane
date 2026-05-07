@@ -1,0 +1,79 @@
+# Kimi K2 — EU-region sibling of kimi-k2.yaml.
+#
+# Demonstrates multi-region spread: the doc says "multi-region = multiple
+# ModelDeployments + multiple ModelEndpoint route entries". This is the
+# concrete shape — same workload spec as kimi-k2.yaml but pinned to
+# eu-west, so EU traffic lands on EU clusters (data residency, latency).
+#
+# The two MDs are independent (each has its own placements, its own KEDA
+# scaling). The ModelEndpoint (multi-region-assistant.yaml) routes
+# weighted across them, with optional region affinity headers handled at
+# the gateway.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: kimi-k2-eu
+  namespace: app-team
+spec:
+  replicas: 1                             # KEDA writes here
+
+  model:
+    name: moonshotai/Kimi-K2-Instruct
+  source: HuggingFace
+  huggingFace:
+    repo: moonshotai/Kimi-K2-Instruct
+    revision: main
+    secretRef:
+      namespace: platform-system
+      name: hf-token
+
+  clusterSelector:
+    matchAttributes:
+      modelplane.ai/tier:    production
+      cloud.region:          eu-west            # only difference from kimi-k2.yaml
+      network.fabric:        [ib, roce]
+      network.bandwidthGbps: ">=400"
+      modelplane.ai/compliance: [gdpr]          # EU data residency
+
+  deviceSelector:
+    requests:
+      - name: gpus
+        count: 16
+        perNode: 8
+        matchAttributes:
+          vramGiB:           ">=141"
+          capabilities:      [fp8]
+          interconnect.type: [nvswitch, xgmi]
+
+  parallelism:
+    tensor: 8
+    pipeline: 2
+    expert: enabled
+
+  roles:
+    prefill: { replicas: 5 }
+    decode:  { replicas: 3 }
+
+  engine:
+    name: vLLM
+    image: vllm/vllm-openai:v0.8.0
+    args:
+      - "--max-model-len=131072"
+      - "--gpu-memory-utilization=0.90"
+      - "--max-num-seqs=256"
+      - "--distributed-executor-backend=ray"
+    quantization:
+      precision: fp8
+      target: [weights, kvCache]
+    optimizations:
+      chunkedPrefill: true
+      kvCacheRouting: true
+
+  scaling:
+    signal: Concurrency
+    concurrency:
+      minReplicas: 1
+      maxReplicas: 4
+      target: 32
+      window: 60s
+      scaleDownDelay: 600s

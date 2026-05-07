@@ -1,0 +1,79 @@
+# EKS p5.48xlarge on K8s 1.31 — labels-first path, no DRA.
+#
+# Reference InferenceCluster for the BYOC case where the cluster predates
+# DRA (K8s 1.30-1.33) or hasn't installed a DRA driver. The NVIDIA GPU
+# operator publishes node labels (`nvidia.com/gpu.family`,
+# `nvidia.com/gpu.product`, `nvidia.com/gpu.memory`); the matcher uses
+# those for federation-time matching, and the backend adapter constrains
+# pods via `nodeSelector` + `nvidia.com/gpu: <count>`. No real
+# ResourceClaim is emitted at the in-cluster grounding stage — federation
+# attribute predicates are still evaluated against the declared pool
+# attributes below, just not grounded against runtime ResourceSlices.
+#
+# This is the simpler BYOC story: works on any K8s with the NVIDIA GPU
+# operator, no driver-version requirements. Drift between declared and
+# actual hardware is the operator's responsibility.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-prod-h100-no-dra
+spec:
+  attributes:
+    cloud.provider:        aws
+    cloud.region:          us-east-1
+    network.fabric:        efa
+    network.bandwidthGbps: 3200
+    cluster.scaleUnit:     independent-nodes
+    modelplane.ai/tier:    production
+
+  scheduler:
+    type: kueue                    # operator's existing Kueue install (BYO)
+
+  backend:
+    type: kserve
+    version: v0.18.0
+
+  # No DRA driver — backend adapter does not emit ResourceClaims.
+  # Pods are constrained via nodeSelector + nvidia.com/gpu resource.
+  provisioning:
+    mode: device-plugin
+
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        namespace: platform-system
+        name: eks-h100-kubeconfig
+        key: kubeconfig
+
+  nodePools:
+    - name: p5-48xlarge
+      # Labels are the load-bearing path here. Workloads use
+      # deviceSelector.matchLabels against these (see gpt-oss-20b.yaml).
+      nodeSelector:
+        node.kubernetes.io/instance-type: p5.48xlarge
+        modelplane.ai/pool: p5-48xlarge
+        # Set by the NVIDIA GPU operator on each node — workloads can match
+        # on these directly without any taxonomy attribute.
+        nvidia.com/gpu.family:  hopper
+        nvidia.com/gpu.product: H100
+        nvidia.com/gpu.memory:  "81920"            # MB
+      provisioning: {}                # BYO — pool already exists
+      nodeAttributes:
+        cloud.instanceType:        aws:p5.48xlarge
+        gpuCount:                  8
+        interconnect.type:         nvswitch
+        interconnect.bandwidthGBs: 900
+        cpu.vendor:                intel
+        cpu.cores:                 96
+        cpu.platform:              sapphire-rapids
+        memoryGiB:                 2048
+        host.virtualization:       kvm             # Nitro
+      deviceAttributes:
+        vendor:        nvidia
+        product:       H100
+        architecture:  hopper
+        formFactor:    sxm
+        vramGiB:       80
+        mig:           true
+        capabilities:  [fp8, transformer-engine, mig]
