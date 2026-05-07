@@ -1,17 +1,18 @@
-# Example ModelService — Together AI as a routing target.
+# Example InferenceProvider — Together AI as a routing target.
+#
+# Renamed from ModelService — "Service" conflated with K8s Service.
 #
 # Demonstrates:
 #   - SaaS endpoint registered as a route target on ModelEndpoint
 #   - Routing-only — never a placement target. The fleet matcher considers
-#     only InferenceClusters; ModelService is not a fleet-member candidate.
+#     only InferenceClusters; InferenceProvider is not a fleet-member candidate.
 #   - Namespace-scoped — sits in the namespace alongside ModelDeployment(s)
-#     and ModelEndpoint that route to it
-#   - Supported model list refreshed periodically by the controller
+#     and ModelEndpoint that route to it.
 #   - Note: a separate concept for *placement* against dedicated SaaS
 #     endpoints (provisioning a Together / Baseten dedicated inference) is
 #     on Nic to define; this CR is intentionally narrow.
 apiVersion: modelplane.ai/v1alpha1
-kind: ModelService
+kind: InferenceProvider
 metadata:
   name: together-prod
   namespace: app-team
@@ -25,24 +26,11 @@ spec:
         key: api-key
 
   # Same vocabulary as InferenceCluster.spec.attributes. Used by
-  # ModelEndpoint route logic when picking among multiple ModelServices
+  # ModelEndpoint route logic when picking among multiple providers
   # (regional selection, billing-model preference). NOT used by the
-  # matcher — ModelService is never a placement target.
+  # matcher — InferenceProvider is never a placement target.
   attributes:
     cloud.provider:              togetherai
     cloud.region:                us-east-1
     modelplane.ai/tier:          production
     modelplane.ai/billingModel:  per-token
-
-  # Consumed by ModelEndpoint route filtering: when a request targets
-  # model X, ME can only route to a ModelService whose supportedModels
-  # contains X. A controller refreshes this list from Together's
-  # GET /v1/models API.
-  supportedModels:
-    - meta-llama/Llama-3.1-70B-Instruct
-    - meta-llama/Llama-3.1-405B-Instruct
-    - moonshotai/Kimi-K2-Instruct
-    - deepseek-ai/DeepSeek-V3
-    - Qwen/Qwen3-Coder-480B-A35B-Instruct
-    - Qwen/Qwen3-72B-Instruct
-    - openai/gpt-oss-20b

@@ -130,7 +130,7 @@ spec:
 
                 # ---- two-level selector cascade ----
                 # The matcher considers only InferenceCluster candidates.
-                # ModelService is routing-only (never a placement target);
+                # InferenceProvider is routing-only (never a placement target);
                 # SaaS placement is a separate concept Nic owns.
                 #
                 # Federation-stage match (Modelplane control plane, pre-provisioning):

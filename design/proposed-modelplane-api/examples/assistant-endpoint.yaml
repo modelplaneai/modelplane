@@ -9,7 +9,7 @@
 #     practice canary / A-B is across versions of one model family;
 #     here we route across three different families to show the API
 #     surface, not a realistic deployment.)
-#   - A ModelService (Together) as a route target alongside Deployments.
+#   - An InferenceProvider (Together) as a route target alongside Deployments.
 #   - Each Deployment route fans across ALL the MD's ModelPlacements
 #     (every replica, on every InferenceCluster the matcher placed them
 #     on). KEDA + the cluster Service round-robin across the pods.
@@ -34,7 +34,7 @@ spec:
       weight: 5
       deployment:
         ref: { name: kimi-k2 }
-    - type: ModelService
+    - type: InferenceProvider
       weight: 5
-      modelService:
+      inferenceProvider:
         ref: { name: together-prod }     # SaaS spillover for burst traffic

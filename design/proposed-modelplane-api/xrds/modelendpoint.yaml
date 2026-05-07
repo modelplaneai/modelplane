@@ -11,12 +11,14 @@
 # logical service happens via multiple MDs + multiple route entries here.
 #
 # Three route target types:
-#   Deployment    — references a ModelDeployment by ref or selector. Covers
-#                   all of its placements transitively (this is how an MD's
-#                   replicas across clusters/regions all get traffic).
-#   ModelService  — routing to a SaaS endpoint (Together, Bedrock, etc.).
-#                   ModelService is never a placement target — only a route.
-#   External      — ad-hoc URL not registered as a ModelService.
+#   Deployment        — references a ModelDeployment by ref or selector.
+#                       Covers all of its placements transitively (this is
+#                       how an MD's replicas across clusters/regions all
+#                       get traffic).
+#   InferenceProvider — routing to a SaaS / observed endpoint (Together,
+#                       Bedrock, etc.). Never a placement target — only
+#                       a route.
+#   External          — ad-hoc URL not registered as an InferenceProvider.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
@@ -61,7 +63,7 @@ spec:
                     properties:
                       type:
                         type: string
-                        enum: [Deployment, ModelService, External]
+                        enum: [Deployment, InferenceProvider, External]
                       weight:
                         type: integer
                         minimum: 0
@@ -92,9 +94,9 @@ spec:
                               matchLabels:
                                 type: object
                                 additionalProperties: { type: string }
-                      # ---- ModelService: route to a SaaS / observed endpoint ----
-                      # Routing-only; ModelService is never a placement target.
-                      modelService:
+                      # ---- InferenceProvider: route to a SaaS / observed endpoint ----
+                      # Routing-only; InferenceProvider is never a placement target.
+                      inferenceProvider:
                         type: object
                         properties:
                           ref:
@@ -103,7 +105,7 @@ spec:
                             properties:
                               namespace: { type: string }
                               name:      { type: string }
-                      # ---- External: ad-hoc URL not registered as a ModelService ----
+                      # ---- External: ad-hoc URL not registered as an InferenceProvider ----
                       external:
                         type: object
                         properties:

@@ -13,8 +13,8 @@
 # Demonstrates:
 #   - Concrete multi-region pattern (the doc references this often).
 #   - One ME per namespace, routes to multiple MDs in that namespace.
-#   - SaaS spillover via ModelService (together-prod) — burst absorption
-#     when both regional clusters are at capacity.
+#   - SaaS spillover via InferenceProvider (together-prod) — burst
+#     absorption when both regional clusters are at capacity.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelEndpoint
 metadata:
@@ -30,7 +30,7 @@ spec:
       weight: 45
       deployment:
         ref: { name: kimi-k2-eu }         # eu-west-1 MD; covers all its placements
-    - type: ModelService
+    - type: InferenceProvider
       weight: 5
-      modelService:
+      inferenceProvider:
         ref: { name: together-prod }      # SaaS spillover

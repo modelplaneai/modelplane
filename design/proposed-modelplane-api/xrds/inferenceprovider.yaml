@@ -1,26 +1,39 @@
-# ModelService — a SaaS or observed inference endpoint (Together, Baseten,
-# Bedrock, customer-run KServe). Routing-only — never a placement target.
+# InferenceProvider — a SaaS or observed inference endpoint (Together,
+# Baseten, Bedrock, customer-run KServe). Routing-only — never a
+# placement target.
+#
+# Renamed from ModelService after 1:1 with Nic — "Service" conflates
+# with K8s Service. "Provider" is closer to what this is: an external
+# inference service the gateway routes to.
 #
 # Rough sketch: a separate concept for *placement* against dedicated SaaS
 # endpoints (programmatic provisioning of a Together / Baseten dedicated
 # inference) is on Nic to define; this CR is intentionally narrow.
 #
+# Why a CR instead of just a URL on ModelEndpoint:
+#   - URL + auth alone could be a Secret + inline route field.
+#   - But `attributes` (region / billing / tier) lets ModelEndpoint do
+#     routing-time selection across multiple providers — that earns
+#     the CR shape and makes the provider reusable across MEs.
+#   - ModelEndpoint also supports inline `routes[].external.url` for
+#     one-off cases that don't want a CR.
+#
 # Namespace-scoped — sits alongside ModelDeployment / ModelEndpoint inside
 # the namespace-as-environment lifecycle scope. Valid only as a route target
 # on ModelEndpoint (alongside Deployment and External). The matcher does NOT
-# consider ModelService as a fleet-member candidate; clusterSelector filters
-# only against InferenceCluster.
+# consider InferenceProvider as a fleet-member candidate; clusterSelector
+# filters only against InferenceCluster.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: modelservices.modelplane.ai
+  name: inferenceproviders.modelplane.ai
 spec:
   group: modelplane.ai
   names:
     categories: [crossplane, modelplane]
-    kind: ModelService
-    plural: modelservices
-    shortNames: [ms]
+    kind: InferenceProvider
+    plural: inferenceproviders
+    shortNames: [ip]
   scope: Namespaced
   versions:
     - name: v1alpha1
@@ -66,35 +79,18 @@ spec:
 
                 # ---- environment-level attributes ----
                 # Used by the ModelEndpoint composer when picking which
-                # ModelService a route is referring to (e.g. region selection
-                # among multiple Together / Bedrock instances). NOT used by
-                # the matcher — ModelService is never a placement target.
+                # InferenceProvider a route is referring to (e.g. region
+                # selection among multiple Together / Bedrock instances).
+                # NOT used by the matcher — InferenceProvider is never a
+                # placement target.
                 attributes:
                   type: object
                   additionalProperties:
                     x-kubernetes-preserve-unknown-fields: true
                   description: |
                     Same shape as InferenceCluster.spec.attributes (region, tier,
-                    compliance, billingModel, networkAccess). Informational +
-                    addressable by ModelEndpoint route logic.
-
-                # ---- catalog of models this service serves ----
-                # Consumed by the ModelEndpoint composer for route filtering:
-                # when a request targets model X, ME can only route to a
-                # ModelService whose supportedModels contains X. Without this
-                # the user has to keep ME and MS in sync manually.
-                #
-                # Auto-refresh plan: a controller polls the SaaS catalog API
-                # (`GET /v1/models` for OpenAI-compatible providers) and updates
-                # the field. Operator-maintained as a fallback for providers
-                # without a public catalog endpoint.
-                supportedModels:
-                  type: array
-                  items: { type: string }
-                  description: |
-                    Canonical model names (HuggingFace IDs or provider-native).
-                    Auto-refreshed by a controller from the provider's catalog
-                    API where available; operator-maintained otherwise.
+                    compliance, billingModel). Informational + addressable by
+                    ModelEndpoint route logic.
 
             status:
               type: object
