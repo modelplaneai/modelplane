@@ -47,9 +47,14 @@ Workloads use a two-level claim cascade: `clusterClaim` filters `InferenceCluste
 
 `ModelService` is **not** a fleet-member candidate — it's routing-only, valid only as a `ModelEndpoint` route target. The matcher does not consider `ModelService` for placements; a separate concept for *placing* against dedicated SaaS endpoints (provisioning a Together / Baseten dedicated inference) is on Nic to define.
 
-**In-cluster scheduler delegation.** Modelplane decides *which cluster* a workload runs on; bin-packing, gang-scheduling, fractional-GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. We ship Kueue as the default substrate (`managed-kueue` mode, like `managed-kserve`); BYO schedulers (KAI, Volcano, existing Kueue installs) are supported via a capacity-signal contract. The signal Modelplane reads is `ClusterQueue.status` for Kueue or the equivalent from BYO schedulers — Modelplane never replaces the in-cluster scheduling logic.
+**Pluggable substrate.** Two layers are pluggable on `InferenceCluster`: the scheduler (admission / quota) and the inference backend (orchestrator). Both follow the same pattern — opinionated default install + BYO contract.
 
-**Label-vs-DRA matching.** `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (no DRA required; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional — customers who don't want it can use plain labels. The richer constraints (NVLink-domain co-location, etc.) are only expressible via DRA matchAttributes.
+- `scheduler.type: managed-kueue | kueue | kai | volcano | none` — Modelplane composes admission CRs (`Workload` for Kueue, `PodGroup` for KAI / Volcano) and reads capacity signal (`ClusterQueue.status.flavorsUsage[]` or equivalent). Default install is `managed-kueue` (Kueue + `ClusterQueue` per pool).
+- `backend.{type, version}` with `type: managed-kserve | kserve | dynamo | raw-vllm` — a backend-specific adapter watches `ModelPlacement` (the IR) and renders upstream objects on the cluster. KServe adapter renders `LLMInferenceService` per pinned version; Dynamo adapter renders `DynamoGraphDeployment`; raw-vllm renders plain `Deployment + Service`. Default install is `managed-kserve`.
+
+The IR is the seam — Modelplane stays opinionated about its schema; backends adapt to it. Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. v1 ships Kueue + KServe adapters; KAI / Volcano / Dynamo are future contributions.
+
+**Label-vs-DRA matching.** `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (no DRA required; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional. Richer constraints (NVLink-domain co-location, etc.) are only expressible via DRA matchAttributes.
 
 ## Replica == Placement (per Bassam's whiteboard)
 

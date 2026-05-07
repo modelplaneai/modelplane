@@ -26,6 +26,15 @@ spec:
   provisioning:
     mode: dra
 
+  scheduler:
+    type: kueue                   # operator already runs Kueue (BYO)
+                                  # alternatives: managed-kueue | kai | volcano | none
+
+  backend:
+    type: kserve                  # operator already runs KServe (BYO)
+                                  # alternatives: managed-kserve | dynamo | raw-vllm
+    version: v0.18.0
+
   attributes:
     "modelplane.ai/region":       "us-east"
     "modelplane.ai/provider":     "coreweave"

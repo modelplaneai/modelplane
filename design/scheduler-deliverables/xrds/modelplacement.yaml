@@ -149,7 +149,13 @@ spec:
                   x-kubernetes-preserve-unknown-fields: true
                 rendered:
                   type: object
-                  description: Reference to the upstream object the adapter produced.
+                  description: |
+                    Reference to the upstream object the backend adapter
+                    produced. This is the seam between the IR and the
+                    pluggable backend — KServe adapter renders an
+                    LLMInferenceService here; Dynamo adapter renders a
+                    DynamoGraphDeployment; raw-vllm adapter renders a
+                    plain Deployment + Service.
                   properties:
                     apiVersion: { type: string }
                     kind:       { type: string }

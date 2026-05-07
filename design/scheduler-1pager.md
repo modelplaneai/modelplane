@@ -60,6 +60,19 @@ The matcher considers only `InferenceCluster` candidates — `ModelService` is r
 - Namespace = environment / lifecycle scope. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
 - Failover modes are active-active or active-passive.
 
+## Pluggable substrate: scheduler and backend
+
+Two layers under Modelplane are pluggable: the in-cluster scheduler (admission / quota) and the inference backend (orchestrator that renders pods). Both follow the same pattern — opinionated default install, BYO contract for customers with existing investments.
+
+| Layer | Default install | BYO declaration on `InferenceCluster.spec` | What Modelplane consumes |
+|---|---|---|---|
+| In-cluster scheduler | `managed-kueue` (installs Kueue + `ClusterQueue` per pool) | `scheduler.type: kueue \| kai \| volcano \| none` | (1) admission CR shape per scheduler — `Workload` for Kueue, `PodGroup` for KAI / Volcano. (2) capacity-signal status field — `ClusterQueue.status.flavorsUsage[]` for Kueue, equivalents elsewhere |
+| Inference backend | `managed-kserve` (installs KServe + composes `KServeBackend`) | `backend.{type, version}: kserve \| dynamo \| raw-vllm`, e.g. `version: v0.18.0` | IR adapter renders backend-specific upstream objects per cluster: `LLMInferenceService` for KServe, `DynamoGraphDeployment` for Dynamo, `Deployment+Service` for raw-vllm. Adapter writes back to `ModelPlacement.status.rendered` |
+
+What stays opinionated: the IR (`ModelPlacement`) — its schema is Modelplane-controlled; backends adapt to it, not vice versa. The matching logic (`clusterClaim` / `deviceClaim` / `requiredEngineFeatures`) is universal across backends and schedulers. The user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) never changes when scheduler or backend swaps.
+
+What's pluggable: thin adapters per scheduler and per backend version. v1 ships Kueue + KServe (v0.16 / v0.17 / v0.18). KAI / Volcano / Dynamo adapters are future work — community, vendor, or our follow-up. Modelplane's contract is documented well enough that someone can write a Dynamo adapter without reverse-engineering us.
+
 ## Fleet-level capabilities
 
 Single-cluster platforms (llm-d, KServe alone, Dynamo) optimize within a cluster. Operating at the fleet layer reaches across `InferenceClusters`, with SaaS routes via `ModelService`.
@@ -226,6 +239,7 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 ## Open questions (Nic to call)
 
 - **Default in-cluster scheduler.** Lean: ship Kueue as `managed-kueue` (KServe pattern) + BYO support for KAI / Volcano via the capacity-signal contract. Confirm or pick a different default?
+- **BYO contract details.** Each adapter (one per scheduler, one per backend version) is a thin reconciler that watches the IR / cluster declaration and renders the backend-specific objects. v1 ships Kueue + KServe; KAI / Volcano / Dynamo are future. Confirm contract shape (`InferenceCluster.spec.scheduler.type`, `InferenceCluster.spec.backend.{type, version}`) is right, or restructure?
 - **Label-vs-DRA matching path.** `deviceClaim.selector` supports both `matchLabels` (no DRA needed) and `matchAttributes` (DRA-typed). Composer picks output based on cluster `provisioning.mode`. Confirm dual-path is the right shape, or commit to one?
 - **`requires.engineFeatures` rename.** It's implicitly cluster-only (matched against `KServeBackend`). Rename to make that explicit, or leave?
 - **Dedicated-SaaS placement.** `ModelService` is routing-only; "create a dedicated Together / Baseten endpoint" is a placement concept Nic owns. Rough sketch only here pending Nic's design.

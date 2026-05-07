@@ -65,7 +65,7 @@ spec:
                             namespace: { type: string }
                             key:       { type: string }
 
-                # ---- DRA vs device-plugin ----
+                # ---- DRA vs device-plugin (device exposure path) ----
                 provisioning:
                   type: object
                   required: [mode]
@@ -73,6 +73,40 @@ spec:
                     mode:
                       type: string
                       enum: [dra, device-plugin, hybrid]
+
+                # ---- in-cluster scheduler ----
+                # What admission / quota system runs on this cluster. Modelplane
+                # composes admission CRs against this. `managed-kueue` means
+                # Modelplane installs Kueue + creates ClusterQueues per pool;
+                # `kueue` / `kai` / `volcano` mean operator brought their own;
+                # `none` means no admission control (kube-scheduler best-effort).
+                scheduler:
+                  type: object
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: [managed-kueue, kueue, kai, volcano, none]
+
+                # ---- inference backend (orchestrator) ----
+                # What renders ModelPlacement (the IR) into upstream objects.
+                # `managed-kserve` means Modelplane installs KServe at `version`
+                # + composes a KServeBackend; `kserve` / `dynamo` / `raw-vllm`
+                # mean operator brought their own; `none` is invalid (cluster
+                # must have a backend to host placements).
+                backend:
+                  type: object
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: [managed-kserve, kserve, dynamo, raw-vllm]
+                    version:
+                      type: string
+                      description: |
+                        Backend version pin (e.g. KServe v0.18.0). The matching
+                        adapter is selected from this; absorbs upstream schema
+                        churn (KServe v0.17 args→command, v0.18 storage migration).
 
                 # ---- environment-level attributes (level 1 of three-level cascade) ----
                 attributes:
