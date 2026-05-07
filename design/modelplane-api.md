@@ -30,7 +30,7 @@ VRAM-divided-by-per-GPU-memory worked for Llama-8B on an L4. It can't deploy Kim
 
 ## Architecture: control plane + fleet
 
-A diagram of the API and an example fleet topology lives in [`modelplane-api/diagram.excalidraw`](modelplane-api/diagram.excalidraw) — adapted from Bassam's whiteboard with current naming and the two-level claim cascade.
+A diagram of the API and an example fleet topology lives in [`proposed-modelplane-api/diagram.excalidraw`](proposed-modelplane-api/diagram.excalidraw) — adapted from Bassam's whiteboard with current naming and the two-level claim cascade.
 
 
 ```
@@ -301,29 +301,29 @@ For bespoke hardware (custom AMD partitions, internal accelerators, experimental
 
 ## Appendix: deliverables
 
-Full proposed XRDs and example resources live in [`modelplane-api/`](modelplane-api/). The directory is a **design-time preview**: nothing there is wired up yet — XRDs aren't installed by `up` packs, examples aren't run by CI. Once we align on the API, XRDs move into [`apis/`](../apis/) (one directory per CRD, alongside the matching Composition) and examples move into the repo-root `examples/`.
+Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](proposed-modelplane-api/). The directory is a **design-time preview**: nothing there is wired up yet — XRDs aren't installed by `up` packs, examples aren't run by CI. Once we align on the API, XRDs move into [`apis/`](../apis/) (one directory per CRD, alongside the matching Composition) and examples move into the repo-root `examples/`.
 
 **XRDs** (proposed CompositeResourceDefinitions):
 
-- [`xrds/inferencecluster.yaml`](modelplane-api/xrds/inferencecluster.yaml) — cluster-scoped substrate, env + node + device attributes, `provisioning.mode`, `scheduler.type`, `backend.{type, version}`
-- [`xrds/modelservice.yaml`](modelplane-api/xrds/modelservice.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
-- [`xrds/capabilityvocabulary.yaml`](modelplane-api/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
-- [`xrds/modeldeployment.yaml`](modelplane-api/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
-- [`xrds/modelendpoint.yaml`](modelplane-api/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `ModelService` / `External`
-- [`xrds/modelplacement.yaml`](modelplane-api/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
+- [`xrds/inferencecluster.yaml`](proposed-modelplane-api/xrds/inferencecluster.yaml) — cluster-scoped substrate, env + node + device attributes, `provisioning.mode`, `scheduler.type`, `backend.{type, version}`
+- [`xrds/modelservice.yaml`](proposed-modelplane-api/xrds/modelservice.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
+- [`xrds/capabilityvocabulary.yaml`](proposed-modelplane-api/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
+- [`xrds/modeldeployment.yaml`](proposed-modelplane-api/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
+- [`xrds/modelendpoint.yaml`](proposed-modelplane-api/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `ModelService` / `External`
+- [`xrds/modelplacement.yaml`](proposed-modelplane-api/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
 
 **Substrate examples** (platform-team setup):
 
-- [`examples/inferencecluster-prod-coreweave.yaml`](modelplane-api/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster; BYO `kueue` + BYO `kserve@v0.18.0`
-- [`examples/modelservice-together.yaml`](modelplane-api/examples/modelservice-together.yaml) — Together AI as a routing target
-- [`examples/capabilityvocabulary-default.yaml`](modelplane-api/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs
+- [`examples/inferencecluster-prod-coreweave.yaml`](proposed-modelplane-api/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster; BYO `kueue` + BYO `kserve@v0.18.0`
+- [`examples/modelservice-together.yaml`](proposed-modelplane-api/examples/modelservice-together.yaml) — Together AI as a routing target
+- [`examples/capabilityvocabulary-default.yaml`](proposed-modelplane-api/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs
 
 **Workload examples** (ML/App team deployments):
 
-- [`examples/kimi-k2.yaml`](modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node, 5P3D disaggregation, FP8 weights + KV; demonstrates the DRA `matchAttributes` break-glass path (NVLink-domain co-location)
-- [`examples/qwen3-coder.yaml`](modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context; DRA path
-- [`examples/gpt-oss-20b.yaml`](modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, scale-to-zero; demonstrates the labels-first match path (no DRA needed)
-- [`examples/assistant-endpoint.yaml`](modelplane-api/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across the three deployments + Together routing
+- [`examples/kimi-k2.yaml`](proposed-modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node, 5P3D disaggregation, FP8 weights + KV; demonstrates the DRA `matchAttributes` break-glass path (NVLink-domain co-location)
+- [`examples/qwen3-coder.yaml`](proposed-modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context; DRA path
+- [`examples/gpt-oss-20b.yaml`](proposed-modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, scale-to-zero; demonstrates the labels-first match path (no DRA needed)
+- [`examples/assistant-endpoint.yaml`](proposed-modelplane-api/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across the three deployments + Together routing
 
 **What's deliberately incomplete** (will be filled in during the move to `apis/`):
 
