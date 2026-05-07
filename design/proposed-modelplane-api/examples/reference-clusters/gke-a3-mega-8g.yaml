@@ -25,12 +25,15 @@ spec:
   provisioning:
     mode: dra
 
+  # BYO template — customers fill in a kubeconfig Secret pointing at
+  # their GKE cluster. (source: GKE for modelplane-provisioned variants.)
   cluster:
-    source: gcp
-    gcp:
-      project:     <fill-me-in>
-      region:      us-central1
-      clusterName: <fill-me-in>
+    source: Existing
+    existing:
+      secretRef:
+        namespace: platform-system
+        name: <fill-me-in>-kubeconfig
+        key: kubeconfig
 
   nodePools:
     - name: a3-megagpu-8g

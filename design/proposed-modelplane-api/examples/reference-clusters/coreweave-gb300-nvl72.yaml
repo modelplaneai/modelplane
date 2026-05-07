@@ -27,11 +27,16 @@ spec:
   provisioning:
     mode: dra
 
+  # CoreWeave uses CKS (their bare-metal Kubernetes); current XRD enum only
+  # covers GKE/EKS/AKS/Existing. Reference cluster is a BYO template; fill
+  # in a kubeconfig Secret pointing at your CKS cluster.
   cluster:
-    source: coreweave
-    coreweave:
-      region:      eu-west-1
-      clusterName: <fill-me-in>
+    source: Existing
+    existing:
+      secretRef:
+        namespace: platform-system
+        name: <fill-me-in>-kubeconfig
+        key: kubeconfig
 
   nodePools:
     - name: gb300-4x

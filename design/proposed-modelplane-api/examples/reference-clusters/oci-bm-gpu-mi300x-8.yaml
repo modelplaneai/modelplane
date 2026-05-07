@@ -26,12 +26,16 @@ spec:
   provisioning:
     mode: dra                        # OCI exposes ROCm DRA driver
 
+  # OCI uses OKE; current XRD enum only covers GKE/EKS/AKS/Existing.
+  # Reference cluster is a BYO template; fill in a kubeconfig Secret
+  # pointing at your OKE cluster.
   cluster:
-    source: oci
-    oci:
-      compartmentOcid: <fill-me-in>
-      region:          us-chicago-1
-      clusterName:     <fill-me-in>
+    source: Existing
+    existing:
+      secretRef:
+        namespace: platform-system
+        name: <fill-me-in>-kubeconfig
+        key: kubeconfig
 
   nodePools:
     - name: bm-gpu-mi300x-8
