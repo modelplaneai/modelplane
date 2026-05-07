@@ -4,3 +4,7 @@ _output
 result
 .direnv
 design/.DS_Store
+
+# Personal notes — never commit
+*.local.md
+nic-1on1.md
