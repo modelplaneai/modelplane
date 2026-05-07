@@ -20,15 +20,16 @@
 #   - FP8 weight + KV cache quantization (engine.quantization) — implies
 #     `fp8-kv-cache` engine feature.
 #
-# Required-feature derivation (no requiredEngineFeatures field needed):
+# Required-feature derivation. The matcher computes the set of engine
+# features this MD requires from declared config:
 #   roles present                                  → prefill-decode-disagg
 #   engine.optimizations.chunkedPrefill: true      → chunked-prefill
 #   engine.optimizations.kvCacheRouting: true      → kv-cache-routing
 #   engine.quantization.target contains kvCache    → fp8-kv-cache
 #   parallelism.expert: enabled                    → expert-parallelism
-# Matcher unions these and matches against the cluster's
-# KServeBackend.spec.engine.features. Single source of truth: declare what
-# you want; matcher derives the runtime-feature requirement.
+# Then it unions the set and matches against each candidate cluster's
+# KServeBackend.spec.engine.features. Single source of truth: declare
+# what you want, not which features that needs.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:

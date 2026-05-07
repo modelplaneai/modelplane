@@ -83,11 +83,12 @@ spec:
               #                            request routing — match request adapter to
               #                            replica that has it loaded)
               #
-              # No requiredEngineFeatures field. Required features are derived from
-              # the union of declared config (roles, engine.*, parallelism, adapters)
-              # and matched against the chosen IC's KServeBackend.spec.engine.features.
-              # Single source of truth: user declares *what they want*; matcher
-              # derives *what backend features that requires*.
+              # Required-feature derivation. The matcher computes the engine-
+              # feature set this MD requires from declared config (roles,
+              # engine.*, parallelism, adapters) and matches the union against
+              # the chosen InferenceCluster's KServeBackend.spec.engine.features.
+              # Single source of truth: user declares what they want, not
+              # which backend features that requires.
               properties:
                 # ---- replica count (KEDA-writable via scale subresource) ----
                 # Replica == placement. The composer reconciles `replicas`
