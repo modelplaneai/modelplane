@@ -1,16 +1,11 @@
 # Example InferenceProvider — Together AI as a routing target.
 #
-# Renamed from ModelService — "Service" conflated with K8s Service.
-#
 # Demonstrates:
 #   - SaaS endpoint registered as a route target on ModelEndpoint
 #   - Routing-only — never a placement target. The fleet matcher considers
 #     only InferenceClusters; InferenceProvider is not a fleet-member candidate.
 #   - Namespace-scoped — sits in the namespace alongside ModelDeployment(s)
 #     and ModelEndpoint that route to it.
-#   - Note: a separate concept for *placement* against dedicated SaaS
-#     endpoints (provisioning a Together / Baseten dedicated inference) is
-#     on Nic to define; this CR is intentionally narrow.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceProvider
 metadata:

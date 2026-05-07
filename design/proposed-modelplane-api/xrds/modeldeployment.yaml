@@ -130,8 +130,7 @@ spec:
 
                 # ---- two-level selector cascade ----
                 # The matcher considers only InferenceCluster candidates.
-                # InferenceProvider is routing-only (never a placement target);
-                # SaaS placement is a separate concept Nic owns.
+                # InferenceProvider is routing-only (never a placement target).
                 #
                 # Federation-stage match (Modelplane control plane, pre-provisioning):
                 # selectors evaluate predicates over declared pool attributes on

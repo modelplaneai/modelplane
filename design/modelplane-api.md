@@ -13,7 +13,7 @@
 - **Two-stage scheduling.** Modelplane is a *federation planner* — it evaluates predicates against *declared* pool capacity to pick `(cluster, pool)` per replica, before nodes exist. Per-cluster scheduling is delegated. **DRA is optional**, never required: the `device-plugin` mode (any K8s with the NVIDIA GPU operator) is the default; `dra` mode is opt-in for stronger runtime grounding. We borrow DRA's *vocabulary* (typed attributes, domain-prefixed keys, CEL) but not its Kinds — `ResourceClaim` / `ResourceSlice` / `DeviceClass` belong to the runtime allocator, not the federation layer.
 - **Labels-first matching.** `deviceSelector.matchLabels` works on any K8s cluster with labeled nodes — see [`workloads/gpt-oss-20b.yaml`](proposed-modelplane-api/examples/workloads/gpt-oss-20b.yaml). Typed `matchAttributes` + CEL is the break-glass for richer constraints (NVLink-domain co-location, MIG, FP8 capability) — see [`workloads/kimi-k2.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2.yaml).
 - **Managed defaults.** `managed-kserve` (backend) + `managed-kueue` (scheduler) + KEDA `ScaledObject`s (autoscaler, prerequisite) ship under the hood — see [`clusters/managed-gke-a3.yaml`](proposed-modelplane-api/examples/clusters/managed-gke-a3.yaml). BYO contracts (`InferenceCluster.spec.{backend, scheduler}.type`) plug in KAI / Volcano / Dynamo / raw-vllm — see [`clusters/byoc-coreweave-kai-h200.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-kai-h200.yaml). `ModelPlacement` (the IR) is the seam.
-- **`InferenceProvider` is a rough sketch** — see [`providers/together.yaml`](proposed-modelplane-api/examples/providers/together.yaml). Routing-only placeholder, never a placement target. **Nic owns the real design** for dedicated-SaaS placement (provisioning a Together / Baseten dedicated endpoint); the `InferenceProvider` shape here is a stand-in pending that work.
+- **`InferenceProvider` is a routing target** — see [`providers/together.yaml`](proposed-modelplane-api/examples/providers/together.yaml). External / SaaS endpoint registered with URL + auth + attributes. `ModelEndpoint` routes to it for SaaS spillover, regional preference, billing-model selection. Never a placement target — the matcher considers only `InferenceCluster`.
 - **`InferenceClass` catalog as the wedge.** Default ships per-SKU hardware bundles (`h100-nvl-8x`, `b200-nvl-8x`, `mi300x-8x`, ...) — StorageClass-style, cluster-scoped. See [`inferenceclasses/`](proposed-modelplane-api/examples/inferenceclasses/). Customers author their own for bespoke hardware. Engine features live separately: derivation rules in matcher code, per-cluster supported set on `KServeBackend.spec.engine.features`, break-glass via `engine.advanced[]` — see [`workloads/acme-vllm-fork.yaml`](proposed-modelplane-api/examples/workloads/acme-vllm-fork.yaml). Keeping the class catalog current is high-leverage and bounded — Upbound-managed-offering candidate.
 - **Wedge:** fleet-level capabilities single-cluster platforms can't reach — fleet matching, geo + compliance routing, KV cache federation, sticky sessions, failover, cost-aware routing.
 
@@ -244,7 +244,7 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 
 **Replica == placement.** N replicas → N `ModelPlacement`s, each scheduled independently. Multi-node logical replicas (Kimi K2 PP=2) are still ONE MP — multi-pod via LWS within one cluster. Multi-region spread = multiple MDs + multiple `ModelEndpoint` route entries.
 
-**`InferenceProvider` is a sketch.** Routing-only target on `ModelEndpoint`; never a placement target. **Nic owns the dedicated-SaaS placement design** — provisioning a Together / Baseten dedicated endpoint is a separate concept; this CR is a placeholder pending that work.
+**`InferenceProvider` is routing-only.** Never a placement target — the matcher considers only `InferenceCluster`. SaaS routes (Together, Bedrock, Baseten, customer-run KServe) flow through `ModelEndpoint.routes[].inferenceProvider.ref`. One-off URLs go through `routes[].external.url` without registering a CR.
 
 **Namespace = environment.** 0..N of each user-facing resource (`ModelEndpoint`, `ModelDeployment`, `InferenceProvider`, `ModelPlacement`) per namespace. Pushing an MD revision triggers lifecycle reconciliation there. `InferenceClass`es are cluster-scoped — shared infrastructure-level catalog.
 
@@ -372,9 +372,6 @@ Decisions made and the alternatives Nic can override:
 | Hardware ontology | `InferenceClass` per-class CR (StorageClass-style); engine features in matcher code + `KServeBackend` | Singleton `CapabilityVocabulary` (earlier proposal — dropped after 1:1 with Nic); strings in code only (no class CR) |
 | `ModelObjective`-style intent layer | Punt past v2 — non-breaking layer above MD if/when needed | Ship in v1 (mirrors Dynamo DGDR/DGD); never |
 
-Nic-owned (not for this PR):
-
-- **Dedicated-SaaS placement.** `InferenceProvider` here is routing-only and a sketch pending Nic's design for provisioning a dedicated Together / Baseten endpoint.
 
 ## What ships v1 vs v2 (themed)
 
@@ -418,7 +415,7 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 
 - [`xrds/inferencecluster.yaml`](proposed-modelplane-api/xrds/inferencecluster.yaml) — cluster-scoped substrate; `nodePools[].class` references an `InferenceClass`
 - [`xrds/inferenceclass.yaml`](proposed-modelplane-api/xrds/inferenceclass.yaml) — cluster-scoped hardware-bundle class (StorageClass-style); per-SKU
-- [`xrds/inferenceprovider.yaml`](proposed-modelplane-api/xrds/inferenceprovider.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
+- [`xrds/inferenceprovider.yaml`](proposed-modelplane-api/xrds/inferenceprovider.yaml) — namespace-scoped SaaS / external routing target
 - [`xrds/modeldeployment.yaml`](proposed-modelplane-api/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA, structured `status.matchTrace`
 - [`xrds/modelendpoint.yaml`](proposed-modelplane-api/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `InferenceProvider` / `External`
 - [`xrds/modelplacement.yaml`](proposed-modelplane-api/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
@@ -449,7 +446,7 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 - Validation rules (CEL on the schema, `oneOf` discriminator constraints, cross-field invariants) are sketched but not exhaustive.
 - The corresponding Crossplane Compositions are not in this directory — those are implementation. The XRDs declare the API contract.
 - `KServeBackend` (already an internal XR in `apis/kservebackends/`) is not duplicated here, but it's where engine + features land in the substrate / runtime split.
-- Dedicated-SaaS placement (Nic-owned) is intentionally absent. `InferenceProvider` is rough-sketch routing-only.
+- `InferenceProvider` is routing-only by design — the matcher never considers it as a placement candidate.
 
 **Where each XRD lands after alignment:**
 
