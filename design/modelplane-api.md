@@ -158,7 +158,7 @@ We borrow DRA's vocabulary (typed attributes, domain-prefixed keys, CEL predicat
 2. **Read standard K8s labels.** The NVIDIA GPU operator (and AMD / NFD equivalents) labels nodes with `nvidia.com/gpu.product`, `nvidia.com/gpu.memory`, `nvidia.com/gpu.compute.major`, etc. A drift controller compares these against the pool's declared `deviceAttributes` and surfaces `CapabilityDrift` conditions on the `InferenceCluster`. No DRA driver required.
 3. **Emit DRA `ResourceClaim`s** (mode = `dra`). Strongest grounding; what (1) and (2) approximate. Worth opting into when the cluster already runs a DRA driver.
 
-So — DRA is a nice-to-have for BYOC, not a requirement. The eks-h100-no-dra reference cluster shows the full no-DRA path; works on any K8s with the NVIDIA GPU operator. User-facing API (`clusterSelector` / `deviceSelector`, `engine.*`, `parallelism`, ...) is identical across all modes.
+So — DRA is a nice-to-have for BYOC, not a requirement. [`byoc-eks-h100-no-dra.yaml`](proposed-modelplane-api/examples/clusters/byoc-eks-h100-no-dra.yaml) shows the full no-DRA path; works on any K8s with the NVIDIA GPU operator. User-facing API (`clusterSelector` / `deviceSelector`, `engine.*`, `parallelism`, ...) is identical across all modes.
 
 ## Fleet-level capabilities
 
@@ -170,12 +170,12 @@ Single-cluster platforms (llm-d, KServe alone, Dynamo) optimize within a cluster
 | Hardware-heterogeneous routing | One `ModelEndpoint` weighting across MDs on different hardware, plus `InferenceProvider` routes for SaaS spillover | [`endpoints/assistant.yaml`](proposed-modelplane-api/examples/endpoints/assistant.yaml) |
 | Geo + compliance routing | EU traffic to EU clusters; SOC 2 traffic only to certified clusters — via `clusterSelector` predicates | [`workloads/kimi-k2-eu.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2-eu.yaml) + [`endpoints/multi-region.yaml`](proposed-modelplane-api/examples/endpoints/multi-region.yaml) |
 | Cross-cluster replica scaling | Replicas of one MD spread across matching clusters; matcher picks per replica from capacity signal | — |
-| Fleet KV cache federation | G4 networked cache as a global fabric; route to whichever cluster has the prefix |
-| Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` |
-| Fleet failover | Active-active / active-passive cutover when a cluster degrades |
-| Cost-aware routing | Cheapest fleet member that fits; blend reserved / on-demand / spot / per-token |
-| Fleet overflow | Burst to a sibling cluster or `InferenceProvider` when local capacity exhausts (#48) |
-| Aggregated fleet observability | TTFT / ITL / cost / queue-depth rolled up across the fleet for one logical service |
+| Fleet KV cache federation | G4 networked cache as a global fabric; route to whichever cluster has the prefix | v2 |
+| Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` | v2 |
+| Fleet failover | Active-active / active-passive cutover when a cluster degrades | v2 |
+| Cost-aware routing | Cheapest fleet member that fits; blend reserved / on-demand / spot / per-token | v2 |
+| Fleet overflow | Burst to a sibling cluster or `InferenceProvider` when local capacity exhausts (#48) | v2 |
+| Aggregated fleet observability | TTFT / ITL / cost / queue-depth rolled up across the fleet for one logical service | v2 |
 
 What ships in v1 vs v2 is in the project plan section.
 
@@ -356,7 +356,7 @@ There's no `EngineCatalog` CR — the canonical feature list is matcher code + `
 
 | Risk | Mitigation |
 |---|---|
-| `ModelDeployment` chunky for ML/App teams | Crossplane Compositions; starter Compositions in `examples/` |
+| `ModelDeployment` chunky for ML/App teams | Crossplane Compositions for org-specific abstractions (`ApprovedModel`-style) — Compositions are implementation, not part of this design preview |
 
 ## Open questions
 
@@ -366,7 +366,7 @@ Decisions made and the alternatives Nic can override:
 |---|---|---|
 | Default scheduler + backend | `managed-kueue` + `managed-kserve` as defaults, BYO first-class | No defaults (force pick); KAI default for NVIDIA-shop bias |
 | Selector dual-path | `matchLabels` (primary) + `matchAttributes` / CEL (break-glass) | Labels only (simpler); attributes only (richer) |
-| DRA grounding | Mandatory for BYOC w/ DRA, optional for Modelplane-provisioned | Always-on; never (federation-only) |
+| DRA grounding | Optional, opt-in via `provisioning.mode: dra`. `device-plugin` is the default and works for BYOC without DRA. | Always-on (require DRA on every cluster); federation-only (skip in-cluster grounding entirely even when DRA is available) |
 | Rack-scale (NVL72) | Env-level attribute (`cluster.scaleUnit: nvl72`); rack-spanning placements treat the rack as one `nodePool` | Separate `RackInferenceCluster` kind; multi-pool model |
 | Reference-cluster rollout | Static YAML now → Crossplane provider polling SKU APIs later | Provider-first; never (operator hand-authors) |
 | Hardware ontology | `InferenceClass` per-class CR (StorageClass-style); engine features in matcher code + `KServeBackend` | Singleton `CapabilityVocabulary` (earlier proposal — dropped after 1:1 with Nic); strings in code only (no class CR) |
@@ -384,7 +384,7 @@ Nic-owned (not for this PR):
 |---|---|
 | Substrate | 5 user-facing CRDs (`InferenceCluster`, `InferenceClass`, `ModelDeployment`, `ModelEndpoint`, `InferenceProvider`) + `ModelPlacement` IR; cluster + pool + device attribute layers on `InferenceCluster`; `InferenceClass` catalog (per-SKU bundles); `managed-kueue` install |
 | Matching | Two-level selector cascade (`clusterSelector` + `deviceSelector`) over declared pool attributes; typed `matchAttributes` + CEL escape; `matchTrace`; optional DRA grounding for BYOC |
-| Workload API | Self-contained `ModelDeployment`; replica == placement (`spec.replicas` + scale subresource); `roles.{prefill, decode}` for xPyD disaggregation; `engine.{quantization, speculation, advanced}`; five-factor `scaling`; `adapters` |
+| Workload API | Self-contained `ModelDeployment`; replica == placement (`spec.replicas` + scale subresource); `roles.{prefill, decode}` for xPyD disaggregation; `engine.{quantization, speculation, optimizations, advanced[]}`; five-factor `scaling`; `adapters[]` |
 | Composition | Matcher → `ModelPlacement` IR → version-pinned KServe adapter; DRA + device-plugin emission |
 | Delegation | Kueue for quota; KEDA-only autoscaling on concurrency |
 | Fleet routing | Hardware-heterogeneous + geo + compliance routing via `clusterSelector` and `deviceSelector`; multi-region spread via multiple `ModelDeployment`s + `ModelEndpoint` |
@@ -461,4 +461,4 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 | `xrds/modeldeployment.yaml` | `apis/modeldeployments/definition.yaml` (expanded) |
 | `xrds/modelendpoint.yaml` | `apis/modelendpoints/definition.yaml` |
 | `xrds/modelplacement.yaml` | `apis/modelplacements/definition.yaml` (expanded as the IR) |
-| `examples/*.yaml` | `examples/` at repo root, or `examples/compositions/` for platform-team starters |
+| `examples/**` | `examples/` at repo root |

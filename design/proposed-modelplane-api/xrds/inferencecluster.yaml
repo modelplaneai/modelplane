@@ -154,8 +154,9 @@ spec:
                   additionalProperties:
                     x-kubernetes-preserve-unknown-fields: true
                   description: |
-                    Cluster-layer attributes from the CapabilityVocabulary taxonomy.
-                    Typed values per the vocab; unrecognized keys pass through.
+                    Cluster-layer attributes from the unified taxonomy.
+                    Well-known keys are conventions in matcher code + docs;
+                    user-defined `acme.example/*` keys pass through unvalidated.
 
                 # Engine + features intentionally NOT here — they live on the
                 # associated KServeBackend (apis/kservebackends/) which represents
