@@ -317,6 +317,24 @@ Workloads imply required engine features through declared config; clusters decla
 
 There's no `EngineCatalog` CR — the canonical feature list is matcher code + `docs/engine-features.md`, the per-cluster supported set is `KServeBackend`, and break-glass needs no registration.
 
+**`KServeBackend.spec.engine` is a proposed extension.** The existing internal XR ([`apis/kservebackends/`](../apis/kservebackends/)) installs the KServe stack on a cluster but doesn't expose engine-feature declarations today. This design adds a small `spec.engine` block — declarative for `byo-kserve` (operator authors), composed by Modelplane for `managed-kserve`. Proposed shape:
+
+```yaml
+spec:
+  engine:
+    name:    vLLM | SGLang | TensorRT-LLM | TGI
+    version: v0.8.0
+    features:
+      - chunked-prefill
+      - prefix-caching
+      - multi-lora
+      - fp8-kv-cache
+      - prefill-decode-disagg     # if KServe v0.18+
+      # ... per-backend-version supported set
+```
+
+Lands in `apis/kservebackends/definition.yaml` alongside the rest of this design.
+
 **Vocabulary tiers (where keys come from):**
 
 | Tier | Source | Governance |
@@ -445,7 +463,7 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 - `status` schemas are minimal — just conditions + a representative status field per resource. `matchTrace`, `compatibility`, and granular cold-start status will be elaborated when the controller code lands.
 - Validation rules (CEL on the schema, `oneOf` discriminator constraints, cross-field invariants) are sketched but not exhaustive.
 - The corresponding Crossplane Compositions are not in this directory — those are implementation. The XRDs declare the API contract.
-- `KServeBackend` (already an internal XR in `apis/kservebackends/`) is not duplicated here, but it's where engine + features land in the substrate / runtime split.
+- `KServeBackend` (already an internal XR in `apis/kservebackends/`) is not duplicated here, but `spec.engine.{name, version, features}` is a proposed extension that lands alongside this design — see the "Engine features" section.
 - `InferenceProvider` is routing-only by design — the matcher never considers it as a placement candidate.
 
 **Where each XRD lands after alignment:**
