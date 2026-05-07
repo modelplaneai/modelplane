@@ -74,8 +74,8 @@ spec:
                         description: |
                           Well-known feature name (e.g. prefill-decode-disagg,
                           eagle-speculation, multi-lora). Matched against
-                          ModelDeployment.spec.requires.engineFeatures and
-                          InferenceCluster/Provider.spec.engine.features.
+                          ModelDeployment.spec.requiredEngineFeatures and
+                          KServeBackend.spec.engine.features on each cluster.
                       description: { type: string }
                       since:
                         type: string
