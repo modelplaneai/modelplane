@@ -12,6 +12,7 @@ metadata:
 spec:
   attributes:
     cloud.provider:        oci
+    cloud.region:          us-chicago-1
     network.fabric:        roce      # RoCE v2 over ConnectX (OCI's pattern)
     network.bandwidthGbps: 3200
     cluster.scaleUnit:     independent-nodes

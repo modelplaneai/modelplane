@@ -301,9 +301,26 @@ spec:
         interconnect.bandwidthGBs: 1800
         cpu.vendor: nvidia-grace
       aliases:
-        - aws:p6-b300
         - oci:BM.GPU.GB300.4
         - coreweave:gb300-4x
+      since: v0.1
+
+    # HGX B300 — separate from the Grace+B300 NVL72 form. 8× B300 SXM,
+    # 288 GiB per GPU (vs. 279 in NVL72 form), no Grace CPU.
+    - name: B300-NVL-8x
+      expands:
+        vendor: nvidia
+        product: B300
+        architecture: blackwell-ultra
+        formFactor: sxm
+        vramGiB: 288
+        capabilities: [fp4, fp8, transformer-engine]
+        gpuCount: 8
+        interconnect.type: nvswitch
+        interconnect.bandwidthGBs: 1800
+      aliases:
+        - aws:p6-b300
+        - dgx:DGX-B300
       since: v0.1
 
     - name: B200-Grace-4x
@@ -319,6 +336,7 @@ spec:
         interconnect.bandwidthGBs: 1800
         cpu.vendor: nvidia-grace
       aliases:
+        - gcp:a4x-highgpu-4g
         - oci:BM.GPU.GB200.4
         - coreweave:gb200-4x
       since: v0.1

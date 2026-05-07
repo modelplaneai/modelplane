@@ -13,8 +13,9 @@ metadata:
 spec:
   attributes:
     cloud.provider:        coreweave
-    network.fabric:        ib                     # 800 Gb/s Quantum-X800 IB
-    network.bandwidthGbps: 800
+    cloud.region:          eu-west-1
+    network.fabric:        ib                     # Quantum-X800 IB
+    network.bandwidthGbps: 3200                   # per-instance: 4 GPUs × 800 Gb/s
     cluster.scaleUnit:     nvl72                  # rack-scale NVLink Switch domain
     modelplane.ai/tier:    production
 

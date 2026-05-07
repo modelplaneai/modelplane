@@ -191,7 +191,7 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 
 **`ModelService` is a sketch.** Routing-only target on `ModelEndpoint`; never a placement target. **Nic owns the dedicated-SaaS placement design** — provisioning a Together / Baseten dedicated endpoint is a separate concept; this CR is a placeholder pending that work.
 
-**Namespace = environment.** 0..1 `ModelEndpoint`, 0..N `ModelDeployment` / `ModelService`, 0..N `ModelPlacement` per namespace. Pushing an MD revision triggers lifecycle reconciliation there. `CapabilityVocabulary` is cluster-scoped — single source of truth for hardware semantics.
+**Namespace = environment.** 0..N of each user-facing resource (`ModelEndpoint`, `ModelDeployment`, `ModelService`, `ModelPlacement`) per namespace. Pushing an MD revision triggers lifecycle reconciliation there. `CapabilityVocabulary` is cluster-scoped — single source of truth for hardware semantics.
 
 **Consumer-index discipline.** Every field on the user-facing API has at least one named consumer (matcher / composer / backend adapter / gateway), spelled out in a `Field-level consumer index` block at the top of each XRD. No consumer → no field. The matcher derives the required-feature set from declared config (`roles` → disagg, `engine.optimizations.*` → typed knobs, `adapters[]` → multi-lora) and unions it; the user declares what they want, not which features that needs.
 

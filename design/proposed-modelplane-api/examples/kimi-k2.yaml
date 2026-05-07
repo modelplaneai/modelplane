@@ -64,6 +64,10 @@ spec:
   # HGX baseboard are in one NVLink domain by construction). PP=2 spans
   # nodes via the cluster's network fabric (filtered by clusterSelector
   # above).
+  #
+  # Pinned to NVSwitch — vLLM's CUDA image only runs on NVIDIA. Vendor-
+  # neutral matching (e.g. NVSwitch or AMD xGMI) is supported by the schema
+  # but requires a ROCm-capable engine image and matching capabilities.
   deviceSelector:
     requests:
       - name: gpus
@@ -72,7 +76,7 @@ spec:
         matchAttributes:
           vramGiB:           ">=141"
           capabilities:      [fp8]
-          interconnect.type: [nvswitch, xgmi]   # vendor-neutral: NVSwitch or AMD Infinity Fabric
+          interconnect.type: nvswitch
 
   parallelism:                          # Modelplane-canonical; backend adapter translates
     tensor: 8

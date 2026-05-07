@@ -15,6 +15,7 @@ metadata:
 spec:
   attributes:
     cloud.provider:        aws
+    cloud.region:          us-east-1
     network.fabric:        efa
     network.bandwidthGbps: 3200      # 32× 100Gbps EFA
     cluster.scaleUnit:     independent-nodes

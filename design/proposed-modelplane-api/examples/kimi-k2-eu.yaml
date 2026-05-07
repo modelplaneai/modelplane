@@ -1,14 +1,12 @@
 # Kimi K2 — EU-region sibling of kimi-k2.yaml.
 #
-# Demonstrates multi-region spread: the doc says "multi-region = multiple
-# ModelDeployments + multiple ModelEndpoint route entries". This is the
-# concrete shape — same workload spec as kimi-k2.yaml but pinned to
-# eu-west, so EU traffic lands on EU clusters (data residency, latency).
+# Demonstrates multi-region spread: multiple ModelDeployments + a
+# ModelEndpoint that routes across them. Same workload spec as
+# kimi-k2.yaml, pinned to eu-west via cloud.region.
 #
-# The two MDs are independent (each has its own placements, its own KEDA
-# scaling). The ModelEndpoint (multi-region-assistant.yaml) routes
-# weighted across them, with optional region affinity headers handled at
-# the gateway.
+# The two MDs are independent (each with its own placements and KEDA
+# scaling). The ModelEndpoint (multi-region-endpoint.yaml) routes
+# weighted across them, with optional region affinity at the gateway.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -33,7 +31,6 @@ spec:
       cloud.region:          eu-west            # only difference from kimi-k2.yaml
       network.fabric:        [ib, roce]
       network.bandwidthGbps: ">=400"
-      modelplane.ai/compliance: [gdpr]          # EU data residency
 
   deviceSelector:
     requests:
@@ -43,7 +40,7 @@ spec:
         matchAttributes:
           vramGiB:           ">=141"
           capabilities:      [fp8]
-          interconnect.type: [nvswitch, xgmi]
+          interconnect.type: nvswitch
 
   parallelism:
     tensor: 8

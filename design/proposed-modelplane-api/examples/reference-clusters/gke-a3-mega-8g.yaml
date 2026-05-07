@@ -11,6 +11,7 @@ metadata:
 spec:
   attributes:
     cloud.provider:        gcp
+    cloud.region:          us-central1
     network.fabric:        roce
     network.bandwidthGbps: 1800      # the Mega-vs-High differentiator
     cluster.scaleUnit:     independent-nodes

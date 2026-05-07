@@ -37,6 +37,7 @@ spec:
 
   # Single-node TP=8 — all 8 GPUs on an HGX baseboard share one NVLink
   # Switch domain by construction. No separate co-location constraint needed.
+  # Pinned to NVSwitch since vLLM's CUDA image is NVIDIA-only.
   deviceSelector:
     requests:
       - name: gpus
@@ -45,7 +46,7 @@ spec:
         matchAttributes:
           vramGiB:           ">=141"
           capabilities:      [fp8]
-          interconnect.type: [nvswitch, xgmi]
+          interconnect.type: nvswitch
 
   parallelism:                          # Modelplane-canonical
     tensor: 8
