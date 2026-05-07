@@ -1,19 +1,26 @@
 # Kimi K2 — frontier MoE, multi-node, disaggregated prefill/decode
 #
 # Demonstrates:
-#   - Multi-node topology: each replica is 2 nodes × 8 H200 = 16 GPUs
+#   - Three-level claim cascade per #56:
+#       clusterClaim: filters clusters/providers
+#       nodeClaim:        filters node pools (clusters only)
+#       deviceClaim:      DRA-shaped device claim (clusters only)
+#   - 16 devices per replica (count: 16, perNode: 8 → 2 nodes), constrained to
+#     a single NVLink domain via DRA matchAttribute
 #   - Parallelism: TP=8 within node, PP=2 across nodes, expert parallelism for MoE
 #   - 5P3D disaggregation: 5 prefill replicas + 3 decode replicas
-#     (each role inherits root topology shape; only `replicas` differs)
-#   - IB-400G inter-node fabric requirement (for PP and KV transfer)
-#   - FP8 weight + KV cache quantization
-#   - Production-tier environment selector
+#     (each role inherits root deviceClaim + parallelism; only replicas differ)
+#   - requiredEngineFeatures: cluster-runtime constraint matched against the
+#     cluster's KServeBackend (skipped for ModelService)
+#   - FP8 weight + KV cache quantization (engine.quantization)
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: kimi-k2
   namespace: research
 spec:
+  replicas: 1                             # KEDA writes here via scale subresource
+
   model:
     name: moonshotai/Kimi-K2-Instruct
   source: HuggingFace
@@ -24,30 +31,44 @@ spec:
       namespace: platform-system
       name: hf-token
 
-  topology:
-    nodes: 2
-    devicesPerNode: 8
-    parallelism:
-      tensor: 8
-      pipeline: 2
-      expert: enabled
-    roles:                                # 5P3D disaggregation; roles inherit root topology
-      prefill: { replicas: 5 }
-      decode:  { replicas: 3 }
+  clusterClaim:
+    selector:
+      matchLabels:
+        modelplane.ai/tier: production
+        modelplane.ai/region: us-east
 
-  requires:
-    minVramPerDevice: 141Gi
-    architecture: [Hopper, Blackwell]
-    fabric: nvlink-domain                 # TP=8 must be inside one NVLink domain
-    interNode: ib-400g-or-better          # for PP across nodes + disagg KV transfer
-    precision: [fp8]
-    engineFeatures:
-      - prefill-decode-disagg
-      - kv-cache-routing
-      - chunked-prefill
-      - fp8-kv-cache
-    attributes:
-      "modelplane.ai/tier": production
+  nodeClaim:
+    selector:
+      matchAttributes:
+        modelplane.ai/interNodeFabric: "ib-400g-or-better"
+
+  deviceClaim:
+    requests:
+      - name: gpus
+        count: 16                       # 2 nodes × 8 GPUs per replica
+        perNode: 8
+        selector:
+          matchAttributes:
+            gpu.nvidia.com/architecture: [Hopper, Blackwell]
+            gpu.nvidia.com/memory: ">=141Gi"
+        constraints:
+          - matchAttribute: gpu.nvidia.com/nvlinkDomain   # TP=8 in one NVLink domain
+            requests: [gpus]
+
+  requiredEngineFeatures:
+    - prefill-decode-disagg
+    - kv-cache-routing
+    - chunked-prefill
+    - fp8-kv-cache
+
+  parallelism:
+    tensor: 8
+    pipeline: 2
+    expert: enabled
+
+  roles:                                # 5P3D disaggregation; roles inherit root shape
+    prefill: { replicas: 5 }
+    decode:  { replicas: 3 }
 
   engine:
     name: vLLM
@@ -60,12 +81,6 @@ spec:
     quantization:
       precision: fp8
       target: [weights, kvCache]
-
-  environments: 1
-  environmentSelector:
-    matchLabels:
-      modelplane.ai/tier: production
-      modelplane.ai/region: us-east
 
   scaling:
     signal: Concurrency

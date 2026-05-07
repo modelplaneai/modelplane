@@ -1,25 +1,27 @@
-# InferenceProvider — a SaaS or observed inference endpoint (Together, Baseten,
-# Bedrock, customer-run KServe). Routing-only; Modelplane never lifecycles it.
+# ModelService — a SaaS or observed inference endpoint (Together, Baseten,
+# Bedrock, customer-run KServe). Routing-only — never a placement target.
 #
-# Pure routing target. The matcher only evaluates env-level attributes and the
-# supportedModels catalog; we deliberately don't declare engine.features because
-# providers are opaque (we don't know what's inside). Workloads requiring engine
-# features (e.g. requires.engineFeatures: [prefill-decode-disagg]) will be
-# excluded from providers — matchTrace surfaces "skipped: provider doesn't expose
-# engine features." Created directly OR composed by a Crossplane provider /
-# Composition that wraps an external account.
+# Rough sketch: a separate concept for *placement* against dedicated SaaS
+# endpoints (programmatic provisioning of a Together / Baseten dedicated
+# inference) is on Nic to define; this CR is intentionally narrow.
+#
+# Namespace-scoped — sits alongside ModelDeployment / ModelEndpoint inside
+# the namespace-as-environment lifecycle scope. Valid only as a route target
+# on ModelEndpoint (alongside Deployment and External). The matcher does NOT
+# consider ModelService as a fleet-member candidate; clusterClaim filters
+# only against InferenceCluster.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: inferenceproviders.modelplane.ai
+  name: modelservices.modelplane.ai
 spec:
   group: modelplane.ai
   names:
     categories: [crossplane, modelplane]
-    kind: InferenceProvider
-    plural: inferenceproviders
-    shortNames: [ip]
-  scope: Cluster
+    kind: ModelService
+    plural: modelservices
+    shortNames: [ms]
+  scope: Namespaced
   versions:
     - name: v1alpha1
       served: true

@@ -1,12 +1,19 @@
 # ModelPlacement — the intermediate representation (IR) between ModelDeployment
-# (user-facing) and the rendered upstream object (KServe LLMInferenceService or
-# routing config for an InferenceProvider).
+# (user-facing) and the rendered upstream object (KServe LLMInferenceService).
 #
-# One ModelPlacement per matched fleet member, owned by a ModelDeployment. The
-# matcher composition function emits ModelPlacements; the version-pinned KServe
-# adapter watches them and renders LLMInferenceService objects on the chosen
-# InferenceCluster (or routing-only objects for an InferenceProvider).
+# Replica == placement. One ModelPlacement per logical replica of a
+# ModelDeployment, owned by it. Each MP composes one LLMInferenceService with
+# spec.replicas: 1 onto a chosen InferenceCluster. The matcher composition
+# function picks where each MP lands; the version-pinned KServe adapter watches
+# the MP and renders the upstream object. Multi-node logical replicas (e.g.
+# Kimi K2 with PP=2) are still ONE MP — multi-pod via LWS within one cluster.
 #
+# v1 constraint: all MPs of one MD land on the same cluster (the matcher
+# decision is made once on the first MP and reused). v2 drops this constraint
+# for cross-cluster scaling. Multi-region today = multiple ModelDeployments,
+# each with N MPs on a different cluster, routed via ModelEndpoint.
+#
+# ModelService is NEVER a ModelPlacement target — providers are routing-only.
 # Platform-internal-by-convention. ML/App teams shouldn't create these directly.
 # Schema absorbs upstream KServe schema churn; user-facing types stay stable.
 apiVersion: apiextensions.crossplane.io/v2
@@ -47,30 +54,52 @@ spec:
               type: object
               required: [target, model, topology, engine]
               properties:
-                # ---- which fleet member this placement targets ----
+                # ---- which cluster this replica lands on ----
                 target:
                   type: object
                   required: [kind, name]
                   properties:
                     kind:
                       type: string
-                      enum: [InferenceCluster, InferenceProvider]
+                      enum: [InferenceCluster]   # ModelService never a placement target
                     name: { type: string }
                     pool:
                       type: string
-                      description: Node pool within the cluster (clusters only).
+                      description: Node pool within the cluster.
+
+                # ---- which logical replica this placement is ----
+                replicaIndex:
+                  type: integer
+                  minimum: 0
+                  description: |
+                    Index of this replica within its parent ModelDeployment
+                    (0 to spec.replicas-1). Stable across reconciles.
 
                 # ---- resolved fields from the parent ModelDeployment ----
                 model:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
-                topology:
+                # Resolved clusterClaim / nodeClaim / deviceClaim (from the
+                # parent ModelDeployment, with role overrides merged in if any).
+                clusterClaim:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                nodeClaim:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                deviceClaim:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                requiredEngineFeatures:
+                  type: array
+                  items: { type: string }
+                parallelism:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                roles:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
                 engine:
-                  type: object
-                  x-kubernetes-preserve-unknown-fields: true
-                requires:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
 
@@ -79,7 +108,7 @@ spec:
                   type: object
                   description: |
                     DRA ResourceClaim spec the adapter will compose into pods.
-                    Empty when target is InferenceProvider or when the
+                    Empty when target is ModelService or when the
                     InferenceCluster's provisioning.mode is device-plugin.
                   properties:
                     deviceClassName: { type: string }

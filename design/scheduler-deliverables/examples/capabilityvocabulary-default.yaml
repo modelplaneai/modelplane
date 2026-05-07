@@ -1,13 +1,16 @@
-# Default CapabilityVocabulary — installed by Modelplane.
+# Default CapabilityVocabulary — installed by Modelplane in modelplane-system.
 #
-# Platform teams can replace this singleton (name: default) or apply a sibling
-# vocabulary that extends it. The matcher reads this CR to validate `requires`
-# blocks, resolve "or-better" ordering, rewrite aliased keys, and validate
-# engineFeatures strings.
+# Namespace-scoped. The cluster-wide default lives here in `modelplane-system`;
+# user namespaces can install their own CapabilityVocabulary to override or
+# extend (matcher reads the deployment's namespace first, falls back here).
+#
+# The matcher reads this CR to validate claim selectors, resolve "or-better"
+# ordering, rewrite aliased keys, and validate engineFeatures strings.
 apiVersion: modelplane.ai/v1alpha1
 kind: CapabilityVocabulary
 metadata:
   name: default
+  namespace: modelplane-system
 spec:
   attributeKeys:
     # ---- ordered hardware vocabulary ----

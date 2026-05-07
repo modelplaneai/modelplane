@@ -1,9 +1,13 @@
-# CapabilityVocabulary — singleton CR governing the modelplane.ai/* attribute
-# vocabulary. Replaces what would otherwise be a ConfigMap. Updates flow without
-# CRD bumps. Modelplane ships a default install (name: default); platform teams
-# can override or extend.
+# CapabilityVocabulary — CR governing the modelplane.ai/* attribute vocabulary.
+# Replaces what would otherwise be a ConfigMap. Updates flow without CRD bumps.
 #
-# Read by the matcher to validate `requires` blocks, resolve ordered comparisons
+# Namespace-scoped. The cluster-wide default ships in the `modelplane-system`
+# namespace (name: default); per-namespace overrides live in user namespaces
+# alongside their ModelEndpoint / ModelDeployment / ModelService. The matcher
+# reads the deployment's namespace vocab first, falling back to the
+# modelplane-system default for keys not overridden.
+#
+# Read by the matcher to validate claim selectors, resolve ordered comparisons
 # (e.g. "ib-400g-or-better"), rewrite aliased keys, and validate engineFeatures
 # strings against well-known names.
 apiVersion: apiextensions.crossplane.io/v2
@@ -17,7 +21,7 @@ spec:
     kind: CapabilityVocabulary
     plural: capabilityvocabularies
     shortNames: [cv]
-  scope: Cluster
+  scope: Namespaced
   versions:
     - name: v1alpha1
       served: true

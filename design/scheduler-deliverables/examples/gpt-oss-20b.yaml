@@ -1,36 +1,50 @@
-# gpt-oss-20b — small MoE, hardware-heterogeneous, scale-to-zero, fan-out
+# gpt-oss-20b — small MoE, hardware-heterogeneous, scale-to-zero
 #
 # Demonstrates:
 #   - Single-GPU deployment (20B MoE with ~3.6B active params; fits one device)
 #   - Broad architecture acceptance: Ada / Hopper / Blackwell, with native MXFP4
 #     on Blackwell and BF16/FP8 fallback elsewhere
 #   - Scale-to-zero (`minReplicas: 0`) for low-traffic / dev workloads
-#   - `environments: 2` for fan-out across two matched regions
+#   - One ModelDeployment lands on one fleet member. For multi-region spread,
+#     create a second ModelDeployment targeting a different region and route
+#     across both via a ModelEndpoint (or compose them via a Crossplane XR).
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: gpt-oss-20b
   namespace: app-team
 spec:
+  replicas: 0                             # scale-to-zero baseline; KEDA scales up on traffic
+
   model:
     name: openai/gpt-oss-20b
   source: HuggingFace
   huggingFace:
     repo: openai/gpt-oss-20b
 
-  topology:
-    nodes: 1
-    devicesPerNode: 1
-    parallelism:
-      tensor: 1
+  clusterClaim:
+    selector:
+      matchLabels:
+        modelplane.ai/tier: production
 
-  requires:
-    minVramPerDevice: 48Gi
-    architecture: [Ada, Hopper, Blackwell]
-    precision: [bf16, fp8, mxfp4]         # native MXFP4 on Blackwell, fallback elsewhere
-    engineFeatures:
-      - chunked-prefill
-      - kv-cache-routing
+  # No nodeClaim — single GPU, no inter-node requirement.
+
+  deviceClaim:
+    requests:
+      - name: gpus
+        count: 1
+        perNode: 1
+        selector:
+          matchAttributes:
+            gpu.nvidia.com/architecture: [Ada, Hopper, Blackwell]
+            gpu.nvidia.com/memory: ">=48Gi"
+
+  requiredEngineFeatures:
+    - chunked-prefill
+    - kv-cache-routing
+
+  parallelism:
+    tensor: 1
 
   engine:
     name: vLLM
@@ -41,15 +55,10 @@ spec:
       - "--max-num-seqs=64"
       - "--enable-prefix-caching"
 
-  environments: 2                         # fan out across two matched regions
-  environmentSelector:
-    matchLabels:
-      modelplane.ai/tier: production
-
   scaling:
     signal: Concurrency
     concurrency:
-      minReplicas: 0                      # scale-to-zero
+      minReplicas: 0                    # scale-to-zero
       maxReplicas: 8
       target: 32
       window: 60s

@@ -1,9 +1,12 @@
 # ModelEndpoint — weighted routing across ModelDeployments. Per #60.
 #
 # Decouples routing (what users hit) from deployment (what runs). Enables
-# canary, A/B, and hybrid SaaS routing. Routes select ModelPlacements by label;
-# weights distribute equally across selected placements. Replicas inside a
-# placement are fungible — KServe's Service round-robins across pods.
+# canary, A/B, and hybrid SaaS routing. Each route entry targets a
+# ModelDeployment (or an external URL); the composer resolves
+# Deployment → its ModelPlacement → cluster-side Service → pod replicas.
+# Replicas inside a placement are fungible — KServe + KEDA + the cluster
+# Service round-robin across pods. Multi-cluster spread happens via multiple
+# ModelDeployments + multiple route entries on this resource (one per MD).
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
@@ -48,29 +51,49 @@ spec:
                     properties:
                       type:
                         type: string
-                        enum: [Placement, External]
+                        enum: [Deployment, ModelService, External]
                       weight:
                         type: integer
                         minimum: 0
                         maximum: 100
                         default: 1
-                      # ---- Placement: selects ModelPlacements by label ----
-                      placement:
+                      # ---- Deployment: route to a ModelDeployment ----
+                      # Composer resolves: MD → all its ModelPlacements (one
+                      # per replica) → cluster-side Service per placement. The
+                      # route's weight applies to the deployment as a whole;
+                      # KServe + KEDA + the cluster Service round-robin across
+                      # the deployment's pod replicas.
+                      deployment:
                         type: object
                         properties:
+                          # Explicit ref — most common case (canary v1 vs v2,
+                          # multi-region with one MD per region).
+                          ref:
+                            type: object
+                            required: [name]
+                            properties:
+                              namespace: { type: string }
+                              name:      { type: string }
+                          # Label selector — power-user case (e.g. "all canary
+                          # deployments of this model family").
                           selector:
                             type: object
                             properties:
                               matchLabels:
                                 type: object
                                 additionalProperties: { type: string }
-                          # alternate to selector — explicit ref
+                      # ---- ModelService: route to a SaaS / observed endpoint ----
+                      # Routing-only; ModelService is never a placement target.
+                      modelService:
+                        type: object
+                        properties:
                           ref:
                             type: object
+                            required: [name]
                             properties:
                               namespace: { type: string }
                               name:      { type: string }
-                      # ---- External: SaaS endpoint not registered as InferenceProvider ----
+                      # ---- External: ad-hoc URL not registered as a ModelService ----
                       external:
                         type: object
                         properties:

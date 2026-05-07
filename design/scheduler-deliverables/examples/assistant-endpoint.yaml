@@ -1,10 +1,12 @@
-# Weighted ModelEndpoint across kimi-k2, qwen3-coder, and gpt-oss-20b.
+# Weighted ModelEndpoint across deployments and a SaaS provider.
 #
 # Demonstrates:
-#   - Weighted routing across multiple ModelDeployments (the canary/A-B pattern from #60)
-#   - Same shape works for canary (v1 vs v2 of one model) and hybrid (chat-vs-coder)
-#   - Routes select ModelPlacements by label; Modelplane's matcher controls
-#     which placements exist via the underlying ModelDeployments
+#   - Weighted routing across multiple ModelDeployments (canary / A-B / hybrid)
+#   - A ModelService (Together) as a route target alongside Deployments
+#   - Each Deployment route fans across all replica/placements of that MD;
+#     KEDA + the cluster Service round-robin across the pods
+#   - Multi-region spread happens via multiple ModelDeployments (one per
+#     region/cluster) + multiple route entries on this resource
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelEndpoint
 metadata:
@@ -12,21 +14,19 @@ metadata:
   namespace: app-team
 spec:
   routes:
-    - type: Placement
-      weight: 70
-      placement:
-        selector:
-          matchLabels:
-            modelplane.ai/deployment: gpt-oss-20b
-    - type: Placement
+    - type: Deployment
+      weight: 65
+      deployment:
+        ref: { name: gpt-oss-20b }
+    - type: Deployment
       weight: 25
-      placement:
-        selector:
-          matchLabels:
-            modelplane.ai/deployment: qwen3-coder
-    - type: Placement
+      deployment:
+        ref: { name: qwen3-coder }
+    - type: Deployment
       weight: 5
-      placement:
-        selector:
-          matchLabels:
-            modelplane.ai/deployment: kimi-k2
+      deployment:
+        ref: { name: kimi-k2 }
+    - type: ModelService
+      weight: 5
+      modelService:
+        ref: { name: together-prod }       # SaaS spillover for burst traffic

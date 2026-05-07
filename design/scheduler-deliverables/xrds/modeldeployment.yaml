@@ -20,6 +20,16 @@ spec:
     - name: v1alpha1
       served: true
       referenceable: true
+      # Scale subresource — lets KEDA (or HPA / `kubectl scale`) drive the
+      # number of logical replicas via `spec.replicas`. The composer reconciles
+      # ModelPlacements to match: replica == placement, each placement carries
+      # exactly one logical replica composed onto an InferenceCluster.
+      subresources:
+        status: {}
+        scale:
+          specReplicasPath: .spec.replicas
+          statusReplicasPath: .status.replicas
+          labelSelectorPath: .status.labelSelector
       additionalPrinterColumns:
         - name: READY
           type: string
@@ -27,6 +37,9 @@ spec:
         - name: MODEL
           type: string
           jsonPath: .spec.model.name
+        - name: REPLICAS
+          type: string
+          jsonPath: .spec.replicas
         - name: PLACEMENTS
           type: string
           jsonPath: .status.placements.ready
@@ -40,8 +53,23 @@ spec:
           properties:
             spec:
               type: object
-              required: [model, source, topology, engine]
+              required: [model, source, deviceClaim, engine]
               properties:
+                # ---- replica count (KEDA-writable via scale subresource) ----
+                # Replica == placement. The composer reconciles `replicas`
+                # ModelPlacements per ModelDeployment, each independently
+                # scheduled by the matcher. KEDA writes here through the
+                # scale subresource — no custom scaler needed.
+                replicas:
+                  type: integer
+                  minimum: 0
+                  default: 1
+                  description: |
+                    Number of logical replicas. Each replica == one
+                    ModelPlacement composed onto an InferenceCluster. KEDA's
+                    standard ScaledObject (composed from spec.scaling) writes
+                    here.
+
                 # ---- model identity ----
                 model:
                   type: object
@@ -65,111 +93,157 @@ spec:
                         name:      { type: string }
                         namespace: { type: string }
 
-                # ---- topology ----
-                topology:
-                  type: object
-                  required: [nodes, devicesPerNode]
-                  properties:
-                    nodes:
-                      type: integer
-                      minimum: 1
-                      description: Nodes per replica.
-                    devicesPerNode:
-                      type: integer
-                      minimum: 1
-                    parallelism:
-                      type: object
-                      properties:
-                        tensor:
-                          type: integer
-                          minimum: 1
-                        pipeline:
-                          type: integer
-                          minimum: 1
-                          default: 1
-                        expert:
-                          type: string
-                          enum: [enabled, disabled]
-                          default: disabled
-                    roles:
-                      type: object
-                      description: |
-                        Optional. Presence enables disaggregated serving (xPyD).
-                        Each role inherits root topology fields if not overridden;
-                        only `replicas` differs in the simple case.
-                      properties:
-                        prefill:
-                          type: object
-                          properties:
-                            nodes:          { type: integer, minimum: 1 }
-                            devicesPerNode: { type: integer, minimum: 1 }
-                            parallelism:
-                              type: object
-                              x-kubernetes-preserve-unknown-fields: true
-                            replicas:       { type: integer, minimum: 1 }
-                        decode:
-                          type: object
-                          properties:
-                            nodes:          { type: integer, minimum: 1 }
-                            devicesPerNode: { type: integer, minimum: 1 }
-                            parallelism:
-                              type: object
-                              x-kubernetes-preserve-unknown-fields: true
-                            replicas:       { type: integer, minimum: 1 }
+                # ---- three-level claim cascade (per #56) ----
+                # clusterClaim filters environments (both InferenceCluster
+                #   and ModelService).
+                # nodeClaim filters node pools within matched clusters
+                #   (skipped for ModelService — providers have no nodes).
+                # deviceClaim filters devices within matched pools, DRA-shaped
+                #   (skipped for ModelService — providers have no devices).
+                # When matching against an ModelService, only clusterClaim
+                # and supportedModels apply. matchTrace surfaces level-by-level
+                # exclusions with field-level reasons.
 
-                # ---- requires (typed claim) ----
-                # Field-level matching semantics:
-                #   Environment-level (apply to both InferenceCluster and
-                #   InferenceProvider): attributes
-                #   Cluster-runtime-only (matched against the cluster's
-                #   KServeBackend; not applied to providers): engineFeatures
-                #   Node-level (clusters only): interNode
-                #   Device-level (clusters only): minVramPerDevice, architecture,
-                #   fabric, precision
-                # When matching against an InferenceProvider, only env-level
-                # attributes and supportedModels apply. Workloads requiring engine
-                # features won't match providers — matchTrace surfaces this as
-                # "skipped: provider doesn't expose engine features."
-                requires:
+                clusterClaim:
                   type: object
+                  description: Filters environments — applies to clusters and providers.
                   properties:
-                    minVramPerDevice:
-                      type: string
-                      description: Quantity, e.g. 80Gi.
-                    architecture:
-                      type: array
-                      items:
-                        type: string
-                        enum: [Ampere, Ada, Hopper, Blackwell, Rubin, MI300X, MI355X, TPUv5, TPUv6]
-                    fabric:
-                      type: string
-                      description: Intra-node interconnect (nvlink-domain, pcie, etc.).
-                    interNode:
-                      type: string
-                      description: |
-                        Inter-node fabric vocabulary key from CapabilityVocabulary.
-                        Supports "or-better" suffix for ordered comparison.
-                    precision:
-                      type: array
-                      items:
-                        type: string
-                        enum: [bf16, fp16, fp8, mxfp8, int8, fp6, fp4, mxfp4, nvfp4, int4]
-                    engineFeatures:
-                      type: array
-                      items: { type: string }
-                    attributes:
-                      type: object
-                      additionalProperties: { type: string }
-                      description: User-defined namespaced keys, matched on equality.
-                    matches:
+                    selector:
                       type: object
                       properties:
+                        matchLabels:
+                          type: object
+                          additionalProperties: { type: string }
+                        matchAttributes:
+                          type: object
+                          additionalProperties:
+                            x-kubernetes-preserve-unknown-fields: true
+                          description: |
+                            Matched against env-level attributes on the
+                            InferenceCluster / ModelService. Values may be
+                            scalars, lists, or comparison strings (">=141Gi").
                         cel:
                           type: string
-                          description: |
-                            Break-glass — CEL expression over device.attributes /
-                            cluster.attributes. Used only when typed surface can't
-                            express the constraint.
+                          description: Break-glass — CEL over environment.attributes.
+
+                nodeClaim:
+                  type: object
+                  description: Cluster-only — skipped when matching against ModelService.
+                  properties:
+                    selector:
+                      type: object
+                      properties:
+                        matchAttributes:
+                          type: object
+                          additionalProperties:
+                            x-kubernetes-preserve-unknown-fields: true
+                        cel:
+                          type: string
+
+                deviceClaim:
+                  type: object
+                  description: |
+                    DRA-shaped device claim. Cluster-only — skipped when matching
+                    against ModelService. Resolves to a ResourceClaimTemplate
+                    that the K8s scheduler + DRA driver consume to bind devices.
+                  required: [requests]
+                  properties:
+                    requests:
+                      type: array
+                      minItems: 1
+                      items:
+                        type: object
+                        required: [name, count]
+                        properties:
+                          name: { type: string }
+                          count:
+                            type: integer
+                            minimum: 1
+                            description: Total devices needed (e.g. 16 for 2 nodes × 8 GPUs).
+                          perNode:
+                            type: integer
+                            minimum: 1
+                            description: Devices per node — together with `count` implies node count.
+                          selector:
+                            type: object
+                            properties:
+                              matchAttributes:
+                                type: object
+                                additionalProperties:
+                                  x-kubernetes-preserve-unknown-fields: true
+                                description: |
+                                  Matched against device attributes (DRA-published
+                                  vendor keys like gpu.nvidia.com/architecture, or
+                                  declared deviceAttributes on scale-zero pools).
+                              cel:
+                                type: string
+                                description: Break-glass — CEL over device.attributes / device.capacity.
+                          constraints:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                matchAttribute:
+                                  type: string
+                                  description: |
+                                    DRA matchAttribute constraint — e.g.
+                                    "gpu.nvidia.com/nvlinkDomain" requires all
+                                    devices in the same NVLink domain.
+                                requests:
+                                  type: array
+                                  items: { type: string }
+
+                # ---- cluster-runtime constraint ----
+                # Set-membership match against the cluster's KServeBackend's
+                # engine.features. Skipped for ModelService matching (providers
+                # don't expose engine features; matchTrace surfaces "skipped").
+                requiredEngineFeatures:
+                  type: array
+                  items: { type: string }
+
+                # ---- deployment shape (not claims) ----
+                parallelism:
+                  type: object
+                  properties:
+                    tensor:
+                      type: integer
+                      minimum: 1
+                    pipeline:
+                      type: integer
+                      minimum: 1
+                      default: 1
+                    expert:
+                      type: string
+                      enum: [enabled, disabled]
+                      default: disabled
+
+                roles:
+                  type: object
+                  description: |
+                    Optional. Presence enables disaggregated serving (xPyD).
+                    Each role inherits root parallelism / deviceClaim if not
+                    overridden; only `replicas` differs in the simple case.
+                  properties:
+                    prefill:
+                      type: object
+                      properties:
+                        deviceClaim:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        parallelism:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        replicas: { type: integer, minimum: 1 }
+                    decode:
+                      type: object
+                      properties:
+                        deviceClaim:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        parallelism:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        replicas: { type: integer, minimum: 1 }
 
                 # ---- engine ----
                 engine:
@@ -234,20 +308,11 @@ spec:
                             type: object
                             x-kubernetes-preserve-unknown-fields: true
 
-                # ---- placement targeting ----
-                environments:
-                  type: integer
-                  minimum: 1
-                  default: 1
-                  description: Number of fleet members to deploy to.
-                environmentSelector:
-                  type: object
-                  properties:
-                    matchLabels:
-                      type: object
-                      additionalProperties: { type: string }
-
                 # ---- scaling ----
+                # NOTE: each ModelDeployment lands on at most one fleet member.
+                # Multi-region / multi-cluster spread = separate ModelDeployments
+                # (or a Crossplane Composition that generates them) + a
+                # ModelEndpoint that routes across them.
                 scaling:
                   type: object
                   properties:
@@ -258,7 +323,15 @@ spec:
                     concurrency:
                       type: object
                       properties:
-                        minReplicas:    { type: integer, minimum: 0 }
+                        minReplicas:
+                          type: integer
+                          minimum: 0
+                          description: |
+                            Replicas of the LLMInferenceService composed onto the
+                            chosen fleet member. KEDA scales between min and max
+                            based on concurrency. ModelPlacement is per-fleet-member,
+                            not per-replica — replicas are an internal concern of
+                            the composed LLMInferenceService.
                         maxReplicas:    { type: integer, minimum: 1 }
                         target:         { type: integer, minimum: 1 }
                         window:         { type: string, default: "60s" }
@@ -294,6 +367,14 @@ spec:
                       reason:             { type: string }
                       message:            { type: string }
                       lastTransitionTime: { type: string, format: date-time }
+                # Required by the scale subresource. `replicas` mirrors
+                # spec.replicas observed by the composer; `labelSelector` is
+                # the selector that matches the deployment's ModelPlacements
+                # (so HPA / KEDA can read pod counts via standard tooling).
+                replicas:
+                  type: integer
+                labelSelector:
+                  type: string
                 placements:
                   type: object
                   properties:

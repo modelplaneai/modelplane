@@ -1,0 +1,41 @@
+# Example ModelService — Together AI as a routing target.
+#
+# Demonstrates:
+#   - SaaS endpoint registered as a route target on ModelEndpoint
+#   - Routing-only — never a placement target. The fleet matcher considers
+#     only InferenceClusters; ModelService is not a fleet-member candidate.
+#   - Namespace-scoped — sits in the namespace alongside ModelDeployment(s)
+#     and ModelEndpoint that route to it
+#   - Supported model list refreshed periodically by the controller
+#   - Note: a separate concept for *placement* against dedicated SaaS
+#     endpoints (provisioning a Together / Baseten dedicated inference) is
+#     on Nic to define; this CR is intentionally narrow.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: together-prod
+  namespace: app-team
+spec:
+  endpoint:
+    url: https://api.together.xyz/v1
+    auth:
+      secretRef:
+        namespace: platform-system
+        name: together-api-key
+        key: api-key
+
+  attributes:
+    "modelplane.ai/region":        "us-east"
+    "modelplane.ai/provider":      "togetherai"
+    "modelplane.ai/tier":          "production"
+    "modelplane.ai/billingModel":  "per-token"
+    "modelplane.ai/networkAccess": "internet-routable"
+
+  supportedModels:
+    - meta-llama/Llama-3.1-70B-Instruct
+    - meta-llama/Llama-3.1-405B-Instruct
+    - moonshotai/Kimi-K2-Instruct
+    - deepseek-ai/DeepSeek-V3
+    - Qwen/Qwen3-Coder-480B-A35B-Instruct
+    - Qwen/Qwen3-72B-Instruct
+    - openai/gpt-oss-20b
