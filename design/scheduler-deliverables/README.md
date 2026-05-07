@@ -13,7 +13,7 @@ scheduler-deliverables/
 │   ├── inferencecluster.yaml                 # cluster-scoped substrate (was InferenceEnvironment)
 │   ├── capabilityvocabulary.yaml             # cluster-scoped vocab CR (singleton)
 │   ├── modeldeployment.yaml                  # namespaced workload + scale subresource
-│   ├── modelplacement.yaml                   # IR; one per logical replica (replica == placement)
+│   ├── modelplacement.yaml                   # existing CRD; plays the IR role; one per logical replica
 │   ├── modelendpoint.yaml                    # namespaced weighted routing (per #60)
 │   └── modelservice.yaml                     # namespaced routing-only target (was InferenceProvider)
 └── examples/
@@ -52,7 +52,7 @@ Workloads use a two-level claim cascade: `clusterClaim` filters `InferenceCluste
 - `scheduler.type: managed-kueue | kueue | kai | volcano | none` — Modelplane composes admission CRs (`Workload` for Kueue, `PodGroup` for KAI / Volcano) and reads capacity signal (`ClusterQueue.status.flavorsUsage[]` or equivalent). Default install is `managed-kueue` (Kueue + `ClusterQueue` per pool).
 - `backend.{type, version}` with `type: managed-kserve | kserve | dynamo | raw-vllm` — a backend-specific adapter watches `ModelPlacement` (the IR) and renders upstream objects on the cluster. KServe adapter renders `LLMInferenceService` per pinned version; Dynamo adapter renders `DynamoGraphDeployment`; raw-vllm renders plain `Deployment + Service`. Default install is `managed-kserve`.
 
-The IR is the seam — Modelplane stays opinionated about its schema; backends adapt to it. Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. v1 ships Kueue + KServe adapters; KAI / Volcano / Dynamo are future contributions.
+The intermediate representation (`ModelPlacement` — the existing CRD in `apis/modelplacements/`, expanded to play this role) is the seam — Modelplane stays opinionated about its schema; backends adapt to it, not vice versa. Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. v1 ships Kueue + KServe adapters; KAI / Volcano / Dynamo are future contributions.
 
 **Label-vs-DRA matching.** `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (no DRA required; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional. Richer constraints (NVLink-domain co-location, etc.) are only expressible via DRA matchAttributes.
 

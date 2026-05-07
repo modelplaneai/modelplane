@@ -56,7 +56,7 @@ The matcher considers only `InferenceCluster` candidates — `ModelService` is r
 - Declared attributes are authoritative for scheduling; runtime DRA is drift detection only.
 - Two-level matching cascade: `clusterClaim` (env-level attrs) → `deviceClaim`. The `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (pre-DRA simple path; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional — customers who don't want it can use labels.
 - **In-cluster scheduling delegated.** Modelplane decides which cluster; in-cluster scheduling — bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, capacity tracking — is the in-cluster scheduler's job. We ship Kueue as the default substrate (`managed-kueue` mode, like `managed-kserve`); BYO schedulers (KAI, Volcano, existing Kueue installs) are supported via a capacity-signal contract.
-- `ModelPlacement` is the **intermediate representation (IR)** — version-pinned adapters consume it and absorb KServe `LLMInferenceService` schema churn.
+- `ModelPlacement` (the existing CRD in `apis/modelplacements/`) plays the role of the **intermediate representation (IR)** — the seam between the matcher (which emits MPs, one per replica) and the version-pinned backend adapter (which consumes the MP and renders upstream objects, absorbing schema churn). The IR isn't a new abstraction; it's the role this existing CRD plays.
 - Namespace = environment / lifecycle scope. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
 - Failover modes are active-active or active-passive.
 
@@ -69,7 +69,7 @@ Two layers under Modelplane are pluggable: the in-cluster scheduler (admission /
 | In-cluster scheduler | `managed-kueue` (installs Kueue + `ClusterQueue` per pool) | `scheduler.type: kueue \| kai \| volcano \| none` | (1) admission CR shape per scheduler — `Workload` for Kueue, `PodGroup` for KAI / Volcano. (2) capacity-signal status field — `ClusterQueue.status.flavorsUsage[]` for Kueue, equivalents elsewhere |
 | Inference backend | `managed-kserve` (installs KServe + composes `KServeBackend`) | `backend.{type, version}: kserve \| dynamo \| raw-vllm`, e.g. `version: v0.18.0` | IR adapter renders backend-specific upstream objects per cluster: `LLMInferenceService` for KServe, `DynamoGraphDeployment` for Dynamo, `Deployment+Service` for raw-vllm. Adapter writes back to `ModelPlacement.status.rendered` |
 
-What stays opinionated: the IR (`ModelPlacement`) — its schema is Modelplane-controlled; backends adapt to it, not vice versa. The matching logic (`clusterClaim` / `deviceClaim` / `requiredEngineFeatures`) is universal across backends and schedulers. The user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) never changes when scheduler or backend swaps.
+What stays opinionated: the intermediate representation (`ModelPlacement`) — its schema is Modelplane-controlled; backends adapt to it, not vice versa. The matching logic (`clusterClaim` / `deviceClaim` / `requiredEngineFeatures`) is universal across backends and schedulers. The user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) never changes when scheduler or backend swaps.
 
 What's pluggable: thin adapters per scheduler and per backend version. v1 ships Kueue + KServe (v0.16 / v0.17 / v0.18). KAI / Volcano / Dynamo adapters are future work — community, vendor, or our follow-up. Modelplane's contract is documented well enough that someone can write a Dynamo adapter without reverse-engineering us.
 
@@ -115,7 +115,7 @@ Namespace scope (per environment — prod / staging / dev / per-team):
 **Modelplane — what the project ships**
 
 - User-facing CRDs: `InferenceCluster` (cluster), `CapabilityVocabulary` (namespace), `ModelDeployment` (namespace, with scale subresource), `ModelService` (namespace), `ModelEndpoint` (namespace).
-- Internal CRD: **`ModelPlacement` — the IR.** One per *logical replica*, owned by `ModelDeployment`. Adapter functions watch it and emit upstream objects.
+- Internal CRD: **`ModelPlacement`** (existing in `apis/modelplacements/`) — the **intermediate representation (IR)**. One per *logical replica*, owned by `ModelDeployment`. Backend adapters watch it and emit upstream objects.
 - Crossplane composition functions — the matcher (emits `ModelPlacement`s and a stock KEDA `ScaledObject`) and the version-pinned KServe adapter (consumes the IR).
 - Drift detection controller — reads runtime DRA `ResourceSlice`s, surfaces `CapabilityDrift` conditions.
 - Default `CapabilityVocabulary` install — well-known keys, engine features, KV tiers, aliases.
@@ -292,7 +292,7 @@ Full proposed XRDs and example resources live in [`scheduler-deliverables/`](sch
 - [`xrds/capabilityvocabulary.yaml`](scheduler-deliverables/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
 - [`xrds/modeldeployment.yaml`](scheduler-deliverables/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
 - [`xrds/modelendpoint.yaml`](scheduler-deliverables/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `ModelService` / `External`
-- [`xrds/modelplacement.yaml`](scheduler-deliverables/xrds/modelplacement.yaml) — the IR; one per logical replica (replica == placement)
+- [`xrds/modelplacement.yaml`](scheduler-deliverables/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
 
 **Substrate examples** (platform-team setup):
 

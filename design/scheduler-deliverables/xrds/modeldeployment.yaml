@@ -3,7 +3,10 @@
 # Replaces the previous ModelDeployment + ClusterModel/Model split. Carries
 # claims, engine config, scaling, and adapters in one place. The matcher
 # composition function picks an InferenceCluster matching the claims and
-# emits one ModelPlacement (the IR) per logical replica (replica == placement).
+# emits one ModelPlacement per logical replica (replica == placement).
+# ModelPlacement is the existing CRD (apis/modelplacements/) playing the role
+# of the intermediate representation between this user-facing CR and the
+# rendered upstream objects (LLMInferenceService, etc.).
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
