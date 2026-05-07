@@ -39,11 +39,15 @@ Namespace = environment. Each namespace is a lifecycle boundary (prod, staging, 
 
 `CapabilityVocabulary` is cluster-scoped because the `InferenceCluster`s that declare attributes against it are cluster-scoped — one cluster's hardware semantics shouldn't be evaluated differently from each namespace. Namespaces customize via Crossplane Compositions and user-defined `acme.example/*` keys (pass-through, not vocab-validated), not by redefining vocab.
 
-## Claim cascade (per #56)
+## Claim cascade
 
-Workloads use a three-level claim cascade: `clusterClaim` filters `InferenceCluster` candidates; `nodeClaim` filters node pools within matched clusters; `deviceClaim` is DRA-shaped and filters devices within matched pools. `requiredEngineFeatures` is a separate set-membership constraint matched against the cluster's `KServeBackend.spec.engine.features`.
+Workloads use a two-level claim cascade: `clusterClaim` filters `InferenceCluster` candidates by env-level attributes (region, tier, compliance, billing); `deviceClaim` is DRA-shaped and filters devices in matched clusters' pools. The `deviceClaim` selector matches against both node-level attributes (e.g. `modelplane.ai/interNodeFabric`) and device-level attributes (e.g. `gpu.nvidia.com/architecture`) uniformly — device attrs are uniform across devices on a node, so the conceptual node/device distinction isn't load-bearing.
+
+`requiredEngineFeatures` is a separate set-membership constraint matched against the cluster's `KServeBackend.spec.engine.features`.
 
 `ModelService` is **not** a fleet-member candidate — it's routing-only, valid only as a `ModelEndpoint` route target. The matcher does not consider `ModelService` for placements; a separate concept for *placing* against dedicated SaaS endpoints (provisioning a Together / Baseten dedicated inference) is on Nic to define.
+
+**In-cluster scheduler delegation.** Modelplane is agnostic about which in-cluster scheduler runs on each `InferenceCluster` — KAI, Kueue, Volcano, or vanilla K8s scheduler all work. Modelplane decides *which cluster* a workload runs on; bin-packing, gang-scheduling, fractional-GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. Modelplane reads a cluster-level capacity *signal* (Kueue `ClusterQueue.status`, KAI queue status, or DRA `ResourceSlice` aggregation) when present; never replaces the in-cluster scheduling logic.
 
 ## Replica == Placement (per Bassam's whiteboard)
 

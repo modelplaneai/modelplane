@@ -27,7 +27,6 @@ spec:
       matchLabels:
         modelplane.ai/tier: production
 
-  # No nodeClaim — single GPU, no inter-node requirement.
 
   deviceClaim:
     requests:

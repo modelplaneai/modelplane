@@ -93,14 +93,17 @@ spec:
                         name:      { type: string }
                         namespace: { type: string }
 
-                # ---- three-level claim cascade (per #56) ----
+                # ---- two-level claim cascade ----
                 # The matcher considers only InferenceCluster candidates.
                 # ModelService is routing-only (never a placement target);
                 # SaaS placement is a separate concept Nic owns.
                 #
                 # clusterClaim — filters InferenceCluster against env-level attrs
-                # nodeClaim    — filters node pools within matched clusters
-                # deviceClaim  — filters devices within matched pools (DRA-shaped)
+                # deviceClaim  — DRA-shaped; filters devices in matched clusters'
+                #                pools. Selector matches both node-level and
+                #                device-level attributes uniformly (device attrs
+                #                are uniform across devices on a node, so the
+                #                distinction isn't load-bearing).
                 # matchTrace surfaces level-by-level exclusions with field-level reasons.
 
                 clusterClaim:
@@ -119,32 +122,20 @@ spec:
                             x-kubernetes-preserve-unknown-fields: true
                           description: |
                             Matched against env-level attributes on the
-                            InferenceCluster / ModelService. Values may be
-                            scalars, lists, or comparison strings (">=141Gi").
+                            InferenceCluster. Values may be scalars, lists, or
+                            comparison strings (">=141Gi").
                         cel:
                           type: string
                           description: Break-glass — CEL over environment.attributes.
 
-                nodeClaim:
-                  type: object
-                  description: Cluster-only — skipped when matching against ModelService.
-                  properties:
-                    selector:
-                      type: object
-                      properties:
-                        matchAttributes:
-                          type: object
-                          additionalProperties:
-                            x-kubernetes-preserve-unknown-fields: true
-                        cel:
-                          type: string
-
                 deviceClaim:
                   type: object
                   description: |
-                    DRA-shaped device claim. Cluster-only — skipped when matching
-                    against ModelService. Resolves to a ResourceClaimTemplate
+                    DRA-shaped device claim. Resolves to a ResourceClaimTemplate
                     that the K8s scheduler + DRA driver consume to bind devices.
+                    The selector matches against both node-level attributes
+                    (e.g. modelplane.ai/interNodeFabric) and device-level
+                    attributes (gpu.nvidia.com/*) uniformly.
                   required: [requests]
                   properties:
                     requests:

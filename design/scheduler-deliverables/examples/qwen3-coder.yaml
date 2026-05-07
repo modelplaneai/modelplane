@@ -1,8 +1,7 @@
 # Qwen3-Coder — code completion, n-gram speculation, multi-LoRA
 #
 # Demonstrates:
-#   - Three-level claim cascade per #56 (clusterClaim + deviceClaim;
-#     no nodeClaim because single-node, no inter-node requirement)
+#   - Two-level claim cascade (clusterClaim + deviceClaim)
 #   - 8 devices per replica in a single NVLink domain
 #   - Parallelism: TP=8 + expert parallelism for MoE
 #   - n-gram speculation (excels at code per Inference Engineering Ch 5.2.4)

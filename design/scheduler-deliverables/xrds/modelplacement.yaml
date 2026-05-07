@@ -76,12 +76,9 @@ spec:
                 model:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
-                # Resolved clusterClaim / nodeClaim / deviceClaim (from the
-                # parent ModelDeployment, with role overrides merged in if any).
+                # Resolved clusterClaim / deviceClaim (from the parent
+                # ModelDeployment, with role overrides merged in if any).
                 clusterClaim:
-                  type: object
-                  x-kubernetes-preserve-unknown-fields: true
-                nodeClaim:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
                 deviceClaim:

@@ -54,27 +54,30 @@ The matcher considers only `InferenceCluster` candidates — `ModelService` is r
 - `ClusterModel` / `Model` deleted; workload spec self-contained on `ModelDeployment`.
 - **Replica == placement** — one `ModelPlacement` per logical replica of a `ModelDeployment`. Each replica is independently scheduled by the matcher against the MD's `clusterClaim`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler.
 - Declared attributes are authoritative for scheduling; runtime DRA is drift detection only.
-- Three-level matching cascade: cluster (env-level attrs) → node pool → device.
+- Two-level matching cascade: `clusterClaim` (env-level attrs) → `deviceClaim` (DRA-shaped, matches node + device attrs uniformly).
+- **In-cluster scheduling delegated.** Modelplane is agnostic about the in-cluster scheduler — KAI, Kueue, Volcano, or vanilla K8s scheduler all work. Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. Modelplane reads a cluster-level capacity signal where present; never replaces the in-cluster scheduling logic.
 - `ModelPlacement` is the **intermediate representation (IR)** — version-pinned adapters consume it and absorb KServe `LLMInferenceService` schema churn.
 - Namespace = environment / lifecycle scope. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
 - Failover modes are active-active or active-passive.
 
 ## Fleet-level capabilities
 
-Single-cluster platforms (llm-d, KServe alone, Dynamo) optimize within a cluster. Operating at the fleet layer reaches across `InferenceClusters`, with SaaS routes via `ModelService`. Some capabilities land in v1; more land in v2 once the substrate is in place.
+Single-cluster platforms (llm-d, KServe alone, Dynamo) optimize within a cluster. Operating at the fleet layer reaches across `InferenceClusters`, with SaaS routes via `ModelService`.
 
-| Capability | What it does | When |
-|---|---|---|
-| Fleet matching | A single `ModelDeployment` finds eligible `InferenceCluster`s across regions, clouds, vendors; `matchTrace` shows why each fits or doesn't | v1 |
-| Hardware-heterogeneous routing | One `ModelEndpoint` weighting across multiple `ModelDeployment`s on different hardware, plus `ModelService` routes for SaaS spillover | v1 |
-| Geo + compliance routing | EU traffic to EU clusters; SOC 2 traffic only to certified clusters; data-residency-aware placement via `clusterClaim` | v1 |
-| Cross-cluster replica scaling | Replicas of one MD spread across clusters via the scale subresource; matcher picks per replica | v2 |
-| Fleet KV cache federation | G4-tier networked cache as a global fabric across `InferenceClusters`; route to whichever already has the prefix | v2 |
-| Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` | v2 |
-| Fleet failover | Active-active or active-passive cutover when a cluster degrades | v2 |
-| Cost-aware routing | Pick the cheapest fleet member that fits; blend reserved / on-demand / spot / per-token | v2 |
-| Fleet overflow | Burst from a primary `InferenceCluster` to a sibling or to a `ModelService` when local capacity exhausts (#48) | v2 |
-| Aggregated fleet observability | TTFT / ITL / cost / queue-depth rolled up across the fleet for one logical service | v2 |
+| Capability | What it does |
+|---|---|
+| Fleet matching | A single `ModelDeployment` finds eligible `InferenceCluster`s across regions, clouds, vendors; `matchTrace` shows why each fits or doesn't |
+| Hardware-heterogeneous routing | One `ModelEndpoint` weighting across multiple `ModelDeployment`s on different hardware, plus `ModelService` routes for SaaS spillover |
+| Geo + compliance routing | EU traffic to EU clusters; SOC 2 traffic only to certified clusters; data-residency-aware placement via `clusterClaim` |
+| Cross-cluster replica scaling | Replicas of one MD spread across matching clusters; matcher picks per replica based on capacity signal |
+| Fleet KV cache federation | G4-tier networked cache as a global fabric across `InferenceClusters`; route to whichever already has the prefix |
+| Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` |
+| Fleet failover | Active-active or active-passive cutover when a cluster degrades |
+| Cost-aware routing | Pick the cheapest fleet member that fits; blend reserved / on-demand / spot / per-token |
+| Fleet overflow | Burst from a primary `InferenceCluster` to a sibling or to a `ModelService` when local capacity exhausts (#48) |
+| Aggregated fleet observability | TTFT / ITL / cost / queue-depth rolled up across the fleet for one logical service |
+
+What ships when is in the project plan section at the bottom — these are the design-level capabilities the architecture supports.
 
 ## Who owns what
 
@@ -144,14 +147,12 @@ model: { name }                   # engine-facing identity
 source: HuggingFace | S3 | GCS | PVC
 huggingFace: { repo, revision, secretRef }
 
-# Three-level claim cascade (per #56), filters InferenceCluster only:
-clusterClaim:
+# Two-level claim cascade, filters InferenceCluster only:
+clusterClaim:                     # env-level attrs (region, tier, compliance)
   selector: { matchLabels, matchAttributes, cel }
-nodeClaim:
-  selector: { matchAttributes, cel }
-deviceClaim:                      # DRA-shaped
-  requests:
-    - name, count, perNode
+deviceClaim:                      # DRA-shaped; selector matches both node-level
+  requests:                       # (fabric) and device-level (architecture, memory)
+    - name, count, perNode        # attrs uniformly
       selector: { matchAttributes, cel }
       constraints: [{ matchAttribute, requests }]
 requiredEngineFeatures: [string]  # set-membership against cluster's KServeBackend
@@ -170,7 +171,7 @@ engine:
   advanced: [{ name, config }]    # break-glass
 
 scaling:                          # composer turns this into a stock KEDA ScaledObject
-  signal: Concurrency             # v1; Utilization / Both in v2
+  signal: Concurrency | Utilization | Both
   concurrency: { minReplicas, maxReplicas, target, window, scaleDownDelay }
 adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 ```
@@ -198,7 +199,7 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 |---|---|
 | DRA coverage gap (1.30–1.33 BYO clusters; NIM Operator DRA still Tech Preview) | `provisioning.mode` discriminator; emits `ResourceClaim` OR `nvidia.com/gpu` |
 | KServe `LLMInferenceService` schema churn (v0.17 args→command; v0.18 storage migration) | `ModelPlacement` IR + version-pinned adapter per KServe minor; conformance test suite |
-| Cluster Autoscaler not DRA-aware (pods stuck Pending) | Granular cold-start conditions; v1 falls back to non-autoscaling for DRA-required pools |
+| Cluster Autoscaler not DRA-aware (pods stuck Pending) | Granular cold-start conditions; DRA-required pools fall back to non-autoscaling until autoscaler maturity catches up |
 | `ResourceSlice` eventual consistency causes drift flapping | Quorum + 5min duration filter |
 
 **Design tradeoffs — our choices**
@@ -206,8 +207,8 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 | Risk | Mitigation |
 |---|---|
 | Capacity reservation races (KAI #848 class) | Delegate to Kueue `ClusterQueue`; never own the counter |
-| Three-autoscaler conflict (KEDA + HPA + WVA) | One autoscaler per replica dimension; v1 is KEDA-only |
-| Compound AI multi-deployment co-location | v2: `ModelDeployment.spec.affinity.coLocateWith` |
+| Three-autoscaler conflict (KEDA + HPA + WVA) | One autoscaler per replica dimension; KEDA-only initially, WVA layered later |
+| Compound AI multi-deployment co-location | Future: `ModelDeployment.spec.affinity.coLocateWith` |
 
 **Operational boundaries — contract with the cluster**
 
@@ -228,12 +229,12 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 
 | Theme | Scope |
 |---|---|
-| Substrate | Six CRDs (5 user-facing + `ModelPlacement` IR); three-level declared attributes |
-| Matching | Three-level claim cascade (`clusterClaim` / `nodeClaim` / `deviceClaim`) per #56; DRA-shaped `deviceClaim`; typed `matchAttributes` shorthand + CEL escape; `matchTrace` |
+| Substrate | Six CRDs (5 user-facing + `ModelPlacement` IR); env + node + device attributes on `InferenceCluster` |
+| Matching | Two-level claim cascade (`clusterClaim` + DRA-shaped `deviceClaim`); typed `matchAttributes` shorthand + CEL escape; `matchTrace` |
 | Workload API | Self-contained `ModelDeployment`; replica == placement (`spec.replicas` + scale subresource); `roles.{prefill, decode}` for xPyD disaggregation; `engine.{quantization, speculation, advanced}`; five-factor `scaling`; `adapters` |
 | Composition | Matcher → `ModelPlacement` IR → version-pinned KServe adapter; DRA + device-plugin emission |
 | Delegation | Kueue for quota; KEDA-only autoscaling on concurrency |
-| Fleet routing (v1 subset) | Hardware-heterogeneous + geo + compliance routing via `clusterClaim` and `deviceClaim`; multi-region spread via multiple `ModelDeployment`s + `ModelEndpoint` |
+| Fleet routing | Hardware-heterogeneous + geo + compliance routing via `clusterClaim` and `deviceClaim`; multi-region spread via multiple `ModelDeployment`s + `ModelEndpoint` |
 | Status & drift | Granular cold-start conditions; drift detection controller |
 | Catalog content | Starter Compositions hand-authored from vLLM recipes |
 
@@ -262,7 +263,7 @@ Full proposed XRDs and example resources live in [`scheduler-deliverables/`](sch
 
 **XRDs** (proposed CompositeResourceDefinitions):
 
-- [`xrds/inferencecluster.yaml`](scheduler-deliverables/xrds/inferencecluster.yaml) — cluster-scoped substrate, three-level attributes, `provisioning.mode`
+- [`xrds/inferencecluster.yaml`](scheduler-deliverables/xrds/inferencecluster.yaml) — cluster-scoped substrate, env + node + device attributes, `provisioning.mode`
 - [`xrds/modelservice.yaml`](scheduler-deliverables/xrds/modelservice.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
 - [`xrds/capabilityvocabulary.yaml`](scheduler-deliverables/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
 - [`xrds/modeldeployment.yaml`](scheduler-deliverables/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
