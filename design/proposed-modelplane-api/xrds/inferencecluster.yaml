@@ -65,7 +65,13 @@ spec:
                             namespace: { type: string }
                             key:       { type: string }
 
-                # ---- DRA vs device-plugin (device exposure path) ----
+                # ---- in-cluster grounding via DRA (optional) ----
+                # `dra` means the cluster runs a DRA driver — backend adapters
+                # emit real ResourceClaims so the driver grounds federation-stage
+                # predicates against actual hardware at pod admission. Mandatory
+                # for BYOC clusters with DRA available. `device-plugin` falls back
+                # to label-based pod constraints (no runtime grounding). `hybrid`
+                # supports both.
                 provisioning:
                   type: object
                   required: [mode]

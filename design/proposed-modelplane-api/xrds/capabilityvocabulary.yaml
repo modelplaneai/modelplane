@@ -114,6 +114,43 @@ spec:
                         type: boolean
                         default: false
 
+                # ---- instance-type macros ----
+                # Canonical normalized instance-type names that expand to a set
+                # of typed attributes. Customers match either on the high-level
+                # name (modelplane.ai/instanceType: H100-NVL-8x-IB400) or on
+                # the unpacked attributes — same predicate engine, the vocab
+                # does the unpacking. Per-cloud SKU mappings live under
+                # `aliases` so e.g. aws:p5.48xlarge resolves to the canonical
+                # name. High-leverage canonical work; updated as new SKUs land.
+                instanceTypes:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, expands]
+                    properties:
+                      name:
+                        type: string
+                        description: |
+                          Canonical normalized name, e.g.
+                          "H100-NVL-8x-IB400", "MI300X-8x-RoCEv2".
+                      expands:
+                        type: object
+                        additionalProperties:
+                          x-kubernetes-preserve-unknown-fields: true
+                        description: |
+                          Set of typed attributes implied by this instance-type.
+                          When a node pool declares this instanceType, the
+                          matcher treats these keys as if they were declared
+                          directly on the pool's deviceAttributes/nodeAttributes.
+                      aliases:
+                        type: array
+                        items: { type: string }
+                        description: |
+                          Per-cloud SKU strings that resolve to this canonical
+                          name (e.g. aws:p5.48xlarge, coreweave:8xH100-NVL-IB-400G).
+                      since:
+                        type: string
+
             status:
               type: object
               properties:

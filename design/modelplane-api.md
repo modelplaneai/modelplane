@@ -10,7 +10,8 @@
 - **Modelplane is a Crossplane-native, multi-cloud inference control plane.**
 - **Cluster scope** holds substrate (`InferenceCluster`s — customer K8s — plus a singleton `CapabilityVocabulary`). **Namespace scope** is the lifecycle boundary (= environment): `ModelDeployment`, `ModelPlacement`, `ModelService`, `ModelEndpoint`.
 - **Replica == placement.** One `ModelPlacement` per logical replica of a `ModelDeployment`. KEDA writes `MD.spec.replicas` via the K8s scale subresource; the composer reconciles MPs to match — no custom scaler.
-- **Labels-first matching.** `deviceClaim.selector.matchLabels` works on any K8s cluster with labeled nodes (no DRA needed). DRA-typed `matchAttributes` is the break-glass for richer constraints (NVLink-domain co-location, MIG, FP8 capability).
+- **Two-stage scheduling.** Modelplane is a *federation planner* — it evaluates predicates against *declared* pool capacity to pick `(cluster, pool)` per replica, before nodes exist. Per-cluster scheduling (and runtime grounding via DRA, where the cluster has it) is delegated. We borrow DRA's *vocabulary* (typed attributes, domain-prefixed keys, CEL) but not its Kinds — `ResourceClaim` / `ResourceSlice` / `DeviceClass` belong to the runtime allocator, not the federation layer.
+- **Labels-first matching.** `deviceSelector.matchLabels` works on any K8s cluster with labeled nodes (no DRA needed). Typed `matchAttributes` + CEL is the break-glass for richer constraints (NVLink-domain co-location, MIG, FP8 capability) — evaluated against declared pool attributes, not runtime `ResourceSlice`s.
 - **Adapter / plugin substrate.** Modelplane ships managed plugins for the common path — `managed-kserve` (backend) and `managed-kueue` (scheduler). BYO contracts (`InferenceCluster.spec.{backend, scheduler}.type`) let customers plug in KAI / Volcano / Dynamo / etc. The intermediate representation (`ModelPlacement`) is the seam.
 - **`ModelService` is routing-only**, never a placement target. Matcher considers only `InferenceCluster`. (A separate concept for *placement* against dedicated SaaS endpoints is on Nic to define.)
 - **CapabilityVocabulary as a managed canonical catalog.** Modelplane ships a default mapping of known cases (chip generations, engine versions, quantization formats, KV tiers, fabric ordering). Customers override per-cluster for bespoke hardware. Keeping the canonical catalog current as new chips / engines / formats land is high-leverage and bounded — candidate for an Upbound-managed offering.
@@ -60,9 +61,9 @@ The matcher considers only `InferenceCluster` candidates — `ModelService` is r
 
 - Meta-scheduler only — compose objects, never bind devices or actuate replicas.
 - `ClusterModel` / `Model` deleted; workload spec self-contained on `ModelDeployment`.
-- **Replica == placement** — one `ModelPlacement` per logical replica of a `ModelDeployment`. Each replica is independently scheduled by the matcher against the MD's `clusterClaim`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler.
-- Declared attributes are authoritative for scheduling; runtime DRA is drift detection only.
-- Two-level matching cascade: `clusterClaim` (env-level attrs) → `deviceClaim`. **Labels are the primary match path** — `deviceClaim.selector.matchLabels` works against any K8s cluster with node labels (no DRA needed). DRA-typed `matchAttributes` is the **break-glass** for richer constraints (NVLink-domain co-location, FP8 capability, MIG state) — used when the cluster runs `provisioning.mode: dra`. Most workloads don't need DRA.
+- **Replica == placement** — one `ModelPlacement` per logical replica of a `ModelDeployment`. Each replica is independently scheduled by the matcher against the MD's `clusterSelector`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler.
+- **Federation matches against declared pool attributes, not runtime DRA.** `InferenceCluster.spec.nodePools[].{node,device}Attributes` are the source of truth at the federation layer. Real DRA `ResourceSlice`s (where present) are used for runtime grounding at the per-cluster scheduling stage — see the two-stage scheduling section below.
+- Two-level matching cascade: `clusterSelector` (env-level attrs) → `deviceSelector`. **Labels are the primary match path** — `deviceSelector.matchLabels` works against any K8s cluster with node labels (no DRA needed). Typed `matchAttributes` + CEL is the **break-glass** for richer constraints (NVLink-domain co-location, FP8 capability, MIG state). Most workloads don't need it.
 - **In-cluster scheduling delegated.** Modelplane decides which cluster; in-cluster scheduling — bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, capacity tracking — is the in-cluster scheduler's job. We ship Kueue as the default substrate (`managed-kueue` mode, like `managed-kserve`); BYO schedulers (KAI, Volcano, existing Kueue installs) are supported via a capacity-signal contract.
 - `ModelPlacement` (the existing CRD in `apis/modelplacements/`) plays the role of the **intermediate representation (IR)** — the seam between the matcher (which emits MPs, one per replica) and the version-pinned backend adapter (which consumes the MP and renders upstream objects, absorbing schema churn). The IR isn't a new abstraction; it's the role this existing CRD plays.
 - Namespace = environment / lifecycle scope. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
@@ -77,11 +78,39 @@ Two layers under Modelplane are pluggable: the in-cluster scheduler (admission /
 | In-cluster scheduler | **`managed-kueue`** (installs Kueue + `ClusterQueue` per pool) | `InferenceCluster.spec.scheduler.type: kueue \| kai \| volcano \| none` | (1) admission CR — `Workload` for Kueue, `PodGroup` for KAI / Volcano. (2) capacity-signal status field — `ClusterQueue.status.flavorsUsage[]` or scheduler-equivalent. |
 | Inference backend | **`managed-kserve`** (installs KServe at the pinned version + composes `KServeBackend`) | `InferenceCluster.spec.backend.{type, version}: kserve \| dynamo \| raw-vllm` | An IR adapter watches `ModelPlacement` and renders backend-specific upstream objects per cluster: `LLMInferenceService` for KServe (per version), `DynamoGraphDeployment` for Dynamo, `Deployment+Service` for raw-vllm. Adapter writes back to `ModelPlacement.status.rendered`. |
 
-**Opinionated:** the IR (`ModelPlacement`) — schema is Modelplane-controlled, plugins adapt to it. The matching logic (`clusterClaim` / `deviceClaim` / `requiredEngineFeatures`) and the user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) are universal — they don't change when a plugin swaps.
+**Opinionated:** the IR (`ModelPlacement`) — schema is Modelplane-controlled, plugins adapt to it. The matching logic (`clusterSelector` / `deviceSelector` / `requiredEngineFeatures`) and the user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) are universal — they don't change when a plugin swaps.
 
 **Pluggable:** thin adapters per scheduler + per backend version. Modelplane ships Kueue + KServe (v0.16 / v0.17 / v0.18) by default; KAI / Volcano / Dynamo are future work. The IR contract is documented well enough that someone can write a Dynamo adapter without reverse-engineering us.
 
 This way customers keep existing scheduler investments (KAI for training shops, Volcano for batch) and existing orchestration stacks (Dynamo) — Modelplane sits above and adds the fleet layer.
+
+## Two-stage scheduling: federation vs in-cluster
+
+Modelplane and DRA solve different problems. DRA is a *runtime allocator* — drivers publish `ResourceSlice`s about real hardware on real nodes, and the K8s scheduler matches `ResourceClaim`s against them. Modelplane's federation layer schedules against *declared* pool capacity, before any nodes exist. That's at the planning stage, not allocation.
+
+We borrow from DRA's vocabulary, not its Kinds:
+
+| Borrow (vocabulary) | Drop (Kinds) |
+|---|---|
+| Typed attributes (`string` / `version` / `quantity` / `int` / `bool`) | `DeviceClass` |
+| Domain-prefixed keys (`gpu.nvidia.com/*`, `modelplane.ai/*`, `acme.example/*`) | `ResourceSlice` (no driver introspection at federation time) |
+| CEL as the predicate language | `ResourceClaim` (no allocation happens at federation time) |
+| The `device.attributes[domain].name` access pattern | "DRA-shaped" framing |
+
+So the schema reads as `clusterSelector` / `deviceSelector` (selectors over declared attributes), evaluated by Modelplane against `InferenceCluster.spec.nodePools[].{node,device}Attributes`. Same predicate engine the K8s scheduler runs, different inputs.
+
+**Two stages, in order:**
+
+1. **Federation match (Modelplane control plane, pre-provisioning).** `clusterSelector` filters `InferenceCluster` candidates by env-level attributes; `deviceSelector` filters node pools within matching clusters. Output: `ModelPlacement` per logical replica, each pinned to a `(cluster, pool)`. No real hardware involved. This stage is fleet-aware, capacity-aware (via Kueue `ClusterQueue.status` signal), and cost-aware. It runs whether or not the target cluster has a DRA driver.
+2. **In-cluster scheduling (per-cluster, at pod admission).** The backend adapter on the chosen cluster renders pods (KServe `LLMInferenceService`, Dynamo `DynamoGraphDeployment`, etc). The K8s scheduler binds them. *Optionally*, the adapter emits real `ResourceClaim`s here, carrying the same CEL predicates from `deviceSelector`. The DRA driver's runtime `ResourceSlice`s ground those predicates against actual hardware. Mismatch → pod stays Pending with a clear error.
+
+**When the adapter emits DRA claims (the grounding contract):**
+
+- **BYOC clusters with DRA**: emit them. Pool attributes were declared by the customer; independent grounding via the DRA driver catches typos, drift, and mis-config at scheduling time. The cost (one extra `ResourceClaim` per pod) is small; the safety win is real.
+- **Modelplane-provisioned clusters**: optional. Modelplane created the pool from a known SKU, so attributes are derived from what we asked for — no drift between declaration and reality at provisioning. We can still emit claims for runtime verification (belt-and-suspenders), but it's not load-bearing.
+- **BYOC clusters without DRA**: skip — the adapter constrains pods via labels (`nodeSelector`, `topologySpreadConstraints`) instead. Federation-stage match still uses the same `deviceSelector` predicates; just no runtime grounding.
+
+The user-facing API doesn't change across these — same `clusterSelector` / `deviceSelector` shape, same vocabulary. The decision to emit `ResourceClaim`s is a per-cluster property of the backend adapter, governed by `InferenceCluster.spec.provisioning.mode`.
 
 ## Fleet-level capabilities
 
@@ -91,7 +120,7 @@ Single-cluster platforms (llm-d, KServe alone, Dynamo) optimize within a cluster
 |---|---|
 | Fleet matching | A single `ModelDeployment` finds eligible `InferenceCluster`s across regions, clouds, vendors; `matchTrace` shows why each fits or doesn't |
 | Hardware-heterogeneous routing | One `ModelEndpoint` weighting across multiple `ModelDeployment`s on different hardware, plus `ModelService` routes for SaaS spillover |
-| Geo + compliance routing | EU traffic to EU clusters; SOC 2 traffic only to certified clusters; data-residency-aware placement via `clusterClaim` |
+| Geo + compliance routing | EU traffic to EU clusters; SOC 2 traffic only to certified clusters; data-residency-aware placement via `clusterSelector` |
 | Cross-cluster replica scaling | Replicas of one MD spread across matching clusters; matcher picks per replica based on capacity signal |
 | Fleet KV cache federation | G4-tier networked cache as a global fabric across `InferenceClusters`; route to whichever already has the prefix |
 | Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` |
@@ -170,21 +199,25 @@ model: { name }                   # engine-facing identity
 source: HuggingFace | S3 | GCS | PVC
 huggingFace: { repo, revision, secretRef }
 
-# Two-level claim cascade, filters InferenceCluster only:
-clusterClaim:                     # env-level attrs (region, tier, compliance)
-  selector: { matchLabels, matchAttributes, cel }
-deviceClaim:                      # selector dual-path: matchLabels (no DRA) or
-  requests:                       # matchAttributes (DRA). Composer picks based
-    - name, count, perNode        # on cluster.provisioning.mode.
-      selector: { matchLabels, matchAttributes, cel }
-      constraints: [{ matchAttribute, requests }]   # DRA-only
+# Two-level selector cascade, filters InferenceCluster only:
+clusterSelector:                  # env-level attrs (region, tier, compliance)
+  matchLabels: {...}
+  matchAttributes: [...]
+  cel: ...
+deviceSelector:                   # node + device attrs over declared pool capacity
+  requests:
+    - name, count, perNode
+      matchLabels: {...}          # primary path (no DRA needed)
+      matchAttributes: [...]      # break-glass; typed attribute predicates
+      cel: ...
+      constraints: [{ matchAttribute, requests }]   # NVLink-domain co-location, etc
 requiredEngineFeatures: [string]  # set-membership against cluster's KServeBackend
 
-# Deployment shape (not claims):
+# Deployment shape (not selectors):
 parallelism: { tensor, pipeline, expert }
 roles:                            # disaggregated serving (xPyD)
-  prefill: { deviceClaim, parallelism, replicas }   # any unset inherits root
-  decode:  { deviceClaim, parallelism, replicas }
+  prefill: { deviceSelector, parallelism, replicas }   # any unset inherits root
+  decode:  { deviceSelector, parallelism, replicas }
 
 engine:
   name, image, args
@@ -212,6 +245,25 @@ The `CapabilityVocabulary` is a singleton cluster-scoped CR (name: `default`) th
 **Modelplane ships a default canonical catalog** with the well-known cases — Hopper / Blackwell / Ada / Ampere / MI300X for chip families, FP8/MXFP8/MXFP4/NVFP4 for quantization, G1–G4 for KV cache tiers, RoCEv2/IB-200G/IB-400G/Quantum-2 for inter-node fabric. This catalog is updated as new chip generations / engine versions / quantization formats land. **Customers don't author this for known cases.**
 
 For bespoke hardware (custom AMD partitions, internal accelerators, experimental engine forks), customers can override or extend the singleton in their cluster — without a Modelplane CRD bump.
+
+**Instance-type as a vocab macro.** Cloud SKUs (`aws:p5.48xlarge`, `gcp:a3-mega-8g`, `coreweave:gh-200-8x-ib`) and the higher-level normalized strings that platforms like Baseten / SkyPilot expose (`H100-NVL-8x-IB400`) fit cleanly as a *macro* attribute in the same vocabulary. The default catalog ships:
+
+```yaml
+instanceTypes:
+  - name: H100-NVL-8x-IB400         # canonical
+    expands:
+      gpu.nvidia.com/architecture: Hopper
+      gpu.nvidia.com/productName: H100
+      modelplane.ai/gpuCount: 8
+      modelplane.ai/interNodeFabric: IB-400G
+    aliases:                         # per-cloud SKU mappings
+      - aws:p5.48xlarge
+      - coreweave:8xH100-NVL-IB-400G
+```
+
+Customers match on either dimension — the high-level string (`modelplane.ai/instanceType: H100-NVL-8x-IB400`) for the common case, or unpacked attributes for unusual constraints (`gpuCount >= 8 && fabric >= IB-200G`). Platform teams declare `instanceType` once on a node pool and the vocab implies the rest. Same predicate engine, no new code path.
+
+This is exactly the kind of bounded, ongoing tracking work — chip families, instance-type taxonomy, per-cloud SKU mappings — that fits the managed-catalog offering.
 
 **Commercial-offering candidate.** Keeping the canonical catalog current as new chips / engines / formats land is high-leverage and bounded. Tracking releases across NVIDIA, AMD, Intel, Google, the inference-engine projects (vLLM, SGLang, TRT-LLM, Dynamo), and standards bodies (WG-Device-Management) is a real ongoing commitment — natural fit for an Upbound-managed offering layered above the open-source default.
 
@@ -259,7 +311,8 @@ For bespoke hardware (custom AMD partitions, internal accelerators, experimental
 ## Open questions (Nic to call)
 
 - **Default scheduler / backend.** Lean: `managed-kueue` + `managed-kserve` as opinionated defaults, BYO contracts for KAI / Volcano / Dynamo / raw-vllm. Confirm, or pick different defaults?
-- **Label-vs-DRA matching path.** `deviceClaim.selector` supports both `matchLabels` (primary) and `matchAttributes` (DRA break-glass); composer picks output based on cluster `provisioning.mode`. Confirm dual-path is right, or commit to one?
+- **Label-vs-attribute matching path.** `deviceSelector` supports both `matchLabels` (primary) and `matchAttributes` + CEL (break-glass over declared attributes). Confirm dual-path is right, or commit to one?
+- **DRA grounding contract.** When the chosen `InferenceCluster` has a DRA driver, the backend adapter emits real `ResourceClaim`s carrying the same predicates (mandatory for BYOC, optional for Modelplane-provisioned). Confirm this is the right split, or always-on for both?
 - **Dedicated-SaaS placement.** `ModelService` is routing-only; "provision a dedicated Together / Baseten endpoint" is a placement concept Nic owns. Rough sketch only here pending Nic's design.
 - **`ModelObjective`-style intent layer.** Optional CR above `ModelDeployment` for SLO targets (TTFT, ITL, cost ceiling), reconciled by a planner — mirrors Dynamo's DGDR / DGD pattern. Worth a layer, or punt?
 - **vLLM recipe consumption.** Reference `recipes.vllm.ai` from `ModelDeployment.spec.recipe` (compose-time resolution) vs. fork into a Modelplane catalog repo. PM-shaped call.
@@ -272,11 +325,11 @@ For bespoke hardware (custom AMD partitions, internal accelerators, experimental
 | Theme | Scope |
 |---|---|
 | Substrate | Six CRDs (5 user-facing + `ModelPlacement` IR); env + node + device attributes on `InferenceCluster`; `managed-kueue` install on `InferenceCluster` |
-| Matching | Two-level claim cascade (`clusterClaim` + DRA-shaped `deviceClaim`); typed `matchAttributes` shorthand + CEL escape; `matchTrace` |
+| Matching | Two-level selector cascade (`clusterSelector` + `deviceSelector`) over declared pool attributes; typed `matchAttributes` + CEL escape; `matchTrace`; optional DRA grounding for BYOC |
 | Workload API | Self-contained `ModelDeployment`; replica == placement (`spec.replicas` + scale subresource); `roles.{prefill, decode}` for xPyD disaggregation; `engine.{quantization, speculation, advanced}`; five-factor `scaling`; `adapters` |
 | Composition | Matcher → `ModelPlacement` IR → version-pinned KServe adapter; DRA + device-plugin emission |
 | Delegation | Kueue for quota; KEDA-only autoscaling on concurrency |
-| Fleet routing | Hardware-heterogeneous + geo + compliance routing via `clusterClaim` and `deviceClaim`; multi-region spread via multiple `ModelDeployment`s + `ModelEndpoint` |
+| Fleet routing | Hardware-heterogeneous + geo + compliance routing via `clusterSelector` and `deviceSelector`; multi-region spread via multiple `ModelDeployment`s + `ModelEndpoint` |
 | Status & drift | Granular cold-start conditions; drift detection controller |
 | Catalog content | Starter Compositions hand-authored from vLLM recipes |
 

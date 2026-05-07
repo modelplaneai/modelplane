@@ -1,15 +1,16 @@
 # Kimi K2 — frontier MoE, multi-node, disaggregated prefill/decode
 #
 # Demonstrates:
-#   - Two-level claim cascade:
-#       clusterClaim: filters InferenceCluster by env-level attrs
-#       deviceClaim:  DRA-shaped; selector matches both node-level (fabric)
-#                     and device-level (architecture, memory) attributes
+#   - Two-level selector cascade (federation-stage match):
+#       clusterSelector: filters InferenceCluster by env-level attrs
+#       deviceSelector:  matches node + device attrs via the typed
+#                        attribute predicate vocabulary (DRA-style, but
+#                        evaluated against declared pool attributes)
 #   - 16 devices per replica (count: 16, perNode: 8 → 2 nodes), constrained to
-#     a single NVLink domain via DRA matchAttribute
+#     a single NVLink domain via matchAttribute (break-glass)
 #   - Parallelism: TP=8 within node, PP=2 across nodes, expert parallelism for MoE
 #   - 5P3D disaggregation: 5 prefill replicas + 3 decode replicas
-#     (each role inherits root deviceClaim + parallelism; only replicas differ)
+#     (each role inherits root deviceSelector + parallelism; only replicas differ)
 #   - requiredEngineFeatures: cluster-runtime constraint matched against the
 #     cluster's KServeBackend
 #   - FP8 weight + KV cache quantization (engine.quantization)
@@ -31,22 +32,20 @@ spec:
       namespace: platform-system
       name: hf-token
 
-  clusterClaim:
-    selector:
-      matchLabels:
-        modelplane.ai/tier: production
-        modelplane.ai/region: us-east
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: production
+      modelplane.ai/region: us-east
 
-  deviceClaim:
+  deviceSelector:
     requests:
       - name: gpus
         count: 16                       # 2 nodes × 8 GPUs per replica
         perNode: 8
-        selector:
-          matchAttributes:
-            gpu.nvidia.com/architecture: [Hopper, Blackwell]
-            gpu.nvidia.com/memory: ">=141Gi"
-            modelplane.ai/interNodeFabric: "ib-400g-or-better"  # node-level attr; uniform across devices
+        matchAttributes:
+          gpu.nvidia.com/architecture: [Hopper, Blackwell]
+          gpu.nvidia.com/memory: ">=141Gi"
+          modelplane.ai/interNodeFabric: "ib-400g-or-better"  # node-level attr; uniform across devices
         constraints:
           - matchAttribute: gpu.nvidia.com/nvlinkDomain   # TP=8 in one NVLink domain
             requests: [gpus]

@@ -8,7 +8,7 @@
 # Namespace-scoped — sits alongside ModelDeployment / ModelEndpoint inside
 # the namespace-as-environment lifecycle scope. Valid only as a route target
 # on ModelEndpoint (alongside Deployment and External). The matcher does NOT
-# consider ModelService as a fleet-member candidate; clusterClaim filters
+# consider ModelService as a fleet-member candidate; clusterSelector filters
 # only against InferenceCluster.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition

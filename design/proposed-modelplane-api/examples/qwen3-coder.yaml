@@ -1,14 +1,14 @@
 # Qwen3-Coder — code completion, n-gram speculation, multi-LoRA
 #
 # Demonstrates:
-#   - Two-level claim cascade (clusterClaim + deviceClaim)
+#   - Two-level selector cascade (clusterSelector + deviceSelector)
 #   - 8 devices per replica in a single NVLink domain
 #   - Parallelism: TP=8 + expert parallelism for MoE
 #   - n-gram speculation (excels at code per Inference Engineering Ch 5.2.4)
 #   - Long context (256K)
 #   - `adapters` block for multi-LoRA with LoRA-aware routing
 #   - User-defined attributes for team affinity / cost-center tracking
-#     (matched via clusterClaim.selector.matchAttributes)
+#     (matched via clusterSelector.matchAttributes)
 #   - FP8 weight + KV quantization
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
@@ -24,23 +24,21 @@ spec:
   huggingFace:
     repo: Qwen/Qwen3-Coder-480B-A35B-Instruct
 
-  clusterClaim:
-    selector:
-      matchLabels:
-        modelplane.ai/tier: production
-      matchAttributes:
-        "acme.example/team":         "dev-tools"
-        "acme.example/cost-center":  "engineering"
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: production
+    matchAttributes:
+      "acme.example/team":         "dev-tools"
+      "acme.example/cost-center":  "engineering"
 
-  deviceClaim:
+  deviceSelector:
     requests:
       - name: gpus
         count: 8
         perNode: 8
-        selector:
-          matchAttributes:
-            gpu.nvidia.com/architecture: [Hopper, Blackwell]
-            gpu.nvidia.com/memory: ">=141Gi"
+        matchAttributes:
+          gpu.nvidia.com/architecture: [Hopper, Blackwell]
+          gpu.nvidia.com/memory: ">=141Gi"
         constraints:
           - matchAttribute: gpu.nvidia.com/nvlinkDomain
             requests: [gpus]

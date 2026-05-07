@@ -80,3 +80,48 @@ spec:
 
   aliases:
     - { from: modelplane.ai/region, to: topology.kubernetes.io/region }
+
+  # ---- instance-type macros ----
+  # Customers match either on `modelplane.ai/instanceType: H100-NVL-8x-IB400`
+  # or on the unpacked attributes — same predicate engine, the vocab does the
+  # unpacking. Per-cloud SKU strings (`aws:p5.48xlarge`) resolve to the
+  # canonical name via `aliases`. New instance types and SKU mappings land
+  # here without a Modelplane CRD bump.
+  instanceTypes:
+    - name: H100-NVL-8x-IB400
+      expands:
+        gpu.nvidia.com/architecture: Hopper
+        gpu.nvidia.com/productName: H100
+        modelplane.ai/gpuCount: 8
+        modelplane.ai/interNodeFabric: ib-400g
+      aliases:
+        - aws:p5.48xlarge
+        - coreweave:8xH100-NVL-IB-400G
+      since: v0.1
+
+    - name: H200-NVL-8x-IB400
+      expands:
+        gpu.nvidia.com/architecture: Hopper
+        gpu.nvidia.com/productName: H200
+        modelplane.ai/gpuCount: 8
+        modelplane.ai/interNodeFabric: ib-400g
+      aliases:
+        - aws:p5e.48xlarge
+        - coreweave:8xH200-NVL-IB-400G
+      since: v0.1
+
+    - name: B200-NVL-8x-Quantum2
+      expands:
+        gpu.nvidia.com/architecture: Blackwell
+        gpu.nvidia.com/productName: B200
+        modelplane.ai/gpuCount: 8
+        modelplane.ai/interNodeFabric: ib-quantum-2
+      since: v0.1
+
+    - name: MI300X-8x-RoCEv2
+      expands:
+        gpu.amd.com/architecture: CDNA3
+        gpu.amd.com/productName: MI300X
+        modelplane.ai/gpuCount: 8
+        modelplane.ai/interNodeFabric: rocev2-400g
+      since: v0.1

@@ -56,7 +56,7 @@ spec:
           properties:
             spec:
               type: object
-              required: [model, source, deviceClaim, engine]
+              required: [model, source, deviceSelector, engine]
               properties:
                 # ---- replica count (KEDA-writable via scale subresource) ----
                 # Replica == placement. The composer reconciles `replicas`
@@ -96,49 +96,57 @@ spec:
                         name:      { type: string }
                         namespace: { type: string }
 
-                # ---- two-level claim cascade ----
+                # ---- two-level selector cascade ----
                 # The matcher considers only InferenceCluster candidates.
                 # ModelService is routing-only (never a placement target);
                 # SaaS placement is a separate concept Nic owns.
                 #
-                # clusterClaim — filters InferenceCluster against env-level attrs
-                # deviceClaim  — DRA-shaped; filters devices in matched clusters'
-                #                pools. Selector matches both node-level and
-                #                device-level attributes uniformly (device attrs
-                #                are uniform across devices on a node, so the
-                #                distinction isn't load-bearing).
+                # Federation-stage match (Modelplane control plane, pre-provisioning):
+                # selectors evaluate predicates over declared pool attributes on
+                # InferenceCluster.spec.nodePools[].{node,device}Attributes. We borrow
+                # DRA's vocabulary (typed attributes, domain-prefixed keys, CEL) but
+                # not its Kinds — no ResourceClaim / ResourceSlice at this layer.
+                #
+                # In-cluster grounding (per-cluster, at pod admission): the backend
+                # adapter optionally emits real ResourceClaims carrying the same
+                # predicates so the DRA driver validates against actual hardware.
+                # Mandatory for BYOC clusters with DRA; optional for Modelplane-
+                # provisioned clusters. Governed by InferenceCluster.spec.provisioning.mode.
+                #
+                # clusterSelector — filters InferenceCluster against env-level attrs
+                # deviceSelector  — filters node pools' devices; matches both node-level
+                #                  and device-level attributes uniformly (device attrs
+                #                  are uniform across devices on a node).
                 # matchTrace surfaces level-by-level exclusions with field-level reasons.
 
-                clusterClaim:
+                clusterSelector:
                   type: object
                   description: Filters InferenceCluster candidates by env-level attributes.
                   properties:
-                    selector:
+                    matchLabels:
                       type: object
-                      properties:
-                        matchLabels:
-                          type: object
-                          additionalProperties: { type: string }
-                        matchAttributes:
-                          type: object
-                          additionalProperties:
-                            x-kubernetes-preserve-unknown-fields: true
-                          description: |
-                            Matched against env-level attributes on the
-                            InferenceCluster. Values may be scalars, lists, or
-                            comparison strings (">=141Gi").
-                        cel:
-                          type: string
-                          description: Break-glass — CEL over environment.attributes.
+                      additionalProperties: { type: string }
+                    matchAttributes:
+                      type: object
+                      additionalProperties:
+                        x-kubernetes-preserve-unknown-fields: true
+                      description: |
+                        Matched against env-level attributes declared on the
+                        InferenceCluster. Values may be scalars, lists, or
+                        comparison strings (">=141Gi").
+                    cel:
+                      type: string
+                      description: Break-glass — CEL over the cluster's declared attributes.
 
-                deviceClaim:
+                deviceSelector:
                   type: object
                   description: |
-                    DRA-shaped device claim. Resolves to a ResourceClaimTemplate
-                    that the K8s scheduler + DRA driver consume to bind devices.
-                    The selector matches against both node-level attributes
-                    (e.g. modelplane.ai/interNodeFabric) and device-level
-                    attributes (gpu.nvidia.com/*) uniformly.
+                    Selectors over node + device attributes declared on
+                    InferenceCluster.spec.nodePools[]. Uses DRA's typed-attribute
+                    vocabulary (domain-prefixed keys, CEL) but evaluates against
+                    declared pool capacity at federation time, not runtime
+                    ResourceSlices. The K8s scheduler grounds these against actual
+                    hardware in-cluster, when the cluster has a DRA driver.
                   required: [requests]
                   properties:
                     requests:
@@ -157,48 +165,38 @@ spec:
                             type: integer
                             minimum: 1
                             description: Devices per node — together with `count` implies node count.
-                          selector:
+                          # Selector dual-path — labels first, attributes as break-glass:
+                          #   matchLabels    — primary path. Plain K8s node labels.
+                          #                    Works against any cluster with labeled
+                          #                    nodes. No DRA required.
+                          #   matchAttributes — break-glass for richer typed
+                          #                    constraints (NVLink-domain co-location,
+                          #                    MIG state, FP8 capability). Predicates
+                          #                    over declared pool attributes; grounded
+                          #                    via DRA in-cluster when available.
+                          #   cel             — escape hatch for boolean / set
+                          #                    arithmetic.
+                          matchLabels:
                             type: object
+                            additionalProperties: { type: string }
                             description: |
-                              Match path — labels first, DRA as break-glass:
-                                matchLabels    — primary path. Plain node labels
-                                                 (nvidia.com/gpu.family,
-                                                 modelplane.ai/accelerator, etc.).
-                                                 No DRA required. Composer emits
-                                                 pod with nvidia.com/gpu: <count>
-                                                 + nodeSelector from these labels.
-                                matchAttributes — break-glass for richer typed
-                                                 constraints (NVLink-domain
-                                                 co-location, MIG state, FP8
-                                                 capability). DRA-shaped; composer
-                                                 emits a ResourceClaimTemplate.
-                                cel             — escape hatch for boolean / set
-                                                 arithmetic over device attrs.
-                            properties:
-                              matchLabels:
-                                type: object
-                                additionalProperties: { type: string }
-                                description: |
-                                  Primary match path. Plain K8s node labels —
-                                  works against any cluster with labeled nodes.
-                                  Sufficient for most workloads. Constraints that
-                                  need topology-awareness (NVLink-domain
-                                  co-location) can't be expressed here; use
-                                  matchAttributes + DRA for those.
-                              matchAttributes:
-                                type: object
-                                additionalProperties:
-                                  x-kubernetes-preserve-unknown-fields: true
-                                description: |
-                                  Break-glass for richer typed constraints. Matched
-                                  against device attributes (DRA-published vendor
-                                  keys like gpu.nvidia.com/architecture, or
-                                  declared deviceAttributes on scale-zero pools).
-                                  Requires the cluster to run provisioning.mode:
-                                  dra.
-                              cel:
-                                type: string
-                                description: Break-glass CEL — for constraints not expressible in matchLabels / matchAttributes.
+                              Primary match path. Plain K8s node labels —
+                              works against any cluster with labeled nodes.
+                              Sufficient for most workloads.
+                          matchAttributes:
+                            type: object
+                            additionalProperties:
+                              x-kubernetes-preserve-unknown-fields: true
+                            description: |
+                              Break-glass for richer typed constraints. Matched
+                              against declared pool attributes (vendor keys like
+                              gpu.nvidia.com/architecture, or modelplane.ai/* /
+                              acme.example/* keys). Grounded via real DRA
+                              ResourceClaims at pod admission when the chosen
+                              cluster has a DRA driver.
+                          cel:
+                            type: string
+                            description: Break-glass CEL — for constraints not expressible in matchLabels / matchAttributes.
                           constraints:
                             type: array
                             items:
@@ -207,9 +205,11 @@ spec:
                                 matchAttribute:
                                   type: string
                                   description: |
-                                    DRA matchAttribute constraint — e.g.
+                                    Co-location / topology constraint — e.g.
                                     "gpu.nvidia.com/nvlinkDomain" requires all
-                                    devices in the same NVLink domain.
+                                    devices in the same NVLink domain. Translated
+                                    to a DRA constraint at the in-cluster grounding
+                                    stage (when DRA is available).
                                 requests:
                                   type: array
                                   items: { type: string }
@@ -241,13 +241,13 @@ spec:
                   type: object
                   description: |
                     Optional. Presence enables disaggregated serving (xPyD).
-                    Each role inherits root parallelism / deviceClaim if not
+                    Each role inherits root parallelism / deviceSelector if not
                     overridden; only `replicas` differs in the simple case.
                   properties:
                     prefill:
                       type: object
                       properties:
-                        deviceClaim:
+                        deviceSelector:
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
                         parallelism:
@@ -257,7 +257,7 @@ spec:
                     decode:
                       type: object
                       properties:
-                        deviceClaim:
+                        deviceSelector:
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
                         parallelism:
@@ -333,7 +333,7 @@ spec:
                 # targets the ModelDeployment via its scale subresource. KEDA
                 # writes spec.replicas; the composer reconciles ModelPlacements
                 # (one per replica) to match. Each replica is independently
-                # scheduled by the matcher against clusterClaim.
+                # scheduled by the matcher against clusterSelector.
                 # Multi-region spread = multiple ModelDeployments + ModelEndpoint.
                 scaling:
                   type: object

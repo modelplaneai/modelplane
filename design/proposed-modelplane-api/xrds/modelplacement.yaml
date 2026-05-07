@@ -79,12 +79,12 @@ spec:
                 model:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
-                # Resolved clusterClaim / deviceClaim (from the parent
+                # Resolved clusterSelector / deviceSelector (from the parent
                 # ModelDeployment, with role overrides merged in if any).
-                clusterClaim:
+                clusterSelector:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
-                deviceClaim:
+                deviceSelector:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
                 requiredEngineFeatures:
@@ -100,13 +100,16 @@ spec:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
 
-                # ---- resolved DRA claim (pre-rendered) ----
+                # ---- in-cluster grounding (DRA, optional) ----
                 resourceClaim:
                   type: object
                   description: |
-                    DRA ResourceClaim spec the adapter will compose into pods.
-                    Empty when target is ModelService or when the
-                    InferenceCluster's provisioning.mode is device-plugin.
+                    Real DRA ResourceClaim spec the backend adapter emits onto
+                    the chosen cluster, carrying the predicates from
+                    deviceSelector. Lets the cluster's DRA driver ground them
+                    against actual hardware at pod admission. Empty when the
+                    cluster lacks a DRA driver (provisioning.mode: device-plugin)
+                    or when grounding is opted out.
                   properties:
                     deviceClassName: { type: string }
                     count:           { type: integer, minimum: 1 }
