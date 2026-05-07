@@ -4,9 +4,9 @@ Pre-generated `InferenceCluster` definitions for known cloud / on-prem
 SKUs. Drawn from @bassam's hardware survey (2026-05-07). Customers copy
 or compose these instead of authoring `nodePools[]` from scratch.
 
-Each reference cluster declares attributes against the default
-`CapabilityVocabulary` taxonomy (Cluster / Pool / Device layers,
-capability sets, `cloud.instanceType` macros).
+Each reference cluster declares attributes from the unified taxonomy
+(Cluster / Pool / Device layers, capability sets) and references an
+`InferenceClass` for the per-SKU hardware bundle.
 
 ## Why these matter
 

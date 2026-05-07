@@ -1,0 +1,55 @@
+# BYOC + KAI scheduler — NVIDIA NeMo-stack pattern.
+#
+# Demonstrates BYO of the *scheduler* axis (KAI replaces Kueue for
+# admission AND can replace the K8s scheduler for binding). Common in
+# NVIDIA-shop training+inference deployments.
+#
+# Capacity signal source: KAI Queue.status / ResourcePool.status (the
+# per-scheduler signal adapter normalizes into
+# InferenceCluster.status.capacity).
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: byoc-coreweave-kai-h200
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        namespace: platform-system
+        name: <fill-me-in>-kubeconfig
+        key: kubeconfig
+
+  provisioning:
+    mode: dra
+
+  scheduler:
+    type: kai                        # operator's existing KAI install (BYO)
+
+  backend:
+    type: kserve                     # operator's existing KServe install
+    version: v0.18.0
+
+  attributes:
+    cloud.provider:        coreweave
+    cloud.region:          us-east-1
+    network.fabric:        ib
+    network.bandwidthGbps: 3200
+    cluster.scaleUnit:     independent-nodes
+    modelplane.ai/tier:    production
+
+  nodePools:
+    - name: kai-pool-h200
+      class: h200-nvl-8x
+      nodeSelector:
+        modelplane.ai/pool: kai-pool-h200
+      provisioning: {}                # BYO — pool already exists
+      nodeAttributes:
+        cloud.instanceType:  coreweave:gd-8xh200ib-i128
+        cpu.vendor:          intel
+        cpu.cores:           64
+        cpu.platform:        sapphire-rapids
+        memoryGiB:           2048
+        nics.count:          8
+        nics.bandwidthGbps:  400
+        host.virtualization: none

@@ -11,10 +11,10 @@
 - **Cluster scope** holds substrate: `InferenceCluster`s (customer K8s) and the `InferenceClass` catalog (per-SKU hardware bundles, StorageClass-style). **Namespace scope** is the lifecycle boundary: `ModelDeployment`, `ModelPlacement`, `InferenceProvider`, `ModelEndpoint`.
 - **Replica == placement.** One `ModelPlacement` per logical replica of a `ModelDeployment`. KEDA writes `MD.spec.replicas` via the K8s scale subresource; the composer reconciles MPs to match — no custom scaler.
 - **Two-stage scheduling.** Modelplane is a *federation planner* — it evaluates predicates against *declared* pool capacity to pick `(cluster, pool)` per replica, before nodes exist. Per-cluster scheduling is delegated. **DRA is optional**, never required: the `device-plugin` mode (any K8s with the NVIDIA GPU operator) is the default; `dra` mode is opt-in for stronger runtime grounding. We borrow DRA's *vocabulary* (typed attributes, domain-prefixed keys, CEL) but not its Kinds — `ResourceClaim` / `ResourceSlice` / `DeviceClass` belong to the runtime allocator, not the federation layer.
-- **Labels-first matching.** `deviceSelector.matchLabels` works on any K8s cluster with labeled nodes. Typed `matchAttributes` + CEL is the break-glass for richer constraints (NVLink-domain co-location, MIG, FP8 capability) — evaluated against declared pool attributes.
-- **Managed defaults.** `managed-kserve` (backend) + `managed-kueue` (scheduler) + KEDA `ScaledObject`s (autoscaler, prerequisite) ship under the hood. BYO contracts (`InferenceCluster.spec.{backend, scheduler}.type`) plug in KAI / Volcano / Dynamo / raw-vllm. `ModelPlacement` (the IR) is the seam.
-- **`InferenceProvider` is a rough sketch.** Routing-only placeholder, never a placement target. **Nic owns the real design** for dedicated-SaaS placement (provisioning a Together / Baseten dedicated endpoint); the `InferenceProvider` shape here is a stand-in pending that work.
-- **`InferenceClass` catalog as the wedge.** Default ships per-SKU hardware bundles (`h100-nvl-8x`, `b200-nvl-8x`, `mi300x-8x`, ...) — StorageClass-style, cluster-scoped. Customers author their own for bespoke hardware. Engine features live separately: derivation rules in matcher code, per-cluster supported set on `KServeBackend.spec.engine.features`, break-glass via `engine.advanced[]`. Keeping the class catalog current is high-leverage and bounded — Upbound-managed-offering candidate.
+- **Labels-first matching.** `deviceSelector.matchLabels` works on any K8s cluster with labeled nodes — see [`workloads/gpt-oss-20b.yaml`](proposed-modelplane-api/examples/workloads/gpt-oss-20b.yaml). Typed `matchAttributes` + CEL is the break-glass for richer constraints (NVLink-domain co-location, MIG, FP8 capability) — see [`workloads/kimi-k2.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2.yaml).
+- **Managed defaults.** `managed-kserve` (backend) + `managed-kueue` (scheduler) + KEDA `ScaledObject`s (autoscaler, prerequisite) ship under the hood — see [`clusters/managed-gke-a3.yaml`](proposed-modelplane-api/examples/clusters/managed-gke-a3.yaml). BYO contracts (`InferenceCluster.spec.{backend, scheduler}.type`) plug in KAI / Volcano / Dynamo / raw-vllm — see [`clusters/byoc-coreweave-kai-h200.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-kai-h200.yaml). `ModelPlacement` (the IR) is the seam.
+- **`InferenceProvider` is a rough sketch** — see [`providers/together.yaml`](proposed-modelplane-api/examples/providers/together.yaml). Routing-only placeholder, never a placement target. **Nic owns the real design** for dedicated-SaaS placement (provisioning a Together / Baseten dedicated endpoint); the `InferenceProvider` shape here is a stand-in pending that work.
+- **`InferenceClass` catalog as the wedge.** Default ships per-SKU hardware bundles (`h100-nvl-8x`, `b200-nvl-8x`, `mi300x-8x`, ...) — StorageClass-style, cluster-scoped. See [`inferenceclasses/`](proposed-modelplane-api/examples/inferenceclasses/). Customers author their own for bespoke hardware. Engine features live separately: derivation rules in matcher code, per-cluster supported set on `KServeBackend.spec.engine.features`, break-glass via `engine.advanced[]` — see [`workloads/acme-vllm-fork.yaml`](proposed-modelplane-api/examples/workloads/acme-vllm-fork.yaml). Keeping the class catalog current is high-leverage and bounded — Upbound-managed-offering candidate.
 - **Wedge:** fleet-level capabilities single-cluster platforms can't reach — fleet matching, geo + compliance routing, KV cache federation, sticky sessions, failover, cost-aware routing.
 
 ## Design principles
@@ -94,7 +94,7 @@ These layers are **stacked, not alternatives**. KServe is the orchestrator; Kueu
 
 | Layer | Default | What Modelplane does |
 |---|---|---|
-| Backend | **`managed-kserve`** | Installs KServe at the pinned version + composes the cluster's `KServeBackend`. Per-version adapter renders `LLMInferenceService` from `ModelPlacement`. |
+| Backend | **`managed-kserve`** | Installs KServe at the pinned version + composes the cluster's `KServeBackend`. Per-version adapter renders `LLMInferenceService` from `ModelPlacement`. Example: [`clusters/managed-gke-a3.yaml`](proposed-modelplane-api/examples/clusters/managed-gke-a3.yaml). |
 | Scheduler | **`managed-kueue`** | Installs Kueue + composes `ClusterQueue` per pool. Reads `ClusterQueue.status.flavorsUsage[]` for capacity signal. |
 | Autoscaler | **KEDA** (operator-installed prerequisite) | Modelplane composes a `ScaledObject` from `ModelDeployment.spec.scaling` targeting the MD's scale subresource. KEDA writes `spec.replicas`; composer reconciles `ModelPlacement`s. |
 
@@ -109,16 +109,27 @@ These layers are **stacked, not alternatives**. KServe is the orchestrator; Kueu
 
 If a backend can't honor a requested knob (e.g., a backend without expert-parallelism for an MoE workload), the matcher excludes it. Which knobs each backend supports lives on `KServeBackend.spec.engine.features` per cluster.
 
+**Capacity signal — how the matcher avoids saturated clusters.** Each in-cluster scheduler exposes its own queue/quota status; a per-scheduler signal adapter normalizes them into a uniform shape on `InferenceCluster.status.capacity` (`pools[].resources[].{total, used, available}`). Sources by `scheduler.type`:
+
+| Scheduler | Source |
+|---|---|
+| `managed-kueue` / `kueue` | `ClusterQueue.status.flavorsUsage[]` |
+| `kai` | KAI `Queue.status` / `ResourcePool.status` |
+| `volcano` | Volcano `Queue.status` |
+| `none` | Direct cluster query (list nodes + sum allocatable − requests) |
+
+Works the same for BYOC — kubeconfig already grants read access; the adapter just needs list/get on the scheduler's CRs. Capacity is eventually consistent (few-seconds stale acceptable; we don't reserve, we admit). Cross-cluster admission ordering when two MDs race on the same scarce pool is the existing Open Q. Optional v2: Prometheus / metrics-server integration for actual utilization (TTFT-bottlenecked, not just admission counts).
+
 ## Bring your own (BYO) matrix
 
 Four axes — each independent. Mix and match.
 
-| Axis | Field | Values | Notes |
+| Axis | Field | Values | Examples |
 |---|---|---|---|
-| **Cluster** | `InferenceCluster.spec.cluster.source` | `GKE` · `EKS` · `AKS` · `Existing` | Cloud values mean Modelplane provisions; `Existing` = BYO via kubeconfig `Secret`. |
-| **Scheduler** | `InferenceCluster.spec.scheduler.type` | `managed-kueue` (default) · `kueue` · `kai` · `volcano` · `none` | `managed-kueue` = Modelplane installs. Others = operator's existing install. `none` = no admission control. |
+| **Cluster** | `InferenceCluster.spec.cluster.source` | `GKE` · `EKS` · `AKS` · `Existing` | Modelplane-provisioned: [`managed-gke-a3.yaml`](proposed-modelplane-api/examples/clusters/managed-gke-a3.yaml). BYOC: [`byoc-coreweave-h200-dra.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-h200-dra.yaml). |
+| **Scheduler** | `InferenceCluster.spec.scheduler.type` | `managed-kueue` (default) · `kueue` · `kai` · `volcano` · `none` | Managed: [`managed-gke-a3.yaml`](proposed-modelplane-api/examples/clusters/managed-gke-a3.yaml). BYO Kueue: [`byoc-coreweave-h200-dra.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-h200-dra.yaml). BYO KAI: [`byoc-coreweave-kai-h200.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-kai-h200.yaml). |
 | **Backend** | `InferenceCluster.spec.backend.{type, version}` | `managed-kserve` (default) · `kserve` · `dynamo` · `raw-vllm` | `managed-kserve` = Modelplane installs at pinned version. Others = operator's existing install. v1 ships KServe v0.16/v0.17/v0.18 adapters; KAI/Volcano/Dynamo are follow-ups. |
-| **InferenceProvider** (SaaS routing target) | `ModelEndpoint.routes[]` | `routes[].inferenceProvider.ref` (registered CR) or `routes[].external.url` (inline) | Reusable across MEs → register an `InferenceProvider` CR. One-off → inline URL on the route. |
+| **InferenceProvider** (SaaS routing target) | `ModelEndpoint.routes[]` | `routes[].inferenceProvider.ref` (registered CR) or `routes[].external.url` (inline) | Registered CR: [`providers/together.yaml`](proposed-modelplane-api/examples/providers/together.yaml) referenced from [`endpoints/multi-region.yaml`](proposed-modelplane-api/examples/endpoints/multi-region.yaml). |
 
 **KEDA is a prerequisite, not a BYO axis.** The autoscaler is required infrastructure; operator installs it once per cluster. (`managed-keda` could be added later if there's demand to bundle it.) Customers with existing scheduler / backend investments (KAI for training, Volcano for batch, Dynamo for orchestration) keep them; Modelplane sits above and adds the fleet layer.
 
@@ -135,11 +146,11 @@ We borrow DRA's vocabulary (typed attributes, domain-prefixed keys, CEL predicat
 
 **DRA is optional, never required.** Federation match runs against declared pool attributes — same logic whether the cluster has DRA or not. Pick per cluster on `InferenceCluster.spec.provisioning.mode`:
 
-| Mode | When | What in-cluster scheduling does |
-|---|---|---|
-| `device-plugin` | Default for BYOC without DRA. Works on any K8s with the device-plugin model (1.24+). | Backend adapter constrains pods via `nodeSelector` (from `deviceSelector.matchLabels`) + the device-plugin resource (`nvidia.com/gpu: <count>`). Runtime grounding via labels (next paragraph). |
-| `dra` | K8s 1.34+ with a DRA driver (NVIDIA / ROCm / TPU) — opt-in. | Adapter emits real `ResourceClaim`s carrying the same CEL predicates from `deviceSelector`. DRA driver grounds them against runtime `ResourceSlice`s — catches typos / drift / mis-config at pod admission. Belt-and-suspenders on top of label-based grounding. |
-| `hybrid` | Cluster has DRA available but some pools stay on device-plugin | Per-pool selection. |
+| Mode | When | What in-cluster scheduling does | Example |
+|---|---|---|---|
+| `device-plugin` | Default for BYOC without DRA. Works on any K8s with the device-plugin model (1.24+). | Backend adapter constrains pods via `nodeSelector` (from `deviceSelector.matchLabels`) + the device-plugin resource (`nvidia.com/gpu: <count>`). Runtime grounding via labels (next paragraph). | [`byoc-eks-h100-no-dra.yaml`](proposed-modelplane-api/examples/clusters/byoc-eks-h100-no-dra.yaml) |
+| `dra` | K8s 1.34+ with a DRA driver (NVIDIA / ROCm / TPU) — opt-in. | Adapter emits real `ResourceClaim`s carrying the same CEL predicates from `deviceSelector`. DRA driver grounds them against runtime `ResourceSlice`s — catches typos / drift / mis-config at pod admission. Belt-and-suspenders on top of label-based grounding. | [`byoc-coreweave-h200-dra.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-h200-dra.yaml) |
+| `hybrid` | Cluster has DRA available but some pools stay on device-plugin | Per-pool selection. | — |
 
 **Trust / drift detection without DRA.** The `device-plugin` mode doesn't lose anything load-bearing — federation already evaluated the same predicates against declared attrs. For drift detection (declared vs actual hardware), Modelplane has three paths, in order of effort:
 
@@ -153,12 +164,12 @@ So — DRA is a nice-to-have for BYOC, not a requirement. The eks-h100-no-dra re
 
 Single-cluster platforms (llm-d, KServe alone, Dynamo) optimize within a cluster. Modelplane reaches across `InferenceCluster`s, with SaaS via `InferenceProvider` routes.
 
-| Capability | What it does |
-|---|---|
-| Fleet matching | One `ModelDeployment` finds eligible clusters across regions, clouds, vendors; `matchTrace` shows why each fits or doesn't |
-| Hardware-heterogeneous routing | One `ModelEndpoint` weighting across MDs on different hardware, plus `InferenceProvider` routes for SaaS spillover |
-| Geo + compliance routing | EU traffic to EU clusters; SOC 2 traffic only to certified clusters — via `clusterSelector` predicates |
-| Cross-cluster replica scaling | Replicas of one MD spread across matching clusters; matcher picks per replica from capacity signal |
+| Capability | What it does | Example |
+|---|---|---|
+| Fleet matching | One `ModelDeployment` finds eligible clusters across regions, clouds, vendors; `matchTrace` shows why each fits or doesn't | [`workloads/kimi-k2.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2.yaml) |
+| Hardware-heterogeneous routing | One `ModelEndpoint` weighting across MDs on different hardware, plus `InferenceProvider` routes for SaaS spillover | [`endpoints/assistant.yaml`](proposed-modelplane-api/examples/endpoints/assistant.yaml) |
+| Geo + compliance routing | EU traffic to EU clusters; SOC 2 traffic only to certified clusters — via `clusterSelector` predicates | [`workloads/kimi-k2-eu.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2-eu.yaml) + [`endpoints/multi-region.yaml`](proposed-modelplane-api/examples/endpoints/multi-region.yaml) |
+| Cross-cluster replica scaling | Replicas of one MD spread across matching clusters; matcher picks per replica from capacity signal | — |
 | Fleet KV cache federation | G4 networked cache as a global fabric; route to whichever cluster has the prefix |
 | Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` |
 | Fleet failover | Active-active / active-passive cutover when a cluster degrades |
@@ -172,22 +183,22 @@ What ships in v1 vs v2 is in the project plan section.
 
 **ML/App day-one.** Write a `ModelDeployment` (or instantiate a platform Composition like `ApprovedModel` that generates one). Matcher picks an `InferenceCluster` and emits one `ModelPlacement` per replica; the version-pinned adapter renders each MP to one upstream pod set. KEDA writes `MD.spec.replicas`; composer reconciles MPs. Endpoint reachable via `ModelEndpoint`. `matchTrace` shows what was considered and why excluded.
 
-**Platform day-one.** Install Modelplane on the Crossplane control plane → install (or BYO) workload-plane substrate per cluster → create one `InferenceCluster` per cluster (or copy from `examples/reference-clusters/`, each pool referencing an `InferenceClass`) → create `InferenceProvider`s for any SaaS endpoints → optionally author bespoke `InferenceClass`es and Compositions.
+**Platform day-one.** Install Modelplane on the Crossplane control plane → install (or BYO) workload-plane substrate per cluster → create one `InferenceCluster` per cluster (or copy from `examples/clusters/reference/`, each pool referencing an `InferenceClass`) → create `InferenceProvider`s for any SaaS endpoints → optionally author bespoke `InferenceClass`es and Compositions.
 
 ## Break-glass scenarios
 
 Where the typed / managed path doesn't fit, the escape hatches:
 
-| Scenario | Break-glass path |
-|---|---|
-| Custom hardware (bespoke AMD partition, internal accelerator) not in the default `InferenceClass` catalog | Author your own `InferenceClass` with the right `expands` attributes; reference from `InferenceCluster.spec.nodePools[].class`. |
-| Engine fork with a custom feature (e.g. `acme.com/turbo-mode`) | Add the name to `ModelDeployment.spec.engine.advanced[].name`. Matcher unions it into the required-feature set verbatim — no catalog registration. The cluster's `KServeBackend.spec.engine.features` is the source of truth for support; `matchTrace.suggestions` flags typos via fuzzy-match. |
-| Constraint not expressible via `matchLabels` (NVLink-domain co-location, MIG state, combined predicates like `vramGiB >= 141 && capabilities contains fp8`) | `deviceSelector.matchAttributes` over the typed attribute vocabulary; `deviceSelector.cel` for full CEL. Federation evaluates against declared pool attrs; in-cluster grounding (where DRA available) emits a real `ResourceClaim`. |
-| Org-specific match dimension (cost center, team, security clearance) | User-defined `acme.example/*` keys on `InferenceCluster.spec.attributes` + `clusterSelector.matchAttributes`. Pass-through, unvalidated. |
-| Engine flag we don't model | `engine.args` opaque pass-through — CLI flags forwarded as-is to the engine binary. |
-| Modelplane's matcher / composer policy doesn't fit | Replace via custom Crossplane composition function over the same XRDs. The IR (`ModelPlacement`) is the seam — your function emits MPs; the backend adapter renders them. |
-| New cloud / SaaS not supported by built-in providers | Custom Crossplane provider that reconciles `InferenceCluster` (new cloud) or `InferenceProvider` (new SaaS). |
-| Org-specific abstractions (`ApprovedModel`, `ProductionCluster`, governance, defaults) | Crossplane Compositions over `ModelDeployment` and substrate CRDs. |
+| Scenario | Break-glass path | Example |
+|---|---|---|
+| Custom hardware (bespoke AMD partition, internal accelerator) not in the default `InferenceClass` catalog | Author your own `InferenceClass` with the right `expands` attributes; reference from `InferenceCluster.spec.nodePools[].class`. | [`inferenceclasses/`](proposed-modelplane-api/examples/inferenceclasses/) (default catalog to copy from) |
+| Engine fork with a custom feature (e.g. `acme.com/turbo-mode`) | Add the name to `ModelDeployment.spec.engine.advanced[].name`. Matcher unions it into the required-feature set verbatim — no catalog registration. The cluster's `KServeBackend.spec.engine.features` is the source of truth for support; `matchTrace.suggestions` flags typos via fuzzy-match. | [`workloads/acme-vllm-fork.yaml`](proposed-modelplane-api/examples/workloads/acme-vllm-fork.yaml) |
+| Constraint not expressible via `matchLabels` (NVLink-domain co-location, MIG state, combined predicates like `vramGiB >= 141 && capabilities contains fp8`) | `deviceSelector.matchAttributes` over the typed attribute vocabulary; `deviceSelector.cel` for full CEL. Federation evaluates against declared pool attrs; in-cluster grounding (where DRA available) emits a real `ResourceClaim`. | [`workloads/kimi-k2.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2.yaml) |
+| Org-specific match dimension (cost center, team, security clearance) | User-defined `acme.example/*` keys on `InferenceCluster.spec.attributes` + `clusterSelector.matchAttributes`. Pass-through, unvalidated. | [`workloads/qwen3-coder.yaml`](proposed-modelplane-api/examples/workloads/qwen3-coder.yaml) |
+| Engine flag we don't model | `engine.args` opaque pass-through — CLI flags forwarded as-is to the engine binary. | [`workloads/kimi-k2.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2.yaml) |
+| Modelplane's matcher / composer policy doesn't fit | Replace via custom Crossplane composition function over the same XRDs. The IR (`ModelPlacement`) is the seam — your function emits MPs; the backend adapter renders them. | — |
+| New cloud / SaaS not supported by built-in providers | Custom Crossplane provider that reconciles `InferenceCluster` (new cloud) or `InferenceProvider` (new SaaS). | — |
+| Org-specific abstractions (`ApprovedModel`, `ProductionCluster`, governance, defaults) | Crossplane Compositions over `ModelDeployment` and substrate CRDs. | — |
 
 ## API shape
 
@@ -287,7 +298,7 @@ spec:
 
 Workloads match against attributes (e.g. `capabilities contains fp8 && vramGiB >= 141`) — same predicate engine whether the attribute came from a class or was declared inline. Modelplane ships a default catalog under [`examples/inferenceclasses/`](proposed-modelplane-api/examples/inferenceclasses/); customers author their own for bespoke hardware. **Decision after 1:1 with Nic** — aligns with K8s class patterns (StorageClass / IngressClass / DeviceClass). The earlier `CapabilityVocabulary` singleton conflated three jobs (ontology + macros + features) into one CR; decomposing it gives each piece its natural home.
 
-**Reference InferenceClusters from cloud SKUs.** Pre-generated `InferenceCluster` definitions live under [`examples/reference-clusters/`](proposed-modelplane-api/examples/reference-clusters/) — AWS p5, GKE A3 Mega, OCI MI300X, CoreWeave GB300 NVL72, EKS H100 (no-DRA path). Each `nodePools[].class` references an `InferenceClass`; inline overrides carry the per-cluster host shape (cpu, memory, nics, the provider SKU string). Static today; the follow-up is a Crossplane provider that polls cloud SKU APIs and generates these programmatically.
+**Reference InferenceClusters from cloud SKUs.** Pre-generated `InferenceCluster` templates live under [`examples/clusters/reference/`](proposed-modelplane-api/examples/clusters/reference/) — AWS p5, GKE A3 Mega, OCI MI300X, CoreWeave GB300 NVL72. Each `nodePools[].class` references an `InferenceClass`; inline overrides carry the per-cluster host shape (cpu, memory, nics, the provider SKU string). Concrete BYOC and managed configurations (`byoc-*.yaml`, `managed-*.yaml`) sit alongside in `examples/clusters/`. Static today; the follow-up is a Crossplane provider that polls cloud SKU APIs and generates these programmatically.
 
 **Commercial-offering framing.** The canonical-catalog work is the wedge:
 
@@ -412,21 +423,25 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 - [`xrds/modelendpoint.yaml`](proposed-modelplane-api/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `InferenceProvider` / `External`
 - [`xrds/modelplacement.yaml`](proposed-modelplane-api/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
 
-**Substrate examples** (platform-team setup):
+**Substrate examples — clusters** (the BYO matrix in concrete form):
 
-- [`examples/inferencecluster-prod-coreweave.yaml`](proposed-modelplane-api/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster; BYO `kueue` + BYO `kserve@v0.18.0`; pool references `h200-nvl-8x` class
-- [`examples/inferenceprovider-together.yaml`](proposed-modelplane-api/examples/inferenceprovider-together.yaml) — Together AI as a routing target
-- [`examples/inferenceclasses/`](proposed-modelplane-api/examples/inferenceclasses/) — default `InferenceClass` catalog (one per SKU: H100/H200/B200/B300/MI300X/L40S/A100, in 8x and Grace-4x forms)
-- [`examples/reference-clusters/`](proposed-modelplane-api/examples/reference-clusters/) — pre-generated `InferenceCluster` definitions per SKU, each `nodePools[].class` references an `InferenceClass`: AWS p5 (DRA), GKE A3 Mega (DRA), OCI MI300X (DRA + AMD), CoreWeave GB300 NVL72 (rack-scale), EKS H100 no-DRA (labels-first BYOC). Anchors the managed-catalog commercial offering.
+- [`examples/clusters/managed-gke-a3.yaml`](proposed-modelplane-api/examples/clusters/managed-gke-a3.yaml) — Modelplane-provisioned GKE; `managed-kueue` + `managed-kserve` + DRA mode
+- [`examples/clusters/byoc-coreweave-h200-dra.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-h200-dra.yaml) — BYOC; BYO `kueue` + BYO `kserve@v0.18.0` + DRA mode; pool references `h200-nvl-8x` class
+- [`examples/clusters/byoc-coreweave-kai-h200.yaml`](proposed-modelplane-api/examples/clusters/byoc-coreweave-kai-h200.yaml) — BYOC; BYO **`kai`** scheduler + BYO `kserve` + DRA (NVIDIA NeMo-stack pattern)
+- [`examples/clusters/byoc-eks-h100-no-dra.yaml`](proposed-modelplane-api/examples/clusters/byoc-eks-h100-no-dra.yaml) — BYOC; BYO `kueue` + BYO `kserve` + **`device-plugin`** mode (no DRA)
+- [`examples/clusters/reference/`](proposed-modelplane-api/examples/clusters/reference/) — per-SKU templates (AWS p5, GKE A3 Mega, OCI MI300X, CoreWeave GB300 NVL72) customers copy
+- [`examples/inferenceclasses/`](proposed-modelplane-api/examples/inferenceclasses/) — default `InferenceClass` catalog (H100/H200/B200/B300/MI300X/L40S/A100, in 8x and Grace-4x forms)
+- [`examples/providers/together.yaml`](proposed-modelplane-api/examples/providers/together.yaml) — Together AI as an `InferenceProvider` routing target
 
 **Workload examples** (ML/App team deployments):
 
-- [`examples/kimi-k2.yaml`](proposed-modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node (2× 8 H200), 5P3D disaggregation, FP8 weights + KV; typed-attribute predicates (`vramGiB >= 141`, `capabilities: [fp8]`, `interconnect.type: nvswitch`)
-- [`examples/kimi-k2-eu.yaml`](proposed-modelplane-api/examples/kimi-k2-eu.yaml) — EU-region sibling; multi-region pattern (one MD per region, pinned via `cloud.region`)
-- [`examples/qwen3-coder.yaml`](proposed-modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context; user-defined `acme.example/*` attributes for team affinity
-- [`examples/gpt-oss-20b.yaml`](proposed-modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, scale-to-zero; labels-first match path (NVIDIA GPU operator's `nvidia.com/gpu.family` node label)
-- [`examples/assistant-endpoint.yaml`](proposed-modelplane-api/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across the three deployments + Together routing
-- [`examples/multi-region-endpoint.yaml`](proposed-modelplane-api/examples/multi-region-endpoint.yaml) — `ModelEndpoint` routing Kimi K2 across us-east + eu-west MDs with Together spillover
+- [`examples/workloads/kimi-k2.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2.yaml) — frontier MoE, multi-node (2× 8 H200), 5P3D disaggregation, FP8 weights + KV; typed-attribute predicates
+- [`examples/workloads/kimi-k2-eu.yaml`](proposed-modelplane-api/examples/workloads/kimi-k2-eu.yaml) — EU-region sibling; multi-region pattern
+- [`examples/workloads/qwen3-coder.yaml`](proposed-modelplane-api/examples/workloads/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, user-defined `acme.example/*` attributes
+- [`examples/workloads/gpt-oss-20b.yaml`](proposed-modelplane-api/examples/workloads/gpt-oss-20b.yaml) — small MoE, scale-to-zero; **labels-first match path** (NVIDIA GPU operator's `nvidia.com/gpu.family` node label)
+- [`examples/workloads/acme-vllm-fork.yaml`](proposed-modelplane-api/examples/workloads/acme-vllm-fork.yaml) — **`engine.advanced[]` break-glass** for an engine fork with custom features (`acme.com/turbo-mode`)
+- [`examples/endpoints/assistant.yaml`](proposed-modelplane-api/examples/endpoints/assistant.yaml) — `ModelEndpoint` weighted across deployments + Together routing
+- [`examples/endpoints/multi-region.yaml`](proposed-modelplane-api/examples/endpoints/multi-region.yaml) — `ModelEndpoint` routing Kimi K2 across us-east-1 + eu-west-1 MDs with Together spillover
 
 **What's deliberately incomplete** (will be filled in during the move to `apis/`):
 

@@ -5,11 +5,14 @@
 #
 # Replaces the existing InferenceEnvironment XRD. Pure substrate:
 # cluster source, scheduler / backend pluggability, node pools, and
-# three-layer attributes (Cluster / Pool / Device — see CapabilityVocabulary
-# default for the canonical vocab). No engine or runtime concerns — those
-# live on the KServeBackend internal XR (apis/kservebackends/), which
-# represents the inference stack installed on this cluster. The matcher
-# reads engine features from the associated KServeBackend, not from here.
+# three-layer attributes (Cluster / Pool / Device). The well-known
+# attribute keys (vendor, product, vramGiB, capabilities, network.*,
+# cloud.*, ...) are conventions in matcher code + docs; reusable
+# hardware bundles live as InferenceClass CRs (StorageClass-style).
+# No engine or runtime concerns — those live on the KServeBackend
+# internal XR (apis/kservebackends/), which represents the inference
+# stack installed on this cluster. The matcher reads engine features
+# from the associated KServeBackend, not from here.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
@@ -43,7 +46,7 @@ spec:
           properties:
             spec:
               type: object
-              required: [cluster, provisioning]
+              required: [cluster, provisioning, scheduler, backend]
               properties:
                 # ---- cluster source ----
                 cluster:
@@ -56,8 +59,19 @@ spec:
                     gke:
                       type: object
                       properties:
-                        project: { type: string }
-                        region:  { type: string }
+                        project:     { type: string }
+                        region:      { type: string }
+                        clusterName: { type: string }
+                    eks:
+                      type: object
+                      properties:
+                        region:      { type: string }
+                        clusterName: { type: string }
+                    aks:
+                      type: object
+                      properties:
+                        resourceGroup: { type: string }
+                        clusterName:   { type: string }
                     existing:
                       type: object
                       properties:
@@ -69,13 +83,23 @@ spec:
                             namespace: { type: string }
                             key:       { type: string }
 
-                # ---- in-cluster grounding via DRA (optional) ----
-                # `dra` means the cluster runs a DRA driver — backend adapters
-                # emit real ResourceClaims so the driver grounds federation-stage
-                # predicates against actual hardware at pod admission. Mandatory
-                # for BYOC clusters with DRA available. `device-plugin` falls back
-                # to label-based pod constraints (no runtime grounding). `hybrid`
-                # supports both.
+                # ---- in-cluster device exposure mode ----
+                # DRA is optional — federation match never reads runtime
+                # ResourceSlices. Pick the mode that matches what the cluster
+                # has installed.
+                #
+                # `device-plugin`: default for BYOC. Backend adapter constrains
+                #   pods via nodeSelector (from deviceSelector.matchLabels) +
+                #   the device-plugin resource (e.g. nvidia.com/gpu: <count>).
+                #   Drift detection without DRA: trust the InferenceClass, or
+                #   compare declared deviceAttributes against NVIDIA GPU
+                #   operator / NFD node labels via a drift controller.
+                # `dra`: opt-in. K8s 1.34+ with a DRA driver. Adapter emits
+                #   real ResourceClaims carrying the same CEL predicates from
+                #   deviceSelector — strongest grounding, catches drift /
+                #   typos / mis-config at pod admission.
+                # `hybrid`: cluster has DRA but some pools stay on
+                #   device-plugin. Per-pool selection.
                 provisioning:
                   type: object
                   required: [mode]
@@ -226,9 +250,41 @@ spec:
                       reason:             { type: string }
                       message:            { type: string }
                       lastTransitionTime: { type: string, format: date-time }
+                # Capacity signal — populated by a per-scheduler signal adapter
+                # so the matcher can avoid placing replicas on saturated clusters.
+                # Sources by spec.scheduler.type:
+                #   managed-kueue / kueue → ClusterQueue.status.flavorsUsage[]
+                #   kai                   → KAI Queue / ResourcePool .status
+                #   volcano               → Volcano Queue.status
+                #   none                  → direct cluster query (list nodes +
+                #                           sum allocatable − requests)
+                # Eventually consistent; few-seconds stale is acceptable for
+                # federation-time decisions (we don't reserve, we admit and
+                # let in-cluster scheduling handle final binding).
                 capacity:
                   type: object
-                  description: Roll-up of declared capacity per pool.
+                  properties:
+                    pools:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name: { type: string }
+                          # Per-resource-flavor capacity. Resource names
+                          # follow K8s conventions (nvidia.com/gpu,
+                          # amd.com/gpu, cpu, memory).
+                          resources:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:      { type: string }
+                                total:     { type: string }
+                                used:      { type: string }
+                                available: { type: string }
+                          lastObserved:
+                            type: string
+                            format: date-time
                 gateway:
                   type: object
                   properties:

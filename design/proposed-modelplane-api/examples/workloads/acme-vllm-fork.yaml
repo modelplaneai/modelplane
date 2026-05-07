@@ -1,0 +1,81 @@
+# Workload using engine.advanced[] break-glass — vLLM fork with custom feature.
+#
+# Demonstrates two break-glass patterns:
+#   - engine.advanced[].name — required-feature names not yet in
+#     engine.optimizations. Matcher unions them into the required-feature
+#     set verbatim; cluster's KServeBackend.spec.engine.features is the
+#     source of truth for support. No catalog registration needed.
+#   - engine.image — point at a fork (acme.com/vllm-turbo) that exposes
+#     the custom feature.
+#
+# If no cluster's KServeBackend declares "acme.com/turbo-mode", matchTrace
+# surfaces the gap; matchTrace.suggestions fuzzy-matches against the
+# matcher's well-known list (so a typo like "trubo-mode" → "turbo-mode"
+# gets a suggestion). Custom features get no suggestion — matcher accepts
+# them as-is, just flags missing cluster support.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: acme-llama-405b-turbo
+  namespace: app-team
+spec:
+  replicas: 1
+
+  model:
+    name: meta-llama/Llama-3.1-405B-Instruct
+  source: HuggingFace
+  huggingFace:
+    repo: meta-llama/Llama-3.1-405B-Instruct
+
+  clusterSelector:
+    matchAttributes:
+      modelplane.ai/tier: production
+
+  deviceSelector:
+    requests:
+      - name: gpus
+        count: 8
+        perNode: 8
+        matchAttributes:
+          vramGiB:           ">=141"
+          capabilities:      [fp8]
+          interconnect.type: nvswitch
+
+  parallelism:
+    tensor: 8
+
+  engine:
+    name: vLLM
+    image: registry.acme.com/vllm-turbo:v0.8.0-acme.3   # fork
+    args:
+      - "--max-model-len=131072"
+      - "--gpu-memory-utilization=0.92"
+    quantization:
+      precision: fp8
+      target: [weights, kvCache]
+
+    # Typed knobs we already model.
+    optimizations:
+      chunkedPrefill: true
+      prefixCaching: true
+
+    # Break-glass: feature names the matcher doesn't know about.
+    # Each becomes a required engine feature; the chosen cluster's
+    # KServeBackend.spec.engine.features must contain all of them.
+    advanced:
+      - name: acme.com/turbo-mode
+        config:
+          mode: aggressive
+          batchSize: 256
+      - name: acme.com/sliding-window-256k
+        config:
+          windowTokens: 262144
+
+  scaling:
+    signal: Concurrency
+    concurrency:
+      minReplicas: 1
+      maxReplicas: 4
+      target: 16
+      window: 60s
+      scaleDownDelay: 300s
