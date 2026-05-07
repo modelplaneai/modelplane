@@ -26,8 +26,6 @@
 
 ## Architecture: control plane + fleet
 
-A diagram of the API and an example fleet topology lives in [`proposed-modelplane-api/diagram.excalidraw`](proposed-modelplane-api/diagram.excalidraw) — Bassam's whiteboard.
-
 
 ```
             Modelplane Control Plane (Crossplane)
@@ -317,23 +315,22 @@ Workloads imply required engine features through declared config; clusters decla
 
 There's no `EngineCatalog` CR — the canonical feature list is matcher code + `docs/engine-features.md`, the per-cluster supported set is `KServeBackend`, and break-glass needs no registration.
 
-**`KServeBackend.spec.engine` is a proposed extension.** The existing internal XR ([`apis/kservebackends/`](../apis/kservebackends/)) installs the KServe stack on a cluster but doesn't expose engine-feature declarations today. This design adds a small `spec.engine` block — declarative for `byo-kserve` (operator authors), composed by Modelplane for `managed-kserve`. Proposed shape:
+**`KServeBackend.spec.engine` is a proposed extension.** The existing internal XR ([`apis/kservebackends/`](../apis/kservebackends/)) installs the KServe stack on a cluster but doesn't expose engine-feature declarations today. This design adds a small `spec.engine.features` list — declarative for `byo-kserve` (operator authors), composed by Modelplane for `managed-kserve`. Full proposed shape (mirror of the existing XRD plus the new field) is in [`proposed-modelplane-api/xrds/kservebackend.yaml`](proposed-modelplane-api/xrds/kservebackend.yaml). Sketch:
 
 ```yaml
 spec:
   engine:
-    name:    vLLM | SGLang | TensorRT-LLM | TGI
-    version: v0.8.0
     features:
       - chunked-prefill
       - prefix-caching
       - multi-lora
       - fp8-kv-cache
-      - prefill-decode-disagg     # if KServe v0.18+
-      # ... per-backend-version supported set
+      - prefill-decode-disagg
+      # ... feature names are the canonical Modelplane vocabulary,
+      # plus custom acme.com/* for engine forks
 ```
 
-Lands in `apis/kservebackends/definition.yaml` alongside the rest of this design.
+The `features` list is the union across whatever engines (vLLM / SGLang / TRT-LLM / TGI) are installed in this cluster — keeps federation matching to set-membership. Lands in `apis/kservebackends/definition.yaml` alongside this design.
 
 **Vocabulary tiers (where keys come from):**
 
@@ -437,6 +434,7 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 - [`xrds/modeldeployment.yaml`](proposed-modelplane-api/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA, structured `status.matchTrace`
 - [`xrds/modelendpoint.yaml`](proposed-modelplane-api/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `InferenceProvider` / `External`
 - [`xrds/modelplacement.yaml`](proposed-modelplane-api/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
+- [`xrds/kservebackend.yaml`](proposed-modelplane-api/xrds/kservebackend.yaml) — proposed extension to the existing internal `KServeBackend` XR adding `spec.engine.features`
 
 **Substrate examples — clusters** (the BYO matrix in concrete form):
 
@@ -476,4 +474,5 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 | `xrds/modeldeployment.yaml` | `apis/modeldeployments/definition.yaml` (expanded) |
 | `xrds/modelendpoint.yaml` | `apis/modelendpoints/definition.yaml` |
 | `xrds/modelplacement.yaml` | `apis/modelplacements/definition.yaml` (expanded as the IR) |
+| `xrds/kservebackend.yaml` | `apis/kservebackends/definition.yaml` (extended with `spec.engine.features`) |
 | `examples/**` | `examples/` at repo root |
