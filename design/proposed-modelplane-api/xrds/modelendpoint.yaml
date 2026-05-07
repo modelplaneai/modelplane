@@ -10,14 +10,18 @@
 # the cluster Service round-robin across pods. Cross-cluster spread of one
 # logical service happens via multiple MDs + multiple route entries here.
 #
-# Three route target types:
-#   Deployment        — references a ModelDeployment by ref or selector.
-#                       Covers all of its placements transitively (this is
-#                       how an MD's replicas across clusters/regions all
-#                       get traffic).
+# Three route target types — each supports `ref` (explicit) or
+# `selector.matchLabels` (label-based). Label-based is the natural way
+# to express environment promotion: `modelplane.ai/environment: prod`
+# on the MD, route selector picks up whichever MD currently has that
+# label, the URL stays stable as you rev MDs.
+#
+#   Deployment        — references a ModelDeployment. Covers all of
+#                       its placements transitively (this is how an
+#                       MD's replicas across clusters/regions all get
+#                       traffic).
 #   InferenceProvider — routing to a SaaS / observed endpoint (Together,
-#                       Bedrock, etc.). Never a placement target — only
-#                       a route.
+#                       Bedrock, etc.). Never a placement target.
 #   External          — ad-hoc URL not registered as an InferenceProvider.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
@@ -96,6 +100,11 @@ spec:
                                 additionalProperties: { type: string }
                       # ---- InferenceProvider: route to a SaaS / observed endpoint ----
                       # Routing-only; InferenceProvider is never a placement target.
+                      # Same selection options as Deployment: explicit `ref`
+                      # for single-target, `selector.matchLabels` for label-
+                      # based selection (e.g. all spillover providers, or
+                      # all providers in a given region — keeps the route
+                      # stable as providers are added / cycled).
                       inferenceProvider:
                         type: object
                         properties:
@@ -105,6 +114,12 @@ spec:
                             properties:
                               namespace: { type: string }
                               name:      { type: string }
+                          selector:
+                            type: object
+                            properties:
+                              matchLabels:
+                                type: object
+                                additionalProperties: { type: string }
                       # ---- External: ad-hoc URL not registered as an InferenceProvider ----
                       external:
                         type: object

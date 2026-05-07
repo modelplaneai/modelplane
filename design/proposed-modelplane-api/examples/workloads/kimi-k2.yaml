@@ -35,6 +35,13 @@ kind: ModelDeployment
 metadata:
   name: kimi-k2
   namespace: app-team
+  labels:
+    # Labels for ModelEndpoint route selection — see endpoints/multi-region.yaml.
+    # Bumping the MD or replacing it stays transparent to the ME as long as
+    # the new MD carries the same labels.
+    modelplane.ai/model:       kimi-k2
+    modelplane.ai/region:      us-east-1
+    modelplane.ai/environment: production
 spec:
   replicas: 1                             # KEDA writes here via scale subresource
 

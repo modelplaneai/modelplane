@@ -12,6 +12,12 @@ kind: ModelDeployment
 metadata:
   name: kimi-k2-eu
   namespace: app-team
+  labels:
+    # Same model + environment as kimi-k2; different region. ME route
+    # selector in endpoints/multi-region.yaml uses these.
+    modelplane.ai/model:       kimi-k2
+    modelplane.ai/region:      eu-west-1
+    modelplane.ai/environment: production
 spec:
   replicas: 1                             # KEDA writes here
 

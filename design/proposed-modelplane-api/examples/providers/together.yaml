@@ -11,6 +11,11 @@ kind: InferenceProvider
 metadata:
   name: together-prod
   namespace: app-team
+  labels:
+    # Labels for ModelEndpoint route selection.
+    modelplane.ai/role:        spillover
+    modelplane.ai/environment: production
+    cloud.provider:            togetherai
 spec:
   endpoint:
     url: https://api.together.xyz/v1

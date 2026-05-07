@@ -1,20 +1,22 @@
 # Multi-region ModelEndpoint — Kimi K2 across us-east-1 + eu-west-1.
 #
-# Two ModelDeployments, one per region (kimi-k2.yaml + kimi-k2-eu.yaml).
-# Each MD's clusterSelector pins it to its region; the matcher places
-# replicas on InferenceClusters in that region. This ME routes traffic
-# across both with a fallback to Together for burst.
-#
-# Region affinity for end users (EU traffic to EU MD) is a gateway
-# concern, not the matcher's — typically a header / ingress rule that
-# weights the routes per request. The static weights below are the
-# default split.
+# Two ModelDeployments, one per region (kimi-k2.yaml + kimi-k2-eu.yaml),
+# both labelled `modelplane.ai/{model: kimi-k2, environment: production}`
+# with different `region` labels. This ME routes by **label selector**,
+# not by explicit ref — bumping or replacing an MD stays transparent
+# to the ME as long as the new MD carries the same labels (this is the
+# environment-promotion pattern).
 #
 # Demonstrates:
 #   - Concrete multi-region pattern (the doc references this often).
-#   - One ME per namespace, routes to multiple MDs in that namespace.
-#   - SaaS spillover via InferenceProvider (together-prod) — burst
+#   - Label-based route selection — `selector.matchLabels` over
+#     `ref.name` for stable URLs across MD revisions.
+#   - SaaS spillover via InferenceProvider (`role: spillover`) — burst
 #     absorption when both regional clusters are at capacity.
+#   - Region affinity for end users (EU traffic to EU MD) is a gateway
+#     concern, not the matcher's — typically a header / ingress rule
+#     that weights the routes per request. The static weights below are
+#     the default split.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelEndpoint
 metadata:
@@ -25,12 +27,23 @@ spec:
     - type: Deployment
       weight: 50
       deployment:
-        ref: { name: kimi-k2 }            # us-east-1 MD; covers all its placements
+        selector:
+          matchLabels:
+            modelplane.ai/model:       kimi-k2
+            modelplane.ai/region:      us-east-1
+            modelplane.ai/environment: production
     - type: Deployment
       weight: 45
       deployment:
-        ref: { name: kimi-k2-eu }         # eu-west-1 MD; covers all its placements
+        selector:
+          matchLabels:
+            modelplane.ai/model:       kimi-k2
+            modelplane.ai/region:      eu-west-1
+            modelplane.ai/environment: production
     - type: InferenceProvider
       weight: 5
       inferenceProvider:
-        ref: { name: together-prod }      # SaaS spillover
+        selector:
+          matchLabels:
+            modelplane.ai/role:        spillover
+            modelplane.ai/environment: production
