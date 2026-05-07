@@ -404,9 +404,9 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 
 **Workload examples** (ML/App team deployments):
 
-- [`examples/kimi-k2.yaml`](proposed-modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node, 5P3D disaggregation, FP8 weights + KV; demonstrates the DRA `matchAttributes` break-glass path (NVLink-domain co-location)
-- [`examples/qwen3-coder.yaml`](proposed-modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context; DRA path
-- [`examples/gpt-oss-20b.yaml`](proposed-modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, scale-to-zero; demonstrates the labels-first match path (no DRA needed)
+- [`examples/kimi-k2.yaml`](proposed-modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node (2× 8 H200), 5P3D disaggregation, FP8 weights + KV; demonstrates the typed-attribute predicate path (`vramGiB >= 141`, `capabilities: [fp8]`, `interconnect.type: [nvswitch, xgmi]`)
+- [`examples/qwen3-coder.yaml`](proposed-modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context; user-defined `acme.example/*` attributes for team affinity
+- [`examples/gpt-oss-20b.yaml`](proposed-modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, scale-to-zero; demonstrates the labels-first match path (no DRA needed; matches on the NVIDIA GPU operator's `nvidia.com/gpu.family` node label)
 - [`examples/assistant-endpoint.yaml`](proposed-modelplane-api/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across the three deployments + Together routing
 
 **What's deliberately incomplete** (will be filled in during the move to `apis/`):

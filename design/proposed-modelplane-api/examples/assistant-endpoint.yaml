@@ -1,12 +1,20 @@
 # Weighted ModelEndpoint across deployments and a SaaS provider.
 #
+# All targets live in the same namespace (`app-team`) per the
+# "namespace = environment / lifecycle scope" model — a single ME routes
+# within its environment. Cross-namespace routing isn't supported.
+#
 # Demonstrates:
-#   - Weighted routing across multiple ModelDeployments (canary / A-B / hybrid)
-#   - A ModelService (Together) as a route target alongside Deployments
-#   - Each Deployment route fans across all replica/placements of that MD;
-#     KEDA + the cluster Service round-robin across the pods
+#   - Weighted routing across heterogeneous ModelDeployments. (Note: in
+#     practice canary / A-B is across versions of one model family;
+#     here we route across three different families to show the API
+#     surface, not a realistic deployment.)
+#   - A ModelService (Together) as a route target alongside Deployments.
+#   - Each Deployment route fans across ALL the MD's ModelPlacements
+#     (every replica, on every InferenceCluster the matcher placed them
+#     on). KEDA + the cluster Service round-robin across the pods.
 #   - Multi-region spread happens via multiple ModelDeployments (one per
-#     region/cluster) + multiple route entries on this resource
+#     region / cluster) + multiple route entries on this resource.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelEndpoint
 metadata:
@@ -17,7 +25,7 @@ spec:
     - type: Deployment
       weight: 65
       deployment:
-        ref: { name: gpt-oss-20b }
+        ref: { name: gpt-oss-20b }       # in this namespace
     - type: Deployment
       weight: 25
       deployment:
@@ -29,4 +37,4 @@ spec:
     - type: ModelService
       weight: 5
       modelService:
-        ref: { name: together-prod }       # SaaS spillover for burst traffic
+        ref: { name: together-prod }     # SaaS spillover for burst traffic

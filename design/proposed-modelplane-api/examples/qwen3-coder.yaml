@@ -19,7 +19,7 @@ apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: qwen3-coder
-  namespace: dev-tools
+  namespace: app-team
 spec:
   replicas: 1                             # KEDA writes here via scale subresource
 
@@ -30,23 +30,22 @@ spec:
     repo: Qwen/Qwen3-Coder-480B-A35B-Instruct
 
   clusterSelector:
-    matchLabels:
-      modelplane.ai/tier: production
     matchAttributes:
-      "acme.example/team":         "dev-tools"
-      "acme.example/cost-center":  "engineering"
+      modelplane.ai/tier:        production
+      "acme.example/team":       dev-tools
+      "acme.example/cost-center": engineering
 
+  # Single-node TP=8 — all 8 GPUs on an HGX baseboard share one NVLink
+  # Switch domain by construction. No separate co-location constraint needed.
   deviceSelector:
     requests:
       - name: gpus
         count: 8
         perNode: 8
         matchAttributes:
-          vramGiB:      ">=141"
-          capabilities: [fp8]
-        constraints:
-          - matchAttribute: gpu.nvidia.com/nvlinkDomain
-            requests: [gpus]
+          vramGiB:           ">=141"
+          capabilities:      [fp8]
+          interconnect.type: [nvswitch, xgmi]
 
   parallelism:                          # Modelplane-canonical
     tensor: 8

@@ -73,7 +73,6 @@ spec:
         nics.bandwidthGbps:        400
         host.virtualization:       none                    # bare metal
         modelplane.ai/pricing:     reserved
-        modelplane.ai/failureDomain: us-east1-a
       # Device-layer attributes (per-GPU; uniform across pool's devices).
       # Capability flags do the matching work; architecture is metadata.
       deviceAttributes:

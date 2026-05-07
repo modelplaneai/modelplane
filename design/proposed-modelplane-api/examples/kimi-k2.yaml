@@ -2,12 +2,14 @@
 #
 # Demonstrates:
 #   - Two-level selector cascade (federation-stage match):
-#       clusterSelector: filters InferenceCluster by env-level attrs
-#       deviceSelector:  matches node + device attrs via the typed
-#                        attribute predicate vocabulary (DRA-style, but
-#                        evaluated against declared pool attributes)
-#   - 16 devices per replica (count: 16, perNode: 8 → 2 nodes), constrained to
-#     a single NVLink domain via matchAttribute (break-glass)
+#       clusterSelector: filters InferenceCluster by Cluster-layer attrs
+#                        (region, fabric, bandwidth)
+#       deviceSelector:  filters node pools by Pool + Device attrs (vramGiB,
+#                        capabilities, interconnect). Predicates over declared
+#                        pool capacity, not runtime DRA ResourceSlices.
+#   - 16 devices per replica (count: 16, perNode: 8 → 2 nodes). TP=8 within a
+#     node via NVLink Switch (implied by interconnect.type: nvswitch);
+#     PP=2 across nodes via the cluster's IB/RoCE fabric.
 #   - Parallelism: TP=8 within node, PP=2 across nodes, expert parallelism for MoE
 #     (Modelplane-canonical; backend adapter translates to KServe LWS / Dynamo
 #      graph / vLLM args. Matcher excludes backends that can't honor it.)
@@ -31,7 +33,7 @@ apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: kimi-k2
-  namespace: research
+  namespace: app-team
 spec:
   replicas: 1                             # KEDA writes here via scale subresource
 
@@ -45,27 +47,31 @@ spec:
       namespace: platform-system
       name: hf-token
 
+  # Cluster-layer attributes (env). matchAttributes — these are spec.attributes
+  # on InferenceCluster, not K8s labels on the CR object. Multi-node TP/PP
+  # needs fast inter-node fabric.
   clusterSelector:
-    matchLabels:
-      modelplane.ai/tier: production
-      modelplane.ai/region: us-east
+    matchAttributes:
+      modelplane.ai/tier:    production
+      cloud.region:          us-east
+      network.fabric:        [ib, roce]
+      network.bandwidthGbps: ">=400"
 
+  # Pool + Device layer. Capability flags do the matching work, not
+  # architecture (metadata). TP=8 within a node uses NVLink Switch — that's
+  # implied by interconnect.type: nvswitch + perNode: 8 (all 8 GPUs on an
+  # HGX baseboard are in one NVLink domain by construction). PP=2 spans
+  # nodes via the cluster's network fabric (filtered by clusterSelector
+  # above).
   deviceSelector:
     requests:
       - name: gpus
         count: 16                       # 2 nodes × 8 GPUs per replica
         perNode: 8
         matchAttributes:
-          # Predicates over the unified-taxonomy vocab. Capability flags
-          # (fp8) do the work, not architecture — keeps AMD MI300X eligible
-          # if its fabric/VRAM also match. Architecture is metadata.
-          vramGiB:        ">=141"
-          capabilities:   [fp8]
-          network.fabric: [ib, roce]
-          network.bandwidthGbps: ">=400"
-        constraints:
-          - matchAttribute: gpu.nvidia.com/nvlinkDomain   # TP=8 in one NVLink domain
-            requests: [gpus]
+          vramGiB:           ">=141"
+          capabilities:      [fp8]
+          interconnect.type: [nvswitch, xgmi]   # vendor-neutral: NVSwitch or AMD Infinity Fabric
 
   parallelism:                          # Modelplane-canonical; backend adapter translates
     tensor: 8

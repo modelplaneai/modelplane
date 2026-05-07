@@ -1,12 +1,11 @@
 # CoreWeave GB300 NVL72 — rack-scale Blackwell Ultra (B300) on Grace.
 #
-# Reference InferenceCluster for the rack-scale unit. The relevant
-# addressable unit isn't the node — it's the rack (72 GPUs in one
-# NVLink domain). cluster.scaleUnit: nvl72 captures that. CoreWeave's
-# `gb300-4x` instance type is "1 Grace + 2 B300 GPUs" — many such
-# instances form one NVL72 rack; the matcher reasons about the whole
-# rack as a single capacity unit for placements that span the NVLink
-# domain (e.g. very large MoE with PP across the rack).
+# Per-instance: 2 Grace CPUs + 4 B300 GPUs (2 superchips, 1 Grace + 2 B300
+# each). Many such instances form one NVL72 rack — 72 B300 GPUs sharing
+# one NVLink Switch domain. The addressable unit at the federation layer
+# is the whole rack: cluster.scaleUnit: nvl72 captures that. The matcher
+# can reason about the rack as a single capacity unit for placements that
+# span the NVLink domain (e.g. very large MoE with PP across the rack).
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
@@ -16,7 +15,7 @@ spec:
     cloud.provider:        coreweave
     network.fabric:        ib                     # 800 Gb/s Quantum-X800 IB
     network.bandwidthGbps: 800
-    cluster.scaleUnit:     nvl72                  # rack-scale NVLink domain
+    cluster.scaleUnit:     nvl72                  # rack-scale NVLink Switch domain
     modelplane.ai/tier:    production
 
   scheduler:
@@ -38,12 +37,15 @@ spec:
       nodeSelector:
         coreweave.com/instance-type: gb300-4x
         modelplane.ai/pool: gb300-4x
+      # Per-instance shape: 2 superchips, each 1 Grace + 2 B300 = 4 GPUs total.
       nodeAttributes:
         cloud.instanceType:        coreweave:gb300-4x
-        gpuCount:                  2                 # per-node; rack has 72
-        interconnect.type:         nvlink-c2c        # Grace-Hopper-style C2C
+        gpuCount:                  4                 # per-instance (rack-wide is 72)
+        interconnect.type:         nvswitch          # NVLink Switch (rack-scale; see cluster.scaleUnit)
         interconnect.bandwidthGBs: 1800
         cpu.vendor:                nvidia-grace
+        cpu.cores:                 144               # 2× 72-core Grace
+        memoryGiB:                 960
         host.virtualization:       none              # bare metal
       deviceAttributes:
         vendor:        nvidia

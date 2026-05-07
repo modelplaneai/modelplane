@@ -24,12 +24,15 @@ spec:
         name: together-api-key
         key: api-key
 
+  # Same vocabulary as InferenceCluster.spec.attributes. Used by
+  # ModelEndpoint route logic when picking among multiple ModelServices
+  # (regional selection, billing-model preference). NOT used by the
+  # matcher — ModelService is never a placement target.
   attributes:
-    "modelplane.ai/region":        "us-east"
-    "modelplane.ai/provider":      "togetherai"
-    "modelplane.ai/tier":          "production"
-    "modelplane.ai/billingModel":  "per-token"
-    "modelplane.ai/networkAccess": "internet-routable"
+    cloud.provider:              togetherai
+    cloud.region:                us-east
+    modelplane.ai/tier:          production
+    modelplane.ai/billingModel:  per-token
 
   # Consumed by ModelEndpoint route filtering: when a request targets
   # model X, ME can only route to a ModelService whose supportedModels

@@ -124,8 +124,8 @@ spec:
                 # ---- instance-type macros ----
                 # Canonical normalized instance-type names that expand to a set
                 # of typed attributes. Customers match either on the high-level
-                # name (modelplane.ai/instanceType: H100-NVL-8x-IB400) or on
-                # the unpacked attributes — same predicate engine, the vocab
+                # name (cloud.instanceType: H100-NVL-8x) or on the unpacked
+                # attributes — same predicate engine, the vocab
                 # does the unpacking. Per-cloud SKU mappings live under
                 # `aliases` so e.g. aws:p5.48xlarge resolves to the canonical
                 # name. High-leverage canonical work; updated as new SKUs land.
@@ -139,7 +139,7 @@ spec:
                         type: string
                         description: |
                           Canonical normalized name, e.g.
-                          "H100-NVL-8x-IB400", "MI300X-8x-RoCEv2".
+                          "H100-NVL-8x", "MI300X-8x", "B300-Grace-4x".
                       expands:
                         type: object
                         additionalProperties:
@@ -154,7 +154,7 @@ spec:
                         items: { type: string }
                         description: |
                           Per-cloud SKU strings that resolve to this canonical
-                          name (e.g. aws:p5.48xlarge, coreweave:8xH100-NVL-IB-400G).
+                          name (e.g. aws:p5.48xlarge, coreweave:gd-8xh100ib-i128).
                       since:
                         type: string
 

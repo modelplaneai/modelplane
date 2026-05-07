@@ -27,15 +27,27 @@ spec:
     # ============================================================
     - name: cloud.provider
       type: enum
+      # IaaS hyperscalers, neo-cloud GPU IaaS, on-prem, and SaaS inference
+      # providers (latter used on ModelService for routing-target identity,
+      # never on InferenceCluster).
       values:
+        # Hyperscaler IaaS
         - { name: aws }
         - { name: gcp }
         - { name: azure }
         - { name: oci }
+        # Neo-cloud GPU IaaS
         - { name: coreweave }
         - { name: crusoe }
         - { name: lambda }
         - { name: nebius }
+        # SaaS inference providers (ModelService routing targets)
+        - { name: togetherai }
+        - { name: baseten }
+        - { name: bedrock }
+        - { name: fireworks }
+        - { name: modal }
+        # On-prem
         - { name: on-prem-dgx }
         - { name: on-prem-other }
     - name: cloud.region
@@ -194,7 +206,7 @@ spec:
   # ============================================================
   # Instance-type macros — canonical names that expand to typed
   # attributes. Customers match either on `cloud.instanceType:
-  # H100-NVL-8x-IB400` or on unpacked attributes; same predicate engine,
+  # H100-NVL-8x` or on unpacked attributes; same predicate engine,
   # the vocab does the unpacking. Per-cloud SKU strings (`aws:p5.48xlarge`)
   # resolve to the canonical name via `aliases`.
   #
@@ -271,39 +283,44 @@ spec:
         - dgx:DGX-B200
       since: v0.1
 
-    - name: B300-NVL72
+    # NVL72 macros are per-instance (Pool layer): 1 Grace + 2 Blackwell GPUs
+    # per superchip, 2 superchips per node = 4 GPUs/node. Rack-scale topology
+    # is NOT in the macro — it's declared at InferenceCluster.spec.attributes
+    # via cluster.scaleUnit: nvl72 (Cluster layer). Many such instances form
+    # one NVL72 rack, all sharing one NVLink Switch domain.
+    - name: B300-Grace-4x
       expands:
         vendor: nvidia
         product: B300
         architecture: blackwell-ultra
         formFactor: nvl
-        vramGiB: 288
+        vramGiB: 279
         capabilities: [fp4, fp8, transformer-engine]
-        cluster.scaleUnit: nvl72         # rack-scale; NVLink domain spans the rack
-        interconnect.type: nvlink-c2c
+        gpuCount: 4
+        interconnect.type: nvswitch          # NVLink Switch (rack-scale via cluster.scaleUnit)
+        interconnect.bandwidthGBs: 1800
+        cpu.vendor: nvidia-grace
       aliases:
         - aws:p6-b300
         - oci:BM.GPU.GB300.4
         - coreweave:gb300-4x
-        - crusoe:gb300-nvl72
-        - dgx:DGX-GB300-NVL72
       since: v0.1
 
-    - name: GB200-NVL72
+    - name: B200-Grace-4x
       expands:
         vendor: nvidia
-        product: GB200
+        product: B200
         architecture: blackwell
         formFactor: nvl
         vramGiB: 192
         capabilities: [fp4, fp8, transformer-engine]
-        cluster.scaleUnit: nvl72
-        interconnect.type: nvlink-c2c
+        gpuCount: 4
+        interconnect.type: nvswitch
+        interconnect.bandwidthGBs: 1800
+        cpu.vendor: nvidia-grace
       aliases:
         - oci:BM.GPU.GB200.4
         - coreweave:gb200-4x
-        - crusoe:gb200-nvl72
-        - dgx:DGX-GB200-NVL72
       since: v0.1
 
     # ---- AMD CDNA3 (MI300X) ----

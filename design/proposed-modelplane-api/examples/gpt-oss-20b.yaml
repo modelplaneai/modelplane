@@ -23,17 +23,19 @@ spec:
     repo: openai/gpt-oss-20b
 
   clusterSelector:
-    matchLabels:
-      modelplane.ai/tier: production
+    matchAttributes:
+      modelplane.ai/tier: production       # spec.attributes on InferenceCluster
 
   deviceSelector:
     requests:
       - name: gpus
         count: 1
         perNode: 1
-        # Labels are the primary match path. For richer typed constraints
-        # (NVLink-domain co-location, MIG slicing, etc.), use matchAttributes
-        # over the typed-attribute vocabulary as the break-glass — see kimi-k2.yaml.
+        # Labels are the primary match path here — uses an actual K8s
+        # node label set by the NVIDIA GPU operator on the cluster. No DRA
+        # required. For richer typed constraints (NVLink-domain co-location,
+        # MIG slicing, etc.), use matchAttributes over the typed-attribute
+        # vocabulary as the break-glass — see kimi-k2.yaml.
         matchLabels:
           nvidia.com/gpu.family: hopper
 

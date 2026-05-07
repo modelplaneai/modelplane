@@ -1,10 +1,14 @@
-# InferenceCluster — a customer Kubernetes cluster running KServe + DRA + Kueue + KEDA.
-# Each InferenceCluster is a workload plane; Modelplane composes ModelPlacements onto it.
+# InferenceCluster — a customer Kubernetes cluster running a backend
+# (KServe / Dynamo / raw-vllm) + an in-cluster scheduler (Kueue / KAI /
+# Volcano) + DRA + KEDA. Each InferenceCluster is a workload plane;
+# Modelplane composes ModelPlacements onto it.
 #
-# Replaces the existing InferenceEnvironment XRD. Pure substrate: cluster source,
-# node pools, three-level attributes, provisioning.mode. No engine or runtime
-# concerns — those live on the KServeBackend internal XR (apis/kservebackends/),
-# which represents the inference stack installed on this cluster. The matcher
+# Replaces the existing InferenceEnvironment XRD. Pure substrate:
+# cluster source, scheduler / backend pluggability, node pools, and
+# three-layer attributes (Cluster / Pool / Device — see CapabilityVocabulary
+# default for the canonical vocab). No engine or runtime concerns — those
+# live on the KServeBackend internal XR (apis/kservebackends/), which
+# represents the inference stack installed on this cluster. The matcher
 # reads engine features from the associated KServeBackend, not from here.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
@@ -115,14 +119,19 @@ spec:
                         adapter is selected from this; absorbs upstream schema
                         churn (KServe v0.17 args→command, v0.18 storage migration).
 
-                # ---- environment-level attributes (level 1 of three-level cascade) ----
+                # ---- Cluster-layer attributes ----
+                # Env-level facts about the whole cluster: cloud.{provider, region},
+                # network.{fabric, bandwidthGbps, airgapped}, cluster.scaleUnit,
+                # plus modelplane.ai/* keys (tier, compliance, billingModel) and
+                # pass-through user keys (acme.example/*).
+                # Filtered by ModelDeployment.clusterSelector at federation time.
                 attributes:
                   type: object
                   additionalProperties:
                     x-kubernetes-preserve-unknown-fields: true
                   description: |
-                    Domain-namespaced keys (e.g. modelplane.ai/region, acme.example/team).
-                    Typed values per CapabilityVocabulary; unrecognized keys pass through.
+                    Cluster-layer attributes from the CapabilityVocabulary taxonomy.
+                    Typed values per the vocab; unrecognized keys pass through.
 
                 # Engine + features intentionally NOT here — they live on the
                 # associated KServeBackend (apis/kservebackends/) which represents
@@ -172,14 +181,24 @@ spec:
                               instanceType: { type: string }
                               capacityType: { type: string, enum: [on-demand, spot] }
 
-                      # node-level attributes (level 2)
+                      # ---- Pool-layer attributes ----
+                      # Per-host shape, uniform across nodes in this pool:
+                      # cloud.instanceType, gpuCount, interconnect.{type,
+                      # bandwidthGBs}, cpu.{vendor, cores, platform}, memoryGiB,
+                      # nics.{count, bandwidthGbps}, host.virtualization.
+                      # Filtered by ModelDeployment.deviceSelector at federation time.
                       nodeAttributes:
                         type: object
                         additionalProperties:
                           x-kubernetes-preserve-unknown-fields: true
 
-                      # device-level attributes (level 3) — used for scale-zero pools
-                      # where runtime ResourceSlices don't exist yet
+                      # ---- Device-layer attributes ----
+                      # Per-GPU, uniform across the pool's devices:
+                      # vendor, product, architecture, formFactor, vramGiB, mig,
+                      # capabilities (set), parentProduct (for fractional / MIG
+                      # entries). Authoritative for federation-time matching.
+                      # Optionally grounded against runtime DRA ResourceSlices
+                      # at the in-cluster scheduling stage.
                       deviceAttributes:
                         type: object
                         additionalProperties:
