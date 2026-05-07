@@ -1,6 +1,8 @@
 # ModelDeployment — the ML/App team's self-contained workload spec.
 #
-# Replaces the previous ModelDeployment + ClusterModel/Model split. Carries
+# This proposal collapses the existing ModelDeployment + ClusterModel /
+# Model split (apis/clustermodels/ and apis/models/ on main) into a
+# single self-contained spec. Carries
 # claims, engine config, scaling, and adapters in one place. The matcher
 # composition function picks an InferenceCluster matching the claims and
 # emits one ModelPlacement per logical replica (replica == placement).

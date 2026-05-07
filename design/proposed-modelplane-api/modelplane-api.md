@@ -26,6 +26,7 @@
 
 ## Architecture: control plane + fleet
 
+Modelplane is a Crossplane control plane that composes onto a fleet of `InferenceCluster`s. The cluster scope holds shared substrate; each namespace is a lifecycle environment.
 
 ```
             Modelplane Control Plane (Crossplane)
@@ -50,7 +51,7 @@
 
 **Key architectural decisions:**
 
-- Meta-scheduler only — compose objects, never bind devices or actuate replicas. `ClusterModel` / `Model` deleted; workload spec self-contained on `ModelDeployment`.
+- Meta-scheduler only — compose objects, never bind devices or actuate replicas. This design proposal removes the existing `ClusterModel` / `Model` split (`apis/clustermodels/`, `apis/models/` on main) in favor of a self-contained `ModelDeployment`.
 - **Replica == placement.** One `ModelPlacement` per logical replica. Each replica independently scheduled by the matcher against the MD's `clusterSelector`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom scaler.
 - **Federation matches against declared pool attributes, not runtime DRA.** `InferenceCluster.spec.nodePools[].{node,device}Attributes` are the source of truth at the federation layer. DRA `ResourceSlice`s ground predicates at the per-cluster scheduling stage (next section).
 - **Two-level selector cascade**: `clusterSelector` (env-level) → `deviceSelector` (node + device). Labels are the primary path; typed `matchAttributes` + CEL is the break-glass.

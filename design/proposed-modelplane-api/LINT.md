@@ -20,11 +20,13 @@ Exit 0 if all examples validate, 1 otherwise. No deps beyond stdlib + PyYAML.
 - Enum violations (`cluster.source: aws` when the enum is `[GKE, EKS, AKS, Existing]`).
 
 What it does NOT catch (yet):
-- Vocab semantics — does an attribute key in `matchAttributes` actually exist in the
-  `CapabilityVocabulary`? Is the value within the declared enum? This is a higher-level
-  check than the XRD schema can express. Worth adding as a follow-up if useful.
-- Cross-resource references — does this `ModelEndpoint` ref a `ModelDeployment` that
-  exists in the same namespace? Schema doesn't know.
+- Attribute vocabulary semantics — does an attribute key in `matchAttributes` come from
+  the canonical taxonomy (vendor, product, vramGiB, capabilities, ...) or is it a typo?
+  This is a higher-level check than the XRD schema can express. Worth adding as a
+  follow-up if useful.
+- Cross-resource references — does this `ModelEndpoint` ref a `ModelDeployment` /
+  `InferenceProvider` that exists in the same namespace? Does a `nodePools[].class`
+  reference an `InferenceClass` that exists? Schema doesn't know.
 
 ## Why bother
 
