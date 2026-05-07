@@ -11,14 +11,14 @@ scheduler-deliverables/
 ├── README.md                                 (this file)
 ├── xrds/                                     # proposed CompositeResourceDefinitions
 │   ├── inferencecluster.yaml                 # cluster-scoped substrate (was InferenceEnvironment)
-│   ├── capabilityvocabulary.yaml             # namespace-scoped vocab CR (default in modelplane-system)
+│   ├── capabilityvocabulary.yaml             # cluster-scoped vocab CR (singleton)
 │   ├── modeldeployment.yaml                  # namespaced workload + scale subresource
 │   ├── modelplacement.yaml                   # IR; one per logical replica (replica == placement)
 │   ├── modelendpoint.yaml                    # namespaced weighted routing (per #60)
 │   └── modelservice.yaml                     # namespaced routing-only target (was InferenceProvider)
 └── examples/
     ├── inferencecluster-prod-coreweave.yaml  # cluster-scope substrate
-    ├── capabilityvocabulary-default.yaml     # cluster-wide default in modelplane-system
+    ├── capabilityvocabulary-default.yaml     # cluster-scoped vocab singleton
     ├── modelservice-together.yaml            # SaaS routing target
     ├── kimi-k2.yaml                          # frontier MoE, 5P3D disaggregation
     ├── qwen3-coder.yaml                      # n-gram speculation, multi-LoRA
@@ -26,17 +26,18 @@ scheduler-deliverables/
     └── assistant-endpoint.yaml               # weighted ModelEndpoint (Deployment + ModelService)
 ```
 
-## Scopes (per Bassam's whiteboard)
+## Scopes
 
 | Cluster scope | Namespace scope (= environment / lifecycle scope) |
 |---|---|
 | 0..N `InferenceCluster` | 0..1 `ModelEndpoint` |
-| 0..1 default `CapabilityVocabulary` (in `modelplane-system`) | 0..N `ModelDeployment` |
+| 1 `CapabilityVocabulary` (singleton, name: `default`) | 0..N `ModelDeployment` |
 | | 0..N `ModelPlacement` (composed from MDs; one per replica) |
 | | 0..N `ModelService` |
-| | 0..1 override `CapabilityVocabulary` |
 
-Namespace = environment. Each namespace is a lifecycle boundary (prod, staging, dev). Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
+Namespace = environment. Each namespace is a lifecycle boundary (prod, staging, dev, per-team). Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
+
+`CapabilityVocabulary` is cluster-scoped because the `InferenceCluster`s that declare attributes against it are cluster-scoped — one cluster's hardware semantics shouldn't be evaluated differently from each namespace. Namespaces customize via Crossplane Compositions and user-defined `acme.example/*` keys (pass-through, not vocab-validated), not by redefining vocab.
 
 ## Claim cascade (per #56)
 
@@ -50,7 +51,7 @@ One `ModelPlacement` per logical replica of a `ModelDeployment`. Each MP compose
 
 KEDA wires in via the **scale subresource** on `ModelDeployment`: a stock `ScaledObject` targets the MD; KEDA writes `MD.spec.replicas`; the composer reconciles MPs to match. No custom KEDA scaler required.
 
-**v1 constraint**: all MPs of a single MD land on the same cluster (matcher decision made on the first MP, reused). v2 drops this for cross-cluster scaling. Multi-region today = multiple `ModelDeployment`s, each with N MPs on a different cluster, routed via `ModelEndpoint`.
+Each replica is independently scheduled by the matcher against the parent MD's claims — placements may land on the same cluster or distribute across matching clusters. Multi-region spread can also be expressed explicitly via multiple `ModelDeployment`s + a `ModelEndpoint` that routes across them.
 
 ## What's deliberately incomplete
 

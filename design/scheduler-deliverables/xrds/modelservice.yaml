@@ -64,29 +64,29 @@ spec:
                             namespace: { type: string }
                             key:       { type: string }
 
-                # ---- environment-level attributes (only level that applies) ----
-                # No node or device attributes — providers don't expose either.
+                # ---- environment-level attributes ----
+                # Used by the ModelEndpoint composer when picking which
+                # ModelService a route is referring to (e.g. region selection
+                # among multiple Together / Bedrock instances). NOT used by
+                # the matcher — ModelService is never a placement target.
                 attributes:
                   type: object
                   additionalProperties:
                     x-kubernetes-preserve-unknown-fields: true
                   description: |
-                    Same shape as InferenceCluster.spec.attributes. Region, tier,
-                    compliance, billingModel etc. The fleet scheduler matches against
-                    these for environment-level claims; node and device claims no-op.
+                    Same shape as InferenceCluster.spec.attributes (region, tier,
+                    compliance, billingModel, networkAccess). Informational +
+                    addressable by ModelEndpoint route logic.
 
-                # Engine + features intentionally NOT declared here — providers
-                # are opaque routes. Workloads requiring engine features won't
-                # match against providers (matcher surfaces this in matchTrace).
-
-                # ---- catalog of models the provider serves ----
+                # ---- catalog of models this service serves ----
                 supportedModels:
                   type: array
                   items: { type: string }
                   description: |
                     Canonical model names (HuggingFace IDs or provider-native).
-                    Refreshed periodically; deployments with unmatched names are
-                    excluded from this provider with a clear matchTrace reason.
+                    The ModelEndpoint composer fails the route if the referenced
+                    ModelDeployment's model.name isn't in this catalog. Refreshed
+                    periodically (controller-driven in v2; operator-maintained v1).
 
             status:
               type: object

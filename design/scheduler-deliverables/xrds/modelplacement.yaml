@@ -4,16 +4,13 @@
 # Replica == placement. One ModelPlacement per logical replica of a
 # ModelDeployment, owned by it. Each MP composes one LLMInferenceService with
 # spec.replicas: 1 onto a chosen InferenceCluster. The matcher composition
-# function picks where each MP lands; the version-pinned KServe adapter watches
-# the MP and renders the upstream object. Multi-node logical replicas (e.g.
-# Kimi K2 with PP=2) are still ONE MP — multi-pod via LWS within one cluster.
+# function picks where each MP lands by evaluating the parent MD's claims
+# against InferenceCluster candidates. The version-pinned KServe adapter
+# watches the MP and renders the upstream object. Multi-node logical replicas
+# (e.g. Kimi K2 with PP=2) are still ONE MP — multi-pod via LWS within one
+# cluster.
 #
-# v1 constraint: all MPs of one MD land on the same cluster (the matcher
-# decision is made once on the first MP and reused). v2 drops this constraint
-# for cross-cluster scaling. Multi-region today = multiple ModelDeployments,
-# each with N MPs on a different cluster, routed via ModelEndpoint.
-#
-# ModelService is NEVER a ModelPlacement target — providers are routing-only.
+# ModelService is NEVER a ModelPlacement target — it's routing-only.
 # Platform-internal-by-convention. ML/App teams shouldn't create these directly.
 # Schema absorbs upstream KServe schema churn; user-facing types stay stable.
 apiVersion: apiextensions.crossplane.io/v2

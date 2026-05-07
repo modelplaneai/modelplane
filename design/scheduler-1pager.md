@@ -7,7 +7,7 @@
 ## TL;DR
 
 - **Modelplane is a Crossplane-native, multi-cloud inference control plane.**
-- **Cluster scope** holds substrate (`InferenceCluster`s — customer K8s running KServe + DRA + Kueue + KEDA — and the default `CapabilityVocabulary`). **Namespace scope** is the lifecycle boundary (= environment): `ModelDeployment`, `ModelPlacement`, `ModelService`, `ModelEndpoint`, optional namespace-scoped vocab override.
+- **Cluster scope** holds substrate (`InferenceCluster`s — customer K8s running KServe + DRA + Kueue + KEDA — and a singleton `CapabilityVocabulary`). **Namespace scope** is the lifecycle boundary (= environment): `ModelDeployment`, `ModelPlacement`, `ModelService`, `ModelEndpoint`.
 - **Replica == placement.** One `ModelPlacement` per logical replica of a `ModelDeployment`. KEDA writes `MD.spec.replicas` via the K8s scale subresource; the composer reconciles MPs to match — no custom scaler.
 - **`ModelService` is routing-only**, never a placement target. Matcher considers only `InferenceCluster`. (A separate concept for *placement* against dedicated SaaS endpoints is on Nic to define.)
 - **Wedge:** fleet-level capabilities single-cluster platforms can't reach — fleet matching, geo + compliance routing, KV cache federation, sticky sessions, failover, cost-aware routing.
@@ -20,7 +20,7 @@ VRAM-divided-by-per-GPU-memory worked for Llama-8B on an L4. It can't deploy Kim
 ## Design principles
 
 1. **Clean separation, no enforcement.** Platform teams own substrate; ML/App teams own workloads. Same API split or unified.
-2. **Fleet-wide by construction.** A `ModelDeployment` targets the fleet (clusters + providers), not a single member. `matchTrace` reports where it fits and why elsewhere doesn't.
+2. **Fleet-wide by construction.** A `ModelDeployment` targets the fleet of `InferenceCluster`s, not a single cluster. `matchTrace` reports where it fits and why elsewhere doesn't. SaaS endpoints participate via `ModelEndpoint` routing, not placement.
 3. **Plain Crossplane customization.** Catalogs, defaults, governance live in Compositions, RBAC, OPA — not Modelplane primitives.
 4. **No new in-cluster scheduler.** We're a meta-scheduler. K8s scheduler + DRA, Kueue, KEDA/HPA, Cluster Autoscaler each own their layer.
 
@@ -34,18 +34,17 @@ VRAM-divided-by-per-GPU-memory worked for Llama-8B on an L4. It can't deploy Kim
    InferenceClusters (workload planes)
      KServe + DRA + Kueue + KEDA
      Modelplane composes LLMIS objects here
-   CapabilityVocabulary (default in modelplane-system)
+   CapabilityVocabulary (singleton, name: default)
 
    ─────────────── namespace scope (= environment) ──
    per namespace: prod / staging / dev / team-A …
-     ModelDeployment(s)         (workload spec, scale subresource)
-     ModelPlacement(s)          (one per replica, IR)
-     ModelService(s)            (routing-only target)
-     ModelEndpoint              (weighted routing across MDs + MSes)
-     CapabilityVocabulary       (optional override)
+     ModelDeployment(s)    (workload spec; scale subresource)
+     ModelPlacement(s)     (one per replica, IR)
+     ModelService(s)       (routing-only target)
+     ModelEndpoint         (weighted routing across MDs + MSes)
 ```
 
-**Cluster scope** holds substrate that's shared across the org: the `InferenceCluster`s themselves and the cluster-wide default `CapabilityVocabulary` (in `modelplane-system`). **Namespace scope** is the lifecycle boundary — each namespace is an "environment" (prod / staging / dev / per-team). All workload, routing, and SaaS-target resources live there.
+**Cluster scope** holds substrate shared across the org: the `InferenceCluster`s and the singleton `CapabilityVocabulary`. The vocabulary is cluster-scoped because `InferenceCluster`s are — one cluster's hardware semantics shouldn't be evaluated differently from each namespace. Namespaces customize via Compositions and user-defined `acme.example/*` keys, not vocab redefinition. **Namespace scope** is the lifecycle boundary — each namespace is an "environment" (prod / staging / dev / per-team). All workload, routing, and SaaS-target resources live there.
 
 The matcher considers only `InferenceCluster` candidates — `ModelService` is routing-only, never a placement target. A separate concept for *placement* against dedicated SaaS endpoints is on Nic to define.
 
@@ -53,13 +52,12 @@ The matcher considers only `InferenceCluster` candidates — `ModelService` is r
 
 - Meta-scheduler only — compose objects, never bind devices or actuate replicas.
 - `ClusterModel` / `Model` deleted; workload spec self-contained on `ModelDeployment`.
-- **Replica == placement** — one `ModelPlacement` per logical replica of a `ModelDeployment`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler needed.
-- v1 constraint: all MPs of a single MD land on the same cluster. v2 drops this for cross-cluster scaling.
+- **Replica == placement** — one `ModelPlacement` per logical replica of a `ModelDeployment`. Each replica is independently scheduled by the matcher against the MD's `clusterClaim`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler.
 - Declared attributes are authoritative for scheduling; runtime DRA is drift detection only.
 - Three-level matching cascade: cluster (env-level attrs) → node pool → device.
-- `ModelPlacement` is the **intermediate representation (IR)** — version-pinned adapters consume it and absorb KServe `LLMInferenceService` schema churn (v0.17 `args`→`command`; v0.18 storage migration).
+- `ModelPlacement` is the **intermediate representation (IR)** — version-pinned adapters consume it and absorb KServe `LLMInferenceService` schema churn.
 - Namespace = environment / lifecycle scope. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
-- Failover (v2) is active-active or active-passive.
+- Failover modes are active-active or active-passive.
 
 ## Fleet-level capabilities
 
@@ -96,7 +94,6 @@ Cluster scope:
 Namespace scope (per environment — prod / staging / dev / per-team):
 
 - `ModelService` resources — one per SaaS endpoint (Together, Baseten, Bedrock, customer-run KServe). Routing-only target on `ModelEndpoint`; never a placement target.
-- Optional namespace-scoped `CapabilityVocabulary` override.
 - Crossplane Compositions over `ModelDeployment` — for org-specific abstractions (`ApprovedModel`-style XRs), governance, defaults.
 
 **Modelplane — what the project ships**
@@ -178,13 +175,11 @@ scaling:                          # composer turns this into a stock KEDA Scaled
 adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 ```
 
-**Replica == placement.** Each `ModelDeployment` has N `ModelPlacement`s — one per logical replica. The matcher picks `(cluster, pool)` for each MP; the version-pinned KServe adapter renders one `LLMInferenceService.spec.replicas: 1` per MP. Multi-node logical replicas (Kimi K2 PP=2) are still ONE MP — multi-pod via LWS within one cluster. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler.
-
-**v1 constraint**: all MPs of one MD land on the same cluster (matcher decides on the first, reuses). v2 drops this for cross-cluster scaling. Multi-region today = multiple MDs + multiple `ModelEndpoint` route entries.
+**Replica == placement.** Each `ModelDeployment` has N `ModelPlacement`s — one per logical replica. The matcher picks `(cluster, pool)` for each MP independently; the version-pinned KServe adapter renders one `LLMInferenceService.spec.replicas: 1` per MP. Multi-node logical replicas (Kimi K2 PP=2) are still ONE MP — multi-pod via LWS within one cluster. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler. Multi-region spread = multiple MDs + multiple `ModelEndpoint` route entries.
 
 **`ModelService` is routing-only.** It's not a fleet-member candidate; the matcher only considers `InferenceCluster`. Workloads requiring engine features that no `InferenceCluster` exposes are excluded with field-level reasons in `matchTrace`. A separate concept for *placement* against dedicated SaaS endpoints is on Nic to define.
 
-**Namespace = environment.** Each namespace is the lifecycle scope: 0..1 `ModelEndpoint`, 0..N `ModelDeployment` / `ModelService`, 0..N `ModelPlacement`, optional namespace-scoped `CapabilityVocabulary` override (default ships in `modelplane-system`). Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
+**Namespace = environment.** Each namespace is the lifecycle scope: 0..1 `ModelEndpoint`, 0..N `ModelDeployment` / `ModelService`, 0..N `ModelPlacement`. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace. `CapabilityVocabulary` is cluster-scoped (single source of truth for hardware semantics).
 
 ## Capability vocabulary tiers
 
@@ -235,7 +230,7 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 |---|---|
 | Substrate | Six CRDs (5 user-facing + `ModelPlacement` IR); three-level declared attributes |
 | Matching | Three-level claim cascade (`clusterClaim` / `nodeClaim` / `deviceClaim`) per #56; DRA-shaped `deviceClaim`; typed `matchAttributes` shorthand + CEL escape; `matchTrace` |
-| Workload API | Self-contained `ModelDeployment` (one MD = one fleet member); `roles.{prefill, decode}` for xPyD disaggregation; `engine.{quantization, speculation, advanced}`; five-factor `scaling`; `adapters` |
+| Workload API | Self-contained `ModelDeployment`; replica == placement (`spec.replicas` + scale subresource); `roles.{prefill, decode}` for xPyD disaggregation; `engine.{quantization, speculation, advanced}`; five-factor `scaling`; `adapters` |
 | Composition | Matcher → `ModelPlacement` IR → version-pinned KServe adapter; DRA + device-plugin emission |
 | Delegation | Kueue for quota; KEDA-only autoscaling on concurrency |
 | Fleet routing (v1 subset) | Hardware-heterogeneous + geo + compliance routing via `clusterClaim` and `deviceClaim`; multi-region spread via multiple `ModelDeployment`s + `ModelEndpoint` |
@@ -248,7 +243,7 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 |---|---|
 | Fleet routing intelligence | Fleet overflow (#48); active-active / active-passive failover; cost-aware fleet member selection; predictive autoscaling |
 | Fleet KV cache federation | G4 networked tier as global cache fabric; LMCache / KVBM integration; fleet-wide prefix-aware routing |
-| Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` or provider endpoint |
+| Fleet session affinity | Sticky sessions across regional ingresses; multi-turn chat lands on the same `(cluster, replica)` |
 | SLO-driven scaling | TTFT/ITL targets; WVA integration; combined Concurrency + Utilization signals |
 | Aggregated fleet observability | Roll-up TTFT / ITL / cost / queue depth into one logical service |
 | Catalog automation | Auto-import controller for `vllm-project/recipes` |
@@ -269,7 +264,7 @@ Full proposed XRDs and example resources live in [`scheduler-deliverables/`](sch
 
 - [`xrds/inferencecluster.yaml`](scheduler-deliverables/xrds/inferencecluster.yaml) — cluster-scoped substrate, three-level attributes, `provisioning.mode`
 - [`xrds/modelservice.yaml`](scheduler-deliverables/xrds/modelservice.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
-- [`xrds/capabilityvocabulary.yaml`](scheduler-deliverables/xrds/capabilityvocabulary.yaml) — namespace-scoped vocab CR (default in `modelplane-system`; per-namespace overrides)
+- [`xrds/capabilityvocabulary.yaml`](scheduler-deliverables/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
 - [`xrds/modeldeployment.yaml`](scheduler-deliverables/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
 - [`xrds/modelendpoint.yaml`](scheduler-deliverables/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `ModelService` / `External`
 - [`xrds/modelplacement.yaml`](scheduler-deliverables/xrds/modelplacement.yaml) — the IR; one per logical replica (replica == placement)
@@ -277,7 +272,7 @@ Full proposed XRDs and example resources live in [`scheduler-deliverables/`](sch
 **Substrate examples** (platform-team setup):
 
 - [`examples/inferencecluster-prod-coreweave.yaml`](scheduler-deliverables/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster, DRA-enabled
-- [`examples/modelservice-together.yaml`](scheduler-deliverables/examples/modelservice-together.yaml) — Together AI registered as a fleet member
+- [`examples/modelservice-together.yaml`](scheduler-deliverables/examples/modelservice-together.yaml) — Together AI as a routing target
 - [`examples/capabilityvocabulary-default.yaml`](scheduler-deliverables/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs
 
 **Workload examples** (ML/App team deployments):

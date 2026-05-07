@@ -2,9 +2,9 @@
 #
 # Demonstrates:
 #   - Three-level claim cascade per #56:
-#       clusterClaim: filters clusters/providers
-#       nodeClaim:        filters node pools (clusters only)
-#       deviceClaim:      DRA-shaped device claim (clusters only)
+#       clusterClaim: filters InferenceCluster by env-level attrs
+#       nodeClaim:    filters node pools within matched clusters
+#       deviceClaim:  DRA-shaped device claim within matched pools
 #   - 16 devices per replica (count: 16, perNode: 8 → 2 nodes), constrained to
 #     a single NVLink domain via DRA matchAttribute
 #   - Parallelism: TP=8 within node, PP=2 across nodes, expert parallelism for MoE

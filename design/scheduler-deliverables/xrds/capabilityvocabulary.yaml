@@ -1,11 +1,12 @@
 # CapabilityVocabulary — CR governing the modelplane.ai/* attribute vocabulary.
 # Replaces what would otherwise be a ConfigMap. Updates flow without CRD bumps.
 #
-# Namespace-scoped. The cluster-wide default ships in the `modelplane-system`
-# namespace (name: default); per-namespace overrides live in user namespaces
-# alongside their ModelEndpoint / ModelDeployment / ModelService. The matcher
-# reads the deployment's namespace vocab first, falling back to the
-# modelplane-system default for keys not overridden.
+# Cluster-scoped, singleton (name: default). The InferenceCluster (also cluster-
+# scoped) declares attributes against this vocabulary; namespace-level overrides
+# would create a coordination problem — a single cluster's attributes would be
+# evaluated differently from each namespace. One vocabulary per cluster keeps
+# semantics consistent. Namespaces customize via Crossplane Compositions and
+# pass-through user-defined keys (e.g. acme.example/*), not vocab redefinition.
 #
 # Read by the matcher to validate claim selectors, resolve ordered comparisons
 # (e.g. "ib-400g-or-better"), rewrite aliased keys, and validate engineFeatures
@@ -21,7 +22,7 @@ spec:
     kind: CapabilityVocabulary
     plural: capabilityvocabularies
     shortNames: [cv]
-  scope: Namespaced
+  scope: Cluster
   versions:
     - name: v1alpha1
       served: true

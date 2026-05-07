@@ -1,9 +1,9 @@
 # ModelDeployment — the ML/App team's self-contained workload spec.
 #
 # Replaces the previous ModelDeployment + ClusterModel/Model split. Carries
-# topology, requires, engine, scaling, and adapters in one place. Modelplane's
-# matcher composition function fans this out into one ModelPlacement (the IR)
-# per matched fleet member.
+# claims, engine config, scaling, and adapters in one place. The matcher
+# composition function picks an InferenceCluster matching the claims and
+# emits one ModelPlacement (the IR) per logical replica (replica == placement).
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
@@ -94,19 +94,18 @@ spec:
                         namespace: { type: string }
 
                 # ---- three-level claim cascade (per #56) ----
-                # clusterClaim filters environments (both InferenceCluster
-                #   and ModelService).
-                # nodeClaim filters node pools within matched clusters
-                #   (skipped for ModelService — providers have no nodes).
-                # deviceClaim filters devices within matched pools, DRA-shaped
-                #   (skipped for ModelService — providers have no devices).
-                # When matching against an ModelService, only clusterClaim
-                # and supportedModels apply. matchTrace surfaces level-by-level
-                # exclusions with field-level reasons.
+                # The matcher considers only InferenceCluster candidates.
+                # ModelService is routing-only (never a placement target);
+                # SaaS placement is a separate concept Nic owns.
+                #
+                # clusterClaim — filters InferenceCluster against env-level attrs
+                # nodeClaim    — filters node pools within matched clusters
+                # deviceClaim  — filters devices within matched pools (DRA-shaped)
+                # matchTrace surfaces level-by-level exclusions with field-level reasons.
 
                 clusterClaim:
                   type: object
-                  description: Filters environments — applies to clusters and providers.
+                  description: Filters InferenceCluster candidates by env-level attributes.
                   properties:
                     selector:
                       type: object
@@ -194,9 +193,8 @@ spec:
                                   items: { type: string }
 
                 # ---- cluster-runtime constraint ----
-                # Set-membership match against the cluster's KServeBackend's
-                # engine.features. Skipped for ModelService matching (providers
-                # don't expose engine features; matchTrace surfaces "skipped").
+                # Set-membership match against the chosen InferenceCluster's
+                # KServeBackend.spec.engine.features.
                 requiredEngineFeatures:
                   type: array
                   items: { type: string }
@@ -309,10 +307,12 @@ spec:
                             x-kubernetes-preserve-unknown-fields: true
 
                 # ---- scaling ----
-                # NOTE: each ModelDeployment lands on at most one fleet member.
-                # Multi-region / multi-cluster spread = separate ModelDeployments
-                # (or a Crossplane Composition that generates them) + a
-                # ModelEndpoint that routes across them.
+                # The composer turns this into a stock KEDA ScaledObject that
+                # targets the ModelDeployment via its scale subresource. KEDA
+                # writes spec.replicas; the composer reconciles ModelPlacements
+                # (one per replica) to match. Each replica is independently
+                # scheduled by the matcher against clusterClaim.
+                # Multi-region spread = multiple ModelDeployments + ModelEndpoint.
                 scaling:
                   type: object
                   properties:
@@ -327,11 +327,8 @@ spec:
                           type: integer
                           minimum: 0
                           description: |
-                            Replicas of the LLMInferenceService composed onto the
-                            chosen fleet member. KEDA scales between min and max
-                            based on concurrency. ModelPlacement is per-fleet-member,
-                            not per-replica — replicas are an internal concern of
-                            the composed LLMInferenceService.
+                            Lower bound on logical replicas. Each replica is one
+                            ModelPlacement composing one LLMInferenceService.spec.replicas: 1.
                         maxReplicas:    { type: integer, minimum: 1 }
                         target:         { type: integer, minimum: 1 }
                         window:         { type: string, default: "60s" }

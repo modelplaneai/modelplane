@@ -5,9 +5,9 @@
 #   - Broad architecture acceptance: Ada / Hopper / Blackwell, with native MXFP4
 #     on Blackwell and BF16/FP8 fallback elsewhere
 #   - Scale-to-zero (`minReplicas: 0`) for low-traffic / dev workloads
-#   - One ModelDeployment lands on one fleet member. For multi-region spread,
-#     create a second ModelDeployment targeting a different region and route
-#     across both via a ModelEndpoint (or compose them via a Crossplane XR).
+#   - For multi-region spread, create a second ModelDeployment targeting a
+#     different region and route across both via a ModelEndpoint (or compose
+#     them via a Crossplane XR).
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
