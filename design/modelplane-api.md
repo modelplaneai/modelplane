@@ -1,17 +1,21 @@
-# Modelplane Scheduler & Capability Model — 1-pager
+# Modelplane API Design — 1-pager
 
 **Status:** Draft for Bassam review
 **Author:** Dennis Ramdass
 **Date:** 2026-05-06
+**Scope:** API + scheduler + capability model. Heaviest on the scheduler/matching surface; touches the broader CRD shape and the adapter / plugin pattern that ties them together.
 
 ## TL;DR
 
 - **Modelplane is a Crossplane-native, multi-cloud inference control plane.**
-- **Cluster scope** holds substrate (`InferenceCluster`s — customer K8s running KServe + DRA + Kueue + KEDA — and a singleton `CapabilityVocabulary`). **Namespace scope** is the lifecycle boundary (= environment): `ModelDeployment`, `ModelPlacement`, `ModelService`, `ModelEndpoint`.
+- **Cluster scope** holds substrate (`InferenceCluster`s — customer K8s — plus a singleton `CapabilityVocabulary`). **Namespace scope** is the lifecycle boundary (= environment): `ModelDeployment`, `ModelPlacement`, `ModelService`, `ModelEndpoint`.
 - **Replica == placement.** One `ModelPlacement` per logical replica of a `ModelDeployment`. KEDA writes `MD.spec.replicas` via the K8s scale subresource; the composer reconciles MPs to match — no custom scaler.
+- **Labels-first matching.** `deviceClaim.selector.matchLabels` works on any K8s cluster with labeled nodes (no DRA needed). DRA-typed `matchAttributes` is the break-glass for richer constraints (NVLink-domain co-location, MIG, FP8 capability).
+- **Adapter / plugin substrate.** Modelplane ships managed plugins for the common path — `managed-kserve` (backend) and `managed-kueue` (scheduler). BYO contracts (`InferenceCluster.spec.{backend, scheduler}.type`) let customers plug in KAI / Volcano / Dynamo / etc. The intermediate representation (`ModelPlacement`) is the seam.
 - **`ModelService` is routing-only**, never a placement target. Matcher considers only `InferenceCluster`. (A separate concept for *placement* against dedicated SaaS endpoints is on Nic to define.)
+- **CapabilityVocabulary as a managed canonical catalog.** Modelplane ships a default mapping of known cases (chip generations, engine versions, quantization formats, KV tiers, fabric ordering). Customers override per-cluster for bespoke hardware. Keeping the canonical catalog current as new chips / engines / formats land is high-leverage and bounded — candidate for an Upbound-managed offering.
 - **Wedge:** fleet-level capabilities single-cluster platforms can't reach — fleet matching, geo + compliance routing, KV cache federation, sticky sessions, failover, cost-aware routing.
-- **No new in-cluster scheduler.** K8s scheduler + DRA, Kueue, KEDA/HPA, Cluster Autoscaler each own their layer; we layer above.
+- **No new in-cluster scheduler.** K8s scheduler + DRA, Kueue (or KAI / Volcano), KEDA/HPA, Cluster Autoscaler each own their layer; we layer above.
 
 ## Problem
 
@@ -54,24 +58,26 @@ The matcher considers only `InferenceCluster` candidates — `ModelService` is r
 - `ClusterModel` / `Model` deleted; workload spec self-contained on `ModelDeployment`.
 - **Replica == placement** — one `ModelPlacement` per logical replica of a `ModelDeployment`. Each replica is independently scheduled by the matcher against the MD's `clusterClaim`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom KEDA scaler.
 - Declared attributes are authoritative for scheduling; runtime DRA is drift detection only.
-- Two-level matching cascade: `clusterClaim` (env-level attrs) → `deviceClaim`. The `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (pre-DRA simple path; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional — customers who don't want it can use labels.
+- Two-level matching cascade: `clusterClaim` (env-level attrs) → `deviceClaim`. **Labels are the primary match path** — `deviceClaim.selector.matchLabels` works against any K8s cluster with node labels (no DRA needed). DRA-typed `matchAttributes` is the **break-glass** for richer constraints (NVLink-domain co-location, FP8 capability, MIG state) — used when the cluster runs `provisioning.mode: dra`. Most workloads don't need DRA.
 - **In-cluster scheduling delegated.** Modelplane decides which cluster; in-cluster scheduling — bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, capacity tracking — is the in-cluster scheduler's job. We ship Kueue as the default substrate (`managed-kueue` mode, like `managed-kserve`); BYO schedulers (KAI, Volcano, existing Kueue installs) are supported via a capacity-signal contract.
 - `ModelPlacement` (the existing CRD in `apis/modelplacements/`) plays the role of the **intermediate representation (IR)** — the seam between the matcher (which emits MPs, one per replica) and the version-pinned backend adapter (which consumes the MP and renders upstream objects, absorbing schema churn). The IR isn't a new abstraction; it's the role this existing CRD plays.
 - Namespace = environment / lifecycle scope. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace.
 - Failover modes are active-active or active-passive.
 
-## Pluggable substrate: scheduler and backend
+## Adapter / plugin substrate
 
-Two layers under Modelplane are pluggable: the in-cluster scheduler (admission / quota) and the inference backend (orchestrator that renders pods). Both follow the same pattern — opinionated default install, BYO contract for customers with existing investments.
+Two layers under Modelplane are pluggable: the in-cluster scheduler (admission / quota) and the inference backend (orchestrator that renders pods). Both follow the same pattern — Modelplane ships a managed default plugin (the common path), customers BYO via a contract on `InferenceCluster.spec`. The intermediate representation (`ModelPlacement`) is the seam between Modelplane's matcher and whichever backend / scheduler the cluster runs.
 
-| Layer | Default install | BYO declaration on `InferenceCluster.spec` | What Modelplane consumes |
+| Layer | Default plugin (ships with Modelplane) | BYO declaration | What flows across the seam |
 |---|---|---|---|
-| In-cluster scheduler | `managed-kueue` (installs Kueue + `ClusterQueue` per pool) | `scheduler.type: kueue \| kai \| volcano \| none` | (1) admission CR shape per scheduler — `Workload` for Kueue, `PodGroup` for KAI / Volcano. (2) capacity-signal status field — `ClusterQueue.status.flavorsUsage[]` for Kueue, equivalents elsewhere |
-| Inference backend | `managed-kserve` (installs KServe + composes `KServeBackend`) | `backend.{type, version}: kserve \| dynamo \| raw-vllm`, e.g. `version: v0.18.0` | IR adapter renders backend-specific upstream objects per cluster: `LLMInferenceService` for KServe, `DynamoGraphDeployment` for Dynamo, `Deployment+Service` for raw-vllm. Adapter writes back to `ModelPlacement.status.rendered` |
+| In-cluster scheduler | **`managed-kueue`** (installs Kueue + `ClusterQueue` per pool) | `InferenceCluster.spec.scheduler.type: kueue \| kai \| volcano \| none` | (1) admission CR — `Workload` for Kueue, `PodGroup` for KAI / Volcano. (2) capacity-signal status field — `ClusterQueue.status.flavorsUsage[]` or scheduler-equivalent. |
+| Inference backend | **`managed-kserve`** (installs KServe at the pinned version + composes `KServeBackend`) | `InferenceCluster.spec.backend.{type, version}: kserve \| dynamo \| raw-vllm` | An IR adapter watches `ModelPlacement` and renders backend-specific upstream objects per cluster: `LLMInferenceService` for KServe (per version), `DynamoGraphDeployment` for Dynamo, `Deployment+Service` for raw-vllm. Adapter writes back to `ModelPlacement.status.rendered`. |
 
-What stays opinionated: the intermediate representation (`ModelPlacement`) — its schema is Modelplane-controlled; backends adapt to it, not vice versa. The matching logic (`clusterClaim` / `deviceClaim` / `requiredEngineFeatures`) is universal across backends and schedulers. The user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) never changes when scheduler or backend swaps.
+**What stays opinionated:** the intermediate representation (`ModelPlacement`) — its schema is Modelplane-controlled; plugins adapt to it, not vice versa. The matching logic (`clusterClaim` / `deviceClaim` / `requiredEngineFeatures`) is universal across schedulers and backends. The user-facing API (`ModelDeployment` / `ModelEndpoint` / `ModelService`) never changes when a plugin swaps.
 
-What's pluggable: thin adapters per scheduler and per backend version. v1 ships Kueue + KServe (v0.16 / v0.17 / v0.18). KAI / Volcano / Dynamo adapters are future work — community, vendor, or our follow-up. Modelplane's contract is documented well enough that someone can write a Dynamo adapter without reverse-engineering us.
+**What's pluggable:** thin adapters per scheduler + per backend version. Modelplane ships Kueue + KServe (v0.16 / v0.17 / v0.18) by default. KAI / Volcano / Dynamo adapters are future work — community, vendor, or our follow-up. The IR contract is documented well enough that someone can write a Dynamo adapter without reverse-engineering us.
+
+**Why this matters for BYO:** customers with existing scheduler investments (NVIDIA shops on KAI for training, batch shops on Volcano) keep using their scheduler — Modelplane sits above. Customers running Dynamo (NVIDIA's orchestration stack) get full Modelplane fleet management without switching to KServe. Modelplane stays opinionated where it adds value (the IR + matcher + fleet API) and pluggable where customer investment lives.
 
 ## Fleet-level capabilities
 
@@ -195,13 +201,23 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 
 **Namespace = environment.** Each namespace is the lifecycle scope: 0..1 `ModelEndpoint`, 0..N `ModelDeployment` / `ModelService`, 0..N `ModelPlacement`. Pushing a `ModelDeployment` revision triggers lifecycle reconciliation in that namespace. `CapabilityVocabulary` is cluster-scoped (single source of truth for hardware semantics).
 
-## Capability vocabulary tiers
+## Capability vocabulary
+
+The `CapabilityVocabulary` is a singleton cluster-scoped CR (name: `default`) that defines the canonical mapping for `modelplane.ai/*` keys: chip generations, engine versions, quantization formats, KV cache tiers, inter-node fabric ordering. The matcher reads this CR to validate claim selectors, resolve "or-better" comparisons, rewrite aliased keys, and validate engineFeatures.
+
+**Modelplane ships a default canonical catalog** with the well-known cases — Hopper / Blackwell / Ada / Ampere / MI300X for chip families, FP8/MXFP8/MXFP4/NVFP4 for quantization, G1–G4 for KV cache tiers, RoCEv2/IB-200G/IB-400G/Quantum-2 for inter-node fabric. This catalog is updated as new chip generations / engine versions / quantization formats land. **Customers don't author this for known cases.**
+
+For bespoke hardware (custom AMD partitions, internal accelerators, experimental engine forks), customers can override or extend the singleton in their cluster — without a Modelplane CRD bump.
+
+**Commercial-offering candidate.** Keeping the canonical catalog current as new chips / engines / formats land is high-leverage and bounded. Tracking releases across NVIDIA, AMD, Intel, Google, the inference-engine projects (vLLM, SGLang, TRT-LLM, Dynamo), and standards bodies (WG-Device-Management) is a real ongoing commitment — natural fit for an Upbound-managed offering layered above the open-source default.
+
+**Vocabulary tiers (where keys come from):**
 
 | Tier | Source | Governance |
 |---|---|---|
 | Vendor (`gpu.nvidia.com/*`, `gpu.amd.com/*`, `tpu.google.com/*`) | DRA drivers | Consume, never define |
 | K8s standards (`resource.kubernetes.io/*`) | WG-Device-Management | Track and alias as KEPs land |
-| `modelplane.ai/*` | `CapabilityVocabulary` CR | Updates without CRD bumps; closed enums for stable keys, ordered for hardware, G1–G4 KV tiers |
+| `modelplane.ai/*` | `CapabilityVocabulary` CR (Modelplane default + customer overrides) | The managed canonical catalog |
 | User (`acme.example/*`) | User | Pass-through, unvalidated; first-class match via `<level>Claim.selector.matchAttributes` |
 
 ## Risks (categorized)
@@ -283,26 +299,26 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 
 ## Appendix: deliverables
 
-Full proposed XRDs and example resources live in [`scheduler-deliverables/`](scheduler-deliverables/). That directory is a **design-time preview**: nothing there is wired up yet, and once we align on the API the XRDs move into [`apis/`](../apis/) and examples move into the repo-root `examples/`. See [`scheduler-deliverables/README.md`](scheduler-deliverables/README.md) for the full layout and what's deliberately incomplete.
+Full proposed XRDs and example resources live in [`modelplane-api/`](modelplane-api/). That directory is a **design-time preview**: nothing there is wired up yet, and once we align on the API the XRDs move into [`apis/`](../apis/) and examples move into the repo-root `examples/`. See [`modelplane-api/README.md`](modelplane-api/README.md) for the full layout and what's deliberately incomplete.
 
 **XRDs** (proposed CompositeResourceDefinitions):
 
-- [`xrds/inferencecluster.yaml`](scheduler-deliverables/xrds/inferencecluster.yaml) — cluster-scoped substrate, env + node + device attributes, `provisioning.mode`
-- [`xrds/modelservice.yaml`](scheduler-deliverables/xrds/modelservice.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
-- [`xrds/capabilityvocabulary.yaml`](scheduler-deliverables/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
-- [`xrds/modeldeployment.yaml`](scheduler-deliverables/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
-- [`xrds/modelendpoint.yaml`](scheduler-deliverables/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `ModelService` / `External`
-- [`xrds/modelplacement.yaml`](scheduler-deliverables/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
+- [`xrds/inferencecluster.yaml`](modelplane-api/xrds/inferencecluster.yaml) — cluster-scoped substrate, env + node + device attributes, `provisioning.mode`
+- [`xrds/modelservice.yaml`](modelplane-api/xrds/modelservice.yaml) — namespace-scoped routing-only target (rough sketch — Nic owns the dedicated-SaaS placement concept)
+- [`xrds/capabilityvocabulary.yaml`](modelplane-api/xrds/capabilityvocabulary.yaml) — cluster-scoped vocab CR (singleton, name: `default`)
+- [`xrds/modeldeployment.yaml`](modelplane-api/xrds/modeldeployment.yaml) — namespace-scoped workload, K8s scale subresource for KEDA
+- [`xrds/modelendpoint.yaml`](modelplane-api/xrds/modelendpoint.yaml) — namespace-scoped weighted routing across `Deployment` / `ModelService` / `External`
+- [`xrds/modelplacement.yaml`](modelplane-api/xrds/modelplacement.yaml) — existing CRD playing the role of the intermediate representation (IR); one per logical replica (replica == placement)
 
 **Substrate examples** (platform-team setup):
 
-- [`examples/inferencecluster-prod-coreweave.yaml`](scheduler-deliverables/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster, DRA-enabled
-- [`examples/modelservice-together.yaml`](scheduler-deliverables/examples/modelservice-together.yaml) — Together AI as a routing target
-- [`examples/capabilityvocabulary-default.yaml`](scheduler-deliverables/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs
+- [`examples/inferencecluster-prod-coreweave.yaml`](modelplane-api/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster, DRA-enabled
+- [`examples/modelservice-together.yaml`](modelplane-api/examples/modelservice-together.yaml) — Together AI as a routing target
+- [`examples/capabilityvocabulary-default.yaml`](modelplane-api/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs
 
 **Workload examples** (ML/App team deployments):
 
-- [`examples/kimi-k2.yaml`](scheduler-deliverables/examples/kimi-k2.yaml) — frontier MoE, multi-node, 5P3D disaggregation, FP8 weights + KV
-- [`examples/qwen3-coder.yaml`](scheduler-deliverables/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context
-- [`examples/gpt-oss-20b.yaml`](scheduler-deliverables/examples/gpt-oss-20b.yaml) — small MoE, MXFP4-native on Blackwell, scale-to-zero, fan-out across 2 regions
-- [`examples/assistant-endpoint.yaml`](scheduler-deliverables/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across all three (70 / 25 / 5)
+- [`examples/kimi-k2.yaml`](modelplane-api/examples/kimi-k2.yaml) — frontier MoE, multi-node, 5P3D disaggregation, FP8 weights + KV
+- [`examples/qwen3-coder.yaml`](modelplane-api/examples/qwen3-coder.yaml) — code completion, n-gram speculation, 3 LoRA adapters, 256K context
+- [`examples/gpt-oss-20b.yaml`](modelplane-api/examples/gpt-oss-20b.yaml) — small MoE, MXFP4-native on Blackwell, scale-to-zero, fan-out across 2 regions
+- [`examples/assistant-endpoint.yaml`](modelplane-api/examples/assistant-endpoint.yaml) — `ModelEndpoint` weighted across all three (70 / 25 / 5)

@@ -1,13 +1,13 @@
-# Scheduler & Capability Model — design deliverables
+# Modelplane API — design deliverables
 
-This directory is a **design-time preview** of the CRDs and example resources described in [`../scheduler-1pager.md`](../scheduler-1pager.md). Once the design is aligned, these definitions move into [`apis/`](../../apis/) (one directory per CRD, alongside the matching Composition) and the examples move into [`examples/`](../../examples/) at the repo root. Until then, this directory is a self-contained sketch that platform engineers and reviewers can read end-to-end without scrolling between issues, comments, and code.
+This directory is a **design-time preview** of the CRDs and example resources described in [`../modelplane-api.md`](../modelplane-api.md). Once the design is aligned, these definitions move into [`apis/`](../../apis/) (one directory per CRD, alongside the matching Composition) and the examples move into [`examples/`](../../examples/) at the repo root. Until then, this directory is a self-contained sketch that platform engineers and reviewers can read end-to-end without scrolling between issues, comments, and code.
 
 Nothing here is wired up yet — XRDs aren't installed by `up` packs, examples aren't run by CI. Treat this as a proposal in YAML form.
 
 ## Layout
 
 ```
-scheduler-deliverables/
+modelplane-api/
 ├── README.md                                 (this file)
 ├── xrds/                                     # proposed CompositeResourceDefinitions
 │   ├── inferencecluster.yaml                 # cluster-scoped substrate (was InferenceEnvironment)
@@ -54,7 +54,9 @@ Workloads use a two-level claim cascade: `clusterClaim` filters `InferenceCluste
 
 The intermediate representation (`ModelPlacement` — the existing CRD in `apis/modelplacements/`, expanded to play this role) is the seam — Modelplane stays opinionated about its schema; backends adapt to it, not vice versa. Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, and capacity tracking are the in-cluster scheduler's job. v1 ships Kueue + KServe adapters; KAI / Volcano / Dynamo are future contributions.
 
-**Label-vs-DRA matching.** `deviceClaim.selector` supports two paths: `matchLabels` for plain node-label matching (no DRA required; cluster `provisioning.mode: device-plugin`) and `matchAttributes` for DRA-shaped typed selection (cluster `provisioning.mode: dra`). DRA stays optional. Richer constraints (NVLink-domain co-location, etc.) are only expressible via DRA matchAttributes.
+**Labels-first matching.** `deviceClaim.selector.matchLabels` is the primary match path — works against any K8s cluster with node labels (no DRA required). DRA-typed `matchAttributes` is the **break-glass** for richer constraints (NVLink-domain co-location, FP8 capability, MIG state). Most workloads don't need DRA. See `examples/gpt-oss-20b.yaml` for the labels path; `examples/kimi-k2.yaml` for the DRA break-glass path.
+
+**CapabilityVocabulary as a managed canonical catalog.** Modelplane ships a default singleton with the well-known mappings: chip generations (Hopper, Blackwell, Ada, Ampere, MI300X), engine versions, quantization formats (FP8 / MXFP8 / MXFP4 / NVFP4), KV cache tiers (G1–G4), inter-node fabric ordering (RoCEv2 / IB-200G / IB-400G / Quantum-2). Customers don't author this for known cases. For bespoke hardware, they override the singleton on their cluster — without a Modelplane CRD bump. Keeping the canonical catalog current as new chips / engine versions / quantization formats land is high-leverage and bounded — candidate for an Upbound-managed offering layered above the OSS default.
 
 ## Replica == Placement (per Bassam's whiteboard)
 

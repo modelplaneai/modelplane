@@ -2,10 +2,11 @@
 #
 # Demonstrates:
 #   - Single-GPU deployment (20B MoE with ~3.6B active params; fits one device)
-#   - Plain node-label matching via deviceClaim.selector.matchLabels — no DRA
-#     required. Targets clusters running provisioning.mode: device-plugin.
-#     Composer emits the pod with nvidia.com/gpu: 1 + a nodeSelector.
-#   - Scale-to-zero (`minReplicas: 0`) for low-traffic / dev workloads
+#   - Plain node-label matching via deviceClaim.selector.matchLabels — labels
+#     are the primary match path; no DRA required. Composer emits the pod with
+#     nvidia.com/gpu: 1 + a nodeSelector.
+#   - Scale-to-zero (`scaling.concurrency.minReplicas: 0`) for low-traffic /
+#     dev workloads. spec.replicas is KEDA-managed; user authors scaling only.
 #   - For multi-region spread, create a second ModelDeployment targeting a
 #     different region and route across both via a ModelEndpoint (or compose
 #     them via a Crossplane XR).
@@ -15,8 +16,6 @@ metadata:
   name: gpt-oss-20b
   namespace: app-team
 spec:
-  replicas: 0                             # scale-to-zero baseline; KEDA scales up on traffic
-
   model:
     name: openai/gpt-oss-20b
   source: HuggingFace
@@ -28,22 +27,17 @@ spec:
       matchLabels:
         modelplane.ai/tier: production
 
-
   deviceClaim:
     requests:
       - name: gpus
         count: 1
         perNode: 1
         selector:
-          # Plain node-label match (pre-DRA simple path). For richer typed
-          # constraints (e.g. NVLink-domain co-location), use matchAttributes
-          # against DRA-published keys instead — see kimi-k2.yaml for that path.
+          # Labels are the primary match path. For richer typed constraints
+          # (NVLink-domain co-location, MIG slicing, etc.), use matchAttributes
+          # against DRA-published keys as the break-glass — see kimi-k2.yaml.
           matchLabels:
             nvidia.com/gpu.family: hopper
-
-  requiredEngineFeatures:
-    - chunked-prefill
-    - kv-cache-routing
 
   parallelism:
     tensor: 1

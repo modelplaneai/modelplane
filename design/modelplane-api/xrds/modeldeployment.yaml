@@ -160,38 +160,45 @@ spec:
                           selector:
                             type: object
                             description: |
-                              Two paths — pick whichever fits the cluster:
-                                matchLabels  — plain node labels (no DRA needed).
-                                               Used when cluster.provisioning.mode
-                                               is device-plugin. Composer emits
-                                               pod with nvidia.com/gpu: <count>
-                                               and a nodeSelector from these labels.
-                                matchAttributes — DRA-style typed attributes.
-                                               Used when cluster.provisioning.mode
-                                               is dra. Composer emits a
-                                               ResourceClaimTemplate with these.
-                              cel — break-glass; only meaningful with DRA.
+                              Match path — labels first, DRA as break-glass:
+                                matchLabels    — primary path. Plain node labels
+                                                 (nvidia.com/gpu.family,
+                                                 modelplane.ai/accelerator, etc.).
+                                                 No DRA required. Composer emits
+                                                 pod with nvidia.com/gpu: <count>
+                                                 + nodeSelector from these labels.
+                                matchAttributes — break-glass for richer typed
+                                                 constraints (NVLink-domain
+                                                 co-location, MIG state, FP8
+                                                 capability). DRA-shaped; composer
+                                                 emits a ResourceClaimTemplate.
+                                cel             — escape hatch for boolean / set
+                                                 arithmetic over device attrs.
                             properties:
                               matchLabels:
                                 type: object
                                 additionalProperties: { type: string }
                                 description: |
-                                  Plain node-label match (pre-DRA simple path).
-                                  Operator-curated labels like nvidia.com/gpu.family
-                                  or modelplane.ai/accelerator. No interconnect /
-                                  NVLink-domain constraints expressible at this level
-                                  — for those, use matchAttributes + DRA.
+                                  Primary match path. Plain K8s node labels —
+                                  works against any cluster with labeled nodes.
+                                  Sufficient for most workloads. Constraints that
+                                  need topology-awareness (NVLink-domain
+                                  co-location) can't be expressed here; use
+                                  matchAttributes + DRA for those.
                               matchAttributes:
                                 type: object
                                 additionalProperties:
                                   x-kubernetes-preserve-unknown-fields: true
                                 description: |
-                                  Matched against device attributes (DRA-published
-                                  vendor keys like gpu.nvidia.com/architecture, or
+                                  Break-glass for richer typed constraints. Matched
+                                  against device attributes (DRA-published vendor
+                                  keys like gpu.nvidia.com/architecture, or
                                   declared deviceAttributes on scale-zero pools).
+                                  Requires the cluster to run provisioning.mode:
+                                  dra.
                               cel:
                                 type: string
-                                description: Break-glass — CEL over device.attributes / device.capacity.
+                                description: Break-glass CEL — for constraints not expressible in matchLabels / matchAttributes.
                           constraints:
                             type: array
                             items:
