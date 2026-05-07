@@ -35,12 +35,20 @@ spec:
                                   # alternatives: managed-kserve | dynamo | raw-vllm
     version: v0.18.0
 
+  # Cluster-layer attributes (env-level). Aligned with the unified
+  # taxonomy: cloud.{provider, region}, network.{fabric, bandwidthGbps,
+  # airgapped}, cluster.scaleUnit. Plus modelplane.ai/* keys for tier /
+  # compliance / billing.
   attributes:
-    "modelplane.ai/region":       "us-east"
-    "modelplane.ai/provider":     "coreweave"
-    "modelplane.ai/tier":         "production"
-    "modelplane.ai/compliance":   ["soc2-type2", "iso-27001"]
-    "modelplane.ai/billingModel": "per-gpu-hour"
+    cloud.provider:               coreweave
+    cloud.region:                 us-east
+    network.fabric:               ib                       # Quantum-2
+    network.bandwidthGbps:        3200
+    network.airgapped:            false
+    cluster.scaleUnit:            independent-nodes
+    modelplane.ai/tier:           production
+    modelplane.ai/compliance:     [soc2-type2, iso-27001]
+    modelplane.ai/billingModel:   per-gpu-hour
 
   nodePools:
     - name: frontier-multinode
@@ -48,15 +56,31 @@ spec:
       # BYO cluster — operator labels their nodes with this themselves.
       nodeSelector:
         "modelplane.ai/pool": "frontier-multinode"
-      provisioning: {}                    # BYO cluster — pool already exists
+      provisioning: {}                  # BYO cluster — pool already exists
+      # Pool-layer attributes (per-host shape). cloud.instanceType is the
+      # canonical macro key — vocab unpacks gpuCount, interconnect, cpu,
+      # memoryGiB, etc. We spell them out for clarity.
       nodeAttributes:
-        "node.kubernetes.io/instance-type":    "HGX-H200-IB"
-        "modelplane.ai/pricing":               "reserved"
-        "modelplane.ai/interNodeFabric":       "ib-quantum-2"
-        "modelplane.ai/failureDomain":         "us-east1-a"
+        cloud.instanceType:        coreweave:gd-8xh200ib-i128
+        gpuCount:                  8
+        interconnect.type:         nvswitch
+        interconnect.bandwidthGBs: 900
+        cpu.vendor:                intel
+        cpu.cores:                 64                      # 128 vCPU
+        cpu.platform:              sapphire-rapids
+        memoryGiB:                 2048
+        nics.count:                8
+        nics.bandwidthGbps:        400
+        host.virtualization:       none                    # bare metal
+        modelplane.ai/pricing:     reserved
+        modelplane.ai/failureDomain: us-east1-a
+      # Device-layer attributes (per-GPU; uniform across pool's devices).
+      # Capability flags do the matching work; architecture is metadata.
       deviceAttributes:
-        "gpu.nvidia.com/architecture":         "Hopper"
-        "gpu.nvidia.com/productName":          "NVIDIA H200 141GB HBM3e"
-        "gpu.nvidia.com/cudaComputeCapability": "9.0.0"
-        "gpu.nvidia.com/memory":               "141Gi"
-        "gpu.nvidia.com/perDeviceCount":       "8"
+        vendor:        nvidia
+        product:       H200
+        architecture:  hopper
+        formFactor:    sxm
+        vramGiB:       141
+        mig:           true
+        capabilities:  [fp8, transformer-engine, mig]

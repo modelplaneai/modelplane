@@ -51,7 +51,11 @@ spec:
                         description: Domain-namespaced key, e.g. modelplane.ai/tier.
                       type:
                         type: string
-                        enum: [enum, orderedString, string, list, integer, quantity]
+                        enum: [enum, orderedString, string, list, set, integer, quantity, bool]
+                        description: |
+                          set: unordered collection of tags (e.g. capabilities).
+                          bool: single true/false (e.g. mig partitionable).
+                          Other types as before.
                       values:
                         type: array
                         description: |

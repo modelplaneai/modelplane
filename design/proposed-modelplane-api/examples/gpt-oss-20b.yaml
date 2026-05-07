@@ -47,7 +47,8 @@ spec:
       - "--max-model-len=131072"
       - "--gpu-memory-utilization=0.90"
       - "--max-num-seqs=64"
-      - "--enable-prefix-caching"
+    optimizations:
+      prefixCaching: true               # → prefix-caching feature
 
   scaling:
     signal: Concurrency

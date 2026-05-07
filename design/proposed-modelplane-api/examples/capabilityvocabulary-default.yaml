@@ -6,7 +6,15 @@
 # evaluation of the same cluster's hardware semantics. Namespaces customize
 # via Crossplane Compositions, not vocab redefinition.
 #
-# The matcher reads this CR to validate claim selectors, resolve "or-better"
+# Aligned with the unified GPU taxonomy in @bassam's hardware survey
+# (Notion: "GPU hardware survey and unified taxonomy", 2026-05-07).
+# Four logical layers — Cluster (env), Pool (per-host shape), Device
+# (per-GPU), and dynamic state (separate, not modeled here). Capability
+# tags as sets, not boolean columns. Architecture is metadata; capability
+# flags do the matching work (avoids hardcoding `architecture in [hopper,
+# blackwell]` and excluding AMD).
+#
+# The matcher reads this CR to validate selectors, resolve "or-better"
 # ordering, rewrite aliased keys, and validate engineFeatures strings.
 apiVersion: modelplane.ai/v1alpha1
 kind: CapabilityVocabulary
@@ -14,19 +22,42 @@ metadata:
   name: default
 spec:
   attributeKeys:
-    # ---- ordered hardware vocabulary ----
-    - name: modelplane.ai/interNodeFabric
-      type: orderedString
+    # ============================================================
+    # Cluster layer — facts about the whole environment
+    # ============================================================
+    - name: cloud.provider
+      type: enum
       values:
-        - { name: none,                  throughputGbps: 0 }
-        - { name: rocev2-100g,           throughputGbps: 100 }
-        - { name: rocev2-400g,           throughputGbps: 400 }
-        - { name: ib-200g,               throughputGbps: 200 }
-        - { name: ib-400g,               throughputGbps: 400 }
-        - { name: ib-quantum-2,          throughputGbps: 800 }
-        - { name: nvlink-only-multinode, throughputGbps: 1800 }
-
-    # ---- closed enums for stable keys ----
+        - { name: aws }
+        - { name: gcp }
+        - { name: azure }
+        - { name: oci }
+        - { name: coreweave }
+        - { name: crusoe }
+        - { name: lambda }
+        - { name: nebius }
+        - { name: on-prem-dgx }
+        - { name: on-prem-other }
+    - name: cloud.region
+      type: string
+    - name: network.fabric
+      type: enum
+      values:
+        - { name: ib }        # InfiniBand (NDR / Quantum-2 / Quantum-X800)
+        - { name: roce }      # RoCE v2 over ConnectX (OCI's pattern)
+        - { name: efa }       # AWS Elastic Fabric Adapter
+        - { name: gvnic }     # GCP gVNIC
+        - { name: standard }  # commodity Ethernet
+    - name: network.bandwidthGbps
+      type: integer
+    - name: network.airgapped
+      type: bool
+    - name: cluster.scaleUnit
+      type: enum
+      values:
+        - { name: independent-nodes }   # standard cloud SKUs
+        - { name: superpod }            # NVIDIA DGX SuperPOD topology
+        - { name: nvl72 }               # GB200/GB300 rack-scale, 72-GPU NVLink domain
     - name: modelplane.ai/tier
       type: enum
       values: [{ name: production }, { name: staging }, { name: development }]
@@ -44,33 +75,111 @@ spec:
         - { name: spot }
         - { name: reserved }
         - { name: committed }
-
-    # ---- free-form keys with documented conventions ----
-    - name: modelplane.ai/region
-      type: string
-    - name: modelplane.ai/provider
-      type: string
-    - name: modelplane.ai/failureDomain
-      type: string
-
-    # ---- list-typed keys ----
     - name: modelplane.ai/compliance
       type: list
 
+    # ============================================================
+    # Pool layer — homogeneous-group host shape (per nodePool)
+    # ============================================================
+    - name: cloud.instanceType
+      type: string                       # provider-specific SKU name
+    - name: gpuCount
+      type: integer                      # GPUs per host
+    - name: interconnect.type
+      type: enum
+      values:
+        - { name: nvswitch }
+        - { name: nvlink-pairwise }
+        - { name: nvlink-c2c }
+        - { name: xgmi }                # AMD Infinity Fabric
+        - { name: pcie }
+        - { name: none }
+    - name: interconnect.bandwidthGBs
+      type: integer                      # per-direction
+    - name: cpu.vendor
+      type: enum
+      values:
+        - { name: intel }
+        - { name: amd }
+        - { name: nvidia-grace }
+        - { name: ampere-arm }
+    - name: cpu.cores
+      type: integer                      # physical cores; vCPU is 2× on x86
+    - name: cpu.platform
+      type: string                       # sapphire-rapids, emerald-rapids, genoa, ...
+    - name: memoryGiB
+      type: integer                      # host RAM
+    - name: nics.count
+      type: integer
+    - name: nics.bandwidthGbps
+      type: integer                      # per-NIC
+    - name: host.virtualization
+      type: enum
+      values:
+        - { name: none }                # bare metal (CoreWeave, OCI, on-prem)
+        - { name: kvm }
+        - { name: hyperv }
+        - { name: vmware }
+
+    # ============================================================
+    # Device layer — per-GPU attributes (uniform across pool's devices)
+    # ============================================================
+    - name: vendor
+      type: enum
+      values:
+        - { name: nvidia }
+        - { name: amd }
+        - { name: google-tpu }
+        - { name: aws-trainium }
+        - { name: azure-maia }
+    - name: product
+      type: string                       # H100, H200, B200, B300, L40S, MI300X, ...
+    - name: architecture
+      type: enum                         # mostly metadata; prefer `capabilities` for matching
+      values:
+        - { name: hopper }
+        - { name: blackwell }
+        - { name: blackwell-ultra }
+        - { name: ampere }
+        - { name: ada }
+        - { name: cdna3 }                # AMD MI300X
+    - name: formFactor
+      type: enum
+      values:
+        - { name: sxm }
+        - { name: pcie }
+        - { name: nvl }                  # GB200/GB300 superchip form
+    - name: vramGiB
+      type: integer                      # per-device; predicate matching (>=141)
+    - name: mig
+      type: bool                         # partitionable (H100/H200/A100)
+    - name: capabilities
+      type: set                          # tags: fp8, fp4, transformer-engine, mig, ...
+    - name: parentProduct
+      type: string                       # for fractional/MIG entries: pointer to underlying GPU
+
+  # ============================================================
+  # Engine features — required-feature set the matcher derives from
+  # ModelDeployment config (roles, engine.{quantization, speculation,
+  # optimizations, advanced[]}, parallelism, adapters[]) and matches
+  # against each cluster's KServeBackend.spec.engine.features.
+  # ============================================================
   engineFeatures:
-    - { name: prefill-decode-disagg,  description: "Disaggregated prefill/decode (xPyD)" }
-    - { name: kv-cache-routing,       description: "Prefix-aware request routing" }
-    - { name: eagle-speculation,      description: "EAGLE speculative decoding" }
+    - { name: prefill-decode-disagg,    description: "Disaggregated prefill/decode (xPyD)" }
+    - { name: kv-cache-routing,         description: "Prefix-aware request routing (gateway)" }
+    - { name: prefix-caching,           description: "In-engine prefix cache" }
+    - { name: chunked-prefill,          description: "Chunked prefill with continuous batching" }
+    - { name: eagle-speculation,        description: "EAGLE speculative decoding" }
     - { name: draft-target-speculation, description: "Draft-target speculative decoding" }
-    - { name: medusa-speculation,     description: "Medusa speculative decoding" }
-    - { name: ngram-speculation,      description: "N-gram / lookahead speculation" }
-    - { name: multi-lora,             description: "Multi-LoRA + LoRA-aware routing" }
-    - { name: structured-output,      description: "Guided / constrained generation" }
-    - { name: tool-calling,           description: "Function calling / tool-use parsing" }
-    - { name: chunked-prefill,        description: "Chunked prefill with continuous batching" }
-    - { name: fp8-kv-cache,           description: "FP8 KV-cache quantization" }
-    - { name: mxfp4-quantization,     description: "MXFP4 weight quantization (Blackwell-native)" }
-    - { name: nvfp4-quantization,     description: "NVFP4 weight quantization (NVIDIA Blackwell)" }
+    - { name: medusa-speculation,       description: "Medusa speculative decoding" }
+    - { name: ngram-speculation,        description: "N-gram / lookahead speculation" }
+    - { name: multi-lora,               description: "Multi-LoRA + LoRA-aware routing" }
+    - { name: structured-output,        description: "Guided / constrained generation" }
+    - { name: tool-calling,             description: "Function calling / tool-use parsing" }
+    - { name: expert-parallelism,       description: "MoE expert parallelism (parallelism.expert: enabled)" }
+    - { name: fp8-kv-cache,             description: "FP8 KV-cache quantization" }
+    - { name: mxfp4-quantization,       description: "MXFP4 weight quantization (Blackwell-native)" }
+    - { name: nvfp4-quantization,       description: "NVFP4 weight quantization (NVIDIA Blackwell)" }
 
   kvCacheTiers:
     - { name: G1, medium: device-vram, bandwidth: "TB/s",     scope: pod-local }
@@ -79,49 +188,175 @@ spec:
     - { name: G4, medium: networked,   bandwidth: "GB/s",     scope: cluster-shared }
 
   aliases:
-    - { from: modelplane.ai/region, to: topology.kubernetes.io/region }
+    # Standard K8s topology label is the actual source for region.
+    - { from: cloud.region, to: topology.kubernetes.io/region }
 
-  # ---- instance-type macros ----
-  # Customers match either on `modelplane.ai/instanceType: H100-NVL-8x-IB400`
-  # or on the unpacked attributes — same predicate engine, the vocab does the
-  # unpacking. Per-cloud SKU strings (`aws:p5.48xlarge`) resolve to the
-  # canonical name via `aliases`. New instance types and SKU mappings land
-  # here without a Modelplane CRD bump.
+  # ============================================================
+  # Instance-type macros — canonical names that expand to typed
+  # attributes. Customers match either on `cloud.instanceType:
+  # H100-NVL-8x-IB400` or on unpacked attributes; same predicate engine,
+  # the vocab does the unpacking. Per-cloud SKU strings (`aws:p5.48xlarge`)
+  # resolve to the canonical name via `aliases`.
+  #
+  # Catalog drawn from @bassam's hardware survey (2026-05-07). New SKUs
+  # land here without a Modelplane CRD bump. Keeping it current is the
+  # high-leverage canonical work that anchors the managed-catalog
+  # commercial offering.
+  # ============================================================
   instanceTypes:
-    - name: H100-NVL-8x-IB400
+    # ---- NVIDIA Hopper (H100 / H200) ----
+    - name: H100-NVL-8x
       expands:
-        gpu.nvidia.com/architecture: Hopper
-        gpu.nvidia.com/productName: H100
-        modelplane.ai/gpuCount: 8
-        modelplane.ai/interNodeFabric: ib-400g
+        vendor: nvidia
+        product: H100
+        architecture: hopper
+        formFactor: sxm
+        vramGiB: 80
+        mig: true
+        capabilities: [fp8, transformer-engine, mig]
+        gpuCount: 8
+        interconnect.type: nvswitch
+        interconnect.bandwidthGBs: 900
       aliases:
         - aws:p5.48xlarge
-        - coreweave:8xH100-NVL-IB-400G
+        - gcp:a3-highgpu-8g
+        - gcp:a3-megagpu-8g
+        - azure:Standard_ND96isr_H100_v5
+        - oci:BM.GPU.H100.8
+        - coreweave:gd-8xh100ib-i128
+        - lambda:hgx-h100-sxm
+        - dgx:DGX-H100
       since: v0.1
 
-    - name: H200-NVL-8x-IB400
+    - name: H200-NVL-8x
       expands:
-        gpu.nvidia.com/architecture: Hopper
-        gpu.nvidia.com/productName: H200
-        modelplane.ai/gpuCount: 8
-        modelplane.ai/interNodeFabric: ib-400g
+        vendor: nvidia
+        product: H200
+        architecture: hopper
+        formFactor: sxm
+        vramGiB: 141
+        mig: true
+        capabilities: [fp8, transformer-engine, mig]
+        gpuCount: 8
+        interconnect.type: nvswitch
+        interconnect.bandwidthGBs: 900
       aliases:
         - aws:p5e.48xlarge
-        - coreweave:8xH200-NVL-IB-400G
+        - aws:p5en.48xlarge
+        - gcp:a3-ultragpu-8g
+        - azure:Standard_ND96isr_H200_v5
+        - oci:BM.GPU.H200.8
+        - coreweave:gd-8xh200ib-i128
+        - dgx:DGX-H200
       since: v0.1
 
-    - name: B200-NVL-8x-Quantum2
+    # ---- NVIDIA Blackwell (B200 / B300) ----
+    - name: B200-NVL-8x
       expands:
-        gpu.nvidia.com/architecture: Blackwell
-        gpu.nvidia.com/productName: B200
-        modelplane.ai/gpuCount: 8
-        modelplane.ai/interNodeFabric: ib-quantum-2
+        vendor: nvidia
+        product: B200
+        architecture: blackwell
+        formFactor: sxm
+        vramGiB: 180
+        capabilities: [fp4, fp8, transformer-engine]
+        gpuCount: 8
+        interconnect.type: nvswitch
+        interconnect.bandwidthGBs: 1800
+      aliases:
+        - aws:p6-b200.48xlarge
+        - gcp:a4-highgpu-8g
+        - oci:BM.GPU.B200.8
+        - coreweave:b200-8x
+        - lambda:hgx-b200-sxm6
+        - dgx:DGX-B200
       since: v0.1
 
-    - name: MI300X-8x-RoCEv2
+    - name: B300-NVL72
       expands:
-        gpu.amd.com/architecture: CDNA3
-        gpu.amd.com/productName: MI300X
-        modelplane.ai/gpuCount: 8
-        modelplane.ai/interNodeFabric: rocev2-400g
+        vendor: nvidia
+        product: B300
+        architecture: blackwell-ultra
+        formFactor: nvl
+        vramGiB: 288
+        capabilities: [fp4, fp8, transformer-engine]
+        cluster.scaleUnit: nvl72         # rack-scale; NVLink domain spans the rack
+        interconnect.type: nvlink-c2c
+      aliases:
+        - aws:p6-b300
+        - oci:BM.GPU.GB300.4
+        - coreweave:gb300-4x
+        - crusoe:gb300-nvl72
+        - dgx:DGX-GB300-NVL72
+      since: v0.1
+
+    - name: GB200-NVL72
+      expands:
+        vendor: nvidia
+        product: GB200
+        architecture: blackwell
+        formFactor: nvl
+        vramGiB: 192
+        capabilities: [fp4, fp8, transformer-engine]
+        cluster.scaleUnit: nvl72
+        interconnect.type: nvlink-c2c
+      aliases:
+        - oci:BM.GPU.GB200.4
+        - coreweave:gb200-4x
+        - crusoe:gb200-nvl72
+        - dgx:DGX-GB200-NVL72
+      since: v0.1
+
+    # ---- AMD CDNA3 (MI300X) ----
+    - name: MI300X-8x
+      expands:
+        vendor: amd
+        product: MI300X
+        architecture: cdna3
+        formFactor: sxm
+        vramGiB: 192
+        capabilities: [fp8]              # no FP4 on MI300X
+        gpuCount: 8
+        interconnect.type: xgmi
+        interconnect.bandwidthGBs: 128
+      aliases:
+        - azure:Standard_ND_MI300X_v5
+        - oci:BM.GPU.MI300X.8
+        - crusoe:mi300x-8x
+      since: v0.1
+
+    # ---- NVIDIA L40S / A100 / older ----
+    - name: L40S-8x
+      expands:
+        vendor: nvidia
+        product: L40S
+        architecture: ada
+        formFactor: pcie
+        vramGiB: 48
+        capabilities: [fp8]
+        gpuCount: 8
+        interconnect.type: pcie
+      aliases:
+        - aws:g6e.48xlarge
+        - oci:BM.GPU.L40S.4
+        - coreweave:gd-8xl40s-i128
+      since: v0.1
+
+    - name: A100-80GB-8x
+      expands:
+        vendor: nvidia
+        product: A100
+        architecture: ampere
+        formFactor: sxm
+        vramGiB: 80
+        mig: true
+        capabilities: [mig]
+        gpuCount: 8
+        interconnect.type: nvswitch
+        interconnect.bandwidthGBs: 600
+      aliases:
+        - aws:p4de.24xlarge
+        - gcp:a2-ultragpu-8g
+        - azure:Standard_ND96amsr_A100_v4
+        - oci:BM.GPU.A100-v2.8
+        - coreweave:gd-8xa100-i128
       since: v0.1

@@ -56,9 +56,13 @@ spec:
         count: 16                       # 2 nodes × 8 GPUs per replica
         perNode: 8
         matchAttributes:
-          gpu.nvidia.com/architecture: [Hopper, Blackwell]
-          gpu.nvidia.com/memory: ">=141Gi"
-          modelplane.ai/interNodeFabric: "ib-400g-or-better"  # node-level attr; uniform across devices
+          # Predicates over the unified-taxonomy vocab. Capability flags
+          # (fp8) do the work, not architecture — keeps AMD MI300X eligible
+          # if its fabric/VRAM also match. Architecture is metadata.
+          vramGiB:        ">=141"
+          capabilities:   [fp8]
+          network.fabric: [ib, roce]
+          network.bandwidthGbps: ">=400"
         constraints:
           - matchAttribute: gpu.nvidia.com/nvlinkDomain   # TP=8 in one NVLink domain
             requests: [gpus]

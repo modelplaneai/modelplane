@@ -239,34 +239,61 @@ adapters: [{ name, source }]      # multi-LoRA + LoRA-aware routing
 
 **Consumer-index discipline.** Every field on the user-facing API has at least one named consumer (matcher / composer / backend adapter / gateway). Each XRD spec carries a `Field-level consumer index` block at the top documenting *who reads what for what purpose*. If a field has no real consumer, it gets removed. This is why `requiredEngineFeatures` is gone — every required feature is derivable from a more concrete declaration (`roles` → disagg, `engine.optimizations.kvCacheRouting` → kv-cache-routing, `adapters[]` → multi-lora, etc.), and the matcher unions them at federation time. Single source of truth: declare *what you want*; matcher derives *what backend features that requires*.
 
-## Capability vocabulary
+## Hardware taxonomy & reference clusters
 
-The `CapabilityVocabulary` is a singleton cluster-scoped CR (name: `default`) that defines the canonical mapping for `modelplane.ai/*` keys: chip generations, engine versions, quantization formats, KV cache tiers, inter-node fabric ordering. The matcher reads this CR to validate claim selectors, resolve "or-better" comparisons, rewrite aliased keys, and validate engineFeatures.
+The vocabulary above is grounded in a survey of GPU hardware across major inference platforms, GPU clouds, hyperscalers, and on-prem systems (Bassam's "GPU hardware survey and unified taxonomy", 2026-05-07). Four logical layers, organized by what changes together:
 
-**Modelplane ships a default canonical catalog** with the well-known cases — Hopper / Blackwell / Ada / Ampere / MI300X for chip families, FP8/MXFP8/MXFP4/NVFP4 for quantization, G1–G4 for KV cache tiers, RoCEv2/IB-200G/IB-400G/Quantum-2 for inter-node fabric. This catalog is updated as new chip generations / engine versions / quantization formats land. **Customers don't author this for known cases.**
+| Layer | What it describes | Examples |
+|---|---|---|
+| **Cluster** | facts about the whole environment | `cloud.provider`, `cloud.region`, `network.fabric`, `network.bandwidthGbps`, `network.airgapped`, `cluster.scaleUnit` |
+| **Pool** | the homogeneous-group host shape (per `nodePool`) | `cloud.instanceType`, `gpuCount`, `interconnect.{type, bandwidthGBs}`, `cpu.{vendor, cores, platform}`, `memoryGiB`, `nics.{count, bandwidthGbps}`, `host.virtualization` |
+| **Device** | per-GPU attributes (uniform across the pool's devices) | `vendor`, `product`, `architecture`, `formFactor`, `vramGiB`, `mig`, `capabilities` (set), `parentProduct` (for fractional / MIG) |
+| Dynamic state | what changes at runtime (health, allocation, MIG state) | tracked separately, not part of the vocab |
 
-For bespoke hardware (custom AMD partitions, internal accelerators, experimental engine forks), customers can override or extend the singleton in their cluster — without a Modelplane CRD bump.
+A few load-bearing design choices in the vocabulary:
 
-**Instance-type as a vocab macro.** Cloud SKUs (`aws:p5.48xlarge`, `gcp:a3-mega-8g`, `coreweave:gh-200-8x-ib`) and the higher-level normalized strings that platforms like Baseten / SkyPilot expose (`H100-NVL-8x-IB400`) fit cleanly as a *macro* attribute in the same vocabulary. The default catalog ships:
+- **Capability sets, not boolean columns.** `capabilities: [fp8, fp4, mig, transformer-engine]` ages better than separate boolean fields. New formats are entries in the set, not a schema migration.
+- **Predicates over equality.** `vramGiB >= 141` matches H200, B200, B300, MI300X. `vramGiB == 141` matches only H200. The former is what you usually want.
+- **Architecture is metadata; capabilities do the matching work.** Hardcoding `architecture in [hopper, blackwell]` excludes AMD MI300X. The capability flags (`fp8`, `fp4`) are the durable expression.
+- **Rack-scale needs `cluster.scaleUnit`.** `independent-nodes` for normal cloud SKUs; `nvl72` for GB200 / GB300 rack-scale (72 GPUs in one NVLink domain — the addressable unit isn't the node, it's the rack); `superpod` for NVIDIA DGX SuperPOD topology.
+- **RoCE vs IB are distinct fabrics.** Same physical NICs (ConnectX) can run either protocol. OCI runs RoCE on Quantum-2 hardware AWS runs as native IB. The schema distinguishes via `network.fabric: ib | roce | efa | gvnic | standard` plus a separate `network.bandwidthGbps`.
+- **OCPU vs vCPU.** Oracle prices in OCPU (physical core); most clouds use vCPU (hyperthread). Convert at provider import time and store physical `cpu.cores` consistently.
+- **Fractional GPUs as separate entries.** H100 MIG instances and L4 1/8-slice (g6f) are separate device entries with reduced `vramGiB` and a `parentProduct` pointer to the underlying GPU. Cleaner than "0.5 of an H100."
+
+**Instance-type macros wire SKUs into the taxonomy.** Each macro names a canonical shape and expands to typed attributes:
 
 ```yaml
 instanceTypes:
-  - name: H100-NVL-8x-IB400         # canonical
+  - name: H100-NVL-8x
     expands:
-      gpu.nvidia.com/architecture: Hopper
-      gpu.nvidia.com/productName: H100
-      modelplane.ai/gpuCount: 8
-      modelplane.ai/interNodeFabric: IB-400G
-    aliases:                         # per-cloud SKU mappings
+      vendor: nvidia
+      product: H100
+      formFactor: sxm
+      vramGiB: 80
+      capabilities: [fp8, transformer-engine, mig]
+      gpuCount: 8
+      interconnect.type: nvswitch
+      interconnect.bandwidthGBs: 900
+    aliases:                                   # per-cloud SKU strings
       - aws:p5.48xlarge
-      - coreweave:8xH100-NVL-IB-400G
+      - gcp:a3-megagpu-8g
+      - oci:BM.GPU.H100.8
+      - coreweave:gd-8xh100ib-i128
+      - dgx:DGX-H100
 ```
 
-Customers match on either dimension — the high-level string (`modelplane.ai/instanceType: H100-NVL-8x-IB400`) for the common case, or unpacked attributes for unusual constraints (`gpuCount >= 8 && fabric >= IB-200G`). Platform teams declare `instanceType` once on a node pool and the vocab implies the rest. Same predicate engine, no new code path.
+Customers match on either dimension — the high-level string (`cloud.instanceType: H100-NVL-8x`) for the common case, or unpacked attributes for unusual constraints (`vramGiB >= 141 && capabilities contains fp8`). Platform teams declare `instanceType` once on a pool and the vocab implies the rest. Same predicate engine, no new code path.
 
-This is exactly the kind of bounded, ongoing tracking work — chip families, instance-type taxonomy, per-cloud SKU mappings — that fits the managed-catalog offering.
+**Reference InferenceClusters from cloud SKUs.** Modelplane ships pre-generated `InferenceCluster` definitions for known cloud / on-prem SKUs in [`proposed-modelplane-api/examples/reference-clusters/`](proposed-modelplane-api/examples/reference-clusters/) — `aws-p5-48xlarge.yaml`, `gke-a3-mega-8g.yaml`, `oci-bm-gpu-mi300x-8.yaml`, `coreweave-gb300-nvl72.yaml` to start. Customers copy or compose these instead of authoring `nodePools[]` from scratch. Two ways to ship this:
 
-**Commercial-offering candidate.** Keeping the canonical catalog current as new chips / engines / formats land is high-leverage and bounded. Tracking releases across NVIDIA, AMD, Intel, Google, the inference-engine projects (vLLM, SGLang, TRT-LLM, Dynamo), and standards bodies (WG-Device-Management) is a real ongoing commitment — natural fit for an Upbound-managed offering layered above the open-source default.
+1. **Static artifacts** (in the repo today): low effort, high signal. Updated as new SKUs land.
+2. **Crossplane provider** (follow-up): polls cloud SKU APIs (`gcloud compute machine-types list`, AWS `DescribeInstanceTypes`, Azure equivalent) and generates `InferenceCluster` resources programmatically. Removes the "keep labels up-to-date by hand" burden Viktor flagged.
+
+**Commercial-offering framing.** The canonical-catalog work is the wedge:
+
+- **Tracking** new chip families, instance-type taxonomy, per-cloud SKU mappings, engine versions, quantization formats — bounded, ongoing, high-leverage.
+- **Reference clusters** continuously kept current across NVIDIA / AMD / TPU / Trainium / Maia and across AWS / GCP / Azure / OCI / CoreWeave / Crusoe / Lambda / Nebius / on-prem-DGX.
+- **Continuous testing & benchmarking.** Each reference cluster paired with a tested, benchmarked workload run on every supported model family (Llama, Qwen, DeepSeek, Kimi, GPT-OSS, etc.) so customers can rely on the catalog rather than just consume YAML. Costly to maintain — and exactly the kind of capability customers will pay for. Natural fit for an Upbound-managed offering layered above the OSS default.
 
 **Vocabulary tiers (where keys come from):**
 
@@ -275,7 +302,7 @@ This is exactly the kind of bounded, ongoing tracking work — chip families, in
 | Vendor (`gpu.nvidia.com/*`, `gpu.amd.com/*`, `tpu.google.com/*`) | DRA drivers | Consume, never define |
 | K8s standards (`resource.kubernetes.io/*`) | WG-Device-Management | Track and alias as KEPs land |
 | `modelplane.ai/*` | `CapabilityVocabulary` CR (Modelplane default + customer overrides) | The managed canonical catalog |
-| User (`acme.example/*`) | User | Pass-through, unvalidated; first-class match via `<level>Claim.selector.matchAttributes` |
+| User (`acme.example/*`) | User | Pass-through, unvalidated; first-class match via `<level>Selector.matchAttributes` |
 
 ## Risks (categorized)
 
@@ -314,6 +341,8 @@ This is exactly the kind of bounded, ongoing tracking work — chip families, in
 - **Default scheduler / backend.** Lean: `managed-kueue` + `managed-kserve` as opinionated defaults, BYO contracts for KAI / Volcano / Dynamo / raw-vllm. Confirm, or pick different defaults?
 - **Label-vs-attribute matching path.** `deviceSelector` supports both `matchLabels` (primary) and `matchAttributes` + CEL (break-glass over declared attributes). Confirm dual-path is right, or commit to one?
 - **DRA grounding contract.** When the chosen `InferenceCluster` has a DRA driver, the backend adapter emits real `ResourceClaim`s carrying the same predicates (mandatory for BYOC, optional for Modelplane-provisioned). Confirm this is the right split, or always-on for both?
+- **Rack-scale as its own unit.** GB200 / GB300 NVL72 is 72 GPUs in one NVLink domain — the addressable unit isn't the node, it's the rack. Captured today via `cluster.scaleUnit: nvl72` as an env-level attribute. Open: should the matcher reason about the whole rack as one capacity unit for placements that span the NVLink domain (very large MoE with PP across the rack), or treat the rack as multiple `nodePool` entries?
+- **Reference-cluster generation.** Static reference clusters today (committed YAML in `examples/reference-clusters/`); follow-up is a Crossplane provider that polls cloud SKU APIs and generates these programmatically. Confirm this is the right ordering, or push the provider sooner?
 - **Dedicated-SaaS placement.** `ModelService` is routing-only; "provision a dedicated Together / Baseten endpoint" is a placement concept Nic owns. Rough sketch only here pending Nic's design.
 - **`ModelObjective`-style intent layer.** Optional CR above `ModelDeployment` for SLO targets (TTFT, ITL, cost ceiling), reconciled by a planner — mirrors Dynamo's DGDR / DGD pattern. Worth a layer, or punt?
 - **vLLM recipe consumption.** Reference `recipes.vllm.ai` from `ModelDeployment.spec.recipe` (compose-time resolution) vs. fork into a Modelplane catalog repo. PM-shaped call.
@@ -370,7 +399,8 @@ Full proposed XRDs and example resources live in [`proposed-modelplane-api/`](pr
 
 - [`examples/inferencecluster-prod-coreweave.yaml`](proposed-modelplane-api/examples/inferencecluster-prod-coreweave.yaml) — production Coreweave H200 cluster; BYO `kueue` + BYO `kserve@v0.18.0`
 - [`examples/modelservice-together.yaml`](proposed-modelplane-api/examples/modelservice-together.yaml) — Together AI as a routing target
-- [`examples/capabilityvocabulary-default.yaml`](proposed-modelplane-api/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs
+- [`examples/capabilityvocabulary-default.yaml`](proposed-modelplane-api/examples/capabilityvocabulary-default.yaml) — the default vocabulary Modelplane installs (aligned with Bassam's hardware-survey taxonomy)
+- [`examples/reference-clusters/`](proposed-modelplane-api/examples/reference-clusters/) — pre-generated `InferenceCluster` definitions for known cloud SKUs (AWS p5, GKE A3 Mega, OCI MI300X, CoreWeave GB300 NVL72). Anchors the managed-catalog commercial offering.
 
 **Workload examples** (ML/App team deployments):
 

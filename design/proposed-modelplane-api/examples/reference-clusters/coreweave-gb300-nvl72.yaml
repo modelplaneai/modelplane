@@ -1,0 +1,54 @@
+# CoreWeave GB300 NVL72 — rack-scale Blackwell Ultra (B300) on Grace.
+#
+# Reference InferenceCluster for the rack-scale unit. The relevant
+# addressable unit isn't the node — it's the rack (72 GPUs in one
+# NVLink domain). cluster.scaleUnit: nvl72 captures that. CoreWeave's
+# `gb300-4x` instance type is "1 Grace + 2 B300 GPUs" — many such
+# instances form one NVL72 rack; the matcher reasons about the whole
+# rack as a single capacity unit for placements that span the NVLink
+# domain (e.g. very large MoE with PP across the rack).
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: coreweave-gb300-nvl72-reference
+spec:
+  attributes:
+    cloud.provider:        coreweave
+    network.fabric:        ib                     # 800 Gb/s Quantum-X800 IB
+    network.bandwidthGbps: 800
+    cluster.scaleUnit:     nvl72                  # rack-scale NVLink domain
+    modelplane.ai/tier:    production
+
+  scheduler:
+    type: managed-kueue
+  backend:
+    type: managed-kserve
+    version: v0.18.0
+  provisioning:
+    mode: dra
+
+  cluster:
+    source: coreweave
+    coreweave:
+      region:      eu-west-1
+      clusterName: <fill-me-in>
+
+  nodePools:
+    - name: gb300-4x
+      nodeSelector:
+        coreweave.com/instance-type: gb300-4x
+        modelplane.ai/pool: gb300-4x
+      nodeAttributes:
+        cloud.instanceType:        coreweave:gb300-4x
+        gpuCount:                  2                 # per-node; rack has 72
+        interconnect.type:         nvlink-c2c        # Grace-Hopper-style C2C
+        interconnect.bandwidthGBs: 1800
+        cpu.vendor:                nvidia-grace
+        host.virtualization:       none              # bare metal
+      deviceAttributes:
+        vendor:        nvidia
+        product:       B300
+        architecture:  blackwell-ultra
+        formFactor:    nvl
+        vramGiB:       279
+        capabilities:  [fp4, fp8, transformer-engine]

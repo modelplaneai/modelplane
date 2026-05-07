@@ -1,0 +1,56 @@
+# GCP a3-megagpu-8g — 8× NVIDIA H100 SXM, 1.8 Tbps RoCE.
+#
+# Reference InferenceCluster for the GKE A3 Mega SKU. Note: A3 Mega vs
+# A3 High vs A3 Edge have *identical* GPU specs — the differentiator is
+# network bandwidth (1,800 vs 1,000 Gbps) and zone availability. The
+# fabric attribute is the load-bearing distinction.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gke-a3-mega-8g-reference
+spec:
+  attributes:
+    cloud.provider:        gcp
+    network.fabric:        roce
+    network.bandwidthGbps: 1800      # the Mega-vs-High differentiator
+    cluster.scaleUnit:     independent-nodes
+    modelplane.ai/tier:    production
+
+  scheduler:
+    type: managed-kueue
+  backend:
+    type: managed-kserve
+    version: v0.18.0
+  provisioning:
+    mode: dra
+
+  cluster:
+    source: gcp
+    gcp:
+      project:     <fill-me-in>
+      region:      us-central1
+      clusterName: <fill-me-in>
+
+  nodePools:
+    - name: a3-megagpu-8g
+      nodeSelector:
+        cloud.google.com/gke-machine-type: a3-megagpu-8g
+        modelplane.ai/pool: a3-megagpu-8g
+      nodeAttributes:
+        cloud.instanceType:        gcp:a3-megagpu-8g
+        gpuCount:                  8
+        interconnect.type:         nvswitch
+        interconnect.bandwidthGBs: 900
+        cpu.vendor:                intel
+        cpu.cores:                 104             # 208 vCPU
+        cpu.platform:              sapphire-rapids
+        memoryGiB:                 1872
+        host.virtualization:       kvm             # GCE
+      deviceAttributes:
+        vendor:        nvidia
+        product:       H100
+        architecture:  hopper
+        formFactor:    sxm
+        vramGiB:       80
+        mig:           true
+        capabilities:  [fp8, transformer-engine, mig]

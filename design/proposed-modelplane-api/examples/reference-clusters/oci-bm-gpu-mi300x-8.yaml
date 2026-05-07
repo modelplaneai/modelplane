@@ -1,0 +1,55 @@
+# OCI BM.GPU.MI300X.8 — 8× AMD Instinct MI300X bare-metal, RoCE v2.
+#
+# Reference InferenceCluster for OCI's MI300X bare-metal SKU.
+# Demonstrates AMD as a first-class option — capability flags (`fp8`)
+# do the matching work, not architecture (`cdna3`). Workloads that match
+# `capabilities contains fp8` work here without naming an NVIDIA-specific
+# architecture.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: oci-bm-gpu-mi300x-8-reference
+spec:
+  attributes:
+    cloud.provider:        oci
+    network.fabric:        roce      # RoCE v2 over ConnectX (OCI's pattern)
+    network.bandwidthGbps: 3200
+    cluster.scaleUnit:     independent-nodes
+    modelplane.ai/tier:    production
+
+  scheduler:
+    type: managed-kueue
+  backend:
+    type: managed-kserve
+    version: v0.18.0
+  provisioning:
+    mode: dra                        # OCI exposes ROCm DRA driver
+
+  cluster:
+    source: oci
+    oci:
+      compartmentOcid: <fill-me-in>
+      region:          us-chicago-1
+      clusterName:     <fill-me-in>
+
+  nodePools:
+    - name: bm-gpu-mi300x-8
+      nodeSelector:
+        oci.oraclecloud.com/instance-shape: BM.GPU.MI300X.8
+        modelplane.ai/pool: bm-gpu-mi300x-8
+      nodeAttributes:
+        cloud.instanceType:        oci:BM.GPU.MI300X.8
+        gpuCount:                  8
+        interconnect.type:         xgmi             # AMD Infinity Fabric
+        interconnect.bandwidthGBs: 128              # bidirectional GPU-GPU
+        cpu.vendor:                intel
+        memoryGiB:                 2048
+        host.virtualization:       none             # bare metal
+      deviceAttributes:
+        vendor:        amd
+        product:       MI300X
+        architecture:  cdna3
+        formFactor:    sxm
+        vramGiB:       192
+        mig:           false
+        capabilities:  [fp8]                        # no FP4 on MI300X

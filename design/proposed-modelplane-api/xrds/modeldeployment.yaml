@@ -220,11 +220,11 @@ spec:
                               x-kubernetes-preserve-unknown-fields: true
                             description: |
                               Break-glass for richer typed constraints. Matched
-                              against declared pool attributes (vendor keys like
-                              gpu.nvidia.com/architecture, or modelplane.ai/* /
-                              acme.example/* keys). Grounded via real DRA
-                              ResourceClaims at pod admission when the chosen
-                              cluster has a DRA driver.
+                              against declared pool attributes (taxonomy keys:
+                              vendor, product, vramGiB, capabilities, network.*,
+                              cloud.instanceType, etc.; or acme.example/* user
+                              keys). Grounded via real DRA ResourceClaims at pod
+                              admission when the chosen cluster has a DRA driver.
                           cel:
                             type: string
                             description: Break-glass CEL — for constraints not expressible in matchLabels / matchAttributes.

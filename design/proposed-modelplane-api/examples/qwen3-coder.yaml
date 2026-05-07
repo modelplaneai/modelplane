@@ -42,8 +42,8 @@ spec:
         count: 8
         perNode: 8
         matchAttributes:
-          gpu.nvidia.com/architecture: [Hopper, Blackwell]
-          gpu.nvidia.com/memory: ">=141Gi"
+          vramGiB:      ">=141"
+          capabilities: [fp8]
         constraints:
           - matchAttribute: gpu.nvidia.com/nvlinkDomain
             requests: [gpus]

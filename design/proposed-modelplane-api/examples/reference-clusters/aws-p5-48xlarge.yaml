@@ -1,0 +1,63 @@
+# AWS p5.48xlarge — 8× NVIDIA H100 SXM, EFA fabric.
+#
+# Reference InferenceCluster generated from the AWS EC2 SKU. Drop into a
+# customer's environment, swap `cluster.source` to point at their EKS
+# cluster, and the matcher can immediately schedule against this pool.
+#
+# All attributes declared against the default CapabilityVocabulary; the
+# cloud.instanceType macro (`aws:p5.48xlarge`) implies the Pool/Device
+# attributes — they're spelled out here for clarity but a generated
+# cluster could just declare instanceType and let the vocab unpack.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: aws-p5-48xlarge-reference
+spec:
+  attributes:
+    cloud.provider:        aws
+    network.fabric:        efa
+    network.bandwidthGbps: 3200      # 32× 100Gbps EFA
+    cluster.scaleUnit:     independent-nodes
+    modelplane.ai/tier:    production
+
+  scheduler:
+    type: managed-kueue              # default; ClusterQueues per pool
+
+  backend:
+    type: managed-kserve
+    version: v0.18.0
+
+  provisioning:
+    mode: dra                        # K8s 1.34+ with NVIDIA DRA driver
+
+  cluster:
+    source: aws
+    aws:
+      region: us-east-1              # pinned per reference example
+      clusterName: <fill-me-in>
+
+  nodePools:
+    - name: p5-48xlarge
+      nodeSelector:
+        node.kubernetes.io/instance-type: p5.48xlarge
+        modelplane.ai/pool: p5-48xlarge
+      nodeAttributes:
+        cloud.instanceType:        aws:p5.48xlarge   # macro; vocab implies the rest
+        gpuCount:                  8
+        interconnect.type:         nvswitch
+        interconnect.bandwidthGBs: 900
+        cpu.vendor:                intel
+        cpu.cores:                 96                # 192 vCPU on p5.48xl
+        cpu.platform:              sapphire-rapids
+        memoryGiB:                 2048
+        nics.count:                32
+        nics.bandwidthGbps:        100               # EFA per-NIC
+        host.virtualization:       kvm               # Nitro
+      deviceAttributes:
+        vendor:        nvidia
+        product:       H100
+        architecture:  hopper
+        formFactor:    sxm
+        vramGiB:       80
+        mig:           true
+        capabilities:  [fp8, transformer-engine, mig]
