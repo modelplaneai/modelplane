@@ -17,10 +17,6 @@
 - **CapabilityVocabulary as a managed canonical catalog.** Default ships chip generations, engine versions, quantization formats, KV tiers, fabric ordering, plus per-SKU instance-type macros. Customers override for bespoke hardware. Keeping it current is high-leverage and bounded — Upbound-managed-offering candidate.
 - **Wedge:** fleet-level capabilities single-cluster platforms can't reach — fleet matching, geo + compliance routing, KV cache federation, sticky sessions, failover, cost-aware routing.
 
-## Problem
-
-VRAM-divided-by-per-GPU-memory worked for Llama-8B on an L4. It can't deploy Kimi K2, DeepSeek V4, or Llama 4 Behemoth on heterogeneous fleets. There's no way to say *"16 H200s in 2×8 layout, NVLink-grouped, IB-400G-or-better, FP8-quantized, EAGLE speculative decoding, 5P3D disaggregation"* and no way for a cluster to say *"I have that."* Baseten has these capabilities; gated behind support tickets, on Baseten's GPUs. Modelplane delivers them declaratively on customer infrastructure.
-
 ## Design principles
 
 1. **Clean separation, no enforcement.** Platform teams own substrate; ML/App teams own workloads. Same API split or unified.
@@ -116,15 +112,6 @@ Single-cluster platforms (llm-d, KServe alone, Dynamo) optimize within a cluster
 | Aggregated fleet observability | TTFT / ITL / cost / queue-depth rolled up across the fleet for one logical service |
 
 What ships in v1 vs v2 is in the project plan section.
-
-## Who owns what
-
-| Owner | What they author |
-|---|---|
-| ML/App team | `ModelDeployment` (or a Composition over it), `ModelEndpoint` |
-| Platform team — cluster scope | `InferenceCluster` per managed K8s cluster; default `CapabilityVocabulary` (or extensions); workload-plane substrate (KServe, DRA driver, Kueue, KEDA) — BYO or `managed-kserve` |
-| Platform team — namespace scope | `ModelService` per SaaS endpoint; Compositions over `ModelDeployment` for org governance |
-| Modelplane (the project) | The five user-facing CRDs + `ModelPlacement` (IR); composition functions (matcher + per-version backend adapter); drift detection controller; default `CapabilityVocabulary`; reference clusters; `managed-kserve` install manifests |
 
 ## How users consume it
 
@@ -289,17 +276,22 @@ Customers match on the macro string (`cloud.instanceType: H100-NVL-8x`) for the 
 |---|---|
 | `ModelDeployment` chunky for ML/App teams | Crossplane Compositions; starter Compositions in `examples/` |
 
-## Open questions (Nic to call)
+## Open questions
 
-- **Default scheduler / backend.** Lean: `managed-kueue` + `managed-kserve` as opinionated defaults, BYO contracts for KAI / Volcano / Dynamo / raw-vllm. Confirm, or pick different defaults?
-- **Label-vs-attribute matching path.** `deviceSelector` supports both `matchLabels` (primary) and `matchAttributes` + CEL (break-glass over declared attributes). Confirm dual-path is right, or commit to one?
-- **DRA grounding contract.** When the chosen `InferenceCluster` has a DRA driver, the backend adapter emits real `ResourceClaim`s carrying the same predicates (mandatory for BYOC, optional for Modelplane-provisioned). Confirm this is the right split, or always-on for both?
-- **Rack-scale as its own unit.** GB200 / GB300 NVL72 is 72 GPUs in one NVLink domain — the addressable unit isn't the node, it's the rack. Captured today via `cluster.scaleUnit: nvl72` as an env-level attribute. Open: should the matcher reason about the whole rack as one capacity unit for placements that span the NVLink domain (very large MoE with PP across the rack), or treat the rack as multiple `nodePool` entries?
-- **Reference-cluster generation.** Static reference clusters today (committed YAML in `examples/reference-clusters/`); follow-up is a Crossplane provider that polls cloud SKU APIs and generates these programmatically. Confirm this is the right ordering, or push the provider sooner?
-- **Dedicated-SaaS placement.** `ModelService` is routing-only; "provision a dedicated Together / Baseten endpoint" is a placement concept Nic owns. Rough sketch only here pending Nic's design.
-- **`ModelObjective`-style intent layer.** Optional CR above `ModelDeployment` for SLO targets (TTFT, ITL, cost ceiling), reconciled by a planner — mirrors Dynamo's DGDR / DGD pattern. Worth a layer, or punt?
-- **vLLM recipe consumption.** Reference `recipes.vllm.ai` from `ModelDeployment.spec.recipe` (compose-time resolution) vs. fork into a Modelplane catalog repo. PM-shaped call.
-- **WG-Device-Management engagement.** Concrete deliverable (e.g. KEP-5316 comment with Modelplane's federation perspective by Q3) or hold?
+Decisions made and the alternatives Nic can override:
+
+| Decision | Lean | Alternatives |
+|---|---|---|
+| Default scheduler + backend | `managed-kueue` + `managed-kserve` as defaults, BYO first-class | No defaults (force pick); KAI default for NVIDIA-shop bias |
+| Selector dual-path | `matchLabels` (primary) + `matchAttributes` / CEL (break-glass) | Labels only (simpler); attributes only (richer) |
+| DRA grounding | Mandatory for BYOC w/ DRA, optional for Modelplane-provisioned | Always-on; never (federation-only) |
+| Rack-scale (NVL72) | Env-level attribute (`cluster.scaleUnit: nvl72`); rack-spanning placements treat the rack as one `nodePool` | Separate `RackInferenceCluster` kind; multi-pool model |
+| Reference-cluster rollout | Static YAML now → Crossplane provider polling SKU APIs later | Provider-first; never (operator hand-authors) |
+| `ModelObjective`-style intent layer | Punt past v2 — non-breaking layer above MD if/when needed | Ship in v1 (mirrors Dynamo DGDR/DGD); never |
+
+Nic-owned (not for this PR):
+
+- **Dedicated-SaaS placement.** `ModelService` here is routing-only and a sketch pending Nic's design for provisioning a dedicated Together / Baseten endpoint.
 
 ## What ships v1 vs v2 (themed)
 
