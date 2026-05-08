@@ -277,30 +277,28 @@ Listed so the surface is honest:
 - A real CEL evaluator — `scheduling.eval_cel` is a placeholder. Production wires `cel-python` or a Go shim.
 - Tests — the matcher's pure-Python isolation makes it easy to add table-driven tests; deferred so this PR stays focused on *shape*.
 
-## Delta from existing scheduling on `main`
+## Scheduler properties
 
-The repo today has a single-cluster placement function in [`functions/compose-model-deployment/scheduling.py` on `main`](https://github.com/modelplaneai/modelplane/blob/main/functions/compose-model-deployment/scheduling.py) (~130 lines). This branch reworks it into a fleet-level federation scheduler. The conceptual deltas:
+Pinning down what the scheduler actually does, in K8s SIG-Scheduling terms — the load-bearing properties reviewers should sanity-check.
 
-| | Existing on `main` | This branch |
-|---|---|---|
-| **Mental model** | Per-deployment, picks N matching `InferenceEnvironment`s up to `spec.environments` | Per-replica, picks `(InferenceCluster, pool)` for each of `spec.replicas` |
-| **Unit of placement** | `ModelPlacement` per matched env (1:1 with env, model-VRAM-derived GPU count) | `ModelReplica` per logical replica (1:1 with `spec.replicas`, topology-driven shape) |
-| **Capacity input** | `env.status.capacity.gpuPools[]` — runtime-observed VRAM/node counts | `IC.status.capacity` — **normalized** by per-scheduler adapter (Kueue / KAI / Volcano), pool-level free counts |
-| **Pool eligibility** | Fixed math: `model_vram / pool_memory` ≥ enough VRAM | CEL predicate over typed `InferenceClass.capabilities` (vendor, product, vramGiB, features, interconnect, …) |
-| **Topology** | Implicit (multi-node iff `gpus_needed > countPerNode`); single TP-like math | Explicit discriminated-union: `Tensor` / `TensorPipeline` / `DataExpert`, with `instances` per role |
-| **Disaggregation** | Not supported | First-class. Decode + prefill are separate roles, scheduled together but to (potentially) different pools, **same cluster** required (KV cache transfer) |
-| **Engine matching** | `serving.match_profile(model, env)` walks a priority-ordered `serving[]` array on `ClusterModel` | No serving profiles. Engine is single-config on the MD; engine features are pass-through (Nic's #64) |
-| **Scaling** | Hard-coded set `{Fixed, Concurrency}`; checked inline | Out of scope — KEDA `ScaledObject` is user-authored; we expose the scale subresource only |
-| **Stickiness** | Sort: existing-first by name | Per-replica `replicaIndex` carried from existing MR; scheduler reuses without recomputing |
-| **Multi-replica accounting** | One `schedule()` call returns N candidates; capacity isn't reserved across the call | Filter / Score / **Bind** pass reserves consumed capacity in a working set so subsequent replicas don't double-count |
-| **Algorithm structure** | Single loop with inline filtering + sort | Explicit Filter → Score → Bind phases (matches K8s SIG-Scheduling vocabulary) |
-| **Result shape** | `list[Candidate(name, gateway_address, profile_name)]` | `ScheduleResult(placements: list[Placement], trace: list[MatchTrace])` — separates decisions from per-cluster rejection trace |
-| **`matchTrace`** | Not surfaced; failures collapse to "no candidates" | Per-(cluster, pool, reason, detail) trace surfaced on `MD.status.matchTrace` so users see *why* every candidate was rejected |
-| **Cluster source** | Single source — `InferenceEnvironment` (one cluster type) | Multi-source: managed clouds + `Existing` BYOC (kubeconfig) — orchestrator-detected scheduler / backend / DRA |
-| **In-cluster integration** | None — assumed kube-scheduler default everywhere | Stage-2 dispatch in renderer (`scheduler.py`): KAI emits PodGroup, Kueue stamps queue label + suspend |
-| **Lines of code** | ~130 (single algorithm) | ~490 (algorithm) + ~280 (composer) + ~180 (emitters) + ~100 (adapters), modularized |
+| Property | What |
+|---|---|
+| **Mental model** | Per-replica fleet scheduler. One `schedule()` call binds `(cluster, pool)` for each of `spec.replicas`. |
+| **Capacity input** | `IC.status.capacity` — normalized by a per-scheduler adapter (`lib/capacity_adapter/{kai,kueue}.py`). Same shape regardless of which in-cluster scheduler populated it. |
+| **Pool eligibility** | CEL predicate over typed `InferenceClass.capabilities` (vendor, product, vramGiB, features, interconnect, …). Open vocabulary; new capabilities don't need schema changes. |
+| **Topology** | Discriminated union: `Tensor` / `TensorPipeline` / `DataExpert`. Each strategy resolves to `(nodes_per_inst, gpus_per_node)`; multiplied by `instances` for the role's footprint. |
+| **Disaggregation** | First-class. Decode + prefill are separate roles, scheduled together but to (potentially) different pools, **same cluster** (KV cache transfer requires co-location). |
+| **Engine config** | Pass-through. `engine.{name, image, args}` flows from MD → MR → renderer; the scheduler never inspects engine internals. |
+| **Scaling** | Out of scope. KEDA `ScaledObject` is user-authored (mirrors Deployment + HPA); the scheduler reads `spec.replicas` and reconciles MRs. |
+| **Stickiness** | Per-replica `replicaIndex`. An existing MR keeps its target across reconciles; re-placement only on hard eviction (annotation-driven). |
+| **Multi-replica accounting** | Filter → Score → Bind passes reserve consumed capacity in a working set so subsequent replicas in the same `schedule()` call don't double-count. |
+| **Algorithm structure** | Explicit Filter → Score → Bind phases (matches K8s SIG-Scheduling). Each phase is its own helper; tests parametrize against each. |
+| **Result shape** | `ScheduleResult(placements: list[Placement], trace: list[MatchTrace])`. Decisions and per-(cluster, pool, reason) rejection trace are separate. |
+| **`matchTrace`** | Surfaced on `MD.status.matchTrace`. Users see exactly which cluster + pool failed which predicate, with detail strings (`"4/8 free"` etc.). |
+| **In-cluster integration** | Stage-2 dispatch in `compose-model-placement/scheduler.py`: KAI gets `schedulerName: kai-scheduler` + `PodGroup`; Kueue gets `kueue.x-k8s.io/queue-name` + `suspend: true`; `none` is pass-through. |
+| **Module structure** | Pure algorithm in `scheduling.py` (~490 lines). Crossplane glue in `main.py` (~280 lines). Adapters + emitters separate (~280 lines combined). 69 unit tests over the pure modules. |
 
-The shape change cascades: `apis/inferenceenvironments/` → `apis/inferenceclusters/`, `apis/clustermodels/` + `apis/models/` collapse into `ModelDeployment`, `ModelPlacement` → `ModelReplica`, plus a new `InferenceClass` for hardware bundles. API land lives in [#64](https://github.com/modelplaneai/modelplane/pull/64); this branch implements *against* that shape.
+This block is where the design is opinionated. Anything not in this table is not a property the scheduler guarantees.
 
 ## What this PR is for
 
