@@ -1,8 +1,10 @@
 # Modelplane Scheduling — Design
 
-> Federation matcher + renderer composition functions. **API shape is owned by [#64](https://github.com/modelplaneai/modelplane/pull/64)** — this doc points at the implementation that consumes it.
+> Federation scheduler + renderer composition functions. **API shape is owned by [#64](https://github.com/modelplaneai/modelplane/pull/64)** — this doc points at the implementation that consumes it.
 >
-> **Status:** sketch. The code under `functions/` doesn't run yet — it targets API protos that haven't been generated. The shape, dependencies, and use cases are real; the wiring is gated on #64 landing.
+> **Scope of this MR:** the federation scheduling algorithm, the IR boundary between scheduler and renderer, KServe LLM-IS rendering, DRA `ResourceClaim` derivation, and **managed-kai** as the in-cluster scheduler. The plugin/dispatch system (Kueue, Volcano, none) and per-scheduler capacity adapters land in a follow-up MR — kept out of here so the algorithm + IR review is focused.
+>
+> **Status:** sketch. The code under `functions/` doesn't run yet — it targets API protos that haven't been generated. Algorithm, dependencies, and use cases are real; wiring is gated on #64 landing.
 
 ## Architecture
 
@@ -51,20 +53,9 @@ The composition functions are split into **pure modules** (algorithm, dict-build
 
 | File | Pure? | What it does |
 |---|---|---|
-| [`rendering.py`](../../functions/compose-model-placement/rendering.py) | ✓ | Build KServe LLM-IS spec + DRA `ResourceClaim` spec + selector CEL from class capabilities. |
-| [`scheduler.py`](../../functions/compose-model-placement/scheduler.py) | ✓ | Per-scheduler wrap dispatch (KAI: `schedulerName` + `PodGroup`; Kueue: queue label + `suspend`; none: pass-through). |
+| [`rendering.py`](../../functions/compose-model-placement/rendering.py) | ✓ | Build KServe LLM-IS spec + DRA `ResourceClaim` spec + selector CEL from class capabilities + `with_kai_gang()` for KAI integration. |
 | [`adapters.py`](../../functions/compose-model-placement/adapters.py) | boundary | Proto / observed-MR ⇄ rendering dataclasses. |
-| [`main.py`](../../functions/compose-model-placement/main.py) | orchestrator | Seven phases (REQUIRE-cluster → REQUIRE-classes → LOAD → RENDER → WRAP → EMIT → STATUS). State machine for `Ready` (with cold-start sub-states `Pulling` / `LWSGangPending` / `EngineLoading`). |
-
-### Capacity adapter — `lib/capacity_adapter/`
-
-| File | What it does |
-|---|---|
-| [`common.py`](../../lib/capacity_adapter/common.py) | Shared types: `ResourceCount`, `PoolCapacity`, `CapacitySnapshot`. `write_status()` builds the `IC.status.capacity` patch. |
-| [`kai.py`](../../lib/capacity_adapter/kai.py) | KAI Queue / ResourcePool → CapacitySnapshot. |
-| [`kueue.py`](../../lib/capacity_adapter/kueue.py) | Kueue ClusterQueue.flavorsUsage → CapacitySnapshot. |
-
-Runs as a **separate controller**, not a composition function — continuous poll/watch loop against each cluster's scheduler status CRDs.
+| [`main.py`](../../functions/compose-model-placement/main.py) | orchestrator | Verb-named methods (`resolve_inputs`, `compose_llmis`, `compose_resource_claims`, `derive_conditions`). Conditions: `Ready` with cold-start sub-states `Pulling` / `LWSGangPending` / `EngineLoading`. |
 
 ## Tests
 
@@ -82,7 +73,7 @@ uv pip install --python .venv-test/bin/python pytest ruff pyright
 | Layer | Files | Coverage today |
 |---|---|---|
 | **Static** | `pyproject.toml` configures `ruff` (linting) + `pyright` (typing) over `functions/` and `lib/`. | All clean. |
-| **Pure unit tests** | [`tests/unit/`](../../tests/unit/) — 69 tests covering `scheduling.py` (topology, filtering, capacity, sticky placement, disagg, trace), `scheduler.py` (KAI / Kueue / none dispatch + gang sizing), `rendering.py` (LLM-IS shape + DRA selector CEL), and `lib/capacity_adapter/` (projection from KAI / Kueue status). | 69/69 green; runs in ~20ms. |
+| **Pure unit tests** | [`tests/unit/`](../../tests/unit/) — 49 tests covering `scheduling.py` (topology, filtering, capacity, sticky placement, disagg, trace) and `rendering.py` (LLM-IS shape + DRA selector CEL + KAI gang wrap + PodGroup `minMember` sizing). | 49/49 green; runs in ~20ms. |
 | **Composition tests** | Existing `tests/test-*/` pattern (Upbound `up` CLI). New shapes wired once #64's protos land — `tests/test-model-deployment-v2/`, `tests/test-model-replica-{kai,kueue}/`. | Deferred. |
 | **E2E** | Real cluster running KAI or Kueue. | Out of scope for this PR. |
 
@@ -106,74 +97,48 @@ uv pip install --python .venv-test/bin/python pytest ruff pyright
 | reads | `InferenceCluster` (just the matched one) | kubeconfig + pool→class mapping |
 | reads | `InferenceClass` × {decode, prefill} | derive DRA selector from capabilities |
 | writes | `LLMInferenceService` (on target cluster) | the actual workload |
+| writes | `PodGroup` (on target cluster) | KAI gang admission |
 | writes | `ResourceClaim` × roles (on target cluster) | DRA device binding |
 | writes | MR status conditions | `Ready` / `Pulling` / `LWSGangPending` / `EngineLoading` |
 
 KEDA `ScaledObject`s are user-authored per Nic's design (mirroring Deployment + HPA) — not composed by Modelplane. Modelplane only exposes `MD.spec.replicas` via the scale subresource.
 
-## KAI / Kueue integration
+## KAI integration (in-cluster, this MR)
 
-Stage-2 (in-cluster) scheduling. Two interception models, dispatched per-cluster.
+This MR wires **managed-kai** as the only in-cluster scheduler so the federation algorithm + IR boundary are easy to review. KAI integration is small enough to inline in the renderer without abstracting; the per-scheduler dispatch + capacity adapters land in a follow-up MR.
 
-**API extension to [#64](https://github.com/modelplaneai/modelplane/pull/64).** Nic's sketch doesn't model a scheduler axis. We propose adding `InferenceCluster.spec.scheduler.{type}` with values `auto` (default) · `managed-kai` · `managed-kueue` · `kai` · `kueue` · `none`. The renderer dispatches on this. `auto` resolves at IC onboarding by detecting CRDs (`Project` ⇒ KAI, `ClusterQueue` ⇒ Kueue, neither ⇒ install `managed-kueue`).
+What the renderer does for KAI, after building the base LLM-IS spec:
 
-### What changes per scheduler
-
-| | KAI | Kueue | none |
-|---|---|---|---|
-| **Pod-level** | `schedulerName: kai-scheduler` on every pod the LLM-IS produces | unchanged | unchanged |
-| **Workload-level** | unchanged | `kueue.x-k8s.io/queue-name` label + `suspend: true` (Kueue ungates on admission) | unchanged |
-| **Companion object** | `PodGroup` CRD wrapping the LWS gang (`minMember = total pods`); pods labeled with the matching `pod-group.scheduling.run.ai/name` | none — Kueue's webhook creates `Workload` from the queue label | none |
-| **Capacity source** | `Queue.status` + `ResourcePool.status` per Project | `ClusterQueue.status.flavorsUsage[]` | direct node listing |
-
-The matcher reads `IC.status.capacity` and is **agnostic** to which adapter populated it — same shape across schedulers.
-
-### Where it's wired
+1. Stamp `schedulerName: kai-scheduler` on every pod template the LLM-IS produces (decode `workerSpec` and prefill `workerSpec` for disagg).
+2. Stamp `pod-group.scheduling.run.ai/name: <mr>-gang` on the pod templates so KAI binds them to the right gang.
+3. Emit a `PodGroup` CRD with `minMember` = total pod count (LWS group × instances, summed across decode + prefill if disagg).
 
 ```
 ModelReplica
     │
     ▼
 compose-model-placement/main.py
-    │  build base LLM-IS spec (decode + optional prefill)
-    │
-    ├──▶ scheduler.wrap(IC.spec.scheduler.type, llmis_spec, ...)
-    │       │
-    │       ├─ wrap_kai     → set schedulerName, stamp pod label, emit PodGroup
-    │       ├─ wrap_kueue   → stamp queue label, suspend: true
-    │       └─ wrap_none    → pass-through
+    │  rendering.build_llmis_spec(...)        — base KServe v0.18 LLM-IS
+    │  rendering.with_kai_gang(spec, ...)     — schedulerName + PodGroup
+    │  rendering.build_resource_claim_spec(...) — DRA per role
     │
     ▼
-remote-cluster apply: LLM-IS + DRA ResourceClaims + scheduler companion objects
+remote-cluster apply: LLMInferenceService + PodGroup + ResourceClaim(s)
 ```
 
-Adding a new scheduler (Volcano, etc.):
-1. New `wrap_<name>` in `scheduler.py` (one function).
-2. Add to `_DISPATCH` map.
-3. New module under `lib/capacity_adapter/<name>.py` returning the same `CapacitySnapshot` shape.
-4. Add to `IC.spec.scheduler.type` enum.
+The federation scheduler is **agnostic** to which in-cluster scheduler is in use — it reads `IC.status.capacity` whichever adapter populated it. That's why the dispatch + capacity adapter can land separately without touching `scheduling.py`.
 
-No matcher changes. No MD changes. The IR (`ModelReplica`) doesn't know which scheduler is involved.
+### Follow-up MR (plugin/dispatch system)
 
-### Capacity feedback loop
+What the next MR will add on top of this:
 
-```
-in-cluster scheduler           ── populates ──▶  Queue / ClusterQueue status
-                                                          │
-                                                          ▼
-                                            lib/capacity_adapter/<scheduler>.py
-                                            (controller-runtime watcher,
-                                             one per IC, polls every ~5s)
-                                                          │
-                                                          ▼
-                                            IC.status.capacity (normalized)
-                                                          │
-                                                          ▼
-                                            federation matcher reads this
-                                            on the next placement
-```
-
-A few seconds of staleness is fine — we don't reserve, we admit. If the matcher picks a saturated cluster, the in-cluster scheduler holds the workload Pending; next reconcile re-evaluates.
+- `IC.spec.scheduler.type` enum (`auto` · `managed-kai` · `managed-kueue` · `kai` · `kueue` · `none`) — proposed extension to [#64](https://github.com/modelplaneai/modelplane/pull/64).
+- A `scheduler.py` dispatch table that branches the renderer's wrap per type (KAI's `with_kai_gang` becomes one entry).
+- Kueue: stamp `kueue.x-k8s.io/queue-name` + `suspend: true`; Kueue's webhook creates the `Workload`.
+- Volcano: similar shape, different CRDs.
+- `none`: pass-through; kube-scheduler best-effort.
+- A per-scheduler **capacity adapter** controller that reads each scheduler's status CRDs (KAI `Queue` / `ResourcePool`, Kueue `ClusterQueue.flavorsUsage[]`) and writes the normalized `IC.status.capacity` shape the federation scheduler consumes.
+- Cluster onboarding controller that auto-detects which scheduler is installed (`Project` CRD ⇒ KAI, `ClusterQueue` CRD ⇒ Kueue, neither ⇒ install `managed-kueue`).
 
 ## Use cases — how each one flows through the code
 
@@ -284,7 +249,7 @@ Pinning down what the scheduler actually does, in K8s SIG-Scheduling terms — t
 | Property | What |
 |---|---|
 | **Mental model** | Per-replica fleet scheduler. One `schedule()` call binds `(cluster, pool)` for each of `spec.replicas`. |
-| **Capacity input** | `IC.status.capacity` — normalized by a per-scheduler adapter (`lib/capacity_adapter/{kai,kueue}.py`). Same shape regardless of which in-cluster scheduler populated it. |
+| **Capacity input** | `IC.status.capacity` — populated by the per-scheduler capacity adapter (KAI for this MR; Kueue/Volcano in the follow-up). Scheduler is agnostic to which adapter wrote it. |
 | **Pool eligibility** | CEL predicate over typed `InferenceClass.capabilities` (vendor, product, vramGiB, features, interconnect, …). Open vocabulary; new capabilities don't need schema changes. |
 | **Topology** | Discriminated union: `Tensor` / `TensorPipeline` / `DataExpert`. Each strategy resolves to `(nodes_per_inst, gpus_per_node)`; multiplied by `instances` for the role's footprint. |
 | **Disaggregation** | First-class. Decode + prefill are separate roles, scheduled together but to (potentially) different pools, **same cluster** (KV cache transfer requires co-location). |
@@ -295,8 +260,8 @@ Pinning down what the scheduler actually does, in K8s SIG-Scheduling terms — t
 | **Algorithm structure** | Explicit Filter → Score → Bind phases (matches K8s SIG-Scheduling). Each phase is its own helper; tests parametrize against each. |
 | **Result shape** | `ScheduleResult(placements: list[Placement], trace: list[MatchTrace])`. Decisions and per-(cluster, pool, reason) rejection trace are separate. |
 | **`matchTrace`** | Surfaced on `MD.status.matchTrace`. Users see exactly which cluster + pool failed which predicate, with detail strings (`"4/8 free"` etc.). |
-| **In-cluster integration** | Stage-2 dispatch in `compose-model-placement/scheduler.py`: KAI gets `schedulerName: kai-scheduler` + `PodGroup`; Kueue gets `kueue.x-k8s.io/queue-name` + `suspend: true`; `none` is pass-through. |
-| **Module structure** | Pure algorithm in `scheduling.py` (~490 lines). Crossplane glue in `main.py` (~280 lines). Adapters + emitters separate (~280 lines combined). 69 unit tests over the pure modules. |
+| **In-cluster integration** | This MR: managed-kai only — `schedulerName: kai-scheduler` on pods + `PodGroup` CRD with `minMember = total pods`. Per-scheduler dispatch is a follow-up MR. |
+| **Module structure** | Pure algorithm in `scheduling.py`. Crossplane glue in `main.py`. Adapters + emitters separate. 49 unit tests over the pure modules. |
 
 This block is where the design is opinionated. Anything not in this table is not a property the scheduler guarantees.
 

@@ -175,3 +175,103 @@ def test_cel_predicates_are_anded():
     })
     # Two ' && ' joining three clauses.
     assert cel.count(" && ") == 2
+
+
+# ---------------------------------------------------------------------------
+# KAI gang wrap
+# ---------------------------------------------------------------------------
+
+
+def _llmis(decode_pods=1, prefill_pods=0, decode_replicas=1, prefill_replicas=0):
+    """Build a minimal LLM-IS spec for testing the KAI wrap.
+
+    decode_pods / prefill_pods are LWS group size (1 = single-pod).
+    decode_replicas / prefill_replicas are workerSpec.replicas (instances).
+    """
+    spec = {
+        "metadata": {"labels": {}},
+        "model": {"name": "ml/kimi"},
+        "replicas": 1,
+        "engine": {"name": "vLLM"},
+        "workerSpec": {
+            "replicas": decode_replicas,
+            "leaderWorkerSet": {"size": decode_pods} if decode_pods > 1 else None,
+            "containers": [{"name": "engine"}],
+        },
+    }
+    if prefill_pods > 0 or prefill_replicas > 0:
+        spec["prefill"] = {
+            "engine": {"name": "vLLM"},
+            "workerSpec": {
+                "replicas": max(prefill_replicas, 1),
+                "leaderWorkerSet": {"size": prefill_pods} if prefill_pods > 1 else None,
+                "containers": [{"name": "engine"}],
+            },
+        }
+    return spec
+
+
+def test_kai_sets_scheduler_name_on_decode_workerspec():
+    out = rendering.with_kai_gang(_llmis(), "kimi", "ml")
+    assert out.llmis_spec["workerSpec"]["schedulerName"] == "kai-scheduler"
+
+
+def test_kai_sets_scheduler_name_on_prefill_workerspec():
+    out = rendering.with_kai_gang(
+        _llmis(prefill_pods=1, prefill_replicas=2), "kimi", "ml"
+    )
+    assert out.llmis_spec["prefill"]["workerSpec"]["schedulerName"] == "kai-scheduler"
+
+
+def test_kai_emits_podgroup_with_min_member_for_single_pod():
+    out = rendering.with_kai_gang(_llmis(decode_pods=1), "kimi", "ml")
+    assert out.pod_group["kind"] == "PodGroup"
+    assert out.pod_group["spec"]["minMember"] == 1
+
+
+def test_kai_podgroup_min_member_counts_lws_gang():
+    """LWS group of size 2 → 2 pods per instance × 1 instance = 2."""
+    out = rendering.with_kai_gang(_llmis(decode_pods=2, decode_replicas=1), "kimi", "ml")
+    assert out.pod_group["spec"]["minMember"] == 2
+
+
+def test_kai_podgroup_min_member_counts_instances():
+    """Single-pod role × 5 replicas (e.g. P/D's prefill role) → 5 pods."""
+    out = rendering.with_kai_gang(_llmis(decode_pods=1, decode_replicas=5), "kimi", "ml")
+    assert out.pod_group["spec"]["minMember"] == 5
+
+
+def test_kai_podgroup_min_member_disagg_total():
+    """5 prefill (1 pod each × 5) + 6 decode (2 pods × 3) = 11 total."""
+    out = rendering.with_kai_gang(
+        _llmis(decode_pods=2, decode_replicas=3, prefill_pods=1, prefill_replicas=5),
+        "kimi", "ml",
+    )
+    assert out.pod_group["spec"]["minMember"] == 11
+
+
+def test_kai_stamps_pod_group_label_on_pod_template():
+    """Pods need to carry the gang label so KAI binds them to the PodGroup."""
+    out = rendering.with_kai_gang(_llmis(), "kimi", "ml")
+    labels = out.llmis_spec["workerSpec"].get("metadata", {}).get("labels", {})
+    assert labels.get("pod-group.scheduling.run.ai/name") == "kimi-gang"
+
+
+def test_kai_queue_named_per_namespace():
+    out = rendering.with_kai_gang(_llmis(), "kimi", "ml-team")
+    assert out.pod_group["spec"]["queue"] == "modelplane-ml-team"
+
+
+@pytest.mark.parametrize(
+    ("decode_pods", "decode_replicas", "prefill_pods", "prefill_replicas", "expected"),
+    [
+        (1, 1, 0, 0, 1),    # single-node, single replica
+        (2, 1, 0, 0, 2),    # multi-node single replica (LWS=2)
+        (1, 5, 0, 0, 5),    # 5 instances of single-pod
+        (2, 3, 1, 5, 11),   # disagg: 2*3 + 1*5
+        (8, 1, 0, 0, 8),    # giant single replica
+    ],
+)
+def test_kai_gang_size_calculation(decode_pods, decode_replicas, prefill_pods, prefill_replicas, expected):
+    spec = _llmis(decode_pods, prefill_pods, decode_replicas, prefill_replicas)
+    assert rendering.gang_size(spec) == expected

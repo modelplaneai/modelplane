@@ -1,9 +1,15 @@
 """Pure builders: ModelReplica + InferenceCluster + InferenceClass(es) → dicts.
 
-Builds KServe LLMInferenceService spec, DRA ResourceClaim spec, and the
-DRA selector CEL derived from class capabilities. Targets KServe v0.18
-schema today (flat workerSpec.containers); per-version dispatch is a
-follow-up.
+Builds the KServe LLMInferenceService spec, the DRA ResourceClaim spec,
+the DRA selector CEL derived from class capabilities, and the KAI
+PodGroup that wraps the LWS gang. Targets KServe v0.18 today (flat
+workerSpec.containers); per-version dispatch is a follow-up.
+
+This MR scopes to **managed-kai** as the only in-cluster scheduler — the
+plugin/dispatch system (Kueue, Volcano, none) lands in a separate MR. The
+KAI integration is small and inline at the bottom of this file; future
+schedulers will move the dispatch + capacity-adapter code out into their
+own modules.
 
 Pure over (MR, IC, Class) — the renderer doesn't read the parent MD. The
 composer projected the MD into the MR's resolved spec already. This is
@@ -60,12 +66,11 @@ class ModelReplicaView:
 
 @dataclass
 class ClusterView:
-    """InferenceCluster the renderer consumes — kubeconfig + scheduler choice
-    + pool→class mapping."""
+    """InferenceCluster the renderer consumes — kubeconfig + pool→class
+    mapping. Scheduler is managed-kai for this MR."""
 
     name: str
     kubeconfig_secret_ref: dict  # {namespace, name, key}
-    scheduler_type: str  # "managed-kai" / "kueue" / "none" / etc.
     pool_to_class: dict[str, str]  # pool name → class name
 
 
@@ -202,3 +207,115 @@ def cel_from_capabilities(capabilities: dict[str, Any]) -> str:
             f'"{feat}" in device.attributes["{vendor or "nvidia"}.com/features"].listString'
         )
     return " && ".join(parts) if parts else "true"
+
+
+# ---------------------------------------------------------------------------
+# KAI scheduler integration (managed-kai only for this MR)
+#
+# KAI replaces the kube-scheduler. Two changes to the rendered LLM-IS:
+#   1. Stamp `schedulerName: kai-scheduler` on every pod template the
+#      LLM-IS produces. KAI's mutating webhook does this for any pod that
+#      forgot, but explicit is safer.
+#   2. Emit a PodGroup CRD that names the gang. KAI binds gang admission
+#      to the label `pod-group.scheduling.run.ai/name` on the pod template.
+#      `minMember` is the total pod count (LWS gang × instances, summed
+#      across decode + prefill if disagg). 1 is harmless on single-pod.
+#
+# Per-scheduler dispatch (Kueue, Volcano, none), capacity adapters, and
+# the matching IC.spec.scheduler.type axis land in a follow-up MR.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class KaiBundle:
+    """KAI-wrapped LLM-IS spec + the PodGroup CRD to apply alongside it."""
+
+    llmis_spec: dict
+    pod_group: dict
+
+
+def with_kai_gang(llmis_spec: dict, mr_name: str, namespace: str) -> KaiBundle:
+    """Wrap an LLM-IS spec for managed-kai gang admission.
+
+    Returns the mutated spec plus a sibling PodGroup that the renderer
+    applies to the same target cluster.
+    """
+    gang_label = f"{mr_name}-gang"
+
+    out = _stamp_scheduler_name(llmis_spec, "kai-scheduler")
+    out = _stamp_pod_label(out, "pod-group.scheduling.run.ai/name", gang_label)
+
+    pod_group = {
+        "apiVersion": "scheduling.run.ai/v2alpha2",
+        "kind": "PodGroup",
+        "metadata": {
+            "name": gang_label,
+            "namespace": namespace,
+            "labels": {"pod-group.scheduling.run.ai/name": gang_label},
+        },
+        "spec": {
+            "minMember": gang_size(llmis_spec),
+            "queue": _kai_queue_name(namespace),
+            "priorityClassName": "inference",
+        },
+    }
+    return KaiBundle(llmis_spec=out, pod_group=pod_group)
+
+
+def gang_size(llmis_spec: dict) -> int:
+    """Total pods in this LLM-IS's gang. Decode contributes (LWS size or 1)
+    × workerSpec.replicas; prefill (if disagg) contributes the same."""
+    total = _role_pod_count(llmis_spec)
+    if "prefill" in llmis_spec and llmis_spec["prefill"]:
+        total += _role_pod_count(llmis_spec["prefill"])
+    return max(1, total)
+
+
+def _stamp_scheduler_name(llmis_spec: dict, name: str) -> dict:
+    """Set schedulerName on every pod template the LLM-IS produces.
+
+    KServe v0.18 propagates the field from workerSpec onto the rendered
+    pod-spec. Disagg adds the same to prefill.workerSpec.
+    """
+    out = dict(llmis_spec)
+    if "workerSpec" in out:
+        out["workerSpec"] = {**out["workerSpec"], "schedulerName": name}
+    if "prefill" in out and out["prefill"] and "workerSpec" in out["prefill"]:
+        out["prefill"] = {
+            **out["prefill"],
+            "workerSpec": {**out["prefill"]["workerSpec"], "schedulerName": name},
+        }
+    return out
+
+
+def _stamp_pod_label(llmis_spec: dict, key: str, value: str) -> dict:
+    """Add a label that flows through to every pod the LLM-IS produces.
+
+    KServe propagates workerSpec.metadata.labels onto the rendered pod
+    template; disagg adds the same to prefill.workerSpec.
+    """
+    out = dict(llmis_spec)
+    if "workerSpec" in out:
+        ws = dict(out["workerSpec"])
+        ws.setdefault("metadata", {}).setdefault("labels", {})[key] = value
+        out["workerSpec"] = ws
+    if "prefill" in out and out["prefill"] and "workerSpec" in out["prefill"]:
+        ws = dict(out["prefill"]["workerSpec"])
+        ws.setdefault("metadata", {}).setdefault("labels", {})[key] = value
+        out["prefill"] = {**out["prefill"], "workerSpec": ws}
+    return out
+
+
+def _role_pod_count(role_or_spec: dict) -> int:
+    ws = role_or_spec.get("workerSpec") or {}
+    instances = ws.get("replicas", 1) or 1
+    lws = ws.get("leaderWorkerSet")
+    nodes_per_inst = (lws or {}).get("size", 1) if lws else 1
+    return nodes_per_inst * instances
+
+
+def _kai_queue_name(namespace: str) -> str:
+    """KAI Queues are per-Project; we map each Modelplane namespace to its
+    own Project + Queue. The IC onboarding controller (separate MR)
+    creates these when scheduler.type resolves to managed-kai."""
+    return f"modelplane-{namespace}"

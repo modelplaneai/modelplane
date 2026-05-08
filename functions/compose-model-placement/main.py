@@ -2,17 +2,22 @@
 
 Reads the ModelReplica's placement decision plus the matched InferenceCluster
 + InferenceClass(es), and composes a KServe LLMInferenceService + DRA
-ResourceClaim(s) on the target cluster via the kubeconfig provider, plus any
-per-scheduler companion objects (PodGroup for KAI, none for Kueue).
+ResourceClaim(s) + a KAI PodGroup on the target cluster via the
+provider-kubernetes Object kind.
 
-Pure logic in rendering.py (LLM-IS shape, CEL derivation) and scheduler.py
-(per-scheduler wrap dispatch). This file is the Crossplane glue.
+This MR scopes to **managed-kai** as the only in-cluster scheduler so the
+algorithm + IR boundary are the focus of review. The plugin/dispatch
+system (Kueue, Volcano, none) and the per-scheduler capacity adapter
+land in a follow-up MR.
+
+Pure logic in rendering.py (LLM-IS shape, DRA selector CEL, KAI wrap).
+This file is the Crossplane glue.
 """
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from . import adapters, rendering, scheduler
+from . import adapters, rendering
 from .lib import conditions, defaults, naming
 from .lib import resource as libresource
 
@@ -38,6 +43,7 @@ CONDITION_REASON_ENGINE_LOADING = "EngineLoading"
 
 # Composed resource keys — stable so subsequent reconciles update.
 LLMIS_KEY = "llm-is"
+POD_GROUP_KEY = "pod-group"
 RC_DECODE_KEY = "rc-decode"
 RC_PREFILL_KEY = "rc-prefill"
 
@@ -110,16 +116,10 @@ class Renderer:
 
     def compose_llmis(self):
         """Compose a KServe LLMInferenceService on the target cluster, wrapped
-        per the cluster's in-cluster scheduler (KAI / Kueue / none)."""
+        for managed-kai gang admission. KAI is the only in-cluster scheduler
+        wired in this MR; Kueue/Volcano dispatch lands in a follow-up."""
         base = rendering.build_llmis_spec(self.xr, self.classes)
-
-        wrapped = scheduler.wrap(
-            self.cluster.scheduler_type,
-            base,
-            mr_name=self.xr.parent_name,
-            namespace=self.xr.parent_namespace,
-            replica_index=self.xr.replica_index,
-        )
+        kai = rendering.with_kai_gang(base, self.xr.parent_name, self.xr.parent_namespace)
 
         self._compose_remote(
             LLMIS_KEY,
@@ -127,19 +127,16 @@ class Renderer:
             kind="LLMInferenceService",
             name=naming.llmis_name(self.xr.parent_name, self.xr.replica_index),
             namespace=self.xr.parent_namespace,
-            spec=wrapped.llmis_spec,
+            spec=kai.llmis_spec,
         )
-
-        # Scheduler companion objects (PodGroup for KAI; none for Kueue).
-        for i, obj in enumerate(wrapped.extra_objects):
-            self._compose_remote(
-                f"sched-{i}",
-                api_version=obj["apiVersion"],
-                kind=obj["kind"],
-                name=obj["metadata"]["name"],
-                namespace=obj["metadata"]["namespace"],
-                spec=obj["spec"],
-            )
+        self._compose_remote(
+            POD_GROUP_KEY,
+            api_version=kai.pod_group["apiVersion"],
+            kind=kai.pod_group["kind"],
+            name=kai.pod_group["metadata"]["name"],
+            namespace=kai.pod_group["metadata"]["namespace"],
+            spec=kai.pod_group["spec"],
+        )
 
     def compose_resource_claims(self):
         """Compose a DRA ResourceClaim per role. The DRA driver matches
