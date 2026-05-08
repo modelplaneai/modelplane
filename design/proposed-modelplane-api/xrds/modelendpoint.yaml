@@ -5,7 +5,7 @@
 #
 # A `Deployment` route refers to a ModelDeployment, NOT a single replica or
 # placement: when traffic is sent to that route, it spreads across ALL the
-# MD's ModelPlacements (every replica, on every InferenceCluster the matcher
+# MD's ModelReplicas (every replica, on every InferenceCluster the matcher
 # put them on). Replicas inside a placement are fungible — KServe + KEDA +
 # the cluster Service round-robin across pods. Cross-cluster spread of one
 # logical service happens via multiple MDs + multiple route entries here.
@@ -74,7 +74,7 @@ spec:
                         maximum: 100
                         default: 1
                       # ---- Deployment: route to a ModelDeployment ----
-                      # Composer resolves: MD → all its ModelPlacements (one
+                      # Composer resolves: MD → all its ModelReplicas (one
                       # per replica) → cluster-side Service per placement. The
                       # route's weight applies to the deployment as a whole;
                       # KServe + KEDA + the cluster Service round-robin across

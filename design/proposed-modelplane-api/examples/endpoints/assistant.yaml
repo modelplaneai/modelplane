@@ -10,7 +10,7 @@
 #     here we route across three different families to show the API
 #     surface, not a realistic deployment.)
 #   - An InferenceProvider (Together) as a route target alongside Deployments.
-#   - Each Deployment route fans across ALL the MD's ModelPlacements
+#   - Each Deployment route fans across ALL the MD's ModelReplicas
 #     (every replica, on every InferenceCluster the matcher placed them
 #     on). KEDA + the cluster Service round-robin across the pods.
 #   - Multi-region spread happens via multiple ModelDeployments (one per

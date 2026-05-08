@@ -1,7 +1,7 @@
 # InferenceCluster — a customer Kubernetes cluster running a backend
 # (KServe / Dynamo / raw-vllm) + an in-cluster scheduler (Kueue / KAI /
 # Volcano) + DRA + KEDA. Each InferenceCluster is a workload plane;
-# Modelplane composes ModelPlacements onto it.
+# Modelplane composes ModelReplicas onto it.
 #
 # Replaces the existing InferenceEnvironment XRD. Pure substrate:
 # cluster source, scheduler / backend pluggability, node pools, and
@@ -134,7 +134,7 @@ spec:
                       default: auto
 
                 # ---- inference backend (orchestrator) ----
-                # What renders ModelPlacement (the intermediate representation)
+                # What renders ModelReplica (the intermediate representation)
                 # into upstream objects.
                 # `managed-kserve` means Modelplane installs KServe at `version`
                 # + composes a KServeBackend; `kserve` / `dynamo` / `raw-vllm`

@@ -1,32 +1,35 @@
-# ModelPlacement — the existing CRD in apis/modelplacements/, expanded here
-# to play the role of the **intermediate representation (IR)** between
+# ModelReplica — the **intermediate representation (IR)** between
 # ModelDeployment (user-facing) and the rendered upstream object (KServe
-# LLMInferenceService, DynamoGraphDeployment, etc.). The IR isn't a new
-# abstraction — it's the role this existing CRD plays.
+# LLMInferenceService, DynamoGraphDeployment, etc.).
 #
-# Replica == placement. One ModelPlacement per logical replica of a
-# ModelDeployment, owned by it. Each MP composes one LLMInferenceService
+# Replica == placement. One ModelReplica per logical replica of a
+# ModelDeployment, owned by it. Each MR composes one LLMInferenceService
 # (or backend equivalent) with spec.replicas: 1 onto a chosen
-# InferenceCluster. The matcher composition function picks where each MP
+# InferenceCluster. The matcher composition function picks where each MR
 # lands by evaluating the parent MD's claims against InferenceCluster
-# candidates. The version-pinned backend adapter watches the MP and renders
+# candidates. The version-pinned backend adapter watches the MR and renders
 # the upstream object. Multi-node logical replicas (e.g. Kimi K2 with PP=2)
-# are still ONE MP — multi-pod via LWS within one cluster.
+# are still ONE MR — multi-pod via LWS within one cluster.
 #
-# InferenceProvider is NEVER a ModelPlacement target — it's routing-only.
+# Renames the existing internal `ModelPlacement` (apis/modelplacements/) to
+# `ModelReplica` — the user-friendlier term that lines up with the
+# "replica == placement" mental model. Pure rename + role expansion; no
+# semantic change.
+#
+# InferenceProvider is NEVER a ModelReplica target — it's routing-only.
 # Platform-internal-by-convention. ML/App teams shouldn't create these directly.
 # IR schema absorbs upstream backend schema churn; user-facing types stay stable.
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: modelplacements.modelplane.ai
+  name: modelreplicas.modelplane.ai
 spec:
   group: modelplane.ai
   names:
     categories: [crossplane, modelplane]
-    kind: ModelPlacement
-    plural: modelplacements
-    shortNames: [mp]
+    kind: ModelReplica
+    plural: modelreplicas
+    shortNames: [mr]
   scope: Namespaced
   versions:
     - name: v1alpha1

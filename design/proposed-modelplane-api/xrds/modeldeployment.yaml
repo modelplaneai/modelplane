@@ -5,8 +5,8 @@
 # single self-contained spec. Carries
 # claims, engine config, scaling, and adapters in one place. The matcher
 # composition function picks an InferenceCluster matching the claims and
-# emits one ModelPlacement per logical replica (replica == placement).
-# ModelPlacement is the existing CRD (apis/modelplacements/) playing the role
+# emits one ModelReplica per logical replica (replica == placement).
+# ModelReplica is the existing CRD (apis/modelreplicas/) playing the role
 # of the intermediate representation between this user-facing CR and the
 # rendered upstream objects (LLMInferenceService, etc.).
 apiVersion: apiextensions.crossplane.io/v2
@@ -27,7 +27,7 @@ spec:
       referenceable: true
       # Scale subresource — lets KEDA (or HPA / `kubectl scale`) drive the
       # number of logical replicas via `spec.replicas`. The composer reconciles
-      # ModelPlacements to match: replica == placement, each placement carries
+      # ModelReplicas to match: replica == placement, each placement carries
       # exactly one logical replica composed onto an InferenceCluster.
       subresources:
         status: {}
@@ -45,9 +45,9 @@ spec:
         - name: REPLICAS
           type: string
           jsonPath: .spec.replicas
-        - name: PLACEMENTS
+        - name: REPLICAS_READY
           type: string
-          jsonPath: .status.placements.ready
+          jsonPath: .status.modelReplicas.ready
         - name: AGE
           type: date
           jsonPath: .metadata.creationTimestamp
@@ -60,7 +60,7 @@ spec:
               type: object
               required: [model, source, deviceSelector, engine]
               # Field-level consumer index (every field on this CR has one):
-              #   replicas               — KEDA writes; composer reconciles MPs
+              #   replicas               — KEDA writes; composer reconciles MRs
               #   model                  — engine adapter (--model arg); status reporting
               #   source / huggingFace   — engine adapter (model fetch at startup)
               #   clusterSelector        — federation matcher (filters ICs)
@@ -94,7 +94,7 @@ spec:
               properties:
                 # ---- replica count (KEDA-writable via scale subresource) ----
                 # Replica == placement. The composer reconciles `replicas`
-                # ModelPlacements per ModelDeployment, each independently
+                # ModelReplicas per ModelDeployment, each independently
                 # scheduled by the matcher. KEDA writes here through the
                 # scale subresource — no custom scaler needed.
                 replicas:
@@ -103,7 +103,7 @@ spec:
                   default: 1
                   description: |
                     Number of logical replicas. Each replica == one
-                    ModelPlacement composed onto an InferenceCluster. KEDA's
+                    ModelReplica composed onto an InferenceCluster. KEDA's
                     standard ScaledObject (composed from spec.scaling) writes
                     here.
 
@@ -384,7 +384,7 @@ spec:
                 # ---- scaling ----
                 # The composer turns this into a stock KEDA ScaledObject that
                 # targets the ModelDeployment via its scale subresource. KEDA
-                # writes spec.replicas; the composer reconciles ModelPlacements
+                # writes spec.replicas; the composer reconciles ModelReplicas
                 # (one per replica) to match. Each replica is independently
                 # scheduled by the matcher against clusterSelector.
                 # Multi-region spread = multiple ModelDeployments + ModelEndpoint.
@@ -403,7 +403,7 @@ spec:
                           minimum: 0
                           description: |
                             Lower bound on logical replicas. Each replica is one
-                            ModelPlacement composing one LLMInferenceService.spec.replicas: 1.
+                            ModelReplica composing one LLMInferenceService.spec.replicas: 1.
                         maxReplicas:    { type: integer, minimum: 1 }
                         target:         { type: integer, minimum: 1 }
                         window:         { type: string, default: "60s" }
@@ -451,14 +451,15 @@ spec:
                       lastTransitionTime: { type: string, format: date-time }
                 # Required by the scale subresource. `replicas` mirrors
                 # spec.replicas observed by the composer; `labelSelector` is
-                # the selector that matches the deployment's ModelPlacements
+                # the selector that matches the deployment's ModelReplicas
                 # (so HPA / KEDA can read pod counts via standard tooling).
                 replicas:
                   type: integer
                 labelSelector:
                   type: string
-                placements:
+                modelReplicas:
                   type: object
+                  description: Child ModelReplica health (total created vs ready).
                   properties:
                     total: { type: integer }
                     ready: { type: integer }
