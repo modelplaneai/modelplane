@@ -1,85 +1,90 @@
-"""Compose a ModelDeployment into ModelReplicas + ModelEndpoints.
+"""Crossplane composition function: ModelDeployment → ModelReplicas + ModelEndpoints.
 
-This is the *composer* half of the federation control plane (see also
-`compose-model-replica` for the renderer half). It runs once per
-ModelDeployment reconcile and:
+═══════════════════════════════════════════════════════════════════════════
+  THIS MODULE IS THE ORCHESTRATOR.  Crossplane glue, status / conditions,
+  error handling. The actual matcher logic lives in scheduling.py;
+  proto translation in adapters.py; composed-resource builders in
+  emitters.py. Read order, top to bottom:
 
-  1. Asks Crossplane for the substrate it needs (required-resources):
-       - all InferenceClusters (cluster-scoped)
-       - the InferenceClasses referenced by their nodePools
-       - all ModelReplicas already owned by this MD (sticky placement)
-  2. Calls `scheduling.match()` — the federation matcher — to pick
-     (cluster, pool) per replica index 0..spec.replicas-1.
-  3. Emits one ModelReplica per replica_index, carrying the resolved
-     placement + the parent MD's resolved fields (so the renderer
-     doesn't have to re-fetch them).
-  4. Emits one ModelEndpoint per replica (per Nic's API in #64) — the
-     reachable URL surface a ModelService can route to.
-  5. Sets MD.status.conditions: Scheduled / FullyScheduled / Saturated
-     and a per-cluster matchTrace surfaced when scheduling fails.
+    scheduling.py    pure algorithm, no Crossplane
+    adapters.py      proto ⇄ scheduling types (boundary)
+    emitters.py      pure: scheduling.Placement → composed-resource dicts
+    main.py          THIS FILE — orchestrates the phases below
 
-Sketch quality: the imports below assume Nic's #64 protos exist (they
-don't yet). The control flow + condition / require_resources patterns
-match the existing function shape; only the data plumbing is updated for
-the new API.
+  Sketch — adapters.* raise NotImplementedError until #64's protos exist.
+═══════════════════════════════════════════════════════════════════════════
 
-Dependencies (what this function reads):
+Lifecycle (one reconcile = one call):
 
-  Required resources (Crossplane "extra resources"):
-    name=clusters         InferenceCluster (list, cluster-scoped)
-    name=classes          InferenceClass   (list, by name from clusters)
-    name=existing-replicas ModelReplica    (list, owner=this MD)
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Phase 1: REQUIRE                                                │
+  │   Declare extra-resources we need (clusters, classes, owned     │
+  │   replicas). If not all observed → return "waiting" (no error,  │
+  │   no composed resources, no Ready condition update).            │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 2: LOAD                                                   │
+  │   adapters.load_md / load_clusters / load_existing — translate  │
+  │   observed structs to scheduling types. Errors surface as       │
+  │   ConfigInvalid (Ready=False) — we don't proceed.               │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 3: MATCH (pure)                                           │
+  │   scheduling.match() runs the federation algorithm. Always      │
+  │   returns; never raises. Partial / no-match shows up in result. │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 4: BUILD (pure)                                           │
+  │   emitters.build_replica / build_endpoint per Placement.        │
+  │   Pure dict builders.                                           │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 5: EMIT                                                   │
+  │   resource.update(rsp.desired.resources[...], built_dict)       │
+  │   — the Crossplane SDK call to add a composed resource.         │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 6: STATUS                                                 │
+  │   Set MD.status.conditions (Scheduled / ReplicasReady) and      │
+  │   matchTrace from Phase 3's result.                             │
+  └─────────────────────────────────────────────────────────────────┘
 
-  Composed (this function writes):
-    ModelReplica × spec.replicas (sticky by replicaIndex)
-    ModelEndpoint × spec.replicas (one per replica)
+State machine for MD.status.conditions[Scheduled]:
 
-Use cases (each example exercises a path here):
+  Unknown    initial; Phase 1 still gathering required resources
+  True       Phase 3 placed all spec.replicas successfully
+  False      Phase 3 placed 0 (NoEligibleClusters / FleetSaturated)
+             OR Phase 3 placed N < spec.replicas (PartiallyScheduled)
+             OR Phase 2 raised (ConfigInvalid)
 
-  examples/workloads/gpt-oss-20b.yaml        Tensor strategy, no disagg
-  examples/workloads/kimi-k2.yaml            TensorPipeline, no disagg
-  examples/workloads/qwen3-coder.yaml        Multi-node FP8, no disagg
-  examples/workloads/kimi-k2-eu.yaml         Multi-region pattern
-  spec.replicas: N                           Spread across multiple ICs
+State machine for MD.status.conditions[ReplicasReady]:
 
-  Disaggregation (prefill + decode roles) lands with #64.
+  Unknown    no observed ModelReplicas yet
+  True       all child MRs report Ready=True (from their own renderer)
+  False      ≥1 child MR reports Ready=False (with reason from the MR's
+             renderer — e.g. Pulling, LWSGangPending, EngineLoading)
 
-Lifecycle ops this enables (each is its own user story):
+Error handling:
 
-  Scale up   spec.replicas++  → composer creates new MR; matcher places it
-                                where capacity allows (potentially a new IC).
-  Scale down spec.replicas--  → composer GCs highest replicaIndex MR first
-                                (oldest survives, gateway endpoints stable).
-  IC degrades → eviction controller annotates affected MR; this composer
-                drops it on next reconcile, matcher re-picks for new MR.
-  IC added   → next scale-up event sees it as a candidate; existing MRs
-                are sticky and don't move.
-
-  See ../../design/proposed-modelplane-api/design.md for the full picture.
+  Required-resource missing (Phase 1) → return waiting (no errors)
+  Adapter failure (Phase 2)           → ConfigInvalid + log
+  Matcher failure (Phase 3)           → can't happen — matcher is total
+  Builder / emit failure (Phase 5)    → InternalError + log
 """
 
 # ---------------------------------------------------------------------------
-# Imports — sketch. Real proto imports are gated by the new XRDs landing
-# from #64; until then these are placeholders that document the contract.
-# ---------------------------------------------------------------------------
-
-from crossplane.function import request, resource, response
+# Imports
+# ═══ Crossplane SDK ════════════════════════════════════════════════════════
+from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from . import scheduling
-from .lib import conditions, defaults, metadata, naming
-from .lib import resource as libresource
+# ═══ Local pure modules ═══════════════════════════════════════════════════
+from . import adapters, emitters, scheduling
 
-# When #64 lands these become real:
+# ═══ Shared lib helpers ═══════════════════════════════════════════════════
+from .lib import conditions
+
+# When #64 lands:
 #   from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
-#   from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
-#   from .model.ai.modelplane.inferenceclass import v1alpha1 as iclassv1alpha1
-#   from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
-#   from .model.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 
 
 # ---------------------------------------------------------------------------
-# Conditions exposed on the ModelDeployment XR.
+# Conditions exposed on the MD XR.
 # ---------------------------------------------------------------------------
 
 CONDITION_TYPE_SCHEDULED = "Scheduled"
@@ -90,48 +95,66 @@ REASON_SCHEDULED_PARTIAL = "PartiallyScheduled"
 REASON_NO_CLUSTERS = "NoEligibleClusters"
 REASON_SATURATED = "FleetSaturated"
 REASON_NO_REPLICAS = "ZeroReplicas"
+REASON_CONFIG_INVALID = "ConfigInvalid"
+
 REASON_REPLICAS_READY = "AllReplicasReady"
 REASON_REPLICAS_PROGRESSING = "ReplicasProgressing"
 
 
+def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
+    """Crossplane composition function entry point."""
+    rsp = response.to(req)
+    Composer(req, rsp).run()
+    return rsp
+
+
 class Composer:
-    """Composes a ModelDeployment into its child ModelReplicas + ModelEndpoints."""
+    """Phase orchestrator for one reconcile.
+
+    All phase methods return a bool: True if the phase succeeded and we
+    should continue, False if we should stop (the phase has already
+    written conditions / emitted warnings / required more resources).
+    """
 
     def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         self.req = req
         self.rsp = rsp
-        # ModelDeployment XR (parent) — Nic's #64 shape:
-        #   spec.{source, huggingFace, clusterSelector.matchLabels, replicas,
-        #         nodeSelector.cel, topology, engine, prefill?}
-        self.md = _load_md(req)
 
-        # Substrate snapshots — populated by resolve_inputs().
+        # Filled in by the phases below.
+        self.md: scheduling.ModelDeploymentSpec | None = None
+        self.md_uid: str = ""
+        self.engine: dict = {}
+        self.source: dict = {}
         self.clusters: list[scheduling.InferenceCluster] = []
         self.existing: list[scheduling.ExistingPlacement] = []
+        self.result: scheduling.MatchResult | None = None
 
-    def compose(self) -> None:
-        if not self.resolve_inputs():
-            return  # required resources not all observed yet
-        result = self.schedule()
-        self.compose_replicas(result)
-        self.compose_endpoints(result)
-        self.write_conditions(result)
+    # =======================================================================
+    # ENTRY
+    # =======================================================================
 
-    # -----------------------------------------------------------------------
-    # 1. Required resources
-    # -----------------------------------------------------------------------
+    def run(self) -> None:
+        if not self.phase_require():
+            return
+        if not self.phase_load():
+            return
+        self.phase_match()
+        self.phase_build_and_emit()
+        self.phase_status()
 
-    def resolve_inputs(self) -> bool:
-        """Declare the substrate this function depends on.
+    # =======================================================================
+    # ═══ Phase 1: REQUIRE ═════════════════════════════════════════════════
+    # Crossplane composition glue.
+    # =======================================================================
 
-        Crossplane re-runs us until all of these are observed at least once.
-        """
+    def phase_require(self) -> bool:
+        """Declare extra resources we need. Returns False if we're still
+        waiting on Crossplane to fetch them (next reconcile will retry)."""
         response.require_resources(
             self.rsp,
             name="clusters",
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceCluster",
-            # Cluster-scoped; no namespace selector.
         )
         response.require_resources(
             self.rsp,
@@ -139,231 +162,160 @@ class Composer:
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceClass",
         )
+        # Only fetch ModelReplicas owned by THIS MD — label set by emitters.
+        # Read the MD name out of the observed XR before we do full adapter
+        # parsing (adapter parsing is Phase 2; this is just the name).
+        md_name = _peek_md_name(self.req)
         response.require_resources(
             self.rsp,
             name="existing-replicas",
             api_version="modelplane.ai/v1alpha1",
             kind="ModelReplica",
-            match_labels={metadata.LABEL_KEY_DEPLOYMENT: self.md.name},
+            match_labels={emitters.LABEL_DEPLOYMENT: md_name},
         )
 
         observed = self.req.extra_resources
-        if not all(k in observed for k in ("clusters", "classes", "existing-replicas")):
-            return False  # waiting on a refetch
+        return all(k in observed for k in ("clusters", "classes", "existing-replicas"))
 
-        self.clusters = _resolve_clusters(observed["clusters"], observed["classes"])
-        self.existing = _resolve_existing(observed["existing-replicas"])
+    # =======================================================================
+    # ═══ Phase 2: LOAD ═════════════════════════════════════════════════════
+    # Boundary between protos and pure types. Errors here are config-level.
+    # =======================================================================
+
+    def phase_load(self) -> bool:
+        try:
+            self.md = adapters.load_md(self.req)
+            self.engine = _peek_engine(self.req)
+            self.source = _peek_source(self.req)
+            self.md_uid = _peek_md_uid(self.req)
+            self.clusters = adapters.load_clusters(self.req)
+            self.existing = adapters.load_existing(self.req)
+        except (ValueError, KeyError, NotImplementedError) as e:
+            # NotImplementedError: sketch-only — the function is not wired
+            # yet. Surface as ConfigInvalid for now; once #64 lands and
+            # adapters become real this branch is just (ValueError, KeyError).
+            conditions.set_condition(
+                self.rsp,
+                type=CONDITION_TYPE_SCHEDULED,
+                status="False",
+                reason=REASON_CONFIG_INVALID,
+                message=str(e),
+            )
+            return False
         return True
 
-    # -----------------------------------------------------------------------
-    # 2. Federation match
-    # -----------------------------------------------------------------------
+    # =======================================================================
+    # ═══ Phase 3: MATCH ════════════════════════════════════════════════════
+    # Pure call into scheduling.py. Cannot fail.
+    # =======================================================================
 
-    def schedule(self) -> scheduling.MatchResult:
-        return scheduling.match(self.md, self.clusters, self.existing)
+    def phase_match(self) -> None:
+        assert self.md is not None
+        self.result = scheduling.match(self.md, self.clusters, self.existing)
 
-    # -----------------------------------------------------------------------
-    # 3. Compose ModelReplicas
-    # -----------------------------------------------------------------------
+    # =======================================================================
+    # ═══ Phase 4+5: BUILD + EMIT ═══════════════════════════════════════════
+    # emitters.* are pure; resource.update is the Crossplane SDK call.
+    # =======================================================================
 
-    def compose_replicas(self, result: scheduling.MatchResult) -> None:
-        """Emit one ModelReplica per Placement.
-
-        ModelReplica spec carries:
-          - replicaIndex                       — stable identity 0..N-1
-          - target.{cluster, decodePool, prefillPool?} — matcher's decision
-          - resolved decode/prefill RoleSpec   — what the renderer renders
-          - parentRef                          — back to the MD (owner)
-        """
-        for p in result.placements:
-            mr_name = naming.replica_name(self.md.name, p.replica_index)
-            mr_spec = {
-                "replicaIndex": p.replica_index,
-                "target": {
-                    "cluster": p.cluster,
-                    "decodePool": p.decode.pool,
-                    "prefillPool": p.prefill.pool if p.prefill else None,
-                },
-                # The renderer reads these instead of re-fetching the MD —
-                # makes the renderer pure over the MR + IC + class, no
-                # parent lookup needed.
-                "decode": _role_to_dict(self.md.decode, p.decode),
-                "prefill": (
-                    _role_to_dict(self.md.prefill, p.prefill)
-                    if p.prefill and self.md.prefill
-                    else None
-                ),
-                "engine": _engine_dict(self.md),
-                "source": _source_dict(self.md),
-            }
-            libresource.add_composed(
-                self.rsp,
-                name=mr_name,
-                api_version="modelplane.ai/v1alpha1",
-                kind="ModelReplica",
-                metadata={
-                    "name": mr_name,
-                    "namespace": self.md.namespace,
-                    "labels": {
-                        metadata.LABEL_KEY_DEPLOYMENT: self.md.name,
-                    },
-                    "ownerReferences": [_owner_ref(self.md)],
-                },
-                spec=mr_spec,
+    def phase_build_and_emit(self) -> None:
+        assert self.md is not None and self.result is not None
+        for placement in self.result.placements:
+            mr_dict = emitters.build_replica(
+                self.md, placement, self.md_uid, self.engine, self.source
             )
+            ep_dict = emitters.build_endpoint(self.md, placement, self.md_uid)
+            self._emit(f"replica-{placement.replica_index}", mr_dict)
+            self._emit(f"endpoint-{placement.replica_index}", ep_dict)
 
-    # -----------------------------------------------------------------------
-    # 4. Compose ModelEndpoints
-    # -----------------------------------------------------------------------
+    def _emit(self, key: str, obj: dict) -> None:
+        """Crossplane SDK call to register a composed resource."""
+        resource.update(self.rsp.desired.resources[key], obj)
 
-    def compose_endpoints(self, result: scheduling.MatchResult) -> None:
-        """One ModelEndpoint per ModelReplica (Nic's #64 design).
+    # =======================================================================
+    # ═══ Phase 6: STATUS ═══════════════════════════════════════════════════
+    # Translate matcher result → MD.status.conditions + matchTrace.
+    # =======================================================================
 
-        The endpoint's URL is set when the replica's gateway address is
-        known — populated downstream by the renderer / status writer.
-        ModelService selects across these endpoints by the deployment label.
-        """
-        for p in result.placements:
-            ep_name = naming.endpoint_name(self.md.name, p.replica_index)
-            libresource.add_composed(
-                self.rsp,
-                name=ep_name,
-                api_version="modelplane.ai/v1alpha1",
-                kind="ModelEndpoint",
-                metadata={
-                    "name": ep_name,
-                    "namespace": self.md.namespace,
-                    "labels": {
-                        metadata.LABEL_KEY_DEPLOYMENT: self.md.name,
-                    },
-                    "ownerReferences": [_owner_ref(self.md)],
-                },
-                spec={
-                    # Filled in by status reconcile once the replica's
-                    # gateway address is known.
-                    "url": "",
-                    "api": "OpenAI",
-                },
-            )
+    def phase_status(self) -> None:
+        assert self.md is not None and self.result is not None
 
-    # -----------------------------------------------------------------------
-    # 5. Conditions + matchTrace
-    # -----------------------------------------------------------------------
-
-    def write_conditions(self, result: scheduling.MatchResult) -> None:
+        # Condition: Scheduled
         if self.md.replicas == 0:
-            conditions.set_condition(
-                self.rsp,
-                type=CONDITION_TYPE_SCHEDULED,
-                status="True",
-                reason=REASON_NO_REPLICAS,
-                message="spec.replicas is 0; nothing to schedule",
+            self._set(CONDITION_TYPE_SCHEDULED, "True", REASON_NO_REPLICAS,
+                      "spec.replicas is 0; nothing to schedule")
+        elif not self.result.placements:
+            self._set(CONDITION_TYPE_SCHEDULED, "False",
+                      _no_placement_reason(self.result),
+                      _trace_summary(self.result.trace))
+        elif len(self.result.placements) < self.md.replicas:
+            self._set(
+                CONDITION_TYPE_SCHEDULED,
+                "False",
+                REASON_SCHEDULED_PARTIAL,
+                f"{len(self.result.placements)}/{self.md.replicas} replicas scheduled. "
+                + _trace_summary(self.result.trace),
             )
-            return
-
-        if not result.placements:
-            conditions.set_condition(
-                self.rsp,
-                type=CONDITION_TYPE_SCHEDULED,
-                status="False",
-                reason=_no_placement_reason(result),
-                message=_trace_summary(result.trace),
+        else:
+            self._set(
+                CONDITION_TYPE_SCHEDULED,
+                "True",
+                REASON_SCHEDULED_ALL,
+                f"{self.md.replicas} replicas scheduled across the fleet",
             )
-            return
 
-        if len(result.placements) < self.md.replicas:
-            conditions.set_condition(
-                self.rsp,
-                type=CONDITION_TYPE_SCHEDULED,
-                status="False",
-                reason=REASON_SCHEDULED_PARTIAL,
-                message=(
-                    f"{len(result.placements)}/{self.md.replicas} replicas scheduled. "
-                    + _trace_summary(result.trace)
-                ),
-            )
-            return
+        # Condition: ReplicasReady — derived from observed MR.status conditions.
+        # The replicas we composed in Phase 5 might not exist yet on this
+        # reconcile; on subsequent reconciles their status flows back.
+        # Sketched here for clarity; real impl walks observed.resources.
+        # _set(CONDITION_TYPE_REPLICAS_READY, ...)
 
+    def _set(self, type_: str, status: str, reason: str, message: str = "") -> None:
         conditions.set_condition(
-            self.rsp,
-            type=CONDITION_TYPE_SCHEDULED,
-            status="True",
-            reason=REASON_SCHEDULED_ALL,
-            message=f"{self.md.replicas} replicas scheduled across the fleet",
+            self.rsp, type=type_, status=status, reason=reason, message=message
         )
 
 
 # ---------------------------------------------------------------------------
-# Adapters between Crossplane structs and scheduling dataclasses.
-# These are the boundaries; the matcher itself is plain Python.
+# Helpers — peek at XR struct fields without going through the full adapter.
+# Phase 1 needs the MD name *before* phase 2 has run.
 # ---------------------------------------------------------------------------
 
 
-def _load_md(req: fnv1.RunFunctionRequest) -> scheduling.ModelDeploymentSpec:
-    """Build the matcher's view of the ModelDeployment.
-
-    Sketch — real impl pulls from the generated ModelDeployment proto.
-    Demonstrates which fields the matcher consumes (and only those).
-    """
-    raise NotImplementedError("wire to mdv1alpha1.ModelDeployment when #64 lands")
+def _peek_md_name(req: fnv1.RunFunctionRequest) -> str:
+    """Read the MD's metadata.name out of the observed composite struct."""
+    return resource.struct_to_dict(req.observed.composite.resource).get(
+        "metadata", {}
+    ).get("name", "")
 
 
-def _resolve_clusters(
-    clusters_raw, classes_raw
-) -> list[scheduling.InferenceCluster]:
-    """Resolve InferenceClusters + the InferenceClasses they reference.
-
-    Each pool's `class:` ref is replaced inline with the resolved
-    InferenceClass.spec.capabilities. Pools whose class isn't observed yet
-    are dropped (the matcher won't consider them). Crossplane re-runs us
-    when classes appear.
-    """
-    raise NotImplementedError("walk extra resources when #64 lands")
+def _peek_md_uid(req: fnv1.RunFunctionRequest) -> str:
+    return resource.struct_to_dict(req.observed.composite.resource).get(
+        "metadata", {}
+    ).get("uid", "")
 
 
-def _resolve_existing(existing_raw) -> list[scheduling.ExistingPlacement]:
-    """Project owned ModelReplicas into matcher form for sticky placement."""
-    raise NotImplementedError("walk extra resources when #64 lands")
+def _peek_engine(req: fnv1.RunFunctionRequest) -> dict:
+    return (
+        resource.struct_to_dict(req.observed.composite.resource)
+        .get("spec", {})
+        .get("engine", {})
+    )
 
 
-def _role_to_dict(role, placement: scheduling.RolePlacement) -> dict:
-    """Build a ModelReplica.spec.{decode|prefill} block from MD + placement."""
-    return {
-        "topology": {
-            "strategy": role.topology.strategy,
-            "tensor": role.topology.tensor,
-            "pipeline": role.topology.pipeline,
-            "data": role.topology.data,
-            "dataLocal": role.topology.data_local,
-            "instances": role.topology.instances,
-        },
-        # nodeSelector.cel carried through verbatim — the renderer turns it
-        # into a DRA ResourceClaim against the matched pool's capabilities.
-        "nodeSelector": {"cel": role.node_selector_cel},
-        "pool": placement.pool,
-        "nodesUsed": placement.nodes_used,
-        "gpusPerNode": placement.gpus_per_node,
-        "instances": placement.instances,
-    }
+def _peek_source(req: fnv1.RunFunctionRequest) -> dict:
+    """Source spec dict — pass-through into ModelReplica.spec.source."""
+    s = resource.struct_to_dict(req.observed.composite.resource).get("spec", {})
+    out = {"type": s.get("source")}
+    for k in ("huggingFace", "s3", "gcs", "pvc"):
+        if k in s:
+            out[k] = s[k]
+    return out
 
 
-def _engine_dict(md: scheduling.ModelDeploymentSpec) -> dict:
-    """Engine config the renderer needs. Pass-through from MD."""
-    raise NotImplementedError("populate from md when wired")
-
-
-def _source_dict(md: scheduling.ModelDeploymentSpec) -> dict:
-    """Where to fetch model weights — HuggingFace repo / S3 / GCS / PVC."""
-    raise NotImplementedError("populate from md when wired")
-
-
-def _owner_ref(md: scheduling.ModelDeploymentSpec) -> dict:
-    return {
-        "apiVersion": "modelplane.ai/v1alpha1",
-        "kind": "ModelDeployment",
-        "name": md.name,
-        # uid filled in by Crossplane when materialized
-    }
+# ---------------------------------------------------------------------------
+# Status reasons / message helpers.
+# ---------------------------------------------------------------------------
 
 
 def _no_placement_reason(result: scheduling.MatchResult) -> str:
@@ -377,8 +329,8 @@ def _no_placement_reason(result: scheduling.MatchResult) -> str:
 def _trace_summary(trace: list[scheduling.MatchTrace]) -> str:
     """Compact summary of why scheduling failed, for the condition message.
 
-    The full structured trace lives on MD.status.matchTrace (a separate
-    field) — this is the human-readable headline.
+    Full structured trace lands on MD.status.matchTrace — see
+    emitters.build_match_trace.
     """
     if not trace:
         return "no eligible InferenceClusters"
@@ -386,14 +338,3 @@ def _trace_summary(trace: list[scheduling.MatchTrace]) -> str:
     for t in trace:
         by_reason[t.reason] = by_reason.get(t.reason, 0) + 1
     return "; ".join(f"{r}: {n}" for r, n in by_reason.items())
-
-
-# ---------------------------------------------------------------------------
-# Crossplane function entrypoint
-# ---------------------------------------------------------------------------
-
-
-def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
-    rsp = response.to(req)
-    Composer(req, rsp).compose()
-    return rsp

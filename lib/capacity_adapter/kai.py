@@ -16,10 +16,9 @@ Sketch — `_list_*` functions stand in for the K8s client calls. The
 control flow + projection are honest.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from .common import CapacitySnapshot, PoolCapacity, ResourceCount
-
 
 # KAI uses these GVKs.
 KAI_QUEUE = ("scheduling.run.ai/v2", "Queue")
@@ -41,7 +40,7 @@ def snapshot(cluster_name: str, k8s_client) -> CapacitySnapshot:
     surface those into status.capacity (it's not capacity); they go to a
     separate observability output for fleet operators (out of scope).
     """
-    snap = CapacitySnapshot(cluster=cluster_name, last_observed=datetime.utcnow())
+    snap = CapacitySnapshot(cluster=cluster_name, last_observed=datetime.now(UTC))
 
     pools_raw = _list_resource_pools(k8s_client)
     for raw in pools_raw:

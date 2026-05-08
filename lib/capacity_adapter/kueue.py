@@ -24,10 +24,9 @@ on the LWS pod template's tolerations / nodeSelector.
 Sketch — same shape as kai.py; only the per-vendor projection differs.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from .common import CapacitySnapshot, PoolCapacity, ResourceCount
-
 
 KUEUE_CLUSTER_QUEUE = ("kueue.x-k8s.io/v1beta1", "ClusterQueue")
 KUEUE_RESOURCE_FLAVOR = ("kueue.x-k8s.io/v1beta1", "ResourceFlavor")
@@ -44,7 +43,7 @@ def snapshot(cluster_name: str, k8s_client) -> CapacitySnapshot:
          resolve its modelplane.ai/pool label → pool name.
       4. Project flavor.resources[] → ResourceCount[].
     """
-    snap = CapacitySnapshot(cluster=cluster_name, last_observed=datetime.utcnow())
+    snap = CapacitySnapshot(cluster=cluster_name, last_observed=datetime.now(UTC))
 
     cq = _find_cluster_queue(k8s_client, cluster_name)
     if cq is None:

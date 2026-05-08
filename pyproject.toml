@@ -31,6 +31,12 @@ max-args = 8
 [tool.ruff.lint.per-file-ignores]
 # Generated models are not under our control.
 ".up/python/models/**" = ["ALL"]
+# Dispatch-contract signatures intentionally have unused args so all
+# wrap_<scheduler> functions share one signature.
+"functions/compose-model-placement/scheduler.py" = ["ARG001"]
+# `clusters` and `cls` document interface contracts even when unused today.
+"functions/compose-model-deployment/scheduling.py" = ["ARG001"]
+"functions/compose-model-placement/rendering.py" = ["ARG001"]
 
 [tool.pyright]
 pythonVersion = "3.12"
@@ -38,3 +44,14 @@ pythonVersion = "3.12"
 # and the tests directory (up CLI's test runner has its own structure).
 include = ["functions", "lib"]
 exclude = [".up"]
+
+[tool.pytest.ini_options]
+# Unit tests for the *pure* logic of composition functions: the federation
+# matcher, per-scheduler wrap, rendering helpers, capacity-adapter
+# projections. These run without Crossplane / K8s and don't need #64's
+# protos to be generated.
+#
+# Run with:
+#   .venv-test/bin/python -m pytest tests/unit
+testpaths = ["tests/unit"]
+python_files = ["test_*.py"]

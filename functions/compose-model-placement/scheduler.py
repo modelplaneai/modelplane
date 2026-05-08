@@ -1,5 +1,13 @@
 """Per-scheduler wrap functions for the renderer.
 
+═══════════════════════════════════════════════════════════════════════════
+  THIS MODULE IS PURE.  No Crossplane / Kubernetes imports. Each wrap
+  function is `(llmis_spec, mr_name, namespace, replica_index) ->
+  WrappedRender`. Pure dict in / pure dict out.
+
+  Test target: tests/unit/test_scheduler.py
+═══════════════════════════════════════════════════════════════════════════
+
 Stage 2 (in-cluster) integration. The matcher (stage 1) is scheduler-
 agnostic — it reads `IC.status.capacity`, doesn't care which scheduler
 populated it. The renderer is where scheduler choice shows up: how the
@@ -28,8 +36,8 @@ Sketch — assumes Nic's #64 protos plus an extension that adds
 new scheduler integration plugs into.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 # When the scheduler axis lands as an XR field these become real:
 #   from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1

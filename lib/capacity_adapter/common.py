@@ -7,7 +7,7 @@ candidate placements.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -46,7 +46,7 @@ class CapacitySnapshot:
 
     cluster: str
     pools: list[PoolCapacity] = field(default_factory=list)
-    last_observed: datetime = field(default_factory=datetime.utcnow)
+    last_observed: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ---------------------------------------------------------------------------
@@ -60,10 +60,11 @@ def write_status(snapshot: CapacitySnapshot) -> dict:
     Real impl uses a typed Kubernetes client; sketch returns the dict.
     Idempotent — same snapshot in, same payload out.
     """
+    last_observed_str = snapshot.last_observed.replace(tzinfo=None).isoformat() + "Z"
     return {
         "status": {
             "capacity": {
-                "lastObserved": snapshot.last_observed.isoformat() + "Z",
+                "lastObserved": last_observed_str,
                 "pools": [
                     {
                         "name": p.name,

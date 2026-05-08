@@ -1,148 +1,182 @@
-"""Render a ModelReplica into a KServe LLMInferenceService on its target cluster.
+"""Crossplane composition function: ModelReplica → KServe LLM-IS + DRA + scheduler.
 
-This is the *renderer* half of the federation control plane (see also
-`compose-model-deployment` for the composer half). It runs once per
-ModelReplica reconcile and:
+═══════════════════════════════════════════════════════════════════════════
+  THIS MODULE IS THE ORCHESTRATOR.  Crossplane glue, status / conditions,
+  error handling. Pure logic lives elsewhere:
 
-  1. Reads the ModelReplica — placement decision (cluster, pool[s]) +
-     resolved decode / prefill role specs + engine + source.
-  2. Reads the matched InferenceCluster + InferenceClass(es) — needed to
-     build the DRA ResourceClaim from the class's typed capabilities.
-  3. Composes a KServe LLMInferenceService (LLM-IS) on the target cluster
-     via Crossplane's remote-cluster Object provider, plus a DRA
-     ResourceClaim per role for device binding, plus any per-scheduler
-     companion objects (PodGroup for KAI; nothing extra for Kueue — its
-     webhook handles Workload creation).
-  4. Reports observed status from the LLM-IS back to the ModelReplica
-     (Ready / Pulling / LWSGangPending / EngineLoading conditions).
+    rendering.py    pure: build LLM-IS / ResourceClaim dicts from MR + class
+    scheduler.py    pure: per-scheduler wrap (KAI / Kueue / none)
+    adapters.py     proto ⇄ rendering types (boundary)
+    main.py         THIS FILE — orchestrates the phases below
 
-Sketch — assumes Nic's #64 protos. The renderer doesn't run the matcher
-or look at other ModelReplicas; it's pure over (ModelReplica, IC, Class).
-That's the whole point of the IR: the renderer is replaceable per backend
-without re-implementing federation.
+  Sketch — adapters.* raise NotImplementedError until #64's protos exist.
+═══════════════════════════════════════════════════════════════════════════
 
-NOTE on the directory name: this function is named `compose-model-placement`
-historically. With Nic's API rename (#64), the parent XR is `ModelReplica`.
-The directory rename is a follow-up — Crossplane function package ids are
-referenced from Compositions and aren't a simple `git mv`. The code in
-this file targets the new ModelReplica shape.
+Lifecycle (one reconcile = one call):
 
-Dependencies (what this function reads):
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Phase 1: REQUIRE (cluster)                                      │
+  │   require IC matching MR.spec.target.cluster. If not observed   │
+  │   yet → return waiting.                                         │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 2: REQUIRE (classes)                                      │
+  │   IC tells us which classes our pools reference. require those, │
+  │   wait for them to be observed.                                 │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 3: LOAD                                                   │
+  │   adapters.load_mr / load_cluster / load_classes — translate to │
+  │   pure types. Errors → ConfigInvalid (Ready=False, no emission).│
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 4: RENDER (pure)                                          │
+  │   rendering.build_llmis_spec → base LLM-IS dict.                │
+  │   rendering.build_resource_claim_spec × roles → DRA claim dicts.│
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 5: WRAP (pure)                                            │
+  │   scheduler.wrap(IC.scheduler_type, ...) → mutated LLM-IS spec  │
+  │   + extra companion objects (PodGroup for KAI, none for Kueue). │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 6: EMIT                                                   │
+  │   resource.update for the LLM-IS, DRA claims, scheduler         │
+  │   companion objects. All wrapped as Crossplane k8s.Object       │
+  │   resources targeting the cluster's kubeconfig provider.        │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ Phase 7: STATUS                                                 │
+  │   Lift observed LLM-IS conditions into MR conditions:           │
+  │   Ready / Pulling / LWSGangPending / EngineLoading.             │
+  └─────────────────────────────────────────────────────────────────┘
 
-  Required resources (Crossplane "extra resources"):
-    name=cluster   InferenceCluster matching MR.spec.target.cluster
-    name=classes   InferenceClass × {decodePool's class, prefillPool's class}
+State machine for MR.status.conditions[Ready]:
 
-  Composed (this function writes):
-    KServe LLMInferenceService (on the remote target cluster)
-    DRA ResourceClaim × roles (on the remote target cluster)
+  Unknown              Phase 1/2 still gathering required resources
+  False ConfigInvalid  Phase 3 raised
+  False Pulling        observed LLM-IS reports Pulling
+  False LWSGangPending observed LLM-IS reports LWS gang admission pending
+  False EngineLoading  observed LLM-IS reports engine loading weights
+  False Progressing    none of the above; LLM-IS exists but not Ready
+  True                 LLM-IS Ready=True
 
-Use cases (each example exercises a path here):
+Error handling:
 
-  examples/workloads/gpt-oss-20b.yaml        Tensor → 1 pod, no LWS
-  examples/workloads/kimi-k2.yaml            TensorPipeline → LWS gang
-  examples/workloads/qwen3-coder.yaml        TensorPipeline + FP8 engine args
-  examples/workloads/acme-vllm-fork.yaml     Engine fork — pass-through args
-  Disaggregated LLM-IS (decode + prefill)    lands with #64
-
-Why this seam matters for BYO-* (see ../../design/proposed-modelplane-api/design.md):
-
-  - BYO KServe version v0.16 / v0.17 / v0.18 → swap the renderer in this
-    file, MR shape unchanged, matcher unchanged, MD unchanged.
-  - BYO Dynamo / raw-vllm → different file, same MR contract.
-  - BYO scheduler (KAI vs Kueue) → scheduler.wrap() dispatches per
-    IC.spec.scheduler.type. KAI: schedulerName + PodGroup. Kueue: queue
-    label + suspend gate. MR unchanged. Matcher unchanged.
+  Required-resource missing (Phase 1/2) → return waiting (no errors)
+  Adapter failure (Phase 3)            → ConfigInvalid + log
+  Render failure (Phase 4)             → InternalError + log
+  Wrap failure (Phase 5)               → InternalError + log (defensive)
+  Emit failure (Phase 6)               → InternalError + log
 """
 
-# ---------------------------------------------------------------------------
-# Imports — sketch. See compose-model-deployment/main.py for the same note.
-# ---------------------------------------------------------------------------
-
-from crossplane.function import request, resource, response
+# ═══ Crossplane SDK ════════════════════════════════════════════════════════
+from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from . import scheduler
-from .lib import conditions, defaults, metadata, naming
-from .lib import resource as libresource
+# ═══ Local pure modules ═══════════════════════════════════════════════════
+from . import adapters, rendering, scheduler
 
-# When #64 lands these become real:
+# ═══ Shared lib helpers ═══════════════════════════════════════════════════
+from .lib import conditions
+
+# When #64 lands:
 #   from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
-#   from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
-#   from .model.ai.modelplane.inferenceclass import v1alpha1 as iclassv1alpha1
-#   from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobj
 
 
 # ---------------------------------------------------------------------------
-# Conditions exposed on the ModelReplica XR.
+# Conditions exposed on the MR XR.
 # ---------------------------------------------------------------------------
 
 CONDITION_TYPE_RENDERED = "Rendered"
 CONDITION_TYPE_READY = "Ready"
 
-# Granular cold-start states surfaced from the LLM-IS:
-CONDITION_TYPE_PULLING = "Pulling"
-CONDITION_TYPE_LWS_GANG_PENDING = "LWSGangPending"
-CONDITION_TYPE_ENGINE_LOADING = "EngineLoading"
-
 REASON_RENDERED = "RenderedToCluster"
-REASON_RENDER_FAILED = "RenderFailed"
 REASON_LLMIS_READY = "LLMInferenceServiceReady"
-REASON_LLMIS_PROGRESSING = "LLMInferenceServiceProgressing"
+REASON_PROGRESSING = "Progressing"
+REASON_CONFIG_INVALID = "ConfigInvalid"
+REASON_INTERNAL_ERROR = "InternalError"
 
+# Cold-start reasons lifted from the LLM-IS:
+LLMIS_COND_PULLING = "Pulling"
+LLMIS_COND_LWS_GANG_PENDING = "LWSGangPending"
+LLMIS_COND_ENGINE_LOADING = "EngineLoading"
 
-# Composed resource keys — stable names on the response so subsequent
-# reconciles update rather than recreate.
+# Composed resource keys — stable so subsequent reconciles update.
 LLMIS_KEY = "llm-is"
 RESOURCE_CLAIM_DECODE_KEY = "rc-decode"
 RESOURCE_CLAIM_PREFILL_KEY = "rc-prefill"
 
 
+def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
+    """Crossplane composition function entry point."""
+    rsp = response.to(req)
+    Renderer(req, rsp).run()
+    return rsp
+
+
 class Renderer:
-    """ModelReplica → KServe LLMInferenceService + DRA ResourceClaims."""
+    """Phase orchestrator for one MR reconcile."""
 
     def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         self.req = req
         self.rsp = rsp
-        self.mr = _load_mr(req)
 
-        # Matched substrate — populated by resolve_inputs().
-        self.cluster = None  # InferenceCluster
-        self.classes: dict[str, "InferenceClass"] = {}  # pool name → class
+        # Filled in across phases.
+        self.mr: rendering.ModelReplicaView | None = None
+        self.cluster: rendering.ClusterView | None = None
+        self.classes: dict[str, rendering.ClassView] = {}
+        self.llmis_spec: dict = {}
+        self.wrapped: scheduler.WrappedRender | None = None
 
-    def render(self) -> None:
-        if not self.resolve_inputs():
+    # =======================================================================
+    # ENTRY
+    # =======================================================================
+
+    def run(self) -> None:
+        if not self.phase_require_cluster():
             return
-        self.compose_llmis()
-        self.compose_resource_claims()
-        self.observe_status()
+        if not self.phase_require_classes():
+            return
+        if not self.phase_load():
+            return
+        if not self.phase_render():
+            return
+        if not self.phase_wrap():
+            return
+        self.phase_emit()
+        self.phase_status()
 
-    # -----------------------------------------------------------------------
-    # 1. Required resources
-    # -----------------------------------------------------------------------
+    # =======================================================================
+    # ═══ Phase 1: REQUIRE cluster ═════════════════════════════════════════
+    # =======================================================================
 
-    def resolve_inputs(self) -> bool:
-        """We only need the IC we landed on + the class(es) referenced by
-        our decode / prefill pools. Crossplane re-runs until both are
-        observed."""
-        target = self.mr.target
+    def phase_require_cluster(self) -> bool:
+        target_cluster = _peek_target_cluster(self.req)
+        if not target_cluster:
+            # MR has no target yet — composer hasn't run. Nothing to do.
+            return False
         response.require_resources(
             self.rsp,
             name="cluster",
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceCluster",
-            match_name=target.cluster,
+            match_name=target_cluster,
         )
-        # Class names come from the IC; we discover them after the cluster
-        # is observed. Two-phase: cluster first, then classes.
-        observed = self.req.extra_resources
-        if "cluster" not in observed:
-            return False
-        self.cluster = _resolve_cluster(observed["cluster"])
+        return "cluster" in self.req.extra_resources
 
-        class_names = {self.cluster.pool_class(target.decode_pool)}
-        if target.prefill_pool:
-            class_names.add(self.cluster.pool_class(target.prefill_pool))
+    # =======================================================================
+    # ═══ Phase 2: REQUIRE classes ═════════════════════════════════════════
+    # IC tells us which classes are referenced by the pools we landed on.
+    # =======================================================================
+
+    def phase_require_classes(self) -> bool:
+        # Resolve cluster first so we know which class names to require.
+        try:
+            self.cluster = adapters.load_cluster(self.req)
+        except (ValueError, KeyError, NotImplementedError) as e:
+            self._fail(REASON_CONFIG_INVALID, str(e))
+            return False
+
+        decode_pool = _peek_target_decode_pool(self.req)
+        prefill_pool = _peek_target_prefill_pool(self.req)
+        class_names = {self.cluster.pool_to_class[decode_pool]}
+        if prefill_pool:
+            class_names.add(self.cluster.pool_to_class[prefill_pool])
 
         for cn in class_names:
             response.require_resources(
@@ -152,337 +186,217 @@ class Renderer:
                 kind="InferenceClass",
                 match_name=cn,
             )
+        return all(f"class-{cn}" in self.req.extra_resources for cn in class_names)
 
-        if not all(f"class-{cn}" in observed for cn in class_names):
+    # =======================================================================
+    # ═══ Phase 3: LOAD ════════════════════════════════════════════════════
+    # =======================================================================
+
+    def phase_load(self) -> bool:
+        try:
+            self.mr = adapters.load_mr(self.req)
+            class_names = list(set(self.cluster.pool_to_class.values())) if self.cluster else []
+            self.classes = adapters.load_classes(self.req, class_names)
+        except (ValueError, KeyError, NotImplementedError) as e:
+            self._fail(REASON_CONFIG_INVALID, str(e))
             return False
-
-        for cn in class_names:
-            self.classes[cn] = _resolve_class(observed[f"class-{cn}"])
-
         return True
 
-    # -----------------------------------------------------------------------
-    # 2. KServe LLMInferenceService
-    # -----------------------------------------------------------------------
+    # =======================================================================
+    # ═══ Phase 4: RENDER (pure) ═══════════════════════════════════════════
+    # =======================================================================
 
-    def compose_llmis(self) -> None:
-        """Render the LLM-IS for the target KServe version, wrapped per the
-        cluster's in-cluster scheduler (KAI / Kueue / none).
+    def phase_render(self) -> bool:
+        assert self.mr is not None
+        try:
+            self.llmis_spec = rendering.build_llmis_spec(self.mr, self.classes)
+        except Exception as e:  # noqa: BLE001 — defensive; render shouldn't raise
+            self._fail(REASON_INTERNAL_ERROR, f"render failed: {e}")
+            return False
+        return True
 
-        Single KServe render path here; switch on cluster.backend.version
-        once we ship per-version adapters (v0.16 / v0.17 / v0.18 differ on
-        the worker pod spec — `size`/`template` wrapper vs flat `containers`,
-        args vs command, storage migration).
+    # =======================================================================
+    # ═══ Phase 5: WRAP (pure) ═════════════════════════════════════════════
+    # Per-scheduler dispatch. KAI: schedulerName + PodGroup. Kueue: queue
+    # label + suspend. none: pass-through.
+    # =======================================================================
 
-        Scheduler integration is a separate dispatch (scheduler.wrap) that
-        post-processes the LLM-IS spec and emits any extra objects the
-        scheduler needs (PodGroup for KAI, none for Kueue — Kueue's webhook
-        creates Workload from the queue label).
-        """
-        base_spec = self._llmis_spec()
+    def phase_wrap(self) -> bool:
+        assert self.mr is not None and self.cluster is not None
+        try:
+            self.wrapped = scheduler.wrap(
+                self.cluster.scheduler_type,
+                self.llmis_spec,
+                mr_name=self.mr.parent_name,
+                namespace=self.mr.parent_namespace,
+                replica_index=self.mr.replica_index,
+            )
+        except Exception as e:  # noqa: BLE001
+            self._fail(REASON_INTERNAL_ERROR, f"scheduler wrap failed: {e}")
+            return False
+        return True
 
-        # Stage-2 wrap: mutate the LLM-IS spec + emit extra objects per
-        # scheduler. See scheduler.py for the per-scheduler logic.
-        wrapped = scheduler.wrap(
-            self.cluster.scheduler_type,
-            base_spec,
-            mr_name=self.mr.parent_name,
-            namespace=self.mr.parent_namespace,
-            replica_index=self.mr.replica_index,
-        )
+    # =======================================================================
+    # ═══ Phase 6: EMIT ════════════════════════════════════════════════════
+    # Wrap each in-cluster object as a Crossplane k8s.Object so the
+    # remote-cluster provider applies it via the cluster's kubeconfig.
+    # =======================================================================
+
+    def phase_emit(self) -> None:
+        assert self.mr is not None and self.cluster is not None and self.wrapped is not None
 
         # The LLM-IS itself.
-        libresource.add_remote_object(
-            self.rsp,
-            name=LLMIS_KEY,
-            target_cluster_secret=self.cluster.kubeconfig_secret_ref,
+        self._emit_remote(
+            LLMIS_KEY,
             api_version="serving.kserve.io/v1alpha1",
             kind="LLMInferenceService",
             metadata={
-                "name": naming.llmis_name(self.mr.parent_name, self.mr.replica_index),
+                "name": _llmis_name(self.mr.parent_name, self.mr.replica_index),
                 "namespace": self.mr.parent_namespace,
-                "labels": {metadata.LABEL_KEY_REPLICA: str(self.mr.replica_index)},
             },
-            spec=wrapped.llmis_spec,
+            spec=self.wrapped.llmis_spec,
         )
 
-        # Scheduler-side companion objects (PodGroup for KAI, etc.). Lands
-        # on the same target cluster via the same kubeconfig.
-        for i, obj in enumerate(wrapped.extra_objects):
-            libresource.add_remote_object(
-                self.rsp,
-                name=f"sched-{i}",
-                target_cluster_secret=self.cluster.kubeconfig_secret_ref,
+        # DRA ResourceClaims — one per role.
+        decode_class = self.classes[self.cluster.pool_to_class[self.mr.target_decode_pool]]
+        self._emit_remote(
+            RESOURCE_CLAIM_DECODE_KEY,
+            api_version="resource.k8s.io/v1beta1",
+            kind="ResourceClaim",
+            metadata={
+                "name": _claim_name(self.mr.parent_name, self.mr.replica_index, "decode"),
+                "namespace": self.mr.parent_namespace,
+            },
+            spec=rendering.build_resource_claim_spec(self.mr.decode, decode_class),
+        )
+        if self.mr.prefill is not None and self.mr.target_prefill_pool is not None:
+            prefill_class = self.classes[self.cluster.pool_to_class[self.mr.target_prefill_pool]]
+            self._emit_remote(
+                RESOURCE_CLAIM_PREFILL_KEY,
+                api_version="resource.k8s.io/v1beta1",
+                kind="ResourceClaim",
+                metadata={
+                    "name": _claim_name(self.mr.parent_name, self.mr.replica_index, "prefill"),
+                    "namespace": self.mr.parent_namespace,
+                },
+                spec=rendering.build_resource_claim_spec(self.mr.prefill, prefill_class),
+            )
+
+        # Scheduler companion objects (PodGroup for KAI; none for Kueue).
+        for i, obj in enumerate(self.wrapped.extra_objects):
+            self._emit_remote(
+                f"sched-{i}",
                 api_version=obj["apiVersion"],
                 kind=obj["kind"],
                 metadata=obj["metadata"],
                 spec=obj["spec"],
             )
 
-    def _llmis_spec(self) -> dict:
-        """Build the KServe LLM-IS spec from the MR's resolved roles.
+    def _emit_remote(
+        self,
+        key: str,
+        api_version: str,
+        kind: str,
+        metadata: dict,
+        spec: dict,
+    ) -> None:
+        """Wrap a remote-cluster object as a Crossplane k8s.Object.
 
-        Topology mapping:
-
-          Tensor          → workerSpec sized to gpus_per_node, 1 pod
-          TensorPipeline  → LWS group: pipeline pods × tensor GPUs each
-          DataExpert      → DP+EP across nodes; LWS group sized accordingly
-
-        Disaggregation: decode is the top-level workerSpec; prefill is
-        rendered as `spec.prefill` with its own workerSpec. KV transfer
-        config is plumbed through engine.args (Nic's design — opaque
-        pass-through).
+        The provider-kubernetes Object resource takes a `forProvider.manifest`
+        with the embedded object + a `providerConfigRef` pointing at the
+        cluster's kubeconfig.
         """
-        decode = self.mr.decode  # always present
-        spec = {
-            "model": {
-                "name": f"{self.mr.parent_namespace}/{self.mr.parent_name}",
-                "source": _source(self.mr.source),
-            },
-            "replicas": 1,  # one LLM-IS per ModelReplica — sticky 1
-            "engine": _engine_block(self.mr.engine, decode),
-            "workerSpec": _worker_spec(
-                decode,
-                self.classes[self.cluster.pool_class(self.mr.target.decode_pool)],
-            ),
-        }
-        if self.mr.prefill is not None:
-            spec["prefill"] = {
-                "engine": _engine_block(self.mr.engine, self.mr.prefill),
-                "workerSpec": _worker_spec(
-                    self.mr.prefill,
-                    self.classes[self.cluster.pool_class(self.mr.target.prefill_pool)],
-                ),
-            }
-        return spec
-
-    # -----------------------------------------------------------------------
-    # 3. DRA ResourceClaims
-    # -----------------------------------------------------------------------
-
-    def compose_resource_claims(self) -> None:
-        """Emit a DRA ResourceClaim per role.
-
-        DRA is required on every InferenceCluster (Nic's #64 design — no
-        device-plugin fallback). The claim's selector is derived from the
-        class's typed capabilities:
-
-          requirements:
-            - selector:
-                cel: |
-                  device.attributes["gpu.nvidia.com/product"].string ==
-                    capabilities["gpu.product"]
-                  && device.attributes["gpu.nvidia.com/memory.gib"].quantity >=
-                    capabilities["gpu.vramGiB"]
-
-        The claim count is gpus_per_node (per-pod). Multiple pods in a LWS
-        gang each get their own claim. The DRA driver matches them against
-        runtime ResourceSlices at admission — that's where drift / typos /
-        misconfig get caught (the federation match already evaluated the
-        same predicate against declared attrs at stage 1).
-        """
-        decode_class = self.classes[self.cluster.pool_class(self.mr.target.decode_pool)]
-        libresource.add_remote_object(
-            self.rsp,
-            name=RESOURCE_CLAIM_DECODE_KEY,
-            target_cluster_secret=self.cluster.kubeconfig_secret_ref,
-            api_version="resource.k8s.io/v1beta1",
-            kind="ResourceClaim",
-            metadata={
-                "name": naming.claim_name(
-                    self.mr.parent_name, self.mr.replica_index, "decode"
-                ),
-                "namespace": self.mr.parent_namespace,
-            },
-            spec=_resource_claim_spec(self.mr.decode, decode_class),
-        )
-        if self.mr.prefill is not None:
-            prefill_class = self.classes[
-                self.cluster.pool_class(self.mr.target.prefill_pool)
-            ]
-            libresource.add_remote_object(
-                self.rsp,
-                name=RESOURCE_CLAIM_PREFILL_KEY,
-                target_cluster_secret=self.cluster.kubeconfig_secret_ref,
-                api_version="resource.k8s.io/v1beta1",
-                kind="ResourceClaim",
-                metadata={
-                    "name": naming.claim_name(
-                        self.mr.parent_name, self.mr.replica_index, "prefill"
-                    ),
-                    "namespace": self.mr.parent_namespace,
+        assert self.cluster is not None
+        resource.update(
+            self.rsp.desired.resources[key],
+            {
+                "apiVersion": "kubernetes.crossplane.io/v1alpha2",
+                "kind": "Object",
+                "metadata": {
+                    "name": f"{metadata['namespace']}-{metadata['name']}-{key}",
                 },
-                spec=_resource_claim_spec(self.mr.prefill, prefill_class),
-            )
+                "spec": {
+                    "providerConfigRef": {"name": self.cluster.kubeconfig_secret_ref["name"]},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": api_version,
+                            "kind": kind,
+                            "metadata": metadata,
+                            "spec": spec,
+                        }
+                    },
+                },
+            },
+        )
 
-    # -----------------------------------------------------------------------
-    # 4. Observe status from the in-cluster LLM-IS
-    # -----------------------------------------------------------------------
+    # =======================================================================
+    # ═══ Phase 7: STATUS ══════════════════════════════════════════════════
+    # Translate observed LLM-IS conditions → MR conditions.
+    # =======================================================================
 
-    def observe_status(self) -> None:
-        """Translate the LLM-IS's observed status into MR conditions.
-
-        Granular cold-start signals are the UX investment: the MR surfaces
-        which stage of cold-start it's in so users see "pulling 70GB image"
-        vs "weights still loading" vs "gang scheduling stuck".
-        """
+    def phase_status(self) -> None:
         observed = self.req.observed.resources.get(LLMIS_KEY)
         if observed is None:
-            conditions.set_condition(
-                self.rsp,
-                type=CONDITION_TYPE_RENDERED,
-                status="True",
-                reason=REASON_RENDERED,
-            )
+            self._set(CONDITION_TYPE_RENDERED, "True", REASON_RENDERED)
             return
 
-        # Real impl reads observed.resource (Struct) and lifts conditions.
-        # Sketch: just signal "ready when the LLM-IS is ready".
         if conditions.has_condition(self.req, LLMIS_KEY, "Ready"):
-            conditions.set_condition(
-                self.rsp,
-                type=CONDITION_TYPE_READY,
-                status="True",
-                reason=REASON_LLMIS_READY,
-            )
+            self._set(CONDITION_TYPE_READY, "True", REASON_LLMIS_READY)
             return
 
-        # When not Ready, lift the most informative cold-start condition.
-        for stage_cond in (
-            CONDITION_TYPE_PULLING,
-            CONDITION_TYPE_LWS_GANG_PENDING,
-            CONDITION_TYPE_ENGINE_LOADING,
-        ):
-            if conditions.has_condition(self.req, LLMIS_KEY, stage_cond):
-                conditions.set_condition(
-                    self.rsp,
-                    type=CONDITION_TYPE_READY,
-                    status="False",
-                    reason=stage_cond,
-                )
+        # Lift the most informative cold-start condition first.
+        for stage in (LLMIS_COND_PULLING, LLMIS_COND_LWS_GANG_PENDING, LLMIS_COND_ENGINE_LOADING):
+            if conditions.has_condition(self.req, LLMIS_KEY, stage):
+                self._set(CONDITION_TYPE_READY, "False", stage)
                 return
+
+        self._set(CONDITION_TYPE_READY, "False", REASON_PROGRESSING)
+
+    # =======================================================================
+    # Helpers
+    # =======================================================================
+
+    def _set(self, type_: str, status: str, reason: str, message: str = "") -> None:
         conditions.set_condition(
-            self.rsp,
-            type=CONDITION_TYPE_READY,
-            status="False",
-            reason=REASON_LLMIS_PROGRESSING,
+            self.rsp, type=type_, status=status, reason=reason, message=message
+        )
+
+    def _fail(self, reason: str, message: str) -> None:
+        conditions.set_condition(
+            self.rsp, type=CONDITION_TYPE_READY, status="False", reason=reason, message=message
         )
 
 
 # ---------------------------------------------------------------------------
-# Render helpers — pure functions over MR + class.
-# These are the per-KServe-version dispatch points.
+# Peek helpers — read MR.spec.target.* before adapters.load_mr() runs.
+# Phase 1 needs the cluster name; Phase 2 needs the pool names.
 # ---------------------------------------------------------------------------
 
 
-def _worker_spec(role, cls) -> dict:
-    """Build the LLM-IS workerSpec for a role.
-
-    Targets KServe v0.18 schema today (flat `containers`, no size/template
-    wrapper). v0.17 / v0.16 dispatch is a follow-up — add a switch on
-    cluster.backend.version when the per-version adapters land.
-    """
-    nodes_per_inst = role["topology"]["pipeline"] or 1
-    gpus_per_node = role["gpusPerNode"]
-    return {
-        "replicas": role["instances"],
-        # LWS group size: pipeline depth (>1 for multi-node).
-        "leaderWorkerSet": {"size": nodes_per_inst} if nodes_per_inst > 1 else None,
-        "containers": [
-            {
-                "name": "engine",
-                "image": role.get("image"),
-                "command": role.get("command", []),
-                "args": role.get("args", []),
-                "resources": {
-                    "claims": [{"name": "gpus"}],  # bound to a ResourceClaim
-                    "limits": {"nvidia.com/gpu": gpus_per_node},
-                },
-            }
-        ],
-    }
+def _peek_target_cluster(req: fnv1.RunFunctionRequest) -> str:
+    return _peek_spec(req).get("target", {}).get("cluster", "")
 
 
-def _engine_block(engine, role) -> dict:
-    """Pass-through engine config for one role.
-
-    Nic's API: engine.{name, image, args}. No structured `quantization` /
-    `speculation` / `optimizations` — engine args is the opaque seam.
-    """
-    return {
-        "name": engine.get("name"),
-        "image": engine.get("image"),
-        "args": engine.get("args", []),
-    }
+def _peek_target_decode_pool(req: fnv1.RunFunctionRequest) -> str:
+    return _peek_spec(req).get("target", {}).get("decodePool", "")
 
 
-def _resource_claim_spec(role, cls) -> dict:
-    """Derive a DRA ResourceClaim from the class's typed capabilities.
-
-    Builds a CEL expression over device.attributes that mirrors the
-    capability constraints. The DRA driver evaluates this against runtime
-    ResourceSlices at pod admission.
-    """
-    return {
-        "devices": {
-            "requests": [
-                {
-                    "name": "gpus",
-                    "deviceClassName": _device_class_for(cls),
-                    "selectors": [
-                        {"cel": _cel_from_capabilities(cls.capabilities)},
-                    ],
-                    "count": role["gpusPerNode"],
-                }
-            ],
-        }
-    }
+def _peek_target_prefill_pool(req: fnv1.RunFunctionRequest) -> str | None:
+    return _peek_spec(req).get("target", {}).get("prefillPool") or None
 
 
-def _cel_from_capabilities(capabilities: dict) -> str:
-    """Map declared capabilities → DRA selector CEL.
-
-    Real impl walks the capability map and emits the equivalent
-    device.attributes predicates. Sketch shows the shape — production
-    would template per well-known key (gpu.product, gpu.vramGiB,
-    gpu.features, ...).
-    """
-    raise NotImplementedError("template per well-known capability key when wired")
-
-
-def _device_class_for(cls) -> str:
-    """Pick the DRA DeviceClass name from the InferenceClass's vendor."""
-    vendor = cls.capabilities.get("gpu.vendor", "nvidia")
-    return {"nvidia": "gpu.nvidia.com", "amd": "gpu.amd.com"}.get(vendor, "generic-gpu")
-
-
-def _source(source) -> dict:
-    return source  # MR carries the resolved source dict already
+def _peek_spec(req: fnv1.RunFunctionRequest) -> dict:
+    return resource.struct_to_dict(req.observed.composite.resource).get("spec", {})
 
 
 # ---------------------------------------------------------------------------
-# Adapters between Crossplane structs and renderer types.
+# Naming.
 # ---------------------------------------------------------------------------
 
 
-def _load_mr(req):
-    raise NotImplementedError("wire to mrv1alpha1.ModelReplica when #64 lands")
+def _llmis_name(parent_name: str, idx: int) -> str:
+    return f"{parent_name}-{idx}"
 
 
-def _resolve_cluster(observed):
-    raise NotImplementedError("walk extra resources when #64 lands")
-
-
-def _resolve_class(observed):
-    raise NotImplementedError("walk extra resources when #64 lands")
-
-
-# ---------------------------------------------------------------------------
-# Crossplane function entrypoint
-# ---------------------------------------------------------------------------
-
-
-def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
-    rsp = response.to(req)
-    Renderer(req, rsp).render()
-    return rsp
+def _claim_name(parent_name: str, idx: int, role: str) -> str:
+    return f"{parent_name}-{idx}-{role}-claim"

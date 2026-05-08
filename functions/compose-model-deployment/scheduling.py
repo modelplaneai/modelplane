@@ -1,5 +1,17 @@
 """Federation matcher — pick (InferenceCluster, pool) per ModelReplica.
 
+═══════════════════════════════════════════════════════════════════════════
+  THIS MODULE IS PURE.  No Crossplane imports. No Kubernetes imports.
+  No I/O. The matcher is `match(md, clusters, existing) -> MatchResult`.
+
+  The Crossplane composition function (main.py) calls into here after
+  adapters.py has translated the observed XR / extra-resources into the
+  plain dataclasses defined below. Result of match() flows into
+  emitters.py to build composed-resource dicts.
+
+  Test target: tests/unit/test_scheduling.py — table-driven.
+═══════════════════════════════════════════════════════════════════════════
+
 Stage 1 of two-stage scheduling. Operates on declared substrate state only:
 
   - InferenceCluster.metadata.labels     — cluster-level matching
@@ -27,10 +39,8 @@ Use cases this exercises (each row in the test plan should hit one):
                                drives the spread across the fleet
 """
 
-import math
 from dataclasses import dataclass, field
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Types — plain dataclasses standing in for the generated protos.

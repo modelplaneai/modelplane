@@ -36,15 +36,55 @@ Two Crossplane composition functions, one IR between them.
 
 ## What lives where
 
-| Concern | File | What it does |
-|---|---|---|
-| **Federation matcher** | [`functions/compose-model-deployment/scheduling.py`](../../functions/compose-model-deployment/scheduling.py) | Pure-Python algorithm: filter ICs by `clusterSelector.matchLabels`; filter pools by `nodeSelector.cel` against class capabilities; capacity check with sticky-placement accounting; score and pick per replica. Plain dataclasses — runs without any of Modelplane's protos. |
-| **Composer** (MD → MR set) | [`functions/compose-model-deployment/main.py`](../../functions/compose-model-deployment/main.py) | Crossplane glue: declares required-resources (clusters, classes, existing replicas), calls `scheduling.match()`, emits `ModelReplica` × `spec.replicas` + `ModelEndpoint` × `spec.replicas`, sets MD status conditions. |
-| **Renderer** (MR → KServe) | [`functions/compose-model-placement/main.py`](../../functions/compose-model-placement/main.py) | Reads MR + matched IC + classes; builds a KServe `LLMInferenceService` (decode + optional prefill) + DRA `ResourceClaim`s + scheduler-companion objects on the target cluster via the kubeconfig provider; lifts cold-start conditions back. |
-| **Scheduler dispatch** | [`functions/compose-model-placement/scheduler.py`](../../functions/compose-model-placement/scheduler.py) | Per-scheduler wrap: KAI (schedulerName + PodGroup), Kueue (queue label + suspend gate), none (pass-through). Pluggable via a single dispatch table. |
-| **Capacity adapter** | [`lib/capacity_adapter/`](../../lib/capacity_adapter/) | Per-scheduler status pullers: `kai.py` (KAI Queue/ResourcePool → CapacitySnapshot), `kueue.py` (ClusterQueue.flavorsUsage → CapacitySnapshot), shared types in `common.py`. Runs as a separate controller, not a composition function. |
+The composition functions are split into **pure modules** (algorithm, dict-builders, dispatch tables — no Crossplane imports) and an **orchestrator** `main.py` that glues phases together with required-resources + status writes. The boundary keeps the algorithm testable in isolation and makes "what's Crossplane logic vs scheduling logic" obvious in a glance.
 
-The matcher is deliberately isolated in `scheduling.py` so it can be tested with table-driven cases over `(IC fleet, MD selectors) → expected placements` without touching Crossplane.
+### Composer — `compose-model-deployment/`
+
+| File | Pure? | What it does |
+|---|---|---|
+| [`scheduling.py`](../../functions/compose-model-deployment/scheduling.py) | ✓ | Federation matcher algorithm. `match(md, clusters, existing) → MatchResult`. Plain dataclasses, no I/O. |
+| [`adapters.py`](../../functions/compose-model-deployment/adapters.py) | boundary | Proto / observed-XR ⇄ scheduling dataclasses. Three load functions: `load_md`, `load_clusters`, `load_existing`. |
+| [`emitters.py`](../../functions/compose-model-deployment/emitters.py) | ✓ | Pure dict builders for composed `ModelReplica` / `ModelEndpoint` resources. |
+| [`main.py`](../../functions/compose-model-deployment/main.py) | orchestrator | Crossplane glue — six phases (REQUIRE → LOAD → MATCH → BUILD → EMIT → STATUS), each clearly banner-commented. State machine for `Scheduled` / `ReplicasReady` conditions. |
+
+### Renderer — `compose-model-placement/`
+
+| File | Pure? | What it does |
+|---|---|---|
+| [`rendering.py`](../../functions/compose-model-placement/rendering.py) | ✓ | Build KServe LLM-IS spec + DRA `ResourceClaim` spec + selector CEL from class capabilities. |
+| [`scheduler.py`](../../functions/compose-model-placement/scheduler.py) | ✓ | Per-scheduler wrap dispatch (KAI: `schedulerName` + `PodGroup`; Kueue: queue label + `suspend`; none: pass-through). |
+| [`adapters.py`](../../functions/compose-model-placement/adapters.py) | boundary | Proto / observed-MR ⇄ rendering dataclasses. |
+| [`main.py`](../../functions/compose-model-placement/main.py) | orchestrator | Seven phases (REQUIRE-cluster → REQUIRE-classes → LOAD → RENDER → WRAP → EMIT → STATUS). State machine for `Ready` (with cold-start sub-states `Pulling` / `LWSGangPending` / `EngineLoading`). |
+
+### Capacity adapter — `lib/capacity_adapter/`
+
+| File | What it does |
+|---|---|
+| [`common.py`](../../lib/capacity_adapter/common.py) | Shared types: `ResourceCount`, `PoolCapacity`, `CapacitySnapshot`. `write_status()` builds the `IC.status.capacity` patch. |
+| [`kai.py`](../../lib/capacity_adapter/kai.py) | KAI Queue / ResourcePool → CapacitySnapshot. |
+| [`kueue.py`](../../lib/capacity_adapter/kueue.py) | Kueue ClusterQueue.flavorsUsage → CapacitySnapshot. |
+
+Runs as a **separate controller**, not a composition function — continuous poll/watch loop against each cluster's scheduler status CRDs.
+
+## Tests
+
+```bash
+# One-time setup (until repo's nix toolchain is wired):
+uv venv .venv-test
+uv pip install --python .venv-test/bin/python pytest ruff pyright
+
+# Run unit tests
+.venv-test/bin/python -m pytest tests/unit -v
+# Lint
+.venv-test/bin/ruff check functions/ lib/
+```
+
+| Layer | Files | Coverage today |
+|---|---|---|
+| **Static** | `pyproject.toml` configures `ruff` (linting) + `pyright` (typing) over `functions/` and `lib/`. | All clean. |
+| **Pure unit tests** | [`tests/unit/`](../../tests/unit/) — 69 tests covering `scheduling.py` (topology, filtering, capacity, sticky placement, disagg, trace), `scheduler.py` (KAI / Kueue / none dispatch + gang sizing), `rendering.py` (LLM-IS shape + DRA selector CEL), and `lib/capacity_adapter/` (projection from KAI / Kueue status). | 69/69 green; runs in ~20ms. |
+| **Composition tests** | Existing `tests/test-*/` pattern (Upbound `up` CLI). New shapes wired once #64's protos land — `tests/test-model-deployment-v2/`, `tests/test-model-replica-{kai,kueue}/`. | Deferred. |
+| **E2E** | Real cluster running KAI or Kueue. | Out of scope for this PR. |
 
 ## Dependencies — what each function reads / writes
 
