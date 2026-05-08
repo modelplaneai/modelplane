@@ -27,8 +27,8 @@ Lifecycle (one reconcile = one call):
   │   observed structs to scheduling types. Errors surface as       │
   │   ConfigInvalid (Ready=False) — we don't proceed.               │
   ├─────────────────────────────────────────────────────────────────┤
-  │ Phase 3: MATCH (pure)                                           │
-  │   scheduling.match() runs the federation algorithm. Always      │
+  │ Phase 3: SCHEDULE (pure)                                        │
+  │   scheduling.schedule() — Filter → Score → Bind. Always         │
   │   returns; never raises. Partial / no-match shows up in result. │
   ├─────────────────────────────────────────────────────────────────┤
   │ Phase 4: BUILD (pure)                                           │
@@ -63,7 +63,7 @@ Error handling:
 
   Required-resource missing (Phase 1) → return waiting (no errors)
   Adapter failure (Phase 2)           → ConfigInvalid + log
-  Matcher failure (Phase 3)           → can't happen — matcher is total
+  Scheduler failure (Phase 3)         → can't happen — schedule() is total
   Builder / emit failure (Phase 5)    → InternalError + log
 """
 
@@ -127,7 +127,7 @@ class Composer:
         self.source: dict = {}
         self.clusters: list[scheduling.InferenceCluster] = []
         self.existing: list[scheduling.ExistingPlacement] = []
-        self.result: scheduling.MatchResult | None = None
+        self.result: scheduling.ScheduleResult | None = None
 
     # =======================================================================
     # ENTRY
@@ -138,7 +138,7 @@ class Composer:
             return
         if not self.phase_load():
             return
-        self.phase_match()
+        self.phase_schedule()
         self.phase_build_and_emit()
         self.phase_status()
 
@@ -205,13 +205,15 @@ class Composer:
         return True
 
     # =======================================================================
-    # ═══ Phase 3: MATCH ════════════════════════════════════════════════════
-    # Pure call into scheduling.py. Cannot fail.
+    # ═══ Phase 3: SCHEDULE ════════════════════════════════════════════════
+    # Pure call into scheduling.schedule() — Filter → Score → Bind. Total
+    # function; cannot fail. Partial scheduling surfaces as fewer placements
+    # in the result than spec.replicas.
     # =======================================================================
 
-    def phase_match(self) -> None:
+    def phase_schedule(self) -> None:
         assert self.md is not None
-        self.result = scheduling.match(self.md, self.clusters, self.existing)
+        self.result = scheduling.schedule(self.md, self.clusters, self.existing)
 
     # =======================================================================
     # ═══ Phase 4+5: BUILD + EMIT ═══════════════════════════════════════════
@@ -318,7 +320,7 @@ def _peek_source(req: fnv1.RunFunctionRequest) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _no_placement_reason(result: scheduling.MatchResult) -> str:
+def _no_placement_reason(result: scheduling.ScheduleResult) -> str:
     if not result.trace:
         return REASON_NO_CLUSTERS
     if all(t.reason == "capacity" for t in result.trace):

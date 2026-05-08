@@ -110,7 +110,7 @@ def test_match_filters_clusters_by_labels():
     excluded = _ic("dev",  labels={"tier": "dev"}, pools=[_pool("p", max_nodes=4)])
     md = _md(cluster_selector={"tier": "production"})
 
-    result = scheduling.match(md, [eligible, excluded], existing=[])
+    result = scheduling.schedule(md, [eligible, excluded], existing=[])
 
     placed = [p.cluster for p in result.placements]
     assert placed == ["east"]
@@ -121,7 +121,7 @@ def test_match_filters_clusters_by_labels():
 def test_match_no_eligible_clusters_returns_empty_with_trace():
     md = _md(cluster_selector={"tier": "frontier"})
     ic = _ic("east", labels={"tier": "production"}, pools=[_pool("p")])
-    result = scheduling.match(md, [ic], existing=[])
+    result = scheduling.schedule(md, [ic], existing=[])
     assert result.placements == []
     assert any(t.reason == "clusterSelector" for t in result.trace)
 
@@ -148,7 +148,7 @@ def test_match_filters_pool_by_cel(monkeypatch):
 
     monkeypatch.setattr(scheduling, "eval_cel", _cel)
 
-    result = scheduling.match(md, [ic], existing=[])
+    result = scheduling.schedule(md, [ic], existing=[])
     assert [p.decode.pool for p in result.placements] == ["h200"]
 
 
@@ -159,7 +159,7 @@ def test_match_pool_too_small_for_per_node_shape():
         topology=scheduling.Topology(strategy="Tensor", tensor=8),  # 8 GPUs/node
     ))
     ic = _ic("east", pools=[_pool("l4", gpu_count=4)])  # only 4 GPUs/node
-    result = scheduling.match(md, [ic], existing=[])
+    result = scheduling.schedule(md, [ic], existing=[])
     assert result.placements == []
     assert any(t.reason == "shape" for t in result.trace)
 
@@ -178,7 +178,7 @@ def test_match_pool_at_capacity():
             prefill_pool=None, prefill_nodes=0,
         )
     ]
-    result = scheduling.match(md, [ic], existing=existing)
+    result = scheduling.schedule(md, [ic], existing=existing)
     assert result.placements == []
     assert any(t.reason == "capacity" for t in result.trace)
 
@@ -200,7 +200,7 @@ def test_match_capacity_reserved_across_replicas():
         _ic("east", pools=[_pool("p", max_nodes=2)]),
         _ic("west", pools=[_pool("p", max_nodes=2)]),
     ]
-    result = scheduling.match(md, ics, existing=[])
+    result = scheduling.schedule(md, ics, existing=[])
     assert len(result.placements) == 3
     # Each pool can host 2; total fits 3.
     cluster_counts = {}
@@ -215,14 +215,14 @@ def test_match_oversubscribed_returns_partial():
     """4 replicas, only 2 pool-slots in the fleet → 2 placed, 2 dropped."""
     md = _md(replicas=4)
     ic = _ic("east", pools=[_pool("p", max_nodes=2)])
-    result = scheduling.match(md, [ic], existing=[])
+    result = scheduling.schedule(md, [ic], existing=[])
     assert len(result.placements) == 2
 
 
 def test_match_zero_replicas():
     md = _md(replicas=0)
     ic = _ic("east", pools=[_pool("p")])
-    result = scheduling.match(md, [ic], existing=[])
+    result = scheduling.schedule(md, [ic], existing=[])
     assert result.placements == []
 
 
@@ -241,7 +241,7 @@ def test_match_sticky_existing_replicas():
             prefill_pool=None, prefill_nodes=0,
         )
     ]
-    result = scheduling.match(md, ics, existing=existing)
+    result = scheduling.schedule(md, ics, existing=existing)
     placed = sorted(result.placements, key=lambda p: p.replica_index)
     assert placed[0].replica_index == 0
     assert placed[0].cluster == "east"
@@ -261,7 +261,7 @@ def test_match_sticky_survives_a_new_better_cluster():
             prefill_pool=None, prefill_nodes=0,
         )
     ]
-    result = scheduling.match(md, [old_ic, new_ic], existing=existing)
+    result = scheduling.schedule(md, [old_ic, new_ic], existing=existing)
     assert [p.cluster for p in result.placements] == ["east"]
 
 
@@ -277,7 +277,7 @@ def test_match_drops_replicas_above_count():
         )
         for i in range(3)
     ]
-    result = scheduling.match(md, [ic], existing=existing)
+    result = scheduling.schedule(md, [ic], existing=existing)
     indices = sorted(p.replica_index for p in result.placements)
     assert indices == [0]
 
@@ -324,7 +324,7 @@ def test_match_disagg_skips_cluster_missing_prefill_pool(monkeypatch):
 
     monkeypatch.setattr(scheduling, "eval_cel", _cel)
 
-    result = scheduling.match(md, [west, east], existing=[])
+    result = scheduling.schedule(md, [west, east], existing=[])
 
     assert len(result.placements) == 1
     p = result.placements[0]
@@ -353,7 +353,7 @@ def test_match_disagg_capacity_split():
         _pool("h200", gpu_count=8, max_nodes=8),
         _pool("l40s", gpu_count=4, max_nodes=8),
     ])
-    result = scheduling.match(md, [ic], existing=[])
+    result = scheduling.schedule(md, [ic], existing=[])
     assert len(result.placements) == 1
     p = result.placements[0]
     assert p.decode.nodes_used == 6
@@ -371,7 +371,7 @@ def test_match_trace_records_per_cluster_failures():
         _ic("east", labels={"tier": "production"}, pools=[_pool("p")]),
         _ic("west", labels={"tier": "dev"}, pools=[_pool("p")]),
     ]
-    result = scheduling.match(md, ics, existing=[])
+    result = scheduling.schedule(md, ics, existing=[])
     by_cluster = {t.cluster for t in result.trace}
     assert by_cluster == {"east", "west"}
 
@@ -379,7 +379,7 @@ def test_match_trace_records_per_cluster_failures():
 def test_match_trace_carries_capacity_detail():
     md = _md()
     ic = _ic("east", pools=[_pool("p", max_nodes=0)])
-    result = scheduling.match(md, [ic], existing=[])
+    result = scheduling.schedule(md, [ic], existing=[])
     capacity_traces = [t for t in result.trace if t.reason == "capacity"]
     assert capacity_traces
     assert "/0 free" in capacity_traces[0].detail or "0/" in capacity_traces[0].detail

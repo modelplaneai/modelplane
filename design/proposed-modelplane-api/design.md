@@ -277,6 +277,31 @@ Listed so the surface is honest:
 - A real CEL evaluator — `scheduling.eval_cel` is a placeholder. Production wires `cel-python` or a Go shim.
 - Tests — the matcher's pure-Python isolation makes it easy to add table-driven tests; deferred so this PR stays focused on *shape*.
 
+## Delta from existing scheduling on `main`
+
+The repo today has a single-cluster placement function in [`functions/compose-model-deployment/scheduling.py` on `main`](https://github.com/modelplaneai/modelplane/blob/main/functions/compose-model-deployment/scheduling.py) (~130 lines). This branch reworks it into a fleet-level federation scheduler. The conceptual deltas:
+
+| | Existing on `main` | This branch |
+|---|---|---|
+| **Mental model** | Per-deployment, picks N matching `InferenceEnvironment`s up to `spec.environments` | Per-replica, picks `(InferenceCluster, pool)` for each of `spec.replicas` |
+| **Unit of placement** | `ModelPlacement` per matched env (1:1 with env, model-VRAM-derived GPU count) | `ModelReplica` per logical replica (1:1 with `spec.replicas`, topology-driven shape) |
+| **Capacity input** | `env.status.capacity.gpuPools[]` — runtime-observed VRAM/node counts | `IC.status.capacity` — **normalized** by per-scheduler adapter (Kueue / KAI / Volcano), pool-level free counts |
+| **Pool eligibility** | Fixed math: `model_vram / pool_memory` ≥ enough VRAM | CEL predicate over typed `InferenceClass.capabilities` (vendor, product, vramGiB, features, interconnect, …) |
+| **Topology** | Implicit (multi-node iff `gpus_needed > countPerNode`); single TP-like math | Explicit discriminated-union: `Tensor` / `TensorPipeline` / `DataExpert`, with `instances` per role |
+| **Disaggregation** | Not supported | First-class. Decode + prefill are separate roles, scheduled together but to (potentially) different pools, **same cluster** required (KV cache transfer) |
+| **Engine matching** | `serving.match_profile(model, env)` walks a priority-ordered `serving[]` array on `ClusterModel` | No serving profiles. Engine is single-config on the MD; engine features are pass-through (Nic's #64) |
+| **Scaling** | Hard-coded set `{Fixed, Concurrency}`; checked inline | Out of scope — KEDA `ScaledObject` is user-authored; we expose the scale subresource only |
+| **Stickiness** | Sort: existing-first by name | Per-replica `replicaIndex` carried from existing MR; scheduler reuses without recomputing |
+| **Multi-replica accounting** | One `schedule()` call returns N candidates; capacity isn't reserved across the call | Filter / Score / **Bind** pass reserves consumed capacity in a working set so subsequent replicas don't double-count |
+| **Algorithm structure** | Single loop with inline filtering + sort | Explicit Filter → Score → Bind phases (matches K8s SIG-Scheduling vocabulary) |
+| **Result shape** | `list[Candidate(name, gateway_address, profile_name)]` | `ScheduleResult(placements: list[Placement], trace: list[MatchTrace])` — separates decisions from per-cluster rejection trace |
+| **`matchTrace`** | Not surfaced; failures collapse to "no candidates" | Per-(cluster, pool, reason, detail) trace surfaced on `MD.status.matchTrace` so users see *why* every candidate was rejected |
+| **Cluster source** | Single source — `InferenceEnvironment` (one cluster type) | Multi-source: managed clouds + `Existing` BYOC (kubeconfig) — orchestrator-detected scheduler / backend / DRA |
+| **In-cluster integration** | None — assumed kube-scheduler default everywhere | Stage-2 dispatch in renderer (`scheduler.py`): KAI emits PodGroup, Kueue stamps queue label + suspend |
+| **Lines of code** | ~130 (single algorithm) | ~490 (algorithm) + ~280 (composer) + ~180 (emitters) + ~100 (adapters), modularized |
+
+The shape change cascades: `apis/inferenceenvironments/` → `apis/inferenceclusters/`, `apis/clustermodels/` + `apis/models/` collapse into `ModelDeployment`, `ModelPlacement` → `ModelReplica`, plus a new `InferenceClass` for hardware bundles. API land lives in [#64](https://github.com/modelplaneai/modelplane/pull/64); this branch implements *against* that shape.
+
 ## What this PR is for
 
 A working sketch reviewers can read end-to-end:

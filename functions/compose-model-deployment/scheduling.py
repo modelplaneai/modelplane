@@ -1,40 +1,59 @@
-"""Federation matcher — pick (InferenceCluster, pool) per ModelReplica.
+"""Modelplane federation scheduler — fleet-level placement, NOT cluster-level scheduling.
 
 ═══════════════════════════════════════════════════════════════════════════
-  THIS MODULE IS PURE.  No Crossplane imports. No Kubernetes imports.
-  No I/O. The matcher is `match(md, clusters, existing) -> MatchResult`.
+  Modelplane is a META-FLEET SCHEDULER. We pick `(InferenceCluster, pool)`
+  per ModelReplica. We do NOT pick nodes, we do NOT bind pods, we do NOT
+  bin-pack, we do NOT do gang admission. Cluster-level scheduling is
+  delegated to KAI / Kueue / Volcano / kube-scheduler.
 
-  The Crossplane composition function (main.py) calls into here after
-  adapters.py has translated the observed XR / extra-resources into the
-  plain dataclasses defined below. Result of match() flows into
-  emitters.py to build composed-resource dicts.
+  Two-stage scheduling, in order:
+    Stage 1 — federation (THIS FILE): which `(cluster, pool)` per replica.
+    Stage 2 — in-cluster: KAI/Kueue admit; kube-scheduler binds; DRA
+              driver allocates devices. Renderer (compose-model-placement)
+              wraps for the chosen scheduler.
 
-  Test target: tests/unit/test_scheduling.py — table-driven.
+  K8s SIG-Scheduling parallel — the algorithm follows the standard
+  `Schedule()` contract:
+                    Filter → Score → Bind
+                       │       │       │
+                       │       │       └─ commit decision (write Placement)
+                       │       └─ rank surviving candidates
+                       └─ eliminate ineligible (cluster labels, pool CEL,
+                                                feature set, capacity)
+
+  Pure module. No Crossplane / Kubernetes / I/O. Entry point is
+  `schedule(md, clusters, existing) -> ScheduleResult`. Plain
+  dataclasses. The Crossplane composition function (main.py) calls in
+  via adapters.py.
+
+  Test target: tests/unit/test_scheduling.py — table-driven over
+  (MD, IC fleet, existing) → expected ScheduleResult.
 ═══════════════════════════════════════════════════════════════════════════
 
-Stage 1 of two-stage scheduling. Operates on declared substrate state only:
+Inputs are *declared* substrate state only — never runtime device state:
 
-  - InferenceCluster.metadata.labels     — cluster-level matching
-  - InferenceCluster.spec.nodePools[]    — list of pools, each with a class ref
-  - InferenceClass.spec.capabilities     — typed capabilities for CEL matching
+  - InferenceCluster.metadata.labels         — cluster-level matchLabels
+  - InferenceCluster.spec.nodePools[]        — pools, each w/ a class ref
+  - InferenceClass.spec.capabilities         — typed capabilities, CEL-matched
   - InferenceCluster.spec.nodePools[].maxNodes — capacity ceiling
-  - existing ModelReplicas               — for sticky placement + capacity used
+  - existing ModelReplicas                   — sticky placement + accounting
 
-Federation never reads runtime DRA ResourceSlices. DRA grounding happens at
-stage 2 (in the renderer) when the pod actually lands.
+Federation never reads runtime DRA ResourceSlices. DRA grounding happens
+at stage 2 (in the renderer) when the pod actually lands. Whether the
+target cluster has DRA, device-plugin, or both, this scheduler's logic
+is identical.
 
-This is a sketch — assumes Nic's API shape from #64. The proto types aren't
-generated yet; we use plain dicts / dataclasses so the algorithm reads on its
-own. Real implementation slots into the existing crossplane.function pattern.
+Sketch: assumes Nic's API shape from #64. Generated protos aren't built
+yet; plain dataclasses below stand in. Adapters in adapters.py wire the
+real shapes when #64 lands.
 
-Use cases this exercises (each row in the test plan should hit one):
+Use cases this exercises:
 
   Single-node, single-GPU      examples/workloads/gpt-oss-20b.yaml
   Multi-node TP+PP             examples/workloads/kimi-k2.yaml
   Multi-node FP8               examples/workloads/qwen3-coder.yaml
   Multi-region (regional MDs)  examples/workloads/kimi-k2-eu.yaml
-  Disaggregated P/D            (will be added with #64 — top-level decode +
-                                spec.prefill block)
+  Disaggregated P/D            (lands with #64 — spec.prefill block)
   Multi-replica spread         spec.replicas=N → N placements; capacity
                                drives the spread across the fleet
 """
@@ -174,7 +193,7 @@ class MatchTrace:
 
 
 @dataclass
-class MatchResult:
+class ScheduleResult:
     placements: list[Placement] = field(default_factory=list)
     trace: list[MatchTrace] = field(default_factory=list)
 
@@ -241,67 +260,77 @@ def pool_fits_role(pool: Pool, role: RoleSpec) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Matcher entry point
+# Scheduler entry point — Filter → Score → Bind, per K8s SIG-Scheduling.
 # ---------------------------------------------------------------------------
 
 
-def match(
+def schedule(
     md: ModelDeploymentSpec,
     clusters: list[InferenceCluster],
     existing: list[ExistingPlacement],
-) -> MatchResult:
-    """Run federation matching for a ModelDeployment.
+) -> ScheduleResult:
+    """Federation scheduler — pick (cluster, pool) per replica.
 
-    Algorithm:
-      1. Reuse existing placements (sticky) for replica indices that already
-         have a ModelReplica. The matcher never moves a placement once made;
-         re-placement is handled out-of-band by the eviction controller.
-      2. For each remaining replica index 0..replicas-1, walk all (cluster,
-         pool) pairs, filter by:
-           A) clusterSelector.matchLabels ⊆ IC.metadata.labels
-           B) decode role's CEL passes against pool.cls.capabilities
-           C) pool fits decode role's per-node shape (gpu count check)
-           D) capacity headroom: pool.max_nodes − used ≥ nodes_required
-           E) for disagg: a second pool in the SAME cluster passes the
-              prefill role's CEL + capacity. Decode and prefill must
-              co-locate (KV cache transfer).
-      3. Score remaining (cluster, decode_pool[, prefill_pool]) candidates
-         by capacity headroom + spread bonus (prefer ICs not yet hosting
-         this MD). Stable hash tie-break.
-      4. Reserve the chosen capacity in our local view so subsequent
-         replicas don't double-count.
+    Per K8s SIG-Scheduling vocabulary, this is `Schedule(workload) ->
+    ScheduleResult`. Phases:
+
+      Sticky    Replicas that already have a ModelReplica keep their
+                target. The scheduler never moves an existing placement;
+                re-placement is handled out-of-band by an eviction
+                controller (which writes an annotation; on next reconcile
+                the replica looks "new" and gets re-scheduled).
+
+      Filter    Eliminate ineligible (cluster, pool) candidates:
+                  · cluster: clusterSelector.matchLabels ⊆ IC.labels
+                  · pool: nodeSelector.cel passes against capabilities
+                  · pool: gpu_count ≥ topology.gpus_per_node (shape fit)
+                  · pool: max_nodes − used ≥ nodes_required (headroom)
+                  · disagg: a SAME-cluster prefill pool passes its CEL +
+                    capacity (KV cache transfer requires co-location)
+
+      Score     Rank surviving candidates:
+                  · primary:   headroom (more = better)
+                  · secondary: spread bonus (prefer ICs this MD hasn't
+                               landed on yet within this pass)
+                  · tie-break: stable hash(MD name, IC name, pool name)
+
+      Bind      Write the Placement to ScheduleResult.placements.
+                Reserve the consumed capacity in a local working set so
+                subsequent replicas in the same pass see it consumed —
+                otherwise multi-replica MDs would double-count free pools.
     """
-    result = MatchResult()
+    result = ScheduleResult()
     md_existing = [
         e for e in existing if e.md_name == md.name and e.md_namespace == md.namespace
     ]
 
-    # Step 1: sticky placements for replicas that already exist.
+    # ── Sticky ────────────────────────────────────────────────────────────
     by_index = {e.replica_index: e for e in md_existing}
     placed_indices: set[int] = set()
     for idx, e in by_index.items():
         if idx >= md.replicas:
-            continue  # scaled down; will be GC'd by the composer
+            continue  # scaled down; composer will GC the orphan MR
         result.placements.append(_sticky_placement(md, e))
         placed_indices.add(idx)
 
-    # Step 2-4: schedule the rest.
-    # Local view of capacity that includes both real existing + decisions
-    # we make in this pass.
+    # Working capacity view = real existing + decisions made in this pass.
+    # Each Bind step appends a reservation here so later replicas see it.
     working = list(existing)
 
     for idx in range(md.replicas):
         if idx in placed_indices:
             continue
 
-        candidates = _candidates_for_replica(md, clusters, working, result.trace)
+        # ── Filter ────────────────────────────────────────────────────────
+        candidates = _filter(md, clusters, working, result.trace)
         if not candidates:
-            continue  # trace already populated
+            continue  # trace already populated; this replica unscheduled
 
-        winner = _pick(candidates, md, clusters, result.placements)
-        result.placements.append(_to_placement(md, idx, winner))
+        # ── Score ─────────────────────────────────────────────────────────
+        winner = _score_and_select(candidates, md, result.placements)
 
-        # Reserve in our working set so later replicas see this consumed.
+        # ── Bind ──────────────────────────────────────────────────────────
+        result.placements.append(_bind(md, idx, winner))
         working.append(_reservation(md, idx, winner))
 
     return result
@@ -321,12 +350,15 @@ class _Candidate:
     prefill_nodes_free: int
 
 
-def _candidates_for_replica(
+def _filter(
     md: ModelDeploymentSpec,
     clusters: list[InferenceCluster],
     existing: list[ExistingPlacement],
     trace: list[MatchTrace],
 ) -> list[_Candidate]:
+    """Filter phase — eliminate ineligible (cluster, pool[, prefill_pool])
+    triples. Records every rejection in `trace` for the user-visible
+    matchTrace surface."""
     out: list[_Candidate] = []
 
     decode_nodes_needed = role_nodes_required(md.decode)
@@ -401,17 +433,20 @@ def _eligible_pools(
     return out
 
 
-def _pick(
+def _score_and_select(
     candidates: list[_Candidate],
     md: ModelDeploymentSpec,
-    clusters: list[InferenceCluster],
     chosen_so_far: list[Placement],
 ) -> _Candidate:
-    """Score and pick a winner.
+    """Score phase — rank candidates and select the winner.
 
-    score = headroom — primary
-          + spread_bonus(cluster, this MD's chosen so far)
-          + stable hash tie-break
+    score = (headroom, spread_bonus, stable_hash_tie_break)
+
+    headroom        — more free nodes is better (primary signal)
+    spread_bonus    — prefer ICs this MD hasn't landed on yet within
+                      this pass (anti-stacking)
+    stable_hash     — deterministic tie-break so repeated runs over the
+                      same fleet produce the same placements
     """
     chosen_clusters = {p.cluster for p in chosen_so_far}
 
@@ -424,7 +459,8 @@ def _pick(
     return max(candidates, key=score)
 
 
-def _to_placement(md: ModelDeploymentSpec, idx: int, c: _Candidate) -> Placement:
+def _bind(md: ModelDeploymentSpec, idx: int, c: _Candidate) -> Placement:
+    """Bind phase — commit the (replica_index, cluster, pool) decision."""
     return Placement(
         replica_index=idx,
         cluster=c.cluster.name,
