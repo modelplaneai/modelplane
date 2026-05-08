@@ -36,11 +36,13 @@ Two Crossplane composition functions, one IR between them.
 
 ## What lives where
 
-| Concern | File | Lines | What it does |
-|---|---|---|---|
-| **Federation matcher** | [`functions/compose-model-deployment/scheduling.py`](../../functions/compose-model-deployment/scheduling.py) | ~350 | Pure-Python algorithm: filter ICs by `clusterSelector.matchLabels`; filter pools by `nodeSelector.cel` against class capabilities; capacity check with sticky-placement accounting; score and pick per replica. Plain dataclasses — runs without any of Modelplane's protos. |
-| **Composer** (MD → MR set) | [`functions/compose-model-deployment/main.py`](../../functions/compose-model-deployment/main.py) | ~280 | Crossplane glue: declares required-resources (clusters, classes, existing replicas), calls `scheduling.match()`, emits `ModelReplica` × `spec.replicas` + `ModelEndpoint` × `spec.replicas`, sets MD status conditions. |
-| **Renderer** (MR → KServe) | [`functions/compose-model-placement/main.py`](../../functions/compose-model-placement/main.py) | ~340 | Reads MR + matched IC + classes; builds a KServe `LLMInferenceService` (decode + optional prefill) + DRA `ResourceClaim`s on the target cluster via the kubeconfig provider; lifts cold-start conditions back. |
+| Concern | File | What it does |
+|---|---|---|
+| **Federation matcher** | [`functions/compose-model-deployment/scheduling.py`](../../functions/compose-model-deployment/scheduling.py) | Pure-Python algorithm: filter ICs by `clusterSelector.matchLabels`; filter pools by `nodeSelector.cel` against class capabilities; capacity check with sticky-placement accounting; score and pick per replica. Plain dataclasses — runs without any of Modelplane's protos. |
+| **Composer** (MD → MR set) | [`functions/compose-model-deployment/main.py`](../../functions/compose-model-deployment/main.py) | Crossplane glue: declares required-resources (clusters, classes, existing replicas), calls `scheduling.match()`, emits `ModelReplica` × `spec.replicas` + `ModelEndpoint` × `spec.replicas`, sets MD status conditions. |
+| **Renderer** (MR → KServe) | [`functions/compose-model-placement/main.py`](../../functions/compose-model-placement/main.py) | Reads MR + matched IC + classes; builds a KServe `LLMInferenceService` (decode + optional prefill) + DRA `ResourceClaim`s + scheduler-companion objects on the target cluster via the kubeconfig provider; lifts cold-start conditions back. |
+| **Scheduler dispatch** | [`functions/compose-model-placement/scheduler.py`](../../functions/compose-model-placement/scheduler.py) | Per-scheduler wrap: KAI (schedulerName + PodGroup), Kueue (queue label + suspend gate), none (pass-through). Pluggable via a single dispatch table. |
+| **Capacity adapter** | [`lib/capacity_adapter/`](../../lib/capacity_adapter/) | Per-scheduler status pullers: `kai.py` (KAI Queue/ResourcePool → CapacitySnapshot), `kueue.py` (ClusterQueue.flavorsUsage → CapacitySnapshot), shared types in `common.py`. Runs as a separate controller, not a composition function. |
 
 The matcher is deliberately isolated in `scheduling.py` so it can be tested with table-driven cases over `(IC fleet, MD selectors) → expected placements` without touching Crossplane.
 
@@ -68,6 +70,70 @@ The matcher is deliberately isolated in `scheduling.py` so it can be tested with
 | writes | MR status conditions | `Ready` / `Pulling` / `LWSGangPending` / `EngineLoading` |
 
 KEDA `ScaledObject`s are user-authored per Nic's design (mirroring Deployment + HPA) — not composed by Modelplane. Modelplane only exposes `MD.spec.replicas` via the scale subresource.
+
+## KAI / Kueue integration
+
+Stage-2 (in-cluster) scheduling. Two interception models, dispatched per-cluster.
+
+**API extension to [#64](https://github.com/modelplaneai/modelplane/pull/64).** Nic's sketch doesn't model a scheduler axis. We propose adding `InferenceCluster.spec.scheduler.{type}` with values `auto` (default) · `managed-kai` · `managed-kueue` · `kai` · `kueue` · `none`. The renderer dispatches on this. `auto` resolves at IC onboarding by detecting CRDs (`Project` ⇒ KAI, `ClusterQueue` ⇒ Kueue, neither ⇒ install `managed-kueue`).
+
+### What changes per scheduler
+
+| | KAI | Kueue | none |
+|---|---|---|---|
+| **Pod-level** | `schedulerName: kai-scheduler` on every pod the LLM-IS produces | unchanged | unchanged |
+| **Workload-level** | unchanged | `kueue.x-k8s.io/queue-name` label + `suspend: true` (Kueue ungates on admission) | unchanged |
+| **Companion object** | `PodGroup` CRD wrapping the LWS gang (`minMember = total pods`); pods labeled with the matching `pod-group.scheduling.run.ai/name` | none — Kueue's webhook creates `Workload` from the queue label | none |
+| **Capacity source** | `Queue.status` + `ResourcePool.status` per Project | `ClusterQueue.status.flavorsUsage[]` | direct node listing |
+
+The matcher reads `IC.status.capacity` and is **agnostic** to which adapter populated it — same shape across schedulers.
+
+### Where it's wired
+
+```
+ModelReplica
+    │
+    ▼
+compose-model-placement/main.py
+    │  build base LLM-IS spec (decode + optional prefill)
+    │
+    ├──▶ scheduler.wrap(IC.spec.scheduler.type, llmis_spec, ...)
+    │       │
+    │       ├─ wrap_kai     → set schedulerName, stamp pod label, emit PodGroup
+    │       ├─ wrap_kueue   → stamp queue label, suspend: true
+    │       └─ wrap_none    → pass-through
+    │
+    ▼
+remote-cluster apply: LLM-IS + DRA ResourceClaims + scheduler companion objects
+```
+
+Adding a new scheduler (Volcano, etc.):
+1. New `wrap_<name>` in `scheduler.py` (one function).
+2. Add to `_DISPATCH` map.
+3. New module under `lib/capacity_adapter/<name>.py` returning the same `CapacitySnapshot` shape.
+4. Add to `IC.spec.scheduler.type` enum.
+
+No matcher changes. No MD changes. The IR (`ModelReplica`) doesn't know which scheduler is involved.
+
+### Capacity feedback loop
+
+```
+in-cluster scheduler           ── populates ──▶  Queue / ClusterQueue status
+                                                          │
+                                                          ▼
+                                            lib/capacity_adapter/<scheduler>.py
+                                            (controller-runtime watcher,
+                                             one per IC, polls every ~5s)
+                                                          │
+                                                          ▼
+                                            IC.status.capacity (normalized)
+                                                          │
+                                                          ▼
+                                            federation matcher reads this
+                                            on the next placement
+```
+
+A few seconds of staleness is fine — we don't reserve, we admit. If the matcher picks a saturated cluster, the in-cluster scheduler holds the workload Pending; next reconcile re-evaluates.
 
 ## Use cases — how each one flows through the code
 
@@ -164,7 +230,8 @@ Listed so the surface is honest:
 
 - The new XRDs themselves — that's Nic's territory in [#64](https://github.com/modelplaneai/modelplane/pull/64). Once they merge, we regenerate the protos under `functions/*/model/` and the `_load_md` / `_resolve_clusters` stubs in this code become real.
 - KEDA `ScaledObject` composer — Nic's design has the user (or a higher-level Composition) author one, not Modelplane.
-- KAI scheduler integration — Nic's #64 sketch doesn't model a scheduler axis. If we keep that simplicity, the renderer's `_worker_spec` doesn't dispatch on scheduler. If we add it later, that's where it'd live.
+- ~~KAI scheduler integration~~ — sketched in this PR (`scheduler.py` dispatch + `lib/capacity_adapter/kai.py`). Requires a small extension to Nic's #64 (`IC.spec.scheduler.type`).
+- ~~Kueue scheduler integration~~ — sketched in this PR (`scheduler.py` dispatch + `lib/capacity_adapter/kueue.py`).
 - Per-version KServe adapter dispatch (v0.16 / v0.17 / v0.18) — sketched as a TODO comment in `_worker_spec`. Today we render v0.18 only.
 - The eviction controller and the capacity-status puller — separate processes, not composition functions. Out of scope here.
 - A real CEL evaluator — `scheduling.eval_cel` is a placeholder. Production wires `cel-python` or a Go shim.

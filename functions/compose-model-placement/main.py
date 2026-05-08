@@ -10,7 +10,9 @@ ModelReplica reconcile and:
      build the DRA ResourceClaim from the class's typed capabilities.
   3. Composes a KServe LLMInferenceService (LLM-IS) on the target cluster
      via Crossplane's remote-cluster Object provider, plus a DRA
-     ResourceClaim per role for device binding.
+     ResourceClaim per role for device binding, plus any per-scheduler
+     companion objects (PodGroup for KAI; nothing extra for Kueue — its
+     webhook handles Workload creation).
   4. Reports observed status from the LLM-IS back to the ModelReplica
      (Ready / Pulling / LWSGangPending / EngineLoading conditions).
 
@@ -48,8 +50,9 @@ Why this seam matters for BYO-* (see ../../design/proposed-modelplane-api/design
   - BYO KServe version v0.16 / v0.17 / v0.18 → swap the renderer in this
     file, MR shape unchanged, matcher unchanged, MD unchanged.
   - BYO Dynamo / raw-vllm → different file, same MR contract.
-  - BYO scheduler (KAI vs Kueue) → adds schedulerName / PodGroup wrap
-    here, doesn't change the MR or the matcher.
+  - BYO scheduler (KAI vs Kueue) → scheduler.wrap() dispatches per
+    IC.spec.scheduler.type. KAI: schedulerName + PodGroup. Kueue: queue
+    label + suspend gate. MR unchanged. Matcher unchanged.
 """
 
 # ---------------------------------------------------------------------------
@@ -59,6 +62,7 @@ Why this seam matters for BYO-* (see ../../design/proposed-modelplane-api/design
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
+from . import scheduler
 from .lib import conditions, defaults, metadata, naming
 from .lib import resource as libresource
 
@@ -162,20 +166,32 @@ class Renderer:
     # -----------------------------------------------------------------------
 
     def compose_llmis(self) -> None:
-        """Render the LLM-IS for the target KServe version.
+        """Render the LLM-IS for the target KServe version, wrapped per the
+        cluster's in-cluster scheduler (KAI / Kueue / none).
 
-        Single render path here; switch on cluster.backend.version once we
-        ship per-version adapters (v0.16 / v0.17 / v0.18 differ on the
-        worker pod spec — `size`/`template` wrapper vs flat `containers`,
+        Single KServe render path here; switch on cluster.backend.version
+        once we ship per-version adapters (v0.16 / v0.17 / v0.18 differ on
+        the worker pod spec — `size`/`template` wrapper vs flat `containers`,
         args vs command, storage migration).
 
-        The LLM-IS represents ONE complete serving instance — single-node
-        (Tensor strategy), multi-node (TensorPipeline → LWS group), or
-        disaggregated (decode + prefill roles, both within the LLM-IS).
+        Scheduler integration is a separate dispatch (scheduler.wrap) that
+        post-processes the LLM-IS spec and emits any extra objects the
+        scheduler needs (PodGroup for KAI, none for Kueue — Kueue's webhook
+        creates Workload from the queue label).
         """
-        spec = self._llmis_spec()
-        # Wrap the in-cluster object in a Crossplane k8s Object so it lands
-        # on the remote cluster via the kubeconfig provider.
+        base_spec = self._llmis_spec()
+
+        # Stage-2 wrap: mutate the LLM-IS spec + emit extra objects per
+        # scheduler. See scheduler.py for the per-scheduler logic.
+        wrapped = scheduler.wrap(
+            self.cluster.scheduler_type,
+            base_spec,
+            mr_name=self.mr.parent_name,
+            namespace=self.mr.parent_namespace,
+            replica_index=self.mr.replica_index,
+        )
+
+        # The LLM-IS itself.
         libresource.add_remote_object(
             self.rsp,
             name=LLMIS_KEY,
@@ -187,8 +203,21 @@ class Renderer:
                 "namespace": self.mr.parent_namespace,
                 "labels": {metadata.LABEL_KEY_REPLICA: str(self.mr.replica_index)},
             },
-            spec=spec,
+            spec=wrapped.llmis_spec,
         )
+
+        # Scheduler-side companion objects (PodGroup for KAI, etc.). Lands
+        # on the same target cluster via the same kubeconfig.
+        for i, obj in enumerate(wrapped.extra_objects):
+            libresource.add_remote_object(
+                self.rsp,
+                name=f"sched-{i}",
+                target_cluster_secret=self.cluster.kubeconfig_secret_ref,
+                api_version=obj["apiVersion"],
+                kind=obj["kind"],
+                metadata=obj["metadata"],
+                spec=obj["spec"],
+            )
 
     def _llmis_spec(self) -> dict:
         """Build the KServe LLM-IS spec from the MR's resolved roles.
