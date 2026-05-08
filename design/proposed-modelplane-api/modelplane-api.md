@@ -12,7 +12,7 @@
 - **Replica == placement.** One `ModelPlacement` per logical replica of a `ModelDeployment`. KEDA writes `MD.spec.replicas` via the K8s scale subresource; the composer reconciles MPs to match — no custom scaler.
 - **Two-stage scheduling.** Modelplane is a *federation planner* — it evaluates predicates against *declared* pool capacity to pick `(cluster, pool)` per replica, before nodes exist. Per-cluster scheduling is delegated. **DRA is optional**, never required: the `device-plugin` mode (any K8s with the NVIDIA GPU operator) is the default; `dra` mode is opt-in for stronger runtime grounding. We borrow DRA's *vocabulary* (typed attributes, domain-prefixed keys, CEL) but not its Kinds — `ResourceClaim` / `ResourceSlice` / `DeviceClass` belong to the runtime allocator, not the federation layer.
 - **Labels-first matching.** `deviceSelector.matchLabels` works on any K8s cluster with labeled nodes — see [`workloads/gpt-oss-20b.yaml`](./examples/workloads/gpt-oss-20b.yaml). Typed `matchAttributes` + CEL is the break-glass for richer constraints (NVLink-domain co-location, MIG, FP8 capability) — see [`workloads/kimi-k2.yaml`](./examples/workloads/kimi-k2.yaml).
-- **Managed defaults.** `managed-kserve` (backend) + `managed-kueue` (scheduler) + KEDA `ScaledObject`s (autoscaler, prerequisite) ship under the hood — see [`clusters/managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml). BYO contracts (`InferenceCluster.spec.{backend, scheduler}.type`) plug in KAI / Volcano / Dynamo / raw-vllm — see [`clusters/byoc-coreweave-kai-h200.yaml`](./examples/clusters/byoc-coreweave-kai-h200.yaml). `ModelPlacement` (the IR) is the seam.
+- **Managed defaults.** `managed-kserve` (backend) + `auto`-resolving scheduler (KAI on NVIDIA, Kueue elsewhere) + KEDA `ScaledObject`s (autoscaler, prerequisite) ship under the hood. We ship adapters for **both** KAI and Kueue — both are first-class. See [`clusters/managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml) (`auto` → KAI on NVIDIA) and [`clusters/managed-gke-a3-kai.yaml`](./examples/clusters/managed-gke-a3-kai.yaml) (explicit). BYO contracts (`InferenceCluster.spec.{backend, scheduler}.type`) plug in KAI / Volcano / Dynamo / raw-vllm — see [`clusters/byoc-coreweave-kai-h200.yaml`](./examples/clusters/byoc-coreweave-kai-h200.yaml). `ModelPlacement` (the IR) is the seam.
 - **`InferenceProvider` is a routing target** — see [`providers/together.yaml`](./examples/providers/together.yaml). External / SaaS endpoint registered with URL + auth + attributes. `ModelEndpoint` routes to it for SaaS spillover, regional preference, billing-model selection. Never a placement target — the matcher considers only `InferenceCluster`.
 - **`InferenceClass` catalog as the wedge.** Default ships per-SKU hardware bundles (`h100-nvl-8x`, `b200-nvl-8x`, `mi300x-8x`, ...) — StorageClass-style, cluster-scoped. See [`inferenceclasses/`](./examples/inferenceclasses/). Customers author their own for bespoke hardware. Engine features live separately: derivation rules in matcher code, per-cluster supported set on `KServeBackend.spec.engine.features`, break-glass via `engine.advanced[]` — see [`workloads/acme-vllm-fork.yaml`](./examples/workloads/acme-vllm-fork.yaml). Keeping the class catalog current is high-leverage and bounded — Upbound-managed-offering candidate.
 - **Wedge:** fleet-level capabilities single-cluster platforms can't reach — fleet matching, geo + compliance routing, KV cache federation, sticky sessions, failover, cost-aware routing.
@@ -22,7 +22,7 @@
 1. **Clean separation, no enforcement.** Platform teams own substrate; ML/App teams own workloads. Same API split or unified.
 2. **Fleet-wide by construction.** A `ModelDeployment` targets the fleet of `InferenceCluster`s, not a single cluster. `matchTrace` reports where it fits and why elsewhere doesn't. SaaS endpoints participate via `ModelEndpoint` routing, not placement.
 3. **Plain Crossplane customization.** Catalogs, defaults, governance live in Compositions, RBAC, OPA — not Modelplane primitives.
-4. **No new in-cluster scheduler.** We're a meta-scheduler. K8s scheduler + DRA, Kueue, KEDA/HPA, Cluster Autoscaler each own their layer.
+4. **No new in-cluster scheduler.** We're a meta-scheduler. K8s scheduler + DRA, KAI / Kueue (both first-class), KEDA/HPA, Cluster Autoscaler each own their layer.
 
 ## Architecture: control plane + fleet
 
@@ -35,8 +35,8 @@ Modelplane is a Crossplane control plane that composes onto a fleet of `Inferenc
                           ↓
    ─────────────── cluster scope ────────────────
    InferenceClusters (workload planes)
-     scheduler (managed-kueue default) + backend (managed-kserve default)
-     + DRA + KEDA on each cluster
+     scheduler (managed-kai on NVIDIA / managed-kueue elsewhere)
+     + backend (managed-kserve) + DRA + KEDA on each cluster
    InferenceClass catalog (per-SKU bundles, cluster-scoped)
 
    ─────────────── namespace scope (= environment) ──
@@ -55,7 +55,7 @@ Modelplane is a Crossplane control plane that composes onto a fleet of `Inferenc
 - **Replica == placement.** One `ModelPlacement` per logical replica. Each replica independently scheduled by the matcher against the MD's `clusterSelector`. KEDA writes `MD.spec.replicas` via the scale subresource; the composer reconciles MPs to match. No custom scaler.
 - **Federation matches against declared pool attributes, not runtime DRA.** `InferenceCluster.spec.nodePools[].{node,device}Attributes` are the source of truth at the federation layer. DRA `ResourceSlice`s ground predicates at the per-cluster scheduling stage (next section).
 - **Two-level selector cascade**: `clusterSelector` (env-level) → `deviceSelector` (node + device). Labels are the primary path; typed `matchAttributes` + CEL is the break-glass.
-- **In-cluster scheduling delegated.** Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, capacity tracking — Kueue (default) / KAI / Volcano. Modelplane reads capacity signal back via `ClusterQueue.status.flavorsUsage[]`.
+- **In-cluster scheduling delegated.** Bin-packing, gang scheduling, fractional GPU, NVLink-aware placement, capacity tracking — KAI (NVIDIA default) / Kueue (elsewhere) / Volcano. Modelplane ships adapters for both KAI and Kueue (first-class); reads capacity signal back from each. See "In-cluster scheduling: KAI and Kueue".
 - `ModelPlacement` (existing CRD, `apis/modelplacements/`) is the **intermediate representation (IR)** — the seam between the matcher and the version-pinned backend adapter. Not a new abstraction; the role this existing CRD plays.
 - Namespace = environment / lifecycle scope. Pushing a revision triggers lifecycle reconciliation in that namespace.
 
@@ -93,8 +93,8 @@ These layers are **stacked, not alternatives**. KServe is the orchestrator; Kueu
 
 | Layer | Default | What Modelplane does |
 |---|---|---|
-| Backend | **`managed-kserve`** | Installs KServe at the pinned version + composes the cluster's `KServeBackend`. Per-version adapter renders `LLMInferenceService` from `ModelPlacement`. Example: [`clusters/managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml). |
-| Scheduler | **`managed-kueue`** | Installs Kueue + composes `ClusterQueue` per pool. Reads `ClusterQueue.status.flavorsUsage[]` for capacity signal. |
+| Backend | **`managed-kserve`** | Installs KServe at the pinned version + composes the cluster's `KServeBackend`. Per-version adapter renders `LLMInferenceService` from `ModelPlacement`. |
+| Scheduler | **`auto`** → `managed-kai` (NVIDIA) or `managed-kueue` (other) | We ship adapters for both KAI and Kueue. Auto-resolves at IC reconcile: NVIDIA-only pool → `managed-kai` (richer fleet signal — gang health, fair-share, hierarchical projects, MIG/time-slicing native); other → `managed-kueue` (vendor-neutral, K8s-SIG-native). BYOC: detect existing install (`Project` CRD ⇒ KAI, `ClusterQueue` CRD ⇒ Kueue) and use it; else install `managed-kueue`. |
 | Autoscaler | **KEDA** (operator-installed prerequisite) | Modelplane composes a `ScaledObject` from `ModelDeployment.spec.scaling` targeting the MD's scale subresource. KEDA writes `spec.replicas`; composer reconciles `ModelPlacement`s. |
 
 **Knobs we expose (and promise to honor across backends):**
@@ -126,7 +126,7 @@ Four axes — each independent. Mix and match.
 | Axis | Field | Values | Examples |
 |---|---|---|---|
 | **Cluster** | `InferenceCluster.spec.cluster.source` | `GKE` · `EKS` · `AKS` · `Existing` | Modelplane-provisioned: [`managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml). BYOC: [`byoc-coreweave-h200-dra.yaml`](./examples/clusters/byoc-coreweave-h200-dra.yaml). |
-| **Scheduler** | `InferenceCluster.spec.scheduler.type` | `managed-kueue` (default) · `kueue` · `kai` · `volcano` · `none` | Managed: [`managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml). BYO Kueue: [`byoc-coreweave-h200-dra.yaml`](./examples/clusters/byoc-coreweave-h200-dra.yaml). BYO KAI: [`byoc-coreweave-kai-h200.yaml`](./examples/clusters/byoc-coreweave-kai-h200.yaml). |
+| **Scheduler** | `InferenceCluster.spec.scheduler.type` | `auto` (default) · `managed-kai` · `managed-kueue` · `kai` · `kueue` · `volcano` · `none` | Auto-resolved managed: [`managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml) → KAI on NVIDIA, [`managed-gke-a3-kai.yaml`](./examples/clusters/managed-gke-a3-kai.yaml) explicit. BYO Kueue: [`byoc-coreweave-h200-dra.yaml`](./examples/clusters/byoc-coreweave-h200-dra.yaml). BYO KAI: [`byoc-coreweave-kai-h200.yaml`](./examples/clusters/byoc-coreweave-kai-h200.yaml). |
 | **Backend** | `InferenceCluster.spec.backend.{type, version}` | `managed-kserve` (default) · `kserve` · `dynamo` · `raw-vllm` | `managed-kserve` = Modelplane installs at pinned version. Others = operator's existing install. v1 ships KServe v0.16/v0.17/v0.18 adapters; KAI/Volcano/Dynamo are follow-ups. |
 | **InferenceProvider** (SaaS routing target) | `ModelEndpoint.routes[]` | `routes[].inferenceProvider.ref` (registered CR) or `routes[].external.url` (inline) | Registered CR: [`providers/together.yaml`](./examples/providers/together.yaml) referenced from [`endpoints/multi-region.yaml`](./examples/endpoints/multi-region.yaml). |
 
@@ -158,6 +158,231 @@ We borrow DRA's vocabulary (typed attributes, domain-prefixed keys, CEL predicat
 3. **Emit DRA `ResourceClaim`s** (mode = `dra`). Strongest grounding; what (1) and (2) approximate. Worth opting into when the cluster already runs a DRA driver.
 
 So — DRA is a nice-to-have for BYOC, not a requirement. [`byoc-eks-h100-no-dra.yaml`](./examples/clusters/byoc-eks-h100-no-dra.yaml) shows the full no-DRA path; works on any K8s with the NVIDIA GPU operator. User-facing API (`clusterSelector` / `deviceSelector`, `engine.*`, `parallelism`, ...) is identical across all modes.
+
+## In-cluster scheduling: KAI and Kueue, both first-class
+
+Stage 2 (in-cluster admission + binding) is where the inference control plane meets reality — gang scheduling for multi-node placements, fractional GPU sharing, MIG/time-slicing knobs, fair-share across tenants. Modelplane ships **adapters for both KAI and Kueue**; either is a complete stack.
+
+**`auto` is the default.** `InferenceCluster.spec.scheduler.type: auto` resolves at IC reconcile:
+
+| Pool composition | Provisioning path | Resolves to | Reason |
+|---|---|---|---|
+| NVIDIA-only | Modelplane-provisioned | `managed-kai` | Native gang admission, MIG / time-slicing first-class, hierarchical Projects, richer status for the capacity signal |
+| Non-NVIDIA (AMD, TPU, Trainium) | Modelplane-provisioned | `managed-kueue` | Vendor-neutral, K8s-SIG-native, scheduling-gate model composes cleanly with kube-scheduler |
+| BYOC, KAI installed | Detected (`Project` CRD present) | `kai` | Use what's there; never replace the operator's scheduler |
+| BYOC, Kueue installed | Detected (`ClusterQueue` CRD present) | `kueue` | Use what's there |
+| BYOC, neither | Greenfield | `managed-kueue` | Safer default — Kueue layered above kube-scheduler is less invasive than KAI's webhook-redirect |
+
+Operators can pin explicitly (`managed-kai` / `managed-kueue` / `kai` / `kueue` / `volcano` / `none`) to lock the choice — see [`managed-gke-a3-kai.yaml`](./examples/clusters/managed-gke-a3-kai.yaml).
+
+**Two interception models — same MD spec lands on either.**
+
+KAI replaces the K8s scheduler. Backend adapter sets `schedulerName: kai-scheduler` on rendered pods (and a mutating webhook does it for any pod that forgot); KAI's `PodGroup` CRD wraps the pod set for gang admission. KAI binds pods to nodes itself, evaluating gang feasibility, fair-share, MIG fragmentation, and NVLink topology in one pass.
+
+Kueue layers above kube-scheduler. Backend adapter sets `spec.suspend: true` (or `kueue.x-k8s.io/queue-name` scheduling-gate) on the rendered Job / Deployment / LWS; Kueue's `Workload` CR wraps it. Once the `ClusterQueue` admits, Kueue ungates the workload; kube-scheduler binds pods normally. Gang-ness is enforced by the workload kind itself (LWS owners create N pods atomically) — Kueue admits the whole `Workload` or none of it.
+
+**What the matcher reads back.**
+
+| Scheduler | Capacity signal | Health signal |
+|---|---|---|
+| `managed-kai` / `kai` | `Queue.status` / `ResourcePool.status` (per-tenant + per-pool, includes pending gang count) | `PodGroup` conditions per replica |
+| `managed-kueue` / `kueue` | `ClusterQueue.status.flavorsUsage[]` (per-flavor totals) | `Workload.status.conditions` per replica |
+| `volcano` | `Queue.status` | `PodGroup.status` |
+| `none` | List nodes + sum allocatable − requests | Pod conditions only |
+
+Both adapters normalize into `InferenceCluster.status.capacity` so the federation matcher uses one shape. **Knob coverage** — every workload knob exposed by Modelplane (`parallelism`, `roles`, `engine.*`, MIG / time-slicing requests via `deviceSelector`) translates to both backends; the adapter owns the translation. Where coverage diverges (e.g. KAI's hierarchical Projects vs Kueue's `Cohort`), it's a fleet capability — not a per-MD knob — and lives on `InferenceCluster.spec.scheduler.<type>` blocks (v2).
+
+## ModelDeployment placement walkthroughs
+
+What actually happens when an MD lands. Each walkthrough traces: user writes `ModelDeployment` → matcher emits `ModelPlacement`(s) → backend adapter renders upstream objects → in-cluster scheduler admits → pods run.
+
+### A. Single-node, single-GPU — small open model on shared hardware
+
+[`workloads/gpt-oss-20b.yaml`](./examples/workloads/gpt-oss-20b.yaml). 20B model, fits on one L40S, scale-to-zero.
+
+```
+MD (replicas: 0..3, deviceSelector: 1× L40S, parallelism: TP=1)
+ ├─ matcher → 0..N MPs (one per replica; KEDA drives the count)
+ │     clusterSelector.matchAttributes filters to clusters with L40S pools
+ │     deviceSelector.matchLabels: nvidia.com/gpu.family=ada → labels-first path
+ ├─ KServe adapter renders 1× LLMInferenceService per MP (single Deployment, 1 pod)
+ ├─ in-cluster admission:
+ │     KAI:    PodGroup{minMember:1} → admit → bind to L40S node
+ │     Kueue:  Workload wrapping Deployment → ClusterQueue admit → ungate
+ └─ pod runs, vLLM serves
+```
+
+Bin-packing happens here. Multiple gpt-oss-20b replicas on the same L40S node share the host (one container per GPU; CPU + RAM bin-packed by kube-scheduler scoring). Time-slicing or MIG is opt-in per-pool, not per-MD — see the multi-tenancy section.
+
+### B. Single-node, multi-GPU TP — Llama-70B on 8× H100
+
+70B model fits in one node's NVLink domain; tensor parallelism across 8 GPUs.
+
+```
+MD (replicas: 1, deviceSelector: 8× H100, parallelism: TP=8)
+ ├─ matcher → 1 MP
+ │     deviceSelector.matchAttributes: vramGiB>=80 && interconnect.type=nvswitch
+ │     count=8, perNode=8 → must fit single node
+ ├─ KServe adapter renders LLMInferenceService with workerSpec
+ │     1 pod, 8× nvidia.com/gpu (or DRA ResourceClaim with same predicates)
+ ├─ in-cluster admission:
+ │     KAI:    PodGroup{minMember:1}, gang trivially of size 1
+ │     Kueue:  Workload, single-pod admit
+ └─ pod runs, vLLM with TP=8 over NVSwitch
+```
+
+Counter-intuitive: **TP=8 is still gang-ness of 1** (one pod, 8 GPUs). The gang scheduler's job is to ensure the pod gets all 8 atomically — `nodeSelector` + `nvidia.com/gpu: 8` does this for free; gang scheduling matters when there are *multiple* pods that must co-schedule.
+
+### C. Multi-node, TP+PP via LeaderWorkerSet — Kimi K2 across 2× 8 H200
+
+[`workloads/kimi-k2.yaml`](./examples/workloads/kimi-k2.yaml). Frontier MoE, doesn't fit one node — needs 16 GPUs split across 2 nodes (TP=8 within node, PP=2 across nodes).
+
+```
+MD (replicas: 1..N, deviceSelector: 16× H200, perNode: 8,
+     parallelism: TP=8, PP=2, expert: enabled)
+ ├─ matcher → 1 MP per replica
+ │     deviceSelector.matchAttributes: vramGiB>=141 && capabilities contains fp8
+ │                                     && interconnect.type=nvswitch
+ │     deviceSelector.constraints: same NVLink domain (intra-node)
+ │     network.bandwidthGbps>=400 (inter-node IB / RoCE for PP transfer)
+ ├─ KServe adapter (v0.18+) renders LLMInferenceService with workerSpec
+ │     emits a LeaderWorkerSet under the hood:
+ │       - 1 leader pod (rank-0)
+ │       - 1 worker pod (PP stage 2)
+ │       - both with 8× H200 each
+ │       - LWS guarantees co-creation, shared headless service, ordinal env
+ ├─ in-cluster admission:
+ │     KAI:   PodGroup{minMember:2} → admit only when 2 nodes free → bind atomically
+ │            (failure mode: gang preempts incomplete groups)
+ │     Kueue: Workload wraps the LWS; admits the LWS as one unit, kube-scheduler
+ │            binds the 2 pods (LWS doesn't create them until admit)
+ │            (failure mode: rare partial admission if pod template gates fail)
+ └─ Both pods run; vLLM with TP=8/PP=2 + NIXL over the inter-node fabric
+```
+
+This is where **scheduler choice matters most**. Both work; KAI's PodGroup observability (gang-ready / partial / starved conditions) makes fleet operations easier — Modelplane surfaces it as `ModelPlacement.status.gangHealth`. Kueue's `Workload` model is less granular but composes with anything.
+
+### D. Disaggregated prefill / decode (P/D) — Llama-405B with xPyD
+
+`roles.prefill` and `roles.decode` create separate sub-deployments — different parallelism, different scaling.
+
+```
+MD (replicas: 1, roles.prefill={replicas:5, deviceSelector: 8× H200, TP=8},
+                  roles.decode={replicas:3,  deviceSelector: 8× H200, TP=8})
+ ├─ matcher → 1 MP per replica
+ │     emits 8 sub-pod-sets (5 prefill + 3 decode)
+ │     all 8 sub-sets must land on the SAME cluster (KV cache transfer)
+ ├─ KServe adapter renders 1 LLMInferenceService with disaggregation graph:
+ │     prefill pool (5× 1-pod LWS) + decode pool (3× 1-pod LWS)
+ │     NIXL endpoint between prefill and decode workers
+ ├─ in-cluster admission:
+ │     KAI:   one PodGroup per role (or one combined group); gang of 5 + 3
+ │            both groups in same Project → fair-share is per-MD not per-role
+ │     Kueue: 8 Workloads share one ClusterQueue; admit independently
+ │            (rare partial: 5 prefill admit, decode pending → degraded mode
+ │             until decode lands; matcher doesn't re-place)
+ └─ Pods run; gateway routes prompt → prefill pool → KV → decode pool
+```
+
+The matcher does not split prefill / decode across clusters — KV transfer is too expensive over the WAN. The whole 8-pod-set lands on one cluster or none.
+
+### E. Multi-replica autoscaling — KEDA + matcher loop
+
+`scaling.signal: Concurrency, target: 32` on any MD. This is **the** lifecycle loop; one diagram covers single-node, multi-node, P/D — the only thing that varies is how many MPs each replica becomes.
+
+```
+KEDA ScaledObject ─ writes ─→ MD.spec.replicas (scale subresource)
+                                    │
+       Modelplane composer reconciles MPs to match (1 MP per replica)
+                                    │
+       For each new MP: matcher picks (cluster, pool) from current
+       capacity signal → MP carries the binding decision
+                                    │
+       Backend adapter renders LLMInferenceService(s) per MP into the
+       chosen cluster → in-cluster scheduler admits → pods run → traffic
+```
+
+Scale-up: KEDA bumps `replicas`, composer creates a new MP, matcher picks a cluster (potentially a different one from the existing replicas — fleet spread is implicit), adapter renders, pods come up. Scale-down: KEDA drops `replicas`, composer deletes the youngest MPs first (configurable in v2). **Cross-cluster spread is automatic** — different replicas of the same MD can land on different clusters when the local capacity signal saturates.
+
+The matcher does **not** re-place an existing MP just because a better cluster appeared — placement is sticky. Re-placement happens only on hard evictions (cluster degraded, scheduler reports `Unschedulable`).
+
+## Multi-tenancy: bin-packing, MIG, time-slicing
+
+Three orthogonal sharing modes. Each is enabled at the **pool** layer (substrate decision), not the MD layer (workload decision) — workloads request capacity in units the pool advertises.
+
+| Sharing mode | What it is | Where it's enabled | Who decides | When to use |
+|---|---|---|---|---|
+| **Bin-packing** | Multiple whole-GPU workloads on the same node, scheduler scores tighter packing | Always on (kube-scheduler default; KAI / Kueue / Volcano scoring) | In-cluster scheduler | Default for serving fleets — many small models |
+| **MIG** | Hardware partition: one A100 / H100 / H200 advertised as N smaller "instances" (e.g. 7× 1g.10gb) | `nodePool.deviceAttributes.mig: {profile: "1g.10gb", count: 7}` (Modelplane provisions); NVIDIA GPU operator MIG strategy at the node level (BYOC) | Pool admin | Strict isolation between tenants, predictable VRAM |
+| **Time-slicing** | Software multiplexing: one GPU advertised as N "replicas" of itself; workloads share via context-switch | `nodePool.deviceAttributes.timeSlicing: {replicas: 4}` + GPU operator timeslicing config | Pool admin | Best-effort dev / experimentation; inference workloads with long idle gaps |
+
+**The MD never says "give me MIG" or "give me time-slicing".** It says "give me a device with vramGiB ≥ 24 and capabilities ⊇ {fp16}". The pool decides whether that device is a whole H100, a `2g.20gb` MIG slice on an H100, or a time-slice of an L40S. The federation matcher matches against `deviceAttributes` whatever they describe.
+
+### Bin-packing in detail
+
+The default. Multiple whole-GPU workloads share a node when CPU / RAM / GPU counts allow. Schedulers differ in **scoring** (which node they prefer when several fit):
+
+- **kube-scheduler** (default): `MostAllocated` policy packs tightly; `LeastAllocated` spreads. Configurable per-cluster.
+- **KAI**: `binpack` plugin scores by remaining-fragmentation. NVLink-aware — won't strand a 4-GPU workload on a node with only 2 free GPUs in the same NVLink domain.
+- **Kueue**: relies on kube-scheduler scoring for binding; admission ordering (FIFO / fair-sharing) is Kueue-side.
+
+Modelplane doesn't override scoring — that's the in-cluster scheduler's job. We just make sure the same MD lands deterministically: the matcher emits MPs with stable identity, the backend adapter renders pods with stable labels, the scheduler scores them.
+
+**Bin-packing across replicas of the same MD** is intentional: 5 replicas of gpt-oss-20b can co-locate on one 4-GPU L40S node (using time-slicing) or each take a separate L40S in the pool. Cross-MD bin-packing on the same node is the same mechanism — different containers, same scheduler.
+
+### MIG in detail
+
+NVIDIA-specific hardware partitioning. An H100 SXM exposes profiles like `1g.10gb` (×7), `2g.20gb` (×3), `3g.40gb` (×2), `7g.80gb` (×1). Pools either declare a uniform MIG strategy or expose mixed profiles.
+
+Pool side (declared on `InferenceCluster.spec.nodePools[].deviceAttributes`):
+
+```yaml
+deviceAttributes:
+  vendor: nvidia
+  product: H100
+  vramGiB: 80                   # whole-GPU number
+  mig:
+    enabled: true
+    profile: "2g.20gb"          # uniform: each device advertised as 3× this
+    count: 3
+  parentProduct: H100           # marks this as a fractional entry
+  vramGiB: 20                   # the slice's effective VRAM
+```
+
+In-cluster:
+- **DRA mode**: NVIDIA DRA driver publishes `ResourceSlice`s for each MIG instance; backend adapter emits `ResourceClaim` against the typed attributes.
+- **Device-plugin mode**: GPU operator advertises `nvidia.com/mig-2g.20gb: 3` per node; backend adapter requests that resource.
+
+Workload side: the MD doesn't change. `deviceSelector.matchAttributes: vramGiB >= 18` matches the slice; the cluster's pool advertises a `vramGiB: 20` slice; the matcher binds. **MIG is invisible at the MD level** — that's the whole point.
+
+KAI's MIG support: native, evaluates fragmentation across slices (won't admit a workload requesting a profile that would fragment the node). Kueue's MIG support: via the standard device-plugin or DRA resources — Kueue counts them as resources in `ClusterQueue.flavors`, doesn't reason about fragmentation.
+
+### Time-slicing in detail
+
+Software-only, no hardware support needed. Pool advertises `nvidia.com/gpu: 4` on a 1-GPU node when `replicas: 4` is configured. CUDA contexts switch on the GPU; throughput, not isolation, is the goal.
+
+```yaml
+deviceAttributes:
+  vendor: nvidia
+  product: L40S
+  vramGiB: 48
+  timeSlicing:
+    enabled: true
+    replicas: 4                 # advertise 4× nvidia.com/gpu per physical L40S
+```
+
+Use cases (narrow): dev / experimentation / many tiny models with sparse traffic. **Not for production serving** — there's no VRAM isolation; one workload OOMing kills the whole GPU. We surface the mode in `InferenceCluster.status.capacity` so operators can quarantine time-sliced pools to non-prod tiers.
+
+KAI's time-slicing: native scheduling primitive (slice-count-aware). Kueue's time-slicing: relies on the GPU operator config; Kueue counts the advertised replicas as flavored resources.
+
+### Why this lives at the pool layer
+
+Two reasons:
+
+1. **Workloads are portable.** A 20B model declared with `vramGiB >= 24` runs unchanged on a whole L40S, a `2g.20gb` MIG slice, or a time-sliced fraction. Same MD spec, different cluster, different cost / isolation tradeoff.
+2. **Sharing policy is platform policy.** Whether a cluster runs MIG, time-slicing, or whole-GPU is a substrate decision — driven by tenant isolation requirements, not workload characteristics. Pushing it into the MD leaks substrate into application code.
+
+The break-glass for workloads that *do* want to dictate (e.g. "I require whole-GPU isolation, never a MIG slice"): `deviceSelector.matchAttributes: parentProduct: ""` (whole-GPU only) or `mig.enabled: false`.
 
 ## Fleet-level capabilities
 
@@ -380,7 +605,7 @@ Decisions made and the alternatives Nic can override:
 
 | Decision | Lean | Alternatives |
 |---|---|---|
-| Default scheduler + backend | `managed-kueue` + `managed-kserve` as defaults, BYO first-class | No defaults (force pick); KAI default for NVIDIA-shop bias |
+| Default scheduler + backend | `auto` (resolves to `managed-kai` on NVIDIA, `managed-kueue` elsewhere) + `managed-kserve`, BYO first-class | Always `managed-kueue` (vendor-neutral); always `managed-kai` (single rich signal); no default (force pick) |
 | Selector dual-path | `matchLabels` (primary) + `matchAttributes` / CEL (break-glass) | Labels only (simpler); attributes only (richer) |
 | DRA grounding | Optional, opt-in via `provisioning.mode: dra`. `device-plugin` is the default and works for BYOC without DRA. | Always-on (require DRA on every cluster); federation-only (skip in-cluster grounding entirely even when DRA is available) |
 | Rack-scale (NVL72) | Env-level attribute (`cluster.scaleUnit: nvl72`); rack-spanning placements treat the rack as one `nodePool` | Separate `RackInferenceCluster` kind; multi-pool model |
@@ -439,7 +664,8 @@ Full proposed XRDs and example resources live in [`./`](./). The directory is a 
 
 **Substrate examples — clusters** (the BYO matrix in concrete form):
 
-- [`examples/clusters/managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml) — Modelplane-provisioned GKE; `managed-kueue` + `managed-kserve` + DRA mode
+- [`examples/clusters/managed-gke-a3.yaml`](./examples/clusters/managed-gke-a3.yaml) — Modelplane-provisioned GKE; `auto` scheduler (resolves to `managed-kai` on NVIDIA) + `managed-kserve` + DRA mode
+- [`examples/clusters/managed-gke-a3-kai.yaml`](./examples/clusters/managed-gke-a3-kai.yaml) — Same shape, scheduler pinned to `managed-kai` explicitly (auditable)
 - [`examples/clusters/byoc-coreweave-h200-dra.yaml`](./examples/clusters/byoc-coreweave-h200-dra.yaml) — BYOC; BYO `kueue` + BYO `kserve@v0.18.0` + DRA mode; pool references `h200-nvl-8x` class
 - [`examples/clusters/byoc-coreweave-kai-h200.yaml`](./examples/clusters/byoc-coreweave-kai-h200.yaml) — BYOC; BYO **`kai`** scheduler + BYO `kserve` + DRA (NVIDIA NeMo-stack pattern)
 - [`examples/clusters/byoc-eks-h100-no-dra.yaml`](./examples/clusters/byoc-eks-h100-no-dra.yaml) — BYOC; BYO `kueue` + BYO `kserve` + **`device-plugin`** mode (no DRA)

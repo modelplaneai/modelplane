@@ -1,0 +1,66 @@
+# Modelplane-provisioned GKE cluster — managed-kai default for NVIDIA pools.
+#
+# Same shape as managed-gke-a3.yaml (sibling file), but pinned to KAI
+# explicitly to show the NVIDIA-default path:
+#
+#   scheduler.type: auto on an NVIDIA-only InferenceCluster auto-resolves
+#   to managed-kai. This file makes that resolution explicit so platform
+#   teams can audit / lock the choice.
+#
+# Why KAI on NVIDIA pools (matches Modelplane's `auto` resolution):
+#   - Gang-aware admission natively (no LWS-on-Kueue dance) — multi-node
+#     TP+PP placements admitted as one PodGroup.
+#   - Hierarchical Projects → richer fair-share + tenant carve-outs.
+#     Modelplane reads Project / Queue / ResourcePool .status as the
+#     capacity signal feeding back into the federation matcher.
+#   - First-class MIG and time-slicing knobs without DRA wrappers.
+#
+# For non-NVIDIA pools (AMD, TPU, Trainium) `auto` resolves to
+# `managed-kueue` — vendor-neutral, K8s-SIG-native. See
+# byoc-eks-h100-no-dra.yaml for a Kueue example.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: managed-gke-a3-kai-us-central1
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project:     <fill-me-in>
+      region:      us-central1
+      clusterName: modelplane-prod-kai
+
+  provisioning:
+    mode: dra
+
+  scheduler:
+    type: managed-kai                # explicit; `auto` would resolve here too
+
+  backend:
+    type: managed-kserve
+    version: v0.18.0
+
+  attributes:
+    cloud.provider:        gcp
+    cloud.region:          us-central1
+    network.fabric:        roce
+    network.bandwidthGbps: 1800
+    cluster.scaleUnit:     independent-nodes
+    modelplane.ai/tier:    production
+
+  nodePools:
+    - name: a3-megagpu-8g
+      class: h100-nvl-8x
+      provisioning:
+        gke:
+          machineType: a3-megagpu-8g
+          autoscaling:
+            min: 0
+            max: 8
+      nodeAttributes:
+        cloud.instanceType:  gcp:a3-megagpu-8g
+        cpu.vendor:          intel
+        cpu.cores:           104
+        cpu.platform:        sapphire-rapids
+        memoryGiB:           1872
+        host.virtualization: kvm

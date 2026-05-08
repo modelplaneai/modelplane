@@ -109,18 +109,29 @@ spec:
                       enum: [dra, device-plugin, hybrid]
 
                 # ---- in-cluster scheduler ----
-                # What admission / quota system runs on this cluster. Modelplane
-                # composes admission CRs against this. `managed-kueue` means
-                # Modelplane installs Kueue + creates ClusterQueues per pool;
-                # `kueue` / `kai` / `volcano` mean operator brought their own;
-                # `none` means no admission control (kube-scheduler best-effort).
+                # What admission / scheduling system runs on this cluster.
+                # Modelplane ships adapters for both KAI and Kueue; both are
+                # first-class.
+                #
+                # `auto` (default): Modelplane resolves at reconcile time.
+                #   - Modelplane-provisioned NVIDIA pools → `managed-kai`
+                #     (richer fleet signal — gang health, fair-share,
+                #     hierarchical projects — useful for fleet behaviors).
+                #   - Modelplane-provisioned non-NVIDIA pools → `managed-kueue`.
+                #   - BYOC: detect existing install (KAI Projects CRD or Kueue
+                #     ClusterQueue CRD); use what's there; install
+                #     managed-kueue if neither.
+                # `managed-kai` / `managed-kueue`: explicit Modelplane-installed.
+                # `kai` / `kueue` / `volcano`: operator brought their own.
+                # `none`: no admission control (kube-scheduler best-effort).
                 scheduler:
                   type: object
                   required: [type]
                   properties:
                     type:
                       type: string
-                      enum: [managed-kueue, kueue, kai, volcano, none]
+                      enum: [auto, managed-kai, managed-kueue, kai, kueue, volcano, none]
+                      default: auto
 
                 # ---- inference backend (orchestrator) ----
                 # What renders ModelPlacement (the intermediate representation)
