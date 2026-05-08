@@ -1,21 +1,12 @@
-# Modelplane — Scheduling & Placement Preview
+# Modelplane — Scheduling & Placement (sketch)
 
-This folder previews the **scheduling and placement** layer of Modelplane: federation matcher, in-cluster integration (KAI + Kueue), the plugin/adapter system, IRs, lifecycle, and the user-facing surface. The full API shape (XRD field-by-field) lives in [PR #64](https://github.com/modelplaneai/modelplane/pull/64).
+This folder is a sketch of the scheduling and placement layer. The actual code lives under [`functions/`](../../functions/) at the repo root; this folder hosts the design pointer + examples.
 
-## What to read
+- **API shape** is owned by [PR #64](https://github.com/modelplaneai/modelplane/pull/64).
+- **Implementation sketch** lives in:
+  - [`functions/compose-model-deployment/`](../../functions/compose-model-deployment/) — federation matcher + composer (MD → ModelReplicas + ModelEndpoints)
+  - [`functions/compose-model-placement/`](../../functions/compose-model-placement/) — renderer (ModelReplica → KServe LLMInferenceService + DRA ResourceClaims)
+- **Design doc (one-pager)**: [design.md](./design.md) — points at the code, dependencies, use cases.
+- **Examples**: [`examples/`](./examples/) — illustrative YAML exercising the use cases the matcher / renderer handle.
 
-| If you are… | Start with |
-|---|---|
-| A first-time user | [quickstart.md](./quickstart.md) — 4 CRs to a working curl |
-| Operating Modelplane (or evaluating it) | [advanced.md](./advanced.md) — 5 common scenarios as deltas from the quickstart |
-| Wanting to understand *how* scheduling and placement actually work | [scheduling.md](./scheduling.md) — two-stage scheduling, federation matcher, KAI/Kueue, multi-tenancy, BYOC behavior, walkthroughs |
-| Reviewing the architecture / design decisions | [design.md](./design.md) — principles, plugin/adapter system, IRs, Crossplane lifecycle layers, risks, open questions, roadmap |
-
-Plus:
-
-- [`examples/`](./examples/) — illustrative YAML for clusters, workloads, classes, endpoints, providers (referenced from all of the above)
-- [`diagram.excalidraw`](./diagram.excalidraw) — API hierarchy + lifecycle diagram
-
-## Status
-
-Draft for Bassam + Nic review. The API shape has moved to [#64](https://github.com/modelplaneai/modelplane/pull/64); this PR is now scoped to scheduling, placement, and the adapter/IR system that ties them together.
+The code under `functions/` doesn't run yet — it targets API protos that haven't been generated. The shape, dependencies, and use cases are real; wiring is gated on #64 landing.

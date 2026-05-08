@@ -1,10 +1,67 @@
-"""Fan out a ModelDeployment to ModelPlacements and configure routing.
+"""Compose a ModelDeployment into ModelReplicas + ModelEndpoints.
 
-This function discovers InferenceEnvironments, matches model requirements
-against available capacity, creates a ModelPlacement per matched environment,
-and composes Envoy Gateway Backend + HTTPRoute resources on the control plane
-for unified endpoint routing.
+This is the *composer* half of the federation control plane (see also
+`compose-model-replica` for the renderer half). It runs once per
+ModelDeployment reconcile and:
+
+  1. Asks Crossplane for the substrate it needs (required-resources):
+       - all InferenceClusters (cluster-scoped)
+       - the InferenceClasses referenced by their nodePools
+       - all ModelReplicas already owned by this MD (sticky placement)
+  2. Calls `scheduling.match()` — the federation matcher — to pick
+     (cluster, pool) per replica index 0..spec.replicas-1.
+  3. Emits one ModelReplica per replica_index, carrying the resolved
+     placement + the parent MD's resolved fields (so the renderer
+     doesn't have to re-fetch them).
+  4. Emits one ModelEndpoint per replica (per Nic's API in #64) — the
+     reachable URL surface a ModelService can route to.
+  5. Sets MD.status.conditions: Scheduled / FullyScheduled / Saturated
+     and a per-cluster matchTrace surfaced when scheduling fails.
+
+Sketch quality: the imports below assume Nic's #64 protos exist (they
+don't yet). The control flow + condition / require_resources patterns
+match the existing function shape; only the data plumbing is updated for
+the new API.
+
+Dependencies (what this function reads):
+
+  Required resources (Crossplane "extra resources"):
+    name=clusters         InferenceCluster (list, cluster-scoped)
+    name=classes          InferenceClass   (list, by name from clusters)
+    name=existing-replicas ModelReplica    (list, owner=this MD)
+
+  Composed (this function writes):
+    ModelReplica × spec.replicas (sticky by replicaIndex)
+    ModelEndpoint × spec.replicas (one per replica)
+
+Use cases (each example exercises a path here):
+
+  examples/workloads/gpt-oss-20b.yaml        Tensor strategy, no disagg
+  examples/workloads/kimi-k2.yaml            TensorPipeline, no disagg
+  examples/workloads/qwen3-coder.yaml        Multi-node FP8, no disagg
+  examples/workloads/kimi-k2-eu.yaml         Multi-region pattern
+  spec.replicas: N                           Spread across multiple ICs
+
+  Disaggregation (prefill + decode roles) lands with #64.
+
+Lifecycle ops this enables (each is its own user story):
+
+  Scale up   spec.replicas++  → composer creates new MR; matcher places it
+                                where capacity allows (potentially a new IC).
+  Scale down spec.replicas--  → composer GCs highest replicaIndex MR first
+                                (oldest survives, gateway endpoints stable).
+  IC degrades → eviction controller annotates affected MR; this composer
+                drops it on next reconcile, matcher re-picks for new MR.
+  IC added   → next scale-up event sees it as a candidate; existing MRs
+                are sticky and don't move.
+
+  See ../../design/proposed-modelplane-api/design.md for the full picture.
 """
+
+# ---------------------------------------------------------------------------
+# Imports — sketch. Real proto imports are gated by the new XRDs landing
+# from #64; until then these are placeholders that document the contract.
+# ---------------------------------------------------------------------------
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -12,358 +69,331 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from . import scheduling
 from .lib import conditions, defaults, metadata, naming
 from .lib import resource as libresource
-from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
-from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
-from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
-from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
-from .model.ai.modelplane.modeldeployment import v1alpha1
-from .model.ai.modelplane.modelplacement import v1alpha1 as mpv1alpha1
-from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# Condition types and reasons for the ModelDeployment XR.
-CONDITION_TYPE_PLACEMENTS_SCHEDULED = "PlacementsScheduled"
-CONDITION_TYPE_PLACEMENTS_READY = "PlacementsReady"
+# When #64 lands these become real:
+#   from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
+#   from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
+#   from .model.ai.modelplane.inferenceclass import v1alpha1 as iclassv1alpha1
+#   from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
+#   from .model.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 
-CONDITION_REASON_NO_ENVIRONMENTS = "NoEnvironments"
-CONDITION_REASON_MODEL_NOT_FOUND = "ModelNotFound"
-CONDITION_REASON_INSUFFICIENT_CAPACITY = "InsufficientCapacity"
-CONDITION_REASON_PLACEMENTS_CREATED = "PlacementsCreated"
-CONDITION_REASON_SCHEDULING = "Scheduling"
-CONDITION_REASON_NO_PLACEMENTS_SCHEDULED = "NoPlacementsScheduled"
-CONDITION_REASON_ALL_PLACEMENTS_READY = "AllPlacementsReady"
-CONDITION_REASON_MODEL_STARTING = "ModelStarting"
-CONDITION_REASON_ROUTE_CONFIGURED = "RouteConfigured"
-CONDITION_REASON_CONFIGURING = "Configuring"
-CONDITION_REASON_WAITING_FOR_PLACEMENTS = "WaitingForPlacements"
+
+# ---------------------------------------------------------------------------
+# Conditions exposed on the ModelDeployment XR.
+# ---------------------------------------------------------------------------
+
+CONDITION_TYPE_SCHEDULED = "Scheduled"
+CONDITION_TYPE_REPLICAS_READY = "ReplicasReady"
+
+REASON_SCHEDULED_ALL = "AllReplicasScheduled"
+REASON_SCHEDULED_PARTIAL = "PartiallyScheduled"
+REASON_NO_CLUSTERS = "NoEligibleClusters"
+REASON_SATURATED = "FleetSaturated"
+REASON_NO_REPLICAS = "ZeroReplicas"
+REASON_REPLICAS_READY = "AllReplicasReady"
+REASON_REPLICAS_PROGRESSING = "ReplicasProgressing"
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    """Composes a ModelDeployment into its child ModelReplicas + ModelEndpoints."""
+
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         self.req = req
         self.rsp = rsp
-        self.xr = v1alpha1.ModelDeployment(**resource.struct_to_dict(req.observed.composite.resource))
+        # ModelDeployment XR (parent) — Nic's #64 shape:
+        #   spec.{source, huggingFace, clusterSelector.matchLabels, replicas,
+        #         nodeSelector.cel, topology, engine, prefill?}
+        self.md = _load_md(req)
 
-        # Required resources — set by _resolve_inputs.
-        self.model = None
-        self.envs = []
-        self.gateway = None
-        self.all_placements = []
+        # Substrate snapshots — populated by resolve_inputs().
+        self.clusters: list[scheduling.InferenceCluster] = []
+        self.existing: list[scheduling.ExistingPlacement] = []
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
-            return
-        matched = self.schedule()
-        self.compose_placements(matched)
-        self.compose_httproute(matched)
-        self.write_status(matched)
-        self.derive_conditions(matched)
+            return  # required resources not all observed yet
+        result = self.schedule()
+        self.compose_replicas(result)
+        self.compose_endpoints(result)
+        self.write_conditions(result)
 
-    def resolve_inputs(self):
-        """Declare and fetch required resources. Returns False if critical
-        inputs are missing."""
-        model_kind = self.xr.spec.modelRef.kind
-        model_name = self.xr.spec.modelRef.name
+    # -----------------------------------------------------------------------
+    # 1. Required resources
+    # -----------------------------------------------------------------------
 
-        # InferenceEnvironments are matched by the modelplane.ai/environment=true
-        # label — a workaround for the empty match_labels protobuf bug.
-        env_match_labels: dict[str, str] = {
-            metadata.LABEL_KEY_ENVIRONMENT: metadata.LABEL_VALUE_ENVIRONMENT,
-        }
-        if self.xr.spec.environmentSelector and self.xr.spec.environmentSelector.matchLabels:
-            env_match_labels.update(self.xr.spec.environmentSelector.matchLabels)
+    def resolve_inputs(self) -> bool:
+        """Declare the substrate this function depends on.
 
+        Crossplane re-runs us until all of these are observed at least once.
+        """
         response.require_resources(
             self.rsp,
-            name="environments",
+            name="clusters",
             api_version="modelplane.ai/v1alpha1",
-            kind="InferenceEnvironment",
-            match_labels=env_match_labels,
+            kind="InferenceCluster",
+            # Cluster-scoped; no namespace selector.
         )
         response.require_resources(
             self.rsp,
-            name="model",
+            name="classes",
             api_version="modelplane.ai/v1alpha1",
-            kind=model_kind,
-            match_name=model_name,
+            kind="InferenceClass",
         )
         response.require_resources(
             self.rsp,
-            name="inference-gateway",
+            name="existing-replicas",
             api_version="modelplane.ai/v1alpha1",
-            kind="InferenceGateway",
-            match_name="default",
-        )
-        response.require_resources(
-            self.rsp,
-            name="all-placements",
-            api_version="modelplane.ai/v1alpha1",
-            kind="ModelPlacement",
-            match_labels={metadata.LABEL_KEY_PLACEMENT: metadata.LABEL_VALUE_PLACEMENT},
+            kind="ModelReplica",
+            match_labels={metadata.LABEL_KEY_DEPLOYMENT: self.md.name},
         )
 
-        env_dicts = request.get_required_resources(self.req, "environments")
-        model_dict = request.get_required_resource(self.req, "model")
-        gw_dict = request.get_required_resource(self.req, "inference-gateway")
-        placement_dicts = request.get_required_resources(self.req, "all-placements")
+        observed = self.req.extra_resources
+        if not all(k in observed for k in ("clusters", "classes", "existing-replicas")):
+            return False  # waiting on a refetch
 
-        if not env_dicts:
-            conditions.set_condition(
-                self.rsp,
-                CONDITION_TYPE_PLACEMENTS_SCHEDULED,
-                False,
-                CONDITION_REASON_NO_ENVIRONMENTS,
-            )
-            response.warning(self.rsp, "No InferenceEnvironments found")
-            return False
-
-        if model_dict is None:
-            conditions.set_condition(
-                self.rsp,
-                CONDITION_TYPE_PLACEMENTS_SCHEDULED,
-                False,
-                CONDITION_REASON_MODEL_NOT_FOUND,
-            )
-            response.warning(self.rsp, f"Model {model_name} not found")
-            return False
-
-        self.envs = [
-            defaults.inference_environment(iev1alpha1.InferenceEnvironment.model_validate(e)) for e in env_dicts
-        ]
-        if model_kind == "Model":
-            self.model = defaults.cluster_model(mv1alpha1.ModelModel.model_validate(model_dict))
-        else:
-            self.model = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
-        self.gateway = (
-            defaults.inference_gateway(igwv1alpha1.InferenceGateway.model_validate(gw_dict)) if gw_dict else None
-        )
-        self.all_placements = [
-            defaults.model_placement(mpv1alpha1.ModelPlacement.model_validate(p)) for p in placement_dicts
-        ]
-
+        self.clusters = _resolve_clusters(observed["clusters"], observed["classes"])
+        self.existing = _resolve_existing(observed["existing-replicas"])
         return True
 
-    def schedule(self):
-        """Match model requirements against available environments. Returns the
-        list of matched candidates."""
-        matched = scheduling.schedule(self.xr, self.model, self.envs, self.all_placements)
+    # -----------------------------------------------------------------------
+    # 2. Federation match
+    # -----------------------------------------------------------------------
 
-        # Transition: emit which environments were matched (first time only).
-        if not matched:
-            return matched
-        prev_placement_count = sum(1 for c in matched if f"placement-{c.name}" in self.req.observed.resources)
-        if prev_placement_count == 0:
-            matched_names = [c.name for c in matched]
-            response.normal(self.rsp, f"Matched {len(matched)} environments: {', '.join(matched_names)}")
+    def schedule(self) -> scheduling.MatchResult:
+        return scheduling.match(self.md, self.clusters, self.existing)
 
-        return matched
+    # -----------------------------------------------------------------------
+    # 3. Compose ModelReplicas
+    # -----------------------------------------------------------------------
 
-    def compose_placements(self, matched):
-        """Compose a ModelPlacement per matched environment."""
-        for env_info in matched:
-            placement_key = f"placement-{env_info.name}"
+    def compose_replicas(self, result: scheduling.MatchResult) -> None:
+        """Emit one ModelReplica per Placement.
 
-            resource.update(
-                self.rsp.desired.resources[placement_key],
-                mpv1alpha1.ModelPlacement(
-                    metadata=metav1.ObjectMeta(
-                        name=naming.placement_name(self.xr.metadata.name, env_info.name),
-                        namespace=self.xr.metadata.namespace,
-                        labels={
-                            metadata.LABEL_KEY_PLACEMENT: metadata.LABEL_VALUE_PLACEMENT,
-                            metadata.LABEL_KEY_DEPLOYMENT: self.xr.metadata.name,
-                        },
-                    ),
-                    spec=mpv1alpha1.Spec(
-                        modelRef=mpv1alpha1.ModelRef(
-                            kind=self.xr.spec.modelRef.kind,
-                            name=self.xr.spec.modelRef.name,
-                        ),
-                        inferenceEnvironmentRef=mpv1alpha1.InferenceEnvironmentRef(
-                            name=env_info.name,
-                        ),
-                        # Convert via model_dump because the MD and MP
-                        # Scaling types are different Pydantic classes
-                        # (generated from different XRDs).
-                        scaling=mpv1alpha1.Scaling.model_validate(self.xr.spec.scaling.model_dump(exclude_none=True)),
-                    ),
+        ModelReplica spec carries:
+          - replicaIndex                       — stable identity 0..N-1
+          - target.{cluster, decodePool, prefillPool?} — matcher's decision
+          - resolved decode/prefill RoleSpec   — what the renderer renders
+          - parentRef                          — back to the MD (owner)
+        """
+        for p in result.placements:
+            mr_name = naming.replica_name(self.md.name, p.replica_index)
+            mr_spec = {
+                "replicaIndex": p.replica_index,
+                "target": {
+                    "cluster": p.cluster,
+                    "decodePool": p.decode.pool,
+                    "prefillPool": p.prefill.pool if p.prefill else None,
+                },
+                # The renderer reads these instead of re-fetching the MD —
+                # makes the renderer pure over the MR + IC + class, no
+                # parent lookup needed.
+                "decode": _role_to_dict(self.md.decode, p.decode),
+                "prefill": (
+                    _role_to_dict(self.md.prefill, p.prefill)
+                    if p.prefill and self.md.prefill
+                    else None
+                ),
+                "engine": _engine_dict(self.md),
+                "source": _source_dict(self.md),
+            }
+            libresource.add_composed(
+                self.rsp,
+                name=mr_name,
+                api_version="modelplane.ai/v1alpha1",
+                kind="ModelReplica",
+                metadata={
+                    "name": mr_name,
+                    "namespace": self.md.namespace,
+                    "labels": {
+                        metadata.LABEL_KEY_DEPLOYMENT: self.md.name,
+                    },
+                    "ownerReferences": [_owner_ref(self.md)],
+                },
+                spec=mr_spec,
+            )
+
+    # -----------------------------------------------------------------------
+    # 4. Compose ModelEndpoints
+    # -----------------------------------------------------------------------
+
+    def compose_endpoints(self, result: scheduling.MatchResult) -> None:
+        """One ModelEndpoint per ModelReplica (Nic's #64 design).
+
+        The endpoint's URL is set when the replica's gateway address is
+        known — populated downstream by the renderer / status writer.
+        ModelService selects across these endpoints by the deployment label.
+        """
+        for p in result.placements:
+            ep_name = naming.endpoint_name(self.md.name, p.replica_index)
+            libresource.add_composed(
+                self.rsp,
+                name=ep_name,
+                api_version="modelplane.ai/v1alpha1",
+                kind="ModelEndpoint",
+                metadata={
+                    "name": ep_name,
+                    "namespace": self.md.namespace,
+                    "labels": {
+                        metadata.LABEL_KEY_DEPLOYMENT: self.md.name,
+                    },
+                    "ownerReferences": [_owner_ref(self.md)],
+                },
+                spec={
+                    # Filled in by status reconcile once the replica's
+                    # gateway address is known.
+                    "url": "",
+                    "api": "OpenAI",
+                },
+            )
+
+    # -----------------------------------------------------------------------
+    # 5. Conditions + matchTrace
+    # -----------------------------------------------------------------------
+
+    def write_conditions(self, result: scheduling.MatchResult) -> None:
+        if self.md.replicas == 0:
+            conditions.set_condition(
+                self.rsp,
+                type=CONDITION_TYPE_SCHEDULED,
+                status="True",
+                reason=REASON_NO_REPLICAS,
+                message="spec.replicas is 0; nothing to schedule",
+            )
+            return
+
+        if not result.placements:
+            conditions.set_condition(
+                self.rsp,
+                type=CONDITION_TYPE_SCHEDULED,
+                status="False",
+                reason=_no_placement_reason(result),
+                message=_trace_summary(result.trace),
+            )
+            return
+
+        if len(result.placements) < self.md.replicas:
+            conditions.set_condition(
+                self.rsp,
+                type=CONDITION_TYPE_SCHEDULED,
+                status="False",
+                reason=REASON_SCHEDULED_PARTIAL,
+                message=(
+                    f"{len(result.placements)}/{self.md.replicas} replicas scheduled. "
+                    + _trace_summary(result.trace)
                 ),
             )
-
-    def compose_httproute(self, matched):
-        """Compose an HTTPRoute that load-balances across all placements'
-        backends. Backend resources are composed by ModelPlacement — we read
-        their names from observed ModelPlacement status."""
-        if not matched:
             return
 
-        backend_refs = self.backend_refs(matched)
-
-        # Rewrite /{ns}/{deployment}/ to /{remote-ns}/{model-name}/.
-        # The LLMIS name is the ClusterModel name on all remote clusters,
-        # so the rewrite is the same for every backend.
-        rewrite_prefix = f"/{metadata.NAMESPACE_REMOTE}/{naming.to_dns_label(self.xr.spec.modelRef.name)}/"
-
-        # Gateway parentRef — defaults for Envoy Gateway, could be read
-        # from InferenceGateway status in future.
-        httproute_spec: dict = {
-            "parentRefs": [{"name": metadata.GATEWAY_NAME, "namespace": metadata.NAMESPACE_SYSTEM}],
-            "rules": [
-                {
-                    "matches": [
-                        {
-                            "path": {
-                                "type": "PathPrefix",
-                                "value": f"/{self.xr.metadata.namespace}/{self.xr.metadata.name}/",
-                            },
-                        }
-                    ],
-                    "filters": [
-                        {
-                            "type": "URLRewrite",
-                            "urlRewrite": {
-                                "path": {
-                                    "type": "ReplacePrefixMatch",
-                                    "replacePrefixMatch": rewrite_prefix,
-                                },
-                            },
-                        }
-                    ],
-                }
-            ],
-        }
-        if backend_refs:
-            httproute_spec["rules"][0]["backendRefs"] = backend_refs
-
-        resource.update(
-            self.rsp.desired.resources["httproute"],
-            {
-                "apiVersion": "gateway.networking.k8s.io/v1",
-                "kind": "HTTPRoute",
-                "metadata": {"namespace": self.xr.metadata.namespace},
-                "spec": httproute_spec,
-            },
+        conditions.set_condition(
+            self.rsp,
+            type=CONDITION_TYPE_SCHEDULED,
+            status="True",
+            reason=REASON_SCHEDULED_ALL,
+            message=f"{self.md.replicas} replicas scheduled across the fleet",
         )
 
-    def write_status(self, matched):
-        """Write deployment status: model name, placement counts, endpoint."""
-        gateway_ip = self.gateway.status.address if self.gateway else None
 
-        placements_ready = sum(1 for c in matched if conditions.has_condition(self.req, f"placement-{c.name}", "Ready"))
-
-        status = v1alpha1.Status(
-            model=v1alpha1.Model(name=self.model.spec.model.name),
-            placements=v1alpha1.Placements(total=len(matched), ready=placements_ready),
-        )
-        if gateway_ip:
-            status.endpoint = v1alpha1.Endpoint(
-                url=f"http://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}/v1/chat/completions",
-            )
-        libresource.update_status(self.rsp.desired.composite, status)
-
-    def derive_conditions(self, matched):
-        """Derive PlacementsScheduled, PlacementsReady, and RoutingReady
-        conditions. Also marks per-placement and httproute readiness."""
-        self.derive_placements_scheduled(matched)
-        self.derive_placements_ready(matched)
-        self.derive_routing_ready(matched)
-
-        # When no placements are scheduled, explicitly mark not ready. Without
-        # this, an XR with no composed resources would be trivially ready.
-        if not matched:
-            self.rsp.desired.composite.ready = fnv1.READY_FALSE
-
-    def derive_placements_scheduled(self, matched):
-        """PlacementsScheduled: environments matched and placements created."""
-        any_observed = any(f"placement-{c.name}" in self.req.observed.resources for c in matched)
-        scheduled = len(matched) > 0 and any_observed
-
-        if not matched:
-            reason = CONDITION_REASON_INSUFFICIENT_CAPACITY
-            msg = f"0 of {int(self.xr.spec.environments)} environments matched (checked {len(self.envs)})"
-        elif scheduled:
-            reason = CONDITION_REASON_PLACEMENTS_CREATED
-            msg = f"Matched {len(matched)} environments"
-        else:
-            reason = CONDITION_REASON_SCHEDULING
-            msg = ""
-
-        conditions.set_condition(self.rsp, CONDITION_TYPE_PLACEMENTS_SCHEDULED, scheduled, reason, msg)
-
-    def derive_placements_ready(self, matched):
-        """PlacementsReady: all placements are serving traffic."""
-        placements_ready = 0
-        for c in matched:
-            placement_key = f"placement-{c.name}"
-            if conditions.has_condition(self.req, placement_key, "Ready"):
-                self.rsp.desired.resources[placement_key].ready = fnv1.READY_TRUE
-                placements_ready += 1
-
-        all_ready = len(matched) > 0 and placements_ready == len(matched)
-
-        if not matched:
-            reason = CONDITION_REASON_NO_PLACEMENTS_SCHEDULED
-            msg = ""
-        elif all_ready:
-            reason = CONDITION_REASON_ALL_PLACEMENTS_READY
-            msg = f"{placements_ready} of {len(matched)} ready"
-        else:
-            reason = CONDITION_REASON_MODEL_STARTING
-            msg = f"{placements_ready} of {len(matched)} ready"
-
-        conditions.set_condition(self.rsp, CONDITION_TYPE_PLACEMENTS_READY, all_ready, reason, msg)
-
-    def derive_routing_ready(self, matched):
-        """RoutingReady: the control plane HTTPRoute is configured and has
-        backends."""
-        if "httproute" not in self.rsp.desired.resources:
-            if not matched:
-                reason = CONDITION_REASON_NO_PLACEMENTS_SCHEDULED
-            else:
-                reason = CONDITION_REASON_WAITING_FOR_PLACEMENTS
-            conditions.set_condition(self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, reason)
-            return
-
-        # The HTTPRoute is only truly ready when it has backendRefs (not just
-        # Accepted). An empty-backendRefs HTTPRoute returns 404.
-        backend_refs = self.backend_refs(matched)
-        route_ready = conditions.has_parent_condition(self.req, "httproute", "Accepted") and bool(backend_refs)
-
-        if route_ready:
-            self.rsp.desired.resources["httproute"].ready = fnv1.READY_TRUE
-
-        if not matched:
-            reason = CONDITION_REASON_NO_PLACEMENTS_SCHEDULED
-        elif route_ready:
-            reason = CONDITION_REASON_ROUTE_CONFIGURED
-        else:
-            reason = CONDITION_REASON_CONFIGURING
-
-        conditions.set_condition(self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, route_ready, reason)
-
-    def backend_refs(self, matched):
-        """Read backend names from observed ModelPlacement status."""
-        refs = []
-        for env_info in matched:
-            observed = self.req.observed.resources.get(f"placement-{env_info.name}")
-            if not observed:
-                continue
-            p = mpv1alpha1.ModelPlacement.model_validate(resource.struct_to_dict(observed.resource))
-            if not p.status or not p.status.routing:
-                continue
-            if not p.status.routing.backendName:
-                continue
-            refs.append(
-                {
-                    "group": "gateway.envoyproxy.io",
-                    "kind": "Backend",
-                    "name": p.status.routing.backendName,
-                    "port": 80,
-                    "weight": 1,
-                }
-            )
-        return refs
+# ---------------------------------------------------------------------------
+# Adapters between Crossplane structs and scheduling dataclasses.
+# These are the boundaries; the matcher itself is plain Python.
+# ---------------------------------------------------------------------------
 
 
-def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-    """Compose ModelPlacements and control plane routing resources."""
+def _load_md(req: fnv1.RunFunctionRequest) -> scheduling.ModelDeploymentSpec:
+    """Build the matcher's view of the ModelDeployment.
+
+    Sketch — real impl pulls from the generated ModelDeployment proto.
+    Demonstrates which fields the matcher consumes (and only those).
+    """
+    raise NotImplementedError("wire to mdv1alpha1.ModelDeployment when #64 lands")
+
+
+def _resolve_clusters(
+    clusters_raw, classes_raw
+) -> list[scheduling.InferenceCluster]:
+    """Resolve InferenceClusters + the InferenceClasses they reference.
+
+    Each pool's `class:` ref is replaced inline with the resolved
+    InferenceClass.spec.capabilities. Pools whose class isn't observed yet
+    are dropped (the matcher won't consider them). Crossplane re-runs us
+    when classes appear.
+    """
+    raise NotImplementedError("walk extra resources when #64 lands")
+
+
+def _resolve_existing(existing_raw) -> list[scheduling.ExistingPlacement]:
+    """Project owned ModelReplicas into matcher form for sticky placement."""
+    raise NotImplementedError("walk extra resources when #64 lands")
+
+
+def _role_to_dict(role, placement: scheduling.RolePlacement) -> dict:
+    """Build a ModelReplica.spec.{decode|prefill} block from MD + placement."""
+    return {
+        "topology": {
+            "strategy": role.topology.strategy,
+            "tensor": role.topology.tensor,
+            "pipeline": role.topology.pipeline,
+            "data": role.topology.data,
+            "dataLocal": role.topology.data_local,
+            "instances": role.topology.instances,
+        },
+        # nodeSelector.cel carried through verbatim — the renderer turns it
+        # into a DRA ResourceClaim against the matched pool's capabilities.
+        "nodeSelector": {"cel": role.node_selector_cel},
+        "pool": placement.pool,
+        "nodesUsed": placement.nodes_used,
+        "gpusPerNode": placement.gpus_per_node,
+        "instances": placement.instances,
+    }
+
+
+def _engine_dict(md: scheduling.ModelDeploymentSpec) -> dict:
+    """Engine config the renderer needs. Pass-through from MD."""
+    raise NotImplementedError("populate from md when wired")
+
+
+def _source_dict(md: scheduling.ModelDeploymentSpec) -> dict:
+    """Where to fetch model weights — HuggingFace repo / S3 / GCS / PVC."""
+    raise NotImplementedError("populate from md when wired")
+
+
+def _owner_ref(md: scheduling.ModelDeploymentSpec) -> dict:
+    return {
+        "apiVersion": "modelplane.ai/v1alpha1",
+        "kind": "ModelDeployment",
+        "name": md.name,
+        # uid filled in by Crossplane when materialized
+    }
+
+
+def _no_placement_reason(result: scheduling.MatchResult) -> str:
+    if not result.trace:
+        return REASON_NO_CLUSTERS
+    if all(t.reason == "capacity" for t in result.trace):
+        return REASON_SATURATED
+    return REASON_NO_CLUSTERS
+
+
+def _trace_summary(trace: list[scheduling.MatchTrace]) -> str:
+    """Compact summary of why scheduling failed, for the condition message.
+
+    The full structured trace lives on MD.status.matchTrace (a separate
+    field) — this is the human-readable headline.
+    """
+    if not trace:
+        return "no eligible InferenceClusters"
+    by_reason: dict[str, int] = {}
+    for t in trace:
+        by_reason[t.reason] = by_reason.get(t.reason, 0) + 1
+    return "; ".join(f"{r}: {n}" for r, n in by_reason.items())
+
+
+# ---------------------------------------------------------------------------
+# Crossplane function entrypoint
+# ---------------------------------------------------------------------------
+
+
+def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
+    rsp = response.to(req)
     Composer(req, rsp).compose()
+    return rsp

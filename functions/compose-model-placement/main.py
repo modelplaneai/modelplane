@@ -1,463 +1,459 @@
-"""Deploy a model on a single InferenceEnvironment.
+"""Render a ModelReplica into a KServe LLMInferenceService on its target cluster.
 
-This function reads the referenced ClusterModel (or Model) and
-InferenceEnvironment via required resources, resolves the matching serving
-profile, computes GPU count from model VRAM vs pool VRAM, and composes
-resources on the remote cluster.
+This is the *renderer* half of the federation control plane (see also
+`compose-model-deployment` for the composer half). It runs once per
+ModelReplica reconcile and:
 
-It creates a KServe LLMInferenceService on the remote cluster and an Envoy
-Gateway Backend on the control plane for ModelDeployment to route through.
+  1. Reads the ModelReplica — placement decision (cluster, pool[s]) +
+     resolved decode / prefill role specs + engine + source.
+  2. Reads the matched InferenceCluster + InferenceClass(es) — needed to
+     build the DRA ResourceClaim from the class's typed capabilities.
+  3. Composes a KServe LLMInferenceService (LLM-IS) on the target cluster
+     via Crossplane's remote-cluster Object provider, plus a DRA
+     ResourceClaim per role for device binding.
+  4. Reports observed status from the LLM-IS back to the ModelReplica
+     (Ready / Pulling / LWSGangPending / EngineLoading conditions).
+
+Sketch — assumes Nic's #64 protos. The renderer doesn't run the matcher
+or look at other ModelReplicas; it's pure over (ModelReplica, IC, Class).
+That's the whole point of the IR: the renderer is replaceable per backend
+without re-implementing federation.
+
+NOTE on the directory name: this function is named `compose-model-placement`
+historically. With Nic's API rename (#64), the parent XR is `ModelReplica`.
+The directory rename is a follow-up — Crossplane function package ids are
+referenced from Compositions and aren't a simple `git mv`. The code in
+this file targets the new ModelReplica shape.
+
+Dependencies (what this function reads):
+
+  Required resources (Crossplane "extra resources"):
+    name=cluster   InferenceCluster matching MR.spec.target.cluster
+    name=classes   InferenceClass × {decodePool's class, prefillPool's class}
+
+  Composed (this function writes):
+    KServe LLMInferenceService (on the remote target cluster)
+    DRA ResourceClaim × roles (on the remote target cluster)
+
+Use cases (each example exercises a path here):
+
+  examples/workloads/gpt-oss-20b.yaml        Tensor → 1 pod, no LWS
+  examples/workloads/kimi-k2.yaml            TensorPipeline → LWS gang
+  examples/workloads/qwen3-coder.yaml        TensorPipeline + FP8 engine args
+  examples/workloads/acme-vllm-fork.yaml     Engine fork — pass-through args
+  Disaggregated LLM-IS (decode + prefill)    lands with #64
+
+Why this seam matters for BYO-* (see ../../design/proposed-modelplane-api/design.md):
+
+  - BYO KServe version v0.16 / v0.17 / v0.18 → swap the renderer in this
+    file, MR shape unchanged, matcher unchanged, MD unchanged.
+  - BYO Dynamo / raw-vllm → different file, same MR contract.
+  - BYO scheduler (KAI vs Kueue) → adds schedulerName / PodGroup wrap
+    here, doesn't change the MR or the matcher.
 """
 
-import math
-from dataclasses import dataclass
+# ---------------------------------------------------------------------------
+# Imports — sketch. See compose-model-deployment/main.py for the same note.
+# ---------------------------------------------------------------------------
 
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, defaults, metadata, naming, prometheus, quantities, serving
+from .lib import conditions, defaults, metadata, naming
 from .lib import resource as libresource
-from .model.ai.modelplane.clustermodel import v1alpha1 as cmv1alpha1
-from .model.ai.modelplane.inferenceenvironment import v1alpha1 as iev1alpha1
-from .model.ai.modelplane.model import v1alpha1 as mv1alpha1
-from .model.ai.modelplane.modelplacement import v1alpha1
-from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
-# Condition types and reasons for the ModelPlacement XR.
-CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
-CONDITION_TYPE_MODEL_READY = "ModelReady"
-CONDITION_TYPE_PROFILE_MATCHED = "ProfileMatched"
-
-CONDITION_REASON_WAITING_FOR_REFERENCES = "WaitingForReferences"
-CONDITION_REASON_WAITING_FOR_ENVIRONMENT = "WaitingForEnvironment"
-CONDITION_REASON_WAITING_FOR_MODEL = "WaitingForModel"
-CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
-CONDITION_REASON_WAITING_FOR_GATEWAY = "WaitingForGateway"
-CONDITION_REASON_NO_MATCHING_PROFILE = "NoMatchingProfile"
-CONDITION_REASON_DEPLOYING = "Deploying"
-CONDITION_REASON_ACCEPTED = "Accepted"
-CONDITION_REASON_SERVING = "Serving"
-CONDITION_REASON_MODEL_STARTING = "ModelStarting"
-CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
-CONDITION_REASON_PROFILE_RESOLVED = "ProfileResolved"
-
-# Composed resource key for the model serving resource, regardless of backend.
-MODEL_RESOURCE_KEY = "model-serving"
+# When #64 lands these become real:
+#   from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
+#   from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
+#   from .model.ai.modelplane.inferenceclass import v1alpha1 as iclassv1alpha1
+#   from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobj
 
 
-@dataclass
-class GpuAllocation:
-    """Result of compute_gpus() — describes how GPUs should be distributed."""
+# ---------------------------------------------------------------------------
+# Conditions exposed on the ModelReplica XR.
+# ---------------------------------------------------------------------------
 
-    total: int  # Total GPUs needed (ceil(model_vram / gpu_vram))
-    per_node: int  # GPUs available per node in the selected pool
-    node_count: int  # Nodes needed (ceil(total / per_node))
+CONDITION_TYPE_RENDERED = "Rendered"
+CONDITION_TYPE_READY = "Ready"
 
-    @property
-    def multi_node(self) -> bool:
-        """Whether the model requires more GPUs than a single node has."""
-        return self.total > self.per_node
+# Granular cold-start states surfaced from the LLM-IS:
+CONDITION_TYPE_PULLING = "Pulling"
+CONDITION_TYPE_LWS_GANG_PENDING = "LWSGangPending"
+CONDITION_TYPE_ENGINE_LOADING = "EngineLoading"
+
+REASON_RENDERED = "RenderedToCluster"
+REASON_RENDER_FAILED = "RenderFailed"
+REASON_LLMIS_READY = "LLMInferenceServiceReady"
+REASON_LLMIS_PROGRESSING = "LLMInferenceServiceProgressing"
 
 
-class Composer:
-    def __init__(self, req, rsp):
+# Composed resource keys — stable names on the response so subsequent
+# reconciles update rather than recreate.
+LLMIS_KEY = "llm-is"
+RESOURCE_CLAIM_DECODE_KEY = "rc-decode"
+RESOURCE_CLAIM_PREFILL_KEY = "rc-prefill"
+
+
+class Renderer:
+    """ModelReplica → KServe LLMInferenceService + DRA ResourceClaims."""
+
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
         self.req = req
         self.rsp = rsp
-        self.xr = v1alpha1.ModelPlacement(**resource.struct_to_dict(req.observed.composite.resource))
+        self.mr = _load_mr(req)
 
-        # Required resources and resolved profile — set by resolve_inputs.
-        self.model = None
-        self.ie = None
-        self.profile = None
+        # Matched substrate — populated by resolve_inputs().
+        self.cluster = None  # InferenceCluster
+        self.classes: dict[str, "InferenceClass"] = {}  # pool name → class
 
-    def compose(self):
+    def render(self) -> None:
         if not self.resolve_inputs():
             return
-        gpus = self.compute_gpus()
-        self.compose_model_serving(gpus)
-        self.compose_backend()
-        self.write_status(gpus)
-        self.derive_conditions()
+        self.compose_llmis()
+        self.compose_resource_claims()
+        self.observe_status()
 
-    def resolve_inputs(self):
-        """Declare and fetch required resources, then resolve the serving
-        profile. Returns False if critical inputs are missing or no profile
-        matches."""
+    # -----------------------------------------------------------------------
+    # 1. Required resources
+    # -----------------------------------------------------------------------
+
+    def resolve_inputs(self) -> bool:
+        """We only need the IC we landed on + the class(es) referenced by
+        our decode / prefill pools. Crossplane re-runs until both are
+        observed."""
+        target = self.mr.target
         response.require_resources(
             self.rsp,
-            name="model",
+            name="cluster",
             api_version="modelplane.ai/v1alpha1",
-            kind=self.xr.spec.modelRef.kind,
-            match_name=self.xr.spec.modelRef.name,
+            kind="InferenceCluster",
+            match_name=target.cluster,
         )
-        response.require_resources(
-            self.rsp,
-            name="environment",
-            api_version="modelplane.ai/v1alpha1",
-            kind="InferenceEnvironment",
-            match_name=self.xr.spec.inferenceEnvironmentRef.name,
-        )
-
-        model_dict = request.get_required_resource(self.req, "model")
-        ie_dict = request.get_required_resource(self.req, "environment")
-        if model_dict is None or ie_dict is None:
-            conditions.set_condition(
-                self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_REFERENCES
-            )
-            conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
-            conditions.set_condition(
-                self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL
-            )
-            response.normal(self.rsp, "Waiting for model and environment to be resolved")
+        # Class names come from the IC; we discover them after the cluster
+        # is observed. Two-phase: cluster first, then classes.
+        observed = self.req.extra_resources
+        if "cluster" not in observed:
             return False
+        self.cluster = _resolve_cluster(observed["cluster"])
 
-        self.ie = defaults.inference_environment(iev1alpha1.InferenceEnvironment.model_validate(ie_dict))
+        class_names = {self.cluster.pool_class(target.decode_pool)}
+        if target.prefill_pool:
+            class_names.add(self.cluster.pool_class(target.prefill_pool))
 
-        if not self.ie.status.providerConfigRef.name:
-            conditions.set_condition(
-                self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_ENVIRONMENT
-            )
-            conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
-            conditions.set_condition(
-                self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL
-            )
-            response.normal(self.rsp, "Waiting for environment providerConfigRef")
-            return False
-
-        if self.xr.spec.modelRef.kind == "Model":
-            self.model = defaults.cluster_model(mv1alpha1.ModelModel.model_validate(model_dict))
-        else:
-            self.model = defaults.cluster_model(cmv1alpha1.ClusterModel.model_validate(model_dict))
-
-        # Resolve the serving profile by walking the model's serving[] array.
-        self.profile = serving.match_profile(self.model, self.ie)
-        if not self.profile:
-            conditions.set_condition(
-                self.rsp, CONDITION_TYPE_PROFILE_MATCHED, False, CONDITION_REASON_NO_MATCHING_PROFILE
-            )
-            response.warning(
+        for cn in class_names:
+            response.require_resources(
                 self.rsp,
-                f"No serving profile matches environment {self.xr.spec.inferenceEnvironmentRef.name}",
+                name=f"class-{cn}",
+                api_version="modelplane.ai/v1alpha1",
+                kind="InferenceClass",
+                match_name=cn,
             )
+
+        if not all(f"class-{cn}" in observed for cn in class_names):
             return False
+
+        for cn in class_names:
+            self.classes[cn] = _resolve_class(observed[f"class-{cn}"])
 
         return True
 
-    def compute_gpus(self):
-        """Compute how many GPUs the model needs and whether multi-node
-        inference is required.
+    # -----------------------------------------------------------------------
+    # 2. KServe LLMInferenceService
+    # -----------------------------------------------------------------------
 
-        Returns a GpuAllocation with total GPUs needed, per-node GPU count
-        from the pool, and the number of nodes required.
+    def compose_llmis(self) -> None:
+        """Render the LLM-IS for the target KServe version.
+
+        Single render path here; switch on cluster.backend.version once we
+        ship per-version adapters (v0.16 / v0.17 / v0.18 differ on the
+        worker pod spec — `size`/`template` wrapper vs flat `containers`,
+        args vs command, storage migration).
+
+        The LLM-IS represents ONE complete serving instance — single-node
+        (Tensor strategy), multi-node (TensorPipeline → LWS group), or
+        disaggregated (decode + prefill roles, both within the LLM-IS).
         """
-        for pool in self.ie.status.capacity.gpuPools:
-            pool_memory = quantities.parse_quantity(pool.memory or "0Gi")
-            if pool_memory > 0:
-                total = max(
-                    1,
-                    math.ceil(quantities.parse_quantity(self.model.spec.resources.vram) / pool_memory),
-                )
-                per_node = int(pool.countPerNode)
-                node_count = max(1, math.ceil(total / per_node)) if per_node > 0 else 1
-                return GpuAllocation(
-                    total=total,
-                    per_node=min(per_node, total),
-                    node_count=node_count,
-                )
-        return GpuAllocation(total=1, per_node=1, node_count=1)
-
-    def compose_model_serving(self, gpus):
-        """Compose the model serving resource on the remote cluster."""
-        self.compose_kserve_llmis(gpus)
-        if self.has_autoscaling():
-            self.compose_kserve_keda_scaledobject()
-
-    def compose_kserve_llmis(self, gpus):
-        """Compose a provider-kubernetes Object wrapping an LLMInferenceService
-        on the remote cluster.
-
-        For single-node models, each pod gets all required GPUs. For multi-node
-        models (VRAM exceeds a single node), the LLMInferenceService is composed
-        with a parallelism section and a worker section that uses
-        LeaderWorkerSet for cross-node tensor parallelism.
-        """
-        llmis_name = naming.to_dns_label(self.xr.spec.modelRef.name)
-
-        args = list(self.profile.engine.args or [])
-
-        # Each pod gets per_node GPUs (or total if single-node).
-        gpu_per_pod = gpus.per_node if gpus.multi_node else gpus.total
-
-        container: dict = {
-            "name": "main",
-            "image": self.profile.engine.image,
-            "args": args,
-            "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
-            "resources": {
-                "limits": {
-                    "nvidia.com/gpu": str(gpu_per_pod),
-                    "cpu": self.model.spec.resources.cpu,
-                    "memory": self.model.spec.resources.memory,
-                },
-                "requests": {"cpu": "1", "memory": self.model.spec.resources.memory},
+        spec = self._llmis_spec()
+        # Wrap the in-cluster object in a Crossplane k8s Object so it lands
+        # on the remote cluster via the kubeconfig provider.
+        libresource.add_remote_object(
+            self.rsp,
+            name=LLMIS_KEY,
+            target_cluster_secret=self.cluster.kubeconfig_secret_ref,
+            api_version="serving.kserve.io/v1alpha1",
+            kind="LLMInferenceService",
+            metadata={
+                "name": naming.llmis_name(self.mr.parent_name, self.mr.replica_index),
+                "namespace": self.mr.parent_namespace,
+                "labels": {metadata.LABEL_KEY_REPLICA: str(self.mr.replica_index)},
             },
-        }
+            spec=spec,
+        )
 
-        llmis_spec: dict = {
+    def _llmis_spec(self) -> dict:
+        """Build the KServe LLM-IS spec from the MR's resolved roles.
+
+        Topology mapping:
+
+          Tensor          → workerSpec sized to gpus_per_node, 1 pod
+          TensorPipeline  → LWS group: pipeline pods × tensor GPUs each
+          DataExpert      → DP+EP across nodes; LWS group sized accordingly
+
+        Disaggregation: decode is the top-level workerSpec; prefill is
+        rendered as `spec.prefill` with its own workerSpec. KV transfer
+        config is plumbed through engine.args (Nic's design — opaque
+        pass-through).
+        """
+        decode = self.mr.decode  # always present
+        spec = {
             "model": {
-                "uri": f"hf://{self.model.spec.huggingFace.repo}" if self.model.spec.huggingFace else "",
-                "name": self.model.spec.model.name,
+                "name": f"{self.mr.parent_namespace}/{self.mr.parent_name}",
+                "source": _source(self.mr.source),
             },
-            "replicas": self.worker_replicas(),
-            "template": {"containers": [container]},
-            "router": {"gateway": {}, "route": {}},
+            "replicas": 1,  # one LLM-IS per ModelReplica — sticky 1
+            "engine": _engine_block(self.mr.engine, decode),
+            "workerSpec": _worker_spec(
+                decode,
+                self.classes[self.cluster.pool_class(self.mr.target.decode_pool)],
+            ),
         }
-
-        if gpus.multi_node:
-            llmis_spec["parallelism"] = {"tensor": gpus.total}
-            # Worker pods use the same container spec as the leader.
-            worker_container = dict(container)
-            llmis_spec["worker"] = {
-                "size": gpus.node_count - 1,
-                "template": {"containers": [worker_container]},
+        if self.mr.prefill is not None:
+            spec["prefill"] = {
+                "engine": _engine_block(self.mr.engine, self.mr.prefill),
+                "workerSpec": _worker_spec(
+                    self.mr.prefill,
+                    self.classes[self.cluster.pool_class(self.mr.target.prefill_pool)],
+                ),
             }
+        return spec
 
-        resource.update(
-            self.rsp.desired.resources[MODEL_RESOURCE_KEY],
-            k8sobjv1alpha1.Object(
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=self.ie.status.providerConfigRef.name,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromObject",
-                    ),
-                    forProvider=k8sobjv1alpha1.ForProvider(
-                        manifest={
-                            "apiVersion": "serving.kserve.io/v1alpha1",
-                            "kind": "LLMInferenceService",
-                            "metadata": {
-                                "name": llmis_name,
-                                "namespace": metadata.NAMESPACE_REMOTE,
-                            },
-                            "spec": llmis_spec,
-                        },
-                    ),
+    # -----------------------------------------------------------------------
+    # 3. DRA ResourceClaims
+    # -----------------------------------------------------------------------
+
+    def compose_resource_claims(self) -> None:
+        """Emit a DRA ResourceClaim per role.
+
+        DRA is required on every InferenceCluster (Nic's #64 design — no
+        device-plugin fallback). The claim's selector is derived from the
+        class's typed capabilities:
+
+          requirements:
+            - selector:
+                cel: |
+                  device.attributes["gpu.nvidia.com/product"].string ==
+                    capabilities["gpu.product"]
+                  && device.attributes["gpu.nvidia.com/memory.gib"].quantity >=
+                    capabilities["gpu.vramGiB"]
+
+        The claim count is gpus_per_node (per-pod). Multiple pods in a LWS
+        gang each get their own claim. The DRA driver matches them against
+        runtime ResourceSlices at admission — that's where drift / typos /
+        misconfig get caught (the federation match already evaluated the
+        same predicate against declared attrs at stage 1).
+        """
+        decode_class = self.classes[self.cluster.pool_class(self.mr.target.decode_pool)]
+        libresource.add_remote_object(
+            self.rsp,
+            name=RESOURCE_CLAIM_DECODE_KEY,
+            target_cluster_secret=self.cluster.kubeconfig_secret_ref,
+            api_version="resource.k8s.io/v1beta1",
+            kind="ResourceClaim",
+            metadata={
+                "name": naming.claim_name(
+                    self.mr.parent_name, self.mr.replica_index, "decode"
                 ),
-            ),
+                "namespace": self.mr.parent_namespace,
+            },
+            spec=_resource_claim_spec(self.mr.decode, decode_class),
         )
-
-    def compose_kserve_keda_scaledobject(self):
-        """Compose a KEDA ScaledObject on the remote cluster that targets the
-        KServe Deployment for autoscaling.
-
-        KServe's LLMInferenceService (v1alpha1) creates a Deployment named
-        {llmis-name}-kserve. The ScaledObject uses Envoy Gateway's
-        envoy_cluster_upstream_rq_active metric to measure in-flight
-        requests at the proxy level. KServe creates an HTTPRoute named
-        {llmis-name}-kserve-route, and Envoy uses that as the cluster
-        name in its metrics."""
-        llmis_name = naming.to_dns_label(self.xr.spec.modelRef.name)
-        scaling = self.xr.spec.scaling
-        concurrency = scaling.concurrency
-
-        target = concurrency.target if concurrency.target is not None else 1
-        utilization = concurrency.utilization if concurrency.utilization is not None else 70
-        threshold = str(max(1, target * utilization // 100))
-
-        # Envoy names its upstream clusters after the HTTPRoute:
-        # httproute/{namespace}/{route-name}/rule/{index}. KServe's
-        # LLMInferenceService creates a route named {name}-kserve-route.
-        envoy_cluster = f"httproute/{metadata.NAMESPACE_REMOTE}/{llmis_name}-kserve-route/rule/0"
-
-        min_replicas = concurrency.minReplicas if concurrency.minReplicas is not None else 1
-        max_replicas = concurrency.maxReplicas if concurrency.maxReplicas is not None else 1
-        cooldown = concurrency.scaleDownDelay if concurrency.scaleDownDelay is not None else 300
-
-        if max_replicas < min_replicas:
-            response.warning(
+        if self.mr.prefill is not None:
+            prefill_class = self.classes[
+                self.cluster.pool_class(self.mr.target.prefill_pool)
+            ]
+            libresource.add_remote_object(
                 self.rsp,
-                f"maxReplicas ({max_replicas}) is less than minReplicas ({min_replicas}), skipping ScaledObject",
+                name=RESOURCE_CLAIM_PREFILL_KEY,
+                target_cluster_secret=self.cluster.kubeconfig_secret_ref,
+                api_version="resource.k8s.io/v1beta1",
+                kind="ResourceClaim",
+                metadata={
+                    "name": naming.claim_name(
+                        self.mr.parent_name, self.mr.replica_index, "prefill"
+                    ),
+                    "namespace": self.mr.parent_namespace,
+                },
+                spec=_resource_claim_spec(self.mr.prefill, prefill_class),
+            )
+
+    # -----------------------------------------------------------------------
+    # 4. Observe status from the in-cluster LLM-IS
+    # -----------------------------------------------------------------------
+
+    def observe_status(self) -> None:
+        """Translate the LLM-IS's observed status into MR conditions.
+
+        Granular cold-start signals are the UX investment: the MR surfaces
+        which stage of cold-start it's in so users see "pulling 70GB image"
+        vs "weights still loading" vs "gang scheduling stuck".
+        """
+        observed = self.req.observed.resources.get(LLMIS_KEY)
+        if observed is None:
+            conditions.set_condition(
+                self.rsp,
+                type=CONDITION_TYPE_RENDERED,
+                status="True",
+                reason=REASON_RENDERED,
             )
             return
 
-        scaledobject_manifest = {
-            "apiVersion": "keda.sh/v1alpha1",
-            "kind": "ScaledObject",
-            "metadata": {
-                "name": f"{llmis_name}-scaler",
-                "namespace": metadata.NAMESPACE_REMOTE,
-            },
-            "spec": {
-                "scaleTargetRef": {
-                    "apiVersion": "apps/v1",
-                    "kind": "Deployment",
-                    "name": f"{llmis_name}-kserve",
-                },
-                "minReplicaCount": min_replicas,
-                "maxReplicaCount": max_replicas,
-                "pollingInterval": 15,
-                "cooldownPeriod": cooldown,
-                "triggers": [
-                    {
-                        "type": "prometheus",
-                        "metadata": {
-                            "serverAddress": prometheus.URL,
-                            "metricName": "envoy_cluster_upstream_rq_active",
-                            "query": (f'sum(envoy_cluster_upstream_rq_active{{envoy_cluster_name="{envoy_cluster}"}})'),
-                            "threshold": threshold,
-                        },
-                    },
-                ],
-            },
-        }
-
-        resource.update(
-            self.rsp.desired.resources["keda-scaledobject"],
-            k8sobjv1alpha1.Object(
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=self.ie.status.providerConfigRef.name,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromObject",
-                    ),
-                    forProvider=k8sobjv1alpha1.ForProvider(
-                        manifest=scaledobject_manifest,
-                    ),
-                ),
-            ),
-        )
-
-    def has_autoscaling(self):
-        """Check if the placement has autoscaling (not fixed) configured."""
-        return self.xr.spec.scaling.signal != "Fixed"
-
-    def worker_replicas(self):
-        """Return the desired worker replica count from scaling config.
-
-        For Concurrency scaling, this returns minReplicas (which may be 0
-        for scale-to-zero). KEDA manages scaling from there."""
-        scaling = self.xr.spec.scaling
-        if scaling.signal == "Fixed" and scaling.fixed:
-            return scaling.fixed.replicas if scaling.fixed.replicas is not None else 1
-        if scaling.signal == "Concurrency" and scaling.concurrency:
-            return scaling.concurrency.minReplicas if scaling.concurrency.minReplicas is not None else 1
-        return 1
-
-    def compose_backend(self):
-        """Compose a Backend on the control plane pointing to the remote
-        cluster's gateway. ModelDeployment aggregates these into an HTTPRoute."""
-        if not self.ie.status.gateway.address:
+        # Real impl reads observed.resource (Struct) and lifts conditions.
+        # Sketch: just signal "ready when the LLM-IS is ready".
+        if conditions.has_condition(self.req, LLMIS_KEY, "Ready"):
+            conditions.set_condition(
+                self.rsp,
+                type=CONDITION_TYPE_READY,
+                status="True",
+                reason=REASON_LLMIS_READY,
+            )
             return
 
-        resource.update(
-            self.rsp.desired.resources["backend"],
-            {
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                "kind": "Backend",
-                "metadata": {"namespace": self.xr.metadata.namespace},
-                "spec": {
-                    "endpoints": [{"ip": {"address": self.ie.status.gateway.address, "port": 80}}],
-                },
-            },
-        )
-
-    def write_status(self, gpus):
-        """Write status fields for consumption by compose-model-deployment."""
-        model_name = naming.to_dns_label(self.xr.spec.modelRef.name)
-
-        status = v1alpha1.Status(
-            model=v1alpha1.Model(name=self.model.spec.model.name),
-            resources=v1alpha1.Resources(gpu=v1alpha1.Gpu(count=gpus.total)),
-            servingProfile=v1alpha1.ServingProfile(
-                name=self.profile.name,
-                engine=v1alpha1.Engine(
-                    name=self.profile.engine.name,
-                    image=self.profile.engine.image,
-                ),
-            ),
-        )
-        if self.ie.status.gateway.address:
-            status.endpoint = v1alpha1.Endpoint(
-                url=f"http://{self.ie.status.gateway.address}/{metadata.NAMESPACE_REMOTE}/{model_name}/v1",
-            )
-
-        # Read the Backend's Crossplane-generated name from observed state so
-        # ModelDeployment can reference it in the HTTPRoute.
-        backend_observed = self.req.observed.resources.get("backend")
-        if backend_observed:
-            backend_name = resource.struct_to_dict(backend_observed.resource).get("metadata", {}).get("name")
-            if backend_name:
-                status.routing = v1alpha1.Routing(backendName=backend_name)
-
-        libresource.update_status(self.rsp.desired.composite, status)
-
-        # Transition: first time composing the model serving resource.
-        if MODEL_RESOURCE_KEY not in self.req.observed.resources:
-            response.normal(
-                self.rsp,
-                f"Composing deployment for {self.model.spec.model.name}"
-                f" on {self.xr.spec.inferenceEnvironmentRef.name}"
-                f" (profile: {self.profile.name}, engine: {self.profile.engine.name}, GPUs: {gpus})",
-            )
-
-    def derive_conditions(self):
-        """Derive ModelAccepted, ModelReady, and RoutingReady conditions."""
-
-        # Check if the remote resource was created by reading the Object's
-        # atProvider.manifest. provider-kubernetes populates this field after
-        # successfully observing the remote resource at least once.
-        serving_accepted = False
-        serving_observed = self.req.observed.resources.get(MODEL_RESOURCE_KEY)
-        if serving_observed:
-            obj = k8sobjv1alpha1.Object.model_validate(resource.struct_to_dict(serving_observed.resource))
-            serving_accepted = bool(obj.status and obj.status.atProvider and obj.status.atProvider.manifest)
-
-        serving_ready = conditions.has_condition(self.req, MODEL_RESOURCE_KEY, "Ready")
-        backend_exists = "backend" in self.req.observed.resources
-
-        # ProfileMatched: a serving profile was resolved for this environment.
-        conditions.set_condition(self.rsp, CONDITION_TYPE_PROFILE_MATCHED, True, CONDITION_REASON_PROFILE_RESOLVED)
-
-        # ModelAccepted: the remote resource was created on the cluster.
-        if serving_accepted:
-            accepted_reason = CONDITION_REASON_ACCEPTED
-        elif serving_observed:
-            accepted_reason = CONDITION_REASON_DEPLOYING
-        else:
-            accepted_reason = CONDITION_REASON_DEPLOYING
-        conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, serving_accepted, accepted_reason)
-
-        # ModelReady: the model is actually serving traffic.
-        if serving_ready:
-            ready_reason = CONDITION_REASON_SERVING
-        elif serving_accepted:
-            ready_reason = CONDITION_REASON_MODEL_STARTING
-        else:
-            ready_reason = CONDITION_REASON_WAITING_FOR_MODEL
-        conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, serving_ready, ready_reason)
-
-        # RoutingReady: the Backend resource exists on the control plane.
+        # When not Ready, lift the most informative cold-start condition.
+        for stage_cond in (
+            CONDITION_TYPE_PULLING,
+            CONDITION_TYPE_LWS_GANG_PENDING,
+            CONDITION_TYPE_ENGINE_LOADING,
+        ):
+            if conditions.has_condition(self.req, LLMIS_KEY, stage_cond):
+                conditions.set_condition(
+                    self.rsp,
+                    type=CONDITION_TYPE_READY,
+                    status="False",
+                    reason=stage_cond,
+                )
+                return
         conditions.set_condition(
             self.rsp,
-            conditions.CONDITION_TYPE_ROUTING_READY,
-            backend_exists,
-            CONDITION_REASON_BACKEND_CONFIGURED if backend_exists else CONDITION_REASON_WAITING_FOR_GATEWAY,
+            type=CONDITION_TYPE_READY,
+            status="False",
+            reason=REASON_LLMIS_PROGRESSING,
         )
 
-        # Per-resource readiness.
-        if MODEL_RESOURCE_KEY in self.rsp.desired.resources and serving_ready:
-            self.rsp.desired.resources[MODEL_RESOURCE_KEY].ready = fnv1.READY_TRUE
-        if backend_exists:
-            self.rsp.desired.resources["backend"].ready = fnv1.READY_TRUE
-        keda_ready = conditions.has_condition(self.req, "keda-scaledobject", "Ready")
-        if "keda-scaledobject" in self.rsp.desired.resources and keda_ready:
-            self.rsp.desired.resources["keda-scaledobject"].ready = fnv1.READY_TRUE
+
+# ---------------------------------------------------------------------------
+# Render helpers — pure functions over MR + class.
+# These are the per-KServe-version dispatch points.
+# ---------------------------------------------------------------------------
 
 
-def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-    """Compose model serving resources on the remote cluster."""
-    Composer(req, rsp).compose()
+def _worker_spec(role, cls) -> dict:
+    """Build the LLM-IS workerSpec for a role.
+
+    Targets KServe v0.18 schema today (flat `containers`, no size/template
+    wrapper). v0.17 / v0.16 dispatch is a follow-up — add a switch on
+    cluster.backend.version when the per-version adapters land.
+    """
+    nodes_per_inst = role["topology"]["pipeline"] or 1
+    gpus_per_node = role["gpusPerNode"]
+    return {
+        "replicas": role["instances"],
+        # LWS group size: pipeline depth (>1 for multi-node).
+        "leaderWorkerSet": {"size": nodes_per_inst} if nodes_per_inst > 1 else None,
+        "containers": [
+            {
+                "name": "engine",
+                "image": role.get("image"),
+                "command": role.get("command", []),
+                "args": role.get("args", []),
+                "resources": {
+                    "claims": [{"name": "gpus"}],  # bound to a ResourceClaim
+                    "limits": {"nvidia.com/gpu": gpus_per_node},
+                },
+            }
+        ],
+    }
+
+
+def _engine_block(engine, role) -> dict:
+    """Pass-through engine config for one role.
+
+    Nic's API: engine.{name, image, args}. No structured `quantization` /
+    `speculation` / `optimizations` — engine args is the opaque seam.
+    """
+    return {
+        "name": engine.get("name"),
+        "image": engine.get("image"),
+        "args": engine.get("args", []),
+    }
+
+
+def _resource_claim_spec(role, cls) -> dict:
+    """Derive a DRA ResourceClaim from the class's typed capabilities.
+
+    Builds a CEL expression over device.attributes that mirrors the
+    capability constraints. The DRA driver evaluates this against runtime
+    ResourceSlices at pod admission.
+    """
+    return {
+        "devices": {
+            "requests": [
+                {
+                    "name": "gpus",
+                    "deviceClassName": _device_class_for(cls),
+                    "selectors": [
+                        {"cel": _cel_from_capabilities(cls.capabilities)},
+                    ],
+                    "count": role["gpusPerNode"],
+                }
+            ],
+        }
+    }
+
+
+def _cel_from_capabilities(capabilities: dict) -> str:
+    """Map declared capabilities → DRA selector CEL.
+
+    Real impl walks the capability map and emits the equivalent
+    device.attributes predicates. Sketch shows the shape — production
+    would template per well-known key (gpu.product, gpu.vramGiB,
+    gpu.features, ...).
+    """
+    raise NotImplementedError("template per well-known capability key when wired")
+
+
+def _device_class_for(cls) -> str:
+    """Pick the DRA DeviceClass name from the InferenceClass's vendor."""
+    vendor = cls.capabilities.get("gpu.vendor", "nvidia")
+    return {"nvidia": "gpu.nvidia.com", "amd": "gpu.amd.com"}.get(vendor, "generic-gpu")
+
+
+def _source(source) -> dict:
+    return source  # MR carries the resolved source dict already
+
+
+# ---------------------------------------------------------------------------
+# Adapters between Crossplane structs and renderer types.
+# ---------------------------------------------------------------------------
+
+
+def _load_mr(req):
+    raise NotImplementedError("wire to mrv1alpha1.ModelReplica when #64 lands")
+
+
+def _resolve_cluster(observed):
+    raise NotImplementedError("walk extra resources when #64 lands")
+
+
+def _resolve_class(observed):
+    raise NotImplementedError("walk extra resources when #64 lands")
+
+
+# ---------------------------------------------------------------------------
+# Crossplane function entrypoint
+# ---------------------------------------------------------------------------
+
+
+def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
+    rsp = response.to(req)
+    Renderer(req, rsp).render()
+    return rsp
