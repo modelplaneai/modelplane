@@ -26,3 +26,13 @@ def placement_name(deployment_name: str, ie_name: str) -> str:
     LLMInferenceService name on the remote cluster for URL rewriting.
     """
     return f"{deployment_name}-{ie_name}"[:DNS_LABEL_MAX]
+
+
+def llmis_name(parent_name: str, replica_index: int) -> str:
+    """LLMInferenceService name on the remote cluster, per ModelReplica."""
+    return f"{parent_name}-{replica_index}"[:DNS_LABEL_MAX]
+
+
+def claim_name(parent_name: str, replica_index: int, role: str) -> str:
+    """DRA ResourceClaim name, per ModelReplica per role (decode/prefill)."""
+    return f"{parent_name}-{replica_index}-{role}"[:DNS_LABEL_MAX]

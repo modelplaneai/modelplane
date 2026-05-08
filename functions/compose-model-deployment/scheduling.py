@@ -1,61 +1,22 @@
-"""Modelplane federation scheduler — fleet-level placement, NOT cluster-level scheduling.
+"""Federation scheduler — pick (InferenceCluster, pool) per ModelReplica.
 
-═══════════════════════════════════════════════════════════════════════════
-  Modelplane is a META-FLEET SCHEDULER. We pick `(InferenceCluster, pool)`
-  per ModelReplica. We do NOT pick nodes, we do NOT bind pods, we do NOT
-  bin-pack, we do NOT do gang admission. Cluster-level scheduling is
-  delegated to KAI / Kueue / Volcano / kube-scheduler.
+Modelplane is a meta-fleet scheduler: we pick the (cluster, pool) target for
+each replica from declared fleet substrate, and delegate per-cluster
+scheduling (gang admission, fractional GPU, NUMA, NVLink topology, node
+binding) to KAI / Kueue / Volcano / kube-scheduler.
 
-  Two-stage scheduling, in order:
-    Stage 1 — federation (THIS FILE): which `(cluster, pool)` per replica.
-    Stage 2 — in-cluster: KAI/Kueue admit; kube-scheduler binds; DRA
-              driver allocates devices. Renderer (compose-model-placement)
-              wraps for the chosen scheduler.
+Two stages, in order:
+    Stage 1 (this file)        federation match → (cluster, pool) per replica
+    Stage 2 (compose-model-placement) in-cluster admission + bind via KAI / Kueue;
+                                       DRA driver allocates devices
 
-  K8s SIG-Scheduling parallel — the algorithm follows the standard
-  `Schedule()` contract:
-                    Filter → Score → Bind
-                       │       │       │
-                       │       │       └─ commit decision (write Placement)
-                       │       └─ rank surviving candidates
-                       └─ eliminate ineligible (cluster labels, pool CEL,
-                                                feature set, capacity)
+Algorithm follows the K8s SIG-Scheduling Schedule() contract: Filter → Score
+→ Bind. Inputs are *declared* substrate state only — never runtime device
+state. DRA grounding happens at stage 2 when the pod lands.
 
-  Pure module. No Crossplane / Kubernetes / I/O. Entry point is
-  `schedule(md, clusters, existing) -> ScheduleResult`. Plain
-  dataclasses. The Crossplane composition function (main.py) calls in
-  via adapters.py.
-
-  Test target: tests/unit/test_scheduling.py — table-driven over
-  (MD, IC fleet, existing) → expected ScheduleResult.
-═══════════════════════════════════════════════════════════════════════════
-
-Inputs are *declared* substrate state only — never runtime device state:
-
-  - InferenceCluster.metadata.labels         — cluster-level matchLabels
-  - InferenceCluster.spec.nodePools[]        — pools, each w/ a class ref
-  - InferenceClass.spec.capabilities         — typed capabilities, CEL-matched
-  - InferenceCluster.spec.nodePools[].maxNodes — capacity ceiling
-  - existing ModelReplicas                   — sticky placement + accounting
-
-Federation never reads runtime DRA ResourceSlices. DRA grounding happens
-at stage 2 (in the renderer) when the pod actually lands. Whether the
-target cluster has DRA, device-plugin, or both, this scheduler's logic
-is identical.
-
-Sketch: assumes Nic's API shape from #64. Generated protos aren't built
-yet; plain dataclasses below stand in. Adapters in adapters.py wire the
-real shapes when #64 lands.
-
-Use cases this exercises:
-
-  Single-node, single-GPU      examples/workloads/gpt-oss-20b.yaml
-  Multi-node TP+PP             examples/workloads/kimi-k2.yaml
-  Multi-node FP8               examples/workloads/qwen3-coder.yaml
-  Multi-region (regional MDs)  examples/workloads/kimi-k2-eu.yaml
-  Disaggregated P/D            (lands with #64 — spec.prefill block)
-  Multi-replica spread         spec.replicas=N → N placements; capacity
-                               drives the spread across the fleet
+Pure module: no Crossplane / Kubernetes / I/O. Entry point is
+`schedule(md, clusters, existing) -> ScheduleResult`. Tested via
+tests/unit/test_scheduling.py (table-driven).
 """
 
 from dataclasses import dataclass, field

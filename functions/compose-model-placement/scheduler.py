@@ -1,17 +1,11 @@
-"""Per-scheduler wrap functions for the renderer.
+"""Per-scheduler wrap dispatch for the renderer.
 
-═══════════════════════════════════════════════════════════════════════════
-  THIS MODULE IS PURE.  No Crossplane / Kubernetes imports. Each wrap
-  function is `(llmis_spec, mr_name, namespace, replica_index) ->
-  WrappedRender`. Pure dict in / pure dict out.
-
-  Test target: tests/unit/test_scheduler.py
-═══════════════════════════════════════════════════════════════════════════
-
-Stage 2 (in-cluster) integration. The matcher (stage 1) is scheduler-
-agnostic — it reads `IC.status.capacity`, doesn't care which scheduler
-populated it. The renderer is where scheduler choice shows up: how the
+Stage 2 (in-cluster) integration. The federation scheduler (stage 1) is
+scheduler-agnostic — it reads `IC.status.capacity` whichever in-cluster
+scheduler populated it. This file is where scheduler choice shows up: how
 rendered LLM-IS / pods get gated for admission and gang scheduling.
+
+Pure dict in / pure dict out. Tested via tests/unit/test_scheduler.py.
 
 Two interception models:
 

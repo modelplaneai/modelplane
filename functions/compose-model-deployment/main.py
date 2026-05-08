@@ -1,155 +1,63 @@
-"""Crossplane composition function: ModelDeployment → ModelReplicas + ModelEndpoints.
+"""Schedule a ModelDeployment across the InferenceCluster fleet.
 
-═══════════════════════════════════════════════════════════════════════════
-  THIS MODULE IS THE ORCHESTRATOR.  Crossplane glue, status / conditions,
-  error handling. The actual matcher logic lives in scheduling.py;
-  proto translation in adapters.py; composed-resource builders in
-  emitters.py. Read order, top to bottom:
-
-    scheduling.py    pure algorithm, no Crossplane
-    adapters.py      proto ⇄ scheduling types (boundary)
-    emitters.py      pure: scheduling.Placement → composed-resource dicts
-    main.py          THIS FILE — orchestrates the phases below
-
-  Sketch — adapters.* raise NotImplementedError until #64's protos exist.
-═══════════════════════════════════════════════════════════════════════════
-
-Lifecycle (one reconcile = one call):
-
-  ┌─────────────────────────────────────────────────────────────────┐
-  │ Phase 1: REQUIRE                                                │
-  │   Declare extra-resources we need (clusters, classes, owned     │
-  │   replicas). If not all observed → return "waiting" (no error,  │
-  │   no composed resources, no Ready condition update).            │
-  ├─────────────────────────────────────────────────────────────────┤
-  │ Phase 2: LOAD                                                   │
-  │   adapters.load_md / load_clusters / load_existing — translate  │
-  │   observed structs to scheduling types. Errors surface as       │
-  │   ConfigInvalid (Ready=False) — we don't proceed.               │
-  ├─────────────────────────────────────────────────────────────────┤
-  │ Phase 3: SCHEDULE (pure)                                        │
-  │   scheduling.schedule() — Filter → Score → Bind. Always         │
-  │   returns; never raises. Partial / no-match shows up in result. │
-  ├─────────────────────────────────────────────────────────────────┤
-  │ Phase 4: BUILD (pure)                                           │
-  │   emitters.build_replica / build_endpoint per Placement.        │
-  │   Pure dict builders.                                           │
-  ├─────────────────────────────────────────────────────────────────┤
-  │ Phase 5: EMIT                                                   │
-  │   resource.update(rsp.desired.resources[...], built_dict)       │
-  │   — the Crossplane SDK call to add a composed resource.         │
-  ├─────────────────────────────────────────────────────────────────┤
-  │ Phase 6: STATUS                                                 │
-  │   Set MD.status.conditions (Scheduled / ReplicasReady) and      │
-  │   matchTrace from Phase 3's result.                             │
-  └─────────────────────────────────────────────────────────────────┘
-
-State machine for MD.status.conditions[Scheduled]:
-
-  Unknown    initial; Phase 1 still gathering required resources
-  True       Phase 3 placed all spec.replicas successfully
-  False      Phase 3 placed 0 (NoEligibleClusters / FleetSaturated)
-             OR Phase 3 placed N < spec.replicas (PartiallyScheduled)
-             OR Phase 2 raised (ConfigInvalid)
-
-State machine for MD.status.conditions[ReplicasReady]:
-
-  Unknown    no observed ModelReplicas yet
-  True       all child MRs report Ready=True (from their own renderer)
-  False      ≥1 child MR reports Ready=False (with reason from the MR's
-             renderer — e.g. Pulling, LWSGangPending, EngineLoading)
-
-Error handling:
-
-  Required-resource missing (Phase 1) → return waiting (no errors)
-  Adapter failure (Phase 2)           → ConfigInvalid + log
-  Scheduler failure (Phase 3)         → can't happen — schedule() is total
-  Builder / emit failure (Phase 5)    → InternalError + log
+This function discovers the fleet, runs the federation scheduler over
+declared substrate, and composes one ModelReplica per logical replica plus
+one ModelEndpoint per replica. The scheduling algorithm itself is in
+scheduling.py; this file is the Crossplane glue (required-resources, status,
+conditions, events).
 """
 
-# ---------------------------------------------------------------------------
-# Imports
-# ═══ Crossplane SDK ════════════════════════════════════════════════════════
-from crossplane.function import resource, response
+from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-# ═══ Local pure modules ═══════════════════════════════════════════════════
 from . import adapters, emitters, scheduling
+from .lib import conditions, defaults, metadata, naming
+from .lib import resource as libresource
 
-# ═══ Shared lib helpers ═══════════════════════════════════════════════════
-from .lib import conditions
-
-# When #64 lands:
+# When #64 lands these become real:
 #   from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
+#   from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
+#   from .model.ai.modelplane.inferenceclass import v1alpha1 as iclassv1alpha1
+#   from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
+#   from .model.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 
 
-# ---------------------------------------------------------------------------
-# Conditions exposed on the MD XR.
-# ---------------------------------------------------------------------------
-
+# Condition types and reasons for the ModelDeployment XR.
 CONDITION_TYPE_SCHEDULED = "Scheduled"
 CONDITION_TYPE_REPLICAS_READY = "ReplicasReady"
 
-REASON_SCHEDULED_ALL = "AllReplicasScheduled"
-REASON_SCHEDULED_PARTIAL = "PartiallyScheduled"
-REASON_NO_CLUSTERS = "NoEligibleClusters"
-REASON_SATURATED = "FleetSaturated"
-REASON_NO_REPLICAS = "ZeroReplicas"
-REASON_CONFIG_INVALID = "ConfigInvalid"
-
-REASON_REPLICAS_READY = "AllReplicasReady"
-REASON_REPLICAS_PROGRESSING = "ReplicasProgressing"
-
-
-def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
-    """Crossplane composition function entry point."""
-    rsp = response.to(req)
-    Composer(req, rsp).run()
-    return rsp
+CONDITION_REASON_NO_CLUSTERS = "NoEligibleClusters"
+CONDITION_REASON_FLEET_SATURATED = "FleetSaturated"
+CONDITION_REASON_CONFIG_INVALID = "ConfigInvalid"
+CONDITION_REASON_PARTIALLY_SCHEDULED = "PartiallyScheduled"
+CONDITION_REASON_FULLY_SCHEDULED = "AllReplicasScheduled"
+CONDITION_REASON_ZERO_REPLICAS = "ZeroReplicas"
+CONDITION_REASON_REPLICAS_PROGRESSING = "ReplicasProgressing"
+CONDITION_REASON_REPLICAS_READY = "AllReplicasReady"
 
 
 class Composer:
-    """Phase orchestrator for one reconcile.
-
-    All phase methods return a bool: True if the phase succeeded and we
-    should continue, False if we should stop (the phase has already
-    written conditions / emitted warnings / required more resources).
-    """
-
-    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+    def __init__(self, req, rsp):
         self.req = req
         self.rsp = rsp
+        self.xr = adapters.load_md(req)
 
-        # Filled in by the phases below.
-        self.md: scheduling.ModelDeploymentSpec | None = None
-        self.md_uid: str = ""
-        self.engine: dict = {}
-        self.source: dict = {}
+        # Required resources — set by resolve_inputs.
         self.clusters: list[scheduling.InferenceCluster] = []
         self.existing: list[scheduling.ExistingPlacement] = []
-        self.result: scheduling.ScheduleResult | None = None
 
-    # =======================================================================
-    # ENTRY
-    # =======================================================================
-
-    def run(self) -> None:
-        if not self.phase_require():
+    def compose(self):
+        if not self.resolve_inputs():
             return
-        if not self.phase_load():
-            return
-        self.phase_schedule()
-        self.phase_build_and_emit()
-        self.phase_status()
+        result = self.schedule()
+        self.compose_replicas(result)
+        self.compose_endpoints(result)
+        self.write_status(result)
+        self.derive_conditions(result)
 
-    # =======================================================================
-    # ═══ Phase 1: REQUIRE ═════════════════════════════════════════════════
-    # Crossplane composition glue.
-    # =======================================================================
-
-    def phase_require(self) -> bool:
-        """Declare extra resources we need. Returns False if we're still
-        waiting on Crossplane to fetch them (next reconcile will retry)."""
+    def resolve_inputs(self) -> bool:
+        """Declare and fetch required resources. Returns False if critical
+        inputs are missing."""
         response.require_resources(
             self.rsp,
             name="clusters",
@@ -162,181 +70,189 @@ class Composer:
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceClass",
         )
-        # Only fetch ModelReplicas owned by THIS MD — label set by emitters.
-        # Read the MD name out of the observed XR before we do full adapter
-        # parsing (adapter parsing is Phase 2; this is just the name).
-        md_name = _peek_md_name(self.req)
+        # Only fetch ModelReplicas owned by this MD — emitters set this label.
         response.require_resources(
             self.rsp,
             name="existing-replicas",
             api_version="modelplane.ai/v1alpha1",
             kind="ModelReplica",
-            match_labels={emitters.LABEL_DEPLOYMENT: md_name},
+            match_labels={metadata.LABEL_KEY_DEPLOYMENT: self.xr.name},
         )
 
-        observed = self.req.extra_resources
-        return all(k in observed for k in ("clusters", "classes", "existing-replicas"))
+        cluster_dicts = request.get_required_resources(self.req, "clusters")
+        class_dicts = request.get_required_resources(self.req, "classes")
+        replica_dicts = request.get_required_resources(self.req, "existing-replicas")
 
-    # =======================================================================
-    # ═══ Phase 2: LOAD ═════════════════════════════════════════════════════
-    # Boundary between protos and pure types. Errors here are config-level.
-    # =======================================================================
+        if cluster_dicts is None or class_dicts is None or replica_dicts is None:
+            return False  # waiting on Crossplane to fetch
 
-    def phase_load(self) -> bool:
-        try:
-            self.md = adapters.load_md(self.req)
-            self.engine = _peek_engine(self.req)
-            self.source = _peek_source(self.req)
-            self.md_uid = _peek_md_uid(self.req)
-            self.clusters = adapters.load_clusters(self.req)
-            self.existing = adapters.load_existing(self.req)
-        except (ValueError, KeyError, NotImplementedError) as e:
-            # NotImplementedError: sketch-only — the function is not wired
-            # yet. Surface as ConfigInvalid for now; once #64 lands and
-            # adapters become real this branch is just (ValueError, KeyError).
+        if not cluster_dicts:
             conditions.set_condition(
                 self.rsp,
-                type=CONDITION_TYPE_SCHEDULED,
-                status="False",
-                reason=REASON_CONFIG_INVALID,
-                message=str(e),
+                CONDITION_TYPE_SCHEDULED,
+                False,
+                CONDITION_REASON_NO_CLUSTERS,
             )
+            response.warning(self.rsp, "No InferenceClusters in the fleet")
             return False
+
+        try:
+            self.clusters = adapters.resolve_clusters(cluster_dicts, class_dicts)
+            self.existing = adapters.resolve_existing(replica_dicts)
+        except (ValueError, KeyError) as e:
+            conditions.set_condition(
+                self.rsp,
+                CONDITION_TYPE_SCHEDULED,
+                False,
+                CONDITION_REASON_CONFIG_INVALID,
+                str(e),
+            )
+            response.warning(self.rsp, f"Cluster fleet config invalid: {e}")
+            return False
+
         return True
 
-    # =======================================================================
-    # ═══ Phase 3: SCHEDULE ════════════════════════════════════════════════
-    # Pure call into scheduling.schedule() — Filter → Score → Bind. Total
-    # function; cannot fail. Partial scheduling surfaces as fewer placements
-    # in the result than spec.replicas.
-    # =======================================================================
+    def schedule(self) -> scheduling.ScheduleResult:
+        """Run the federation scheduler over the fleet. Filter → Score → Bind."""
+        result = scheduling.schedule(self.xr, self.clusters, self.existing)
 
-    def phase_schedule(self) -> None:
-        assert self.md is not None
-        self.result = scheduling.schedule(self.md, self.clusters, self.existing)
+        # Emit on first successful placement of each replica (transition).
+        new_placements = [
+            p for p in result.placements
+            if f"replica-{p.replica_index}" not in self.req.observed.resources
+        ]
+        if new_placements:
+            targets = [f"r{p.replica_index}→{p.cluster}/{p.decode.pool}" for p in new_placements]
+            response.normal(self.rsp, f"Scheduled {len(new_placements)} replica(s): {', '.join(targets)}")
 
-    # =======================================================================
-    # ═══ Phase 4+5: BUILD + EMIT ═══════════════════════════════════════════
-    # emitters.* are pure; resource.update is the Crossplane SDK call.
-    # =======================================================================
+        return result
 
-    def phase_build_and_emit(self) -> None:
-        assert self.md is not None and self.result is not None
-        for placement in self.result.placements:
-            mr_dict = emitters.build_replica(
-                self.md, placement, self.md_uid, self.engine, self.source
+    def compose_replicas(self, result: scheduling.ScheduleResult):
+        """Compose a ModelReplica per Placement."""
+        for p in result.placements:
+            key = f"replica-{p.replica_index}"
+            resource.update(
+                self.rsp.desired.resources[key],
+                emitters.build_replica(self.xr, p),
             )
-            ep_dict = emitters.build_endpoint(self.md, placement, self.md_uid)
-            self._emit(f"replica-{placement.replica_index}", mr_dict)
-            self._emit(f"endpoint-{placement.replica_index}", ep_dict)
 
-    def _emit(self, key: str, obj: dict) -> None:
-        """Crossplane SDK call to register a composed resource."""
-        resource.update(self.rsp.desired.resources[key], obj)
+    def compose_endpoints(self, result: scheduling.ScheduleResult):
+        """Compose a ModelEndpoint per ModelReplica (per Nic's #64)."""
+        for p in result.placements:
+            key = f"endpoint-{p.replica_index}"
+            resource.update(
+                self.rsp.desired.resources[key],
+                emitters.build_endpoint(self.xr, p),
+            )
 
-    # =======================================================================
-    # ═══ Phase 6: STATUS ═══════════════════════════════════════════════════
-    # Translate matcher result → MD.status.conditions + matchTrace.
-    # =======================================================================
+    def write_status(self, result: scheduling.ScheduleResult):
+        """Write deployment status: replica counts, matchTrace."""
+        replicas_ready = sum(
+            1 for p in result.placements
+            if conditions.has_condition(self.req, f"replica-{p.replica_index}", "Ready")
+        )
+        status = {
+            "modelReplicas": {
+                "total": len(result.placements),
+                "ready": replicas_ready,
+            },
+            "matchTrace": emitters.build_match_trace(result.trace),
+        }
+        # When pydantic models exist post-#64:
+        #   status = mdv1alpha1.Status(modelReplicas=..., matchTrace=...)
+        libresource.update_status(self.rsp.desired.composite, status)
 
-    def phase_status(self) -> None:
-        assert self.md is not None and self.result is not None
+    def derive_conditions(self, result: scheduling.ScheduleResult):
+        """Derive Scheduled and ReplicasReady conditions."""
+        self.derive_scheduled(result)
+        self.derive_replicas_ready(result)
 
-        # Condition: Scheduled
-        if self.md.replicas == 0:
-            self._set(CONDITION_TYPE_SCHEDULED, "True", REASON_NO_REPLICAS,
-                      "spec.replicas is 0; nothing to schedule")
-        elif not self.result.placements:
-            self._set(CONDITION_TYPE_SCHEDULED, "False",
-                      _no_placement_reason(self.result),
-                      _trace_summary(self.result.trace))
-        elif len(self.result.placements) < self.md.replicas:
-            self._set(
+        # Without any placements the XR has no composed resources backing it;
+        # explicitly mark not ready so downstream watchers don't treat empty
+        # as ready.
+        if not result.placements and self.xr.replicas > 0:
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
+
+    def derive_scheduled(self, result: scheduling.ScheduleResult):
+        """Scheduled: every replica has a (cluster, pool) binding."""
+        if self.xr.replicas == 0:
+            conditions.set_condition(
+                self.rsp,
                 CONDITION_TYPE_SCHEDULED,
-                "False",
-                REASON_SCHEDULED_PARTIAL,
-                f"{len(self.result.placements)}/{self.md.replicas} replicas scheduled. "
-                + _trace_summary(self.result.trace),
+                True,
+                CONDITION_REASON_ZERO_REPLICAS,
             )
-        else:
-            self._set(
+            return
+
+        if not result.placements:
+            reason = (
+                CONDITION_REASON_FLEET_SATURATED
+                if all(t.reason == "capacity" for t in result.trace)
+                else CONDITION_REASON_NO_CLUSTERS
+            )
+            conditions.set_condition(
+                self.rsp,
                 CONDITION_TYPE_SCHEDULED,
-                "True",
-                REASON_SCHEDULED_ALL,
-                f"{self.md.replicas} replicas scheduled across the fleet",
+                False,
+                reason,
+                _trace_summary(result.trace),
             )
+            return
 
-        # Condition: ReplicasReady — derived from observed MR.status conditions.
-        # The replicas we composed in Phase 5 might not exist yet on this
-        # reconcile; on subsequent reconciles their status flows back.
-        # Sketched here for clarity; real impl walks observed.resources.
-        # _set(CONDITION_TYPE_REPLICAS_READY, ...)
+        if len(result.placements) < self.xr.replicas:
+            conditions.set_condition(
+                self.rsp,
+                CONDITION_TYPE_SCHEDULED,
+                False,
+                CONDITION_REASON_PARTIALLY_SCHEDULED,
+                f"{len(result.placements)}/{self.xr.replicas} replicas scheduled. "
+                + _trace_summary(result.trace),
+            )
+            return
 
-    def _set(self, type_: str, status: str, reason: str, message: str = "") -> None:
         conditions.set_condition(
-            self.rsp, type=type_, status=status, reason=reason, message=message
+            self.rsp,
+            CONDITION_TYPE_SCHEDULED,
+            True,
+            CONDITION_REASON_FULLY_SCHEDULED,
+        )
+
+    def derive_replicas_ready(self, result: scheduling.ScheduleResult):
+        """ReplicasReady: derived from observed child ModelReplica conditions."""
+        if not result.placements:
+            return  # no children to be ready
+        all_ready = all(
+            conditions.has_condition(self.req, f"replica-{p.replica_index}", "Ready")
+            for p in result.placements
+        )
+        conditions.set_condition(
+            self.rsp,
+            CONDITION_TYPE_REPLICAS_READY,
+            all_ready,
+            CONDITION_REASON_REPLICAS_READY if all_ready else CONDITION_REASON_REPLICAS_PROGRESSING,
         )
 
 
-# ---------------------------------------------------------------------------
-# Helpers — peek at XR struct fields without going through the full adapter.
-# Phase 1 needs the MD name *before* phase 2 has run.
-# ---------------------------------------------------------------------------
-
-
-def _peek_md_name(req: fnv1.RunFunctionRequest) -> str:
-    """Read the MD's metadata.name out of the observed composite struct."""
-    return resource.struct_to_dict(req.observed.composite.resource).get(
-        "metadata", {}
-    ).get("name", "")
-
-
-def _peek_md_uid(req: fnv1.RunFunctionRequest) -> str:
-    return resource.struct_to_dict(req.observed.composite.resource).get(
-        "metadata", {}
-    ).get("uid", "")
-
-
-def _peek_engine(req: fnv1.RunFunctionRequest) -> dict:
-    return (
-        resource.struct_to_dict(req.observed.composite.resource)
-        .get("spec", {})
-        .get("engine", {})
-    )
-
-
-def _peek_source(req: fnv1.RunFunctionRequest) -> dict:
-    """Source spec dict — pass-through into ModelReplica.spec.source."""
-    s = resource.struct_to_dict(req.observed.composite.resource).get("spec", {})
-    out = {"type": s.get("source")}
-    for k in ("huggingFace", "s3", "gcs", "pvc"):
-        if k in s:
-            out[k] = s[k]
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Status reasons / message helpers.
-# ---------------------------------------------------------------------------
-
-
-def _no_placement_reason(result: scheduling.ScheduleResult) -> str:
-    if not result.trace:
-        return REASON_NO_CLUSTERS
-    if all(t.reason == "capacity" for t in result.trace):
-        return REASON_SATURATED
-    return REASON_NO_CLUSTERS
+def function(req: fnv1.RunFunctionRequest) -> fnv1.RunFunctionResponse:
+    rsp = response.to(req)
+    Composer(req, rsp).compose()
+    return rsp
 
 
 def _trace_summary(trace: list[scheduling.MatchTrace]) -> str:
-    """Compact summary of why scheduling failed, for the condition message.
+    """Compact one-line summary of why scheduling failed.
 
-    Full structured trace lands on MD.status.matchTrace — see
-    emitters.build_match_trace.
+    The full structured trace lands on MD.status.matchTrace via emitters.
+    This is the human-readable headline for the condition message.
     """
     if not trace:
-        return "no eligible InferenceClusters"
+        return "no eligible InferenceClusters in the fleet"
     by_reason: dict[str, int] = {}
     for t in trace:
         by_reason[t.reason] = by_reason.get(t.reason, 0) + 1
     return "; ".join(f"{r}: {n}" for r, n in by_reason.items())
+
+
+# Silence unused-import warnings for the symbols above that real adapters
+# will use once #64's protos are generated.
+_ = (defaults, naming)

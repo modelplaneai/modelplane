@@ -1,20 +1,14 @@
-"""Pure rendering: ModelReplica + InferenceCluster + InferenceClass(es) → dicts.
+"""Pure builders: ModelReplica + InferenceCluster + InferenceClass(es) → dicts.
 
-═══════════════════════════════════════════════════════════════════════════
-  THIS MODULE IS PURE.  No Crossplane / Kubernetes imports. Builds dicts
-  for: KServe LLMInferenceService, DRA ResourceClaims, DRA selector CEL
-  derived from class capabilities.
+Builds KServe LLMInferenceService spec, DRA ResourceClaim spec, and the
+DRA selector CEL derived from class capabilities. Targets KServe v0.18
+schema today (flat workerSpec.containers); per-version dispatch is a
+follow-up.
 
-  Test target: tests/unit/test_rendering.py
-═══════════════════════════════════════════════════════════════════════════
-
-Targets KServe v0.18 LLM-IS schema today (flat workerSpec.containers, not
-the v0.16/v0.17 size/template wrapper). Per-version dispatch is a follow-
-up — add a switch on cluster.backend.version.
-
-The renderer is *pure* over (MR, IC, Class) — it doesn't read the parent
-MD. The composer (compose-model-deployment) projected the MD into the MR
-spec already; the renderer takes it from there. This is the IR boundary.
+Pure over (MR, IC, Class) — the renderer doesn't read the parent MD. The
+composer projected the MD into the MR's resolved spec already. This is
+the IR boundary that lets BYO backends slot in via a different renderer
+without touching the federation scheduler.
 """
 
 from dataclasses import dataclass
