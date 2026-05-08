@@ -177,11 +177,12 @@ spec:
     cel: |
       capabilities["gpu.vramGiB"] >= 80
 
-  # Topology describes the compute shape of one ModelReplica. strategy is
-  # always required. Tensor: single-node TP. 2 GPUs → 1 node, 2 GPUs.
-  topology:
-    strategy: Tensor
-    tensor: 2
+  # Workers: how many workers per ModelReplica, and what topology each
+  # has. count defaults to 1 (omitted here). Tensor: single-node TP.
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 2
 
   engine:
     name: vLLM
@@ -255,14 +256,14 @@ spec:
       capabilities["network.interNode"] == "infiniband" &&
       capabilities["network.interNodeBandwidthGbps"] >= 400
 
-  # Topology: TensorPipeline — TP within nodes, PP across nodes. The
-  # scheduler derives the physical shape: pipeline=2 → 2 nodes, tensor=8
-  # → 8 GPUs per node, 16 total. The placement function maps these to
-  # KServe's parallelism spec and LeaderWorkerSet group size.
-  topology:
-    strategy: TensorPipeline
-    tensor: 8
-    pipeline: 2
+  # Workers: one worker per replica (count defaults to 1). TensorPipeline
+  # — TP within nodes, PP across nodes. The scheduler derives the physical
+  # shape: pipeline=2 → 2 nodes, tensor=8 → 8 GPUs per node, 16 total.
+  workers:
+    topology:
+      strategy: TensorPipeline
+      tensor: 8
+      pipeline: 2
 
   engine:
     name: vLLM
@@ -308,10 +309,11 @@ spec:
       "fp8" in capabilities["gpu.features"] &&
       capabilities["network.interNode"] == "infiniband"
 
-  topology:
-    strategy: TensorPipeline
-    tensor: 8
-    pipeline: 2
+  workers:
+    topology:
+      strategy: TensorPipeline
+      tensor: 8
+      pipeline: 2
 
   engine:
     name: vLLM
@@ -333,9 +335,8 @@ the root, because explicit repetition is easier to reason about than implicit
 merge.
 
 Converting a unified deployment to disagg is purely additive — add a
-`prefill` block (and `topology.instances` on the decode side), and the
-existing top-level config becomes the decode config without any
-restructuring.
+`prefill` block (and `workers.count` on the decode side), and the existing
+top-level config becomes the decode config without any restructuring.
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -356,17 +357,17 @@ spec:
 
   # Top-level = decode settings. Same fields as a unified deployment.
   # The presence of the prefill block below is what makes this disagg.
-  # topology.instances specifies how many independent decode units exist
-  # within one ModelReplica — the "3" in "5P3D".
+  # workers.count is the "3" in "5P3D" — 3 decode workers.
   nodeSelector:
     cel: |
       capabilities["gpu.vramGiB"] >= 141 &&
       capabilities["network.interNode"] == "infiniband"
-  topology:
-    strategy: TensorPipeline
-    tensor: 8
-    pipeline: 2
-    instances: 3
+  workers:
+    count: 3
+    topology:
+      strategy: TensorPipeline
+      tensor: 8
+      pipeline: 2
   engine:
     name: vLLM
     image: vllm/vllm-openai:v0.9.1
@@ -375,18 +376,19 @@ spec:
     - "--gpu-memory-utilization=0.90"
     - '--kv-transfer-config={"kv_role":"kv_consumer"}'
 
-  # Prefill: compute-bound, more instances, smaller GPUs, different KV
+  # Prefill: compute-bound, more workers, smaller GPUs, different KV
   # transfer role. Self-contained — repeats everything it needs.
-  # topology.instances is the "5" in "5P3D".
+  # workers.count is the "5" in "5P3D" — 5 prefill workers.
   prefill:
     nodeSelector:
       cel: |
         capabilities["gpu.vramGiB"] >= 80 &&
         capabilities["network.interNode"] == "infiniband"
-    topology:
-      strategy: Tensor
-      tensor: 1
-      instances: 5
+    workers:
+      count: 5
+      topology:
+        strategy: Tensor
+        tensor: 1
     engine:
       name: vLLM
       image: vllm/vllm-openai:v0.9.1
@@ -396,16 +398,19 @@ spec:
 ```
 
 Each `ModelReplica` for this deployment composes one KServe
-`LLMInferenceService` with both decode and prefill workloads. The
-`topology.instances` on each role maps to `LLMInferenceService.spec.replicas`
-(decode) and `LLMInferenceService.spec.prefill.replicas` (prefill). Decode
-and prefill must land on the same `InferenceCluster` (KV cache transfer
-requires co-location), but can target different pools within that cluster.
-The scheduler verifies the cluster has capacity for both roles.
+`LLMInferenceService` with both decode and prefill workloads.
+`workers.count` on each role maps to `LLMInferenceService.spec.replicas`
+(decode) and `LLMInferenceService.spec.prefill.replicas` (prefill).
+`workers.topology` describes the shape of each worker — the placement
+function maps it to KServe's parallelism spec and LeaderWorkerSet group
+size. Decode and prefill must land on the same `InferenceCluster` (KV cache
+transfer requires co-location), but can target different pools within that
+cluster. The scheduler verifies the cluster has capacity for both roles.
 
 Scaling `spec.replicas` from 1 to 2 creates a second complete 5P3D instance
-— another full decode + prefill set, scheduled independently. The P:D ratio
-is a topology parameter (fixed per deployment), not a scaling knob.
+— another full decode + prefill worker set, scheduled independently. The
+P:D ratio (`workers.count` per role) is a topology parameter — fixed per
+deployment, not a scaling knob.
 
 ## ModelEndpoint
 
@@ -591,38 +596,38 @@ can also be created to route to external services, using the same schema.
   weight checkpoints (different HuggingFace repos) — they're genuinely
   different deployments. If preferential scheduling is needed later, it
   would be a coordination mechanism between MDs, not inline profiles.
-- **Topology as a discriminated union.** `topology.strategy` is always
-  required: `Tensor` (single-node TP), `TensorPipeline` (TP within nodes,
-  PP across nodes), or `DataExpert` (DP+EP across nodes). Each strategy
-  determines which sibling fields are required and how the scheduler
-  derives the physical shape. `nodeSelector` carries only the CEL
-  capability predicate. `topology.instances` (default 1) specifies
-  per-role replication for disaggregated serving.
+- **Workers: count + topology.** `workers` groups two concerns: how many
+  workers per role (`count`, default 1) and the compute shape of each
+  worker (`topology`). `topology.strategy` is a required discriminator:
+  `Tensor` (single-node TP), `TensorPipeline` (TP within nodes, PP across
+  nodes), or `DataExpert` (DP+EP across nodes). Each strategy determines
+  which sibling fields are required and how the scheduler derives the
+  physical shape per worker. `nodeSelector` and `engine` stay alongside
+  `workers` as separate concerns.
 
-  | Strategy | Required fields | Nodes per instance | GPUs per node | Total GPUs per instance |
+  | Strategy | Required fields | Nodes per worker | GPUs per node | Total GPUs per worker |
   |---|---|---|---|---|
   | `Tensor` | `tensor` | 1 | `tensor` | `tensor` |
   | `TensorPipeline` | `tensor`, `pipeline` | `pipeline` | `tensor` | `tensor * pipeline` |
   | `DataExpert` | `tensor`, `data`, `dataLocal` | `data / dataLocal` | `dataLocal * tensor` | `data * tensor` |
 
-  Multiply by `instances` for the total per-role footprint within one
+  Multiply by `workers.count` for the total per-role footprint within one
   ModelReplica. The scheduler checks: does the matched pool's
   `InferenceClass` have `gpu.count` >= GPUs-per-node, and does the pool
-  have enough available nodes for all instances across all roles?
+  have enough available nodes for all workers across all roles?
 - **DRA required on all InferenceClusters.** No device-plugin fallback.
   Modelplane always emits DRA `ResourceClaim`s for device binding. This
   simplifies pool declarations (no `nodeSelector` labels needed) and the
   composition function (one code path). Requires K8s 1.31+ with a DRA
   driver on every cluster.
-- **Disagg is additive.** Top-level `nodeSelector`, `topology`, and
+- **Disagg is additive.** Top-level `nodeSelector`, `workers`, and
   `engine` are always the decode (or unified) settings. Adding a `prefill`
   block makes the deployment disaggregated — no restructuring needed. The
   `prefill` block is self-contained (repeats all settings it needs, no
-  inheritance). The P:D ratio is expressed via `topology.instances` on
-  each role — it's a topology parameter (fixed per deployment), not a
-  scaling knob. Decode and prefill must land on the same
-  `InferenceCluster` (KV cache transfer needs co-location) but can target
-  different pools.
+  inheritance). The P:D ratio is expressed via `workers.count` on each
+  role — it's a topology parameter (fixed per deployment), not a scaling
+  knob. Decode and prefill must land on the same `InferenceCluster` (KV
+  cache transfer needs co-location) but can target different pools.
 - **Anti-affinity for replica spread.** When multiple replicas land on the
   same cluster, the scheduler spreads them across different node groups
   where capacity allows, to limit blast radius from node failures.
