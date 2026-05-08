@@ -330,32 +330,40 @@ Both adapters normalize into `InferenceCluster.status.capacity` so the federatio
 
 ## The plugin/adapter system
 
-Modelplane's value isn't a single new mechanism — it's the **glue** that lets the same `ModelDeployment` work across very different substrates. That glue is six adapter axes, each with a small typed contract and pluggable implementations. Same MR lands on any combination.
+Modelplane's value isn't a single new mechanism — it's the **glue** that lets the same `ModelDeployment` work across very different substrates. The glue is a small set of adapter contracts, each pluggable. Same `ModelReplica` lands on any combination.
+
+### How many axes really? — be honest
+
+The current shape surfaces *six* axes, but the count isn't load-bearing — it's a function of where we drew composition seams today. A few will likely collapse:
+
+- **Capacity adapter** is implied by scheduler choice — not user-visible. We could fold it under "scheduler". Surfacing it separately just makes BYO-scheduler easier to extend.
+- **Autoscaler** is currently fixed (KEDA prerequisite); it's an axis only if we add HPA-only or vendor-specific autoscalers later.
+- **Provisioning mode** could merge with **scheduler** if KAI's roadmap consolidates DRA handling — today they're independent.
+- **Cluster source** is really a substrate decision (Crossplane provider) — not an inference choice. Listed here because IC.spec.cluster.source is part of the same XR.
+
+The two **user-visible** axes today are **scheduler** and **backend**. Everything else is contingent — internal seams that simplify composition. If we collapse the count to four (or expand to seven) the matcher / IR / BYO story doesn't change. **Don't read into the number.**
 
 ```
                          ModelReplica (the IR — one per logical replica)
                                        │
-        ┌──────────────────────────────┼──────────────────────────────┐
-        │            │            │           │           │            │
-   cluster-       scheduler    backend     provisioning  capacity   autoscaler
-   source         adapter      adapter        mode       adapter    adapter
-   adapter        (KAI/Kueue/  (KServe       (DRA /      (per-      (KEDA
-   (GKE/EKS/      Volcano/     v0.16/v0.17/  device-     scheduler  ScaledObject)
-   AKS/           none)        v0.18 /       plugin /    signal
-   Existing)                    Dynamo /     hybrid)     puller)
-                               raw-vllm)
+        ┌──────────────────────────────┴──────────────────────────────┐
+        │  user-visible:                                                │
+        │    scheduler   backend                                        │
+        │  contingent / internal:                                       │
+        │    cluster-source · provisioning-mode · capacity · autoscaler │
+        └───────────────────────────────────────────────────────────────┘
 ```
 
-### The six axes
+### The axes today
 
-| Axis | What it picks | Implementations | Detection (BYOC) |
-|---|---|---|---|
-| **Cluster source** | how the K8s cluster comes into being | Crossplane provider per cloud (`provider-google`, `provider-aws`, `provider-azure`); `Existing` uses a kubeconfig secret | Always explicit — `IC.spec.cluster.source` discriminator |
-| **Scheduler** | what admits / gangs / binds workloads | `managed-kai`, `managed-kueue` (Modelplane installs); `kai`, `kueue`, `volcano` (BYO); `none` (kube-scheduler best-effort) | `auto`: detect Project CRD ⇒ `kai`, ClusterQueue CRD ⇒ `kueue`, neither ⇒ install `managed-kueue` |
-| **Backend** | what renders pods from the IR | `managed-kserve` (Modelplane installs at version); `kserve`, `dynamo`, `raw-vllm` (BYO). Per-version adapter for KServe (v0.16 / v0.17 / v0.18) | Detect KServe / Dynamo CRDs; pin to the installed version's adapter |
-| **Provisioning mode** | how devices are exposed in-cluster | `device-plugin` (default for BYOC; works on any K8s with the NVIDIA GPU operator); `dra` (K8s 1.34+ with a DRA driver); `hybrid` (per-pool) | Detect `DeviceClass` CRs and `ResourceSlice`s; default to `device-plugin` if absent |
-| **Capacity adapter** | how `IC.status.capacity` is populated | One per scheduler — Kueue → `ClusterQueue.status.flavorsUsage[]`; KAI → `Queue.status` + `ResourcePool.status`; Volcano → `Queue.status`; none → direct node listing | Implied by scheduler choice |
-| **Autoscaler** | what writes `MD.spec.replicas` | KEDA `ScaledObject` (operator-installed prerequisite). Future: HPA-only fallback | Required prerequisite; `kubectl get deploy keda-operator -A` to verify |
+| Axis | Surface | What it picks | Implementations | BYOC detection |
+|---|---|---|---|---|
+| **Scheduler** | user-visible | what admits / gangs / binds workloads | `managed-kai`, `managed-kueue`; `kai`, `kueue`, `volcano`; `none` | `auto`: Project CRD ⇒ `kai`, ClusterQueue CRD ⇒ `kueue`, neither ⇒ install `managed-kueue` |
+| **Backend** | user-visible | what renders pods from the IR | `managed-kserve` at version; `kserve`, `dynamo`, `raw-vllm`. Per-version KServe adapters (v0.16 / v0.17 / v0.18) | Detect KServe / Dynamo CRDs; pin adapter to installed version |
+| Cluster source | substrate / contingent | how the K8s cluster comes into being | Crossplane providers per cloud; `Existing` uses a kubeconfig secret | Explicit `IC.spec.cluster.source` discriminator |
+| Provisioning mode | substrate / contingent | how devices are exposed in-cluster | `device-plugin` (default for BYOC); `dra` (K8s 1.34+); `hybrid` | Detect `DeviceClass` / `ResourceSlice` presence; default to `device-plugin` |
+| Capacity adapter | internal | how `IC.status.capacity` is populated | Per scheduler: ClusterQueue / KAI Queue / Volcano Queue / direct node listing | Implied by scheduler choice |
+| Autoscaler | prerequisite | what writes `MD.spec.replicas` | KEDA `ScaledObject` (required) | Verified at IC reconcile, not a choice today |
 
 ### How the adapters are implemented
 
@@ -386,32 +394,112 @@ User-facing surface (the MD spec) doesn't change across KServe versions; the bac
 
 ### What plugs in where, end-to-end
 
-A worked example showing every adapter axis at once — Modelplane-provisioned GKE A3 with NVIDIA pools:
+A worked example showing every axis at once — Modelplane-provisioned GKE A3 with NVIDIA pools:
 
 ```
-1. Cluster source adapter   → provider-google reconciles a GKE cluster
-2. Scheduler                → auto resolves to managed-kai (NVIDIA pool)
-                              KAI installed via Helm composition
-3. Backend                  → managed-kserve installed at v0.18.0
-                              KServeBackend XR composed; engine.features set
-4. Provisioning mode        → dra (GKE has the NVIDIA DRA driver)
-5. Capacity adapter         → KAI signal puller starts; populates
-                              IC.status.capacity from Queue.status
-6. Autoscaler               → KEDA prerequisite verified
+Cluster source     → provider-google reconciles a GKE cluster
+Scheduler          → auto → managed-kai; KAI installed via Helm composition
+Backend            → managed-kserve at v0.18.0; KServeBackend composed
+Provisioning mode  → dra (GKE has the NVIDIA DRA driver)
+Capacity adapter   → KAI signal puller populates IC.status.capacity
+Autoscaler         → KEDA prerequisite verified
 ```
 
 Same example, BYOC (CoreWeave H200 with KAI already installed):
 
 ```
-1. Cluster source adapter   → kubeconfig-secret reconciler
-2. Scheduler                → auto detects Project CRD → kai (use existing)
-3. Backend                  → kserve detected at v0.18.0; pin adapter to v0.18
-4. Provisioning mode        → dra detected (DeviceClass CRs present)
-5. Capacity adapter         → KAI signal puller starts (same as managed-kai)
-6. Autoscaler               → KEDA prerequisite — operator installs themselves
+Cluster source     → kubeconfig-secret reconciler (Existing)
+Scheduler          → auto detects Project CRD → kai (use existing)
+Backend            → kserve detected at v0.18.0; pin adapter to v0.18
+Provisioning mode  → dra detected (DeviceClass CRs present)
+Capacity adapter   → KAI signal puller (same code as managed-kai)
+Autoscaler         → KEDA prerequisite — operator installs themselves
 ```
 
 **Same matcher code paths**, same `ModelReplica` shape, same KServe v0.18 renderer. Only difference: who installed what. BYOC isn't a downgrade; it's an alternate set of detected adapters.
+
+## What we treat as IR (and why this matters for BYO-*)
+
+`ModelReplica` is the IR everyone notices because it's the placement seam. But there's more than one IR in the system, and naming them is what makes BYO-* clean and lifecycle-ops tractable.
+
+### Three IRs, one principle
+
+| IR | What it represents | Producer | Consumer | Today |
+|---|---|---|---|---|
+| **`ModelReplica`** (placement IR) | one logical replica bound to `(cluster, pool)` plus resolved fields the renderer needs | matcher composition function | per-version backend adapter (KServe v0.16 / v0.17 / v0.18 / Dynamo / raw-vllm) | the explicit XR in `apis/modelreplicas/` |
+| **Cluster substrate IR** | the per-cluster install set: scheduler / backend / capacity adapter / KEDA prereq | `InferenceCluster` Composition | per-cluster controllers + matcher (reads `IC.status.{capacity, conditions, detected}`) | implicit in the `InferenceCluster` Composition; no separate XR |
+| **Endpoint binding IR** | per-cluster materialization of a `ModelEndpoint` (gateway routes, weights, header rules) | `ModelEndpoint` Composition | per-cluster gateway (Envoy / Istio / Inference Gateway) | implicit in the `ModelEndpoint` Composition today |
+
+The principle behind all three: **stable user-facing CR → IR → version-pinned renderer**. The IR absorbs upstream churn and substrate variation; the user-facing CR doesn't change when KServe rolls a minor version, when a customer brings KAI instead of Kueue, or when we add an Envoy-Gateway target alongside Istio.
+
+### The placement IR (`ModelReplica`) is explicit
+
+This is the one we surface as a concrete CR because:
+
+- The matcher's output is durable state worth inspecting (`kubectl get modelreplicas -n app-team` shows where every replica landed and why).
+- Each MR has its own lifecycle (independently reconciled, evictable, sticky across MD revisions).
+- The seam between matcher and version-pinned backend adapter is a natural conformance boundary — any future backend renders the same MR.
+
+### The other two are implicit today (and that's a deliberate choice)
+
+**Cluster substrate IR** — what the `InferenceCluster` Composition emits today (Helm releases for Kueue / KAI, KServeBackend XR, capacity-adapter Deployment, KEDA verification). It's an IR by behavior even without a name. We could split it out as `InferenceClusterRuntime` — separate XR for "what got installed on this cluster, at which version, with which detection result". Trades simplicity for finer-grained lifecycle:
+
+| Stay implicit | Split out as `InferenceClusterRuntime` |
+|---|---|
+| One XR per cluster — simpler mental model | Two XRs per cluster — substrate vs runtime |
+| Bumping KServe version in a cluster = mutating IC | Substrate untouched; bump only the runtime IR |
+| Detection results live on `IC.status.detected` | Detection results live on the runtime IR's status |
+
+We're not splitting it for now — keeps the BYO matrix readable. **If** version-skew across clusters becomes a real ops issue (e.g. fleet-wide KServe upgrades), promoting it to an explicit IR is one composition change.
+
+**Endpoint binding IR** — same story. Today a `ModelEndpoint` directly composes gateway resources. When fleet-wide routing grows (multi-region weighted routing across N gateways with header-based affinity), splitting per-cluster bindings out as their own IR pays off — each cluster's gateway state becomes its own reconcilable XR with its own conditions.
+
+### Why this matters for BYO-*
+
+The IR pattern is what makes BYO-anything cheap:
+
+- **BYO scheduler** → the scheduler axis picks a different admission-gating + capacity-adapter implementation; same MR, same matcher, same backend adapter. Adding KAI alongside Kueue cost us one capacity adapter + a `schedulerName`-aware MR renderer. No user-facing changes.
+- **BYO backend / KServe version** → matcher dispatches to the version-pinned adapter; same MR shape. KServe v0.17→v0.18 storage migration is one adapter change; user MDs stay valid.
+- **BYO cluster** → cluster source axis swaps `provider-google` for kubeconfig-secret; the cluster substrate IR detects vs installs. Same MR lands.
+- **BYO gateway** (when we get there) → endpoint binding IR's renderer dispatches per gateway type. Same `ModelEndpoint`.
+
+If we hadn't named the IRs, every BYO-* would be touching user-facing composition logic. With them, each BYO-* is one renderer + one detection rule.
+
+## Crossplane lifecycle layers — what gets reconciled where
+
+A second principle behind the design: **let Crossplane manage at every layer that has a meaningful lifecycle**. Each user-facing CR is its own XR, with its own status, conditions, and Composition. That sounds like trivia, but it's what makes ops tractable.
+
+### The layers
+
+| Layer | XR | Lifecycle ops it enables |
+|---|---|---|
+| **Cluster substrate** | `InferenceCluster` | Provision / decommission a cluster. Pause reconciliation during a maintenance window. Bump scheduler/backend version in one cluster without touching others. GitOps drift detection on cluster-level config. RBAC: only platform team can create. |
+| **Hardware catalog** | `InferenceClass` | Add a new SKU bundle; cluster-scoped, shared. RBAC: catalog stewards. Drift detection on aliases / capabilities as cloud SKUs evolve. |
+| **Workload** | `ModelDeployment` | Push a new model revision; pause autoscaling; transition env via labels (prod → staging). RBAC: per-namespace = per-team. Independent of substrate. |
+| **Replica / placement** | `ModelReplica` | Each replica independently reconciled. Sticky placement survives MD reconciles. Eviction-controller annotation triggers re-pick on cluster degradation. `kubectl get modelreplicas` is the operator's source of truth for where things ran. |
+| **Routing** | `ModelEndpoint` | Roll a canary (weight 5 → 95). Pause traffic to a region. RBAC: independent of MD ownership (gateway team can own the ME). |
+| **External target** | `InferenceProvider` | Rotate credentials. Move SaaS spend across providers. Per-namespace registration. |
+
+### Why splitting at these seams matters
+
+- **Pause / resume per layer.** `kubectl annotate inferencecluster cw-h200 crossplane.io/paused=true` freezes substrate reconciliation while leaving workloads running. The same on a `ModelDeployment` freezes scaling without affecting the cluster.
+- **GitOps drift, per layer.** A `ModelDeployment` is a small CR (model + selectors + scaling); diffing it in PRs is tractable. A combined "everything" CR would be hundreds of lines.
+- **RBAC at any layer.** Platform team owns `InferenceCluster` and `InferenceClass`. App teams own `ModelDeployment` in their namespace. SREs own `ModelEndpoint` (traffic shaping). No layer needs cross-team RBAC.
+- **Version skew handled per layer.** The matcher reads `IC.spec.backend.version` per cluster — different KServe versions in different clusters are not a problem. The MD doesn't care.
+- **Status decomposes naturally.** A failing replica is `MR.status.conditions[Ready]=False, reason=NoSchedulableCluster`. A failing cluster is `IC.status.conditions[Healthy]=False`. A failing gateway is on `ME.status`. Each surface answers one question.
+- **Crossplane's claim/composite split applies cleanly.** Per-namespace `Claim` (the user-facing CR) → cluster-scoped `Composite` (the XR Crossplane reconciles) → composed resources. We get this for free at every layer because each layer is its own XR.
+- **Each layer is independently testable.** Composition functions for the matcher don't have to mock cluster state; they read declared substrate facts off `InferenceCluster`. The backend adapter doesn't have to know about MDs; it only sees `ModelReplica`. This is a direct consequence of having IRs at the seams.
+
+### What we *don't* split out (and why)
+
+| Not its own XR | Why |
+|---|---|
+| Per-replica pod set | KServe / LWS owns this; we'd be re-implementing what already exists. |
+| Per-cluster KEDA install | KEDA is a hard prerequisite; checking is fine, owning is not. |
+| Per-MD `ScaledObject` | Composed inline by the MD's Composition. KEDA's CR is already cluster-tracked; wrapping it would add layers without lifecycle benefit. |
+| Per-cluster gateway resources | Today they're composed inline by `ModelEndpoint`. **Will** become an IR when fleet-wide routing grows (see endpoint binding IR above). |
+
+The rule: an IR / XR is justified when there's a real lifecycle to manage at that layer (independent reconcile, RBAC boundary, version skew, drift). Splitting for purity's sake is overhead; we're explicit about which layers get one and which don't.
 
 ## BYOC: how scheduling works on a customer-owned cluster
 
@@ -896,13 +984,7 @@ Listed because they're plausible-sounding traps, not because they're roadmap ite
 
 ## Appendix: deliverables (scheduling-side)
 
-API shape and the bulk of the example resources are owned by [#64](https://github.com/modelplaneai/modelplane/pull/64). The scheduling-side artifacts that live in this directory:
-
-**Scheduling-shaped XRDs** (the contracts the matcher consumes / produces; full schemas in #64):
-
-- [`xrds/inferencecluster.yaml`](./xrds/inferencecluster.yaml) — substrate; what the matcher filters and reads `status.capacity` from
-- [`xrds/modelreplica.yaml`](./xrds/modelreplica.yaml) — IR the matcher writes (`spec.target.{name,pool}`, `spec.derivedFeatures`, `spec.kserveVersion`); renames the existing `ModelPlacement` CRD
-- [`xrds/kservebackend.yaml`](./xrds/kservebackend.yaml) — proposed `spec.engine.features` extension the matcher filters on
+XRDs and full API schemas are owned by [#64](https://github.com/modelplaneai/modelplane/pull/64). This directory keeps scheduling-relevant **examples** to anchor the discussion — illustrative YAML, not authoritative schema.
 
 **Substrate examples — the BYO matrix in concrete form:**
 
@@ -912,4 +994,298 @@ API shape and the bulk of the example resources are owned by [#64](https://githu
 - [`examples/clusters/byoc-coreweave-kai-h200.yaml`](./examples/clusters/byoc-coreweave-kai-h200.yaml) — BYOC; BYO `kai` + BYO `kserve` + DRA
 - [`examples/clusters/byoc-eks-h100-no-dra.yaml`](./examples/clusters/byoc-eks-h100-no-dra.yaml) — BYOC; BYO `kueue` + BYO `kserve` + `device-plugin` (no DRA)
 
-Workload examples, `InferenceClass` catalog, reference cluster templates, and the rest of the example tree are kept in this directory for now but the canonical home is [#64](https://github.com/modelplaneai/modelplane/pull/64).
+Workload examples, `InferenceClass` catalog, reference cluster templates, and the rest of the example tree live alongside in `examples/`; they cross-reference shapes that #64 owns.
+
+## User-facing surface preview (Quickstart + Advanced)
+
+Drafted to **gauge complexity** of the proposed design. If these read as straightforward, the scheduling layer is doing its job — federation, plugin/adapter system, IRs, lifecycle layers should all be invisible to the user except via `kubectl describe` when something goes wrong.
+
+### Quickstart — minimum path to a curl
+
+Goal: from "fresh control plane" to "I can curl an LLM" in 4 CRs and one cluster. Reuses an existing K8s cluster (managed-install path is the same; one CR field).
+
+```bash
+# 0. Install Modelplane on your Crossplane control plane
+$ up xpkg install xpkg.upbound.io/modelplaneai/modelplane:v0.1
+# (provider-google + KEDA prereq are dependencies; up resolves them)
+```
+
+```yaml
+# 1. Register your first cluster (Existing source)
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: dev
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        namespace: platform-system
+        name: dev-cluster-kubeconfig
+        key: kubeconfig
+  scheduler: { type: auto }              # detect; greenfield → managed-kueue
+  backend:   { type: managed-kserve, version: v0.18.0 }
+  attributes:
+    cloud.region: us-east-1
+    modelplane.ai/tier: dev
+  nodePools:
+    - { name: l40s, class: l40s-4x }
+```
+
+```yaml
+# 2. Deploy a model
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: gpt-oss-20b
+  namespace: app-team
+spec:
+  replicas: 1
+  model:  { name: openai/gpt-oss-20b }
+  source: HuggingFace
+  huggingFace: { repo: openai/gpt-oss-20b }
+  deviceSelector:
+    requests:
+      - { name: gpu, count: 1, matchLabels: { nvidia.com/gpu.family: ada } }
+  engine: { name: vLLM, image: vllm/vllm-openai:v0.8.0 }
+  scaling:
+    signal: Concurrency
+    concurrency: { minReplicas: 1, maxReplicas: 4, target: 32 }
+```
+
+```yaml
+# 3. Route traffic
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: gpt-oss
+  namespace: app-team
+spec:
+  routes:
+    - type: Deployment
+      weight: 100
+      deployment: { ref: { name: gpt-oss-20b } }
+```
+
+```bash
+# 4. Curl
+$ kubectl get modelendpoint gpt-oss -n app-team -o jsonpath='{.status.url}'
+https://gpt-oss.app-team.modelplane.example/v1
+
+$ curl https://gpt-oss.app-team.modelplane.example/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"gpt-oss-20b","messages":[{"role":"user","content":"hello"}]}'
+
+# Inspect what happened under the hood
+$ kubectl get modelreplicas -n app-team
+NAME                READY   TARGET   KIND               AGE
+gpt-oss-20b-0       True    dev      InferenceCluster   45s
+
+$ kubectl describe modeldeployment gpt-oss-20b -n app-team | grep -A4 Status
+Status:
+  Conditions:    Ready=True
+  Model Replicas:  total=1 ready=1
+  Match Trace:   1 cluster considered, 1 eligible
+```
+
+**4 CRs, ~60 lines of YAML.** The matcher, composer, KEDA `ScaledObject`, KServe `LLMInferenceService`, capacity adapter, drift detector are all running but never appear in the user's manifests.
+
+### Advanced — five common scenarios end-users will hit
+
+Each scenario is a delta from the Quickstart. YAML is **abridged** here (full shapes in [#64](https://github.com/modelplaneai/modelplane/pull/64)) — the goal is to show the surface a real workload presents.
+
+#### A. Multi-region weighted routing
+
+Two clusters, two `ModelDeployment`s with the same labels, one `ModelEndpoint` weighted across them. Selector-based — bumping an MD revision doesn't break the URL.
+
+```yaml
+# Two MDs share labels — environment promotion pattern
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: kimi-k2-us
+  namespace: app-team
+  labels:
+    modelplane.ai/model: kimi-k2
+    modelplane.ai/region: us-east-1
+    modelplane.ai/environment: production
+spec:
+  replicas: 2
+  model: { name: moonshotai/Kimi-K2-Instruct }
+  source: HuggingFace
+  huggingFace: { repo: moonshotai/Kimi-K2-Instruct }
+  clusterSelector:
+    matchAttributes:
+      cloud.region: us-east-1
+      network.bandwidthGbps: ">=400"
+  deviceSelector:
+    requests:
+      - name: gpus
+        count: 16
+        perNode: 8
+        matchAttributes: { vramGiB: ">=141", capabilities: [fp8] }
+  parallelism: { tensor: 8, pipeline: 2 }
+  engine: { name: vLLM, image: vllm/vllm-openai:v0.8.0 }
+---
+# kimi-k2-eu: same shape, region: eu-west-1
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: kimi-k2-global
+  namespace: app-team
+spec:
+  routes:
+    - type: Deployment
+      weight: 50
+      deployment:
+        selector:
+          matchLabels:
+            modelplane.ai/model: kimi-k2
+            modelplane.ai/region: us-east-1
+            modelplane.ai/environment: production
+    - type: Deployment
+      weight: 50
+      deployment:
+        selector:
+          matchLabels: { modelplane.ai/model: kimi-k2, modelplane.ai/region: eu-west-1 }
+```
+
+#### B. BYOC with KAI scheduler
+
+Operator points Modelplane at an existing CoreWeave H200 cluster running KAI. **No install** — Modelplane detects KAI's `Project` CRD and uses it.
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: cw-kai-h200
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef: { namespace: platform-system, name: cw-kubeconfig, key: kubeconfig }
+  scheduler: { type: auto }            # auto detects Project CRD → kai
+  backend:   { type: kserve, version: v0.18.0 }   # detected, BYO
+  provisioning: { mode: dra }
+  attributes:
+    cloud.provider: coreweave
+    cloud.region: us-east-1
+    network.fabric: ib
+  nodePools:
+    - { name: kai-pool-h200, class: h200-nvl-8x }
+```
+
+`kubectl describe inferencecluster cw-kai-h200` shows `Status.Detected: { scheduler: kai, backend: kserve@v0.18.0, dra: true }`. Onboarding flips Ready=True; the matcher starts placing MRs on this IC. Same `ModelDeployment` from scenario A would land here unchanged.
+
+#### C. Disaggregated prefill / decode (xPyD)
+
+Add `roles.prefill` and `roles.decode` to a `ModelDeployment`. Backend adapter renders separate sub-pod-sets that all land on the same cluster (KV cache transfer too expensive over WAN).
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata: { name: llama-405b, namespace: app-team }
+spec:
+  replicas: 1
+  model: { name: meta/Llama-3.1-405B }
+  source: HuggingFace
+  huggingFace: { repo: meta-llama/Meta-Llama-3.1-405B }
+  deviceSelector:
+    requests:
+      - { name: gpus, count: 8, perNode: 8, matchAttributes: { vramGiB: ">=141" } }
+  parallelism: { tensor: 8 }
+  roles:
+    prefill: { replicas: 5 }            # 5 prefill pods, inherits root selector
+    decode:  { replicas: 3 }            # 3 decode pods
+  engine:
+    name: vLLM
+    image: vllm/vllm-openai:v0.8.0
+    optimizations: { kvCacheRouting: true }
+```
+
+The MD doesn't say anything about NIXL / KV transfer / gang admission — backend adapter handles the wiring. `kubectl get modelreplicas` shows one MR; the cluster shows 8 pods (5 prefill + 3 decode) with co-location enforced by the in-cluster scheduler.
+
+#### D. Custom hardware via `InferenceClass`
+
+Bespoke AMD MI325X partition not in the default catalog. Cluster-scoped class declared once; clusters reference it by name.
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata: { name: acme-mi325-2x }
+spec:
+  expands:
+    vendor: amd
+    product: MI325
+    architecture: cdna3
+    formFactor: oam
+    vramGiB: 256
+    capabilities: [fp8, fp4]
+    gpuCount: 2
+    interconnect.type: infinity-fabric
+  aliases: [acme:internal-mi325-2x]
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata: { name: acme-mi325 }
+spec:
+  cluster: { source: Existing, existing: { secretRef: ... } }
+  scheduler: { type: auto }
+  backend:   { type: managed-kserve, version: v0.18.0 }
+  nodePools:
+    - { name: mi325-pool, class: acme-mi325-2x }   # references the class
+```
+
+A workload requesting `vramGiB >= 200 && capabilities contains fp8` matches without any MD-level changes. Adding new SKUs is one CR, not a code change.
+
+#### E. Spillover to a SaaS provider
+
+Local cluster saturates → burst to Together AI. `InferenceProvider` for the SaaS endpoint, weighted route on the ME.
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceProvider
+metadata:
+  name: together-prod
+  namespace: app-team
+  labels: { modelplane.ai/role: spillover }
+spec:
+  endpoint:
+    url: https://api.together.xyz/v1
+    auth: { secretRef: { namespace: platform-system, name: together-key, key: api-key } }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata: { name: kimi-k2-with-burst, namespace: app-team }
+spec:
+  routes:
+    - type: Deployment
+      weight: 95
+      deployment: { selector: { matchLabels: { modelplane.ai/model: kimi-k2 } } }
+    - type: InferenceProvider
+      weight: 5
+      inferenceProvider: { selector: { matchLabels: { modelplane.ai/role: spillover } } }
+```
+
+When the matcher reports the local fleet at capacity (`InferenceCluster.status.capacity` saturated), the gateway shifts traffic to the spillover route. No `ModelDeployment` change.
+
+### What this tells us about complexity
+
+Reading the YAML for both surfaces together:
+
+- **3 CRs the user always writes** (`InferenceCluster`, `ModelDeployment`, `ModelEndpoint`). 1 more for SaaS routes (`InferenceProvider`); 1 more for custom hardware (`InferenceClass`).
+- **The MD is the only chunky resource.** ~30-50 lines for a typical workload. Most of that is engine config and selectors that are inherent to inference, not Modelplane-specific.
+- **Advanced scenarios are *deltas***, not redesigns. Multi-region is "add a label, copy the MD, write the ME". Disagg is "add `roles`". BYOC with KAI is "set `source: Existing`". Spillover is one extra route entry.
+- **No user touches**: `ModelReplica`, capacity status, `KServeBackend`, `ScaledObject`, `LLMInferenceService`, `LeaderWorkerSet`, `ResourceClaim`, `ClusterQueue`, `PodGroup`, scheduler / capacity adapters, the matcher. All internal mechanics.
+
+If MD spec sprawl is the complexity risk, the mitigation is org-specific Compositions on top — `ApprovedModel`-style abstractions that compress 50 lines of MD into a 5-line claim. That's stock Crossplane and lives alongside Modelplane, not inside it.
+
+The places where complexity *can* leak:
+
+1. **`matchTrace` debugging.** When no IC matches, the user reads `MR.status.matchTrace`. The shape needs to be readable. Currently designed as structured per-cluster missing-features + suggestions; we'll iterate based on real misses.
+2. **Cold-start ambiguity.** A `ModelDeployment` with `Ready=False` could mean "pulling image", "pool scaling from 0", "gang scheduling pending", "engine loading weights". We commit to granular conditions on the MR (`MR.status.conditions[Pulling]`, `[LWSGangPending]`, `[EngineLoading]`) so users see *which* cold-start stage they're in.
+3. **`engine.advanced[]` typos.** `acme.com/turbo-mode` vs `acme.com/trubo-mode`. Fuzzy-match suggestions in `matchTrace.suggestions` cover this; users see the typo flagged.
+
+These are the places to invest in UX once the foundation lands.
