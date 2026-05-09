@@ -40,25 +40,46 @@ and resource requirements all live on `ModelDeployment`.
 
 ## InferenceClass
 
-Reusable hardware topology bundles. An `InferenceClass` captures the complete
-hardware context for a node pool — GPU topology and inter-node networking.
-Modelplane ships defaults (`h200-nvl-8x-ib`, `h100-nvl-8x-ib`, `h100-nvl-8x`,
-`l4-1x`, `b200-nvl-8x`, `mi300x-8x`, etc.). Platform teams can author custom
+A tested recipe for a GPU node pool. Each class bundles two things:
+**capabilities** (what this hardware can do, used by the scheduler) and
+optionally **provisioning** (how to create it on a specific cloud, used by
+the composition function). Modelplane ships defaults for common cloud × SKU
+combinations (`gke-h200-8x-a3-ib`, `gke-l4-1x-g2`, `eks-h100-8x-p5`, etc.)
+as well as cloud-agnostic capabilities-only classes for BYO clusters
+(`h200-8x-ib`, `h100-8x`, `l4-1x`, etc.). Platform teams can author custom
 classes for bespoke hardware.
+
+GKE H200 — provisioning recipe + capabilities:
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
   # Class name is referenced from InferenceCluster.spec.nodePools[].class.
-  name: h200-nvl-8x-ib
+  name: gke-h200-8x-a3-ib
 spec:
-  description: "8x NVIDIA H200 SXM, NVLink Switch, InfiniBand 400Gbps"
+  description: "GKE a3-ultragpu-8g, 8x H200, GPUDirect-TCPX"
+
+  # Optional — omit for BYO / capabilities-only classes. When present,
+  # the composition function reads this to provision the pool on the
+  # target cloud. provider is the discriminator; the sibling block (gke,
+  # eks, aks) carries cloud-specific config.
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: a3-ultragpu-8g
+      accelerator:
+        type: nvidia-h200-141gb
+        count: 8
+      diskSizeGb: 200
+      networking:
+        gpuDirectTCPX: true
 
   # Open-ended key-value map. ModelDeployment.spec.nodeSelector.cel
-  # evaluates against these. Plain YAML scalars and lists for the common
-  # case; {type: ..., value: ...} for versions or anything YAML can't
-  # express natively.
+  # evaluates against these. Describes exactly what the provisioning
+  # above produces. Plain YAML scalars and lists for the common case;
+  # {type: ..., value: ...} for versions or anything YAML can't express
+  # natively.
   capabilities:
     gpu.vendor: nvidia
     gpu.product: H200
@@ -68,23 +89,52 @@ spec:
     gpu.features: [fp8, bf16, transformer-engine, mig]
     interconnect.intraNode: nvswitch
     interconnect.intraNodeBandwidthGBs: 900
-    # Inter-node networking belongs to the class — it's a property of the
-    # pool's hardware, not of the cluster as a whole. Different networking
-    # implies a different class (h200-nvl-8x-ib vs h200-nvl-8x).
-    network.interNode: infiniband
-    network.interNodeBandwidthGbps: 400
-    # Decorated value — version semantics for correct comparison
-    # (e.g., 12.10.0 > 12.9.0 semantically but not lexicographically).
+    network.interNode: gpudirect-tcpx
+    network.interNodeBandwidthGbps: 200
     cuda.toolkit: {type: version, value: "12.4.0"}
 ```
+
+BYO H200 — capabilities only, no provisioning:
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
-  name: l4-1x
+  name: h200-8x-ib
 spec:
-  description: "1x NVIDIA L4, 24 GiB GDDR6, PCIe"
+  description: "8x H200, NVSwitch, InfiniBand 400Gbps (BYO)"
+  # No provisioning block — capabilities only. For BYO clusters where
+  # the pool already exists. The scheduler uses capabilities for
+  # matching; the composition function doesn't provision anything.
+  capabilities:
+    gpu.vendor: nvidia
+    gpu.product: H200
+    gpu.architecture: Hopper
+    gpu.vramGiB: 141
+    gpu.count: 8
+    gpu.features: [fp8, bf16, transformer-engine, mig]
+    interconnect.intraNode: nvswitch
+    interconnect.intraNodeBandwidthGBs: 900
+    network.interNode: infiniband
+    network.interNodeBandwidthGbps: 400
+```
+
+GKE L4 — simple provisioning recipe:
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-l4-1x-g2
+spec:
+  description: "GKE g2-standard-4, 1x L4"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: g2-standard-4
+      accelerator:
+        type: nvidia-l4
+        count: 1
   capabilities:
     gpu.vendor: nvidia
     gpu.product: L4
@@ -98,25 +148,61 @@ spec:
 ## InferenceCluster
 
 A cluster in the fleet. Cluster-level metadata is captured in standard
-Kubernetes labels. Hardware capabilities — including inter-node networking —
-come from each pool's referenced `InferenceClass`.
+Kubernetes labels. Each pool references an `InferenceClass` for its
+hardware capabilities and (for provisioned clusters) its cloud-specific
+provisioning recipe.
+
+GKE-provisioned — the composition function reads the class's provisioning
+config to create each pool:
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: prod-gke-us-east
+  # Labels are the cluster-level matching surface. ModelDeployment's
+  # spec.clusterSelector.matchLabels matches against these.
+  labels:
+    modelplane.ai/tier: production
+    cloud.provider: gcp
+    cloud.region: us-east1
+spec:
+  # Cluster-level provisioning — where to create it. The class carries
+  # the pool-level provisioning (machineType, accelerator, networking).
+  cluster:
+    source: GKE
+    gke:
+      project: acme-ml-platform
+      region: us-east1
+      kubernetesVersion: "1.35"
+
+  nodePools:
+  # Each pool references an InferenceClass. For GKE clusters, the class
+  # provides both capabilities (scheduling) and provisioning config
+  # (machineType, GPU). maxNodes and nodeCount are per-cluster sizing.
+  - name: frontier
+    class: gke-h200-8x-a3-ib
+    maxNodes: 4
+    nodeCount: 0
+
+  - name: dev
+    class: gke-l4-1x-g2
+    maxNodes: 4
+    nodeCount: 1
+```
+
+BYO — the class provides capabilities only, provisioning is ignored:
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
   name: prod-coreweave-us-east
-  # Labels are the cluster-level matching surface. ModelDeployment's
-  # spec.clusterSelector.matchLabels matches against these — organizational
-  # metadata like tier, region, provider. Hardware facts live on the
-  # pool's InferenceClass, not here.
   labels:
     modelplane.ai/tier: production
     cloud.provider: coreweave
     cloud.region: us-east-1
 spec:
-  # BYO kubeconfig. Modelplane installs the inference stack but doesn't
-  # provision the cluster.
   cluster:
     source: Existing
     existing:
@@ -125,17 +211,9 @@ spec:
         key: kubeconfig
 
   nodePools:
-  # Each pool references an InferenceClass for its hardware capabilities.
-  # maxNodes is the pool's capacity ceiling — used by the scheduler to
-  # check whether a replica fits. DRA handles device-to-node binding at
-  # pod admission time, so no nodeSelector is needed here.
   - name: frontier
-    class: h200-nvl-8x-ib
+    class: h200-8x-ib
     maxNodes: 4
-
-  - name: general
-    class: h100-nvl-8x
-    maxNodes: 8
 ```
 
 ## ModelDeployment — Mixtral 8x7B
@@ -577,10 +655,15 @@ can also be created to route to external services, using the same schema.
   Node-level matching uses `spec.nodeSelector.cel` against the typed
   `capabilities` bundled by `InferenceClass` (hardware and networking
   facts).
-- **`InferenceClass` is the complete hardware context.** GPU topology and
-  inter-node networking both live on the class. Different networking implies
-  a different class (`h200-nvl-8x-ib` vs `h200-nvl-8x`). Networking belongs
-  to the pool that uses it, not to the cluster.
+- **`InferenceClass` is a tested recipe.** Each class bundles capabilities
+  (for scheduling) and optionally cloud-specific provisioning config (for
+  cluster composition). GPU topology and inter-node networking both live
+  on the class. Different clouds or networking imply different classes
+  (`gke-h200-8x-a3-ib` vs `h200-8x-ib`). For provisioned clusters, the
+  composition function reads `class.provisioning` to create the pool. For
+  BYO clusters, provisioning is omitted and only capabilities are used.
+  Modelplane ships a default catalog of classes for common cloud × SKU
+  combinations.
 - **Open-ended capabilities with CEL matching.** Pool capabilities are
   key-value maps; pool selectors are CEL expressions. New capabilities don't
   require schema changes.
