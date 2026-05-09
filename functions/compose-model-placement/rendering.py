@@ -32,12 +32,11 @@ class RoleView:
     prefill}. Carries everything the renderer needs without re-fetching MD.
     """
 
-    topology: dict  # {strategy, tensor, pipeline, data, dataLocal, instances}
+    workers: dict  # {count, topology: {strategy, tensor, pipeline, data, dataLocal}}
     node_selector_cel: str
     pool: str
     nodes_used: int
     gpus_per_node: int
-    instances: int
 
 
 @dataclass
@@ -115,15 +114,14 @@ def _worker_spec(role: RoleView, cls: ClassView) -> dict:
     1 (or absent) means a single pod. KServe maps this directly onto
     LeaderWorkerSet's leader/worker structure.
     """
-    nodes_per_inst = role.topology.get("pipeline", 0) or 1
+    topology = role.workers.get("topology", {})
+    nodes_per_worker = topology.get("pipeline", 0) or 1
     return {
-        "replicas": role.instances,
-        "leaderWorkerSet": {"size": nodes_per_inst} if nodes_per_inst > 1 else None,
+        "replicas": role.workers.get("count", 1),
+        "leaderWorkerSet": {"size": nodes_per_worker} if nodes_per_worker > 1 else None,
         "containers": [
             {
                 "name": "engine",
-                "image": role.topology.get("image"),  # carried via engine block;
-                                                       # left here for completeness
                 "resources": {
                     # DRA: ResourceClaim is bound by name "gpus".
                     "claims": [{"name": "gpus"}],

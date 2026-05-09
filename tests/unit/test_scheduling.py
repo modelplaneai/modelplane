@@ -61,7 +61,9 @@ def _md(replicas=1, cluster_selector=None, decode=None, prefill=None):
         replicas=replicas,
         decode=decode or scheduling.RoleSpec(
             node_selector_cel="",
-            topology=scheduling.Topology(strategy="Tensor", tensor=8),
+            workers=scheduling.Workers(
+                topology=scheduling.Topology(strategy="Tensor", tensor=8),
+            ),
         ),
         prefill=prefill,
     )
@@ -92,12 +94,15 @@ def test_topology_unknown_strategy_raises():
         scheduling.Topology(strategy="WhatNow", tensor=1).shape()
 
 
-def test_role_nodes_required_includes_instances():
+def test_role_nodes_required_multiplies_workers_count():
     role = scheduling.RoleSpec(
         node_selector_cel="",
-        topology=scheduling.Topology(strategy="TensorPipeline", tensor=8, pipeline=2, instances=3),
+        workers=scheduling.Workers(
+            topology=scheduling.Topology(strategy="TensorPipeline", tensor=8, pipeline=2),
+            count=3,
+        ),
     )
-    assert scheduling.role_nodes_required(role) == 6  # 2 nodes * 3 instances
+    assert scheduling.role_nodes_required(role) == 6  # 2 nodes/worker * 3 workers
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +140,9 @@ def test_match_filters_pool_by_cel(monkeypatch):
     """Pool's class capabilities don't satisfy the role's CEL predicate."""
     md = _md(decode=scheduling.RoleSpec(
         node_selector_cel='capabilities["gpu.vramGiB"] >= 141',
-        topology=scheduling.Topology(strategy="Tensor", tensor=8),
+        workers=scheduling.Workers(
+            topology=scheduling.Topology(strategy="Tensor", tensor=8),
+        ),
     ))
     ic = _ic("east", pools=[
         _pool("h100", capabilities={"gpu.count": 8, "gpu.vramGiB": 80}),
@@ -156,7 +163,9 @@ def test_match_pool_too_small_for_per_node_shape():
     """Pool has gpu.count < gpus_per_node. Static feasibility fails."""
     md = _md(decode=scheduling.RoleSpec(
         node_selector_cel="",
-        topology=scheduling.Topology(strategy="Tensor", tensor=8),  # 8 GPUs/node
+        workers=scheduling.Workers(
+            topology=scheduling.Topology(strategy="Tensor", tensor=8),  # 8 GPUs/node
+        ),
     ))
     ic = _ic("east", pools=[_pool("l4", gpu_count=4)])  # only 4 GPUs/node
     result = scheduling.schedule(md, [ic], existing=[])
@@ -168,7 +177,9 @@ def test_match_pool_at_capacity():
     """Pool has 0 free nodes after existing placements consume max_nodes."""
     md = _md(decode=scheduling.RoleSpec(
         node_selector_cel="",
-        topology=scheduling.Topology(strategy="Tensor", tensor=8),
+        workers=scheduling.Workers(
+            topology=scheduling.Topology(strategy="Tensor", tensor=8),
+        ),
     ))
     ic = _ic("east", pools=[_pool("h200", max_nodes=2)])
     existing = [
@@ -193,7 +204,9 @@ def test_match_capacity_reserved_across_replicas():
     by replicas earlier in the SAME match() call."""
     md = _md(replicas=3, decode=scheduling.RoleSpec(
         node_selector_cel="",
-        topology=scheduling.Topology(strategy="Tensor", tensor=8),
+        workers=scheduling.Workers(
+            topology=scheduling.Topology(strategy="Tensor", tensor=8),
+        ),
     ))
     # 2 ICs, each with a pool of max_nodes=2 → total capacity 4 replicas.
     ics = [
@@ -295,11 +308,16 @@ def test_match_disagg_skips_cluster_missing_prefill_pool(monkeypatch):
         replicas=1,
         decode=scheduling.RoleSpec(
             node_selector_cel='capabilities["gpu.vramGiB"] >= 141',
-            topology=scheduling.Topology(strategy="Tensor", tensor=8),
+            workers=scheduling.Workers(
+                topology=scheduling.Topology(strategy="Tensor", tensor=8),
+            ),
         ),
         prefill=scheduling.RoleSpec(
             node_selector_cel='capabilities["gpu.product"] == "L40S"',
-            topology=scheduling.Topology(strategy="Tensor", tensor=1, instances=2),
+            workers=scheduling.Workers(
+                topology=scheduling.Topology(strategy="Tensor", tensor=1),
+                count=2,
+            ),
         ),
     )
 
@@ -341,11 +359,17 @@ def test_match_disagg_capacity_split():
         replicas=1,
         decode=scheduling.RoleSpec(
             node_selector_cel="",
-            topology=scheduling.Topology(strategy="TensorPipeline", tensor=8, pipeline=2, instances=3),
+            workers=scheduling.Workers(
+                topology=scheduling.Topology(strategy="TensorPipeline", tensor=8, pipeline=2),
+                count=3,
+            ),
         ),
         prefill=scheduling.RoleSpec(
             node_selector_cel="",
-            topology=scheduling.Topology(strategy="Tensor", tensor=1, instances=5),
+            workers=scheduling.Workers(
+                topology=scheduling.Topology(strategy="Tensor", tensor=1),
+                count=5,
+            ),
         ),
     )
     # decode needs 6 nodes, prefill needs 5.

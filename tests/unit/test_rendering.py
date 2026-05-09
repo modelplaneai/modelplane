@@ -14,21 +14,22 @@ import rendering
 # ---------------------------------------------------------------------------
 
 
-def _role(strategy="Tensor", tensor=8, pipeline=0, instances=1, gpus_per_node=8, pool="h200"):
+def _role(strategy="Tensor", tensor=8, pipeline=0, count=1, gpus_per_node=8, pool="h200"):
     return rendering.RoleView(
-        topology={
-            "strategy": strategy,
-            "tensor": tensor,
-            "pipeline": pipeline,
-            "data": 0,
-            "dataLocal": 0,
-            "instances": instances,
+        workers={
+            "count": count,
+            "topology": {
+                "strategy": strategy,
+                "tensor": tensor,
+                "pipeline": pipeline,
+                "data": 0,
+                "dataLocal": 0,
+            },
         },
         node_selector_cel="",
         pool=pool,
         nodes_used=pipeline or 1,
         gpus_per_node=gpus_per_node,
-        instances=instances,
     )
 
 
@@ -98,7 +99,7 @@ def test_llmis_model_name_is_namespace_slash_name():
 
 
 def test_llmis_disagg_has_prefill_block():
-    prefill = _role(strategy="Tensor", tensor=1, instances=5, gpus_per_node=1, pool="l40s")
+    prefill = _role(strategy="Tensor", tensor=1, count=5, gpus_per_node=1, pool="l40s")
     mr = _mr(prefill=prefill, target_prefill_pool="l40s")
     spec = rendering.build_llmis_spec(mr, {"h200": _cls(), "l40s": _cls(name="l40s-class")})
     assert "prefill" in spec
@@ -107,7 +108,7 @@ def test_llmis_disagg_has_prefill_block():
 
 
 def test_llmis_disagg_each_role_has_dra_claim_ref():
-    prefill = _role(strategy="Tensor", tensor=1, instances=5, gpus_per_node=1, pool="l40s")
+    prefill = _role(strategy="Tensor", tensor=1, count=5, gpus_per_node=1, pool="l40s")
     mr = _mr(prefill=prefill, target_prefill_pool="l40s")
     spec = rendering.build_llmis_spec(mr, {"h200": _cls(), "l40s": _cls()})
     assert spec["workerSpec"]["containers"][0]["resources"]["claims"] == [{"name": "gpus"}]

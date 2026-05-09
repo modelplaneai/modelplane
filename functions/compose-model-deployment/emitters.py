@@ -89,19 +89,20 @@ def _role(role: scheduling.RoleSpec | None, placement: scheduling.RolePlacement)
     """
     assert role is not None
     return {
-        "topology": {
-            "strategy": role.topology.strategy,
-            "tensor": role.topology.tensor,
-            "pipeline": role.topology.pipeline,
-            "data": role.topology.data,
-            "dataLocal": role.topology.data_local,
-            "instances": role.topology.instances,
+        "workers": {
+            "count": role.workers.count,
+            "topology": {
+                "strategy": role.workers.topology.strategy,
+                "tensor": role.workers.topology.tensor,
+                "pipeline": role.workers.topology.pipeline,
+                "data": role.workers.topology.data,
+                "dataLocal": role.workers.topology.data_local,
+            },
         },
         "nodeSelector": {"cel": role.node_selector_cel},
         "pool": placement.pool,
         "nodesUsed": placement.nodes_used,
         "gpusPerNode": placement.gpus_per_node,
-        "instances": placement.instances,
     }
 
 

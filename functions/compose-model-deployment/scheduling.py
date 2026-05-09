@@ -30,10 +30,10 @@ from typing import Any
 
 @dataclass
 class Topology:
-    """ModelDeployment.spec.topology (or .prefill.topology).
+    """ModelDeployment.spec.workers.topology (or .prefill.workers.topology).
 
     Discriminated by `strategy`. The matcher reads this to derive how many
-    nodes and GPUs-per-node a replica needs from a pool.
+    nodes and GPUs-per-node one worker needs.
     """
 
     strategy: str  # "Tensor" | "TensorPipeline" | "DataExpert"
@@ -41,13 +41,9 @@ class Topology:
     pipeline: int = 0  # required when strategy == "TensorPipeline"
     data: int = 0  # required when strategy == "DataExpert"
     data_local: int = 0  # required when strategy == "DataExpert"
-    instances: int = 1
 
     def shape(self) -> tuple[int, int]:
-        """Return (nodes_per_instance, gpus_per_node) for one role-instance.
-
-        Multiplied by instances to get the role's total footprint.
-        """
+        """Return (nodes_per_worker, gpus_per_node)."""
         if self.strategy == "Tensor":
             return 1, self.tensor
         if self.strategy == "TensorPipeline":
@@ -58,11 +54,22 @@ class Topology:
 
 
 @dataclass
+class Workers:
+    """ModelDeployment.spec.workers (or .prefill.workers). Per-role: how many
+    workers and what topology each has. count is the P:D ratio numerator —
+    the "5" in "5P3D" on the prefill block, the "3" on decode.
+    """
+
+    topology: Topology
+    count: int = 1
+
+
+@dataclass
 class RoleSpec:
     """One role's compute requirements — decode (top-level) or prefill block."""
 
     node_selector_cel: str  # ModelDeployment.spec[.prefill].nodeSelector.cel
-    topology: Topology
+    workers: Workers
 
 
 @dataclass
@@ -132,7 +139,7 @@ class RolePlacement:
     pool: str
     nodes_used: int
     gpus_per_node: int
-    instances: int
+    workers: int  # workers.count for this role on this placement
 
 
 @dataclass
@@ -186,15 +193,15 @@ def eval_cel(expr: str, capabilities: dict[str, Any]) -> bool:
 
 
 def role_footprint(role: RoleSpec) -> tuple[int, int, int]:
-    """Return (nodes_per_instance, gpus_per_node, total_instances) for a role."""
-    nodes_per_inst, gpus_per_node = role.topology.shape()
-    return nodes_per_inst, gpus_per_node, role.topology.instances
+    """Return (nodes_per_worker, gpus_per_node, worker_count) for a role."""
+    nodes_per_worker, gpus_per_node = role.workers.topology.shape()
+    return nodes_per_worker, gpus_per_node, role.workers.count
 
 
 def role_nodes_required(role: RoleSpec) -> int:
-    """Total nodes a single ModelReplica needs from a pool for this role."""
-    nodes_per_inst, _, instances = role_footprint(role)
-    return nodes_per_inst * instances
+    """Total nodes a ModelReplica needs from a pool for this role."""
+    nodes_per_worker, _, count = role_footprint(role)
+    return nodes_per_worker * count
 
 
 def pool_used_nodes(pool: Pool, cluster: str, existing: list[ExistingPlacement]) -> int:
@@ -216,7 +223,7 @@ def pool_fits_role(pool: Pool, role: RoleSpec) -> bool:
     Capacity check (free vs used) happens separately; this is the static
     feasibility check (is the per-node shape even possible here?).
     """
-    nodes_per_inst, gpus_per_node = role.topology.shape()
+    _, gpus_per_node = role.workers.topology.shape()
     return pool.cls.gpu_count >= gpus_per_node
 
 
@@ -428,15 +435,15 @@ def _bind(md: ModelDeploymentSpec, idx: int, c: _Candidate) -> Placement:
         decode=RolePlacement(
             pool=c.decode_pool.name,
             nodes_used=role_nodes_required(md.decode),
-            gpus_per_node=md.decode.topology.shape()[1],
-            instances=md.decode.topology.instances,
+            gpus_per_node=md.decode.workers.topology.shape()[1],
+            workers=md.decode.workers.count,
         ),
         prefill=(
             RolePlacement(
                 pool=c.prefill_pool.name,  # type: ignore[union-attr]
                 nodes_used=role_nodes_required(md.prefill),  # type: ignore[arg-type]
-                gpus_per_node=md.prefill.topology.shape()[1],  # type: ignore[union-attr]
-                instances=md.prefill.topology.instances,  # type: ignore[union-attr]
+                gpus_per_node=md.prefill.workers.topology.shape()[1],  # type: ignore[union-attr]
+                workers=md.prefill.workers.count,  # type: ignore[union-attr]
             )
             if md.disaggregated
             else None
@@ -447,7 +454,7 @@ def _bind(md: ModelDeploymentSpec, idx: int, c: _Candidate) -> Placement:
 def _sticky_placement(md: ModelDeploymentSpec, e: ExistingPlacement) -> Placement:
     """Reconstruct a Placement from an existing ModelReplica's recorded fields.
 
-    The matcher doesn't recompute pools or scoring for already-placed
+    The scheduler doesn't recompute pools or scoring for already-placed
     replicas; the renderer reads them off the ModelReplica.
     """
     return Placement(
@@ -456,15 +463,15 @@ def _sticky_placement(md: ModelDeploymentSpec, e: ExistingPlacement) -> Placemen
         decode=RolePlacement(
             pool=e.decode_pool,
             nodes_used=e.decode_nodes,
-            gpus_per_node=md.decode.topology.shape()[1],
-            instances=md.decode.topology.instances,
+            gpus_per_node=md.decode.workers.topology.shape()[1],
+            workers=md.decode.workers.count,
         ),
         prefill=(
             RolePlacement(
                 pool=e.prefill_pool,  # type: ignore[arg-type]
                 nodes_used=e.prefill_nodes,
-                gpus_per_node=md.prefill.topology.shape()[1] if md.prefill else 0,
-                instances=md.prefill.topology.instances if md.prefill else 0,
+                gpus_per_node=md.prefill.workers.topology.shape()[1] if md.prefill else 0,
+                workers=md.prefill.workers.count if md.prefill else 0,
             )
             if md.prefill is not None and e.prefill_pool
             else None
