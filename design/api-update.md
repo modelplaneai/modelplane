@@ -231,11 +231,6 @@ metadata:
   name: mixtral-8x7b
   namespace: ml-team
 spec:
-  # Where to fetch model weights from. Source-specific config follows.
-  source: HuggingFace
-  huggingFace:
-    repo: mistralai/Mixtral-8x7B-Instruct-v0.1
-
   # Cluster-level filter. matchLabels against InferenceCluster.metadata.labels.
   # No CEL here — cluster-level matching is organizational metadata, string
   # equality is sufficient.
@@ -265,8 +260,11 @@ spec:
   engine:
     name: vLLM
     image: vllm/vllm-openai:v0.8.5
-    # Engine args pass through opaquely to the engine container.
+    # Engine args pass through opaquely to the engine container. The
+    # --model arg tells the engine where to fetch weights. Modelplane
+    # doesn't interpret it — model fetching is the engine's concern.
     args:
+    - "--model=mistralai/Mixtral-8x7B-Instruct-v0.1"
     - "--tensor-parallel-size=2"
     - "--max-model-len=32768"
     - "--gpu-memory-utilization=0.9"
@@ -314,12 +312,6 @@ metadata:
   name: kimi-k2
   namespace: ml-team
 spec:
-  source: HuggingFace
-  huggingFace:
-    repo: moonshotai/Kimi-K2-Instruct
-    secretRef:
-      name: hf-token
-
   clusterSelector:
     matchLabels:
       modelplane.ai/tier: production
@@ -346,7 +338,16 @@ spec:
   engine:
     name: vLLM
     image: vllm/vllm-openai:v0.8.5
+    # For gated models, inject the HF token via env. The engine uses it
+    # to authenticate when downloading weights.
+    env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-token
+          key: token
     args:
+    - "--model=moonshotai/Kimi-K2-Instruct"
     - "--trust-remote-code"
     - "--max-model-len=65536"
     - "--gpu-memory-utilization=0.85"
@@ -368,13 +369,6 @@ metadata:
   name: qwen3-coder
   namespace: ml-team
 spec:
-  # FP8 checkpoint — a different HuggingFace repo from the BF16 checkpoint.
-  # If you wanted BF16, you'd create a separate ModelDeployment referencing
-  # Qwen/Qwen3-Coder-480B-A35B-Instruct instead.
-  source: HuggingFace
-  huggingFace:
-    repo: Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
-
   clusterSelector:
     matchLabels:
       modelplane.ai/tier: production
@@ -396,7 +390,11 @@ spec:
   engine:
     name: vLLM
     image: vllm/vllm-openai:v0.9.0
+    # FP8 checkpoint — a different repo from the BF16 checkpoint. If you
+    # wanted BF16, you'd create a separate ModelDeployment with
+    # --model=Qwen/Qwen3-Coder-480B-A35B-Instruct instead.
     args:
+    - "--model=Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8"
     - "--max-model-len=65536"
     - "--gpu-memory-utilization=0.9"
     - "--enable-auto-tool-choice"
@@ -405,7 +403,7 @@ spec:
 
 ## Disaggregated prefill/decode
 
-The top-level `nodeSelector`, `topology`, and `engine` fields on a
+The top-level `nodeSelector`, `workers`, and `engine` fields on a
 `ModelDeployment` are always the decode (or unified) settings. Adding a
 `prefill` block makes the deployment disaggregated. The `prefill` block is
 self-contained — it repeats all settings it needs rather than inheriting from
@@ -423,10 +421,6 @@ metadata:
   name: llama-405b-disagg
   namespace: ml-team
 spec:
-  source: HuggingFace
-  huggingFace:
-    repo: meta-llama/Llama-3.1-405B-Instruct
-
   clusterSelector:
     matchLabels:
       modelplane.ai/tier: production
@@ -450,6 +444,7 @@ spec:
     name: vLLM
     image: vllm/vllm-openai:v0.9.1
     args:
+    - "--model=meta-llama/Llama-3.1-405B-Instruct"
     - "--max-model-len=131072"
     - "--gpu-memory-utilization=0.90"
     - '--kv-transfer-config={"kv_role":"kv_consumer"}'
@@ -471,6 +466,7 @@ spec:
       name: vLLM
       image: vllm/vllm-openai:v0.9.1
       args:
+      - "--model=meta-llama/Llama-3.1-405B-Instruct"
       - "--max-model-len=131072"
       - '--kv-transfer-config={"kv_role":"kv_producer"}'
 ```
@@ -631,9 +627,16 @@ can also be created to route to external services, using the same schema.
   Organizations that want a curated catalog build a Crossplane Composition
   over `ModelDeployment`.
 - **Model identity is `<namespace>/<name>`.** The ModelDeployment's namespace
-  and name form the served model identifier passed to the engine and used by
-  clients in OpenAI API requests. The HuggingFace repo (or other source) is
-  purely where weights are fetched from, not the model's identity.
+  and name form the served model identifier used by clients in OpenAI API
+  requests. The composition function injects `--served-model-name` with
+  this value.
+- **No `source` or `huggingFace` on ModelDeployment.** Model fetching is
+  the engine's concern, not Modelplane's. The engine's `--model` arg tells
+  it where to fetch weights (HuggingFace repo, local path, etc.). For
+  gated models, `engine.env` injects credentials (e.g., `HF_TOKEN` via
+  `secretKeyRef`). For fleet-level weight staging (pre-caching weights to
+  nodes before deployment), a future `ModelCache` resource provides the
+  right abstraction — scoped to the fleet, not to individual deployments.
 - **Replicas are the only scaling axis.** Each `ModelReplica` is a
   complete, fixed-topology serving instance. Scaling `spec.replicas` adds
   or removes whole instances; Modelplane's scheduler decides where each
