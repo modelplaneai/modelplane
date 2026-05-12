@@ -163,14 +163,15 @@ A tested recipe for a GPU node pool. Each class bundles **attributes and
 capacity** (what this hardware has, used by the scheduler) and optionally
 **provisioning** (how to create it on a specific cloud).
 
-Attributes and capacity follow DRA's schema. Attributes are typed key-value
-pairs describing hardware properties. Capacity is a separate map of
-Kubernetes Quantities for consumable resources like memory. Keys use DRA's
-vendor-namespaced convention: `gpu.nvidia.com/*` for attributes the NVIDIA
-DRA driver publishes, `modelplane.ai/*` for attributes Modelplane defines
-(networking topology, etc). This alignment means the InferenceClass format
-is directly translatable to and from DRA ResourceSlice format, and the API
-server can validate attribute types at admission time.
+Attributes and capacity follow DRA's schema ([KEP-4381][]). Attributes are typed
+qualitative facts the scheduler matches on: architecture, feature flags,
+topology kind. Capacity is the quantitative side — a map of Kubernetes
+Quantities. Keys use DRA's vendor-namespaced convention: `gpu.nvidia.com/*` for
+what the NVIDIA DRA driver publishes, `modelplane.ai/*` for what Modelplane
+defines.
+
+[KEP-4381]: https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/4381-dra-structured-parameters
+[KEP-5075]: https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/5075-dra-consumable-capacity
 
 Provisioning is optional. Classes without it are for BYO clusters where the
 pool already exists. The `provisioning.provider` discriminator selects the
@@ -208,11 +209,11 @@ spec:
       string: nvswitch
     modelplane.ai/networkInterNode:
       string: gpudirect-tcpx
-    modelplane.ai/networkBandwidthGbps:
-      int: 200
   capacity:
     gpu.nvidia.com/memory:
       value: "141Gi"
+    modelplane.ai/networkBandwidth:
+      value: "200Gi"           # bits per second
 ```
 
 Different clouds and different networking imply different classes. A GKE H200
@@ -334,10 +335,10 @@ region, provider, compliance posture. String equality is sufficient.
 Node-level matching uses `nodeSelector.cel`, a CEL expression evaluated against
 the pool's `InferenceClass` attributes and capacity. The attribute schema
 follows DRA's typed format (`{string: "Hopper"}`, `{int: 8}`, `{version:
-"9.0.0"}`) with vendor-namespaced keys (`gpu.nvidia.com/*`,
-`modelplane.ai/*`). Capacity uses Kubernetes Quantity values. This alignment
-means InferenceClass declarations are schema-validatable at admission time
-and directly translatable to DRA ResourceClaim selectors.
+"9.0.0"}`) with vendor-namespaced keys (`gpu.nvidia.com/*`, `modelplane.ai/*`).
+Capacity uses Kubernetes Quantity values. This alignment means InferenceClass
+declarations are schema-validatable at admission time and directly translatable
+to DRA ResourceClaim selectors.
 
 #### Workers and topology
 
