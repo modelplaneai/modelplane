@@ -646,12 +646,14 @@ can also be created to route to external services, using the same schema.
   scaling, not pods within a replica. KServe scales LeaderWorkerSet groups
   the same way (whole groups added, never resized), so the granularity is
   identical to in-cluster scaling — Modelplane just adds fleet-awareness.
-- **Autoscaling is opt-in via KEDA `ScaledObject`.** ModelDeployment exposes
-  a scale subresource on `spec.replicas`. The deployer (or a Composition)
-  creates a `ScaledObject` targeting the ModelDeployment to enable
-  autoscaling; KEDA writes `spec.replicas` based on its triggers. No
-  autoscaling configuration on ModelDeployment itself — the pattern mirrors
-  Kubernetes Deployment + HPA. Bare ModelDeployments have fixed replicas.
+- **Autoscaling is opt-in via KEDA `ScaledObject`.** The ModelDeployment
+  XRD declares a Kubernetes scale subresource (`specReplicasPath:
+  .spec.replicas`, `statusReplicasPath: .status.replicas`). The deployer
+  (or a Composition) creates a `ScaledObject` targeting the
+  ModelDeployment to enable autoscaling; KEDA writes `spec.replicas`
+  based on its triggers. No autoscaling configuration on ModelDeployment
+  itself — the pattern mirrors Kubernetes Deployment + HPA. Bare
+  ModelDeployments have fixed replicas.
 - **Two-level matching, two mechanisms.** Cluster-level matching uses
   `spec.clusterSelector.matchLabels` against standard Kubernetes labels on
   `InferenceCluster` (organizational metadata: tier, region, provider).
