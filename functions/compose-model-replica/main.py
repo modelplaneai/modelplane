@@ -118,7 +118,16 @@ class Composer:
         if engine.imagePullSecrets:
             pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in engine.imagePullSecrets]
 
+        # Extract the model name from engine args (e.g. --model=Qwen/...)
+        # to build the HuggingFace URI that KServe requires.
+        model_name = ""
+        for arg in list(engine.args or []):
+            if arg.startswith("--model="):
+                model_name = arg.split("=", 1)[1]
+                break
+
         llmis_spec: dict = {
+            "model": {"uri": f"hf://{model_name}" if model_name else "hf://unknown"},
             "replicas": 1,
             "template": pod_spec,
             "router": {"gateway": {}, "route": {}},
