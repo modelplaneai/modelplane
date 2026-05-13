@@ -1,6 +1,7 @@
 # ModelCache — Fleet-aware artifact staging
 
-**Status**: Draft for review — supersedes the sketch in [#66](https://github.com/modelplaneai/modelplane/issues/66). Advances ModelCache from v0.2 (per the original [PR #64](https://github.com/modelplaneai/modelplane/pull/64) review framing) to v0.1, driven by multi-node serving requirements ([#61](https://github.com/modelplaneai/modelplane/issues/61) closure) and DRA landing in v0.1 ([#56](https://github.com/modelplaneai/modelplane/issues/56)). Flag for explicit team alignment on this shift.
+**Status**: Draft for review — supersedes the sketch in [#66](https://github.com/modelplaneai/modelplane/issues/66).
+**Timeline shift**: Advances ModelCache from v0.2 (per the original [PR #64](https://github.com/modelplaneai/modelplane/pull/64) review framing) to v0.1, driven by multi-node serving needs ([#61](https://github.com/modelplaneai/modelplane/issues/61) closure) and DRA landing in v0.1 ([#56](https://github.com/modelplaneai/modelplane/issues/56)). Flag for explicit team alignment.
 **Owners**: Dennis
 **Related**: [#66](https://github.com/modelplaneai/modelplane/issues/66) (v0.1 implementation tracker), [#61](https://github.com/modelplaneai/modelplane/issues/61) (closed; mechanism here), [#56 DRA alignment](https://github.com/modelplaneai/modelplane/issues/56) (also v0.1), [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72), [#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73), [#74 Fleet signal bus](https://github.com/modelplaneai/modelplane/issues/74), [PR #64 API design](https://github.com/modelplaneai/modelplane/pull/64), [PR #75 implementation spike](https://github.com/modelplaneai/modelplane/pull/75)
 
@@ -71,7 +72,7 @@ spec:
   replication: AllMatchingClusters      # one PVC per matching cluster
 ```
 
-`ModelDeployment.spec.caches: [{ name: llama-3-3-70b }]` references the cache by name. The renderer threads the mount path into the engine container and adjusts engine args (e.g. `--model=/mnt/model` instead of `--model=hf://repo`).
+`ModelDeployment.spec.caches: [{ name: llama-3-3-70b }]` references the cache by name. The renderer threads the mount path into the engine container and adjusts engine args (e.g. `--model=/mnt/model` instead of `--model=meta-llama/Llama-3.3-70B-Instruct`).
 
 **Mount path is intrinsic to the cache.** One ModelCache, one canonical `spec.mount.path`. No per-reference override.
 
@@ -134,14 +135,15 @@ Under this boundary the engine block needs only `imagePullSecrets`, `shmSize`, a
 
 ## v0.1 — PVC backend, eager, multi-node ready
 
-Targets dense models on TensorPipeline gangs without per-pod download races, plus proactive pre-staging by platform teams.
+Use cases: dense models on TensorPipeline gangs (no per-pod download races) and proactive pre-staging by platform teams.
 
 **Mechanism** (absorbs [#61](https://github.com/modelplaneai/modelplane/issues/61)):
 - `ReadWriteMany` PVC per cluster, sized to the source (explicit `spec.storage.pvc.sizeGiB` or derived)
 - One-shot Job pulls from source, writes to PVC, exits
 - All pods in the LWS gang (leader + workers) mount the same PVC read-only
-- ModelReplica scheduling gated on per-cluster cache `Ready` condition. `status.clusters[]` is the eligibility signal the fleet matcher reads — a cluster without a `Ready` cache for a referenced ModelCache is not a candidate.
-- Storage class declared on `InferenceCluster.spec.storage.storageClassName` (GCP Filestore, AWS EFS/FSx, Azure Files, BYO CSI)
+- ModelReplica scheduling gated on per-cluster cache `Ready` condition
+- `status.clusters[]` is the eligibility signal the fleet matcher reads; a cluster without a `Ready` cache for any referenced ModelCache is not a candidate
+- Storage class declared on `InferenceCluster.spec.storage.storageClassName` (GCP Filestore, AWS EFS / FSx, Azure Files, BYO CSI)
 - **Fail-fast**: target cluster with no RWX storage class → matcher rejects placement; clear status condition
 - **Cluster selection**: `clusterSelector.matchLabels` is the v0.1 baseline (matches [PR #75](https://github.com/modelplaneai/modelplane/pull/75)). Once [#56](https://github.com/modelplaneai/modelplane/issues/56) lands, `clusterSelector` accepts a CEL form over `InferenceCluster` pool attributes — e.g. "clusters with at least one H100 pool with FP8 support."
 
@@ -155,7 +157,7 @@ flowchart LR
   POD2[Pod]
   MC -.-> JOB
   MC -.-> PVC
-  JOB -->|pull once| HF
+  HF -->|fetch| JOB
   JOB -->|write| PVC
   PVC -->|mount /mnt/model| POD1
   PVC -->|mount /mnt/model| POD2
@@ -202,7 +204,7 @@ flowchart LR
     LEADER[Leader pod]
     WORKER[Worker pod]
   end
-  JOB -->|pull once| HF
+  HF -->|fetch| JOB
   JOB -->|write| PVC
   PVC -->|mount| LEADER
   PVC -->|mount| WORKER
@@ -212,7 +214,7 @@ Without this, every pod independently downloads 810 GB (impractical) or KServe's
 
 ## v0.2 — Content-addressed backend, lazy loading, full artifact taxonomy
 
-**Storage backend**: object store keyed by content hash + per-cluster tiered cache (per-node SSD L1, object store L2). Bytes stored once globally; clusters hydrate on demand. Cross-deployment dedup is automatic — 50 deployments of Llama 3.3 70B = one set of bytes. Cross-tenant dedup for public artifacts (opt-in for non-public).
+**Storage backend**: object store keyed by content hash + per-cluster tiered cache (per-node SSD L1, object store L2). Bytes stored once globally; clusters hydrate on demand. Cross-deployment dedup is automatic — 50 deployments of Llama 3.3 70B = one set of bytes. Cross-tenant dedup is automatic for artifacts marked public; non-public artifacts require explicit opt-in.
 
 ```mermaid
 flowchart LR
