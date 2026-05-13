@@ -135,6 +135,17 @@ flowchart LR
 - `AllMatchingClusters` (default) — one PVC per cluster matching the selector, shared across all pods in that cluster
 - `AllMatchingNodes` is v0.2 — only fits content-addressed backend with per-node local SSDs
 
+**Invalidation in v0.1**:
+- Source version pinned via `revision` (HF) or version path (S3). The source identity *is* the cache identity.
+- Source version change → create a new ModelCache (immutable-cache pattern). The old cache stays until no ModelDeployment references it; garbage-collected by the controller when refcount hits zero.
+- Manual re-fetch via status annotation (`modelplane.ai/refetch: "<timestamp>"`) for source-side fixes that don't change the version string.
+- TTL / LRU eviction is a v0.2 substrate feature.
+
+**Status in v0.1**:
+- Conditions: `Ready`, `Populated`, `Failed` per cluster
+- Fields: `bytesStaged`, `sourceETag`, `lastHydratedAt`, `clusters: [{ name, ready, sizeBytes }]`
+- Emits to the [#74 signal bus](https://github.com/modelplaneai/modelplane/issues/74): hydration latency, bytes staged, per-cluster ready state
+
 **Out of scope for v0.1**:
 - `LoraAdapter` kind (dynamic-load semantics differ; v0.2)
 - `Engine` kind with `(model, hardware, config)` tuple keying (v0.2)
@@ -215,10 +226,44 @@ flowchart TB
 ```
 
 - **ModelCache** — immutable static artifacts (weights, engines, LoRAs, tokenizers)
-- **[#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72)** — mutable runtime state (live KV cache offload)
+- **[#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72)** — mutable runtime state (live KV cache offload across HBM/CPU/SSD/network tiers)
 - **[#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73)** — immutable precomputed runtime state (KV blocks for common prefixes)
 
 One substrate, three user-facing primitives. Users still write `ModelCache`; internal composition shares infrastructure. Cross-region replication and intra-metro caching tiers land here.
+
+### How the three relate — staged cold-start pipeline
+
+Each primitive cuts a different phase of cold start:
+
+1. **ModelCache** populates weights before the engine boots. Without this the engine can't run at all.
+2. **HotPrefixPool** hydrates precomputed KV for hot prefixes (system prompts, RAG docs, function defs) into the local **KVOffloadTier**. First request matching a hot prefix skips prefill entirely — TTFT drops from cold-prefill cost (hundreds of ms) to cache-read cost (single-digit ms).
+3. **KVOffloadTier** holds live KV state during inference, tiering down from HBM to CPU/SSD/network as pressure rises. Catches what HotPrefixPool didn't precompute, evicts under memory pressure.
+
+Together they reduce three different cold-start phases: image+weights-loading (ModelCache), first-request prefill (HotPrefixPool→KVOffloadTier), and per-request KV pressure (KVOffloadTier alone).
+
+### Unified invalidation
+
+Master invalidation key is `(modelDigest, tokenizerDigest)` — when either changes, every cached artifact tied to that pair becomes invalid across all three primitives. The shared substrate enforces this once at the content-store layer.
+
+Per-primitive eviction policies on top:
+- **ModelCache** — TTL or manual. Immutable, long-lived; eviction tied to "no ModelDeployment references this" (GC) or explicit retire.
+- **KVOffloadTier** — LRU per tier. Bytes flow HBM → CPU → SSD → network as pressure rises; coldest blocks get evicted last.
+- **HotPrefixPool** — pool-level LRU on aggregate fleet hit-rate. Top-K policy decides what stays in the pool. Per-tenant quotas prevent one tenant dominating.
+
+### Unified observability
+
+All three emit typed signals into the [#74 fleet signal bus](https://github.com/modelplaneai/modelplane/issues/74):
+
+| Signal | ModelCache | KVOffloadTier | HotPrefixPool |
+|---|---|---|---|
+| Capacity util | bytes staged / max | per-tier util % | pool size / quota |
+| Hit/miss | n/a (always hit once Ready) | hit rate per tier | hit rate per prefix |
+| Latency | hydration time per cluster | tier-down latency | hydration on first hit |
+| Effectiveness | bytes saved vs per-replica DL | prefill avoided | prefix coverage curve |
+
+`ModelService.status` surfaces a composite "cache effectiveness" view across all three — operators see "this service avoided X TB of weight pulls, Y prefill cycles, Z bytes of HBM pressure" without reading per-primitive metrics.
+
+### Decision
 
 Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have measured numbers from the [#73](https://github.com/modelplaneai/modelplane/issues/73) prefix-distribution work and Modal-style cold-start benchmarks.
 
