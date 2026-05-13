@@ -7,10 +7,8 @@
 # Cluster selector restricts the cache to clusters in a compliant
 # region. The Secret in this namespace holds the S3 credentials.
 #
-# Speedup (rough): intra-region S3 typically pulls at ~1 GB/s vs
-# HuggingFace egress at ~50 MB/s. For a 140 GB model that's ~3 min
-# from S3 vs ~45 min from HF. Plus the data never leaves a compliant
-# region — both faster and compliance-correct.
+# Speedup (rough): intra-region S3 ~1 GB/s vs HF ~50 MB/s. 140 GB =
+# ~3 min vs ~45 min. Plus the bytes never leave a compliant region.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

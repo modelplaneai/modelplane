@@ -13,7 +13,7 @@
 #
 # Speedup (rough): vLLM cold start ~95s eager → ~14s lazy (Modal
 # benchmark, https://modal.com/blog/truly-serverless-gpus). Storage
-# also drops massively from N copies to 1 fleet-wide.
+# drops from N copies to 1 fleet-wide.
 #
 # Migration: flip the backend field; v0.1 PVC contents stay until
 # eviction.

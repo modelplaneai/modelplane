@@ -10,10 +10,9 @@
 # and is reused everywhere. Engine kind is the natural place for that
 # artifact in the cache fabric.
 #
-# Speedup (rough): TRT-LLM compile is typically 10-30 min per tuple
-# per replica. With Engine cache: one compile ever per tuple, every
-# replica that matches the tuple skips compile entirely. Dominant
-# cold-start savings for TRT-LLM serving.
+# Speedup (rough): TRT-LLM compile is 10-30 min per tuple per replica.
+# With Engine cache: one compile per tuple, every matching replica
+# skips it.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

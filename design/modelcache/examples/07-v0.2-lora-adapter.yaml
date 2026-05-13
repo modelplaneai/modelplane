@@ -10,10 +10,10 @@
 # pointing at the mounted adapter directory. Adapters can be hot-
 # swapped via vLLM's runtime LoRA API.
 #
-# Speedup (rough): adapter is small (~50-500 MB rank-16 LoRA on a 70B
-# base) so download is seconds. The win is dedup across tenants
-# (thousands of adapters per base, one fleet copy each) and operational
-# (adapter version rolls cleanly without re-staging the base).
+# Speedup (rough): adapter is ~50-500 MB for a rank-16 LoRA on a 70B
+# base, so download is seconds. Win is dedup across tenants (thousands
+# of adapters, one fleet copy each) and version rolls without re-staging
+# the base.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
