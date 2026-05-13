@@ -21,9 +21,9 @@ spec:
     - name: CLUSTER
       type: string
       jsonPath: .spec.inferenceClusterRef.name
-    - name: ENDPOINT
+    - name: STRATEGY
       type: string
-      jsonPath: .status.endpoint.url
+      jsonPath: .spec.workers.topology.strategy
     - name: AGE
       type: date
       jsonPath: .metadata.creationTimestamp
@@ -129,23 +129,3 @@ spec:
                           type: string
           status:
             type: object
-            properties:
-              endpoint:
-                type: object
-                properties:
-                  url:
-                    type: string
-                    description: >-
-                      Per-replica endpoint URL on the remote cluster's
-                      gateway.
-              routing:
-                type: object
-                description: >-
-                  Routing endpoint for this replica. Used by
-                  ModelDeployment to build the aggregated HTTPRoute.
-                properties:
-                  backendName:
-                    type: string
-                    description: >-
-                      Crossplane-generated name of the Backend resource
-                      composed by this replica.

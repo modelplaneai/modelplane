@@ -21,9 +21,6 @@ spec:
     - name: REPLICAS
       type: string
       jsonPath: .status.replicas.ready
-    - name: ENDPOINT
-      type: string
-      jsonPath: .status.endpoint.url
     - name: AGE
       type: date
       jsonPath: .metadata.creationTimestamp
@@ -174,14 +171,6 @@ spec:
           status:
             type: object
             properties:
-              endpoint:
-                type: object
-                properties:
-                  url:
-                    type: string
-                    description: >-
-                      Unified OpenAI-compatible endpoint URL. Routes
-                      across all healthy replicas.
               replicas:
                 type: object
                 properties:

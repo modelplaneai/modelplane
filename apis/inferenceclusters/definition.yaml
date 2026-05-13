@@ -18,6 +18,9 @@ spec:
     - name: READY
       type: string
       jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: SOURCE
+      type: string
+      jsonPath: .spec.cluster.source
     - name: GATEWAY
       type: string
       jsonPath: .status.gateway.address
