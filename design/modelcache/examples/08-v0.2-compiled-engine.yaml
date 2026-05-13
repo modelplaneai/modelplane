@@ -48,6 +48,7 @@ spec:
   clusterSelector:
     matchLabels:
       modelplane.ai/gpu-class: nvidia-hopper
+  replication: AllMatchingClusters
 
 ---
 apiVersion: modelplane.ai/v1alpha1

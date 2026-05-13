@@ -4,8 +4,7 @@
 # Some workflows want the tokenizer staged separately — e.g. a custom
 # tokenizer different from the model's bundled one, or a tokenizer
 # update independent of the weights. v0.1 keeps one artifact per
-# ModelCache and lets ModelDeployment reference multiple caches with
-# distinct mount paths.
+# ModelCache; the deployment references multiple caches by name.
 #
 # Speedup (rough): tokenizer is tiny (~1-10 MB) so direct download is
 # already fast. The win is operational: tokenizer updates roll
@@ -29,6 +28,8 @@ spec:
     backend: PVC
     pvc:
       storageClassName: filestore-rwx
+  clusterSelector: { matchLabels: { modelplane.ai/tier: prod } }
+  replication: AllMatchingClusters
 
 ---
 apiVersion: modelplane.ai/v1alpha1
@@ -50,6 +51,8 @@ spec:
     pvc:
       storageClassName: filestore-rwx
       sizeGiB: 1
+  clusterSelector: { matchLabels: { modelplane.ai/tier: prod } }
+  replication: AllMatchingClusters
 
 ---
 apiVersion: modelplane.ai/v1alpha1
