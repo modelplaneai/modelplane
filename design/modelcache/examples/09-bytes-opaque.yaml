@@ -1,0 +1,90 @@
+# Bytes kind — opaque artifact escape hatch.
+#
+# Not every artifact fits the typed kinds (Weights / Tokenizer /
+# LoraAdapter / Engine). Some examples:
+#
+# - Chat templates as JSON blobs (custom system prompts, tool schemas)
+# - Eval datasets staged on every replica for in-place evaluation
+# - Reference embeddings for retrieval
+# - Pre-built ONNX or GGUF blobs that don't fit safetensors weight kind
+# - Arbitrary auxiliary files the engine wants on local disk
+#
+# The Bytes kind is the v0.1 escape hatch — same PVC + Job mechanism,
+# no kind-specific validation or engine wiring. Engine args reference
+# the mount path directly.
+#
+# Speedup (rough): proportional to artifact size and download path. For
+# a 5 GB eval dataset on S3 intra-region, ~5s pull once vs every replica
+# restart redownloading.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: eval-prompts-v3
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Bytes
+    source:
+      s3:
+        uri: s3://ml-team-evals/prompts/v3/
+        region: us-east-1
+        secretRef: { name: aws-creds }
+  mount:
+    path: /mnt/evals
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+      sizeGiB: 10
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+  replication: AllMatchingClusters
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: custom-chat-template
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Bytes
+    source:
+      huggingFace:
+        repo: ml-team-internal/chat-templates
+        revision: v3
+  mount:
+    path: /mnt/templates
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+      sizeGiB: 1
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-with-evals
+  namespace: ml-team
+spec:
+  replicas: 2
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 8
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --chat-template=/mnt/templates/team-default.jinja
+      - --tensor-parallel-size=8
+  caches:
+    - name: llama-3-3-70b              # from 01-basic-weights.yaml
+    - name: custom-chat-template
+    - name: eval-prompts-v3

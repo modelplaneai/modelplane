@@ -2,7 +2,7 @@
 #
 # Same model as 01-basic-weights but on the ContentAddressed backend.
 # User-facing CRD is identical except for the storage.backend field —
-# pluggable backend pattern from KVOffloadTier.
+# pluggable backend pattern from KVOffloadTier (#72).
 #
 # Behavior change:
 # - Bytes deduplicated across deployments (50 deployments of Llama
@@ -10,7 +10,10 @@
 # - Lazy hydration: engine starts before all bytes have arrived;
 #   weights stream from object store on demand.
 # - Tiered cache: per-node SSD as L1, object store as L2.
-# - Target cold-start: vLLM ~14s (Modal benchmark), vs ~95s eager.
+#
+# Speedup (rough): vLLM cold start ~95s eager → ~14s lazy (Modal
+# benchmark, https://modal.com/blog/truly-serverless-gpus). Storage
+# also drops massively from N copies to 1 fleet-wide.
 #
 # Migration: flip the backend field; v0.1 PVC contents stay until
 # eviction.

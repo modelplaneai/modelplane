@@ -7,6 +7,12 @@
 #
 # v0.1's PVC backend handles this directly: one RWX PVC populated once
 # by a Job, mounted by both leader and worker pods.
+#
+# Speedup (rough): 810 GB × 2 pods = ~5 hr of redundant download per
+# gang restart without ModelCache. With shared RWX PVC: one ~80 min
+# pull, then both pods mount it instantly. Saves ~3-4 hours per gang
+# restart and unblocks the multi-node case entirely (per-pod pull would
+# OOM the storage initializer).
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

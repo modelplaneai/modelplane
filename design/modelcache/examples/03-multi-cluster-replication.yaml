@@ -7,6 +7,11 @@
 # scheduler picks already has the bytes ready.
 #
 # Engine starts from the local PVC; no HF traffic at replica scale-up.
+#
+# Speedup (rough): 65 GB × 4 replicas × N clusters = 4N redundant pulls
+# without ModelCache. With ModelCache: one ~25-min pull per matching
+# cluster; every replica thereafter is ~0 download. Big win when N=3+
+# regions and replicas scale up and down frequently.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

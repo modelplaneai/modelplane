@@ -6,6 +6,10 @@
 # ModelCache pulls weights from HuggingFace to a per-cluster RWX PVC;
 # the engine mounts it read-only and starts with --model pointing at
 # the local path.
+#
+# Speedup (rough): 140 GB at ~50 MB/s HF pull = ~45 min cold per replica
+# without ModelCache. With ModelCache: one ~45 min pull per cluster ever;
+# every subsequent replica start is ~0 download.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

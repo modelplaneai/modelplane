@@ -6,6 +6,11 @@
 # update independent of the weights. v0.1 keeps one artifact per
 # ModelCache and lets ModelDeployment reference multiple caches with
 # distinct mount paths.
+#
+# Speedup (rough): tokenizer is tiny (~1-10 MB) so direct download is
+# already fast. The win is operational: tokenizer updates roll
+# independently of weights, useful when fixing a tokenizer bug without
+# triggering a full weight re-stage.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
