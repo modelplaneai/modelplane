@@ -15,7 +15,7 @@ LLM inference cold starts are dominated by artifact loading. Weights are 140 GB 
 - Air-gapped and regulated environments need controlled fetch paths; serving pods shouldn't see source credentials
 - Platform teams want to pre-stage commonly-used artifacts before any deployment exists
 
-Multiple deployments share base weights, the bytes don't change once written, and pre-staging belongs above the cluster layer. The primitive stages artifacts once per cluster (v0.1) and eventually once per fleet (v0.2+).
+Multiple deployments share the same bytes; pre-staging belongs above the cluster layer. v0.1 stages once per cluster; v0.2+ once per fleet.
 
 ## Design principle: pluggable backends across the cache family
 
@@ -233,13 +233,26 @@ One substrate, three user-facing primitives. Users still write `ModelCache`; int
 
 ### How the three relate — staged cold-start pipeline
 
+```mermaid
+flowchart LR
+  subgraph P1[Phase 1: Cluster boot]
+    MC[ModelCache<br/>stages weights]
+  end
+  subgraph P2[Phase 2: First request]
+    HPP[HotPrefixPool<br/>hydrates hot prefix KV]
+  end
+  subgraph P3[Phase 3: Runtime]
+    KV[KVOffloadTier<br/>live KV across tiers]
+  end
+  MC -->|engine boots| P2
+  HPP -->|TTFT drops to<br/>cache-read cost| P3
+```
+
 Each primitive cuts a different phase of cold start:
 
-1. **ModelCache** populates weights before the engine boots. Without this the engine can't run at all.
+1. **ModelCache** populates weights before the engine boots. Without this the engine can't run.
 2. **HotPrefixPool** hydrates precomputed KV for hot prefixes (system prompts, RAG docs, function defs) into the local **KVOffloadTier**. First request matching a hot prefix skips prefill entirely — TTFT drops from cold-prefill cost (hundreds of ms) to cache-read cost (single-digit ms).
-3. **KVOffloadTier** holds live KV state during inference, tiering down from HBM to CPU/SSD/network as pressure rises. Catches what HotPrefixPool didn't precompute, evicts under memory pressure.
-
-Together they reduce three different cold-start phases: image+weights-loading (ModelCache), first-request prefill (HotPrefixPool→KVOffloadTier), and per-request KV pressure (KVOffloadTier alone).
+3. **KVOffloadTier** holds live KV state during inference, tiering down HBM → CPU → SSD → network as pressure rises. Catches what HotPrefixPool didn't precompute; evicts under memory pressure.
 
 ### Unified invalidation
 
@@ -276,7 +289,6 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 5. **Lazy loading is architectural prep in v0.1, ships in v0.2.** v0.1 doesn't bake "all files must exist at boot" into the engine pod contract.
 6. **Scheduler gates on per-cluster cache readiness** before placing a ModelReplica. Fail-fast on missing RWX storage class.
 7. **Storage class on the cluster, override on the cache.** `InferenceCluster.spec.storage.storageClassName` is the default; `ModelCache.spec.storage.pvc.storageClassName` overrides.
-8. **Substrate unification deferred to v0.3.**
 
 ## Alternatives considered
 
