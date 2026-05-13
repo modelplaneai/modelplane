@@ -331,6 +331,8 @@ The cache family feeds [#71 ModelService routing affinity](https://github.com/mo
 
 Cold-start pipeline (above) covers what *new* replicas need; locality routing covers where *existing* requests go. ModelCache contributes to both — eligibility for routing decisions, weights for replica boot.
 
+The same signals (per-cluster ready state, hydration latency, hit rates emitted into [#74](https://github.com/modelplaneai/modelplane/issues/74)) also feed a future intent-based serving layer — e.g. SLA fields like `ttft.p99` on `ModelService` — where ModelCache is the supply-side input and the SLA primitive lives separately.
+
 ### Decision
 
 Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have measured numbers from the [#73](https://github.com/modelplaneai/modelplane/issues/73) prefix-distribution work and Modal-style cold-start benchmarks.
