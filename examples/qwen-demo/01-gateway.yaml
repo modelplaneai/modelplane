@@ -1,0 +1,16 @@
+# The control plane routing gateway. Installs Envoy Gateway and MetalLB
+# (for kind clusters). On cloud clusters, omit the loadBalancer/metallb
+# fields — the cloud LB controller handles address assignment.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceGateway
+metadata:
+  name: default
+spec:
+  backend: EnvoyGateway
+  envoyGateway:
+    version: v1.3.0
+    loadBalancer: MetalLB
+    metallb:
+      addressPool: "172.18.255.200-172.18.255.250"
+  gateway:
+    port: 80

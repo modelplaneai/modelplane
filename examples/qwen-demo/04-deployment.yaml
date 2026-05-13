@@ -1,0 +1,31 @@
+# Deploy Qwen 2.5 0.5B to two inference clusters.
+#
+# Modelplane schedules a ModelReplica to each matching InferenceCluster
+# and composes a ModelEndpoint per replica for routing. Apply a
+# ModelService to expose the deployment.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-team
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 2
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 1
+    resources:
+      cpu: "4"
+      memory: "10Gi"
+  engine:
+    image: vllm/vllm-openai:v0.7.3
+    args:
+    - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+    - "--served-model-name=qwen"
+    - "--max-model-len=2048"
