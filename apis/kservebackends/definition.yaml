@@ -17,18 +17,12 @@ spec:
   - name: v1alpha1
     referenceable: true
     additionalPrinterColumns:
-    - name: READY
-      type: string
-      jsonPath: .status.conditions[?(@.type=='Ready')].status
     - name: KSERVE
       type: string
       jsonPath: .spec.versions.kserve
     - name: GATEWAY
       type: string
       jsonPath: .status.gateway.address
-    - name: AGE
-      type: date
-      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         description: >-

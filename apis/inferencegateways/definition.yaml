@@ -15,18 +15,12 @@ spec:
     served: true
     referenceable: true
     additionalPrinterColumns:
-    - name: READY
-      type: string
-      jsonPath: .status.conditions[?(@.type=='Ready')].status
     - name: BACKEND
       type: string
       jsonPath: .spec.backend
     - name: ADDRESS
       type: string
       jsonPath: .status.address
-    - name: AGE
-      type: date
-      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         type: object

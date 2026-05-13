@@ -15,18 +15,12 @@ spec:
     served: true
     referenceable: true
     additionalPrinterColumns:
-    - name: READY
-      type: string
-      jsonPath: .status.conditions[?(@.type=='Ready')].status
     - name: CLUSTER
       type: string
       jsonPath: .spec.inferenceClusterRef.name
     - name: STRATEGY
       type: string
       jsonPath: .spec.workers.topology.strategy
-    - name: AGE
-      type: date
-      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         type: object

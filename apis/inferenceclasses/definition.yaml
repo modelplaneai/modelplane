@@ -14,13 +14,6 @@ spec:
   - name: v1alpha1
     served: true
     referenceable: true
-    additionalPrinterColumns:
-    - name: READY
-      type: string
-      jsonPath: .status.conditions[?(@.type=='Ready')].status
-    - name: AGE
-      type: date
-      jsonPath: .metadata.creationTimestamp
     schema:
       openAPIV3Schema:
         type: object
