@@ -37,14 +37,13 @@ metadata:
   namespace: ml-team
 spec:
   artifact:
-    kind: Weights                       # | Tokenizer | LoraAdapter | Engine | Bytes
+    kind: Weights                       # v0.1: Weights | Tokenizer | Bytes
+                                        # v0.2: + LoraAdapter | Engine
     source:
       huggingFace:
         repo: meta-llama/Llama-3.3-70B-Instruct
         revision: main
         secretRef: { name: hf-token, key: token }
-    baseRef:                            # only for kind: LoraAdapter
-      cacheName: llama-3-3-70b
   mount:
     path: /mnt/model
   storage:
@@ -60,7 +59,7 @@ spec:
 
 **Mount path is intrinsic to the cache.** One ModelCache, one canonical `spec.mount.path`. No per-reference override.
 
-**Artifact kind discriminator** keeps one primitive instead of fracturing into `ModelWeights`, `EngineCache`, `LoraCache`. Kind affects validation (`LoraAdapter` requires `baseRef`; `Engine` requires a `(model, hardware, config)` tuple) and engine wiring (LoRA flags, engine-dir args).
+**Artifact kind discriminator** keeps one primitive instead of fracturing into `ModelWeights`, `EngineCache`, `LoraCache`. Kind affects validation (`LoraAdapter` requires a `baseRef`; `Engine` requires a `(model, hardware, config)` tuple) and engine wiring (LoRA flags, engine-dir args). `baseRef` and engine-tuple fields are documented in `examples/07-v0.2-lora-adapter.yaml` and `examples/08-v0.2-compiled-engine.yaml`.
 
 ### Sources
 
@@ -75,7 +74,7 @@ v0.1 sources:
 | `inline` | Literal bytes in the CR. Small text artifacts only — chat templates, config snippets. |
 | `configMap` | Reference an existing ConfigMap. Same shape as `inline`. |
 
-v0.2 sources: `gcs`, `azure`, `pvc-clone`, plus shim sources resolving registry URIs (`mlflow:`, `kubeflow-modelregistry:`, `wandb:`) into a real fetch URI.
+v0.2 sources: `gcs`, `azure`, `pvc-clone`, plus shim sources (`mlflow`, `kubeflowModelRegistry`, `wandb`) that resolve registry URIs into one of the v0.1 fetch sources.
 
 ### Storage backends
 
@@ -92,11 +91,11 @@ ModelCache composes with customer infrastructure at every layer:
 
 - **BYO source** — any v0.1 source points at customer-managed registries: internal Harbor (`oci`), Artifactory (`http`/`oci`), private S3 mirror (`s3`), NIM cache server (`http`).
 - **BYO storage class** — `PVC` backend works through any RWX CSI driver. Set `storage.pvc.storageClassName: weka-rwx` / `juicefs-csi` / `alluxio-fuse` etc.
-- **BYO pre-populated PVC** — `backend: ExistingPVC` references a customer-managed PVC; Modelplane mounts without populating.
+- **BYO pre-populated PVC** — `backend: ExistingPVC` references a customer-managed PVC; Modelplane mounts without populating. The `replication` field is ignored (customer handles per-cluster placement).
 - **BYO P2P fan-out** — Spegel / Dragonfly running in the cluster handle in-cluster distribution transparently when using `oci` source.
 - **BYO cluster** — `InferenceCluster.spec.cluster.source: Existing` (shipped in [PR #75](https://github.com/modelplaneai/modelplane/pull/75)).
 
-Regardless of which axes are BYO, Modelplane retains: artifact identity, scheduler gating (ModelReplica blocks until cache `Ready`), refcounting visible in `status.references`, per-cluster ready state, signal-bus emission, invalidation policy. Customer storage handles the bytes; Modelplane provides fleet-aware orchestration.
+Regardless of which axes are BYO, Modelplane retains: artifact identity, scheduler gating (ModelReplica blocks until cache is `Ready`), refcounting visible in `status.references`, per-cluster ready state, signal-bus emission, invalidation policy. Customer storage handles the bytes; Modelplane provides fleet-aware orchestration.
 
 ## Scope boundary — ModelCache vs the engine block
 
@@ -119,16 +118,16 @@ Under this boundary the engine block needs only `imagePullSecrets`, `shmSize`, a
 
 ## v0.1 — PVC backend, eager, multi-node ready
 
-Dense models on TensorPipeline gangs without per-pod download races, plus proactive pre-staging by platform teams.
+Targets dense models on TensorPipeline gangs without per-pod download races, plus proactive pre-staging by platform teams.
 
 **Mechanism** (absorbs [#61](https://github.com/modelplaneai/modelplane/issues/61)):
-- ReadWriteMany PVC per cluster, sized to the source (explicit `spec.storage.pvc.sizeGiB` or derived)
+- `ReadWriteMany` PVC per cluster, sized to the source (explicit `spec.storage.pvc.sizeGiB` or derived)
 - One-shot Job pulls from source, writes to PVC, exits
 - All pods in the LWS gang (leader + workers) mount the same PVC read-only
 - ModelReplica scheduling gated on per-cluster cache `Ready` condition
 - Storage class declared on `InferenceCluster.spec.storage.storageClassName` (GCP Filestore, AWS EFS/FSx, Azure Files, BYO CSI)
 - **Fail-fast**: target cluster with no RWX storage class → matcher rejects placement; clear status condition
-- **Cluster selection**: `clusterSelector.matchLabels` is the v0.1 baseline (matches PR #75). Once [#56](https://github.com/modelplaneai/modelplane/issues/56) lands, `clusterSelector` accepts a CEL form over InferenceCluster pool attributes — e.g. "clusters with at least one H100 pool with FP8 support."
+- **Cluster selection**: `clusterSelector.matchLabels` is the v0.1 baseline (matches [PR #75](https://github.com/modelplaneai/modelplane/pull/75)). Once [#56](https://github.com/modelplaneai/modelplane/issues/56) lands, `clusterSelector` accepts a CEL form over `InferenceCluster` pool attributes — e.g. "clusters with at least one H100 pool with FP8 support."
 
 ```mermaid
 flowchart LR
@@ -160,13 +159,13 @@ flowchart LR
 **Invalidation and GC in v0.1**:
 - Source version pinned via `revision` (HF) / version path (S3) / OCI digest. The source identity *is* the cache identity.
 - Tags resolve to immutable digests at hydration time; `status.resolvedDigest` records the `sha256:` pin even when the user specified `revision: main`.
-- Source version change → create a new ModelCache (immutable-cache pattern).
-- Manual re-fetch via status annotation (`modelplane.ai/refetch: "<timestamp>"`) for source-side fixes that don't change the version string.
+- Source version change → create a new `ModelCache` (immutable-cache pattern).
+- Manual re-fetch via metadata annotation (`modelplane.ai/refetch: "<timestamp>"`) for source-side fixes that don't change the version string.
 - Refcount surfaced in `status.references` (deployments using this cache). Operator retires explicitly via `kubectl delete modelcache`; PVCs reclaimed per K8s `reclaimPolicy`. No substrate-level auto-GC in v0.1.
 
 **Status in v0.1**:
 - Conditions: `Ready`, `Populated`, `Failed` per cluster
-- Fields: `bytesStaged`, `sourceETag`, `lastHydratedAt`, `clusters: [{ name, ready, sizeBytes }]`
+- Fields: `resolvedDigest`, `bytesStaged`, `lastHydratedAt`, `references: [<deploymentRef>]`, `clusters: [{ name, ready, sizeBytes }]`
 - Emits to the [#74 signal bus](https://github.com/modelplaneai/modelplane/issues/74): hydration latency, bytes staged, per-cluster ready state
 
 **Out of scope for v0.1**:
@@ -229,7 +228,7 @@ flowchart LR
 
 **GC in v0.2**: delegated to object-store lifecycle policies (S3 Lifecycle, GCS OLM, Azure Blob Lifecycle). Touch-on-access timestamps keep hot objects alive; cold objects expire after operator-configured TTL. No explicit refcounting infrastructure — TTL+touch covers it. Explicit refcounting only if a future use case forces it (chunk-level dedup with diverse owners, or strict "must-not-delete-while-referenced" compliance).
 
-Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly+OCI, KitOps) points at content-addressed as the converging pattern. PVC ships v0.1 fast; content-addressed wins v0.2 on dedup, cold-start, and scale.
+Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly+OCI, KitOps) is converging on content-addressed as the right pattern. `PVC` is the fast-to-ship v0.1 path; `ContentAddressed` wins v0.2 on dedup, cold-start, and scale.
 
 ## v0.3 — Substrate unification (architectural option)
 
@@ -284,7 +283,7 @@ Each primitive cuts a different phase of cold start:
 Master invalidation key is `(modelDigest, tokenizerDigest)` — when either changes, every cached artifact tied to that pair becomes invalid across all three primitives. The shared substrate enforces this once at the content-store layer.
 
 Per-primitive eviction policies on top:
-- **ModelCache** — TTL or manual. Immutable, long-lived; eviction tied to "no ModelDeployment references this" (GC) or explicit retire.
+- **ModelCache** — TTL + touch-on-access via object-store lifecycle (same as v0.2 default). Operator can explicitly retire via `kubectl delete`. Refcount surfaced in `status.references`; refcount-driven auto-GC is an option but not the default.
 - **KVOffloadTier** — LRU per tier. Bytes flow HBM → CPU → SSD → network as pressure rises; coldest blocks get evicted last.
 - **HotPrefixPool** — pool-level LRU on aggregate fleet hit-rate. Top-K policy decides what stays in the pool. Per-tenant quotas prevent one tenant dominating.
 
@@ -310,7 +309,7 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 1. **Name**: `ModelCache`. Matches the `Model*` family. Internal substrate (when unified) becomes `ContentStore`.
 2. **One artifact per ModelCache.** Mount path intrinsic (`spec.mount.path`). Deployments reference by name only.
 3. **Artifact kind discriminator** instead of separate primitives.
-4. **Pluggable storage backends** (PVC, ContentAddressed, Custom). Same pattern as [#72](https://github.com/modelplaneai/modelplane/issues/72) and [#73](https://github.com/modelplaneai/modelplane/issues/73).
+4. **Pluggable storage backends** (`PVC`, `ExistingPVC`, `ContentAddressed`, `Custom`). Same pattern as [#72](https://github.com/modelplaneai/modelplane/issues/72) and [#73](https://github.com/modelplaneai/modelplane/issues/73).
 5. **Lazy loading is architectural prep in v0.1, ships in v0.2.** v0.1 doesn't bake "all files must exist at boot" into the engine pod contract.
 6. **Scheduler gates on per-cluster cache readiness** before placing a ModelReplica. Fail-fast on missing RWX storage class.
 7. **Storage class on the cluster, override on the cache.** `InferenceCluster.spec.storage.storageClassName` is the default; `ModelCache.spec.storage.pvc.storageClassName` overrides.
@@ -334,9 +333,9 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 ## Open questions for review
 
 1. v0.1 artifact kinds — `Weights` + `Tokenizer` + `Bytes` enough, or also `LoraAdapter` for early multi-LoRA cases?
-2. v0.1 sources — `huggingFace` + `s3` + `http` + `inline` + `configMap` enough, or also `gcs` / `azure` from day one?
-3. Eviction policy for v0.1 PVC backend — LRU, TTL, manual? Lean is manual; smarter eviction is a v0.2 substrate feature.
-4. Migration from v0.1 PVC to v0.2 ContentAddressed — backend switch transparent or destructive? Lean transparent: PVC stays, gradually evolves when operator flips the backend field.
+2. v0.1 sources — `huggingFace` + `s3` + `http` + `oci` + `inline` + `configMap` enough, or also `gcs` / `azure` from day one?
+3. Eviction policy for the `PVC` backend — LRU, TTL, manual? Lean is manual; smarter eviction is a v0.2 substrate feature.
+4. Migration from `PVC` to `ContentAddressed` — backend switch transparent or destructive? Lean transparent: PVC stays, gradually evolves when operator flips `storage.backend`.
 5. v0.3 substrate unification — file as roadmap marker now, or wait until v0.2 ships?
 6. Cross-namespace cache references — can `ml-team-a/llama-3-3-70b` be referenced from `ml-team-b/deployment`, or are caches strictly namespace-local? Affects the platform-team-stages-shared-models story.
 
@@ -345,7 +344,7 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 This doc is the source of truth. Issues track implementation:
 
 - **[#66](https://github.com/modelplaneai/modelplane/issues/66)** — body refactored to point at this doc; scoped to v0.1 (PVC + multi-node + Weights/Tokenizer/Bytes/inline/configMap)
-- **New (to file)**: "ModelCache v0.2 — content-addressed backend, lazy loading, LoRA/Engine kinds"
+- **New (to file)**: "ModelCache v0.2 — `ContentAddressed` backend, lazy loading, `LoraAdapter` and `Engine` kinds"
 - **New (optional)**: "v0.3 ContentStore substrate unification" placeholder
 - **[#61](https://github.com/modelplaneai/modelplane/issues/61)** — closed; mechanism absorbed here
 - **[#72](https://github.com/modelplaneai/modelplane/issues/72), [#73](https://github.com/modelplaneai/modelplane/issues/73)** — cross-reference comments posted pointing at this doc
@@ -364,7 +363,7 @@ See `examples/` for complete (ModelCache + ModelDeployment) references. Cold-sta
 - `06-v0.2-content-addressed.yaml` *(preview)* — same as 01 on ContentAddressed backend. *vLLM 95s → ~14s ([Modal](https://modal.com/blog/truly-serverless-gpus)).*
 - `07-v0.2-lora-adapter.yaml` *(preview)* — base model + per-tenant LoRA. *Adapter dedup across tenants; small per-adapter bytes.*
 - `08-v0.2-compiled-engine.yaml` *(preview)* — TRT-LLM compiled engine keyed by `(model, hardware, config)`. *Saves ~10-30 min compile per replica.*
-- `09-bytes-opaque.yaml` — `Bytes` kind for chat templates / eval datasets. Also illustrates cross-deployment cache reuse (refs `llama-3-3-70b` from example 01).
+- `09-bytes-opaque.yaml` — `Bytes` kind for chat templates / eval datasets. Also illustrates cross-deployment cache reuse (refs the `llama-3-3-70b` cache from example 01).
 - `10-byo-existing-pvc.yaml` — `ExistingPVC` backend. Customer manages PVC population externally; Modelplane mounts and orchestrates without touching the bytes.
 
 ## References

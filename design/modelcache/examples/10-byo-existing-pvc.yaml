@@ -33,6 +33,7 @@ spec:
   clusterSelector:
     matchLabels:
       modelplane.ai/region: us-gov-east
+  # replication: ignored for ExistingPVC — customer manages per-cluster placement
 
 ---
 apiVersion: modelplane.ai/v1alpha1
