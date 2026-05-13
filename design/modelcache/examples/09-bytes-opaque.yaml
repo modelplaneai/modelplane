@@ -1,7 +1,7 @@
 # Bytes kind — opaque artifact escape hatch.
 #
 # Not every artifact fits the typed kinds (Weights / Tokenizer /
-# LoraAdapter / Engine). Some examples:
+# Adapter / Engine). Some examples:
 #
 # - Chat templates as JSON blobs (custom system prompts, tool schemas)
 # - Eval datasets staged on every replica for in-place evaluation

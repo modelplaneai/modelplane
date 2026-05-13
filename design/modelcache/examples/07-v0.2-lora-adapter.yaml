@@ -1,10 +1,10 @@
-# v0.2 PREVIEW — LoraAdapter kind.
+# v0.2 PREVIEW — Adapter kind (LoRA subtype).
 #
 # Per-tenant fine-tunes are the natural multi-LoRA pattern: one base
-# model, hundreds-to-thousands of small adapters. v0.2 introduces a
-# LoraAdapter artifact kind keyed by a base-model reference; the
-# scheduler ensures the adapter only lands on clusters serving the
-# base.
+# model, hundreds-to-thousands of small adapters. v0.2 introduces an
+# Adapter artifact kind with an adapterType discriminator (lora,
+# controlnet, ipadapter, textualInversion, t2iAdapter); the scheduler
+# ensures the adapter only lands on clusters serving the base.
 #
 # vLLM-side: engine started with --enable-lora and --lora-modules
 # pointing at the mounted adapter directory. Adapters can be hot-
@@ -44,7 +44,8 @@ metadata:
   namespace: ml-team
 spec:
   artifact:
-    kind: LoraAdapter
+    kind: Adapter
+    adapterType: lora
     source:
       huggingFace:
         repo: acme-corp/support-llama-70b-lora-v3

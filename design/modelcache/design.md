@@ -55,7 +55,7 @@ metadata:
 spec:
   artifact:
     kind: Weights                       # v0.1: Weights | Tokenizer | Bytes
-                                        # v0.2: + LoraAdapter | Engine
+                                        # v0.2: + Adapter | Engine
     source:
       huggingFace:
         repo: meta-llama/Llama-3.3-70B-Instruct
@@ -76,7 +76,9 @@ spec:
 
 **Mount path is intrinsic to the cache.** One ModelCache, one canonical `spec.mount.path`. No per-reference override.
 
-**Artifact kind discriminator** keeps one primitive instead of fracturing into `ModelWeights`, `EngineCache`, `LoraCache`. Kind affects validation (`LoraAdapter` requires a `baseRef`; `Engine` requires a `(model, hardware, config)` tuple) and engine wiring (LoRA flags, engine-dir args). `baseRef` and engine-tuple fields are documented in `examples/07-v0.2-lora-adapter.yaml` and `examples/08-v0.2-compiled-engine.yaml`.
+**Artifact kind discriminator** keeps one primitive instead of fracturing into `ModelWeights`, `EngineCache`, `LoraCache`. Kind affects validation (`Adapter` requires a `baseRef` and `adapterType`; `Engine` requires a `(model, hardware, config)` tuple) and engine wiring (adapter flags, engine-dir args). `baseRef`, `adapterType`, and engine-tuple fields are documented in `examples/07-v0.2-lora-adapter.yaml` and `examples/08-v0.2-compiled-engine.yaml`.
+
+**Coverage**: ModelCache is **format- and modality-agnostic**. The artifact-kind discriminator drives validation and engine wiring, but the bytes themselves are opaque — engines read whatever's at `mount.path`. Same primitive serves LLM weights (safetensors / GGUF / ONNX), embedding models (sentence-transformers dirs), multimodal VLMs (bundled vision+text safetensors with `preprocessor_config.json`), ASR / TTS bases (model + tokenizer + preprocessor configs), voice libraries (directories of reference audio), compiled engines (TRT-LLM `.engine` blobs), and arbitrary byte trees via `Bytes`. Format awareness lives in the engine, not in the cache.
 
 ### Sources
 
@@ -187,7 +189,7 @@ flowchart LR
 - Emits to the [#74 signal bus](https://github.com/modelplaneai/modelplane/issues/74): hydration latency, bytes staged, per-cluster ready state
 
 **Out of scope for v0.1**:
-- `LoraAdapter` kind (dynamic-load semantics differ; v0.2)
+- `Adapter` kind for LoRA / ControlNet / IP-Adapter / etc. (dynamic-load semantics differ; v0.2)
 - `Engine` kind with `(model, hardware, config)` tuple keying (v0.2)
 - Lazy loading / streaming (v0.2)
 - Cross-deployment / cross-tenant dedup (v0.2 content-addressed)
@@ -238,7 +240,7 @@ flowchart LR
 **Lazy loading**: engine starts before all bytes arrive; weights stream via FUSE or S3 CSI mountpoint. Cold-start target: vLLM 95s → ~14s ([Modal benchmark](https://modal.com/blog/truly-serverless-gpus)). Path conventions stable from v0.1 so backend swap is transparent.
 
 **New artifact kinds**:
-- `LoraAdapter` — per-adapter mounting, `baseRef` pointing at either a `Weights` cache or a NIM profile. Fits multi-LoRA serving (thousands of small adapters per base, RFT-class deployments) and customer fine-tunes layered on NIM bases.
+- `Adapter` — auxiliary weights bound to a base. `baseRef` points at a `Weights` cache or NIM profile; `adapterType` discriminates (`lora` | `controlnet` | `ipadapter` | `textualInversion` | `t2iAdapter`). Fits multi-LoRA serving (thousands of small adapters per base, RFT-class deployments), customer fine-tunes layered on NIM bases, and diffusion ControlNet / IP-Adapter ecosystems.
 - `Engine` — compiled TRT-LLM blobs keyed by `(model, hardware, config)`. Compile cost is minutes per tuple. Extends to NIM profiles: `engine.runtime: NIM` + `profileId` makes the `(GPU SM, count, precision, TP, PP, target)` tuple explicit. Modelplane validates against cluster hardware before staging (avoids the silent wrong-profile failure where e.g. an H100 profile lands on a B200). Profile metadata surfaces in `status.nimProfile: { id, gpu, tp, pp, precision, target }` so deployments can verify compatibility without dereferencing the image.
 
 **New shim source**:
@@ -256,7 +258,7 @@ Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly+OCI, KitOps) is
 ```mermaid
 flowchart TB
   subgraph USER[User-facing primitives]
-    MC[ModelCache<br/>weights, engines,<br/>LoRAs, tokenizers]
+    MC[ModelCache<br/>weights, engines,<br/>adapters, tokenizers]
     KV[KVOffloadTier<br/>mutable runtime KV]
     HPP[HotPrefixPool<br/>precomputed prefix KV]
   end
@@ -270,7 +272,7 @@ flowchart TB
   HASH --> TIER
 ```
 
-- **ModelCache** — immutable static artifacts (weights, engines, LoRAs, tokenizers)
+- **ModelCache** — immutable static artifacts (weights, engines, adapters, tokenizers)
 - **[#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72)** — mutable runtime state (live KV cache offload across HBM/CPU/SSD/network tiers)
 - **[#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73)** — immutable precomputed runtime state (KV blocks for common prefixes)
 
@@ -367,7 +369,7 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 
 These are v0.1 design decisions. v0.2+ open questions defer to when those versions are closer, unless they affect the v0.1 API shape (the ones below all do).
 
-1. **v0.1 artifact kinds** — `Weights` + `Tokenizer` + `Bytes` enough, or also `LoraAdapter` for early multi-LoRA cases?
+1. **v0.1 artifact kinds** — `Weights` + `Tokenizer` + `Bytes` enough, or also `Adapter` (with `adapterType: lora`) for early multi-LoRA cases?
 2. **v0.1 sources** — `huggingFace` + `s3` + `http` + `oci` + `inline` + `configMap` enough, or also `gcs` / `azure` from day one?
 3. **`PVC` backend eviction policy** — LRU, TTL, manual? Lean is manual; smarter eviction is a v0.2 substrate feature.
 4. **`storage.backend` mutability** — is the field mutable post-creation (transparent migration to v0.2 `ContentAddressed`) or immutable (forces recreation)? Lean mutable / transparent: PVC contents stay until eviction.
@@ -378,7 +380,7 @@ These are v0.1 design decisions. v0.2+ open questions defer to when those versio
 This doc is the source of truth. Issues track implementation:
 
 - **[#66](https://github.com/modelplaneai/modelplane/issues/66)** — body refactored to point at this doc; scoped to v0.1 (`PVC` / `ExistingPVC` backends, multi-node, `Weights` / `Tokenizer` / `Bytes` kinds, all v0.1 sources)
-- **New (to file)**: "ModelCache v0.2 — `ContentAddressed` backend, lazy loading, `LoraAdapter` and `Engine` kinds"
+- **New (to file)**: "ModelCache v0.2 — `ContentAddressed` backend, lazy loading, `Adapter` and `Engine` kinds"
 - **New (optional)**: "v0.3 ContentStore substrate unification" placeholder
 - **[#61](https://github.com/modelplaneai/modelplane/issues/61)** — closed; mechanism absorbed here
 - **[#72](https://github.com/modelplaneai/modelplane/issues/72), [#73](https://github.com/modelplaneai/modelplane/issues/73)** — cross-reference comments posted pointing at this doc
