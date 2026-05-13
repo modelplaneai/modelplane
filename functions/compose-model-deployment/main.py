@@ -198,7 +198,6 @@ class Composer:
                     ),
                     spec=mev1alpha1.Spec(
                         url=url,
-                        api="OpenAI",
                         rewritePath=rewrite_path,
                     ),
                 ),

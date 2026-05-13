@@ -36,7 +36,6 @@ test = compositiontest.CompositionTest(
                     ),
                     spec=mev1alpha1.Spec(
                         url="http://34.55.100.10/default/qwen-demo/v1",
-                        api="OpenAI",
                         rewritePath="/default/qwen-demo/",
                     ),
                     status=mev1alpha1.Status(

@@ -31,7 +31,7 @@ spec:
         properties:
           spec:
             type: object
-            required: [url, api]
+            required: [url]
             properties:
               url:
                 type: string
@@ -41,10 +41,6 @@ spec:
                   remote inference cluster's gateway. ModelService does
                   not read this field directly.
                 minLength: 1
-              api:
-                type: string
-                description: API protocol exposed by the endpoint.
-                enum: [OpenAI]
               rewritePath:
                 type: string
                 description: >-
