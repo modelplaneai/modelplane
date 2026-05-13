@@ -251,7 +251,7 @@ flowchart LR
 
 **GC in v0.2**: delegated to object-store lifecycle policies (S3 Lifecycle, GCS OLM, Azure Blob Lifecycle). Touch-on-access timestamps keep hot objects alive; cold objects expire after operator-configured TTL. No explicit refcounting infrastructure — TTL+touch covers it. Explicit refcounting only if a future use case forces it (chunk-level dedup with diverse owners, or strict "must-not-delete-while-referenced" compliance).
 
-Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly+OCI, KitOps) is converging on content-addressed as the right pattern. `PVC` is the fast-to-ship v0.1 path; `ContentAddressed` wins v0.2 on dedup, cold-start, and scale.
+Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly + OCI, KitOps) is converging on content-addressed as the right pattern. `PVC` is the fast-to-ship v0.1 path; `ContentAddressed` wins v0.2 on dedup, cold-start, and scale.
 
 ## v0.3 — Substrate unification (architectural option)
 
