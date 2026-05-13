@@ -2,7 +2,7 @@
 
 **Status**: Draft for review — supersedes the sketch in [#66](https://github.com/modelplaneai/modelplane/issues/66)
 **Owners**: Dennis
-**Related**: [#66](https://github.com/modelplaneai/modelplane/issues/66) (current — body will be updated to reference this doc), [#61](https://github.com/modelplaneai/modelplane/issues/61) (closed; mechanism here), [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72), [#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73), [#74 Fleet signal bus](https://github.com/modelplaneai/modelplane/issues/74), [PR #64 API design](https://github.com/modelplaneai/modelplane/pull/64), [PR #75 implementation spike](https://github.com/modelplaneai/modelplane/pull/75)
+**Related**: [#66](https://github.com/modelplaneai/modelplane/issues/66) (now the v0.1 implementation tracker), [#61](https://github.com/modelplaneai/modelplane/issues/61) (closed; mechanism here), [#56 DRA alignment](https://github.com/modelplaneai/modelplane/issues/56) (also v0.1), [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72), [#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73), [#74 Fleet signal bus](https://github.com/modelplaneai/modelplane/issues/74), [PR #64 API design](https://github.com/modelplaneai/modelplane/pull/64), [PR #75 implementation spike](https://github.com/modelplaneai/modelplane/pull/75)
 
 ## Problem
 
@@ -109,6 +109,7 @@ Targets the load-bearing case: dense models on TensorPipeline gangs without per-
 - ModelReplica scheduling gated on per-cluster cache `Ready` condition
 - Storage class declared on `InferenceCluster.spec.storage.storageClassName` (RWX-capable: GCP Filestore, AWS EFS, AWS FSx, Azure Files, BYO CSI)
 - **Fail-fast scheduling**: if a target cluster has no RWX storage class, the matcher rejects placement for any ModelDeployment referencing a cache that needs `AllMatchingClusters` mode. Clear condition surfaces the gap.
+- **Cluster selection**: `clusterSelector.matchLabels` is the v0.1 baseline (matches PR #75). Once [#56 DRA alignment](https://github.com/modelplaneai/modelplane/issues/56) lands in v0.1, `clusterSelector` can also accept a CEL form that matches against InferenceCluster pool attributes/capacity — useful for "stage weights only to clusters that have at least one H100 pool with FP8 support."
 
 ```mermaid
 flowchart LR
@@ -255,7 +256,7 @@ This is an architectural option, not a v0.1 commitment. Decide when v0.2 ships a
 
 **`ContentCache` name.** Better for positioning if Modelplane is "the AI content CAS company"; worse for the `Model*` naming family. Use `ContentStore` for the internal substrate; keep `ModelCache` user-facing.
 
-**`nodeSelector.cel` for per-node placement** (in the original [#66](https://github.com/modelplaneai/modelplane/issues/66) sketch). Defers to [PR #75](https://github.com/modelplaneai/modelplane/pull/75)'s simpler `clusterSelector.matchLabels`. Per-node CEL matching only makes sense once DRA-style capability matching is back in scope (post-spike); revisit in v0.2+.
+**`nodeSelector.cel` for per-node placement** (in the original [#66](https://github.com/modelplaneai/modelplane/issues/66) sketch). v0.1 ModelCache uses cluster-level `clusterSelector.matchLabels` because `AllMatchingClusters` (RWX PVC per cluster) is the only v0.1 replication mode — node-level filtering doesn't fit the shared-PVC semantic. `nodeSelector.cel` becomes useful in v0.2 alongside `AllMatchingNodes` mode (per-node SSD staging via content-addressed backend), at which point DRA capability matching ([#56](https://github.com/modelplaneai/modelplane/issues/56), v0.1) is the right vocabulary.
 
 ## Open questions for review
 
