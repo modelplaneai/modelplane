@@ -363,12 +363,13 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 
 ## Open questions for review
 
-1. v0.1 artifact kinds — `Weights` + `Tokenizer` + `Bytes` enough, or also `LoraAdapter` for early multi-LoRA cases?
-2. v0.1 sources — `huggingFace` + `s3` + `http` + `oci` + `inline` + `configMap` enough, or also `gcs` / `azure` from day one?
-3. Eviction policy for the `PVC` backend — LRU, TTL, manual? Lean is manual; smarter eviction is a v0.2 substrate feature.
-4. Migration from `PVC` to `ContentAddressed` — backend switch transparent or destructive? Lean transparent: PVC stays, gradually evolves when operator flips `storage.backend`.
-5. v0.3 substrate unification — file as roadmap marker now, or wait until v0.2 ships?
-6. Cross-namespace cache references — can `ml-team-a/llama-3-3-70b` be referenced from `ml-team-b/deployment`, or are caches strictly namespace-local? Affects the platform-team-stages-shared-models story.
+These are v0.1 design decisions. v0.2+ open questions defer to when those versions are closer, unless they affect the v0.1 API shape (the ones below all do).
+
+1. **v0.1 artifact kinds** — `Weights` + `Tokenizer` + `Bytes` enough, or also `LoraAdapter` for early multi-LoRA cases?
+2. **v0.1 sources** — `huggingFace` + `s3` + `http` + `oci` + `inline` + `configMap` enough, or also `gcs` / `azure` from day one?
+3. **`PVC` backend eviction policy** — LRU, TTL, manual? Lean is manual; smarter eviction is a v0.2 substrate feature.
+4. **`storage.backend` mutability** — is the field mutable post-creation (transparent migration to v0.2 `ContentAddressed`) or immutable (forces recreation)? Lean mutable / transparent: PVC contents stay until eviction.
+5. **Cross-namespace cache references** — can `ml-team-a/llama-3-3-70b` be referenced from a deployment in `ml-team-b`, or are caches strictly namespace-local? Affects the platform-team-stages-shared-models story.
 
 ## Roadmap / issue alignment
 
