@@ -31,6 +31,8 @@ ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1**
 - **2b**: NIM image is runtime-only and fetches weights into `/opt/nim/.cache` on first run. ModelCache pre-seeds the cache dir on a PVC so replicas don't refetch (see `examples/11-nim-cache.yaml`).
 - **2c**: NIM air-gap. Customer pre-seeds the cache dir out-of-band; ModelCache `backend: ExistingPVC` mounts it (see `examples/10-byo-existing-pvc.yaml`).
 
+NVIDIA's [NIM Operator](https://docs.nvidia.com/nim-operator/) (with its own `NIMService` / `NIMCache` CRDs) composes with ModelCache rather than competing — ModelCache stages the cache dir at the K8s storage layer; NIM Operator (or a bare NIM pod) consumes the mounted path. Customers already on the NIM Operator can keep using it.
+
 ## Design principle: pluggable backends across the cache family
 
 ModelCache, [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72), and [#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73) share an architectural pattern:
@@ -234,8 +236,11 @@ flowchart LR
 **Lazy loading**: engine starts before all bytes arrive; weights stream via FUSE or S3 CSI mountpoint. Cold-start target: vLLM 95s → ~14s ([Modal benchmark](https://modal.com/blog/truly-serverless-gpus)). Path conventions stable from v0.1 so backend swap is transparent.
 
 **New artifact kinds**:
-- `LoraAdapter` — per-adapter mounting, base-model `baseRef`. Fits multi-LoRA serving (thousands of small adapters per base, RFT-class deployments).
-- `Engine` — compiled TRT-LLM blobs keyed by `(model, hardware, config)`. Compile cost is minutes per tuple. Extends to NIM profiles: `engine.runtime: NIM` + `profileId` makes the (GPU SM, count, precision, TP, PP, target) tuple explicit so Modelplane validates against the cluster's hardware before staging (avoids the silent wrong-profile failure where e.g. an H100 profile lands on a B200).
+- `LoraAdapter` — per-adapter mounting, `baseRef` pointing at either a `Weights` cache or a NIM profile. Fits multi-LoRA serving (thousands of small adapters per base, RFT-class deployments) and customer fine-tunes layered on NIM bases.
+- `Engine` — compiled TRT-LLM blobs keyed by `(model, hardware, config)`. Compile cost is minutes per tuple. Extends to NIM profiles: `engine.runtime: NIM` + `profileId` makes the `(GPU SM, count, precision, TP, PP, target)` tuple explicit. Modelplane validates against cluster hardware before staging (avoids the silent wrong-profile failure where e.g. an H100 profile lands on a B200). Profile metadata surfaces in `status.nimProfile: { id, gpu, tp, pp, precision, target }` so deployments can verify compatibility without dereferencing the image.
+
+**New shim source**:
+- `nimCatalog` — `{ model: meta/llama-3.1-70b-instruct, profile: h100-tp8-fp8 }` resolves to the profile-specific NGC URL + cache layout. Survives NGC URL schema changes; reduces user-side bookkeeping over raw `http` sources.
 
 **New replication mode**:
 - `AllMatchingNodes` — pre-stage to every node in every matching cluster (per-node SSD L1). Viable because bytes are deduplicated.
