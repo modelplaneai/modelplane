@@ -1,0 +1,13 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: modelservices.modelplane.ai
+spec:
+  compositeTypeRef:
+    apiVersion: modelplane.ai/v1alpha1
+    kind: ModelService
+  mode: Pipeline
+  pipeline:
+  - functionRef:
+      name: modelplane-modelplanecompose-model-service
+    step: compose-model-service

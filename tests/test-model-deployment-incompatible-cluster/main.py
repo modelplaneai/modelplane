@@ -130,9 +130,6 @@ test = compositiontest.CompositionTest(
                     ),
                     status=mdv1alpha1.Status(
                         replicas=mdv1alpha1.Replicas(total=1, ready=0),
-                        endpoint=mdv1alpha1.Endpoint(
-                            url="http://10.0.0.100/ml-team/qwen-demo/v1/chat/completions",
-                        ),
                     ),
                 )
             ),

@@ -1,0 +1,64 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelservices.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelService
+    plural: modelservices
+    shortNames: [ms]
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: ADDRESS
+      type: string
+      jsonPath: .status.address
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [endpoints]
+            properties:
+              endpoints:
+                type: array
+                description: >-
+                  Endpoints to route traffic to. Each entry selects a
+                  set of ModelEndpoints by label. Matched endpoints are
+                  load-balanced equally.
+                minItems: 1
+                items:
+                  type: object
+                  required: [selector]
+                  properties:
+                    selector:
+                      type: object
+                      required: [matchLabels]
+                      properties:
+                        matchLabels:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+          status:
+            type: object
+            properties:
+              address:
+                type: string
+                description: >-
+                  Public address where this service is reachable.
+              conditions:
+                type: array
+                items:
+                  type: object

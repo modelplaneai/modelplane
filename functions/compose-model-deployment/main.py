@@ -1,9 +1,13 @@
-"""Fan out a ModelDeployment to ModelReplicas and configure routing.
+"""Fan out a ModelDeployment to ModelReplicas and ModelEndpoints.
 
 This function discovers InferenceClusters, matches the deployment's
 topology against available capacity, creates a ModelReplica per
-selected cluster, and composes an HTTPRoute on the control plane for
-unified endpoint routing.
+selected cluster, and creates one ModelEndpoint per replica for
+ModelService to route to.
+
+Routing on the control plane is the responsibility of ModelService:
+this function does not compose the HTTPRoute. Users author a
+ModelService to expose a deployment.
 """
 
 from crossplane.function import request, resource, response
@@ -15,6 +19,7 @@ from .lib import resource as libresource
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1
+from .model.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
@@ -29,9 +34,6 @@ CONDITION_REASON_SCHEDULING = "Scheduling"
 CONDITION_REASON_NO_REPLICAS_SCHEDULED = "NoReplicasScheduled"
 CONDITION_REASON_ALL_REPLICAS_READY = "AllReplicasReady"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
-CONDITION_REASON_ROUTE_CONFIGURED = "RouteConfigured"
-CONDITION_REASON_CONFIGURING = "Configuring"
-CONDITION_REASON_WAITING_FOR_REPLICAS = "WaitingForReplicas"
 
 
 class Composer:
@@ -44,13 +46,15 @@ class Composer:
         self.clusters = []
         self.gateway = None
         self.all_replicas = []
+        # InferenceClusters keyed by name; populated from self.clusters.
+        self.clusters_by_name: dict[str, icv1alpha1.InferenceCluster] = {}
 
     def compose(self):
         if not self.resolve_inputs():
             return
         matched = self.schedule()
         self.compose_replicas(matched)
-        self.compose_httproute(matched)
+        self.compose_endpoints(matched)
         self.write_status(matched)
         self.derive_conditions(matched)
 
@@ -104,6 +108,7 @@ class Composer:
         self.clusters = [
             defaults.inference_cluster(icv1alpha1.InferenceCluster.model_validate(c)) for c in cluster_dicts
         ]
+        self.clusters_by_name = {c.metadata.name: c for c in self.clusters}
         self.gateway = (
             defaults.inference_gateway(igwv1alpha1.InferenceGateway.model_validate(gw_dict)) if gw_dict else None
         )
@@ -161,83 +166,59 @@ class Composer:
                 ),
             )
 
-    def compose_httproute(self, matched):
-        """Compose an HTTPRoute that load-balances across all replicas'
-        backends. Backend resources are composed by ModelReplica — we read
-        their names from observed ModelReplica status."""
-        if not matched:
-            return
+    def compose_endpoints(self, matched):
+        """Compose one ModelEndpoint per matched cluster.
 
-        backend_refs = self.backend_refs(matched)
-
-        # Rewrite /{ns}/{deployment}/ to /{remote-ns}/{deployment}/.
-        # The LLMIS name on every remote cluster is the deployment name,
-        # so the rewrite is uniform across backends.
+        Endpoints are labeled with the deployment name so a ModelService
+        can select them. The URL is informational - the actual routing
+        target is the per-cluster gateway. The rewritePath tells
+        ModelService what URL prefix to rewrite to on the remote cluster.
+        """
         llmis = naming.llmis_name(self.xr.metadata.name)
-        rewrite_prefix = f"/{metadata.NAMESPACE_REMOTE}/{llmis}/"
+        rewrite_path = f"/{metadata.NAMESPACE_REMOTE}/{llmis}/"
 
-        # Gateway parentRef — defaults for Envoy Gateway, could be read
-        # from InferenceGateway status in future.
-        httproute_spec: dict = {
-            "parentRefs": [{"name": metadata.GATEWAY_NAME, "namespace": metadata.NAMESPACE_SYSTEM}],
-            "rules": [
-                {
-                    "matches": [
-                        {
-                            "path": {
-                                "type": "PathPrefix",
-                                "value": f"/{self.xr.metadata.namespace}/{self.xr.metadata.name}/",
-                            },
-                        }
-                    ],
-                    "filters": [
-                        {
-                            "type": "URLRewrite",
-                            "urlRewrite": {
-                                "path": {
-                                    "type": "ReplacePrefixMatch",
-                                    "replacePrefixMatch": rewrite_prefix,
-                                },
-                            },
-                        }
-                    ],
-                }
-            ],
-        }
-        if backend_refs:
-            httproute_spec["rules"][0]["backendRefs"] = backend_refs
+        for cluster_info in matched:
+            endpoint_key = f"endpoint-{cluster_info.name}"
+            cluster = self.clusters_by_name.get(cluster_info.name)
+            gateway_address = cluster.status.gateway.address if cluster else None
 
-        resource.update(
-            self.rsp.desired.resources["httproute"],
-            {
-                "apiVersion": "gateway.networking.k8s.io/v1",
-                "kind": "HTTPRoute",
-                "metadata": {"namespace": self.xr.metadata.namespace},
-                "spec": httproute_spec,
-            },
-        )
+            # URL is informational. For composed endpoints it points at
+            # the per-replica path on the remote cluster's gateway.
+            url = f"http://{gateway_address}{rewrite_path}v1" if gateway_address else f"http://pending{rewrite_path}v1"
+
+            resource.update(
+                self.rsp.desired.resources[endpoint_key],
+                mev1alpha1.ModelEndpoint(
+                    metadata=metav1.ObjectMeta(
+                        name=naming.endpoint_name(self.xr.metadata.name, cluster_info.name),
+                        namespace=self.xr.metadata.namespace,
+                        labels={
+                            metadata.LABEL_KEY_DEPLOYMENT: self.xr.metadata.name,
+                        },
+                    ),
+                    spec=mev1alpha1.Spec(
+                        url=url,
+                        api="OpenAI",
+                        rewritePath=rewrite_path,
+                    ),
+                ),
+            )
 
     def write_status(self, matched):
-        """Write deployment status: replica counts and endpoint."""
-        gateway_ip = self.gateway.status.address if self.gateway else None
-
+        """Write deployment status: replica counts."""
         replicas_ready = sum(1 for c in matched if conditions.has_condition(self.req, f"replica-{c.name}", "Ready"))
 
         status = v1alpha1.Status(
             replicas=v1alpha1.Replicas(total=len(matched), ready=replicas_ready),
         )
-        if gateway_ip:
-            status.endpoint = v1alpha1.Endpoint(
-                url=f"http://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}/v1/chat/completions",
-            )
         libresource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self, matched):
-        """Derive ReplicasScheduled, ReplicasReady, and RoutingReady
-        conditions. Also marks per-replica and httproute readiness."""
+        """Derive ReplicasScheduled and ReplicasReady. Per-resource
+        readiness is marked here too."""
         self.derive_replicas_scheduled(matched)
         self.derive_replicas_ready(matched)
-        self.derive_routing_ready(matched)
+        self.mark_endpoint_readiness(matched)
 
         # When no replicas are scheduled, explicitly mark not ready. Without
         # this, an XR with no composed resources would be trivially ready.
@@ -284,55 +265,16 @@ class Composer:
 
         conditions.set_condition(self.rsp, CONDITION_TYPE_REPLICAS_READY, all_ready, reason, msg)
 
-    def derive_routing_ready(self, matched):
-        """RoutingReady: the control plane HTTPRoute is configured and has
-        backends."""
-        if "httproute" not in self.rsp.desired.resources:
-            reason = CONDITION_REASON_NO_REPLICAS_SCHEDULED if not matched else CONDITION_REASON_WAITING_FOR_REPLICAS
-            conditions.set_condition(self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, reason)
-            return
-
-        # The HTTPRoute is only truly ready when it has backendRefs (not just
-        # Accepted). An empty-backendRefs HTTPRoute returns 404.
-        backend_refs = self.backend_refs(matched)
-        route_ready = conditions.has_parent_condition(self.req, "httproute", "Accepted") and bool(backend_refs)
-
-        if route_ready:
-            self.rsp.desired.resources["httproute"].ready = fnv1.READY_TRUE
-
-        if not matched:
-            reason = CONDITION_REASON_NO_REPLICAS_SCHEDULED
-        elif route_ready:
-            reason = CONDITION_REASON_ROUTE_CONFIGURED
-        else:
-            reason = CONDITION_REASON_CONFIGURING
-
-        conditions.set_condition(self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, route_ready, reason)
-
-    def backend_refs(self, matched):
-        """Read backend names from observed ModelReplica status."""
-        refs = []
-        for cluster_info in matched:
-            observed = self.req.observed.resources.get(f"replica-{cluster_info.name}")
-            if not observed:
+    def mark_endpoint_readiness(self, matched):
+        """Mark each composed ModelEndpoint Ready when observed Ready."""
+        for c in matched:
+            endpoint_key = f"endpoint-{c.name}"
+            if endpoint_key not in self.rsp.desired.resources:
                 continue
-            r = mrv1alpha1.ModelReplica.model_validate(resource.struct_to_dict(observed.resource))
-            if not r.status or not r.status.routing:
-                continue
-            if not r.status.routing.backendName:
-                continue
-            refs.append(
-                {
-                    "group": "gateway.envoyproxy.io",
-                    "kind": "Backend",
-                    "name": r.status.routing.backendName,
-                    "port": 80,
-                    "weight": 1,
-                }
-            )
-        return refs
+            if conditions.has_condition(self.req, endpoint_key, "Ready"):
+                self.rsp.desired.resources[endpoint_key].ready = fnv1.READY_TRUE
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-    """Compose ModelReplicas and control plane routing resources."""
+    """Compose ModelReplicas and ModelEndpoints."""
     Composer(req, rsp).compose()

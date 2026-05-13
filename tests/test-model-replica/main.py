@@ -1,6 +1,5 @@
 from .lib import resource as libresource
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
-from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
@@ -48,39 +47,6 @@ test = compositiontest.CompositionTest(
             ),
         ],
         assertResources=[
-            # Assert the XR has status populated from the cluster.
-            libresource.model_to_dict(
-                mrv1alpha1.ModelReplica(
-                    metadata=metav1.ObjectMeta(
-                        name="qwen-demo-demo-us-central",
-                        namespace="ml-team",
-                    ),
-                    spec=mrv1alpha1.Spec(
-                        inferenceClusterRef=mrv1alpha1.InferenceClusterRef(
-                            name="demo-us-central",
-                        ),
-                        workers=mrv1alpha1.Workers(
-                            topology=mrv1alpha1.Topology(
-                                strategy="Tensor",
-                                tensor=1,
-                            ),
-                            resources=mrv1alpha1.Resources(
-                                cpu="3",
-                                memory="10Gi",
-                            ),
-                        ),
-                        engine=mrv1alpha1.Engine(
-                            image="vllm/vllm-openai:v0.7.3",
-                            args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
-                        ),
-                    ),
-                    status=mrv1alpha1.Status(
-                        endpoint=mrv1alpha1.Endpoint(
-                            url="http://34.55.100.10/default/qwen-demo/v1",
-                        ),
-                    ),
-                )
-            ),
             # Assert the LLMInferenceService Object is composed on the remote
             # cluster with the correct vLLM container spec and GPU count.
             libresource.model_to_dict(
@@ -141,24 +107,6 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # Assert the Backend is composed pointing to the remote gateway.
-            {
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                "kind": "Backend",
-                "metadata": {
-                    "namespace": "ml-team",
-                    "annotations": {
-                        "crossplane.io/composition-resource-name": "backend",
-                    },
-                },
-                "spec": {
-                    "endpoints": [
-                        {
-                            "ip": {"address": "34.55.100.10", "port": 80},
-                        }
-                    ],
-                },
-            },
         ],
     ),
 )

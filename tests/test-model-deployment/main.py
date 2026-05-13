@@ -2,6 +2,7 @@ from .lib import resource as libresource
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
+from .model.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
@@ -16,9 +17,6 @@ test = compositiontest.CompositionTest(
         xrdPath="apis/modeldeployments/definition.yaml",
         timeoutSeconds=120,
         validate=False,
-        # extraResources is the up CLI's name for required resources.
-        # These are resources the function reads but doesn't own, resolved
-        # by Crossplane at runtime via response.require_resources().
         extraResources=[
             # A ready InferenceCluster with KServe backend and one L4 pool.
             libresource.model_to_fixture(
@@ -46,7 +44,10 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # The InferenceGateway for the control plane routing endpoint.
+            # The InferenceGateway. ModelDeployment doesn't currently read
+            # its address (that's ModelService's job), but it's still a
+            # required resource for environments where future composition
+            # steps may need it.
             libresource.model_to_fixture(
                 igwv1alpha1.InferenceGateway(
                     metadata=metav1.ObjectMeta(name="default"),
@@ -56,8 +57,7 @@ test = compositiontest.CompositionTest(
             ),
         ],
         assertResources=[
-            # Assert the XR has status populated with replica count and
-            # the unified endpoint URL from the inference gateway.
+            # Assert the XR has status populated with the replica count.
             libresource.model_to_dict(
                 mdv1alpha1.ModelDeployment(
                     metadata=metav1.ObjectMeta(
@@ -85,9 +85,6 @@ test = compositiontest.CompositionTest(
                         replicas=mdv1alpha1.Replicas(
                             total=1,
                             ready=0,
-                        ),
-                        endpoint=mdv1alpha1.Endpoint(
-                            url="http://10.0.0.1/ml-team/qwen-demo/v1/chat/completions",
                         ),
                     ),
                 )
@@ -127,48 +124,26 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # Assert an HTTPRoute is composed with the correct path rewrite.
-            {
-                "apiVersion": "gateway.networking.k8s.io/v1",
-                "kind": "HTTPRoute",
-                "metadata": {
-                    "namespace": "ml-team",
-                    "annotations": {
-                        "crossplane.io/composition-resource-name": "httproute",
-                    },
-                },
-                "spec": {
-                    "parentRefs": [
-                        {
-                            "name": "modelplane",
-                            "namespace": "modelplane-system",
-                        }
-                    ],
-                    "rules": [
-                        {
-                            "matches": [
-                                {
-                                    "path": {
-                                        "type": "PathPrefix",
-                                        "value": "/ml-team/qwen-demo/",
-                                    },
-                                }
-                            ],
-                            "filters": [
-                                {
-                                    "type": "URLRewrite",
-                                    "urlRewrite": {
-                                        "path": {
-                                            "type": "ReplacePrefixMatch",
-                                            "replacePrefixMatch": "/default/qwen-demo/",
-                                        },
-                                    },
-                                }
-                            ],
-                        }
-                    ],
-                },
-            },
+            # Assert a ModelEndpoint is composed for the matched cluster.
+            libresource.model_to_dict(
+                mev1alpha1.ModelEndpoint(
+                    metadata=metav1.ObjectMeta(
+                        annotations={
+                            "crossplane.io/composition-resource-name": "endpoint-demo-us-central",
+                        },
+                        name="qwen-demo-demo-us-central",
+                        namespace="ml-team",
+                        labels={
+                            "modelplane.ai/deployment": "qwen-demo",
+                        },
+                    ),
+                    spec=mev1alpha1.Spec(
+                        url="http://34.55.100.10/default/qwen-demo/v1",
+                        api="OpenAI",
+                        rewritePath="/default/qwen-demo/",
+                    ),
+                )
+            ),
         ],
     ),
 )

@@ -1,0 +1,11 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelEndpoint
+metadata:
+  name: qwen-demo-demo-us-central
+  namespace: ml-team
+  labels:
+    modelplane.ai/deployment: qwen-demo
+spec:
+  url: http://34.55.100.10/default/qwen-demo/v1
+  api: OpenAI
+  rewritePath: /default/qwen-demo/

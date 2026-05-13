@@ -1,0 +1,73 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelendpoints.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelEndpoint
+    plural: modelendpoints
+    shortNames: [me]
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: URL
+      type: string
+      jsonPath: .spec.url
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [url, api]
+            properties:
+              url:
+                type: string
+                description: >-
+                  Informational URL for this endpoint. For Modelplane-
+                  composed endpoints this is the per-replica URL on the
+                  remote inference cluster's gateway. ModelService does
+                  not read this field directly.
+                minLength: 1
+              api:
+                type: string
+                description: API protocol exposed by the endpoint.
+                enum: [OpenAI]
+              rewritePath:
+                type: string
+                description: >-
+                  Path prefix that requests should be rewritten to when
+                  routed through this endpoint. Used by ModelService to
+                  configure URLRewrite on its HTTPRoute. For Modelplane-
+                  composed endpoints this is the LLMInferenceService path
+                  on the remote cluster, e.g. /default/qwen-demo/.
+          status:
+            type: object
+            properties:
+              routing:
+                type: object
+                description: >-
+                  Routing details for this endpoint. ModelService reads
+                  backendName to build HTTPRoute backendRefs.
+                properties:
+                  backendName:
+                    type: string
+                    description: >-
+                      Crossplane-generated name of the Backend resource
+                      composed by this endpoint.
+              conditions:
+                type: array
+                items:
+                  type: object

@@ -17,7 +17,6 @@ from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions, defaults, metadata, naming
-from .lib import resource as libresource
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.modelreplica import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
@@ -28,12 +27,10 @@ CONDITION_TYPE_MODEL_READY = "ModelReady"
 
 CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_WAITING_FOR_MODEL = "WaitingForModel"
-CONDITION_REASON_WAITING_FOR_GATEWAY = "WaitingForGateway"
 CONDITION_REASON_DEPLOYING = "Deploying"
 CONDITION_REASON_ACCEPTED = "Accepted"
 CONDITION_REASON_SERVING = "Serving"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
-CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
 
 # Composed resource key for the model serving resource.
 MODEL_RESOURCE_KEY = "model-serving"
@@ -54,8 +51,6 @@ class Composer:
         if not self.resolve_inputs():
             return
         self.compose_model_serving()
-        self.compose_backend()
-        self.write_status()
         self.derive_conditions()
 
     def resolve_inputs(self):
@@ -74,9 +69,6 @@ class Composer:
                 self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_CLUSTER
             )
             conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
-            conditions.set_condition(
-                self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL
-            )
             response.normal(self.rsp, "Waiting for cluster to be resolved")
             return False
 
@@ -87,9 +79,6 @@ class Composer:
                 self.rsp, CONDITION_TYPE_MODEL_ACCEPTED, False, CONDITION_REASON_WAITING_FOR_CLUSTER
             )
             conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, False, CONDITION_REASON_WAITING_FOR_MODEL)
-            conditions.set_condition(
-                self.rsp, conditions.CONDITION_TYPE_ROUTING_READY, False, CONDITION_REASON_WAITING_FOR_MODEL
-            )
             response.normal(self.rsp, "Waiting for cluster providerConfigRef")
             return False
 
@@ -172,24 +161,6 @@ class Composer:
             ),
         )
 
-    def compose_backend(self):
-        """Compose a Backend on the control plane pointing to the remote
-        cluster's gateway. ModelDeployment aggregates these into an HTTPRoute."""
-        if not self.ic.status.gateway.address:
-            return
-
-        resource.update(
-            self.rsp.desired.resources["backend"],
-            {
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                "kind": "Backend",
-                "metadata": {"namespace": self.xr.metadata.namespace},
-                "spec": {
-                    "endpoints": [{"ip": {"address": self.ic.status.gateway.address, "port": 80}}],
-                },
-            },
-        )
-
     def llmis_name(self):
         """LLMInferenceService name on the remote cluster.
 
@@ -205,26 +176,15 @@ class Composer:
         )
         return naming.llmis_name(deployment_name)
 
-    def write_status(self):
-        """Write status fields for consumption by compose-model-deployment."""
-        status = v1alpha1.Status()
+    def derive_conditions(self):
+        """Derive ModelAccepted and ModelReady conditions.
 
-        if self.ic.status.gateway.address:
-            status.endpoint = v1alpha1.Endpoint(
-                url=f"http://{self.ic.status.gateway.address}/{metadata.NAMESPACE_REMOTE}/{self.llmis_name()}/v1",
-            )
+        Routing is no longer this function's concern - ModelEndpoint
+        composes the control-plane Backend and ModelService composes
+        the HTTPRoute.
+        """
 
-        # Read the Backend's Crossplane-generated name from observed state so
-        # ModelDeployment can reference it in the HTTPRoute.
-        backend_observed = self.req.observed.resources.get("backend")
-        if backend_observed:
-            backend_name = resource.struct_to_dict(backend_observed.resource).get("metadata", {}).get("name")
-            if backend_name:
-                status.routing = v1alpha1.Routing(backendName=backend_name)
-
-        libresource.update_status(self.rsp.desired.composite, status)
-
-        # Transition: first time composing the model serving resource.
+        # First-time transition: emit a normal event the first reconcile.
         if MODEL_RESOURCE_KEY not in self.req.observed.resources:
             response.normal(
                 self.rsp,
@@ -232,9 +192,6 @@ class Composer:
                 f" on {self.xr.spec.inferenceClusterRef.name}"
                 f" ({self.xr.spec.workers.topology.strategy})",
             )
-
-    def derive_conditions(self):
-        """Derive ModelAccepted, ModelReady, and RoutingReady conditions."""
 
         # Check if the remote resource was created by reading the Object's
         # atProvider.manifest. provider-kubernetes populates this field after
@@ -246,7 +203,6 @@ class Composer:
             serving_accepted = bool(obj.status and obj.status.atProvider and obj.status.atProvider.manifest)
 
         serving_ready = conditions.has_condition(self.req, MODEL_RESOURCE_KEY, "Ready")
-        backend_exists = "backend" in self.req.observed.resources
 
         # ModelAccepted: the remote resource was created on the cluster.
         accepted_reason = CONDITION_REASON_ACCEPTED if serving_accepted else CONDITION_REASON_DEPLOYING
@@ -261,19 +217,9 @@ class Composer:
             ready_reason = CONDITION_REASON_WAITING_FOR_MODEL
         conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, serving_ready, ready_reason)
 
-        # RoutingReady: the Backend resource exists on the control plane.
-        conditions.set_condition(
-            self.rsp,
-            conditions.CONDITION_TYPE_ROUTING_READY,
-            backend_exists,
-            CONDITION_REASON_BACKEND_CONFIGURED if backend_exists else CONDITION_REASON_WAITING_FOR_GATEWAY,
-        )
-
         # Per-resource readiness.
         if MODEL_RESOURCE_KEY in self.rsp.desired.resources and serving_ready:
             self.rsp.desired.resources[MODEL_RESOURCE_KEY].ready = fnv1.READY_TRUE
-        if backend_exists:
-            self.rsp.desired.resources["backend"].ready = fnv1.READY_TRUE
 
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):

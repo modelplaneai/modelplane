@@ -12,6 +12,15 @@ def replica_name(deployment_name: str, cluster_name: str) -> str:
     return f"{deployment_name}-{cluster_name}"[:DNS_LABEL_MAX]
 
 
+def endpoint_name(deployment_name: str, cluster_name: str) -> str:
+    """Derive a deterministic ModelEndpoint name.
+
+    Modelplane composes one ModelEndpoint per ModelReplica. The name
+    needs to be unique per (deployment, cluster) within a namespace.
+    """
+    return f"{deployment_name}-{cluster_name}"[:DNS_LABEL_MAX]
+
+
 def llmis_name(deployment_name: str) -> str:
     """Derive the LLMInferenceService name on the remote cluster.
 

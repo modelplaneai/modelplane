@@ -1,0 +1,21 @@
+# A ModelService exposes one or more ModelDeployments via a single
+# OpenAI-compatible endpoint. It composes a Gateway-API HTTPRoute on the
+# control plane that load-balances across every ModelEndpoint matching
+# its selector.
+#
+# Modelplane composes one ModelEndpoint per ModelReplica, labeled
+# `modelplane.ai/deployment: <deployment-name>`. So a ModelService with
+# that label selector reaches every replica of the named deployment.
+#
+# Once the service is ready, its public address is on status.address:
+#   kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}'
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-demo
