@@ -62,6 +62,10 @@ spec:
     pvc:
       storageClassName: filestore-rwx
       sizeGiB: 1
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+  replication: AllMatchingClusters
 
 ---
 apiVersion: modelplane.ai/v1alpha1

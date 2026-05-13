@@ -35,7 +35,7 @@ ModelCache, [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issue
 - **Pluggable storage backend** discriminator that swaps the mechanism without changing user intent
 - **Composition function renders** the actual infrastructure (PVCs, Jobs, DaemonSets, scrape configs) from declarative intent
 
-ModelCache starts with a PVC backend in v0.1 and evolves to content-addressed in v0.2+ without breaking the user-facing API. The same shape applies when [#72](https://github.com/modelplaneai/modelplane/issues/72) ships with LMCache/Mooncake/NIXL backends and when [#73](https://github.com/modelplaneai/modelplane/issues/73) adds object-store/LMCache/Mooncake/Custom backends.
+ModelCache starts with a `PVC` backend in v0.1 and evolves to `ContentAddressed` in v0.2+ without breaking the user-facing API. The same shape applies when [#72](https://github.com/modelplaneai/modelplane/issues/72) ships with LMCache / Mooncake / NIXL backends and when [#73](https://github.com/modelplaneai/modelplane/issues/73) adds object-store / LMCache / Mooncake / Custom backends.
 
 ## Shape
 
@@ -164,7 +164,7 @@ flowchart LR
 
 **Replication modes in v0.1**:
 - `AllMatchingClusters` (default) — one PVC per cluster matching the selector, shared across all pods in that cluster
-- `AllMatchingNodes` is v0.2 — only fits content-addressed backend with per-node local SSDs
+- `AllMatchingNodes` is v0.2 — only fits the `ContentAddressed` backend with per-node local SSDs
 
 **Invalidation and GC in v0.1**:
 - Source version pinned via `revision` (HF) / version path (S3) / OCI digest. The source identity *is* the cache identity.
@@ -363,7 +363,7 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 
 This doc is the source of truth. Issues track implementation:
 
-- **[#66](https://github.com/modelplaneai/modelplane/issues/66)** — body refactored to point at this doc; scoped to v0.1 (`PVC` / `ExistingPVC` backends, multi-node, `Weights`/`Tokenizer`/`Bytes` kinds, all v0.1 sources)
+- **[#66](https://github.com/modelplaneai/modelplane/issues/66)** — body refactored to point at this doc; scoped to v0.1 (`PVC` / `ExistingPVC` backends, multi-node, `Weights` / `Tokenizer` / `Bytes` kinds, all v0.1 sources)
 - **New (to file)**: "ModelCache v0.2 — `ContentAddressed` backend, lazy loading, `LoraAdapter` and `Engine` kinds"
 - **New (optional)**: "v0.3 ContentStore substrate unification" placeholder
 - **[#61](https://github.com/modelplaneai/modelplane/issues/61)** — closed; mechanism absorbed here
@@ -380,7 +380,7 @@ See `examples/` for complete (ModelCache + ModelDeployment) references. Cold-sta
 - `03-multi-cluster-replication.yaml` — Qwen3-32B replicated across regions. *One ~25 min pull per cluster instead of per replica.*
 - `04-separate-tokenizer.yaml` — Weights + Tokenizer as distinct ModelCaches.
 - `05-private-s3-source.yaml` — air-gapped / GDPR. *Intra-region S3 ~10× faster than HF (~3 min vs ~30+ min for 140 GB).*
-- `06-v0.2-content-addressed.yaml` *(preview)* — same as 01 on ContentAddressed backend. *vLLM 95s → ~14s ([Modal](https://modal.com/blog/truly-serverless-gpus)).*
+- `06-v0.2-content-addressed.yaml` *(preview)* — same as 01 on the `ContentAddressed` backend. *vLLM 95s → ~14s ([Modal](https://modal.com/blog/truly-serverless-gpus)).*
 - `07-v0.2-lora-adapter.yaml` *(preview)* — base model + per-tenant LoRA. *Adapter dedup across tenants; small per-adapter bytes.*
 - `08-v0.2-compiled-engine.yaml` *(preview)* — TRT-LLM compiled engine keyed by `(model, hardware, config)`. *Saves ~10-30 min compile per replica.*
 - `09-bytes-opaque.yaml` — `Bytes` kind for chat templates / eval datasets. Also illustrates cross-deployment cache reuse (refs the `llama-3-3-70b` cache from example 01).
