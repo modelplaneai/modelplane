@@ -1,6 +1,6 @@
 # ModelCache — Fleet-aware artifact staging
 
-**Status**: Draft for review — supersedes the sketch in [#66](https://github.com/modelplaneai/modelplane/issues/66)
+**Status**: Draft for review — supersedes the sketch in [#66](https://github.com/modelplaneai/modelplane/issues/66). Advances ModelCache from v0.2 (per the original [PR #64](https://github.com/modelplaneai/modelplane/pull/64) review framing) to v0.1, driven by multi-node serving requirements ([#61](https://github.com/modelplaneai/modelplane/issues/61) closure) and DRA landing in v0.1 ([#56](https://github.com/modelplaneai/modelplane/issues/56)). Flag for explicit team alignment on this shift.
 **Owners**: Dennis
 **Related**: [#66](https://github.com/modelplaneai/modelplane/issues/66) (v0.1 implementation tracker), [#61](https://github.com/modelplaneai/modelplane/issues/61) (closed; mechanism here), [#56 DRA alignment](https://github.com/modelplaneai/modelplane/issues/56) (also v0.1), [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72), [#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73), [#74 Fleet signal bus](https://github.com/modelplaneai/modelplane/issues/74), [PR #64 API design](https://github.com/modelplaneai/modelplane/pull/64), [PR #75 implementation spike](https://github.com/modelplaneai/modelplane/pull/75)
 
@@ -363,7 +363,7 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 
 This doc is the source of truth. Issues track implementation:
 
-- **[#66](https://github.com/modelplaneai/modelplane/issues/66)** — body refactored to point at this doc; scoped to v0.1 (PVC + multi-node + Weights/Tokenizer/Bytes/inline/configMap)
+- **[#66](https://github.com/modelplaneai/modelplane/issues/66)** — body refactored to point at this doc; scoped to v0.1 (`PVC` / `ExistingPVC` backends, multi-node, `Weights`/`Tokenizer`/`Bytes` kinds, all v0.1 sources)
 - **New (to file)**: "ModelCache v0.2 — `ContentAddressed` backend, lazy loading, `LoraAdapter` and `Engine` kinds"
 - **New (optional)**: "v0.3 ContentStore substrate unification" placeholder
 - **[#61](https://github.com/modelplaneai/modelplane/issues/61)** — closed; mechanism absorbed here
