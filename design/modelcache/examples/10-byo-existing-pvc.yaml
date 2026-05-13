@@ -1,0 +1,61 @@
+# BYO existing PVC — customer manages population.
+#
+# Some teams already have weights staged via their own pipeline (out-of-band
+# rsync, CI/CD artifact promotion, manual seeding for air-gapped clusters).
+# They want Modelplane to handle scheduling/refcounting/status without
+# touching the bytes.
+#
+# `backend: ExistingPVC` references a PVC the customer already created and
+# populated. Modelplane mounts it read-only into the engine pod and gates
+# scheduling on the cache being Ready (which here means "the PVC exists and
+# is Bound"). No prefetch Job, no source field, no writes.
+#
+# Speedup (rough): N/A — bytes were already on-cluster before ModelCache
+# existed. Modelplane's value here is fleet-aware orchestration on top of
+# the customer's existing storage investment.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: airgap-llama-70b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    # no source — customer manages population externally
+  mount:
+    path: /mnt/model
+  storage:
+    backend: ExistingPVC
+    existingPVC:
+      name: ops-staged-llama-70b      # PVC created and populated by ops
+      namespace: ml-team
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us-gov-east
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: airgap-llama
+  namespace: ml-team
+spec:
+  replicas: 2
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us-gov-east
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 8
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --tensor-parallel-size=8
+  caches:
+    - name: airgap-llama-70b

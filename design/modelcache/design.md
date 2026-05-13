@@ -71,10 +71,32 @@ v0.1 sources:
 | `huggingFace` | Repo + revision + optional `HF_TOKEN` Secret. Common case for open models. |
 | `s3` | URI + region + Secret-ref credentials. Internal mirrors, private fine-tunes, compliance buckets. |
 | `http` | URL + optional bearer Secret. NIM/NGC URLs, internal artifact servers. |
+| `oci` | OCI registry artifact (Harbor / Zot / GHCR / ECR / GAR). Air-gap reference pattern; ORAS + KitOps ecosystem. |
 | `inline` | Literal bytes in the CR. Small text artifacts only — chat templates, config snippets. |
 | `configMap` | Reference an existing ConfigMap. Same shape as `inline`. |
 
-v0.2 sources: `gcs`, `azure`, `oci`, `pvc-clone`.
+v0.2 sources: `gcs`, `azure`, `pvc-clone`, plus shim sources resolving registry URIs (`mlflow:`, `kubeflow-modelregistry:`, `wandb:`) into a real fetch URI.
+
+### Storage backends
+
+| Backend | Version | Use |
+|---|---|---|
+| `PVC` | v0.1 | Modelplane-managed RWX PVC + Job. Storage class is configurable — any RWX CSI works (Filestore, EFS, FSx, Azure Files, Lustre, JuiceFS, Weka, Alluxio). |
+| `ExistingPVC` | v0.1 | Mount a customer-managed PVC; Modelplane doesn't populate. For customers with their own staging pipeline. |
+| `ContentAddressed` | v0.2 | Object store with content-hash index + per-cluster tiered cache. Lazy loading, cross-deployment dedup. |
+| `Custom` | v0.2 | Webhook contract for non-standard caching solutions. |
+
+### BYO scenarios
+
+ModelCache composes with customer infrastructure at every layer:
+
+- **BYO source** — any v0.1 source points at customer-managed registries: internal Harbor (`oci`), Artifactory (`http`/`oci`), private S3 mirror (`s3`), NIM cache server (`http`).
+- **BYO storage class** — `PVC` backend works through any RWX CSI driver. Set `storage.pvc.storageClassName: weka-rwx` / `juicefs-csi` / `alluxio-fuse` etc.
+- **BYO pre-populated PVC** — `backend: ExistingPVC` references a customer-managed PVC; Modelplane mounts without populating.
+- **BYO P2P fan-out** — Spegel / Dragonfly running in the cluster handle in-cluster distribution transparently when using `oci` source.
+- **BYO cluster** — `InferenceCluster.spec.cluster.source: Existing` (shipped in [PR #75](https://github.com/modelplaneai/modelplane/pull/75)).
+
+Regardless of which axes are BYO, Modelplane retains: artifact identity, scheduler gating (ModelReplica blocks until cache `Ready`), refcounting visible in `status.references`, per-cluster ready state, signal-bus emission, invalidation policy. Customer storage handles the bytes; Modelplane provides fleet-aware orchestration.
 
 ## Scope boundary — ModelCache vs the engine block
 
@@ -135,11 +157,12 @@ flowchart LR
 - `AllMatchingClusters` (default) — one PVC per cluster matching the selector, shared across all pods in that cluster
 - `AllMatchingNodes` is v0.2 — only fits content-addressed backend with per-node local SSDs
 
-**Invalidation in v0.1**:
-- Source version pinned via `revision` (HF) or version path (S3). The source identity *is* the cache identity.
-- Source version change → create a new ModelCache (immutable-cache pattern). The old cache stays until no ModelDeployment references it; garbage-collected by the controller when refcount hits zero.
+**Invalidation and GC in v0.1**:
+- Source version pinned via `revision` (HF) / version path (S3) / OCI digest. The source identity *is* the cache identity.
+- Tags resolve to immutable digests at hydration time; `status.resolvedDigest` records the `sha256:` pin even when the user specified `revision: main`.
+- Source version change → create a new ModelCache (immutable-cache pattern).
 - Manual re-fetch via status annotation (`modelplane.ai/refetch: "<timestamp>"`) for source-side fixes that don't change the version string.
-- TTL / LRU eviction is a v0.2 substrate feature.
+- Refcount surfaced in `status.references` (deployments using this cache). Operator retires explicitly via `kubectl delete modelcache`; PVCs reclaimed per K8s `reclaimPolicy`. No substrate-level auto-GC in v0.1.
 
 **Status in v0.1**:
 - Conditions: `Ready`, `Populated`, `Failed` per cluster
@@ -204,7 +227,9 @@ flowchart LR
 **New replication mode**:
 - `AllMatchingNodes` — pre-stage to every node in every matching cluster (per-node SSD L1). Viable because bytes are deduplicated.
 
-Market signal (Modal, Tensormesh, others) points at content-addressed as the right pattern for AI artifacts. PVC ships v0.1 fast; content-addressed wins v0.2 on dedup, cold-start, and scale.
+**GC in v0.2**: delegated to object-store lifecycle policies (S3 Lifecycle, GCS OLM, Azure Blob Lifecycle). Touch-on-access timestamps keep hot objects alive; cold objects expire after operator-configured TTL. No explicit refcounting infrastructure — TTL+touch covers it. Explicit refcounting only if a future use case forces it (chunk-level dedup with diverse owners, or strict "must-not-delete-while-referenced" compliance).
+
+Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly+OCI, KitOps) points at content-addressed as the converging pattern. PVC ships v0.1 fast; content-addressed wins v0.2 on dedup, cold-start, and scale.
 
 ## v0.3 — Substrate unification (architectural option)
 
@@ -340,6 +365,7 @@ See `examples/` for complete (ModelCache + ModelDeployment) references. Cold-sta
 - `07-v0.2-lora-adapter.yaml` *(preview)* — base model + per-tenant LoRA. *Adapter dedup across tenants; small per-adapter bytes.*
 - `08-v0.2-compiled-engine.yaml` *(preview)* — TRT-LLM compiled engine keyed by `(model, hardware, config)`. *Saves ~10-30 min compile per replica.*
 - `09-bytes-opaque.yaml` — `Bytes` kind for chat templates / eval datasets. Also illustrates cross-deployment cache reuse (refs `llama-3-3-70b` from example 01).
+- `10-byo-existing-pvc.yaml` — `ExistingPVC` backend. Customer manages PVC population externally; Modelplane mounts and orchestrates without touching the bytes.
 
 ## References
 
