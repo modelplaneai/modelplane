@@ -17,6 +17,16 @@ LLM inference cold starts are dominated by artifact loading. Weights are 140 GB 
 
 Multiple deployments share the same bytes; pre-staging belongs above the cluster layer. v0.1 stages once per cluster; v0.2+ once per fleet.
 
+## Three packaging patterns
+
+LLM serving has settled into three factorings of `(runtime, weights, optional compiled engine)`:
+
+1. **Engine fetches weights at startup.** Generic engine image (vLLM, SGLang, TGI); engine pulls weights via its native mechanism (`--model=<repo>`). Dominant pattern for OSS engines.
+2. **Engine image bakes in weights** (NIM). Runtime + optimization + weights in one OCI image. The registry handles distribution.
+3. **Runtime and artifacts stored separately.** Generic runtime image + separately-stored weights / compiled engines / tokenizers / configs. The runtime mounts artifacts at a known path and reads from there.
+
+ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1** by staging weights once per cluster instead of once per replica. **Pattern 2** (NIM) doesn't need ModelCache — its OCI registry already handles distribution (though Modelplane can still pre-pull via standard K8s mechanisms).
+
 ## Design principle: pluggable backends across the cache family
 
 ModelCache, [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issues/72), and [#73 HotPrefixPool](https://github.com/modelplaneai/modelplane/issues/73) share an architectural pattern:
@@ -124,7 +134,7 @@ Targets dense models on TensorPipeline gangs without per-pod download races, plu
 - `ReadWriteMany` PVC per cluster, sized to the source (explicit `spec.storage.pvc.sizeGiB` or derived)
 - One-shot Job pulls from source, writes to PVC, exits
 - All pods in the LWS gang (leader + workers) mount the same PVC read-only
-- ModelReplica scheduling gated on per-cluster cache `Ready` condition
+- ModelReplica scheduling gated on per-cluster cache `Ready` condition. `status.clusters[]` is the eligibility signal the fleet matcher reads — a cluster without a `Ready` cache for a referenced ModelCache is not a candidate.
 - Storage class declared on `InferenceCluster.spec.storage.storageClassName` (GCP Filestore, AWS EFS/FSx, Azure Files, BYO CSI)
 - **Fail-fast**: target cluster with no RWX storage class → matcher rejects placement; clear status condition
 - **Cluster selection**: `clusterSelector.matchLabels` is the v0.1 baseline (matches [PR #75](https://github.com/modelplaneai/modelplane/pull/75)). Once [#56](https://github.com/modelplaneai/modelplane/issues/56) lands, `clusterSelector` accepts a CEL form over `InferenceCluster` pool attributes — e.g. "clusters with at least one H100 pool with FP8 support."
@@ -299,6 +309,16 @@ All three emit typed signals into the [#74 fleet signal bus](https://github.com/
 | Effectiveness | bytes saved vs per-replica DL | prefill avoided | prefix coverage curve |
 
 `ModelService.status` surfaces a composite "cache effectiveness" view across all three — operators see "this service avoided X TB of weight pulls, Y prefill cycles, Z bytes of HBM pressure" without reading per-primitive metrics.
+
+### Locality routing
+
+The cache family feeds [#71 ModelService routing affinity](https://github.com/modelplaneai/modelplane/issues/71). The fleet gateway routes preferentially to clusters where caches are warm, in three layers:
+
+1. **Eligibility** (ModelCache) — `status.clusters[]` says which clusters have the weights staged. A cluster without `Ready` weights is not a candidate.
+2. **Warmth bonus** (HotPrefixPool) — clusters with the deployment's hot prefix KV hydrated get a routing-score boost.
+3. **Affinity hint** (KVOffloadTier) — clusters where the session's live KV is still warm get the strongest signal.
+
+Cold-start pipeline (above) covers what *new* replicas need; locality routing covers where *existing* requests go. ModelCache contributes to both — eligibility for routing decisions, weights for replica boot.
 
 ### Decision
 
