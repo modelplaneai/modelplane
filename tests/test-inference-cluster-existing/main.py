@@ -1,4 +1,5 @@
 from .lib import resource as libresource
+from .model.ai.modelplane.inferenceclass import v1alpha1 as iclv1alpha1
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
@@ -17,12 +18,29 @@ test = compositiontest.CompositionTest(
         xrdPath="apis/inferenceclusters/definition.yaml",
         timeoutSeconds=120,
         validate=False,
-        # No observedResources needed — the Existing path composes
+        extraResources=[
+            # The InferenceClass referenced by spec.nodePools[].class. No
+            # provisioning block - this class describes existing hardware.
+            libresource.model_to_fixture(
+                iclv1alpha1.InferenceClass(
+                    metadata=metav1.ObjectMeta(name="h100-8x-byo"),
+                    spec=iclv1alpha1.Spec(
+                        resources=iclv1alpha1.Resources(
+                            gpu=iclv1alpha1.Gpu(
+                                count=8,
+                                memory="80Gi",
+                            ),
+                        ),
+                    ),
+                )
+            ),
+        ],
+        # No observedResources needed - the Existing path composes
         # everything on the first pass since the kubeconfig secret is
         # user-supplied, not from a composed GKECluster.
         assertResources=[
             # Assert the XR has status populated with providerConfigRef,
-            # namespace, and GPU capacity from declared node pools.
+            # namespace, and GPU capacity from the class.
             libresource.model_to_dict(
                 icv1alpha1.InferenceCluster(
                     metadata=metav1.ObjectMeta(
@@ -36,19 +54,15 @@ test = compositiontest.CompositionTest(
                                     name="byo-cluster-kubeconfig",
                                     key="kubeconfig",
                                 ),
-                                nodePools=[
-                                    icv1alpha1.NodePool(
-                                        name="gpu-h100",
-                                        nodeCount=2,
-                                        gpu=icv1alpha1.Gpu(
-                                            acceleratorType="nvidia-h100-80gb",
-                                            acceleratorCount=8,
-                                            memory="80Gi",
-                                        ),
-                                    ),
-                                ],
                             ),
                         ),
+                        nodePools=[
+                            icv1alpha1.NodePool(
+                                name="gpu-h100",
+                                **{"class": "h100-8x-byo"},
+                                nodeCount=2,
+                            ),
+                        ],
                     ),
                     status=icv1alpha1.Status(
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
@@ -58,7 +72,7 @@ test = compositiontest.CompositionTest(
                         capacity=icv1alpha1.Capacity(
                             gpuPools=[
                                 icv1alpha1.GpuPool(
-                                    acceleratorType="nvidia-h100-80gb",
+                                    acceleratorType="",
                                     memory="80Gi",
                                     nodes=2,
                                     countPerNode=8,
@@ -68,8 +82,7 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # Assert no GKECluster is composed — cluster is user-managed.
-            # (Absence is verified by not including a GKECluster assertion.)
+            # Assert no GKECluster is composed - cluster is user-managed.
             # Assert KServeBackend is composed with the user-supplied kubeconfig.
             libresource.model_to_dict(
                 kssv1alpha1.KServeBackend(
@@ -93,7 +106,7 @@ test = compositiontest.CompositionTest(
                 )
             ),
             # Assert ClusterProviderConfig references the user-supplied
-            # kubeconfig — no GCP identity needed.
+            # kubeconfig - no GCP identity needed.
             libresource.model_to_dict(
                 k8scpcv1alpha1.ClusterProviderConfig(
                     metadata=metav1.ObjectMeta(

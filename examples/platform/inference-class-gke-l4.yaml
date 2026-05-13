@@ -1,0 +1,24 @@
+# An InferenceClass describing GKE g2-standard-8 with one NVIDIA L4 GPU.
+#
+# The provisioning block tells Modelplane how to create a node pool of
+# this class on GKE. The resources block describes what hardware a node
+# of this class exposes - used by the scheduler to match models to
+# clusters.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-l4-1x-g2
+spec:
+  description: "GKE g2-standard-8, 1x NVIDIA L4"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: g2-standard-8
+      diskSizeGb: 100
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  resources:
+    gpu:
+      count: 1
+      memory: 24Gi

@@ -61,14 +61,10 @@ spec:
                         properties:
                           name:
                             type: string
-                            description: Name of the kubeconfig Secret.
                             minLength: 1
                             maxLength: 253
                           key:
                             type: string
-                            description: >-
-                              Key within the Secret that holds the
-                              kubeconfig data.
                             default: kubeconfig
                             minLength: 1
                             maxLength: 253
@@ -77,84 +73,22 @@ spec:
                         description: >-
                           Optional reference to a Secret containing cloud
                           provider credentials for IAM-based authentication.
-                          Required for GKE clusters where the kubeconfig
-                          uses GCP IAM auth instead of embedded credentials.
                         required: [name]
                         properties:
                           name:
                             type: string
-                            description: Name of the identity Secret.
                             minLength: 1
                             maxLength: 253
                           key:
                             type: string
-                            description: >-
-                              Key within the Secret that holds the
-                              credential data.
                             default: private_key
                             minLength: 1
                             maxLength: 253
-                      nodePools:
-                        type: array
-                        description: >-
-                          Declared GPU capacity of the existing cluster.
-                          Used by the scheduler to match models to
-                          compatible clusters. If omitted, the cluster
-                          reports no GPU capacity and only models with
-                          no GPU requirements can be scheduled.
-                        maxItems: 8
-                        x-kubernetes-list-type: map
-                        x-kubernetes-list-map-keys: [name]
-                        items:
-                          type: object
-                          required: [name]
-                          properties:
-                            name:
-                              type: string
-                              maxLength: 40
-                            nodeCount:
-                              type: integer
-                              default: 1
-                              minimum: 1
-                            maxNodeCount:
-                              type: integer
-                              description: >-
-                                Maximum node count for autoscaled pools.
-                                Used instead of nodeCount when computing
-                                GPU capacity for scheduling.
-                              minimum: 1
-                            gpu:
-                              type: object
-                              required: [acceleratorType, memory]
-                              properties:
-                                acceleratorType:
-                                  type: string
-                                  description: >-
-                                    GPU accelerator type (e.g.
-                                    nvidia-h100-80gb, nvidia-tesla-a100).
-                                    Used as an informational label.
-                                  minLength: 1
-                                  maxLength: 63
-                                acceleratorCount:
-                                  type: integer
-                                  description: Number of GPUs per node.
-                                  default: 1
-                                  minimum: 1
-                                  maximum: 16
-                                memory:
-                                  type: string
-                                  description: >-
-                                    Per-GPU VRAM (e.g. "80Gi"). Used by the
-                                    scheduler to determine how many GPUs a
-                                    model needs and whether a pool has
-                                    enough capacity.
-                                  minLength: 1
-                                  maxLength: 16
                   gke:
                     type: object
                     description: >-
                       GKE cluster configuration. Required when source is GKE.
-                    required: [project, region, nodePools]
+                    required: [project, region]
                     properties:
                       project:
                         type: string
@@ -167,70 +101,53 @@ spec:
                       kubernetesVersion:
                         type: string
                         default: "1.35"
-                      nodePools:
-                        type: array
-                        minItems: 1
-                        maxItems: 8
-                        x-kubernetes-list-type: map
-                        x-kubernetes-list-map-keys: [name]
-                        items:
-                          type: object
-                          required: [name, role, machineType]
-                          properties:
-                            name:
-                              type: string
-                              maxLength: 40
-                            role:
-                              type: string
-                              enum: [System, GPU]
-                            machineType:
-                              type: string
-                            diskSizeGb:
-                              type: integer
-                              default: 100
-                            nodeCount:
-                              type: integer
-                              default: 1
-                            minNodeCount:
-                              type: integer
-                              default: 0
-                            maxNodeCount:
-                              type: integer
-                              default: 8
-                            gpu:
-                              type: object
-                              description: >-
-                                GPU configuration. Required when role is GPU.
-                              required: [acceleratorType, memory]
-                              properties:
-                                acceleratorType:
-                                  type: string
-                                  description: >-
-                                    GPU accelerator type (e.g.
-                                    nvidia-h100-80gb, nvidia-tesla-a100).
-                                    Passed to GCP when provisioning the
-                                    node pool.
-                                  minLength: 1
-                                  maxLength: 63
-                                acceleratorCount:
-                                  type: integer
-                                  description: Number of GPUs per node.
-                                  default: 1
-                                  minimum: 1
-                                  maximum: 16
-                                memory:
-                                  type: string
-                                  description: >-
-                                    Per-GPU VRAM (e.g. "80Gi"). Used by the
-                                    scheduler to determine how many GPUs a
-                                    model needs and whether a pool has
-                                    enough capacity.
-                                  minLength: 1
-                                  maxLength: 16
-                            zones:
-                              type: array
-                              items:
-                                type: string
+              nodePools:
+                type: array
+                description: >-
+                  GPU node pools available on this cluster. Each pool
+                  references an InferenceClass that describes the
+                  hardware shape and (for provisioned clusters) how to
+                  create the pool. System pools for control-plane
+                  components are provisioned automatically.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
+                items:
+                  type: object
+                  required: [name, class]
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 40
+                    class:
+                      type: string
+                      description: >-
+                        Name of the InferenceClass describing this pool's
+                        hardware.
+                      minLength: 1
+                      maxLength: 253
+                    nodeCount:
+                      type: integer
+                      default: 1
+                      minimum: 0
+                    minNodeCount:
+                      type: integer
+                      minimum: 0
+                    maxNodeCount:
+                      type: integer
+                      description: >-
+                        Maximum node count for autoscaling. Omit for
+                        fixed-size pools.
+                      minimum: 1
+                    zones:
+                      type: array
+                      description: >-
+                        Zones to restrict this node pool to. Required for
+                        provisioned pools because not all zones in a
+                        region have every GPU type.
+                      items:
+                        type: string
           status:
             type: object
             properties:
@@ -253,13 +170,11 @@ spec:
               capacity:
                 type: object
                 description: >-
-                  Declared capacity computed from the node pool config.
+                  Declared capacity derived from the referenced classes
+                  and the per-pool node counts.
                 properties:
                   gpuPools:
                     type: array
-                    description: >-
-                      GPU pools with per-device VRAM, derived from the
-                      node pool config.
                     items:
                       type: object
                       properties:
@@ -270,13 +185,11 @@ spec:
                           description: Per-GPU VRAM (e.g. "24Gi").
                         countPerNode:
                           type: integer
-                          description: GPUs per node in this pool.
                         nodes:
                           type: integer
                           description: >-
                             Number of nodes in this pool. Derived from
-                            maxNodeCount (if autoscaling) or nodeCount
-                            in the node pool spec.
+                            maxNodeCount (if autoscaling) or nodeCount.
               namespace:
                 type: string
                 description: >-

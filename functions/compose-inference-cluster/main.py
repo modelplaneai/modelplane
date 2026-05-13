@@ -4,17 +4,23 @@ This function orchestrates the internal XRs that make up an inference
 cluster. It dispatches on the cluster source (GKE, Existing) to determine
 how the cluster is obtained, then composes a KServeBackend on it.
 
-For provisioned clusters (source: GKE), it composes a GKECluster and threads
-its secrets into the backend and ClusterProviderConfig. For BYO clusters
-(source: Existing), it wires the user-supplied kubeconfig directly into the
-same resources — skipping cluster provisioning entirely.
+GPU node pools reference InferenceClasses. For provisioned (GKE)
+clusters the class's provisioning block describes how to build the pool;
+for BYO (Existing) clusters the class is a pure description of pools
+that already exist. Either way, the class's resources block populates
+status.capacity.gpuPools so the scheduler can match models.
+
+For provisioned clusters, a system node pool is injected automatically
+to host control-plane components (Envoy Gateway, KEDA, KServe etc.).
+The system pool is not exposed in the user-facing API.
 """
 
-from crossplane.function import resource, response
+from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions, metadata, secrets
 from .lib import resource as libresource
+from .model.ai.modelplane.inferenceclass import v1alpha1 as iclv1alpha1
 from .model.ai.modelplane.inferencecluster import v1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
@@ -39,11 +45,21 @@ CONDITION_TYPE_BACKEND_READY = "BackendReady"
 CONDITION_REASON_CLUSTER_RUNNING = "ClusterRunning"
 CONDITION_REASON_PROVISIONING = "Provisioning"
 CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
+CONDITION_REASON_WAITING_FOR_CLASSES = "WaitingForClasses"
 CONDITION_REASON_BACKEND_HEALTHY = "BackendHealthy"
 CONDITION_REASON_INSTALLING = "Installing"
 
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "kserve-backend"
+
+# Hardcoded system pool config. Provisioned for every GKE cluster to
+# host control-plane components (Envoy Gateway, KEDA, etc.). Not exposed
+# in the user-facing API.
+SYSTEM_POOL_NAME = "system"
+SYSTEM_POOL_MACHINE_TYPE = "e2-standard-4"
+SYSTEM_POOL_NODE_COUNT = 1
+SYSTEM_POOL_MIN_NODE_COUNT = 1
+SYSTEM_POOL_MAX_NODE_COUNT = 2
 
 
 class Composer:
@@ -51,11 +67,17 @@ class Composer:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.InferenceCluster(**resource.struct_to_dict(req.observed.composite.resource))
+        # Resolved InferenceClasses, keyed by class name. Populated by
+        # resolve_classes().
+        self.classes: dict[str, iclv1alpha1.InferenceClass] = {}
 
     def compose(self):
         cluster = self.xr.spec.cluster
         if not cluster:
             response.warning(self.rsp, "spec.cluster is required")
+            return
+
+        if not self.resolve_classes():
             return
 
         source = cluster.source
@@ -65,6 +87,43 @@ class Composer:
             self.compose_existing(cluster.existing)
         else:
             response.warning(self.rsp, f"unsupported cluster source: {source}")
+
+    def resolve_classes(self) -> bool:
+        """Declare and fetch every InferenceClass referenced by
+        spec.nodePools[].class. Returns False if any class is missing,
+        in which case the function gates and waits."""
+        pools = self.xr.spec.nodePools or []
+        class_names = sorted({p.class_ for p in pools})
+
+        for name in class_names:
+            response.require_resources(
+                self.rsp,
+                name=f"class-{name}",
+                api_version="modelplane.ai/v1alpha1",
+                kind="InferenceClass",
+                match_name=name,
+            )
+
+        missing: list[str] = []
+        for name in class_names:
+            d = request.get_required_resource(self.req, f"class-{name}")
+            if d is None:
+                missing.append(name)
+                continue
+            self.classes[name] = iclv1alpha1.InferenceClass.model_validate(d)
+
+        if missing:
+            conditions.set_condition(
+                self.rsp,
+                CONDITION_TYPE_CLUSTER_READY,
+                False,
+                CONDITION_REASON_WAITING_FOR_CLASSES,
+                f"Waiting for InferenceClasses: {', '.join(missing)}",
+            )
+            response.normal(self.rsp, f"Waiting for InferenceClasses: {', '.join(missing)}")
+            return False
+
+        return True
 
     def compose_gke(self, gke):
         """Compose an InferenceCluster backed by a Modelplane-provisioned
@@ -100,22 +159,16 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "GKE cluster ready, composing backend")
 
-        self.write_status(self.gke_gpu_pools(gke))
+        self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=gke_ready)
 
     def compose_existing(self, existing):
         """Compose an InferenceCluster backed by a user-supplied cluster.
-        No gating needed — the kubeconfig secret is provided by the user.
-
-        If identitySecretRef is provided, the identity is passed to the
-        ClusterProviderConfig and backend for cloud IAM auth (e.g.
-        GKE clusters where the kubeconfig uses GCP IAM instead of embedded
-        credentials). Without it, the kubeconfig must be self-contained."""
+        No gating needed — the kubeconfig secret is provided by the user."""
         if not existing:
             response.warning(self.rsp, "Existing cluster configuration is required when source is Existing")
             return
 
-        # Resolve the optional identity secret for cloud IAM auth.
         identity = existing.identitySecretRef if hasattr(existing, "identitySecretRef") else None
 
         self.compose_cluster_provider_config(existing.secretRef.name, existing.secretRef.key, sa_key=identity)
@@ -129,7 +182,7 @@ class Composer:
             )
         self.compose_kserve_backend(backend_secrets)
 
-        self.write_status(self.existing_gpu_pools(existing))
+        self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=True)
 
     def compose_kserve_backend(self, backend_secrets):
@@ -219,18 +272,39 @@ class Composer:
         conditions.set_condition(self.rsp, CONDITION_TYPE_BACKEND_READY, backend_ready, backend_reason)
 
     def compose_gke_cluster(self, gke):
-        """Compose a GKECluster XR from the GKE config."""
-        gke_node_pools = []
-        for pool in gke.nodePools:
-            d = pool.model_dump()
-            if "gpu" in d and d["gpu"] is not None:
-                d["gpu"] = gkev1alpha1.Gpu(**d["gpu"])
-            else:
-                d.pop("gpu", None)
-            gke_node_pools.append(gkev1alpha1.NodePool(**d))
+        """Compose a GKECluster XR.
 
-        gke_spec_kwargs = gke.model_dump()
-        gke_spec_kwargs["nodePools"] = gke_node_pools
+        Combines the cluster-level config (project, region) with the
+        hardcoded system pool and the GPU pools derived from the user's
+        node pools + referenced classes.
+        """
+        gke_node_pools: list[gkev1alpha1.NodePool] = [self.system_pool_for_gke()]
+
+        for pool in self.xr.spec.nodePools or []:
+            cls = self.classes.get(pool.class_)
+            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.gke:
+                # Class has no GKE provisioning block - can't provision
+                # this pool. Skip rather than fail; capacity reporting
+                # still works for pre-existing pools.
+                continue
+            prov = cls.spec.provisioning.gke
+            gke_node_pools.append(
+                gkev1alpha1.NodePool(
+                    name=pool.name,
+                    role="GPU",
+                    machineType=prov.machineType,
+                    diskSizeGb=prov.diskSizeGb,
+                    nodeCount=pool.nodeCount,
+                    minNodeCount=pool.minNodeCount,
+                    maxNodeCount=pool.maxNodeCount,
+                    gpu=gkev1alpha1.Gpu(
+                        acceleratorType=prov.accelerator.type,
+                        acceleratorCount=prov.accelerator.count,
+                        memory=cls.spec.resources.gpu.memory,
+                    ),
+                    zones=list(pool.zones or []),
+                )
+            )
 
         resource.update(
             self.rsp.desired.resources["gke-cluster"],
@@ -239,8 +313,25 @@ class Composer:
                     name=self.xr.metadata.name,
                     namespace=metadata.NAMESPACE_SYSTEM,
                 ),
-                spec=gkev1alpha1.Spec(**gke_spec_kwargs),
+                spec=gkev1alpha1.Spec(
+                    project=gke.project,
+                    region=gke.region,
+                    kubernetesVersion=gke.kubernetesVersion,
+                    nodePools=gke_node_pools,
+                ),
             ),
+        )
+
+    def system_pool_for_gke(self) -> gkev1alpha1.NodePool:
+        """Hardcoded system pool config for GKE clusters. Hosts the
+        Envoy Gateway, KEDA, KServe controller, etc."""
+        return gkev1alpha1.NodePool(
+            name=SYSTEM_POOL_NAME,
+            role="System",
+            machineType=SYSTEM_POOL_MACHINE_TYPE,
+            nodeCount=SYSTEM_POOL_NODE_COUNT,
+            minNodeCount=SYSTEM_POOL_MIN_NODE_COUNT,
+            maxNodeCount=SYSTEM_POOL_MAX_NODE_COUNT,
         )
 
     def compose_gke_usage(self):
@@ -269,9 +360,7 @@ class Composer:
     def resolve_gke_backend_secrets(self, gke_ready, backend_exists):
         """Resolve secrets for the backend from GKECluster status. Falls
         back to the observed backend's spec.secrets if GKECluster secrets aren't
-        available but the backend already exists. Returns a list of dicts with
-        type/name/key — the backend-specific compose methods convert to their
-        own Pydantic types."""
+        available but the backend already exists."""
         gke_secrets = self.observed_gke_secrets()
 
         if gke_ready and gke_secrets:
@@ -287,33 +376,27 @@ class Composer:
 
         return None
 
-    def gke_gpu_pools(self, gke):
-        """Compute GPU capacity from GKE node pool config."""
-        gpu_pools = []
-        for pool in gke.nodePools:
-            if pool.role != "GPU" or not pool.gpu:
-                continue
-            gpu_pools.append(
-                {
-                    "acceleratorType": pool.gpu.acceleratorType,
-                    "memory": pool.gpu.memory,
-                    "countPerNode": pool.gpu.acceleratorCount,
-                    "nodes": pool.maxNodeCount or pool.nodeCount,
-                }
-            )
-        return gpu_pools
+    def gpu_pools(self):
+        """Derive status.capacity.gpuPools from each node pool's class.
 
-    def existing_gpu_pools(self, existing):
-        """Compute GPU capacity from declared node pools."""
+        The same logic applies to both GKE and Existing clusters: the
+        class declares the per-node GPU resources, the pool declares how
+        many nodes.
+        """
         gpu_pools = []
-        for pool in existing.nodePools or []:
-            if not pool.gpu or not pool.gpu.acceleratorType:
+        for pool in self.xr.spec.nodePools or []:
+            cls = self.classes.get(pool.class_)
+            if not cls or not cls.spec.resources or not cls.spec.resources.gpu:
                 continue
+            gpu = cls.spec.resources.gpu
+            accelerator_type = ""
+            if cls.spec.provisioning and cls.spec.provisioning.gke and cls.spec.provisioning.gke.accelerator:
+                accelerator_type = cls.spec.provisioning.gke.accelerator.type
             gpu_pools.append(
                 {
-                    "acceleratorType": pool.gpu.acceleratorType,
-                    "memory": pool.gpu.memory,
-                    "countPerNode": pool.gpu.acceleratorCount,
+                    "acceleratorType": accelerator_type,
+                    "memory": gpu.memory,
+                    "countPerNode": gpu.count,
                     "nodes": pool.maxNodeCount or pool.nodeCount,
                 }
             )

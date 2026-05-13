@@ -1,0 +1,15 @@
+# An InferenceClass describing a BYO 8x H100 node pool.
+#
+# No provisioning block: this class describes hardware that already
+# exists on a bring-your-own cluster. Modelplane uses the resources
+# block to populate the cluster's status.capacity for scheduling.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: h100-8x-byo
+spec:
+  description: "BYO 8x NVIDIA H100 80GB"
+  resources:
+    gpu:
+      count: 8
+      memory: 80Gi

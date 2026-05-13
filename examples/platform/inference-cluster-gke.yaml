@@ -1,8 +1,13 @@
 # An InferenceCluster backed by a GKE cluster.
 #
-# Modelplane provisions the full GKE cluster (VPC, subnet, node pools, service
-# account, IAM bindings) and installs the inference stack (cert-manager,
-# Envoy Gateway, Prometheus, KEDA, LeaderWorkerSet).
+# Modelplane provisions the full GKE cluster (VPC, subnet, system pool,
+# GPU pools, service account, IAM bindings) and installs the inference
+# stack (cert-manager, Envoy Gateway, Prometheus, KEDA, LeaderWorkerSet).
+#
+# The system pool that hosts control-plane components is provisioned
+# automatically and is not declared here. Only GPU pools - each
+# referencing an InferenceClass that describes the hardware shape and
+# how to provision it - need to be declared.
 #
 # The modelplane.ai/cluster label is required for the ModelDeployment
 # scheduler to discover this cluster. Add additional labels to control
@@ -21,28 +26,12 @@ spec:
       project: my-gcp-project  # Replace with your GCP project ID.
       region: us-central1
 
-      nodePools:
-        # System node pool for control plane components (Envoy, etc).
-        - name: system
-          role: System
-          machineType: e2-standard-4
-          nodeCount: 1
-          minNodeCount: 1
-          maxNodeCount: 2
-
-        # GPU node pool for model serving. acceleratorType and acceleratorCount
-        # are passed to GCP when provisioning the pool. memory is the per-GPU
-        # VRAM and is used by the scheduler to compute available capacity.
-        - name: gpu-l4
-          role: GPU
-          machineType: g2-standard-8
-          gpu:
-            acceleratorType: nvidia-l4
-            acceleratorCount: 1
-            memory: 24Gi
-          nodeCount: 1
-          minNodeCount: 0
-          maxNodeCount: 4
-          zones:
-            - us-central1-a
-            - us-central1-c
+  nodePools:
+  - name: gpu-l4
+    class: gke-l4-1x-g2
+    nodeCount: 1
+    minNodeCount: 0
+    maxNodeCount: 4
+    zones:
+    - us-central1-a
+    - us-central1-c

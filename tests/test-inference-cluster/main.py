@@ -1,4 +1,5 @@
 from .lib import resource as libresource
+from .model.ai.modelplane.inferenceclass import v1alpha1 as iclv1alpha1
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
@@ -18,6 +19,33 @@ test = compositiontest.CompositionTest(
         xrdPath="apis/inferenceclusters/definition.yaml",
         timeoutSeconds=120,
         validate=False,
+        extraResources=[
+            # The InferenceClass referenced by spec.nodePools[].class.
+            libresource.model_to_fixture(
+                iclv1alpha1.InferenceClass(
+                    metadata=metav1.ObjectMeta(name="gke-l4-1x-g2"),
+                    spec=iclv1alpha1.Spec(
+                        provisioning=iclv1alpha1.Provisioning(
+                            provider="GKE",
+                            gke=iclv1alpha1.Gke(
+                                machineType="g2-standard-8",
+                                diskSizeGb=100,
+                                accelerator=iclv1alpha1.Accelerator(
+                                    type="nvidia-l4",
+                                    count=1,
+                                ),
+                            ),
+                        ),
+                        resources=iclv1alpha1.Resources(
+                            gpu=iclv1alpha1.Gpu(
+                                count=1,
+                                memory="24Gi",
+                            ),
+                        ),
+                    ),
+                )
+            ),
+        ],
         # Simulate a second reconcile where the GKECluster is observed and
         # Ready with secrets. This triggers KServeBackend and
         # ClusterProviderConfig composition.
@@ -69,7 +97,7 @@ test = compositiontest.CompositionTest(
         ],
         assertResources=[
             # Assert the XR has status populated with providerConfigRef,
-            # namespace, and GPU capacity.
+            # namespace, and GPU capacity derived from the class.
             libresource.model_to_dict(
                 icv1alpha1.InferenceCluster(
                     metadata=metav1.ObjectMeta(
@@ -81,27 +109,16 @@ test = compositiontest.CompositionTest(
                             gke=icv1alpha1.Gke(
                                 project="my-gcp-project",
                                 region="us-central1",
-                                nodePools=[
-                                    icv1alpha1.NodePoolModel(
-                                        name="system",
-                                        role="System",
-                                        machineType="e2-standard-4",
-                                    ),
-                                    icv1alpha1.NodePoolModel(
-                                        name="gpu-l4",
-                                        role="GPU",
-                                        machineType="g2-standard-8",
-                                        gpu=icv1alpha1.GpuModel(
-                                            acceleratorType="nvidia-l4",
-                                            acceleratorCount=1,
-                                            memory="24Gi",
-                                        ),
-                                        maxNodeCount=2,
-                                        zones=["us-central1-a", "us-central1-c"],
-                                    ),
-                                ],
                             ),
                         ),
+                        nodePools=[
+                            icv1alpha1.NodePool(
+                                name="gpu-l4",
+                                **{"class": "gke-l4-1x-g2"},
+                                maxNodeCount=2,
+                                zones=["us-central1-a", "us-central1-c"],
+                            ),
+                        ],
                     ),
                     status=icv1alpha1.Status(
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
@@ -121,22 +138,48 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # Assert GKECluster is composed in modelplane-system.
-            {
-                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                "kind": "GKECluster",
-                "metadata": {
-                    "name": "demo-us-central",
-                    "namespace": "modelplane-system",
-                    "annotations": {
-                        "crossplane.io/composition-resource-name": "gke-cluster",
-                    },
-                },
-                "spec": {
-                    "project": "my-gcp-project",
-                    "region": "us-central1",
-                },
-            },
+            # Assert GKECluster is composed with system pool + GPU pool
+            # derived from the InferenceClass.
+            libresource.model_to_dict(
+                gkev1alpha1.GKECluster(
+                    metadata=metav1.ObjectMeta(
+                        name="demo-us-central",
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "gke-cluster",
+                        },
+                    ),
+                    spec=gkev1alpha1.Spec(
+                        project="my-gcp-project",
+                        region="us-central1",
+                        nodePools=[
+                            gkev1alpha1.NodePool(
+                                name="system",
+                                role="System",
+                                machineType="e2-standard-4",
+                                nodeCount=1,
+                                minNodeCount=1,
+                                maxNodeCount=2,
+                            ),
+                            gkev1alpha1.NodePool(
+                                name="gpu-l4",
+                                role="GPU",
+                                machineType="g2-standard-8",
+                                diskSizeGb=100,
+                                nodeCount=1,
+                                minNodeCount=0,
+                                maxNodeCount=2,
+                                gpu=gkev1alpha1.Gpu(
+                                    acceleratorType="nvidia-l4",
+                                    acceleratorCount=1,
+                                    memory="24Gi",
+                                ),
+                                zones=["us-central1-a", "us-central1-c"],
+                            ),
+                        ],
+                    ),
+                )
+            ),
             # Assert KServeBackend is composed (gated on GKE being ready).
             libresource.model_to_dict(
                 kssv1alpha1.KServeBackend(

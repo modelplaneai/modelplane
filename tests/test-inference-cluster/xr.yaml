@@ -11,23 +11,12 @@ spec:
     gke:
       project: my-gcp-project
       region: us-central1
-      nodePools:
-      - name: system
-        role: System
-        machineType: e2-standard-4
-        nodeCount: 1
-        minNodeCount: 1
-        maxNodeCount: 2
-      - name: gpu-l4
-        role: GPU
-        machineType: g2-standard-8
-        gpu:
-          acceleratorType: nvidia-l4
-          acceleratorCount: 1
-          memory: 24Gi
-        nodeCount: 1
-        minNodeCount: 0
-        maxNodeCount: 2
-        zones:
-        - us-central1-a
-        - us-central1-c
+  nodePools:
+  - name: gpu-l4
+    class: gke-l4-1x-g2
+    nodeCount: 1
+    minNodeCount: 0
+    maxNodeCount: 2
+    zones:
+    - us-central1-a
+    - us-central1-c

@@ -12,10 +12,7 @@ spec:
       secretRef:
         name: byo-cluster-kubeconfig
         key: kubeconfig
-      nodePools:
-      - name: gpu-h100
-        nodeCount: 2
-        gpu:
-          acceleratorType: nvidia-h100-80gb
-          acceleratorCount: 8
-          memory: 80Gi
+  nodePools:
+  - name: gpu-h100
+    class: h100-8x-byo
+    nodeCount: 2

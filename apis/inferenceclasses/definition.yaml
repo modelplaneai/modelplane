@@ -1,0 +1,99 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: inferenceclasses.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: InferenceClass
+    plural: inferenceclasses
+    shortNames: [icl]
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: READY
+      type: string
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - name: AGE
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [resources]
+            properties:
+              description:
+                type: string
+                description: >-
+                  Human-readable description of the class.
+              provisioning:
+                type: object
+                description: >-
+                  How to provision a node pool of this class. Omit for
+                  classes that describe BYO node pools that already exist.
+                required: [provider]
+                properties:
+                  provider:
+                    type: string
+                    enum: [GKE]
+                  gke:
+                    type: object
+                    required: [machineType, accelerator]
+                    properties:
+                      machineType:
+                        type: string
+                        minLength: 1
+                      diskSizeGb:
+                        type: integer
+                        default: 100
+                        minimum: 10
+                      accelerator:
+                        type: object
+                        required: [type, count]
+                        properties:
+                          type:
+                            type: string
+                            description: >-
+                              GPU accelerator type passed to GCP (e.g.
+                              nvidia-l4, nvidia-h100-80gb).
+                            minLength: 1
+                            maxLength: 63
+                          count:
+                            type: integer
+                            minimum: 1
+                            maximum: 16
+              resources:
+                type: object
+                description: >-
+                  Hardware resources a node of this class exposes.
+                required: [gpu]
+                properties:
+                  gpu:
+                    type: object
+                    required: [count, memory]
+                    properties:
+                      count:
+                        type: integer
+                        description: GPUs per node.
+                        minimum: 1
+                        maximum: 16
+                      memory:
+                        type: string
+                        description: Per-GPU VRAM (e.g. "24Gi", "80Gi").
+                        minLength: 1
+                        maxLength: 16
+          status:
+            type: object
+            properties:
+              conditions:
+                type: array
+                items:
+                  type: object

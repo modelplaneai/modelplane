@@ -1,0 +1,18 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-l4-1x-g2
+spec:
+  description: "GKE g2-standard-8, 1x NVIDIA L4"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: g2-standard-8
+      diskSizeGb: 100
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  resources:
+    gpu:
+      count: 1
+      memory: 24Gi

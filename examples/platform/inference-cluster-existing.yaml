@@ -1,11 +1,12 @@
 # An InferenceCluster using an existing cluster you manage yourself.
 #
-# Provide a kubeconfig Secret so Modelplane can install the inference stack
-# and deploy models. You also need to describe the GPU node pools so the
-# scheduler knows what capacity is available.
+# Provide a kubeconfig Secret so Modelplane can install the inference
+# stack and deploy models. Each GPU pool references an InferenceClass
+# that describes the hardware - used by the scheduler to know what
+# capacity is available.
 #
-# The kubeconfig Secret must exist in the control plane cluster before creating
-# this InferenceCluster.
+# The kubeconfig Secret must exist in the control plane cluster before
+# creating this InferenceCluster.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
@@ -17,7 +18,6 @@ spec:
   cluster:
     source: Existing
     existing:
-      # A Secret containing a kubeconfig for the existing cluster.
       secretRef:
         name: byo-cluster-kubeconfig
         key: kubeconfig
@@ -28,13 +28,7 @@ spec:
       #   name: byo-cluster-sa-key
       #   key: private_key
 
-      # Describe the GPU node pools in the cluster. Modelplane doesn't manage
-      # these nodes, but needs to know what's available for scheduling.
-      # memory is the per-GPU VRAM, used to match models to clusters.
-      nodePools:
-        - name: gpu-h100
-          nodeCount: 2
-          gpu:
-            acceleratorType: nvidia-h100-80gb
-            acceleratorCount: 8
-            memory: 80Gi
+  nodePools:
+  - name: gpu-h100
+    class: h100-8x-byo
+    nodeCount: 2
