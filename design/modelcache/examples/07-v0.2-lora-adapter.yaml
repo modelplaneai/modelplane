@@ -1,0 +1,79 @@
+# v0.2 PREVIEW — LoraAdapter kind.
+#
+# Per-tenant fine-tunes are the natural multi-LoRA pattern: one base
+# model, hundreds-to-thousands of small adapters. v0.2 introduces a
+# LoraAdapter artifact kind keyed by a base-model reference; the
+# scheduler ensures the adapter only lands on clusters serving the
+# base.
+#
+# vLLM-side: engine started with --enable-lora and --lora-modules
+# pointing at the mounted adapter directory. Adapters can be hot-
+# swapped via vLLM's runtime LoRA API.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: llama-3-3-70b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: meta-llama/Llama-3.3-70B-Instruct
+  mount:
+    path: /mnt/model
+  storage:
+    backend: ContentAddressed
+    contentAddressed:
+      objectStore:
+        bucket: s3://modelplane-content-store
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: acme-support-adapter-v3
+  namespace: ml-team
+spec:
+  artifact:
+    kind: LoraAdapter
+    source:
+      huggingFace:
+        repo: acme-corp/support-llama-70b-lora-v3
+    baseRef:
+      cacheName: llama-3-3-70b               # adapter follows the base
+  mount:
+    path: /mnt/loras/acme-support-v3
+  storage:
+    backend: ContentAddressed
+    contentAddressed:
+      objectStore:
+        bucket: s3://modelplane-content-store
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: acme-support
+  namespace: ml-team
+spec:
+  replicas: 2
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 8
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --tensor-parallel-size=8
+      - --enable-lora
+      - --max-loras=4
+      - --lora-modules=acme-support-v3=/mnt/loras/acme-support-v3
+  caches:
+    - name: llama-3-3-70b
+    - name: acme-support-adapter-v3

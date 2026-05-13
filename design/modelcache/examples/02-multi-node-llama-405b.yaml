@@ -1,0 +1,64 @@
+# Multi-node serving — TensorPipeline gang, shared RWX weights.
+#
+# Llama 3.1 405B doesn't fit on one node. Two nodes of 8 GPUs each
+# (TP=8, PP=2) form one LWS gang. Both pods need the same 810 GB of
+# weights — without ModelCache, each pod would download independently
+# (impractical) and KServe explicitly requires a shared RWX volume.
+#
+# v0.1's PVC backend handles this directly: one RWX PVC populated once
+# by a Job, mounted by both leader and worker pods.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: llama-3-1-405b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: meta-llama/Llama-3.1-405B-Instruct
+        secretRef: { name: hf-token, key: token }
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+      sizeGiB: 900
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+      modelplane.ai/rdma: "true"
+  replication: AllMatchingClusters
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-3-1-405b
+  namespace: ml-team
+spec:
+  replicas: 1
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+      modelplane.ai/rdma: "true"
+  workers:
+    topology:
+      strategy: TensorPipeline
+      tensor: 8
+      pipeline: 2
+    resources:
+      cpu: "32"
+      memory: "256Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --tensor-parallel-size=8
+      - --pipeline-parallel-size=2
+      - --max-model-len=131072
+  caches:
+    - name: llama-3-1-405b

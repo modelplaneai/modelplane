@@ -1,0 +1,70 @@
+# v0.2 PREVIEW — Engine kind (compiled TensorRT-LLM).
+#
+# Compiled TRT-LLM engines are bound to a (model, hardware, config)
+# tuple — same model on different GPUs needs different compiled engines,
+# different TP shapes need different engines, etc. The Engine kind
+# keys on this tuple so the content-addressed store dedups across
+# identical tuples but namespaces correctly across distinct ones.
+#
+# Compile is expensive (minutes) and ideally happens once per tuple
+# and is reused everywhere. Engine kind is the natural place for that
+# artifact in the cache fabric.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: llama-70b-trt-h100-fp8-tp8
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Engine
+    engine:
+      runtime: TensorRT-LLM
+      version: "0.15.0"
+      hardware:
+        gpuProduct: "H100"
+        gpuCount: 8
+      modelRef:
+        repo: meta-llama/Llama-3.1-70B-Instruct
+        quantization: fp8
+      buildConfig:
+        tensorParallel: 8
+        maxBatchSize: 256
+        maxInputLen: 32768
+        maxOutputLen: 4096
+    source:
+      s3:
+        uri: s3://company-trt-engines/llama-70b-fp8-h100-tp8/v1.0.0/
+        secretRef: { name: aws-creds }
+  mount:
+    path: /mnt/engine
+  storage:
+    backend: ContentAddressed
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/gpu-class: nvidia-hopper
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-70b-trt
+  namespace: ml-team
+spec:
+  replicas: 2
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/gpu-class: nvidia-hopper
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 8
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: nvcr.io/nvidia/tensorrt-llm:0.15.0-runtime
+    args:
+      - --engine_dir=/mnt/engine
+  caches:
+    - name: llama-70b-trt-h100-fp8-tp8

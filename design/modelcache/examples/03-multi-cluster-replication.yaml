@@ -1,0 +1,57 @@
+# Multi-cluster replication — same model staged to every cluster the
+# deployment may land on.
+#
+# Production deployment of Qwen3-32B fans out to 4 replicas across
+# multiple production clusters (us-east, us-west, eu-west). ModelCache
+# pre-stages the weights to every matching cluster so any cluster the
+# scheduler picks already has the bytes ready.
+#
+# Engine starts from the local PVC; no HF traffic at replica scale-up.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen3-32b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: Qwen/Qwen3-32B
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+  replication: AllMatchingClusters
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen3-32b
+  namespace: ml-team
+spec:
+  replicas: 4
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 4
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --tensor-parallel-size=4
+  caches:
+    - name: qwen3-32b

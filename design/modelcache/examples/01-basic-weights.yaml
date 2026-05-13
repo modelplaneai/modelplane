@@ -1,0 +1,58 @@
+# Basic weights cache — single cluster, single node.
+#
+# The most common case: a single-node deployment (TP only) that wants to
+# avoid redownloading Llama 70B every time the engine pod restarts.
+#
+# ModelCache pulls weights from HuggingFace to a per-cluster RWX PVC;
+# the engine mounts it read-only and starts with --model pointing at
+# the local path.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: llama-3-3-70b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: meta-llama/Llama-3.3-70B-Instruct
+        secretRef: { name: hf-token, key: token }
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+  replication: AllMatchingClusters
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-3-3-70b
+  namespace: ml-team
+spec:
+  replicas: 2
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: prod
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 8
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --tensor-parallel-size=8
+      - --max-model-len=131072
+  caches:
+    - name: llama-3-3-70b

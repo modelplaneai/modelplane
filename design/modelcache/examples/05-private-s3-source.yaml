@@ -1,0 +1,60 @@
+# Private S3 source with credentials — air-gapped / regulated case.
+#
+# Some teams can't pull from HuggingFace (data residency, custom
+# fine-tunes, compliance). The platform team mirrors approved model
+# weights into an internal S3 bucket; ModelCache pulls from there.
+#
+# Cluster selector restricts the cache to clusters in a compliant
+# region. The Secret in this namespace holds the S3 credentials.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: company-finetune-llama-70b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      s3:
+        uri: s3://company-ml-artifacts/finetunes/llama-70b-support-v17/
+        region: eu-west-1
+        secretRef: { name: company-s3-readonly }
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: efs-rwx
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: eu-west
+      modelplane.ai/compliance: gdpr
+  replication: AllMatchingClusters
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: support-llm
+  namespace: ml-team
+spec:
+  replicas: 3
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: eu-west
+      modelplane.ai/compliance: gdpr
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 8
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --tensor-parallel-size=8
+  caches:
+    - name: company-finetune-llama-70b

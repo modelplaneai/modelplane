@@ -1,0 +1,72 @@
+# Separate Tokenizer cache — multiple ModelCaches referenced from one
+# ModelDeployment.
+#
+# Some workflows want the tokenizer staged separately — e.g. a custom
+# tokenizer different from the model's bundled one, or a tokenizer
+# update independent of the weights. v0.1 keeps one artifact per
+# ModelCache and lets ModelDeployment reference multiple caches with
+# distinct mount paths.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: mistral-small-weights
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: mistralai/Mistral-Small-3.2-24B-Instruct-2506
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: custom-mistral-tokenizer
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Tokenizer
+    source:
+      s3:
+        uri: s3://ml-team-artifacts/tokenizers/mistral-custom-v2/
+        secretRef: { name: aws-creds }
+  mount:
+    path: /mnt/tokenizer
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+      sizeGiB: 1
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: mistral-small
+  namespace: ml-team
+spec:
+  replicas: 2
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 2
+    resources:
+      cpu: "8"
+      memory: "32Gi"
+  engine:
+    image: vllm/vllm-openai:v0.11.0
+    args:
+      - --model=/mnt/model
+      - --tokenizer=/mnt/tokenizer
+      - --tensor-parallel-size=2
+  caches:
+    - name: mistral-small-weights
+    - name: custom-mistral-tokenizer
