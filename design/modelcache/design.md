@@ -25,7 +25,11 @@ LLM serving has settled into three factorings of `(runtime, weights, optional co
 2. **Engine image bakes in weights** (NIM). Runtime + optimization + weights in one OCI image. The registry handles distribution.
 3. **Runtime and artifacts stored separately.** Generic runtime image + separately-stored weights / compiled engines / tokenizers / configs. The runtime mounts artifacts at a known path and reads from there.
 
-ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1** by staging weights once per cluster instead of once per replica. **Pattern 2** (NIM) doesn't need ModelCache — its OCI registry already handles distribution (though Modelplane can still pre-pull via standard K8s mechanisms).
+ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1** by staging weights once per cluster instead of once per replica. **Pattern 2** (NIM) splits further:
+
+- **2a**: weights baked into the NIM image. No ModelCache needed; OCI registry + `engine.imagePullSecrets` + `engine.env` (for `NGC_API_KEY`) handle it.
+- **2b**: NIM image is runtime-only and fetches weights into `/opt/nim/.cache` on first run. ModelCache pre-seeds the cache dir on a PVC so replicas don't refetch (see `examples/11-nim-cache.yaml`).
+- **2c**: NIM air-gap. Customer pre-seeds the cache dir out-of-band; ModelCache `backend: ExistingPVC` mounts it (see `examples/10-byo-existing-pvc.yaml`).
 
 ## Design principle: pluggable backends across the cache family
 
@@ -79,7 +83,7 @@ v0.1 sources:
 |---|---|
 | `huggingFace` | Repo + revision + optional `HF_TOKEN` Secret. Common case for open models. |
 | `s3` | URI + region + Secret-ref credentials. Internal mirrors, private fine-tunes, compliance buckets. |
-| `http` | URL + optional bearer Secret. NIM/NGC URLs, internal artifact servers. |
+| `http` | URL + optional bearer Secret. NIM/NGC URLs (pre-seeding `/opt/nim/.cache`), internal artifact servers, signed-URL endpoints. |
 | `oci` | OCI registry artifact (Harbor / Zot / GHCR / ECR / GAR). Air-gap reference pattern; ORAS + KitOps ecosystem. |
 | `inline` | Literal bytes in the CR. Small text artifacts only — chat templates, config snippets. |
 | `configMap` | Reference an existing ConfigMap. Same shape as `inline`. |
@@ -119,7 +123,7 @@ ModelCache covers anything **mountable as a path the engine reads**. The engine 
 - Any auth-gated artifact — serving pods never see source credentials
 
 **Out of scope** (engine block):
-- Container images — NIM bundles weights into the image; the auth problem is at the registry. ModelCache could extend to image pre-pull via DaemonSet later, but it's a different mechanism.
+- Container images — image pull is `engine.imagePullSecrets` + standard kubelet pull. ModelCache could extend to image pre-pull via DaemonSet later, but it's a different mechanism. (NIM-specific note: Mode 2a baked-weight images stay in this category; Modes 2b/2c stage the NIM cache dir via ModelCache, see Three packaging patterns.)
 - Runtime env vars (`NCCL_*`, `VLLM_*`, downward-API pod-IP) — covered by `engine.env`, shipped in [PR #75](https://github.com/modelplaneai/modelplane/pull/75)
 - `shmSize` / `/dev/shm` for vLLM multi-process IPC (still open on [PR #64](https://github.com/modelplaneai/modelplane/pull/64))
 - Generic pod-spec knobs (probes, lifecycle hooks, resources)
@@ -231,7 +235,7 @@ flowchart LR
 
 **New artifact kinds**:
 - `LoraAdapter` — per-adapter mounting, base-model `baseRef`. Fits multi-LoRA serving (thousands of small adapters per base, RFT-class deployments).
-- `Engine` — compiled TRT-LLM blobs keyed by `(model, hardware, config)`. Compile cost is minutes per tuple.
+- `Engine` — compiled TRT-LLM blobs keyed by `(model, hardware, config)`. Compile cost is minutes per tuple. Extends to NIM profiles: `engine.runtime: NIM` + `profileId` makes the (GPU SM, count, precision, TP, PP, target) tuple explicit so Modelplane validates against the cluster's hardware before staging (avoids the silent wrong-profile failure where e.g. an H100 profile lands on a B200).
 
 **New replication mode**:
 - `AllMatchingNodes` — pre-stage to every node in every matching cluster (per-node SSD L1). Viable because bytes are deduplicated.
@@ -385,6 +389,7 @@ See `examples/` for complete (ModelCache + ModelDeployment) references. Cold-sta
 - `08-v0.2-compiled-engine.yaml` *(preview)* — TRT-LLM compiled engine keyed by `(model, hardware, config)`. *Saves ~10-30 min compile per replica.*
 - `09-bytes-opaque.yaml` — `Bytes` kind for chat templates / eval datasets. Also illustrates cross-deployment cache reuse (refs the `llama-3-3-70b` cache from example 01).
 - `10-byo-existing-pvc.yaml` — `ExistingPVC` backend. Customer manages PVC population externally; Modelplane mounts and orchestrates without touching the bytes.
+- `11-nim-cache.yaml` — NIM Mode 2b: pre-seed the NIM cache directory (`/opt/nim/.cache`) on a PVC so NIM replicas skip the per-pod NGC pull. *Saves several minutes per replica restart at any replica count > 1.*
 
 ## References
 

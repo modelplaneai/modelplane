@@ -1,0 +1,84 @@
+# NIM Mode 2b — pre-seed the NIM cache directory.
+#
+# Recommended NVIDIA pattern: NIM image is runtime-only; on first run
+# it fetches weights into /opt/nim/.cache for the matching profile.
+# Without ModelCache, every replica refetches independently — same
+# thundering-herd / multi-node sharing problem as HF pulls.
+#
+# This example: ModelCache stages the NIM cache dir on an RWX PVC from
+# NGC; every NIM replica mounts the populated cache at /opt/nim/.cache
+# and skips the redownload.
+#
+# Mode 2a (weights baked into image) doesn't need ModelCache at all.
+# Mode 2c (air-gap) uses backend: ExistingPVC — see example 10.
+#
+# Speedup (rough): NIM cold start with cache populated is engine boot
+# only (~10-30s). Without cache: NGC pull + load = several minutes per
+# replica, per restart. Big win at any replica count > 1.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ngc-creds
+  namespace: ml-team
+type: Opaque
+stringData:
+  NGC_API_KEY: <ngc-api-key>             # placeholder; populate via your secret manager
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: nim-llama-3-1-70b-h100
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Bytes                          # NIM cache dir is an opaque tree
+    source:
+      http:
+        url: https://api.ngc.nvidia.com/v2/models/nim/meta/llama-3.1-70b-instruct/profiles/<profile-id>
+        secretRef: { name: ngc-creds, key: NGC_API_KEY }
+  mount:
+    path: /opt/nim/.cache                # NIM finds the prefetched profile here
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+      sizeGiB: 200
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/gpu-class: nvidia-hopper
+      modelplane.ai/tier: prod
+  replication: AllMatchingClusters
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: nim-llama-70b
+  namespace: ml-team
+spec:
+  replicas: 2
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/gpu-class: nvidia-hopper
+      modelplane.ai/tier: prod
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 8
+    resources:
+      cpu: "16"
+      memory: "64Gi"
+  engine:
+    image: nvcr.io/nim/meta/llama-3.1-70b-instruct:1.0.0
+    imagePullSecrets:
+      - name: ngc-creds                  # same Secret; image registry credential
+    env:
+      - name: NGC_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: ngc-creds
+            key: NGC_API_KEY
+  caches:
+    - name: nim-llama-3-1-70b-h100
