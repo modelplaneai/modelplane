@@ -44,7 +44,7 @@ ModelCache, [#72 KVOffloadTier](https://github.com/modelplaneai/modelplane/issue
 - **Pluggable storage backend** discriminator that swaps the mechanism without changing user intent
 - **Composition function renders** the actual infrastructure (PVCs, Jobs, DaemonSets, scrape configs) from declarative intent
 
-ModelCache starts with a `PVC` backend in v0.1 and evolves to `ContentAddressed` in v0.2+ without breaking the user-facing API. The same shape applies when [#72](https://github.com/modelplaneai/modelplane/issues/72) ships with LMCache / Mooncake / NIXL backends and when [#73](https://github.com/modelplaneai/modelplane/issues/73) adds object-store / LMCache / Mooncake / Custom backends.
+ModelCache starts with a `PVC` backend in v0.1 and evolves in v0.2 to content-addressed substrates — OSS via the `Custom` webhook (BYO CAS) and commercial via Upbound's hosted `ContentAddressed` — without breaking the user-facing API. The same shape applies when [#72](https://github.com/modelplaneai/modelplane/issues/72) ships with LMCache / Mooncake / NIXL backends and when [#73](https://github.com/modelplaneai/modelplane/issues/73) adds object-store / LMCache / Mooncake / Custom backends.
 
 ## Shape
 
@@ -116,14 +116,16 @@ spec:
 
 ### Storage backends
 
-| Backend | Version | Use |
-|---|---|---|
-| `PVC` | v0.1 | Modelplane-managed RWX PVC + Job. Storage class is configurable across four CSI categories with materially different cold-start perf/cost: network filesystems (Filestore, EFS, Azure Files), parallel filesystems (FSx Lustre, Weka, BeeGFS), object-store-backed FUSE overlays (JuiceFS, Alluxio, Mountpoint-S3), and replicated block (Longhorn, Rook-Ceph). Multi-node serving prefers parallel filesystems; small dev clusters fit network filesystems. |
-| `ExistingPVC` | v0.1 | Mount a customer-managed PVC; Modelplane doesn't populate. For customers with their own staging pipeline. |
-| `ContentAddressed` | v0.2 | Object store with content-hash index + per-cluster tiered cache. Lazy loading, cross-deployment dedup. |
-| `Custom` | v0.2 | Webhook contract for non-standard caching solutions. |
+Backends partition on *who provides the storage substrate*:
 
-Backends partition on *who owns the storage substrate*: Modelplane managing a K8s PVC (`PVC`), customer managing a K8s PVC (`ExistingPVC`), Modelplane managing object storage (`ContentAddressed`), external webhook owning the contract (`Custom`).
+| Backend | Version | Substrate provider | Use |
+|---|---|---|---|
+| `PVC` | v0.1, OSS | Customer K8s + CSI | Modelplane-managed RWX PVC + Job. Storage class configurable; see CSI category note below. |
+| `ExistingPVC` | v0.1, OSS | Customer (BYO PVC) | Mount a customer-managed PVC; Modelplane doesn't populate. For customers with their own staging pipeline. |
+| `Custom` | v0.2, OSS | Third-party via webhook | Extension point — any CAS / BDN / streaming substrate plugs in by implementing the webhook contract. |
+| `ContentAddressed` | v0.2, commercial | Upbound weight delivery | Hosted content-addressed weight delivery (cross-region dedup, lazy loading, Modal-class cold-start). Customers can BYO the same substrate via `Custom`. |
+
+`PVC` storage class spans four CSI categories with materially different cold-start perf/cost: network filesystems (Filestore, EFS, Azure Files), parallel filesystems (FSx Lustre, Weka, BeeGFS), object-store-backed FUSE overlays (JuiceFS, Alluxio, Mountpoint-S3), and replicated block (Longhorn, Rook-Ceph). Multi-node serving prefers parallel filesystems; dev clusters fit network filesystems.
 
 ### BYO scenarios
 
@@ -139,22 +141,18 @@ Regardless of which axes are BYO, Modelplane retains: artifact identity, schedul
 
 ## Scope boundary — ModelCache vs the engine block
 
-ModelCache covers anything **mountable as a path the engine reads**. The engine block (defined in [PR #64](https://github.com/modelplaneai/modelplane/pull/64), partly shipped in [PR #75](https://github.com/modelplaneai/modelplane/pull/75)) handles pod-spec knobs that don't fit the mount-as-path model.
+A serving pod composes from four artifact layers. ModelCache owns Layers 2–4 (anything mountable as a path the engine reads); the engine block ([PR #64](https://github.com/modelplaneai/modelplane/pull/64), partly shipped in [PR #75](https://github.com/modelplaneai/modelplane/pull/75)) owns Layer 1 and pod-spec knobs.
 
-**In scope for ModelCache:**
-- Model weights from HF, S3, GCS, etc.
-- Compiled engine artifacts — TRT-LLM `.engine` files, vLLM compiled kernels, prefill checkpoints
-- Tokenizer files when not bundled with the model
-- Custom chat templates, engine config files (vLLM `--config-file`, SGLang `--config-yaml`)
-- Any auth-gated artifact — serving pods never see source credentials
+| Layer | What | Built by | ModelCache role |
+|---|---|---|---|
+| 1. Container image | Runtime + service code + Python deps | Customer Dockerfile, Truss / Bento / Cog, vLLM upstream, NIM | **Out of scope.** `engine.image` + `engine.imagePullSecrets`. |
+| 2. Model weights | safetensors / GGUF / ONNX | Model author (HF), customer fine-tune output | `kind: Weights` |
+| 3. Aux artifacts | Tokenizer, chat template, engine config, preprocessor | Model author, customer | `kind: Tokenizer` / `kind: Bytes` |
+| 4. Compiled engine | TRT-LLM `.engine`, vLLM CUDA-graph cache, NIM 2c cache dir, KitOps ModelKit | Customer build job, NIM team, KitOps pipeline | `kind: Engine` (v0.2) |
 
-**Out of scope** (engine block):
-- Container images — image pull is `engine.imagePullSecrets` + standard kubelet pull. ModelCache could extend to image pre-pull via DaemonSet later, but it's a different mechanism. (NIM-specific note: Mode 2a baked-weight images stay in this category; Modes 2b/2c stage the NIM cache dir via ModelCache, see Three packaging patterns.)
-- Runtime env vars (`NCCL_*`, `VLLM_*`, downward-API pod-IP) — covered by `engine.env`, shipped in [PR #75](https://github.com/modelplaneai/modelplane/pull/75)
-- `shmSize` / `/dev/shm` for vLLM multi-process IPC (still open on [PR #64](https://github.com/modelplaneai/modelplane/pull/64))
-- Generic pod-spec knobs (probes, lifecycle hooks, resources)
+Modelplane stays packaging-format-agnostic at Layer 1: Truss / Bento / Cog / KitOps / NIM all produce images that `ModelDeployment` consumes unchanged. ModelCache plugs into the assembly at Layers 2–4 regardless of which Layer 1 packaging tool produced the image.
 
-Under this boundary the engine block needs only `imagePullSecrets`, `shmSize`, and `env`.
+Also out of scope and in the engine block: runtime env vars (`NCCL_*`, `VLLM_*`, downward-API pod-IP — `engine.env`, shipped in [PR #75](https://github.com/modelplaneai/modelplane/pull/75)); `shmSize` / `/dev/shm` for vLLM multi-process IPC (still open on [PR #64](https://github.com/modelplaneai/modelplane/pull/64)); generic pod-spec knobs (probes, lifecycle hooks, resources). NIM Mode 2a (baked-weight image) needs no ModelCache; Modes 2b/2c stage the cache dir via ModelCache per Three packaging patterns. Under this boundary the engine block needs only `imagePullSecrets`, `shmSize`, and `env`.
 
 ## v0.1 — PVC backend, eager, multi-node ready
 
@@ -239,7 +237,7 @@ Without this, every pod independently downloads 810 GB (impractical) or KServe's
 
 ## v0.2 — Content-addressed backend, lazy loading, full artifact taxonomy
 
-**Storage backend**: object store keyed by content hash + per-cluster tiered cache (per-node SSD L1, object store L2). Bytes stored once globally; clusters hydrate on demand. Cross-deployment dedup is automatic — 50 deployments of Llama 3.3 70B = one set of bytes. Cross-tenant dedup is automatic for artifacts marked public; non-public artifacts require explicit opt-in.
+**Storage backend** splits OSS / commercial: `Custom` (OSS) is a webhook contract any third-party CAS / streaming / BDN-style substrate plugs into; `ContentAddressed` is hosted commercially by Upbound as a managed weight-delivery service. Both speak the same API shape — object store keyed by content hash + per-cluster tiered cache (per-node SSD L1, object store L2). Bytes stored once globally; clusters hydrate on demand. Cross-deployment dedup is automatic — 50 deployments of Llama 3.3 70B = one set of bytes. Cross-tenant dedup is automatic for artifacts marked public; non-public requires explicit opt-in.
 
 ```mermaid
 flowchart LR
@@ -264,7 +262,7 @@ flowchart LR
 
 **New artifact kinds**:
 - `Adapter` — auxiliary weights bound to a base. `baseRef` points at a `Weights` cache or NIM profile; `adapterType` discriminates (`lora` | `controlnet` | `ipadapter` | `textualInversion` | `t2iAdapter`). Fits multi-LoRA serving (thousands of small adapters per base, RFT-class deployments), customer fine-tunes layered on NIM bases, and diffusion ControlNet / IP-Adapter ecosystems.
-- `Engine` — compiled TRT-LLM blobs keyed by `(model, hardware, config)`. Compile cost is minutes per tuple. Extends to NIM profiles: `engine.runtime: NIM` + `profileId` makes the `(GPU SM, count, precision, TP, PP, target)` tuple explicit. Modelplane validates against cluster hardware before staging (avoids the silent wrong-profile failure where e.g. an H100 profile lands on a B200). Profile metadata surfaces in `status.nimProfile: { id, gpu, tp, pp, precision, target }` so deployments can verify compatibility without dereferencing the image.
+- `Engine` — compiled / hardware-pinned artifacts keyed by `(model, hardware, config)`. Covers TRT-LLM `.engine` blobs (compile cost is minutes per tuple), vLLM CUDA-graph caches, NIM Mode 2b profile cache directories, and KitOps ModelKit bundles fetched via `source.oci`. NIM profile metadata surfaces in `status.nimProfile: { id, gpu, tp, pp, precision, target }`; Modelplane validates against cluster hardware before staging (avoids silent wrong-profile failures, e.g., H100 profile on B200).
 
 **New registry resolver** (under `spec.artifact.resolvedVia`, see Sources section):
 - `nimCatalog` — `{ model: meta/llama-3.1-70b-instruct, profile: h100-tp8-fp8 }` resolves to the profile-specific NGC URL + cache layout. Survives NGC URL schema changes; reduces user-side bookkeeping over raw `http` sources.
@@ -274,7 +272,7 @@ flowchart LR
 
 **GC in v0.2**: delegated to object-store lifecycle policies (S3 Lifecycle, GCS OLM, Azure Blob Lifecycle). Touch-on-access timestamps keep hot objects alive; cold objects expire after operator-configured TTL. No explicit refcounting infrastructure — TTL+touch covers it. Explicit refcounting only if a future use case forces it (chunk-level dedup with diverse owners, or strict "must-not-delete-while-referenced" compliance).
 
-Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly + OCI, KitOps) is converging on content-addressed as the right pattern. `PVC` is the fast-to-ship v0.1 path; `ContentAddressed` wins v0.2 on dedup, cold-start, and scale.
+Market signal (Modal, Baseten BDN, Tensormesh, Run:ai, Dragonfly + OCI, KitOps) is converging on content-addressed as the right pattern. `PVC` is the fast-to-ship v0.1 OSS path; the commercial Upbound `ContentAddressed` offering and BYO `Custom` impls win v0.2 on dedup, cold-start, and scale.
 
 ## v0.3 — Substrate unification (architectural option)
 
