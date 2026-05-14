@@ -1,0 +1,36 @@
+# A ModelCache pre-stages a model artifact onto every matched
+# InferenceCluster. The cluster scheduler is unaware of the cache
+# today; deployments that need the cache mount its PVC manually (the
+# ModelDeployment.spec.caches wiring lands once the new deployment
+# shape from #75 stabilizes).
+#
+# Apply this alongside one or more InferenceClusters. Modelplane
+# creates a PVC + a hydration Job on each matched cluster. The Job
+# downloads the weights from HuggingFace into the PVC; subsequent
+# applies are no-ops because the Job's command short-circuits when
+# the PVC already has content.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: llama-3-3-70b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: meta-llama/Llama-3.3-70B-Instruct
+        revision: main
+        tokenSecretRef:
+          name: hf-token
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: standard-rwx
+      sizeGiB: 200
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: production
+  replication: AllMatchingClusters

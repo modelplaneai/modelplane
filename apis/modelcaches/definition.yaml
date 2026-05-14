@@ -1,0 +1,195 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelcaches.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelCache
+    plural: modelcaches
+    shortNames: [mc]
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: KIND
+      type: string
+      jsonPath: .spec.artifact.kind
+    - name: BACKEND
+      type: string
+      jsonPath: .spec.storage.backend
+    - name: CLUSTERS
+      type: string
+      jsonPath: .status.summary.ready
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [artifact, mount, storage]
+            properties:
+              artifact:
+                type: object
+                required: [kind, source]
+                description: >-
+                  What to stage and where to fetch it from.
+                properties:
+                  kind:
+                    type: string
+                    enum: [Weights]
+                    description: >-
+                      Artifact kind discriminator. v0.1 supports
+                      Weights only. Tokenizer, Bytes, Adapter, and
+                      Engine kinds are deferred.
+                  source:
+                    type: object
+                    description: >-
+                      Where to fetch the artifact from. Exactly one
+                      source must be set.
+                    properties:
+                      huggingFace:
+                        type: object
+                        required: [repo]
+                        properties:
+                          repo:
+                            type: string
+                            description: HuggingFace repository ID.
+                            minLength: 1
+                          revision:
+                            type: string
+                            description: >-
+                              Branch, tag, or commit SHA. Defaults to
+                              the repo's default branch.
+                          tokenSecretRef:
+                            type: object
+                            description: >-
+                              Reference to a Secret holding an HF
+                              token for gated or private repos.
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                                minLength: 1
+                              key:
+                                type: string
+                                default: HF_TOKEN
+                      s3:
+                        type: object
+                        required: [uri]
+                        properties:
+                          uri:
+                            type: string
+                            description: S3 URI (s3://bucket/prefix/).
+                            pattern: "^s3://.+"
+                          region:
+                            type: string
+                          secretRef:
+                            type: object
+                            description: >-
+                              Reference to a Secret with AWS
+                              credentials (access key + secret).
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                                minLength: 1
+              mount:
+                type: object
+                required: [path]
+                description: >-
+                  Where the artifact appears inside consuming pods.
+                properties:
+                  path:
+                    type: string
+                    description: Absolute filesystem path inside the pod.
+                    pattern: "^/.+"
+                  subPath:
+                    type: string
+                    description: Optional sub-path within the artifact.
+              storage:
+                type: object
+                required: [backend]
+                description: >-
+                  How to stage the artifact on each matched cluster.
+                properties:
+                  backend:
+                    type: string
+                    enum: [PVC]
+                    description: >-
+                      Storage backend discriminator. v0.1 supports PVC
+                      only. ContentAddressed and Custom backends are
+                      deferred.
+                  pvc:
+                    type: object
+                    required: [storageClassName, sizeGiB]
+                    description: >-
+                      PVC backend config. The composition creates a
+                      PVC + a hydration Job on each matched cluster.
+                    properties:
+                      storageClassName:
+                        type: string
+                        minLength: 1
+                        description: >-
+                          Storage class on the workload cluster. Must
+                          support ReadWriteMany if multiple replicas
+                          share a single PVC.
+                      sizeGiB:
+                        type: integer
+                        minimum: 1
+                        maximum: 10000
+                      accessMode:
+                        type: string
+                        enum: [ReadWriteOnce, ReadWriteMany, ReadOnlyMany]
+                        default: ReadWriteMany
+              clusterSelector:
+                type: object
+                description: >-
+                  Label selector to pick the InferenceClusters that
+                  stage this artifact. If omitted, all clusters match.
+                properties:
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+              replication:
+                type: string
+                enum: [AllMatchingClusters]
+                default: AllMatchingClusters
+                description: >-
+                  Replication policy. v0.1 supports
+                  AllMatchingClusters only.
+          status:
+            type: object
+            properties:
+              conditions:
+                type: array
+                items:
+                  type: object
+              summary:
+                type: object
+                description: Per-cluster ready / total counts.
+                properties:
+                  ready:
+                    type: string
+                    description: e.g. "2/3"
+              clusters:
+                type: array
+                description: Per-cluster staging status.
+                items:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                    phase:
+                      type: string
+                      enum: [Pending, Hydrating, Ready, Failed]
+                    bytesStaged:
+                      type: string
+                      description: Human-readable size (e.g. "140Gi").
+                    message:
+                      type: string
