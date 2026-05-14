@@ -42,15 +42,27 @@ spec:
                   kind:
                     type: string
                     description: >-
-                      Artifact kind discriminator. v0.1 supports
-                      Weights, Tokenizer, and Bytes. Adapter and
-                      Engine kinds are deferred to v0.2.
+                      Artifact kind discriminator. Drives validation
+                      and engine wiring, not strict content separation
+                      — a HuggingFace repo bundles weights and
+                      tokenizer files, and a `Weights` cache stages
+                      the whole bundle. Use `Tokenizer` when the
+                      tokenizer is staged independently and `Bytes`
+                      for anything that doesn't fit a typed kind.
+                      v0.1 supports Weights, Tokenizer, and Bytes;
+                      Adapter and Engine are deferred to v0.2.
                     enum: [Weights, Tokenizer, Bytes]
                   source:
                     type: object
                     description: >-
                       Where to fetch the artifact from. Exactly one
-                      source must be set.
+                      source must be set. The partition axis is fetch
+                      protocol. v0.2 adds direct fetch sources (gcs,
+                      azure, pvc-clone) here and moves registry
+                      resolvers (mlflow, kubeflow, wandb, nimCatalog)
+                      under a separate spec.artifact.resolvedVia
+                      block so this field stays at one abstraction
+                      level.
                     properties:
                       huggingFace:
                         type: object
