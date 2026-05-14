@@ -32,32 +32,24 @@ export GCP_PROJECT=my-gcp-project
 ```
 ==> Apply ModelCache
 ==> Wait for cache hydration
-    Cache hydrated in 18s
+    Cache hydrated in <Ns>
 ==> Apply ModelDeployment
 ==> Wait for replica readiness (engine boot only; no weight fetch)
-    Replica Ready in 24s
+    Replica Ready in <Ms>
 ...
 ```
 
-The "Replica Ready" timing is engine boot only — no HuggingFace pull
-on the serving pod. At Qwen 2.5 0.5B the cache hydration itself is
-~15s and replica boot is in the 20–30s range; the win is that
-**every subsequent replica restart skips the download entirely**, and
+`Replica Ready` is engine boot only — no HuggingFace pull on the
+serving pod. Subsequent replica restarts skip the download entirely;
 the same shape scales to 70B+ models where the per-replica fetch
 would otherwise be 30–60 min.
 
 ## Comparing to the un-cached path
 
-`../qwen-demo/` runs the same model without a `ModelCache`. To see
-the contrast cleanly:
-
-1. `./setup.sh` here
-2. `./demo.sh` here → note the replica boot time
-3. `./cleanup-demo.sh` here
-4. `kubectl apply -f ../qwen-demo/04-deployment.yaml` (no cache) →
-   note the replica boot time — engine spends the front of that
-   downloading Qwen weights from HuggingFace before starting
-5. `kubectl delete -f ../qwen-demo/04-deployment.yaml` to clean up
+To time the contrast directly, copy `02-deployment.yaml` to a sibling
+file, remove the `caches:` block, change `metadata.name`, and apply.
+That deployment will fetch weights from HuggingFace at engine boot;
+the timing delta vs the cached path is the cold-start speedup.
 
 ## Files
 
