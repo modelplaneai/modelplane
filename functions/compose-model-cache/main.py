@@ -314,7 +314,7 @@ class Composer:
         """Populate status.summary and status.clusters."""
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
         total = len(matched)
-        clusters_status = [v1alpha1.ClustersItem(name=name, phase=phase) for name, phase in per_cluster_phase]
+        clusters_status = [v1alpha1.Cluster(name=name, phase=phase) for name, phase in per_cluster_phase]
         status = v1alpha1.Status(
             summary=v1alpha1.Summary(ready=f"{ready_count}/{total}"),
             clusters=clusters_status,
