@@ -29,3 +29,5 @@ spec:
     # deployments side-by-side on the same cluster (one replica per
     # GPU, one GPU per node).
     nodeCount: 2
+    zones:
+    - us-central1-c
