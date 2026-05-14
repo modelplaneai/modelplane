@@ -6,10 +6,15 @@ via provider-kubernetes Objects. The Job downloads the artifact (from
 HuggingFace or S3) into the PVC; pods that mount the PVC then see the
 artifact as a local directory.
 
-v0.1 scope: Weights kind, PVC backend, HuggingFace + S3 sources,
-replication = AllMatchingClusters. ContentAddressed / Custom backends,
-Tokenizer / Bytes / Adapter / Engine kinds, BYO ExistingPVC, and
-per-cluster selector overrides are deferred.
+v0.1 surface (locked):
+- Artifact kinds: Weights, Tokenizer, Bytes
+- Sources: huggingFace, s3, http, inline (implemented); oci, configMap
+  (discriminator locked, implementation pending)
+- Storage backends: PVC, ExistingPVC
+- Replication: AllMatchingClusters
+
+Adapter / Engine kinds and ContentAddressed / Custom backends are
+deferred to v0.2 per design/modelcache/design.md.
 
 Out of scope here: ModelDeployment integration. Attaching a cache's PVC
 to a model serving pod lives in compose-model-replica and is deferred
@@ -36,18 +41,31 @@ from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 # Condition types and reasons for the ModelCache XR.
 CONDITION_TYPE_CLUSTERS_MATCHED = "ClustersMatched"
 CONDITION_TYPE_ARTIFACT_READY = "ArtifactReady"
+CONDITION_TYPE_SOURCE_IMPLEMENTED = "SourceImplemented"
 
 CONDITION_REASON_MATCHED = "Matched"
 CONDITION_REASON_NO_CLUSTERS = "NoClusters"
 CONDITION_REASON_HYDRATING = "Hydrating"
 CONDITION_REASON_STAGED = "Staged"
 CONDITION_REASON_PARTIAL = "Partial"
+CONDITION_REASON_BYO_PVC = "BYOPVC"
+CONDITION_REASON_IMPLEMENTATION_PENDING = "ImplementationPending"
+CONDITION_REASON_AVAILABLE = "Available"
 
 # Per-cluster phases reported in status.clusters[].phase.
 PHASE_PENDING = "Pending"
 PHASE_HYDRATING = "Hydrating"
 PHASE_READY = "Ready"
 PHASE_FAILED = "Failed"
+
+# Storage backend discriminators.
+BACKEND_PVC = "PVC"
+BACKEND_EXISTING_PVC = "ExistingPVC"
+
+# Source discriminators that the function knows about but hasn't fully
+# implemented yet. Surfaced as a clear condition rather than a runtime
+# failure so users can see what's missing.
+_SOURCES_NOT_YET_IMPLEMENTED = frozenset({"oci", "configMap"})
 
 # Namespace on the remote workload cluster where staging resources land.
 REMOTE_NS = metadata.NAMESPACE_REMOTE
@@ -85,6 +103,18 @@ class Composer:
     def compose(self):
         if not self.resolve_inputs():
             return
+
+        # Fail-fast on sources whose discriminator is locked for v0.1
+        # but whose implementation is still pending. Better than silently
+        # composing nothing or crashing in the hydration container.
+        if self._unimplemented_source():
+            self._set_source_unimplemented_condition()
+            self.write_status([], [])
+            return
+
+        # Source is implemented; record an affirmative condition so the
+        # XR status surfaces parity with what the backend will do.
+        conditions.set_condition(self.rsp, CONDITION_TYPE_SOURCE_IMPLEMENTED, True, CONDITION_REASON_AVAILABLE)
 
         matched = self.match_clusters()
         for cluster in matched:
@@ -145,13 +175,22 @@ class Composer:
     # --------------------------------------------------------------------- #
 
     def compose_cluster_resources(self, cluster: icv1alpha1.InferenceCluster) -> None:
-        """Compose the PVC + hydration Job Objects for one cluster.
+        """Compose the per-cluster Objects.
+
+        For backend=PVC: a PVC + a hydration Job. For backend=ExistingPVC:
+        nothing — the customer owns the PVC and the bytes; we only
+        report on per-cluster readiness in status.
 
         Both Objects are always emitted once we know about the cluster —
         omitting an Object from desired state tells Crossplane to delete
         it, which would cause the hydration to redo on every dependency
         flap.
         """
+        if self.xr.spec.storage.backend == BACKEND_EXISTING_PVC:
+            # Customer-managed PVC: nothing to compose. Per-cluster phase
+            # is derived in derive_cluster_phase().
+            return
+
         pc_name = cluster.status.providerConfigRef.name
         cluster_name = cluster.metadata.name
 
@@ -243,22 +282,60 @@ class Composer:
     # --------------------------------------------------------------------- #
 
     def _build_hydration_spec(self) -> HydrationSpec:
-        """Dispatch on the artifact source to the right hydration builder."""
+        """Dispatch on the artifact source to the right hydration builder.
+
+        Sources in _SOURCES_NOT_YET_IMPLEMENTED are filtered out earlier
+        by _unimplemented_source(); they don't reach this method.
+        """
         src = self.xr.spec.artifact.source
         if src.huggingFace:
             return _hf_hydration(src.huggingFace)
         if src.s3:
             return _s3_hydration(src.s3)
+        if src.http:
+            return _http_hydration(src.http)
+        if src.inline:
+            return _inline_hydration(src.inline)
         # XRD validation should prevent this; surface a clear error in
         # logs rather than crashing the container loop.
         return HydrationSpec(env=[], command=_FAIL_NO_SOURCE)
+
+    def _unimplemented_source(self) -> str | None:
+        """Return the source-field name if it's locked but not implemented."""
+        src = self.xr.spec.artifact.source
+        for field in _SOURCES_NOT_YET_IMPLEMENTED:
+            if getattr(src, field, None) is not None:
+                return field
+        return None
+
+    def _set_source_unimplemented_condition(self) -> None:
+        """Surface a clear condition when a v0.1 source isn't implemented yet."""
+        field = self._unimplemented_source()
+        msg = f"Source `{field}` is part of v0.1 but not yet implemented"
+        conditions.set_condition(
+            self.rsp, CONDITION_TYPE_SOURCE_IMPLEMENTED, False, CONDITION_REASON_IMPLEMENTATION_PENDING, msg
+        )
+        conditions.set_condition(
+            self.rsp, CONDITION_TYPE_ARTIFACT_READY, False, CONDITION_REASON_IMPLEMENTATION_PENDING, msg
+        )
+        response.warning(self.rsp, msg)
 
     # --------------------------------------------------------------------- #
     # Phase derivation (read-only over observed state)
     # --------------------------------------------------------------------- #
 
     def derive_cluster_phase(self, cluster_name: str) -> str:
-        """Map observed PVC + Job state to a per-cluster phase."""
+        """Map observed PVC + Job state to a per-cluster phase.
+
+        For backend=ExistingPVC we trust the customer-managed PVC and
+        report Ready immediately on every matched cluster. A future
+        refinement could check the PVC actually exists on the workload
+        cluster via a remote read; for v0.1 the surface assumes the
+        customer's pipeline has populated the claim.
+        """
+        if self.xr.spec.storage.backend == BACKEND_EXISTING_PVC:
+            return PHASE_READY
+
         pvc_key = self._pvc_key(cluster_name)
         job_key = self._job_key(cluster_name)
 
@@ -314,7 +391,7 @@ class Composer:
             self.rsp.desired.resources[self._job_key(cluster_name)].ready = fnv1.READY_TRUE
 
     def write_status(self, matched, per_cluster_phase) -> None:
-        """Populate status.summary and status.clusters."""
+        """Populate status.summary, status.clusters, status.lastHydratedAt."""
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
         total = len(matched)
         clusters_status = [v1alpha1.Cluster(name=name, phase=phase) for name, phase in per_cluster_phase]
@@ -322,7 +399,30 @@ class Composer:
             summary=v1alpha1.Summary(ready=f"{ready_count}/{total}"),
             clusters=clusters_status,
         )
+        last_hydrated = self._latest_completion_time(per_cluster_phase)
+        if last_hydrated:
+            status.lastHydratedAt = last_hydrated
         libresource.update_status(self.rsp.desired.composite, status)
+
+    def _latest_completion_time(self, per_cluster_phase) -> str | None:
+        """Most recent Job completionTime across all clusters.
+
+        provider-kubernetes surfaces the remote Job's completionTime in
+        atProvider.manifest.status.completionTime as an RFC3339 string.
+        For backend=ExistingPVC there are no Jobs; we leave the field
+        unset (the customer's pipeline owns hydration timing).
+        """
+        if self.xr.spec.storage.backend == BACKEND_EXISTING_PVC:
+            return None
+        times = []
+        for cluster_name, phase in per_cluster_phase:
+            if phase != PHASE_READY:
+                continue
+            manifest_status = self._observed_remote_status(self._job_key(cluster_name))
+            ct = manifest_status.get("completionTime")
+            if ct:
+                times.append(ct)
+        return max(times) if times else None
 
     def derive_conditions(self, matched, per_cluster_phase) -> None:
         if not matched:
@@ -333,8 +433,10 @@ class Composer:
         conditions.set_condition(self.rsp, CONDITION_TYPE_CLUSTERS_MATCHED, True, CONDITION_REASON_MATCHED)
 
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
+        existing_pvc = self.xr.spec.storage.backend == BACKEND_EXISTING_PVC
         if ready_count == len(matched):
-            conditions.set_condition(self.rsp, CONDITION_TYPE_ARTIFACT_READY, True, CONDITION_REASON_STAGED)
+            reason = CONDITION_REASON_BYO_PVC if existing_pvc else CONDITION_REASON_STAGED
+            conditions.set_condition(self.rsp, CONDITION_TYPE_ARTIFACT_READY, True, reason)
             self.rsp.desired.composite.ready = fnv1.READY_TRUE
         elif ready_count > 0:
             conditions.set_condition(self.rsp, CONDITION_TYPE_ARTIFACT_READY, False, CONDITION_REASON_PARTIAL)
@@ -346,15 +448,27 @@ class Composer:
 
         Skip steady-state events to keep `kubectl describe` quiet — only
         emit on first matching of clusters and on first full readiness.
+        For backend=ExistingPVC the cache is Ready immediately and we
+        emit a single "Adopted" event instead of a hydration milestone.
         """
+        existing_pvc = self.xr.spec.storage.backend == BACKEND_EXISTING_PVC
+        was_ready = resource.get_condition(self.req.observed.composite.resource, "Ready").status == "True"
+        now_ready = matched and all(p == PHASE_READY for _, p in per_cluster_phase)
+
+        if existing_pvc:
+            if matched and not was_ready:
+                response.normal(
+                    self.rsp,
+                    f"Adopted existing PVC {self.xr.spec.storage.existingPVC.claimName} on {len(matched)} clusters",
+                )
+            return
+
         observed_keys = self.req.observed.resources.keys()
         first_compose = all(self._pvc_key(c.metadata.name) not in observed_keys for c in matched)
         if first_compose and matched:
             names = ", ".join(c.metadata.name for c in matched)
             response.normal(self.rsp, f"Staging {self.xr.spec.artifact.kind} to {len(matched)} clusters: {names}")
 
-        was_ready = resource.get_condition(self.req.observed.composite.resource, "Ready").status == "True"
-        now_ready = matched and all(p == PHASE_READY for _, p in per_cluster_phase)
         if now_ready and not was_ready:
             response.normal(self.rsp, f"Artifact staged on all {len(matched)} clusters")
 
@@ -437,6 +551,48 @@ def _s3_hydration(s3) -> HydrationSpec:
     if s3.region:
         env.append({"name": "AWS_DEFAULT_REGION", "value": s3.region})
     command = f"set -e; {_SKIP_IF_HYDRATED}pip install --quiet awscli; aws s3 sync {s3.uri} {HYDRATION_MOUNT}"
+    return HydrationSpec(env=env, command=command)
+
+
+def _http_hydration(http) -> HydrationSpec:
+    """Build env + command for a generic HTTP(S) source.
+
+    Downloads the URL to a single file inside the PVC. For multi-file
+    artifacts use `huggingFace`, `s3`, or (when implemented) `oci`.
+    """
+    env: list[dict] = []
+    auth_arg = ""
+    if http.authSecretRef:
+        env.append(
+            {
+                "name": "AUTH_HEADER",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": http.authSecretRef.name,
+                        "key": http.authSecretRef.key or "Authorization",
+                    },
+                },
+            },
+        )
+        # Inject the header only when AUTH_HEADER is non-empty.
+        auth_arg = '${AUTH_HEADER:+-H "Authorization: ${AUTH_HEADER}"} '
+    command = (
+        f"set -e; {_SKIP_IF_HYDRATED}"
+        "apt-get update -qq && apt-get install -y -qq curl >/dev/null; "
+        f'curl -fsSL {auth_arg}-o {HYDRATION_MOUNT}/artifact "{http.url}"'
+    )
+    return HydrationSpec(env=env, command=command)
+
+
+def _inline_hydration(inline) -> HydrationSpec:
+    """Build env + command for an inline content source.
+
+    Writes the literal content to a single file inside the PVC. Content
+    travels as an env var so shell escaping isn't an issue.
+    """
+    filename = inline.filename or "artifact"
+    env: list[dict] = [{"name": "INLINE_CONTENT", "value": inline.content}]
+    command = f'set -e; {_SKIP_IF_HYDRATED}printf "%s" "$INLINE_CONTENT" > {HYDRATION_MOUNT}/{filename}'
     return HydrationSpec(env=env, command=command)
 
 

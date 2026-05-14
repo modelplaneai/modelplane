@@ -41,11 +41,11 @@ spec:
                 properties:
                   kind:
                     type: string
-                    enum: [Weights]
                     description: >-
                       Artifact kind discriminator. v0.1 supports
-                      Weights only. Tokenizer, Bytes, Adapter, and
-                      Engine kinds are deferred.
+                      Weights, Tokenizer, and Bytes. Adapter and
+                      Engine kinds are deferred to v0.2.
+                    enum: [Weights, Tokenizer, Bytes]
                   source:
                     type: object
                     description: >-
@@ -98,6 +98,94 @@ spec:
                               name:
                                 type: string
                                 minLength: 1
+                      http:
+                        type: object
+                        required: [url]
+                        description: >-
+                          Generic HTTP(S) source. Used for internal
+                          artifact servers, signed URLs, and NIM/NGC
+                          endpoints.
+                        properties:
+                          url:
+                            type: string
+                            description: >-
+                              Fully-qualified URL. The hydration Job
+                              fetches with curl.
+                            pattern: "^https?://.+"
+                          authSecretRef:
+                            type: object
+                            description: >-
+                              Optional Secret holding an Authorization
+                              header value (e.g. "Bearer <token>").
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                                minLength: 1
+                              key:
+                                type: string
+                                default: Authorization
+                      oci:
+                        type: object
+                        required: [image]
+                        description: >-
+                          OCI registry artifact (Harbor / Zot / GHCR /
+                          ECR / GAR). Fetched via ORAS. Discriminator
+                          locked for v0.1; full implementation pending.
+                        properties:
+                          image:
+                            type: string
+                            description: >-
+                              OCI artifact reference (registry/repo:tag
+                              or digest).
+                            minLength: 1
+                          pullSecretRef:
+                            type: object
+                            description: >-
+                              Optional Secret holding a Docker config
+                              JSON for registry auth.
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                                minLength: 1
+                      inline:
+                        type: object
+                        required: [content]
+                        description: >-
+                          Literal bytes embedded in the CR. Small text
+                          artifacts only — chat templates, config
+                          snippets.
+                        properties:
+                          content:
+                            type: string
+                            description: >-
+                              File content written to mount.path on
+                              hydration.
+                            minLength: 1
+                          filename:
+                            type: string
+                            description: >-
+                              Name of the file written inside the PVC.
+                              Defaults to "artifact".
+                            default: artifact
+                            minLength: 1
+                      configMap:
+                        type: object
+                        required: [name]
+                        description: >-
+                          Reference an existing ConfigMap on the
+                          workload cluster. Discriminator locked for
+                          v0.1; full implementation pending.
+                        properties:
+                          name:
+                            type: string
+                            minLength: 1
+                          key:
+                            type: string
+                            description: >-
+                              Optional single-key projection. If
+                              omitted, all keys are written as files.
               mount:
                 type: object
                 required: [path]
@@ -119,11 +207,12 @@ spec:
                 properties:
                   backend:
                     type: string
-                    enum: [PVC]
                     description: >-
-                      Storage backend discriminator. v0.1 supports PVC
-                      only. ContentAddressed and Custom backends are
-                      deferred.
+                      Storage backend discriminator. v0.1 supports
+                      PVC (Modelplane-managed) and ExistingPVC
+                      (customer-managed). ContentAddressed and Custom
+                      backends are deferred to v0.2.
+                    enum: [PVC, ExistingPVC]
                   pvc:
                     type: object
                     required: [storageClassName, sizeGiB]
@@ -146,6 +235,22 @@ spec:
                         type: string
                         enum: [ReadWriteOnce, ReadWriteMany, ReadOnlyMany]
                         default: ReadWriteMany
+                  existingPVC:
+                    type: object
+                    required: [claimName]
+                    description: >-
+                      Mount a customer-managed PVC by name. Modelplane
+                      doesn't create the PVC, doesn't hydrate it, and
+                      doesn't enforce a storage class — the customer
+                      owns the bytes. The claim must already exist on
+                      every matched cluster.
+                    properties:
+                      claimName:
+                        type: string
+                        minLength: 1
+                        description: >-
+                          Name of the existing PersistentVolumeClaim
+                          on each workload cluster.
               clusterSelector:
                 type: object
                 description: >-
@@ -169,6 +274,40 @@ spec:
                 type: array
                 items:
                   type: object
+              resolvedDigest:
+                type: string
+                description: >-
+                  Source-side digest pin recorded at hydration time
+                  (e.g. HF commit SHA, S3 ETag, OCI digest). Empty
+                  until the first cluster successfully hydrates.
+                  Populated by a follow-up that wires per-source
+                  digest capture.
+              lastHydratedAt:
+                type: string
+                format: date-time
+                description: >-
+                  Timestamp of the most recent successful hydration on
+                  any cluster.
+              bytesStaged:
+                type: string
+                description: >-
+                  Human-readable size of the staged artifact (e.g.
+                  "140Gi"). Populated by a follow-up that measures the
+                  PVC after hydration.
+              references:
+                type: array
+                description: >-
+                  ModelDeployments currently using this cache. Refcount
+                  populated by the ModelDeployment composition function
+                  once the spec.caches wiring lands (depends on #75).
+                items:
+                  type: object
+                  required: [name, namespace]
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
               summary:
                 type: object
                 description: Per-cluster ready / total counts.

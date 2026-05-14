@@ -1,0 +1,21 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: customer-staged-weights
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: meta-llama/Llama-3.3-70B-Instruct
+  mount:
+    path: /mnt/model
+  storage:
+    backend: ExistingPVC
+    existingPVC:
+      claimName: customer-llama-pvc
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: production
+  replication: AllMatchingClusters

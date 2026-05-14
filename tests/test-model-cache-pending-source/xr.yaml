@@ -1,0 +1,19 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: nim-engine-via-oci
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      oci:
+        image: nvcr.io/nim/meta/llama-3.1-70b-instruct:1.0.0
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: standard-rwx
+      sizeGiB: 200
+  replication: AllMatchingClusters
