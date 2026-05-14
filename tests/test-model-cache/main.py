@@ -48,7 +48,7 @@ _EXPECTED_JOB_MANIFEST = {
                             "-c",
                             (
                                 "set -e; "
-                                "if [ -n \"$(ls -A /mnt/artifact 2>/dev/null)\" ]; then "
+                                'if [ -n "$(ls -A /mnt/artifact 2>/dev/null)" ]; then '
                                 "  echo 'artifact already hydrated, skipping'; exit 0; "
                                 "fi; "
                                 "pip install --quiet 'huggingface_hub[cli]'; "

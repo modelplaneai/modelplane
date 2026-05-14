@@ -132,10 +132,7 @@ class Composer:
         yet; we can't compose remote resources onto it. The cluster will
         appear in a later reconcile.
         """
-        return [
-            c for c in self.clusters
-            if c.status and c.status.providerConfigRef and c.status.providerConfigRef.name
-        ]
+        return [c for c in self.clusters if c.status and c.status.providerConfigRef and c.status.providerConfigRef.name]
 
     # --------------------------------------------------------------------- #
     # Per-cluster composition (always emit; never gate behind readiness)
@@ -351,10 +348,7 @@ class Composer:
             response.normal(self.rsp, f"Staging {self.xr.spec.artifact.kind} to {len(matched)} clusters: {names}")
 
         was_ready = resource.get_condition(self.req.observed.composite.resource, "Ready").status == "True"
-        now_ready = (
-            matched
-            and all(p == PHASE_READY for _, p in per_cluster_phase)
-        )
+        now_ready = matched and all(p == PHASE_READY for _, p in per_cluster_phase)
         if now_ready and not was_ready:
             response.normal(self.rsp, f"Artifact staged on all {len(matched)} clusters")
 
@@ -436,12 +430,7 @@ def _s3_hydration(s3) -> HydrationSpec:
         )
     if s3.region:
         env.append({"name": "AWS_DEFAULT_REGION", "value": s3.region})
-    command = (
-        "set -e; "
-        f"{_SKIP_IF_HYDRATED}"
-        "pip install --quiet awscli; "
-        f"aws s3 sync {s3.uri} {HYDRATION_MOUNT}"
-    )
+    command = f"set -e; {_SKIP_IF_HYDRATED}pip install --quiet awscli; aws s3 sync {s3.uri} {HYDRATION_MOUNT}"
     return HydrationSpec(env=env, command=command)
 
 
