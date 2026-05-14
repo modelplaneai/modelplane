@@ -238,7 +238,11 @@ spec:
                         description: >-
                           Storage class on the workload cluster. Must
                           support ReadWriteMany if multiple replicas
-                          share a single PVC.
+                          share a single PVC. CSI choice (network
+                          filesystem, parallel filesystem,
+                          object-backed FUSE, replicated block) has
+                          material cold-start perf/cost implications
+                          at large model sizes.
                       sizeGiB:
                         type: integer
                         minimum: 1
