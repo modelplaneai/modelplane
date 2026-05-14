@@ -26,7 +26,9 @@ LLM serving has settled into three factorings of `(runtime, weights, optional co
 2. **Engine image bakes in weights** (NIM). Runtime + optimization + weights in one OCI image. The registry handles distribution.
 3. **Runtime and artifacts stored separately.** Generic runtime image + separately-stored weights / compiled engines / tokenizers / configs. The runtime mounts artifacts at a known path and reads from there.
 
-ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1** by staging weights once per cluster instead of once per replica. **Pattern 2** (NIM) splits further:
+These three are MECE — *mutually exclusive* (no overlap between categories) and *collectively exhaustive* (no gaps) — on the axis of *whole-artifact fetch responsibility at engine pod boot*: who pulls the bytes (engine vs registry vs external stager). Hybrid factorings (image bakes a tokenizer while runtime fetches weights; small base baked + larger variant fetched) are linear combinations of these patterns, not a fourth pattern. The doc calls out the MECE axis explicitly for each taxonomy below so the categorizations don't drift across discriminators.
+
+ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1** by staging weights once per cluster instead of once per replica. **Pattern 2** (NIM) splits further on *where the weights live × who put them there*:
 
 - **2a**: weights baked into the NIM image. No ModelCache needed; OCI registry + `engine.imagePullSecrets` + `engine.env` (for `NGC_API_KEY`) handle it.
 - **2b**: NIM image is runtime-only and fetches weights into `/opt/nim/.cache` on first run. ModelCache pre-seeds the cache dir on a PVC so replicas don't refetch (see `examples/11-nim-cache.yaml`).
@@ -78,6 +80,8 @@ spec:
 
 **Artifact kind discriminator** keeps one primitive instead of fracturing into `ModelWeights`, `EngineCache`, `LoraCache`. Kind affects validation (`Adapter` requires a `baseRef` and `adapterType`; `Engine` requires a `(model, hardware, config)` tuple) and engine wiring (adapter flags, engine-dir args). `baseRef`, `adapterType`, and engine-tuple fields are documented in `examples/07-v0.2-lora-adapter.yaml` and `examples/08-v0.2-compiled-engine.yaml`.
 
+Kind is a *validation and wiring* discriminator, not a strict content partition — the same bytes can fit multiple kinds. A HuggingFace repo bundles weights and tokenizer files together; a `Weights` cache stages the whole bundle. Use `Tokenizer` when the tokenizer is staged independently (custom vocab, separate update cadence) and `Bytes` as the explicit escape hatch for anything that doesn't fit a typed kind.
+
 **Coverage**: ModelCache is **format- and modality-agnostic**. The artifact-kind discriminator drives validation and engine wiring, but the bytes themselves are opaque — engines read whatever's at `mount.path`. Same primitive serves LLM weights (safetensors / GGUF / ONNX), embedding models (sentence-transformers dirs), multimodal VLMs (bundled vision+text safetensors with `preprocessor_config.json`), ASR / TTS bases (model + tokenizer + preprocessor configs), voice libraries (directories of reference audio), compiled engines (TRT-LLM `.engine` blobs), and arbitrary byte trees via `Bytes`. Format awareness lives in the engine, not in the cache.
 
 ### Sources
@@ -93,7 +97,22 @@ v0.1 sources:
 | `inline` | Literal bytes in the CR. Small text artifacts only — chat templates, config snippets. |
 | `configMap` | Reference an existing ConfigMap. Same shape as `inline`. |
 
-v0.2 sources: `gcs`, `azure`, `pvc-clone`, plus shim sources (`mlflow`, `kubeflowModelRegistry`, `wandb`) that resolve registry URIs into one of the v0.1 fetch sources.
+These v0.1 sources are MECE on *fetch protocol* (HF API, S3 API, plain HTTPS, OCI manifests, in-cluster K8s). `huggingFace` and `oci` are protocol-aware specializations of HTTP that the function knows how to negotiate (HF auth, OCI manifest fan-out) — they're not strict subsets at the API level.
+
+**v0.2 splits into two abstraction layers** so the API stays MECE:
+
+- **Direct fetch sources** (peer-level with v0.1 sources, under `spec.artifact.source`): `gcs`, `azure`, `pvc-clone`.
+- **Registry resolvers** (one level up, under `spec.artifact.resolvedVia`): `mlflow`, `kubeflowModelRegistry`, `wandb`, `nimCatalog`. A resolver maps a registry URI to the underlying fetch source at runtime; the user doesn't write `source` directly when `resolvedVia` is set. This keeps fetch protocols and registry resolution at distinct layers instead of mixing them as peers.
+
+```yaml
+spec:
+  artifact:
+    kind: Engine
+    resolvedVia:
+      mlflow:
+        registryUri: models://my-team/llama-finetune/3
+    # source is populated by the resolver at runtime; user usually omits it
+```
 
 ### Storage backends
 
@@ -103,6 +122,8 @@ v0.2 sources: `gcs`, `azure`, `pvc-clone`, plus shim sources (`mlflow`, `kubeflo
 | `ExistingPVC` | v0.1 | Mount a customer-managed PVC; Modelplane doesn't populate. For customers with their own staging pipeline. |
 | `ContentAddressed` | v0.2 | Object store with content-hash index + per-cluster tiered cache. Lazy loading, cross-deployment dedup. |
 | `Custom` | v0.2 | Webhook contract for non-standard caching solutions. |
+
+Backends are MECE on *who owns the storage substrate*: Modelplane managing a K8s PVC (`PVC`), customer managing a K8s PVC (`ExistingPVC`), Modelplane managing object storage (`ContentAddressed`), external webhook owning the contract (`Custom`).
 
 ### BYO scenarios
 
@@ -176,6 +197,8 @@ flowchart LR
 - `AllMatchingClusters` (default) — one PVC per cluster matching the selector, shared across all pods in that cluster
 - `AllMatchingNodes` is v0.2 — only fits the `ContentAddressed` backend with per-node local SSDs
 
+v0.1 and v0.2 modes are MECE on *replication granularity* (cluster vs node) but not on *replication selectivity* — `SingleCluster`, `KOfN`, and weighted modes for dev environments and regional canaries are intentionally out of scope for both versions. File when a concrete use case lands.
+
 **Invalidation and GC in v0.1**:
 - Source version pinned via `revision` (HF) / version path (S3) / OCI digest. The source identity *is* the cache identity.
 - Tags resolve to immutable digests at hydration time; `status.resolvedDigest` records the `sha256:` pin even when the user specified `revision: main`.
@@ -243,7 +266,7 @@ flowchart LR
 - `Adapter` — auxiliary weights bound to a base. `baseRef` points at a `Weights` cache or NIM profile; `adapterType` discriminates (`lora` | `controlnet` | `ipadapter` | `textualInversion` | `t2iAdapter`). Fits multi-LoRA serving (thousands of small adapters per base, RFT-class deployments), customer fine-tunes layered on NIM bases, and diffusion ControlNet / IP-Adapter ecosystems.
 - `Engine` — compiled TRT-LLM blobs keyed by `(model, hardware, config)`. Compile cost is minutes per tuple. Extends to NIM profiles: `engine.runtime: NIM` + `profileId` makes the `(GPU SM, count, precision, TP, PP, target)` tuple explicit. Modelplane validates against cluster hardware before staging (avoids the silent wrong-profile failure where e.g. an H100 profile lands on a B200). Profile metadata surfaces in `status.nimProfile: { id, gpu, tp, pp, precision, target }` so deployments can verify compatibility without dereferencing the image.
 
-**New shim source**:
+**New registry resolver** (under `spec.artifact.resolvedVia`, see Sources section):
 - `nimCatalog` — `{ model: meta/llama-3.1-70b-instruct, profile: h100-tp8-fp8 }` resolves to the profile-specific NGC URL + cache layout. Survives NGC URL schema changes; reduces user-side bookkeeping over raw `http` sources.
 
 **New replication mode**:
