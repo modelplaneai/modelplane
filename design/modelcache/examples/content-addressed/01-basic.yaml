@@ -1,29 +1,17 @@
-# v0.2 PREVIEW — content-addressed backend.
+# Same model as ../01-basic-weights.yaml, on the content-addressed
+# substrate. See ../README.md / content-addressed/README.md for the
+# OSS-vs-commercial provider split.
 #
-# Same model as 01-basic-weights but on a content-addressed substrate.
-# User-facing CRD is identical except for the storage.backend field.
-#
-# Provider split:
-# - `backend: ContentAddressed` is hosted commercially by Upbound as
-#   managed weight delivery (this example).
-# - `backend: Custom` is the OSS hook — same substrate shape, but the
-#   customer (or a third-party CAS) implements the webhook contract.
-#   Pick this for BYO content-addressed deployments where you don't
-#   want a managed offering.
-#
-# Behavior change (either provider):
+# Behavior change vs PVC:
 # - Bytes deduplicated across deployments (50 deployments of Llama
-#   70B = one set of bytes in the fleet, not 50).
-# - Lazy hydration: engine starts before all bytes have arrived;
-#   weights stream from object store on demand.
+#   70B = one set of bytes in the fleet).
+# - Lazy hydration: engine starts before all bytes arrive; weights
+#   stream from object store on demand.
 # - Tiered cache: per-node SSD as L1, object store as L2.
+# - vLLM cold start ~95s eager → ~14s lazy (Modal benchmark).
 #
-# Speedup (rough): vLLM cold start ~95s eager → ~14s lazy (Modal
-# benchmark, https://modal.com/blog/truly-serverless-gpus). Storage
-# drops from N copies to 1 fleet-wide.
-#
-# Migration: flip the backend field; v0.1 PVC contents stay until
-# eviction.
+# Migration: flip storage.backend from PVC; v0.1 PVC contents stay
+# until eviction.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

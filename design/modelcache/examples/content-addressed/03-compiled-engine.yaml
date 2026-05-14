@@ -1,24 +1,8 @@
-# v0.2 PREVIEW — Engine kind (compiled TensorRT-LLM).
-#
-# Compiled TRT-LLM engines are bound to a (model, hardware, config)
-# tuple — same model on different GPUs needs different compiled engines,
-# different TP shapes need different engines, etc. The Engine kind
-# keys on this tuple so the content-addressed store dedups across
-# identical tuples but namespaces correctly across distinct ones.
-#
-# Compile is expensive (minutes) and ideally happens once per tuple
-# and is reused everywhere. Engine kind is the natural place for that
-# artifact in the cache fabric.
-#
-# Speedup (rough): TRT-LLM compile is 10-30 min per tuple per replica.
-# With Engine cache: one compile per tuple, every matching replica
-# skips it. The Engine kind also fits NIM Mode 2b profile cache dirs
-# and KitOps ModelKit bundles (via source.oci) — same (model, hardware,
-# config) tuple keying applies.
-#
-# Provider note: `backend: ContentAddressed` shown here is the
-# commercial Upbound substrate; `backend: Custom` is the OSS hook for
-# BYO content-addressed setups.
+# Engine kind — compiled / hardware-pinned artifacts keyed by
+# (model, hardware, config). Compile is expensive (10-30 min) and
+# ideally happens once per tuple and is reused everywhere. The Engine
+# kind also fits NIM Mode 2b profile cache dirs and KitOps ModelKit
+# bundles (via source.oci) — same tuple keying applies.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

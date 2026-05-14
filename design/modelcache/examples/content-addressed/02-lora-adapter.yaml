@@ -1,24 +1,16 @@
-# v0.2 PREVIEW — Adapter kind (LoRA subtype).
-#
-# Per-tenant fine-tunes are the natural multi-LoRA pattern: one base
-# model, hundreds-to-thousands of small adapters. v0.2 introduces an
-# Adapter artifact kind with an adapterType discriminator (lora,
-# controlnet, ipadapter, textualInversion, t2iAdapter); the scheduler
-# ensures the adapter only lands on clusters serving the base.
+# Adapter kind (LoRA subtype) — per-tenant fine-tunes on a shared
+# base. Multi-LoRA serving: one base model, hundreds-to-thousands of
+# small adapters; the scheduler keeps adapters on clusters serving
+# the base. adapterType discriminates: lora | controlnet | ipadapter
+# | textualInversion | t2iAdapter.
 #
 # vLLM-side: engine started with --enable-lora and --lora-modules
 # pointing at the mounted adapter directory. Adapters can be hot-
 # swapped via vLLM's runtime LoRA API.
 #
-# Speedup (rough): adapter is ~50-500 MB for a rank-16 LoRA on a 70B
-# base, so download is seconds. Win is dedup across tenants (thousands
-# of adapters, one fleet copy each) and version rolls without re-staging
-# the base.
-#
-# Provider note: `backend: ContentAddressed` shown here is the
-# commercial Upbound substrate. For BYO content-addressed setups,
-# swap `backend: Custom` with the equivalent webhook target — see
-# example 06.
+# Win: adapter download is seconds (~50-500 MB for rank-16 on a 70B
+# base); dedup across tenants (thousands of adapters, one fleet copy
+# each); version rolls without re-staging the base.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

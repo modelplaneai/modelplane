@@ -31,8 +31,8 @@ The partition axis is *whole-artifact fetch responsibility at engine pod boot*: 
 ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1** by staging weights once per cluster instead of once per replica. **Pattern 2** (NIM) splits further on *where the weights live × who put them there*:
 
 - **2a**: weights baked into the NIM image. No ModelCache needed; OCI registry + `engine.imagePullSecrets` + `engine.env` (for `NGC_API_KEY`) handle it.
-- **2b**: NIM image is runtime-only and fetches weights into `/opt/nim/.cache` on first run. ModelCache pre-seeds the cache dir on a PVC so replicas don't refetch (see `examples/11-nim-cache.yaml`).
-- **2c**: NIM air-gap. Customer pre-seeds the cache dir out-of-band; ModelCache `backend: ExistingPVC` mounts it (see `examples/10-byo-existing-pvc.yaml`).
+- **2b**: NIM image is runtime-only and fetches weights into `/opt/nim/.cache` on first run. ModelCache pre-seeds the cache dir on a PVC so replicas don't refetch (see `examples/08-nim-cache.yaml`).
+- **2c**: NIM air-gap. Customer pre-seeds the cache dir out-of-band; ModelCache `backend: ExistingPVC` mounts it (see `examples/07-byo-existing-pvc.yaml`).
 
 NVIDIA's [NIM Operator](https://docs.nvidia.com/nim-operator/) (with its own `NIMService` / `NIMCache` CRDs) composes with ModelCache rather than competing — ModelCache stages the cache dir at the K8s storage layer; NIM Operator (or a bare NIM pod) consumes the mounted path. Customers already on the NIM Operator can keep using it.
 
@@ -78,7 +78,7 @@ spec:
 
 **Mount path is intrinsic to the cache.** One ModelCache, one canonical `spec.mount.path`. No per-reference override.
 
-**Artifact kind discriminator** keeps one primitive instead of fracturing into `ModelWeights`, `EngineCache`, `LoraCache`. Kind affects validation (`Adapter` requires a `baseRef` and `adapterType`; `Engine` requires a `(model, hardware, config)` tuple) and engine wiring (adapter flags, engine-dir args). `baseRef`, `adapterType`, and engine-tuple fields are documented in `examples/07-v0.2-lora-adapter.yaml` and `examples/08-v0.2-compiled-engine.yaml`.
+**Artifact kind discriminator** keeps one primitive instead of fracturing into `ModelWeights`, `EngineCache`, `LoraCache`. Kind affects validation (`Adapter` requires a `baseRef` and `adapterType`; `Engine` requires a `(model, hardware, config)` tuple) and engine wiring (adapter flags, engine-dir args). `baseRef`, `adapterType`, and engine-tuple fields are documented in `examples/content-addressed/02-lora-adapter.yaml` and `examples/content-addressed/03-compiled-engine.yaml`.
 
 Kind is a *validation and wiring* discriminator, not a strict content partition — the same bytes can fit multiple kinds. A HuggingFace repo bundles weights and tokenizer files together; a `Weights` cache stages the whole bundle. Use `Tokenizer` when the tokenizer is staged independently (custom vocab, separate update cadence) and `Bytes` as the explicit escape hatch for anything that doesn't fit a typed kind.
 
@@ -412,17 +412,22 @@ This doc is the source of truth. Issues track implementation:
 
 See `examples/` for complete (ModelCache + ModelDeployment) references. Cold-start estimates are rough order-of-magnitude (~50 MB/s typical HF pull, ~1 GB/s typical intra-region S3):
 
+**v0.1 (OSS — PVC / ExistingPVC backends):**
+
 - `01-basic-weights.yaml` — single-cluster Llama 3.3 70B. *Saves ~45 min cold start per replica.*
 - `02-multi-node-llama-405b.yaml` — 405B TensorPipeline gang with shared RWX PVC. *Saves ~3-4 hours per gang restart; unblocks the case entirely (per-pod pull would OOM KServe init).*
 - `03-multi-cluster-replication.yaml` — Qwen3-32B replicated across regions. *One ~25 min pull per cluster instead of per replica.*
 - `04-separate-tokenizer.yaml` — Weights + Tokenizer as distinct ModelCaches.
 - `05-private-s3-source.yaml` — air-gapped / GDPR. *Intra-region S3 ~10× faster than HF (~3 min vs ~30+ min for 140 GB).*
-- `06-v0.2-content-addressed.yaml` *(preview)* — same as 01 on the `ContentAddressed` backend. *vLLM 95s → ~14s ([Modal](https://modal.com/blog/truly-serverless-gpus)).*
-- `07-v0.2-lora-adapter.yaml` *(preview)* — base model + per-tenant LoRA. *Adapter dedup across tenants; small per-adapter bytes.*
-- `08-v0.2-compiled-engine.yaml` *(preview)* — TRT-LLM compiled engine keyed by `(model, hardware, config)`. *Saves ~10-30 min compile per replica.*
-- `09-bytes-opaque.yaml` — `Bytes` kind for chat templates / eval datasets. Also illustrates cross-deployment cache reuse (refs the `llama-3-3-70b` cache from example 01).
-- `10-byo-existing-pvc.yaml` — `ExistingPVC` backend. Customer manages PVC population externally; Modelplane mounts and orchestrates without touching the bytes.
-- `11-nim-cache.yaml` — NIM Mode 2b: pre-seed the NIM cache directory (`/opt/nim/.cache`) on a PVC so NIM replicas skip the per-pod NGC pull. *Saves several minutes per replica restart at any replica count > 1.*
+- `06-bytes-opaque.yaml` — `Bytes` kind for chat templates / eval datasets. Also illustrates cross-deployment cache reuse.
+- `07-byo-existing-pvc.yaml` — `ExistingPVC` backend. Customer manages PVC population externally; Modelplane mounts and orchestrates without touching the bytes.
+- `08-nim-cache.yaml` — NIM Mode 2b: pre-seed the NIM cache directory (`/opt/nim/.cache`) on a PVC. *Saves several minutes per replica restart at any replica count > 1.*
+
+**v0.2 content-addressed (`content-addressed/`):** see [content-addressed/README.md](examples/content-addressed/README.md) for the OSS-vs-commercial provider split. Same user-facing CRD shape, different substrate.
+
+- `content-addressed/01-basic.yaml` — Llama 3.3 70B. *vLLM 95s → ~14s ([Modal](https://modal.com/blog/truly-serverless-gpus)).*
+- `content-addressed/02-lora-adapter.yaml` — base model + per-tenant LoRA. *Adapter dedup across tenants.*
+- `content-addressed/03-compiled-engine.yaml` — TRT-LLM compiled engine keyed by `(model, hardware, config)`. *Saves ~10-30 min compile per replica.*
 
 ## References
 
