@@ -16,15 +16,14 @@ v0.1 surface (locked):
 Adapter / Engine kinds and ContentAddressed / Custom backends are
 deferred to v0.2 per design/modelcache/design.md.
 
-Out of scope here: ModelDeployment integration. Attaching a cache's PVC
-to a model serving pod lives in compose-model-replica and is deferred
-until the new ModelDeployment shape (PR #75) stabilizes.
-
-TODO(after-#75-lands): wire ModelDeployment.spec.caches into
-compose-model-replica — resolve the referenced ModelCache, gate the
-ModelReplica on per-cluster cache Ready, and inject the PVC volume +
-volumeMount + engine-arg rewrites into the LLMInferenceService pod
-spec. Also rebase this PR's base from `demonstration` to `main`.
+ModelDeployment integration lives in compose-model-replica:
+spec.caches: [{ name }] on a ModelDeployment threads through to the
+serving stack's model.uri as `pvc://<cache-pvc-name>`, where the PVC
+name is derived from lib.naming.modelcache_pvc_name() and matches
+the PVC compose-model-cache creates on the workload cluster.
+Per-cluster scheduling gates on cache Ready (a future refinement;
+v0.1 trusts that the cache hydrates before the engine pod is
+scheduled).
 """
 
 from dataclasses import dataclass
