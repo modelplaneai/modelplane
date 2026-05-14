@@ -1,0 +1,28 @@
+# Single InferenceCluster for the qwen-cached-demo.
+#
+# source: GKE → Modelplane provisions the GKE cluster, installs the
+# inference stack, and registers it in the fleet. Requires:
+# - GCP project ID exported as $GCP_PROJECT (substituted by setup.sh)
+# - Crossplane GCP provider configured with credentials
+# - GPU quota in the chosen region for nvidia-l4 on g2-standard-8
+#
+# To reuse an existing GKE cluster instead, change source: GKE to
+# source: Existing and add a secretRef pointing at a kubeconfig
+# Secret in modelplane-system (see ../qwen-demo/03-cluster.yaml).
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: qwen-cached-demo
+  labels:
+    modelplane.ai/cluster: "true"
+    modelplane.ai/region: us-central
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: ${GCP_PROJECT}
+      region: us-central1
+  nodePools:
+  - name: gpu-l4
+    class: gke-l4-1x-g2
+    nodeCount: 1
