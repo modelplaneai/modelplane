@@ -14,6 +14,12 @@ per-cluster selector overrides are deferred.
 Out of scope here: ModelDeployment integration. Attaching a cache's PVC
 to a model serving pod lives in compose-model-replica and is deferred
 until the new ModelDeployment shape (PR #75) stabilizes.
+
+TODO(after-#75-lands): wire ModelDeployment.spec.caches into
+compose-model-replica — resolve the referenced ModelCache, gate the
+ModelReplica on per-cluster cache Ready, and inject the PVC volume +
+volumeMount + engine-arg rewrites into the LLMInferenceService pod
+spec. Also rebase this PR's base from `demonstration` to `main`.
 """
 
 from dataclasses import dataclass
