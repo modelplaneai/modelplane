@@ -26,7 +26,7 @@ LLM serving has settled into three factorings of `(runtime, weights, optional co
 2. **Engine image bakes in weights** (NIM). Runtime + optimization + weights in one OCI image. The registry handles distribution.
 3. **Runtime and artifacts stored separately.** Generic runtime image + separately-stored weights / compiled engines / tokenizers / configs. The runtime mounts artifacts at a known path and reads from there.
 
-These three are MECE — *mutually exclusive* (no overlap between categories) and *collectively exhaustive* (no gaps) — on the axis of *whole-artifact fetch responsibility at engine pod boot*: who pulls the bytes (engine vs registry vs external stager). Hybrid factorings (image bakes a tokenizer while runtime fetches weights; small base baked + larger variant fetched) are linear combinations of these patterns, not a fourth pattern. The doc calls out the MECE axis explicitly for each taxonomy below so the categorizations don't drift across discriminators.
+The partition axis is *whole-artifact fetch responsibility at engine pod boot*: who pulls the bytes (engine vs registry vs external stager). The three patterns are mutually exclusive on that axis. Hybrid factorings (image bakes a tokenizer while runtime fetches weights; small base baked + larger variant fetched) are linear combinations of these patterns, not a fourth pattern. The doc names the discriminator axis explicitly for each taxonomy below so the categorizations don't drift across axes.
 
 ModelCache is the v0.1 primitive for **Pattern 3** and accelerates **Pattern 1** by staging weights once per cluster instead of once per replica. **Pattern 2** (NIM) splits further on *where the weights live × who put them there*:
 
@@ -97,12 +97,12 @@ v0.1 sources:
 | `inline` | Literal bytes in the CR. Small text artifacts only — chat templates, config snippets. |
 | `configMap` | Reference an existing ConfigMap. Same shape as `inline`. |
 
-These v0.1 sources are MECE on *fetch protocol* (HF API, S3 API, plain HTTPS, OCI manifests, in-cluster K8s). `huggingFace` and `oci` are protocol-aware specializations of HTTP that the function knows how to negotiate (HF auth, OCI manifest fan-out) — they're not strict subsets at the API level.
+The partition axis here is *fetch protocol* (HF API, S3 API, plain HTTPS, OCI manifests, in-cluster K8s). `huggingFace` and `oci` are protocol-aware specializations of HTTP that the function knows how to negotiate (HF auth, OCI manifest fan-out) — they're not strict subsets at the API level.
 
-**v0.2 splits into two abstraction layers** so the API stays MECE:
+**v0.2 splits into two abstraction layers** so fetch protocols and registry resolvers stay at one level each, rather than mixing as peers:
 
 - **Direct fetch sources** (peer-level with v0.1 sources, under `spec.artifact.source`): `gcs`, `azure`, `pvc-clone`.
-- **Registry resolvers** (one level up, under `spec.artifact.resolvedVia`): `mlflow`, `kubeflowModelRegistry`, `wandb`, `nimCatalog`. A resolver maps a registry URI to the underlying fetch source at runtime; the user doesn't write `source` directly when `resolvedVia` is set. This keeps fetch protocols and registry resolution at distinct layers instead of mixing them as peers.
+- **Registry resolvers** (one level up, under `spec.artifact.resolvedVia`): `mlflow`, `kubeflowModelRegistry`, `wandb`, `nimCatalog`. A resolver maps a registry URI to the underlying fetch source at runtime; the user doesn't write `source` directly when `resolvedVia` is set.
 
 ```yaml
 spec:
@@ -123,7 +123,7 @@ spec:
 | `ContentAddressed` | v0.2 | Object store with content-hash index + per-cluster tiered cache. Lazy loading, cross-deployment dedup. |
 | `Custom` | v0.2 | Webhook contract for non-standard caching solutions. |
 
-Backends are MECE on *who owns the storage substrate*: Modelplane managing a K8s PVC (`PVC`), customer managing a K8s PVC (`ExistingPVC`), Modelplane managing object storage (`ContentAddressed`), external webhook owning the contract (`Custom`).
+Backends partition on *who owns the storage substrate*: Modelplane managing a K8s PVC (`PVC`), customer managing a K8s PVC (`ExistingPVC`), Modelplane managing object storage (`ContentAddressed`), external webhook owning the contract (`Custom`).
 
 ### BYO scenarios
 
@@ -197,7 +197,7 @@ flowchart LR
 - `AllMatchingClusters` (default) — one PVC per cluster matching the selector, shared across all pods in that cluster
 - `AllMatchingNodes` is v0.2 — only fits the `ContentAddressed` backend with per-node local SSDs
 
-v0.1 and v0.2 modes are MECE on *replication granularity* (cluster vs node) but not on *replication selectivity* — `SingleCluster`, `KOfN`, and weighted modes for dev environments and regional canaries are intentionally out of scope for both versions. File when a concrete use case lands.
+These modes cover *replication granularity* (cluster vs node) but not *replication selectivity* — `SingleCluster`, `KOfN`, and weighted modes for dev environments and regional canaries are intentionally out of scope for both versions. File when a concrete use case lands.
 
 **Invalidation and GC in v0.1**:
 - Source version pinned via `revision` (HF) / version path (S3) / OCI digest. The source identity *is* the cache identity.
