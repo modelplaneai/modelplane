@@ -10,6 +10,10 @@
 # Speedup (rough): intra-region S3 typically ~1 GB/s vs HF ~50 MB/s.
 # A 140 GB model stages in ~3 min on S3 vs ~45 min on HF, and the
 # bytes never leave the compliant region.
+#
+# Prerequisite: the Secret below must have keys `access_key` and
+# `secret_key` (these names are fixed — the hydration Job mounts them
+# as AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars).
 
 apiVersion: v1
 kind: Secret

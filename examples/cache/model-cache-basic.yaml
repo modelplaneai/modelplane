@@ -4,13 +4,22 @@
 # RWX PVC; a downstream ModelDeployment mounts it at /mnt/model
 # instead of redownloading on every replica boot.
 #
-# Apply this alongside one or more InferenceClusters labeled
+# Apply alongside one or more InferenceClusters labeled
 # modelplane.ai/tier=production. Modelplane composes a PVC and a
 # one-shot hydration Job per matched cluster; subsequent applies are
 # no-ops because the Job short-circuits when the PVC already has
 # content. ModelDeployment.spec.caches wiring lands once the new
 # deployment shape from #75 stabilizes; until then this cache is
 # applied on its own to demonstrate fleet-aware staging.
+#
+# Prerequisite: create a Secret named `hf-token` in the `ml-team`
+# namespace with key `HF_TOKEN` holding your HuggingFace access token
+# (gated repos like meta-llama/Llama-3.3-70B-Instruct require one).
+# Drop `tokenSecretRef` entirely for ungated models.
+#
+#   kubectl create secret generic hf-token -n ml-team \
+#     --from-literal=HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
+
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
 metadata:
@@ -25,6 +34,8 @@ spec:
         revision: main
         tokenSecretRef:
           name: hf-token
+          # key defaults to HF_TOKEN; override if your Secret uses a
+          # different key.
   mount:
     path: /mnt/model
   storage:
