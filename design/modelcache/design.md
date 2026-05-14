@@ -22,7 +22,7 @@ Multiple deployments share the same bytes; pre-staging belongs above the cluster
 
 LLM serving has settled into three factorings of `(runtime, weights, optional compiled engine)`:
 
-1. **Engine fetches weights at startup.** Generic engine image (vLLM, SGLang, TGI); engine pulls weights via its native mechanism (`--model=<repo>`). Dominant pattern for OSS engines.
+1. **Engine fetches weights at startup.** Generic engine image (vLLM, SGLang, TGI); the engine flag (`--model`, `--model-path`, `MODEL_ID`) natively addresses local-filesystem paths and HuggingFace repos. HTTP / cloud-object / custom URIs require downloader plugins. Dominant pattern for OSS engines on small-to-mid model sizes.
 2. **Engine image bakes in weights** (NIM). Runtime + optimization + weights in one OCI image. The registry handles distribution.
 3. **Runtime and artifacts stored separately.** Generic runtime image + separately-stored weights / compiled engines / tokenizers / configs. The runtime mounts artifacts at a known path and reads from there.
 
@@ -118,7 +118,7 @@ spec:
 
 | Backend | Version | Use |
 |---|---|---|
-| `PVC` | v0.1 | Modelplane-managed RWX PVC + Job. Storage class is configurable — any RWX CSI works (Filestore, EFS, FSx, Azure Files, Lustre, JuiceFS, Weka, Alluxio). |
+| `PVC` | v0.1 | Modelplane-managed RWX PVC + Job. Storage class is configurable across four CSI categories with materially different cold-start perf/cost: network filesystems (Filestore, EFS, Azure Files), parallel filesystems (FSx Lustre, Weka, BeeGFS), object-store-backed FUSE overlays (JuiceFS, Alluxio, Mountpoint-S3), and replicated block (Longhorn, Rook-Ceph). Multi-node serving prefers parallel filesystems; small dev clusters fit network filesystems. |
 | `ExistingPVC` | v0.1 | Mount a customer-managed PVC; Modelplane doesn't populate. For customers with their own staging pipeline. |
 | `ContentAddressed` | v0.2 | Object store with content-hash index + per-cluster tiered cache. Lazy loading, cross-deployment dedup. |
 | `Custom` | v0.2 | Webhook contract for non-standard caching solutions. |
@@ -186,7 +186,7 @@ flowchart LR
   PVC -->|mount /mnt/model| POD2
 ```
 
-**Why Job-based, not init-container**: KServe's storage-initializer runs inside the serving pod's init container and OOMs at 4/8/16 GiB on Kimi K2 / Llama 405B. A Job has its own pod and resource limits, sized for the artifact independently of the serving pod.
+**Why a Job, not an init container.** Init containers share the serving pod's resource limits, which is structurally unworkable for any artifact larger than the pod's reasonable memory budget — KServe's storage-initializer hits this and OOMs at 4/8/16 GiB on Kimi K2 / Llama 405B. The fix isn't tuning limits; it's moving hydration to a different execution location. The choice axis here is *where the bytes-mover runs relative to the serving pod*, and the prior art lines up across categories: init container (KServe today, broken at scale) → external Job with own limits (ModelCache v0.1, here) → DaemonSet pre-staging (Run:ai) → CSI / FUSE streaming (Modal, Baseten BDN, ModelCache v0.2). The trajectory across our own versions follows the same axis.
 
 **Artifact kinds in v0.1**:
 - `Weights` — primary case
