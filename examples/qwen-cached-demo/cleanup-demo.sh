@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Tear down the demo workload only — keeps the InferenceCluster and
-# shared infra so you can re-run demo.sh quickly.
+# Tear down both demo workloads (cached + uncached) — keeps the
+# InferenceCluster and shared infra so you can re-run demo.sh
+# quickly.
 set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 
-echo "==> Delete ModelService"
+echo "==> Delete ModelServices"
 kubectl delete --ignore-not-found -f "${DIR}/03-service.yaml"
+kubectl delete --ignore-not-found -f "${DIR}/03b-service-uncached.yaml"
 
-echo "==> Delete ModelDeployment"
+echo "==> Delete ModelDeployments"
 kubectl delete --ignore-not-found -f "${DIR}/02-deployment.yaml"
+kubectl delete --ignore-not-found -f "${DIR}/02b-deployment-uncached.yaml"
 
 echo "==> Delete ModelCache"
 kubectl delete --ignore-not-found -f "${DIR}/01-cache.yaml"

@@ -1,0 +1,13 @@
+# Expose the uncached comparison deployment via a unified endpoint.
+#
+#   kubectl get ms qwen-uncached-demo -n ml-team -o jsonpath='{.status.address}'
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen-uncached-demo
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-uncached-demo

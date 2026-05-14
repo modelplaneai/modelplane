@@ -25,4 +25,7 @@ spec:
   nodePools:
   - name: gpu-l4
     class: gke-l4-1x-g2
-    nodeCount: 1
+    # Two L4 nodes so the demo can run the cached and uncached
+    # deployments side-by-side on the same cluster (one replica per
+    # GPU, one GPU per node).
+    nodeCount: 2

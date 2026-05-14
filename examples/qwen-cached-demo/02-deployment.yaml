@@ -11,7 +11,7 @@ metadata:
   name: qwen-cached-demo
   namespace: ml-team
 spec:
-  replicas: 2
+  replicas: 1
   workers:
     topology:
       strategy: Tensor
