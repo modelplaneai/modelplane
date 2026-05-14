@@ -91,11 +91,12 @@ class Composer:
         return next(c for c in self.xr.spec.workers.template.spec.containers if c.name == "engine")
 
     def compose_model_serving(self):
-        """Compose the LLMInferenceService on the remote cluster."""
+        """Compose the model serving resource on the remote cluster."""
         topology = self.xr.spec.workers.topology
         template = self.xr.spec.workers.template
         self.engine = self._engine_container()
         engine = self.engine
+        cache_ref = self.xr.spec.caches[0].name if self.xr.spec.caches else None
 
         gpu_per_pod = int(topology.tensor)
         multi_node = int(topology.pipeline or 1) > 1
@@ -104,9 +105,13 @@ class Composer:
         # to build the HuggingFace URI that KServe requires. Strip the
         # --model= arg from the container args — KServe handles model
         # fetching via model.uri and invokes the engine with the local
-        # model path.
+        # model path. When a cache is referenced we override the URI
+        # with pvc://<cache-pvc> so the engine reads from the cache.
         #
         # TODO(negz): Stop doing this when we drop KServe. It's a hack.
+        # TODO(rebase): re-thread cache_ref into model.uri override
+        # (was at the llmis_spec construction site; new shape needs
+        # verification).
         model_name = ""
         container_args = []
         for arg in list(engine.args or []):
@@ -119,8 +124,19 @@ class Composer:
         pod_spec = self._build_pod_spec(template, container)
         llmis_template = self._build_llmis_template(template, pod_spec)
 
+        # Model source: a referenced cache short-circuits the boot-time
+        # fetch by pointing at the cache's pre-populated PVC on the
+        # workload cluster; otherwise fall back to fetching from the
+        # source identified by --model=.
+        if cache_ref:
+            model_uri = f"pvc://{naming.modelcache_pvc_name(cache_ref)}"
+        elif model_name:
+            model_uri = f"hf://{model_name}"
+        else:
+            model_uri = "hf://unknown"
+
         llmis_spec: dict = {
-            "model": {"uri": f"hf://{model_name}" if model_name else "hf://unknown"},
+            "model": {"uri": model_uri},
             "replicas": 1,
             "template": llmis_template,
             "router": {"gateway": {}, "route": {}},

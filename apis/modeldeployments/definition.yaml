@@ -185,6 +185,24 @@ spec:
                               properties:
                                 name:
                                   type: string
+              caches:
+                type: array
+                description: >-
+                  ModelCaches to mount into the engine pods. v0.1
+                  supports a single cache reference; the workload-
+                  cluster PVC managed by the named ModelCache is
+                  mounted via KServe (model.uri = pvc://...) so the
+                  engine reads weights from the cache instead of
+                  fetching them at boot.
+                maxItems: 1
+                items:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                      description: ModelCache resource name in the same namespace.
+                      minLength: 1
           status:
             type: object
             properties:

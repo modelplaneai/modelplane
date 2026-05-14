@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, metadata
+from .lib import conditions, metadata, naming
 from .lib import resource as libresource
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.modelcache import v1alpha1
@@ -477,10 +477,10 @@ class Composer:
     # --------------------------------------------------------------------- #
 
     def _pvc_name(self) -> str:
-        return f"modelcache-{self.xr.metadata.name}"
+        return naming.modelcache_pvc_name(self.xr.metadata.name)
 
     def _job_name(self) -> str:
-        return f"modelcache-{self.xr.metadata.name}-hydrate"
+        return f"{naming.modelcache_pvc_name(self.xr.metadata.name)}-hydrate"
 
     def _pvc_key(self, cluster_name: str) -> str:
         return f"pvc-{cluster_name}"

@@ -1,0 +1,217 @@
+<h1 id="self-hosted-coding-model-requirements-discussion">Self-Hosted
+Coding Model — Requirements Discussion</h1>
+<h2 id="current-state">Current State</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Current tools</strong></td>
+<td>What coding assistants are teams using today?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Pain points</strong></td>
+<td>Cost, latency, privacy, context limits, reliability</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Privacy / compliance</strong></td>
+<td>Can code leave the network? Regulatory constraints?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="model-requirements">Model Requirements</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Model preferences</strong></td>
+<td>Which models do they like for coding?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Quality bar</strong></td>
+<td>Would an open model (7B/32B) be good enough? For which tasks? Where
+do they need frontier?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Context window</strong></td>
+<td>Single file, whole repo, monorepo? How much context matters?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Tool use / agents</strong></td>
+<td>Tool calling, file editing, terminal access? Or just
+chat/completions?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="developer-experience">Developer Experience</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>IDE / interface</strong></td>
+<td>VS Code, JetBrains, terminal, Cursor, other?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Workflows</strong></td>
+<td>Autocomplete, chat, inline edit, code review, test generation?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Response time</strong></td>
+<td>Acceptable TTFT for interactive use?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Reliability</strong></td>
+<td>What uptime do they need? Occasional downtime OK?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="scale-usage">Scale &amp; Usage</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Team size</strong></td>
+<td>How many devs would use this?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Concurrency</strong></td>
+<td>Peak concurrent sessions estimate?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Usage patterns</strong></td>
+<td>Daytime interactive, overnight batch, both?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Spot tolerance</strong></td>
+<td>OK with spot GPUs for cost savings? Background tasks only?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="infrastructure-cost">Infrastructure &amp; Cost</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>GPU preference</strong></td>
+<td>Dedicated (reserved, always-on) vs elastic (scale to zero, pay per
+use)?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Cost target</strong></td>
+<td>Acceptable per dev/month? Compared to current tool spend?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Hosting</strong></td>
+<td>On-prem, GKE, other? Existing clusters to leverage?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Metrics / observability</strong></td>
+<td>What do they want to track? Usage, latency, cost, quality?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="rollout">Rollout</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pilot group</strong></td>
+<td>Who tries it first? How many devs?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Success criteria</strong></td>
+<td>How do they know it’s working?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Timeline</strong></td>
+<td>When would they want to start?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Feedback loop</strong></td>
+<td>How do they report issues / request changes?</td>
+<td></td>
+</tr>
+</tbody>
+</table>

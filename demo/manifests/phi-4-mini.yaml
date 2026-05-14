@@ -1,0 +1,28 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ClusterModel
+metadata:
+  name: phi-4-mini
+  labels:
+    modelplane.ai/family: phi
+    modelplane.ai/size: 3.8b
+spec:
+  model:
+    name: microsoft/Phi-4-mini-instruct
+  source: HuggingFace
+  huggingFace:
+    repo: microsoft/Phi-4-mini-instruct
+  resources:
+    vram: "8Gi"
+    cpu: "3"
+    memory: "10Gi"
+  serving:
+    - name: vllm-kserve
+      backend: KServe
+      engine:
+        name: vLLM
+        image: vllm/vllm-openai:v0.7.3
+        args:
+          - "--max-model-len"
+          - "4096"
+          - "--served-model-name"
+          - "microsoft/Phi-4-mini-instruct"

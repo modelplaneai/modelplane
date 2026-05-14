@@ -1,0 +1,10 @@
+# Deploy AWQ-quantized Llama 8B — will SUCCEED.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-8b-awq
+  namespace: ml-team
+spec:
+  modelRef:
+    name: llama-3-1-8b-awq
+  environments: 1

@@ -133,5 +133,18 @@ spec:
                               properties:
                                 name:
                                   type: string
+              caches:
+                type: array
+                description: >-
+                  ModelCaches mounted into the engine pod. Inherited
+                  verbatim from the parent ModelDeployment.
+                maxItems: 1
+                items:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                      minLength: 1
           status:
             type: object

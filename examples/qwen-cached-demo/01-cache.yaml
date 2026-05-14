@@ -1,0 +1,31 @@
+# Pre-stage Qwen 2.5 0.5B weights onto every matched cluster.
+#
+# A one-shot Job downloads the weights from HuggingFace into a
+# per-cluster RWX PVC. Subsequent engine pods mount the populated PVC
+# and skip the per-replica download.
+#
+# clusterSelector picks the InferenceClusters labeled modelplane.ai/
+# cluster=true (the demo InferenceClusters from ../qwen-demo/03-cluster.yaml
+# carry this label). Adjust the matchLabels here if you want to scope
+# the cache to a subset of clusters.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen-2-5-0-5b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      huggingFace:
+        repo: Qwen/Qwen2.5-0.5B-Instruct
+        revision: main
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: standard-rwx
+      sizeGiB: 5
+  replication: AllMatchingClusters

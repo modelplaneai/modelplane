@@ -1,0 +1,10 @@
+# Deploy Qwen 0.5B — will SUCCEED.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  modelRef:
+    name: qwen-2-5-0-5b
+  environments: 1

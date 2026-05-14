@@ -1,0 +1,28 @@
+# Deploy Qwen 2.5 0.5B from the pre-staged ModelCache.
+#
+# spec.caches points the serving stack at the cache's PVC so the
+# engine pod mounts pre-populated weights instead of fetching them at
+# boot. Engine args carry --served-model-name and --max-model-len;
+# the model path itself is injected from the cache so the user
+# doesn't write --model=... here.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-cached-demo
+  namespace: ml-team
+spec:
+  replicas: 2
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 1
+    resources:
+      cpu: "4"
+      memory: "10Gi"
+  engine:
+    image: vllm/vllm-openai:v0.7.3
+    args:
+    - "--served-model-name=qwen"
+    - "--max-model-len=2048"
+  caches:
+  - name: qwen-2-5-0-5b

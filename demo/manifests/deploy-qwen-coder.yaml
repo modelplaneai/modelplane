@@ -1,0 +1,21 @@
+# Deploy Qwen Coder 32B with autoscaling for ~10 concurrent dev sessions.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-coder
+  namespace: ml-team
+spec:
+  modelRef:
+    name: qwen-coder-7b
+  environments: 1
+  environmentSelector:
+    matchLabels:
+      modelplane.ai/gpu: a100
+  scaling:
+    signal: Concurrency
+    concurrency:
+      minReplicas: 1
+      maxReplicas: 3
+      target: 4
+      utilization: 80
+      scaleDownDelay: 300

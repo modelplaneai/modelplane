@@ -59,3 +59,13 @@ def llmis_name(deployment_name: str) -> str:
     backend.
     """
     return dns_name(deployment_name)
+
+
+def modelcache_pvc_name(cache_name: str) -> str:
+    """Derive the PVC name a ModelCache creates on the workload cluster.
+
+    Shared by compose-model-cache (creates the PVC) and
+    compose-model-replica (mounts it via `pvc://` model.uri). If this
+    naming changes, both functions must update together.
+    """
+    return f"modelcache-{cache_name}"[:DNS_LABEL_MAX]

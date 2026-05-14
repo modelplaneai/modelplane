@@ -1,0 +1,10 @@
+# Deploy full-precision Llama 70B — will be REJECTED by the scheduler.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-70b
+  namespace: ml-team
+spec:
+  modelRef:
+    name: llama-3-1-70b
+  environments: 1

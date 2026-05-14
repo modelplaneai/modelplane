@@ -1,0 +1,38 @@
+# InferenceEnvironment with A100 40GB GPUs.
+# Uses a2-highgpu-1g (1x A100 40GB per node) for quantized 32B models.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceEnvironment
+metadata:
+  name: gke-a100
+  labels:
+    modelplane.ai/environment: "true"
+    modelplane.ai/region: us-central
+    modelplane.ai/gpu: a100
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: crossplane-playground
+      region: us-central1
+
+      nodePools:
+        - name: system
+          role: System
+          machineType: e2-standard-4
+          nodeCount: 1
+          minNodeCount: 1
+          maxNodeCount: 2
+
+        - name: gpu-a100
+          role: GPU
+          machineType: a2-highgpu-1g
+          diskSizeGb: 200
+          gpu:
+            acceleratorType: nvidia-tesla-a100
+            acceleratorCount: 1
+            memory: "40Gi"
+          nodeCount: 1
+          minNodeCount: 0
+          maxNodeCount: 3
+          zones:
+            - us-central1-c

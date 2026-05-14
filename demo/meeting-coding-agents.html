@@ -1,0 +1,218 @@
+<h1 id="automated-coding-agents-pilot-requirements">Automated Coding
+Agents — Pilot Requirements</h1>
+<p><em>This team will be pilots for automated coding agents. Capturing
+requirements and wishlist for future build.</em></p>
+<h2 id="desired-flow">Desired Flow</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trigger</strong></td>
+<td>How does a task start? Ticket assigned, label added, slash command,
+scheduled?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Ticket scoping</strong></td>
+<td>What types are suitable? Bugs, small features, refactors, tests,
+docs?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Context gathering</strong></td>
+<td>What does the agent need? Ticket, docs, repo, related PRs, Slack
+threads?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Branch/PR workflow</strong></td>
+<td>Auto-create branch? Draft PR? Who reviews? Auto-merge criteria?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Human checkpoints</strong></td>
+<td>Where must a human approve before the agent proceeds?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Completion criteria</strong></td>
+<td>When is it “done”? PR opened, tests pass, review approved?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="security-trust">Security &amp; Trust</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Code access</strong></td>
+<td>Full repo or sandboxed? Which repos?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Secrets</strong></td>
+<td>Can agent see .env, credentials, infra configs?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Sandbox</strong></td>
+<td>Where does code run? Container, VM, local? How isolated?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Audit</strong></td>
+<td>What needs logging? Prompts, responses, tool calls, file
+changes?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Blast radius</strong></td>
+<td>Worst case if agent goes wrong? Rollback plan?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="scale-infrastructure">Scale &amp; Infrastructure</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Volume</strong></td>
+<td>How many tickets/day for the agent?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Concurrency</strong></td>
+<td>Max parallel agent sessions?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Day vs night</strong></td>
+<td>Interactive assist by day, batch processing overnight?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>GPU strategy</strong></td>
+<td>Reserved vs spot for background work?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Cost</strong></td>
+<td>Acceptable budget per ticket or per month?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="minimum-viable-product">Minimum Viable Product</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 40%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Simplest useful version</strong></td>
+<td>What’s the smallest thing that would be valuable?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Must-haves</strong></td>
+<td>Top 3 non-negotiable features?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Existing infra</strong></td>
+<td>CI/CD, test suites, linters, review tools already in place?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Timeline</strong></td>
+<td>When would they want to start dogfooding?</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Success metric</strong></td>
+<td>Tickets closed, dev hours saved, PR quality?</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="wishlist">Wishlist</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Details</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>

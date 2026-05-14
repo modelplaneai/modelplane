@@ -1,0 +1,21 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelReplica
+metadata:
+  name: qwen-cached-demo-us-central
+  namespace: ml-team
+spec:
+  inferenceClusterRef:
+    name: demo-us-central
+  workers:
+    topology:
+      strategy: Tensor
+      tensor: 1
+    resources:
+      cpu: "3"
+      memory: "10Gi"
+  engine:
+    image: vllm/vllm-openai:v0.7.3
+    args:
+    - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+  caches:
+  - name: qwen-2-5-0-5b

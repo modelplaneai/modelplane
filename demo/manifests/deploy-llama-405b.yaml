@@ -1,0 +1,10 @@
+# Deploy Llama 405B — will be REJECTED (needs 810Gi, multi-node H100s).
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-405b
+  namespace: ml-team
+spec:
+  modelRef:
+    name: llama-3-1-405b
+  environments: 1

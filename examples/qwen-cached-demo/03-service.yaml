@@ -1,0 +1,16 @@
+# Expose the cached Qwen deployment via a unified endpoint.
+#
+# Selects all ModelEndpoints labeled with the deployment name. Once
+# ready, the public address appears on status.address:
+#
+#   kubectl get ms qwen-cached-demo -n ml-team -o jsonpath='{.status.address}'
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen-cached-demo
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-cached-demo

@@ -1,0 +1,28 @@
+# Llama 3.1 70B — full precision. Needs 140Gi VRAM (6x L4 GPUs).
+# Used in the demo to show the scheduler rejecting a model that doesn't fit.
+apiVersion: modelplane.ai/v1alpha1
+kind: ClusterModel
+metadata:
+  name: llama-3-1-70b
+  labels:
+    modelplane.ai/family: llama
+    modelplane.ai/size: 70b
+spec:
+  model:
+    name: meta-llama/Llama-3.1-70B-Instruct
+
+  source: HuggingFace
+  huggingFace:
+    repo: meta-llama/Llama-3.1-70B-Instruct
+
+  resources:
+    vram: "140Gi"
+    cpu: "8"
+    memory: "64Gi"
+
+  serving:
+    - name: vllm-kserve
+      backend: KServe
+      engine:
+        name: vLLM
+        image: vllm/vllm-openai:v0.7.3

@@ -1,0 +1,37 @@
+# Llama 3.1 8B AWQ — 4-bit quantized. Needs 5Gi VRAM (1x L4 GPU).
+# Used in the demo to show a quantized model fitting where the full 70B can't,
+# with engine args flowing through to vLLM.
+apiVersion: modelplane.ai/v1alpha1
+kind: ClusterModel
+metadata:
+  name: llama-3-1-8b-awq
+  labels:
+    modelplane.ai/family: llama
+    modelplane.ai/size: 8b
+    modelplane.ai/quantization: awq
+spec:
+  model:
+    name: hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4
+
+  source: HuggingFace
+  huggingFace:
+    repo: hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4
+
+  resources:
+    vram: "5Gi"
+    cpu: "3"
+    memory: "10Gi"
+
+  serving:
+    - name: vllm-kserve
+      backend: KServe
+      engine:
+        name: vLLM
+        image: vllm/vllm-openai:v0.7.3
+        args:
+          - "--quantization"
+          - "awq"
+          - "--max-model-len"
+          - "8192"
+          - "--served-model-name"
+          - "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4"

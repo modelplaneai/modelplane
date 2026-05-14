@@ -1,0 +1,34 @@
+# Qwen 2.5 Coder 7B — coding-specialized model.
+# ~15Gi VRAM (FP16). Fits on a single L4 GPU.
+# Supports 128K context, 92 programming languages.
+apiVersion: modelplane.ai/v1alpha1
+kind: ClusterModel
+metadata:
+  name: qwen-coder-7b
+  labels:
+    modelplane.ai/family: qwen
+    modelplane.ai/size: 7b
+    modelplane.ai/task: coding
+spec:
+  model:
+    name: Qwen/Qwen2.5-Coder-7B-Instruct
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen2.5-Coder-7B-Instruct
+  resources:
+    vram: "15Gi"
+    cpu: "3"
+    memory: "10Gi"
+  serving:
+    - name: vllm
+      engine:
+        name: vLLM
+        image: vllm/vllm-openai:v0.8.5
+        args:
+          - "--max-model-len"
+          - "16384"
+          - "--served-model-name"
+          - "Qwen/Qwen2.5-Coder-7B-Instruct"
+          - "--enable-auto-tool-choice"
+          - "--tool-call-parser"
+          - "hermes"
