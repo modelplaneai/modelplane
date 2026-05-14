@@ -1,0 +1,56 @@
+# NIM Mode 2b — pre-seed the NIM profile cache directory.
+#
+# NVIDIA NIM containers run with weights either baked into the image
+# (Mode 2a — no ModelCache needed) or fetched at first boot into
+# /opt/nim/.cache (Mode 2b — every replica refetches without help).
+# This example uses ModelCache to stage the profile cache once per
+# cluster on an RWX PVC; every NIM replica mounts the populated
+# directory and skips the per-pod NGC pull.
+#
+# Source is `http` (curl-based) pointing at the NGC profile URL. ORAS
+# / `oci` source is locked in the v0.1 XRD but the implementation is
+# pending — once that lands the same shape works against
+# nvcr.io/nim/... image references directly.
+#
+# Speedup (rough): NIM cold start with cache pre-populated is engine
+# boot only (~10-30s). Without cache, NGC pull + load is several
+# minutes per replica per restart — a meaningful win at any replica
+# count > 1.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ngc-creds
+  namespace: ml-team
+type: Opaque
+stringData:
+  # The function passes this verbatim as the Authorization header
+  # value, so it should include the auth scheme (e.g. "Bearer ...").
+  Authorization: Bearer <ngc-api-key>
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: nim-llama-3-1-70b-h100
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Bytes
+    source:
+      http:
+        url: https://api.ngc.nvidia.com/v2/models/nim/meta/llama-3.1-70b-instruct/profiles/<profile-id>
+        authSecretRef:
+          name: ngc-creds
+          key: Authorization
+  mount:
+    path: /opt/nim/.cache
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: filestore-rwx
+      sizeGiB: 200
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: production
+  replication: AllMatchingClusters

@@ -1,0 +1,50 @@
+# Private S3 source — air-gapped / regulated / fine-tunes.
+#
+# Some teams can't pull from HuggingFace (data residency, custom
+# fine-tunes, compliance posture). The platform team mirrors approved
+# model weights into an internal S3 bucket; ModelCache pulls from
+# there with bucket-scoped credentials. Cluster selector restricts the
+# cache to clusters in a compliant region so bytes never cross
+# regulatory boundaries.
+#
+# Speedup (rough): intra-region S3 typically ~1 GB/s vs HF ~50 MB/s.
+# A 140 GB model stages in ~3 min on S3 vs ~45 min on HF, and the
+# bytes never leave the compliant region.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: company-s3-readonly
+  namespace: ml-team
+type: Opaque
+stringData:
+  access_key: <aws-access-key-id>
+  secret_key: <aws-secret-access-key>
+
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: company-finetune-llama-70b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    source:
+      s3:
+        uri: s3://company-ml-artifacts/finetunes/llama-70b-support-v17/
+        region: eu-west-1
+        secretRef:
+          name: company-s3-readonly
+  mount:
+    path: /mnt/model
+  storage:
+    backend: PVC
+    pvc:
+      storageClassName: efs-rwx
+      sizeGiB: 200
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: eu-west-1
+      modelplane.ai/compliance: gdpr
+  replication: AllMatchingClusters

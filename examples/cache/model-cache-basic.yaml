@@ -1,14 +1,16 @@
-# A ModelCache pre-stages a model artifact onto every matched
-# InferenceCluster. The cluster scheduler is unaware of the cache
-# today; deployments that need the cache mount its PVC manually (the
-# ModelDeployment.spec.caches wiring lands once the new deployment
-# shape from #75 stabilizes).
+# Basic HuggingFace Weights cache — the common case.
 #
-# Apply this alongside one or more InferenceClusters. Modelplane
-# creates a PVC + a hydration Job on each matched cluster. The Job
-# downloads the weights from HuggingFace into the PVC; subsequent
-# applies are no-ops because the Job's command short-circuits when
-# the PVC already has content.
+# ModelCache pulls Llama-3.3-70B from HuggingFace to a per-cluster
+# RWX PVC; a downstream ModelDeployment mounts it at /mnt/model
+# instead of redownloading on every replica boot.
+#
+# Apply this alongside one or more InferenceClusters labeled
+# modelplane.ai/tier=production. Modelplane composes a PVC and a
+# one-shot hydration Job per matched cluster; subsequent applies are
+# no-ops because the Job short-circuits when the PVC already has
+# content. ModelDeployment.spec.caches wiring lands once the new
+# deployment shape from #75 stabilizes; until then this cache is
+# applied on its own to demonstrate fleet-aware staging.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
 metadata:

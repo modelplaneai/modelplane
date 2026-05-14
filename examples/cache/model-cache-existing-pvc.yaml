@@ -1,0 +1,42 @@
+# Existing PVC — adopt a customer-managed PVC.
+#
+# Some teams already stage weights via their own pipeline (rsync,
+# CI/CD artifact promotion, manual seeding for air-gapped clusters).
+# They want Modelplane to handle fleet-aware orchestration (per-
+# cluster ready state, downstream ModelReplica gating) without
+# touching the bytes.
+#
+# `backend: ExistingPVC` references a PVC the customer has already
+# created and populated on every matched cluster. Modelplane composes
+# no PVC, no hydration Job — it just records adoption in status and
+# reports Ready immediately on every matched cluster so downstream
+# ModelDeployments can schedule.
+#
+# Use this when: bytes are pre-staged via your own pipeline; air-gap
+# / regulated environments where the cluster has no egress; you want
+# Modelplane's fleet orchestration without ceding storage control.
+
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: airgap-llama-70b
+  namespace: ml-team
+spec:
+  artifact:
+    kind: Weights
+    # Source is still set (here, for documentation of provenance) but
+    # the function ignores it when backend=ExistingPVC. v0.2 may drop
+    # the source requirement entirely for this backend.
+    source:
+      huggingFace:
+        repo: meta-llama/Llama-3.3-70B-Instruct
+  mount:
+    path: /mnt/model
+  storage:
+    backend: ExistingPVC
+    existingPVC:
+      claimName: ops-staged-llama-70b
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us-gov-east
+  replication: AllMatchingClusters
