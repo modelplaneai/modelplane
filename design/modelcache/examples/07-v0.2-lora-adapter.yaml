@@ -14,6 +14,11 @@
 # base, so download is seconds. Win is dedup across tenants (thousands
 # of adapters, one fleet copy each) and version rolls without re-staging
 # the base.
+#
+# Provider note: `backend: ContentAddressed` shown here is the
+# commercial Upbound substrate. For BYO content-addressed setups,
+# swap `backend: Custom` with the equivalent webhook target — see
+# example 06.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache

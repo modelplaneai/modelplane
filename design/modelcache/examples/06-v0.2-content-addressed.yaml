@@ -1,10 +1,17 @@
 # v0.2 PREVIEW — content-addressed backend.
 #
-# Same model as 01-basic-weights but on the ContentAddressed backend.
-# User-facing CRD is identical except for the storage.backend field —
-# pluggable backend pattern from KVOffloadTier (#72).
+# Same model as 01-basic-weights but on a content-addressed substrate.
+# User-facing CRD is identical except for the storage.backend field.
 #
-# Behavior change:
+# Provider split:
+# - `backend: ContentAddressed` is hosted commercially by Upbound as
+#   managed weight delivery (this example).
+# - `backend: Custom` is the OSS hook — same substrate shape, but the
+#   customer (or a third-party CAS) implements the webhook contract.
+#   Pick this for BYO content-addressed deployments where you don't
+#   want a managed offering.
+#
+# Behavior change (either provider):
 # - Bytes deduplicated across deployments (50 deployments of Llama
 #   70B = one set of bytes in the fleet, not 50).
 # - Lazy hydration: engine starts before all bytes have arrived;

@@ -12,7 +12,13 @@
 #
 # Speedup (rough): TRT-LLM compile is 10-30 min per tuple per replica.
 # With Engine cache: one compile per tuple, every matching replica
-# skips it.
+# skips it. The Engine kind also fits NIM Mode 2b profile cache dirs
+# and KitOps ModelKit bundles (via source.oci) — same (model, hardware,
+# config) tuple keying applies.
+#
+# Provider note: `backend: ContentAddressed` shown here is the
+# commercial Upbound substrate; `backend: Custom` is the OSS hook for
+# BYO content-addressed setups.
 
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
