@@ -1,6 +1,16 @@
 .venv
+.venv-test
 _output
 .up
 result
 .direnv
+
+# Python bytecode
 __pycache__/
+*.pyc
+
+# macOS Finder metadata
+.DS_Store
+
+# Per-user opencode config (contains local endpoints)
+opencode.json
