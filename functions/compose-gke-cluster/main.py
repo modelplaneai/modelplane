@@ -464,9 +464,23 @@ class Composer:
         )
 
     def write_status(self):
+        # Surface the observed Network MR name so the user-facing
+        # InferenceCluster composition can wire it into workload-cluster
+        # storage classes (e.g. Filestore CSI requires the VPC name as
+        # a StorageClass parameter; without it Filestore provisions on
+        # the GCP `default` VPC and is unreachable from our nodes).
+        network_name = None
+        observed_network = self.req.observed.resources.get("network")
+        if observed_network:
+            n = networkv1beta1.Network.model_validate(
+                resource.struct_to_dict(observed_network.resource),
+            )
+            network_name = n.metadata.name if n.metadata else None
+
         libresource.update_status(
             self.rsp.desired.composite,
             v1alpha1.Status(
+                network=v1alpha1.Network(name=network_name) if network_name else None,
                 secrets=[
                     v1alpha1.Secret(
                         type=secrets.SECRET_TYPE_KUBECONFIG,

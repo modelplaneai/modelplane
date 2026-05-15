@@ -209,6 +209,18 @@ spec:
           status:
             description: GKEClusterStatus defines the observed state of GKECluster.
             properties:
+              network:
+                type: object
+                description: >-
+                  Observed VPC details for this cluster. Surfaced so the
+                  outer InferenceCluster composition can wire the VPC name
+                  into workload-cluster storage classes (e.g. Filestore CSI
+                  needs the network parameter to provision a Filestore
+                  instance reachable from this cluster's nodes).
+                properties:
+                  name:
+                    type: string
+                    description: Name of the VPC the cluster is attached to.
               secrets:
                 type: array
                 description: >-

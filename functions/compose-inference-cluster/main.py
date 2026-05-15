@@ -27,6 +27,7 @@ from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1a
 from .model.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
+from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from .model.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
@@ -52,6 +53,29 @@ CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "kserve-backend"
+
+# CSI capability discriminator values from the XRD enum.
+CSI_SHARED_FILESYSTEM = "SharedFilesystem"
+
+# Name used for the workload-cluster StorageClass when the user does
+# not override spec.storage.storageClassName. Modelplane-prefixed so
+# it never collides with cloud-built-in classes like GKE's standard-rwx.
+DEFAULT_RWX_SC_NAME = "modelplane-rwx"
+
+
+def _cluster_provider_config_name(xr) -> str:
+    """Name of the ClusterProviderConfig that targets this XR's workload cluster."""
+    return f"{xr.metadata.name}-cluster-kubeconfig"
+
+# Hardcoded system pool config. Provisioned for every GKE cluster to
+# host control-plane components (Envoy Gateway, KEDA, etc.). Not exposed
+# in the user-facing API.
+SYSTEM_POOL_NAME = "system"
+SYSTEM_POOL_MACHINE_TYPE = "e2-standard-4"
+SYSTEM_POOL_NODE_COUNT = 1
+SYSTEM_POOL_MIN_NODE_COUNT = 1
+SYSTEM_POOL_MAX_NODE_COUNT = 2
+
 
 
 class Composer:
@@ -150,6 +174,14 @@ class Composer:
             self.rsp.desired.resources["gke-cluster"].ready = fnv1.READY_TRUE
             if not backend_exists:
                 response.normal(self.rsp, "GKE cluster ready, composing backend")
+            # Once the underlying VPC is known, compose the workload-
+            # cluster StorageClasses that need provider-specific knobs
+            # wired (e.g. Filestore CSI needs the VPC name as a SC
+            # parameter; without it, the driver provisions instances
+            # on the GCP `default` VPC and they are unreachable from
+            # our cluster's nodes). Cloud-specific config stays in
+            # this branch so the user-facing API stays cloud-agnostic.
+            self.compose_gke_storage_classes()
 
         # Propagate a GPU-capacity (GCE stockout) condition from the
         # underlying GKECluster to the user-facing InferenceCluster so
@@ -175,6 +207,80 @@ class Composer:
                     c.get("message") or "",
                 )
                 return
+
+    def compose_gke_storage_classes(self):
+        """Ensure the workload cluster has working StorageClasses for the
+        capabilities the user opted into (spec.storage.csiDrivers).
+
+        GKE's built-in `standard-rwx` Filestore SC has no `network`
+        parameter — the CSI driver falls back to GCP's `default` VPC and
+        provisions Filestore instances there, unreachable from our
+        cluster's nodes (PVCs sit Pending, mounts time out). We work
+        around this by composing a Modelplane-owned StorageClass on the
+        workload cluster with `parameters.network=<our VPC>` so the
+        Filestore instance lands in the right network.
+
+        This pattern generalises: each cloud's RWX driver needs cloud-
+        specific knobs that the user-facing API shouldn't carry. The
+        provider-specific composition (compose_gke / compose_eks / ...)
+        wires those knobs from the observed infra XR's status; the
+        user-facing InferenceCluster.spec.storage stays cloud-agnostic.
+        """
+        storage = self.xr.spec.storage if hasattr(self.xr.spec, "storage") else None
+        if not storage or not storage.csiDrivers:
+            return
+        if CSI_SHARED_FILESYSTEM not in storage.csiDrivers:
+            return
+
+        # Read the network name from the GKECluster XR's status. This
+        # only becomes available once the underlying Network MR has
+        # been observed (after the first reconcile pass). Gate until
+        # it's known so we don't compose an SC with an empty network.
+        network_name = self.observed_gke_network_name()
+        if not network_name:
+            return
+
+        sc_name = storage.storageClassName or DEFAULT_RWX_SC_NAME
+        cpc_name = _cluster_provider_config_name(self.xr)
+
+        sc_manifest = {
+            "apiVersion": "storage.k8s.io/v1",
+            "kind": "StorageClass",
+            "metadata": {"name": sc_name},
+            "provisioner": "filestore.csi.storage.gke.io",
+            "parameters": {
+                "tier": "standard",
+                "network": network_name,
+            },
+            "reclaimPolicy": "Delete",
+            "volumeBindingMode": "WaitForFirstConsumer",
+            "allowVolumeExpansion": True,
+        }
+        resource.update(
+            self.rsp.desired.resources["storage-class-rwx"],
+            k8sobjv1alpha1.Object(
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=cpc_name,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(policy="DeriveFromObject"),
+                    forProvider=k8sobjv1alpha1.ForProvider(manifest=sc_manifest),
+                ),
+            ),
+        )
+
+    def observed_gke_network_name(self):
+        """Read the observed VPC name from GKECluster.status.network.name."""
+        observed = self.req.observed.resources.get("gke-cluster")
+        if not observed:
+            return None
+        d = resource.struct_to_dict(observed.resource)
+        return (
+            d.get("status", {})
+            .get("network", {})
+            .get("name")
+        )
 
     def compose_existing(self, existing):
         """Compose an InferenceCluster backed by a user-supplied cluster.
