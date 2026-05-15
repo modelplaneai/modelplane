@@ -22,10 +22,22 @@ fi
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 
+# Filestore CSI provisioner needs the Cloud Filestore API enabled on
+# the project, otherwise PVCs sit Pending forever with
+# SERVICE_DISABLED. Enable it before provisioning the cluster so the
+# first PVC the demo creates can actually bind.
+echo "==> Ensuring Cloud Filestore API is enabled on ${GCP_PROJECT}"
+if command -v gcloud >/dev/null 2>&1; then
+	gcloud services enable file.googleapis.com --project "${GCP_PROJECT}" >/dev/null
+else
+	echo "    gcloud not found; ensure file.googleapis.com is enabled on ${GCP_PROJECT}" >&2
+fi
+
 echo "==> Applying shared infrastructure prereqs (from ../qwen-demo)"
 kubectl apply -f "${DIR}/../qwen-demo/00-prerequisites.yaml"
 kubectl apply -f "${DIR}/../qwen-demo/01-gateway.yaml"
 kubectl apply -f "${DIR}/../qwen-demo/02-class.yaml"
+kubectl apply -f "${DIR}/infra/class-t4.yaml"
 
 echo "==> Provisioning InferenceCluster (project=${GCP_PROJECT})"
 envsubst <"${DIR}/infra/cluster.yaml" | kubectl apply -f -
