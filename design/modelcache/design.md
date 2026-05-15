@@ -369,7 +369,7 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 5. **Lazy loading is architectural prep in v0.1, ships in v0.2.** v0.1 doesn't bake "all files must exist at boot" into the engine pod contract.
 6. **Scheduler gates on per-cluster cache readiness** before placing a ModelReplica. Fail-fast on missing RWX storage class.
 7. **Storage class on the cluster, override on the cache.** `InferenceCluster.spec.storage.storageClassName` is the default; `ModelCache.spec.storage.pvc.storageClassName` overrides.
-8. **Cloud-agnostic CSI capability declaration.** `InferenceCluster.spec.storage.csiDrivers: [SharedFilesystem | ObjectStorageMount | BlockDevice]` is the user-facing surface; the InferenceCluster composition maps semantic capabilities to cloud-specific CSI addons per source (GKE: Filestore / GCS-FUSE / PD; EKS / AKS: equivalent). Modelplane never installs a driver a customer didn't ask for, and the surface stays MECE on capability across clouds.
+8. **Cloud-agnostic CSI capability declaration.** `InferenceCluster.spec.storage.csiDrivers: [SharedFilesystem | ObjectStorageMount | BlockDevice]` is the user-facing surface; the InferenceCluster composition maps semantic capabilities to cloud-specific CSI addons per source (GKE: Filestore / GCS-FUSE / PD; EKS / AKS: equivalent). Modelplane never installs a driver a customer didn't ask for.
 
 ## Alternatives considered
 
