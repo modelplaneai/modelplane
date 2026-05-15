@@ -36,6 +36,29 @@ CONDITION_REASON_SERVING = "Serving"
 # Composed resource key for the model serving resource.
 MODEL_RESOURCE_KEY = "model-serving"
 
+# Multi-node Ray bootstrap. LWS sets LWS_WORKER_INDEX and
+# LWS_LEADER_ADDRESS on every pod in the gang. We use those to
+# stand up a single Ray cluster spanning the gang before vLLM
+# tries to find Ray: leader runs `ray start --head` and execs
+# vllm serve; workers join the leader's Ray cluster and block.
+# Without this vLLM's PipelineParallel placement group sees only
+# the local node and waits forever for a second one to appear.
+#
+# Kept here as a constant — when we replace KServe LLMInferenceService
+# with a Modelplane-native LeaderWorkerSet composition, this script
+# moves verbatim into that composition's pod template. The IP is the
+# bootstrap shell, not where it's conveyed.
+_VLLM_MULTI_NODE_BOOTSTRAP = """\
+set -e
+if [ "$LWS_WORKER_INDEX" = "0" ]; then
+  ray start --head --port=6379
+  exec vllm serve "$@"
+else
+  exec ray start --address="$LWS_LEADER_ADDRESS:6379" --block
+fi
+"""
+
+
 
 class Composer:
     def __init__(self, req, rsp):
@@ -127,6 +150,21 @@ class Composer:
             container_args.append("--model=/mnt/models")
 
         container = self._build_container(engine, gpu_per_pod, container_args)
+
+        # Multi-node: replace the container's entrypoint with the Ray
+        # bootstrap. The shell takes the engine args via $@ — passing
+        # them as `args:` keeps the user's argv intact on the leader,
+        # the worker ignores them and just joins the Ray cluster.
+        # `"modelplane-bootstrap"` is the sh -c `$0` placeholder (not
+        # the script name); positional arg parsing starts at $1.
+        if multi_node:
+            container["command"] = [
+                "/bin/sh",
+                "-c",
+                _VLLM_MULTI_NODE_BOOTSTRAP,
+                "modelplane-bootstrap",
+            ]
+
         pod_spec = self._build_pod_spec(template, container)
         llmis_template = self._build_llmis_template(template, pod_spec)
 
