@@ -164,7 +164,7 @@ Use cases: dense models on TensorPipeline gangs (no per-pod download races) and 
 - All pods in the LWS gang (leader + workers) mount the same PVC read-only
 - ModelReplica scheduling gated on per-cluster cache `Ready` condition
 - `status.clusters[]` is the eligibility signal the fleet matcher reads; a cluster without a `Ready` cache for any referenced ModelCache is not a candidate
-- Storage class declared on `InferenceCluster.spec.storage.storageClassName` (GCP Filestore, AWS EFS / FSx, Azure Files, BYO CSI)
+- Storage class declared on `InferenceCluster.spec.storage.storageClassName` (GCP Filestore, AWS EFS / FSx, Azure Files, BYO CSI). The cluster also declares the *capabilities* it needs in `spec.storage.csiDrivers: [SharedFilesystem | ObjectStorageMount | BlockDevice]` — cloud-agnostic semantic flags that the cluster composition maps to the cloud-specific CSI addon for provisioned clusters (GKE → Filestore CSI for `SharedFilesystem`, GCS-FUSE for `ObjectStorageMount`; EKS / AKS branches follow the same mapping). For BYO clusters (`source: Existing`) the `csiDrivers` field is descriptive only — Modelplane never installs drivers on customer-managed clusters.
 - **Fail-fast**: target cluster with no RWX storage class → matcher rejects placement; clear status condition
 - **Cluster selection**: `clusterSelector.matchLabels` is the v0.1 baseline (matches [PR #75](https://github.com/modelplaneai/modelplane/pull/75)). Once [#56](https://github.com/modelplaneai/modelplane/issues/56) lands, `clusterSelector` accepts a CEL form over `InferenceCluster` pool attributes — e.g. "clusters with at least one H100 pool with FP8 support."
 
@@ -369,6 +369,7 @@ Architectural option, not a v0.1 commitment. Decide once v0.2 ships and we have 
 5. **Lazy loading is architectural prep in v0.1, ships in v0.2.** v0.1 doesn't bake "all files must exist at boot" into the engine pod contract.
 6. **Scheduler gates on per-cluster cache readiness** before placing a ModelReplica. Fail-fast on missing RWX storage class.
 7. **Storage class on the cluster, override on the cache.** `InferenceCluster.spec.storage.storageClassName` is the default; `ModelCache.spec.storage.pvc.storageClassName` overrides.
+8. **Cloud-agnostic CSI capability declaration.** `InferenceCluster.spec.storage.csiDrivers: [SharedFilesystem | ObjectStorageMount | BlockDevice]` is the user-facing surface; the InferenceCluster composition maps semantic capabilities to cloud-specific CSI addons per source (GKE: Filestore / GCS-FUSE / PD; EKS / AKS: equivalent). Modelplane never installs a driver a customer didn't ask for, and the surface stays MECE on capability across clouds.
 
 ## Alternatives considered
 
