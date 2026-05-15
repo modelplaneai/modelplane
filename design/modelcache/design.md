@@ -156,6 +156,8 @@ Also out of scope and in the engine block: runtime env vars (`NCCL_*`, `VLLM_*`,
 
 ## v0.1 — PVC backend, eager, multi-node ready
 
+Multi-node LWS serving needs the same weight bytes mounted by every pod in the gang. The minimum primitive for that is a per-cluster RWX PVC hydrated once by a side Job and mounted read-only by every pod that references it — which is what v0.1 ships. Single-node scale-up benefits as a side effect (no per-replica HF pull). The harder content-addressed wins — cross-deployment dedup, lazy load, cross-cluster sharing — stay in v0.2 behind the same user-facing API.
+
 Use cases: dense models on TensorPipeline gangs (no per-pod download races) and proactive pre-staging by platform teams.
 
 **Mechanism** (absorbs [#61](https://github.com/modelplaneai/modelplane/issues/61)):
