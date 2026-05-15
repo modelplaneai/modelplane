@@ -36,7 +36,7 @@ kubectl apply -f "${DIR}/01-cache.yaml"
 echo "==> Wait for cache hydration"
 kubectl wait --for=condition=ArtifactReady --timeout=10m \
 	"modelcache/qwen-2-5-0-5b" -n "$NS"
-echo "    Cache hydrated in $(elapsed $cache_start)"
+echo "    Cache hydrated in $(elapsed "$cache_start")"
 
 echo "==> Apply both deployments + services (cached + uncached)"
 deploy_start=$(date +%s)
@@ -50,11 +50,11 @@ cached_t=""
 uncached_t=""
 while [[ -z "$cached_t" || -z "$uncached_t" ]]; do
 	if [[ -z "$cached_t" ]] && deployment_ready qwen-cached-demo; then
-		cached_t=$(elapsed $deploy_start)
+		cached_t=$(elapsed "$deploy_start")
 		echo "    [cached]   Ready in ${cached_t}"
 	fi
 	if [[ -z "$uncached_t" ]] && deployment_ready qwen-uncached-demo; then
-		uncached_t=$(elapsed $deploy_start)
+		uncached_t=$(elapsed "$deploy_start")
 		echo "    [uncached] Ready in ${uncached_t}"
 	fi
 	sleep 2
