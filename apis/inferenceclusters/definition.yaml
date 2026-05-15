@@ -145,6 +145,39 @@ spec:
                         region have every GPU type.
                       items:
                         type: string
+              storage:
+                type: object
+                description: >-
+                  Storage capabilities the cluster should expose to
+                  Modelplane workloads. Cloud-agnostic surface; the
+                  composition function maps the requested semantic
+                  capabilities to cloud-specific CSI drivers /
+                  addons (GKE → Filestore / GCS-FUSE; future EKS →
+                  EFS / Mountpoint-S3; AKS → AzureFiles / BlobFuse).
+                  For BYO clusters (`source: Existing`) these fields
+                  are descriptive only — Modelplane does not install
+                  drivers on customer-managed clusters.
+                properties:
+                  storageClassName:
+                    type: string
+                    description: >-
+                      Default storage class for ModelCache PVCs on
+                      this cluster. ModelCache.spec.storage.pvc.storageClassName
+                      overrides per-cache.
+                    minLength: 1
+                    maxLength: 63
+                  csiDrivers:
+                    type: array
+                    description: >-
+                      Semantic storage capabilities the cluster
+                      should ensure are available. Modelplane only
+                      installs drivers a customer explicitly asks for.
+                    items:
+                      type: string
+                      enum:
+                      - SharedFilesystem
+                      - ObjectStorageMount
+                      - BlockDevice
           status:
             type: object
             properties:

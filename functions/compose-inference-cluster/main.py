@@ -151,8 +151,30 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "GKE cluster ready, composing backend")
 
+        # Propagate a GPU-capacity (GCE stockout) condition from the
+        # underlying GKECluster to the user-facing InferenceCluster so
+        # the failure is visible without `kubectl describe gkecluster`.
+        self.propagate_gke_capacity_condition()
+
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=gke_ready)
+
+    def propagate_gke_capacity_condition(self):
+        """Mirror GKECluster.InsufficientGPUCapacity → InferenceCluster."""
+        observed = self.req.observed.resources.get("gke-cluster")
+        if not observed:
+            return
+        d = resource.struct_to_dict(observed.resource)
+        for c in d.get("status", {}).get("conditions", []) or []:
+            if c.get("type") == "InsufficientGPUCapacity" and c.get("status") == "False":
+                conditions.set_condition(
+                    self.rsp,
+                    "InsufficientGPUCapacity",
+                    False,
+                    c.get("reason") or "Stockout",
+                    c.get("message") or "",
+                )
+                return
 
     def compose_existing(self, existing):
         """Compose an InferenceCluster backed by a user-supplied cluster.
@@ -306,6 +328,13 @@ class Composer:
                 )
             )
 
+        # Map the cloud-agnostic spec.storage.csiDrivers list to
+        # GKE-specific addon flags. This is where the per-cloud
+        # vocabulary lives; the InferenceCluster surface stays
+        # cloud-agnostic. Future EKS / AKS branches do the equivalent
+        # mapping with their own addon names.
+        gke_addons = self._gke_addons_for_storage()
+
         resource.update(
             self.rsp.desired.resources["gke-cluster"],
             gkev1alpha1.GKECluster(
@@ -318,9 +347,29 @@ class Composer:
                     region=gke.region,
                     kubernetesVersion=gke.kubernetesVersion,
                     nodePools=gke_node_pools,
+                    addons=gke_addons,
                 ),
             ),
         )
+
+    def _gke_addons_for_storage(self):
+        """Translate spec.storage.csiDrivers → GKECluster addons.
+
+        Capability → GKE addon mapping:
+            SharedFilesystem   → gcpFilestoreCsiDriver  (Filestore CSI)
+            ObjectStorageMount → gcsFuseCsiDriver       (GCS FUSE CSI)
+            BlockDevice        → gcePersistentDiskCsiDriver (default on)
+        """
+        storage = self.xr.spec.storage
+        if not storage or not storage.csiDrivers:
+            return None
+        wants = {d for d in storage.csiDrivers}
+        return gkev1alpha1.Addons(
+            gcpFilestoreCsiDriver="SharedFilesystem" in wants,
+            gcsFuseCsiDriver="ObjectStorageMount" in wants,
+            gcePersistentDiskCsiDriver=True,
+        )
+
 
     def compose_gke_usage(self):
         """Block GKECluster deletion until the backend is deleted."""

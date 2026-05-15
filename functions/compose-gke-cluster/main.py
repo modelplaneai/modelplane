@@ -6,7 +6,7 @@ account with container.admin IAM, and ProviderConfigs for provider-kubernetes
 and provider-helm to reach the cluster.
 """
 
-from crossplane.function import resource
+from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions, metadata, naming, secrets
@@ -64,8 +64,45 @@ class Composer:
         self.compose_service_account()
         self.compose_iam_binding()
         self.compose_provider_configs()
+        self.detect_capacity_failures()
         self.write_status()
         self.mark_readiness()
+
+    def detect_capacity_failures(self):
+        """Surface a Modelplane-level condition when an underlying GKE
+        nodepool can't get GPU capacity from GCP.
+
+        GCE reports stockouts ("GCE_STOCKOUT") on the node pool's
+        managed-resource conditions. Without this, the only signal a
+        user gets is the cluster hanging in `Creating` for 30+ min.
+        With it, the GKECluster XR carries a `InsufficientGPUCapacity`
+        condition naming the affected zone, which compose-inference-
+        cluster propagates up to the user-facing InferenceCluster XR.
+        """
+        for pool in self.xr.spec.nodePools or []:
+            key = f"nodepool-{pool.name}"
+            observed = self.req.observed.resources.get(key)
+            if not observed:
+                continue
+            d = resource.struct_to_dict(observed.resource)
+            for c in d.get("status", {}).get("conditions", []) or []:
+                msg = c.get("message", "") or ""
+                if "GCE_STOCKOUT" in msg or "does not have enough resources" in msg:
+                    zones = ", ".join(pool.zones or [])
+                    conditions.set_condition(
+                        self.rsp,
+                        "InsufficientGPUCapacity",
+                        False,
+                        "Stockout",
+                        f"GCE stockout for {pool.gpu.acceleratorType if pool.gpu else 'GPU'} "
+                        f"in pool '{pool.name}' (zones: {zones}). "
+                        f"Try a different zone or accelerator type.",
+                    )
+                    response.warning(
+                        self.rsp,
+                        f"GCE stockout for pool '{pool.name}' in zones: {zones}",
+                    )
+                    return  # one condition is enough — don't double-flag
 
     def compose_network(self):
         resource.update(
@@ -110,34 +147,53 @@ class Composer:
         )
 
     def compose_cluster(self):
+        for_provider = clusterv1beta1.ForProvider(
+            project=self.xr.spec.project,
+            location=self.xr.spec.region,
+            deletionProtection=False,
+            removeDefaultNodePool=True,
+            initialNodeCount=1,
+            minMasterVersion=self.xr.spec.kubernetesVersion,
+            networkSelector=clusterv1beta1.NetworkSelector(
+                matchControllerRef=True,
+            ),
+            subnetworkSelector=clusterv1beta1.SubnetworkSelector(
+                matchControllerRef=True,
+            ),
+            ipAllocationPolicy=clusterv1beta1.IpAllocationPolicy(
+                clusterSecondaryRangeName=_RANGE_PODS,
+                servicesSecondaryRangeName=_RANGE_SERVICES,
+            ),
+            releaseChannel=clusterv1beta1.ReleaseChannel(
+                channel="REGULAR",
+            ),
+            workloadIdentityConfig=clusterv1beta1.WorkloadIdentityConfig(
+                workloadPool=f"{self.xr.spec.project}.svc.id.goog",
+            ),
+        )
+
+        addons = self.xr.spec.addons
+        if addons:
+            # addonsConfig on container.Cluster is a single object with
+            # per-driver enabled flags. Build it from the user's opt-ins.
+            addons_config = clusterv1beta1.AddonsConfig(
+                gcpFilestoreCsiDriverConfig=clusterv1beta1.GcpFilestoreCsiDriverConfig(
+                    enabled=bool(addons.gcpFilestoreCsiDriver),
+                ),
+                gcsFuseCsiDriverConfig=clusterv1beta1.GcsFuseCsiDriverConfig(
+                    enabled=bool(addons.gcsFuseCsiDriver),
+                ),
+                gcePersistentDiskCsiDriverConfig=clusterv1beta1.GcePersistentDiskCsiDriverConfig(
+                    enabled=bool(addons.gcePersistentDiskCsiDriver),
+                ),
+            )
+            for_provider.addonsConfig = addons_config
+
         resource.update(
             self.rsp.desired.resources["cluster"],
             clusterv1beta1.Cluster(
                 spec=clusterv1beta1.Spec(
-                    forProvider=clusterv1beta1.ForProvider(
-                        project=self.xr.spec.project,
-                        location=self.xr.spec.region,
-                        deletionProtection=False,
-                        removeDefaultNodePool=True,
-                        initialNodeCount=1,
-                        minMasterVersion=self.xr.spec.kubernetesVersion,
-                        networkSelector=clusterv1beta1.NetworkSelector(
-                            matchControllerRef=True,
-                        ),
-                        subnetworkSelector=clusterv1beta1.SubnetworkSelector(
-                            matchControllerRef=True,
-                        ),
-                        ipAllocationPolicy=clusterv1beta1.IpAllocationPolicy(
-                            clusterSecondaryRangeName=_RANGE_PODS,
-                            servicesSecondaryRangeName=_RANGE_SERVICES,
-                        ),
-                        releaseChannel=clusterv1beta1.ReleaseChannel(
-                            channel="REGULAR",
-                        ),
-                        workloadIdentityConfig=clusterv1beta1.WorkloadIdentityConfig(
-                            workloadPool=f"{self.xr.spec.project}.svc.id.goog",
-                        ),
-                    ),
+                    forProvider=for_provider,
                     writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
                         name=_kubeconfig_secret_name(self.xr),
                         namespace=self.xr.metadata.namespace,

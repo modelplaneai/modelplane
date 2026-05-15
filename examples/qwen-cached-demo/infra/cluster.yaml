@@ -22,6 +22,15 @@ spec:
     gke:
       project: ${GCP_PROJECT}
       region: us-central1
+  storage:
+    # Asks Modelplane to ensure the cluster has a CSI driver that
+    # supports shared (RWX) filesystem PVCs. On GKE this maps to
+    # the Filestore CSI driver, which provides the standard-rwx /
+    # premium-rwx storage classes used by ModelCache for multi-node
+    # serving (LWS gang) and multi-replica reads.
+    storageClassName: standard-rwx
+    csiDrivers:
+    - SharedFilesystem
   nodePools:
   - name: gpu-l4
     class: gke-l4-1x-g2
@@ -30,4 +39,6 @@ spec:
     # GPU, one GPU per node).
     nodeCount: 2
     zones:
-    - us-central1-c
+    # us-central1-c hit GCE_STOCKOUT for L4 during this demo build.
+    # us-central1-a generally has more L4 capacity.
+    - us-central1-a

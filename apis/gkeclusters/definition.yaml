@@ -79,6 +79,24 @@ spec:
                     default: "10.0.0.0/24"
                     description: Primary IP range for nodes.
                     maxLength: 18
+              addons:
+                type: object
+                description: >-
+                  GKE managed addons / CSI drivers. Each field is an
+                  opt-in boolean; defaults match GKE's own defaults
+                  (most off). Modelplane wires these into the
+                  underlying cluster.container.gcp resource's
+                  addonsConfig.
+                properties:
+                  gcpFilestoreCsiDriver:
+                    type: boolean
+                    default: false
+                  gcsFuseCsiDriver:
+                    type: boolean
+                    default: false
+                  gcePersistentDiskCsiDriver:
+                    type: boolean
+                    default: true
               nodePools:
                 type: array
                 description: >-
