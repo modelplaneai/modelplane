@@ -16,6 +16,9 @@ from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from .model.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.m.gcp.cloudplatform.projectiammember import v1beta1 as iamv1beta1
+from .model.io.upbound.m.gcp.cloudplatform.projectservice import (
+    v1beta1 as projectservicev1beta1,
+)
 from .model.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
 from .model.io.upbound.m.gcp.cloudplatform.serviceaccountkey import (
     v1beta1 as sakeyv1beta1,
@@ -57,6 +60,7 @@ class Composer:
         self.xr = v1alpha1.GKECluster(**resource.struct_to_dict(req.observed.composite.resource))
 
     def compose(self):
+        self.compose_project_services()
         self.compose_network()
         self.compose_subnet()
         self.compose_cluster()
@@ -68,16 +72,77 @@ class Composer:
         self.write_status()
         self.mark_readiness()
 
+    def compose_project_services(self):
+        """Enable GCP service APIs required by opted-in cluster addons.
+
+        When the user opts into a CSI addon (e.g. Filestore via
+        InferenceCluster.spec.storage.csiDrivers: [SharedFilesystem]),
+        GKE will install the in-cluster CSI driver but the driver's
+        actual provisioning calls hit the corresponding GCP API. If
+        the API isn't enabled on the project, provisioning fails
+        silently — PVCs sit Pending forever with SERVICE_DISABLED in
+        their workload-cluster events while the GKE cluster itself
+        looks healthy.
+
+        Emit a ProjectService MR per addon-driven API so Crossplane
+        enables it up-front. The enable takes seconds and runs in
+        parallel with cluster create (which takes minutes), so it
+        never extends critical path. We deliberately do NOT enable
+        container.googleapis.com / compute.googleapis.com here — if
+        those aren't on, the user's GCP project setup is incomplete
+        and they should fix it explicitly rather than have Modelplane
+        silently flip project-level toggles.
+
+        disableOnDestroy=False: tearing down one InferenceCluster
+        shouldn't yank an API the rest of the project relies on.
+        """
+        addons = self.xr.spec.addons
+        if not addons:
+            return
+
+        services_for_addons = []
+        if addons.gcpFilestoreCsiDriver:
+            services_for_addons.append(("filestore", "file.googleapis.com"))
+
+        for key_suffix, svc in services_for_addons:
+            resource.update(
+                self.rsp.desired.resources[f"projectservice-{key_suffix}"],
+                projectservicev1beta1.ProjectService(
+                    spec=projectservicev1beta1.Spec(
+                        forProvider=projectservicev1beta1.ForProvider(
+                            project=self.xr.spec.project,
+                            service=svc,
+                            disableOnDestroy=False,
+                        ),
+                    ),
+                ),
+            )
+
     def detect_capacity_failures(self):
         """Surface a Modelplane-level condition when an underlying GKE
         nodepool can't get GPU capacity from GCP.
 
-        GCE reports stockouts ("GCE_STOCKOUT") on the node pool's
-        managed-resource conditions. Without this, the only signal a
-        user gets is the cluster hanging in `Creating` for 30+ min.
-        With it, the GKECluster XR carries a `InsufficientGPUCapacity`
-        condition naming the affected zone, which compose-inference-
-        cluster propagates up to the user-facing InferenceCluster XR.
+        GCE reports stockouts via several variants:
+          - "GCE_STOCKOUT" on node pool conditions (synchronous failure)
+          - "does not have enough resources" (older API wording)
+          - "ZONE_RESOURCE_POOL_EXHAUSTED" on the underlying instance
+            insert (instance-level, surfaced via Cloud Logging — see
+            TODO below)
+
+        Without this, the only signal a user gets is the cluster
+        hanging in `Creating` for 30+ min. With it, the GKECluster XR
+        carries an `InsufficientGPUCapacity` condition naming the
+        affected zone, which compose-inference-cluster propagates up
+        to the user-facing InferenceCluster XR.
+
+        TODO: ZONE_RESOURCE_POOL_EXHAUSTED isn't reported on the
+        nodepool MR's conditions — GKE keeps the pool in PROVISIONING
+        forever while the underlying IGM retries instance creates. To
+        catch this variant we'd need to either (a) query the IGM
+        directly via gcloud (adds a runtime dep), or (b) check the
+        nodepool MR's atProvider for status fields that reflect IGM
+        health. Both are bigger lifts than the current pattern match.
+        Falls back to user noticing the hang for now.
         """
         for pool in self.xr.spec.nodePools or []:
             key = f"nodepool-{pool.name}"
@@ -87,7 +152,11 @@ class Composer:
             d = resource.struct_to_dict(observed.resource)
             for c in d.get("status", {}).get("conditions", []) or []:
                 msg = c.get("message", "") or ""
-                if "GCE_STOCKOUT" in msg or "does not have enough resources" in msg:
+                if (
+                    "GCE_STOCKOUT" in msg
+                    or "does not have enough resources" in msg
+                    or "ZONE_RESOURCE_POOL_EXHAUSTED" in msg
+                ):
                     zones = ", ".join(pool.zones or [])
                     conditions.set_condition(
                         self.rsp,
