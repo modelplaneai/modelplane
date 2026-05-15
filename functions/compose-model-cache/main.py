@@ -537,11 +537,15 @@ def _hf_hydration(hf) -> HydrationSpec:
             },
         )
     revision_arg = f" --revision {hf.revision}" if hf.revision else ""
+    # huggingface-hub 1.x deprecated `huggingface-cli` in favor of `hf`.
+    # The `[cli]` extra is no longer published either, so this Job
+    # previously failed the install step before ever reaching the
+    # download. Use `hf download` directly.
     command = (
         "set -e; "
         f"{_SKIP_IF_HYDRATED}"
-        "pip install --quiet 'huggingface_hub[cli]'; "
-        f"huggingface-cli download {hf.repo}{revision_arg} --local-dir {HYDRATION_MOUNT}"
+        "pip install --quiet huggingface_hub; "
+        f"hf download {hf.repo}{revision_arg} --local-dir {HYDRATION_MOUNT}"
     )
     return HydrationSpec(env=env, command=command)
 
