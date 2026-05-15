@@ -29,7 +29,6 @@ spec:
       attributes["modelplane.ai/networkInterNode"].string == "infiniband"
   workers:
     topology:
-      strategy: TensorPipeline
       tensor: 8
       pipeline: 2
     template:
@@ -352,7 +351,6 @@ spec:
       capacity["gpu.nvidia.com/memory"].compareTo(quantity("80Gi")) >= 0
   workers:
     topology:
-      strategy: Tensor
       tensor: 2
     template:
       containers:
@@ -383,13 +381,19 @@ through to ResourceClaim selectors; `modelplane.ai/*` keys are filtered out.
 describes the shape of one worker; `workers.count` (default 1) says how many
 workers of that shape exist per ModelReplica.
 
-`topology.strategy` is a required discriminator:
+`topology` has four fields, all parallelism axes. `tensor` is required.
+`pipeline`, `data`, and `dataLocal` default to 1. The axes are independent
+and compose multiplicatively — there is no strategy discriminator because
+the derivation formula is the same regardless of which axes are active:
 
-| Strategy | Required fields | Nodes per worker | GPUs per node | Total GPUs per worker |
-|---|---|---|---|---|
-| `Tensor` | `tensor` | 1 | `tensor` | `tensor` |
-| `TensorPipeline` | `tensor`, `pipeline` | `pipeline` | `tensor` | `tensor * pipeline` |
-| `DataExpert` | `tensor`, `data`, `dataLocal` | `data / dataLocal` | `dataLocal * tensor` | `data * tensor` |
+| | Formula |
+|---|---|
+| Nodes per worker | `pipeline * (data / dataLocal)` |
+| GPUs per node | `tensor * dataLocal` |
+| Total GPUs per worker | `tensor * data * pipeline` |
+
+Validation: `dataLocal` requires `data`, `dataLocal <= data`, `data` must
+be divisible by `dataLocal`.
 
 The scheduler derives the physical shape from the topology. No separate node
 count or GPU count fields; the topology fully determines the resource
@@ -430,7 +434,6 @@ spec:
   workers:
     count: 3
     topology:
-      strategy: TensorPipeline
       tensor: 8
       pipeline: 2
     template:
@@ -450,7 +453,6 @@ spec:
     workers:
       count: 5
       topology:
-        strategy: Tensor
         tensor: 1
       template:
         containers:
