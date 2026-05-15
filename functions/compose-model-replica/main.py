@@ -109,9 +109,6 @@ class Composer:
         # with pvc://<cache-pvc> so the engine reads from the cache.
         #
         # TODO(negz): Stop doing this when we drop KServe. It's a hack.
-        # TODO(rebase): re-thread cache_ref into model.uri override
-        # (was at the llmis_spec construction site; new shape needs
-        # verification).
         model_name = ""
         container_args = []
         for arg in list(engine.args or []):
@@ -142,16 +139,19 @@ class Composer:
             "router": {"gateway": {}, "route": {}},
         }
 
-        # Multi-node: pipeline pods, each with `tensor` GPUs.
-        # Total tensor parallelism = tensor * pipeline. Worker count is
-        # pipeline - 1 (the leader is the "main" template).
+        # Multi-node TensorPipeline: pipeline pods, each with `tensor` GPUs.
+        # KServe v0.17+ schema:
+        #   parallelism.tensor   = per-pod GPU count
+        #   parallelism.pipeline = number of pods (incl. leader)
+        #   worker               = flat PodSpec for worker pods
+        # (v0.16 used `worker: {size, template}` and `parallelism.tensor`
+        # holding the *total* GPU count; that shape is no longer accepted.)
         if multi_node:
-            total_gpus = gpu_per_pod * int(topology.pipeline)
-            llmis_spec["parallelism"] = {"tensor": total_gpus}
-            llmis_spec["worker"] = {
-                "size": int(topology.pipeline) - 1,
-                "template": dict(pod_spec),
+            llmis_spec["parallelism"] = {
+                "tensor": gpu_per_pod,
+                "pipeline": int(topology.pipeline),
             }
+            llmis_spec["worker"] = dict(pod_spec)
 
         resource.update(
             self.rsp.desired.resources[MODEL_RESOURCE_KEY],
