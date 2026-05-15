@@ -52,7 +52,7 @@ _VLLM_MULTI_NODE_BOOTSTRAP = """\
 set -e
 if [ "$LWS_WORKER_INDEX" = "0" ]; then
   ray start --head --port=6379
-  exec vllm serve "$@"
+  exec python3 -m vllm.entrypoints.openai.api_server "$@"
 else
   exec ray start --address="$LWS_LEADER_ADDRESS:6379" --block
 fi
