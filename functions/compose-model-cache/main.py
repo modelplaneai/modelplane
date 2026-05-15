@@ -338,7 +338,7 @@ class Composer:
         pvc_key = self._pvc_key(cluster_name)
         job_key = self._job_key(cluster_name)
 
-        pvc_ready = conditions.has_condition(self.req, pvc_key, "Ready")
+        pvc_ready = self._pvc_bound(pvc_key)
         if self._job_failed(job_key):
             return PHASE_FAILED
         if self._job_complete(job_key) and pvc_ready:
@@ -346,6 +346,17 @@ class Composer:
         if pvc_ready:
             return PHASE_HYDRATING
         return PHASE_PENDING
+
+    def _pvc_bound(self, pvc_key: str) -> bool:
+        """Check the remote PVC has reached phase=Bound.
+
+        PVCs don't carry a `Ready` condition, so the Object MR wrapping
+        them never reports Ready=True under provider-kubernetes's
+        DeriveFromObject policy. We have to read status.phase from the
+        manifest the provider echoes back.
+        """
+        manifest_status = self._observed_remote_status(pvc_key)
+        return manifest_status.get("phase") == "Bound"
 
     def _job_complete(self, job_key: str) -> bool:
         """Check the remote Job has succeeded.
