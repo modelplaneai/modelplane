@@ -507,9 +507,13 @@ class Composer:
 # ------------------------------------------------------------------------- #
 
 # Short-circuits if the PVC already has content, so a Job rerun (after
-# eviction, replay, or backoff) doesn't redownload.
+# eviction, replay, or backoff) doesn't redownload. `lost+found` is
+# created by ext4-style filesystems (Filestore Basic HDD on GCP is one
+# such case) and exists on a fresh PVC, so we must exclude it from the
+# emptiness check — otherwise the first hydration on a brand-new
+# Filestore-backed PVC is incorrectly skipped and the cache stays empty.
 _SKIP_IF_HYDRATED = (
-    f'if [ -n "$(ls -A {HYDRATION_MOUNT} 2>/dev/null)" ]; then '
+    f"if [ -n \"$(ls -A {HYDRATION_MOUNT} 2>/dev/null | grep -v '^lost+found$')\" ]; then "
     "  echo 'artifact already hydrated, skipping'; exit 0; "
     "fi; "
 )
