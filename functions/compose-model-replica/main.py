@@ -117,6 +117,15 @@ class Composer:
             else:
                 container_args.append(arg)
 
+        # KServe v0.17+ mounts the cache PVC at /mnt/models but no
+        # longer injects --model into the engine's argv. Without it,
+        # vLLM's argparse defaults --model to facebook/opt-125m and
+        # fetches that from HuggingFace, ignoring the mounted PVC
+        # entirely. Explicitly point the engine at the mount path so
+        # the cached weights are actually used.
+        if cache_ref:
+            container_args.append("--model=/mnt/models")
+
         container = self._build_container(engine, gpu_per_pod, container_args)
         pod_spec = self._build_pod_spec(template, container)
         llmis_template = self._build_llmis_template(template, pod_spec)
