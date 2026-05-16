@@ -46,17 +46,34 @@ kubectl wait --for=condition=ArtifactReady --timeout=20m \
 	"modelcache/qwen-2-5-0-5b" -n "$NS"
 echo "    Cache hydrated in $(elapsed "$cache_start")"
 
+echo
+echo "==> Cache state (composition fanned out a PVC + Job on each matched cluster)"
+kubectl get modelcache qwen-2-5-0-5b -n "$NS"
+kubectl get objects.kubernetes.m.crossplane.io -n "$NS" \
+	-o custom-columns='NAME:.metadata.name,KIND:.spec.forProvider.manifest.kind,SYNCED:.status.conditions[?(@.type=="Synced")].status,READY:.status.conditions[?(@.type=="Ready")].status,AGE:.metadata.creationTimestamp' 2>/dev/null
+
+echo
 echo "==> Apply ModelDeployment (TensorPipeline 1x2 LWS gang) + ModelService"
 deploy_start=$(date +%s)
 kubectl apply -f "${DIR}/02-deployment.yaml"
 kubectl apply -f "${DIR}/03-service.yaml"
 
+echo
+echo "==> Workload tree on control plane"
+kubectl get modeldeployment,modelservice,modelreplica,modelendpoint -n "$NS"
+
+echo
 echo "==> Waiting for the 2-pod LWS gang to be Ready"
 while ! deployment_ready qwen-cached-demo; do
 	sleep 5
 done
 cached_t=$(elapsed "$deploy_start")
 echo "    LWS gang Ready in ${cached_t}"
+
+echo
+echo "==> Composed MRs (workload-cluster LLMInferenceService is the orange-band)"
+kubectl get objects.kubernetes.m.crossplane.io -n "$NS" \
+	-o custom-columns='NAME:.metadata.name,KIND:.spec.forProvider.manifest.kind,SYNCED:.status.conditions[?(@.type=="Synced")].status,READY:.status.conditions[?(@.type=="Ready")].status' 2>/dev/null
 
 echo
 echo "==> Wait for service address"
