@@ -13,8 +13,8 @@ v0.1 surface (locked):
 - Storage backends: PVC, ExistingPVC
 - Replication: AllMatchingClusters
 
-Adapter / Engine kinds and ContentAddressed / Custom backends are
-deferred to v0.2 per design/modelcache/design.md.
+Adapter / Engine artifact kinds and additional storage backends
+are out of scope for v0.1.
 
 ModelDeployment integration lives in compose-model-replica:
 spec.caches: [{ name }] on a ModelDeployment threads through to the

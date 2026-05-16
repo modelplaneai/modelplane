@@ -2,7 +2,7 @@
 
 A fleet-aware primitive that stages an artifact (model weights, tokenizer, generic bytes) onto every matched `InferenceCluster` exactly once, so `ModelReplica`s on those clusters skip the per-replica fetch and a multi-pod LWS gang can mount the same bytes.
 
-**Status:** v0.1 implemented in PR #78. This doc covers what shipped. Anything more ambitious (content-addressed substrate, cross-cluster dedup, lazy load) is explicitly v0.2+ and lives outside this repo.
+**Status:** v0.1 implemented in PR #78. This doc covers what shipped. Anything further (richer artifact kinds, lazy load, cross-cluster sharing) is explicitly out of scope here and lands in later versions.
 
 ## Problem v0.1 solves
 
@@ -116,14 +116,13 @@ Lives as a Python constant in the function — when we replace KServe with a Mod
 
 | Item | Reason |
 |---|---|
-| `Adapter` artifact kind (LoRA, ControlNet, IP-Adapter) | Dynamic-load semantics differ from static weights; v0.2 |
-| `Engine` artifact kind (compiled engine + `(model, hw, config)` tuple) | Needs the content-addressed substrate to be useful; v0.2 |
-| `ContentAddressed` storage backend | Requires the commercial substrate (Xet-class CDC, Dragonfly delivery, dedup index); separate track |
-| `Custom` storage backend (OSS webhook) | Lands with `ContentAddressed` so both extension points appear together |
-| Lazy load / streaming weights | Engine-side adapters (FUSE / HTTP-range) — needs the chunked substrate first |
-| Cross-deployment / cross-tenant dedup | Requires content-addressed bytes |
-| Cross-cluster content sharing | v0.2+ |
-| `AllMatchingNodes` replication granularity | Only fits per-node SSD caches with content-addressed substrate |
+| `Adapter` artifact kind (LoRA, ControlNet, IP-Adapter) | Dynamic-load semantics differ from static weights; future |
+| `Engine` artifact kind (compiled engine + `(model, hw, config)` tuple) | Composition shape needs more thought before locking; future |
+| Additional storage backends | Out of scope for v0.1; the `backend` enum is the extension point |
+| Lazy load / streaming weights | Requires engine-side adapters; future |
+| Cross-deployment dedup | Out of scope for v0.1 |
+| Cross-cluster content sharing | Out of scope for v0.1 |
+| `AllMatchingNodes` replication granularity | Per-node staging is a separate problem from per-cluster; future |
 
 ## What this proves
 
@@ -138,6 +137,6 @@ Live demo: PR #78 `examples/qwen-cached-demo/`.
 
 See [`examples/qwen-cached-demo/TOPOLOGY.md`](../../examples/qwen-cached-demo/TOPOLOGY.md) for the XR / MR layout.
 
-## v0.2 hooks (named, not designed here)
+## Forward compatibility
 
-The v0.1 user-facing API is forward-compatible: `spec.storage.backend` is a discriminator, `spec.artifact.source` is a discriminated union, `spec.replication` is an enum, and `spec.clusterSelector` already accepts the v0.1 `matchLabels` shape that v0.2's CEL form will extend. v0.2 work happens behind the same XRD without breaking v0.1 users.
+The v0.1 user-facing API is shaped to grow without breaking existing users: `spec.storage.backend` is a discriminator, `spec.artifact.source` is a discriminated union, `spec.replication` is an enum, and `spec.clusterSelector.matchLabels` is extensible. New kinds, sources, or backends land behind the same XRD.

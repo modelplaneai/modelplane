@@ -87,7 +87,7 @@ flowchart TB
   KSC --> KSREL
   KSC --> LWSREL
   IC --> SCMR
-  GKE -. status.network.name .-> SCMR
+  GKE -. "status.network.name" .-> SCMR
 
   %% ─── ModelCache path (yellow) ──────────────────────────────────
   MC ==> PVCMR
