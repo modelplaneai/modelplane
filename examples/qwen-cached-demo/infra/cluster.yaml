@@ -28,7 +28,7 @@ spec:
     # the Filestore CSI driver, which provides the standard-rwx /
     # premium-rwx storage classes used by ModelCache for multi-node
     # serving (LWS gang) and multi-replica reads.
-    storageClassName: standard-rwx
+    storageClassName: modelplane-rwx
     csiDrivers:
     - SharedFilesystem
   nodePools:
