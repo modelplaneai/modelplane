@@ -509,6 +509,13 @@ class Composer:
         managed_resources += [f"nodepool-{pool.name}" for pool in self.xr.spec.nodePools]
         if self.observed_sa_email():
             managed_resources.append("iam-binding")
+        # ProjectService MRs composed by compose_project_services. The
+        # XR can't go Ready until these report Ready too, otherwise the
+        # filestore CSI driver may try to provision before the API is
+        # available.
+        addons = self.xr.spec.addons
+        if addons and addons.gcpFilestoreCsiDriver:
+            managed_resources.append("projectservice-filestore")
 
         for r in managed_resources:
             if conditions.has_condition(self.req, r, "Ready"):
