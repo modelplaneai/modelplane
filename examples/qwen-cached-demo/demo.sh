@@ -53,6 +53,13 @@ kubectl get objects.kubernetes.m.crossplane.io -n "$NS" \
 	-o custom-columns='NAME:.metadata.name,KIND:.spec.forProvider.manifest.kind,SYNCED:.status.conditions[?(@.type=="Synced")].status,READY:.status.conditions[?(@.type=="Ready")].status,AGE:.metadata.creationTimestamp' 2>/dev/null
 
 echo
+echo "==> PVC manifest the composition applied on the workload cluster"
+pvc_mr=$(kubectl get objects.kubernetes.m.crossplane.io -n "$NS" \
+	-o jsonpath='{range .items[?(@.spec.forProvider.manifest.kind=="PersistentVolumeClaim")]}{.metadata.name}{"\n"}{end}' | head -1)
+kubectl get object.kubernetes.m.crossplane.io "$pvc_mr" -n "$NS" \
+	-o jsonpath='{.spec.forProvider.manifest}' 2>/dev/null | python3 -m json.tool
+
+echo
 echo "==> Apply ModelDeployment (TensorPipeline 1x2 LWS gang) + ModelService"
 deploy_start=$(date +%s)
 kubectl apply -f "${DIR}/02-deployment.yaml"
@@ -74,6 +81,14 @@ echo
 echo "==> Composed MRs (workload-cluster LLMInferenceService is the orange-band)"
 kubectl get objects.kubernetes.m.crossplane.io -n "$NS" \
 	-o custom-columns='NAME:.metadata.name,KIND:.spec.forProvider.manifest.kind,SYNCED:.status.conditions[?(@.type=="Synced")].status,READY:.status.conditions[?(@.type=="Ready")].status' 2>/dev/null
+
+echo
+echo "==> LLMInferenceService manifest the composition applied (model.uri,"
+echo "    flat worker PodSpec with Ray-bootstrap command, parallelism)"
+lis_mr=$(kubectl get objects.kubernetes.m.crossplane.io -n "$NS" \
+	-o jsonpath='{range .items[?(@.spec.forProvider.manifest.kind=="LLMInferenceService")]}{.metadata.name}{"\n"}{end}' | head -1)
+kubectl get object.kubernetes.m.crossplane.io "$lis_mr" -n "$NS" \
+	-o jsonpath='{.spec.forProvider.manifest}' 2>/dev/null | python3 -m json.tool
 
 echo
 echo "==> Wait for service address"
