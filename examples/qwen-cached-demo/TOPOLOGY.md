@@ -1,9 +1,9 @@
 # qwen-cached-demo — XR / MR topology
 
-Composition tree for the demo, top-down from user-facing XRs to live workload pods.
+What the demo composes, top-down from user-facing XRs to live workload pods serving HTTP. Verified end-to-end: real chat completion returns HTTP 200 over the path drawn below.
 
-- 🟡 **ModelCache work** (new in PR #78)
-- 🟠 **External substrate we may swap** (KServe LLMInferenceService, LWS gang, KServe/LWS installs — owned by upstream operators today)
+- 🟡 **ModelCache work** (new in PR #78 — the v0.1 primitive)
+- 🟠 **External substrate we may swap** (KServe LLMInferenceService, LWS gang, KServe/LWS installs)
 
 ```mermaid
 flowchart TB
@@ -18,10 +18,10 @@ flowchart TB
   subgraph USER["User-facing XRs · modelplane.ai/v1alpha1"]
     direction LR
     IG[InferenceGateway]:::xr
-    ICL[InferenceClass]:::xr
-    IC[InferenceCluster]:::xr
-    MC([ModelCache]):::cache
-    MD[ModelDeployment]:::xr
+    ICL[InferenceClass · gke-t4-1x-n1]:::xr
+    IC[InferenceCluster · qwen-cached-demo]:::xr
+    MC(["ModelCache · qwen-2-5-0-5b<br/>backend: PVC"]):::cache
+    MD["ModelDeployment · qwen-cached-demo<br/>TensorPipeline tensor=1 pipeline=2"]:::xr
     ME[ModelEndpoint]:::xr
     MS[ModelService]:::xr
   end
@@ -29,9 +29,9 @@ flowchart TB
   %% ─── Internal Modelplane XRs ────────────────────────────────────
   subgraph INT["Internal XRs"]
     direction LR
-    GKE[GKECluster]:::intxr
-    KSC[KServeCluster]:::intxr
-    MRL[ModelReplica]:::intxr
+    GKE["GKECluster · GCP-specific<br/>status.network.name"]:::intxr
+    KSC["KServeCluster · KServe + LWS install"]:::intxr
+    MRL[ModelReplica · per-cluster]:::intxr
   end
 
   %% ─── GCP infra MRs ──────────────────────────────────────────────
@@ -40,29 +40,29 @@ flowchart TB
     NET[Network]:::mr
     SUB[Subnetwork]:::mr
     CL["Cluster + Filestore CSI addon"]:::mr
-    NP["NodePool ×2 · T4"]:::mr
+    NP["NodePool ×2 · T4 / n1-standard-4"]:::mr
     PS["ProjectService · file.googleapis.com"]:::mr
   end
 
-  %% ─── Workload-cluster install MRs ──────────────────────────────
+  %% ─── Workload-cluster installs ──────────────────────────────────
   subgraph INST["Workload-cluster installs"]
     direction LR
-    KSREL([Release · KServe]):::swap
+    KSREL([Release · KServe v0.18]):::swap
     LWSREL([Release · LWS]):::swap
-    SCMR([Object → StorageClass · modelplane-rwx]):::cache
+    SCMR(["Object → StorageClass · modelplane-rwx<br/>parameters.network = our VPC"]):::cache
   end
 
   %% ─── ModelCache MRs ─────────────────────────────────────────────
   subgraph CACHEMR["ModelCache MRs"]
     direction LR
-    PVCMR([Object → PVC · RWX, Filestore]):::cache
-    JOBMR([Object → Hydration Job · HF → PVC]):::cache
+    PVCMR(["Object → PVC · RWX, Filestore"]):::cache
+    JOBMR(["Object → Hydration Job<br/>hf download → /mnt/model"]):::cache
   end
 
   %% ─── Serving MRs ────────────────────────────────────────────────
   subgraph SERVE["Serving MRs"]
     direction LR
-    LIS([Object → LLMInferenceService]):::swap
+    LIS(["Object → LLMInferenceService<br/>model.uri = pvc://modelcache-...<br/>worker = flat PodSpec, ray bootstrap cmd"]):::swap
     BE[Backend · envoy gateway]:::mr
     HTR[HTTPRoute · envoy gateway]:::mr
   end
@@ -70,8 +70,9 @@ flowchart TB
   %% ─── Workload-cluster runtime ───────────────────────────────────
   subgraph RT["Workload-cluster runtime"]
     direction LR
-    GANG{{LWS gang · leader + worker}}:::swap
-    PVCBOUND[("Bound PVC · /mnt/models")]:::cache
+    LEAD{{"LWS leader pod<br/>ray start --head + vllm serve"}}:::swap
+    WORK{{"LWS worker pod<br/>ray start --address=... --block"}}:::swap
+    PVCBOUND[("Bound PVC · /mnt/models<br/>Qwen 2.5 0.5B-Instruct")]:::cache
   end
 
   %% ─── Cluster provisioning edges ────────────────────────────────
@@ -86,12 +87,13 @@ flowchart TB
   KSC --> KSREL
   KSC --> LWSREL
   IC --> SCMR
+  GKE -. status.network.name .-> SCMR
 
   %% ─── ModelCache path (yellow) ──────────────────────────────────
   MC ==> PVCMR
   MC ==> JOBMR
   PVCMR ==> PVCBOUND
-  JOBMR == writes ==> PVCBOUND
+  JOBMR == writes Qwen ==> PVCBOUND
   SCMR -. used by .-> PVCMR
 
   %% ─── Serving path ──────────────────────────────────────────────
@@ -100,9 +102,12 @@ flowchart TB
   MD --> ME
   MRL --> LIS
   MRL --> BE
-  ME -. reads backendName .-> MRL
-  LIS --> GANG
-  GANG == mounts RWX ==> PVCBOUND
+  ME -. backendName .-> MRL
+  LIS --> LEAD
+  LIS --> WORK
+  LEAD <-. ray cluster .-> WORK
+  LEAD == mounts ==> PVCBOUND
+  WORK == mounts ==> PVCBOUND
 
   MS -. selects by label .-> ME
   MS --> HTR
@@ -110,18 +115,14 @@ flowchart TB
   HTR -. exposed on .-> IG
 ```
 
-## What changed in PR #78 / on this branch
+## What this proves
 
-**ModelCache primitive (yellow).** New user-facing XR + composition function that takes an artifact source (HuggingFace, S3, OCI, …) and a backend (PVC for v0.1) and emits a per-cluster RWX `PVC` + a one-shot hydration `Job`. `ModelDeployment.spec.caches[]` references the cache, and the deployment's composition sets `model.uri = pvc://modelcache-<name>` on the `LLMInferenceService` so every pod in the LWS gang mounts the same pre-populated PVC.
+**The yellow path is the v0.1 primitive.** `ModelCache` composes a per-cluster RWX PVC + a one-shot hydration Job; the Job pulls Qwen 2.5 0.5B-Instruct from HuggingFace into the PVC. `InferenceCluster.spec.storage.csiDrivers: [SharedFilesystem]` is the cloud-agnostic capability declaration; the GKE composition branch reads `GKECluster.status.network.name` and composes the `modelplane-rwx` StorageClass on the workload cluster with `parameters.network` set so Filestore lands on the cluster's VPC (otherwise it defaults to the GCP `default` VPC and is unreachable from our nodes). `compose-gke-cluster` also auto-enables `file.googleapis.com` via a `ProjectService` MR.
 
-**Cloud-agnostic storage capability.** `InferenceCluster.spec.storage.csiDrivers: [SharedFilesystem]` is the *semantic* capability the user requests. The GKE branch of `compose-inference-cluster` reads the underlying VPC name from `GKECluster.status.network.name` and composes a workload-cluster `StorageClass` (`modelplane-rwx`) with `parameters.network=<our VPC>` so Filestore PVCs land in the reachable network. EKS / AKS branches will follow the same pattern with their respective knobs.
+**`ModelDeployment.spec.caches[]` is the wire.** The composition function reads it and sets `LLMInferenceService.spec.model.uri = pvc://modelcache-qwen-2-5-0-5b`. KServe mounts that PVC at `/mnt/models` on every gang pod. The function also appends `--model=/mnt/models` to the engine args (KServe v0.17+ stopped injecting that automatically) and a Ray-bootstrap shell wrapper as the container `command` when `topology.strategy == TensorPipeline`.
 
-**GCP API auto-enable.** `compose-gke-cluster` now also composes a `ProjectService` MR for `file.googleapis.com` whenever the user opts into the Filestore CSI addon — without it, PVCs sit Pending forever with `SERVICE_DISABLED` in their workload-cluster events.
+**The LWS gang of 2 pods both read from the same cached PVC.** Leader runs `ray start --head` then execs `vllm serve`; worker runs `ray start --address=$LWS_LEADER_ADDRESS:6379 --block` so vLLM's placement group sees both GPUs and pipeline-parallel-size=2 can land. End-to-end: real chat completion over HTTP 200.
 
 ## Why the orange band is interesting
 
-The orange items (`KServe Release`, `LWS Release`, `Object → LLMInferenceService`, and the LWS gang itself) are upstream-operator territory. We compose them today because they exist, work, and ship `model.uri = pvc://…` semantics out of the box. If/when Modelplane introduces an internal serving primitive that owns engine-pod + gang lifecycle directly, the swap point is exactly this band — `ModelDeployment` / `ModelService` / `ModelEndpoint` and the yellow ModelCache path are untouched.
-
-## Why the yellow band is the minimum
-
-Multi-node LWS serving structurally requires the same weight bytes on every gang pod. The minimum primitive that delivers that — and works without KServe's storage-initializer init-container OOMing on big models — is a per-cluster RWX PVC, hydrated once by a side Job, mounted read-only by every gang pod. v0.1 ships exactly that. Single-node scale-up benefits as a side effect (no per-replica HF pull). The harder content-addressed wins stay in v0.2 behind the same user-facing API.
+The orange items (KServe `Release`, LWS `Release`, `LLMInferenceService` MR, the LWS gang itself) are upstream-operator territory. v0.1 composes them today because they exist and work and ship `model.uri = pvc://…` mounting semantics out of the box. If/when Modelplane introduces an internal serving primitive that owns engine-pod + gang lifecycle directly (composing `LeaderWorkerSet` ourselves with the same bootstrap-as-command pattern, without KServe in the middle), the swap point is exactly this band. The yellow path and the user-facing API are unaffected.
