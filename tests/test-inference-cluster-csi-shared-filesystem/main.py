@@ -134,7 +134,8 @@ test = compositiontest.CompositionTest(
                             name="demo-us-central-cluster-kubeconfig",
                         ),
                         readiness=k8sobjv1alpha1.Readiness(
-                            policy="DeriveFromObject",
+                            # StorageClass has no Ready condition of its own.
+                            policy="SuccessfulCreate",
                         ),
                         forProvider=k8sobjv1alpha1.ForProvider(
                             manifest={

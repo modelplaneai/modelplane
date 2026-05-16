@@ -13,7 +13,6 @@ report Ready once the API enable is observed Ready too.
 """
 
 from .lib import resource as libresource
-from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
 from .model.io.upbound.m.gcp.cloudplatform.projectservice import (

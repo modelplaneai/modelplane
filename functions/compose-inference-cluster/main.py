@@ -266,7 +266,14 @@ class Composer:
                         kind="ClusterProviderConfig",
                         name=cpc_name,
                     ),
-                    readiness=k8sobjv1alpha1.Readiness(policy="DeriveFromObject"),
+                    # StorageClass has no Ready condition of its own;
+                    # DeriveFromObject would keep this MR Ready=False
+                    # forever and block the InferenceCluster XR from
+                    # going Ready. SuccessfulCreate marks the MR Ready
+                    # as soon as the SC is applied on the workload
+                    # cluster — which is the actual readiness signal
+                    # we care about for a config-only resource.
+                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
                     forProvider=k8sobjv1alpha1.ForProvider(manifest=sc_manifest),
                 ),
             ),
