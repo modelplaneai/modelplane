@@ -1,10 +1,16 @@
-# Deploy Qwen 2.5 0.5B from the pre-staged ModelCache.
+# Deploy Qwen 2.5 0.5B from the pre-staged ModelCache, multi-node.
+#
+# TensorPipeline tensor=1 pipeline=2 forces an LWS gang of 2 pods,
+# one per node. Each pod has 1 GPU; together they form one logical
+# replica via pipeline-parallel serving. With Qwen 0.5B the model
+# trivially fits in one GPU — pipeline=2 is artificial here, used
+# specifically to exercise the LWS path and verify both pods mount
+# the same ModelCache PVC.
 #
 # spec.caches points the serving stack at the cache's PVC so the
-# engine pod mounts pre-populated weights instead of fetching them at
-# boot. Engine args carry --served-model-name and --max-model-len;
-# the model path itself is injected from the cache so the user
-# doesn't write --model=... here.
+# engine pods mount pre-populated weights instead of fetching them
+# at boot. The engine reads weights from the mount point KServe
+# injects when model.uri is pvc://...
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -14,8 +20,9 @@ spec:
   replicas: 1
   workers:
     topology:
-      strategy: Tensor
+      strategy: TensorPipeline
       tensor: 1
+      pipeline: 2
     resources:
       cpu: "4"
       memory: "10Gi"
@@ -24,5 +31,9 @@ spec:
     args:
     - "--served-model-name=qwen"
     - "--max-model-len=2048"
+    - "--pipeline-parallel-size=2"
+    # Qwen 2.5 weights ship in bfloat16. T4 (Turing, compute capability
+    # 7.5) doesn't support bf16; force fp16 conversion at load time.
+    - "--dtype=half"
   caches:
   - name: qwen-2-5-0-5b

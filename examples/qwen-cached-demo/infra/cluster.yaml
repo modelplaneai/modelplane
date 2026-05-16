@@ -32,13 +32,13 @@ spec:
     csiDrivers:
     - SharedFilesystem
   nodePools:
-  - name: gpu-l4
-    class: gke-l4-1x-g2
-    # Two L4 nodes so the demo can run the cached and uncached
-    # deployments side-by-side on the same cluster (one replica per
-    # GPU, one GPU per node).
+  - name: gpu-t4
+    # T4 instead of L4 — T4 is on a separate inventory pool and
+    # rarely stocks out compared to the newer L4. 16 GiB VRAM is
+    # plenty for the demo's Qwen 2.5 0.5B even at TensorPipeline=2.
+    class: gke-t4-1x-n1
+    # Two T4 nodes so the demo's TensorPipeline LWS gang (tensor=1,
+    # pipeline=2) has one GPU per worker pod.
     nodeCount: 2
     zones:
-    # us-central1-c hit GCE_STOCKOUT for L4 during this demo build.
-    # us-central1-a generally has more L4 capacity.
     - us-central1-a

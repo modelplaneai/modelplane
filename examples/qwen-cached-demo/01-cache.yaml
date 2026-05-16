@@ -26,6 +26,6 @@ spec:
   storage:
     backend: PVC
     pvc:
-      storageClassName: mp-filestore-rwx
+      storageClassName: modelplane-rwx
       sizeGiB: 5
   replication: AllMatchingClusters
