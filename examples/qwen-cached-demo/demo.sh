@@ -78,9 +78,12 @@ echo "    Service ready at ${ADDR}"
 # the demo doesn't race on first-curl.
 echo "==> Send a test request (retries until engine is serving)"
 serve_start=$(date +%s)
+# ModelService.status.address is already a full URL with the path
+# prefix (http://<gateway>/<ns>/<svc>); don't prepend scheme or
+# re-add the path — just append the OpenAI path.
 kubectl run -i --rm curl-test --image=curlimages/curl --restart=Never --quiet -- \
-	sh -c "until curl -s -f --max-time 10 'http://${ADDR}/${NS}/qwen-cached-demo/v1/models' >/dev/null 2>&1; do sleep 5; done; \
-	       curl -s --max-time 30 'http://${ADDR}/${NS}/qwen-cached-demo/v1/chat/completions' \
+	sh -c "until curl -s -f --max-time 10 '${ADDR}/v1/models' >/dev/null 2>&1; do sleep 5; done; \
+	       curl -s --max-time 30 '${ADDR}/v1/chat/completions' \
 	       -H 'Content-Type: application/json' \
 	       -d '{\"model\":\"qwen\",\"messages\":[{\"role\":\"user\",\"content\":\"What is a model cache?\"}],\"max_tokens\":40}'"
 echo
