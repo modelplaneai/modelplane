@@ -71,12 +71,20 @@ if [[ -z "${ADDR:-}" ]]; then
 fi
 echo "    Service ready at ${ADDR}"
 
-echo "==> Send a test request"
-kubectl run -i --rm curl-test --image=curlimages/curl --restart=Never -- \
-	curl -s --max-time 30 \
-	"http://${ADDR}/${NS}/qwen-cached-demo/v1/chat/completions" \
-	-H "Content-Type: application/json" \
-	-d '{"model":"qwen","messages":[{"role":"user","content":"What is a model cache?"}],"max_tokens":40}'
+# LWS reports the gang Ready as soon as both pods are 1/1, but vLLM
+# inside the leader takes another ~60-120s to load the model from the
+# cached PVC and finish CUDA graph capture before Uvicorn opens. Send
+# the actual chat completion from a pod that retries internally so
+# the demo doesn't race on first-curl.
+echo "==> Send a test request (retries until engine is serving)"
+serve_start=$(date +%s)
+kubectl run -i --rm curl-test --image=curlimages/curl --restart=Never --quiet -- \
+	sh -c "until curl -s -f --max-time 10 'http://${ADDR}/${NS}/qwen-cached-demo/v1/models' >/dev/null 2>&1; do sleep 5; done; \
+	       curl -s --max-time 30 'http://${ADDR}/${NS}/qwen-cached-demo/v1/chat/completions' \
+	       -H 'Content-Type: application/json' \
+	       -d '{\"model\":\"qwen\",\"messages\":[{\"role\":\"user\",\"content\":\"What is a model cache?\"}],\"max_tokens\":40}'"
+echo
+echo "    Engine answered after $(elapsed "$serve_start") of post-gang wait"
 
 echo
 echo "==> Demo complete. The LWS gang of 2 pods both serve from the"
