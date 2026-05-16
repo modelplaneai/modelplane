@@ -259,6 +259,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["storage-class-rwx"],
             k8sobjv1alpha1.Object(
+                metadata=metav1.ObjectMeta(namespace=metadata.NAMESPACE_SYSTEM),
                 spec=k8sobjv1alpha1.Spec(
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                         kind="ClusterProviderConfig",
