@@ -2,7 +2,7 @@
 
 A fleet-aware primitive that stages an artifact (model weights, tokenizer, generic bytes) onto every matched `InferenceCluster` exactly once, so `ModelReplica`s on those clusters skip the per-replica fetch and a multi-pod LWS gang can mount the same bytes.
 
-**Status:** v0.1 implemented in PR #78. This doc covers what shipped. Anything further (richer artifact kinds, lazy load, cross-cluster sharing) is explicitly out of scope here and lands in later versions.
+**Status:** v0.1 implemented in PR #78. This doc covers what shipped.
 
 ## Problem v0.1 solves
 
@@ -116,13 +116,10 @@ Lives as a Python constant in the function — when we replace KServe with a Mod
 
 | Item | Reason |
 |---|---|
-| `Adapter` artifact kind (LoRA, ControlNet, IP-Adapter) | Dynamic-load semantics differ from static weights; future |
-| `Engine` artifact kind (compiled engine + `(model, hw, config)` tuple) | Composition shape needs more thought before locking; future |
-| Additional storage backends | Out of scope for v0.1; the `backend` enum is the extension point |
-| Lazy load / streaming weights | Requires engine-side adapters; future |
-| Cross-deployment dedup | Out of scope for v0.1 |
-| Cross-cluster content sharing | Out of scope for v0.1 |
-| `AllMatchingNodes` replication granularity | Per-node staging is a separate problem from per-cluster; future |
+| `Adapter` artifact kind (LoRA, ControlNet, IP-Adapter) | Dynamic-load semantics differ from static weights |
+| `Engine` artifact kind (compiled engine + `(model, hw, config)` tuple) | Composition shape needs more thought before locking |
+| Additional storage backends | The `backend` enum is the extension point |
+| `AllMatchingNodes` replication granularity | Per-node staging is a separate problem from per-cluster |
 
 ## What this proves
 
