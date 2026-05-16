@@ -78,7 +78,11 @@ test = compositiontest.CompositionTest(
                                             {
                                                 "name": "main",
                                                 "image": "vllm/vllm-openai:v0.7.3",
-                                                "args": [],
+                                                # When spec.caches is set, the function appends
+                                                # --model=/mnt/models to the engine args so vLLM
+                                                # loads the cached weights instead of falling back
+                                                # to its hardcoded default model.
+                                                "args": ["--model=/mnt/models"],
                                                 "securityContext": {
                                                     "runAsUser": 0,
                                                     "runAsNonRoot": False,

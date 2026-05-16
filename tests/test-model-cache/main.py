@@ -22,8 +22,10 @@ _EXPECTED_PVC_MANIFEST = {
 }
 
 # Expected hydration Job manifest. The command short-circuits when the
-# PVC already has content, then installs huggingface-cli and downloads
-# the repo into /mnt/artifact.
+# PVC already has content (filtering out the ext4 `lost+found` entry
+# so a fresh Filestore-backed PVC isn't mis-detected as populated),
+# then installs the modern huggingface_hub package and uses the new
+# `hf` CLI to download the repo into /mnt/artifact.
 _EXPECTED_JOB_MANIFEST = {
     "apiVersion": "batch/v1",
     "kind": "Job",
@@ -48,11 +50,11 @@ _EXPECTED_JOB_MANIFEST = {
                             "-c",
                             (
                                 "set -e; "
-                                'if [ -n "$(ls -A /mnt/artifact 2>/dev/null)" ]; then '
+                                'if [ -n "$(ls -A /mnt/artifact 2>/dev/null | grep -v \'^lost+found$\')" ]; then '
                                 "  echo 'artifact already hydrated, skipping'; exit 0; "
                                 "fi; "
-                                "pip install --quiet 'huggingface_hub[cli]'; "
-                                "huggingface-cli download meta-llama/Llama-3.3-70B-Instruct"
+                                "pip install --quiet huggingface_hub; "
+                                "hf download meta-llama/Llama-3.3-70B-Instruct"
                                 " --revision main --local-dir /mnt/artifact"
                             ),
                         ],

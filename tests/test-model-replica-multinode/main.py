@@ -1,10 +1,15 @@
 """Test multi-node KServe replica.
 
-A replica with tensor=8 pipeline=2 should compose an LLMInferenceService with:
+A replica with tensor=8 pipeline=2 should compose an LLMInferenceService
+with the KServe v0.17+ flat-worker shape:
 
-- 8 GPUs per pod (tensor)
-- parallelism.tensor = 16 (tensor * pipeline)
-- worker.size = 1 (pipeline - 1)
+- 8 GPUs per pod (parallelism.tensor)
+- 2 pods total (parallelism.pipeline)
+- worker is a flat PodSpec (containers[]), not the old {size, template}
+- Each container's command is the Ray-bootstrap shell: the leader runs
+  `ray start --head` + execs vLLM; the worker runs
+  `ray start --address=$LWS_LEADER_ADDRESS:6379 --block`. Both pods get
+  the same command because the script branches on LWS_WORKER_INDEX.
 """
 
 from .lib import resource as libresource
@@ -13,11 +18,31 @@ from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
 
-# The container shape is the same for the leader and each worker.
+# Ray bootstrap injected as container.command on multi-node replicas.
+# Keep this in sync with _VLLM_MULTI_NODE_BOOTSTRAP in
+# functions/compose-model-replica/main.py.
+_BOOTSTRAP = (
+    'set -e\nif [ "$LWS_WORKER_INDEX" = "0" ]; then\n'
+    "  ray start --head --port=6379\n"
+    '  exec python3 -m vllm.entrypoints.openai.api_server "$@"\n'
+    "else\n"
+    '  exec ray start --address="$LWS_LEADER_ADDRESS:6379" --block\n'
+    "fi\n"
+)
+
+# The container shape is the same for the leader and each worker. The
+# Ray-bootstrap wrapper branches on LWS_WORKER_INDEX, so leader and
+# worker share command+args even though their runtime behavior differs.
 CONTAINER = {
     "name": "main",
     "image": "vllm/vllm-openai:v0.7.3",
     "args": [],
+    "command": [
+        "/bin/sh",
+        "-c",
+        _BOOTSTRAP,
+        "modelplane-bootstrap",
+    ],
     "securityContext": {
         "runAsUser": 0,
         "runAsNonRoot": False,
@@ -68,10 +93,12 @@ test = compositiontest.CompositionTest(
             ),
         ],
         assertResources=[
-            # Assert LLMInferenceService has multi-node configuration:
-            # - 8 GPUs per pod (tensor)
-            # - parallelism.tensor = 16 (tensor * pipeline)
-            # - worker.size = 1 (pipeline - 1)
+            # Assert LLMInferenceService has multi-node configuration in
+            # the KServe v0.17+ flat-worker shape:
+            # - 8 GPUs per pod (parallelism.tensor)
+            # - 2 pods total (parallelism.pipeline)
+            # - worker is a flat PodSpec, not the old {size, template}
+            # - Container command carries the Ray bootstrap
             libresource.model_to_dict(
                 k8sobjv1alpha1.Object(
                     metadata=metav1.ObjectMeta(
@@ -98,15 +125,12 @@ test = compositiontest.CompositionTest(
                                 "spec": {
                                     "model": {"uri": "hf://meta-llama/Llama-3.1-405B"},
                                     "replicas": 1,
-                                    "parallelism": {"tensor": 16},
+                                    "parallelism": {"tensor": 8, "pipeline": 2},
                                     "template": {
                                         "containers": [CONTAINER],
                                     },
                                     "worker": {
-                                        "size": 1,
-                                        "template": {
-                                            "containers": [CONTAINER],
-                                        },
+                                        "containers": [CONTAINER],
                                     },
                                     "router": {"gateway": {}, "route": {}},
                                 },

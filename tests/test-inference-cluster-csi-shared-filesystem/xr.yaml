@@ -1,0 +1,28 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: demo-us-central
+  labels:
+    modelplane.ai/cluster: "true"
+    modelplane.ai/region: us-central
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: my-gcp-project
+      region: us-central1
+  storage:
+    # Cloud-agnostic capability declaration. The GKE branch of
+    # compose-inference-cluster reads the underlying VPC name from
+    # GKECluster.status.network.name and composes a workload-cluster
+    # StorageClass with parameters.network = <our VPC> so Filestore
+    # provisions on the cluster's VPC instead of GCP's default VPC.
+    storageClassName: modelplane-rwx
+    csiDrivers:
+    - SharedFilesystem
+  nodePools:
+  - name: gpu-t4
+    class: gke-t4-1x-n1
+    nodeCount: 2
+    zones:
+    - us-central1-a

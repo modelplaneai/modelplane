@@ -1,0 +1,29 @@
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: GKECluster
+metadata:
+  name: gpu-us-central1
+  namespace: gpu-us-central1
+spec:
+  project: acme-ml-platform
+  region: us-central1
+  kubernetesVersion: "1.35"
+  networking:
+    podCidr: "10.1.0.0/16"
+    serviceCidr: "10.2.0.0/16"
+    nodeCidr: "10.0.0.0/24"
+  addons:
+    # Filestore CSI driver opt-in. The GKE composition function should:
+    #  (a) enable gcpFilestoreCsiDriver in the underlying Cluster MR's
+    #      addonsConfig, and
+    #  (b) compose a ProjectService MR for file.googleapis.com (the
+    #      Filestore CSI provisioner calls this API; if it's not on,
+    #      PVCs sit Pending forever with SERVICE_DISABLED).
+    gcpFilestoreCsiDriver: true
+  nodePools:
+  - name: system
+    role: System
+    machineType: e2-standard-4
+    diskSizeGb: 100
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 2

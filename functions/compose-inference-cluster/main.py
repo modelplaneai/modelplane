@@ -67,6 +67,7 @@ def _cluster_provider_config_name(xr) -> str:
     """Name of the ClusterProviderConfig that targets this XR's workload cluster."""
     return f"{xr.metadata.name}-cluster-kubeconfig"
 
+
 # Hardcoded system pool config. Provisioned for every GKE cluster to
 # host control-plane components (Envoy Gateway, KEDA, etc.). Not exposed
 # in the user-facing API.
@@ -277,11 +278,7 @@ class Composer:
         if not observed:
             return None
         d = resource.struct_to_dict(observed.resource)
-        return (
-            d.get("status", {})
-            .get("network", {})
-            .get("name")
-        )
+        return d.get("status", {}).get("network", {}).get("name")
 
     def compose_existing(self, existing):
         """Compose an InferenceCluster backed by a user-supplied cluster.
