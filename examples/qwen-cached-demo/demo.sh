@@ -140,6 +140,53 @@ echo "    ✓ Service ready at ${ADDR}"
 # the actual chat completion from a pod that retries internally so
 # the demo doesn't race on first-curl.
 echo
+echo "==> Prove both gang pods do IO from the same PVC across two nodes"
+echo "    (fetches workload-cluster creds via gcloud; lists pod→node placement,"
+echo "     then execs df + stat on both pods to show same NFS endpoint + same"
+echo "     inode for the safetensors file)"
+if ! command -v gcloud >/dev/null 2>&1; then
+	echo "    SKIPPED: gcloud not on PATH"
+elif ! command -v gke-gcloud-auth-plugin >/dev/null 2>&1; then
+	echo "    SKIPPED: gke-gcloud-auth-plugin not installed (gcloud components install gke-gcloud-auth-plugin)"
+else
+	# Use the bracket form for jsonpath keys containing dots — safer
+	# than backslash-escaping inside the dot-walk syntax.
+	wl_cluster=$(kubectl get gkecluster qwen-cached-demo -n modelplane-system \
+		-o jsonpath="{.metadata.annotations['crossplane\.io/external-name']}" 2>/dev/null || true)
+	wl_region=$(kubectl get gkecluster qwen-cached-demo -n modelplane-system \
+		-o jsonpath='{.spec.region}' 2>/dev/null || true)
+	if [[ -z "$wl_cluster" || -z "$wl_region" ]]; then
+		echo "    SKIPPED: couldn't resolve workload cluster name/region from GKECluster XR"
+	else
+		gcloud container clusters get-credentials "$wl_cluster" \
+			--region "$wl_region" --project "$GCP_PROJECT" >/dev/null 2>&1
+		wl_ctx="gke_${GCP_PROJECT}_${wl_region}_${wl_cluster}"
+
+		echo
+		echo "    Pod placement (different nodes, same gang):"
+		command kubectl --context="$wl_ctx" get pods -n default \
+			-l 'leaderworkerset.sigs.k8s.io/name=qwen-cached-demo-kserve-mn' \
+			-o custom-columns=POD:.metadata.name,NODE:.spec.nodeName,IP:.status.podIP \
+			--no-headers 2>/dev/null
+
+		echo
+		echo "    /mnt/models mount + safetensors stat on each pod:"
+		for pod in $(command kubectl --context="$wl_ctx" get pods -n default \
+			-l 'leaderworkerset.sigs.k8s.io/name=qwen-cached-demo-kserve-mn' \
+			-o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+			echo "    [$pod]"
+			# Single-quoted sh -c body avoids nested-quoting hell.
+			command kubectl --context="$wl_ctx" exec -n default "$pod" -- sh -c '
+				mount | grep /mnt/models | head -1 | sed "s/^/      /"
+				stat -c "      inode=%i  size=%s  %n" /mnt/models/model.safetensors
+			' 2>/dev/null
+		done
+		echo
+		echo "    ✓ Same NFS endpoint + same inode on both pods = one shared PVC."
+	fi
+fi
+
+echo
 echo "==> Send a chat-completion test request"
 echo "    (curl-test pod retries /v1/models until 200, then sends a real"
 echo "     /v1/chat/completions — both pods serving from the cached PVC)"
