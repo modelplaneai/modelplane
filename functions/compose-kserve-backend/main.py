@@ -100,6 +100,20 @@ def _pc_name(xr):
     return naming.dns_name(xr.metadata.name, "cluster")
 
 
+def _cluster_provider_config_name(xr) -> str:
+    """Name of the ClusterProviderConfig created by compose-inference-cluster.
+
+    compose-inference-cluster names it `<inferencecluster>-cluster-kubeconfig`.
+    KServeBackend XRs are composed with name `<inferencecluster>-kserve`, so we
+    strip the suffix to recover the parent XR name.
+    """
+    name = xr.metadata.name
+    suffix = "-kserve"
+    if name.endswith(suffix):
+        name = name[: -len(suffix)]
+    return f"{name}-cluster-kubeconfig"
+
+
 class Composer:
     def __init__(self, req, rsp):
         self.req = req
@@ -533,6 +547,7 @@ class Composer:
         # CRD install.
         controller_observed = "kserve-controller" in self.req.observed.resources
         if gate or controller_observed:
+            cpc_name = _cluster_provider_config_name(self.xr)
             for preset in _LLMISVC_PRESET_NAMES:
                 key = f"kserve-preset-{preset}"
                 resource.update(
@@ -544,7 +559,7 @@ class Composer:
                         spec=k8sobjv1alpha1.Spec(
                             providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                                 kind="ClusterProviderConfig",
-                                name=pc,
+                                name=cpc_name,
                             ),
                             readiness=k8sobjv1alpha1.Readiness(
                                 policy="SuccessfulCreate",
