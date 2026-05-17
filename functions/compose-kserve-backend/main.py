@@ -21,6 +21,7 @@ from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from .model.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
+from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from .model.io.crossplane.m.kubernetes.providerconfig import (
     v1alpha1 as k8spcv1alpha1,
 )
@@ -32,6 +33,25 @@ _HERE = Path(__file__).parent
 # Gateway API Inference Extension CRDs (InferenceModel, InferencePool).
 # Not part of any Helm chart — applied as raw provider-kubernetes Objects.
 _INFERENCE_EXTENSION_CRDS = json.loads((_HERE / "inference_extension_crds.json").read_text())
+
+# KServe v0.18 LLMInferenceServiceConfig presets. The kserve-llmisvc-
+# resources Helm chart defines the CRD but does not create the default
+# instances the controller references via spec.baseRefs. Without these,
+# every LLMInferenceService admission fails:
+#   PresetsCombined False CombineBaseError failed to get
+#   LLMInferenceServiceConfig "kserve-config-llm-worker-pipeline-parallel"
+# An empty `spec: {}` is enough to satisfy the lookup. We install them
+# as provider-kubernetes Objects targeting the workload cluster so the
+# Helm chart packaging gap is closed by composition rather than by
+# every user remembering to apply them post-install.
+_LLMISVC_PRESET_NAMES = (
+    "kserve-config-llm-default",
+    "kserve-config-llm-router-route",
+    "kserve-config-llm-worker-tensor-parallel",
+    "kserve-config-llm-worker-pipeline-parallel",
+    "kserve-config-llm-decode",
+    "kserve-config-llm-prefill",
+)
 
 # KServe storage initializer config override. Enables modelcar support
 # for model caching, which the default KServe config doesn't include.
@@ -506,6 +526,45 @@ class Composer:
                 ),
             ]
             resource.update(self.rsp.desired.resources["kserve-controller"], kserve_release)
+
+        # Compose the missing LLMInferenceServiceConfig preset
+        # instances the v0.18 chart leaves blank. Gate on the kserve
+        # controller being observed (CRD exists) so we don't race the
+        # CRD install.
+        controller_observed = "kserve-controller" in self.req.observed.resources
+        if gate or controller_observed:
+            for preset in _LLMISVC_PRESET_NAMES:
+                key = f"kserve-preset-{preset}"
+                resource.update(
+                    self.rsp.desired.resources[key],
+                    k8sobjv1alpha1.Object(
+                        metadata=metav1.ObjectMeta(
+                            namespace=self.xr.metadata.namespace,
+                        ),
+                        spec=k8sobjv1alpha1.Spec(
+                            providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                                kind="ClusterProviderConfig",
+                                name=pc,
+                            ),
+                            readiness=k8sobjv1alpha1.Readiness(
+                                policy="SuccessfulCreate",
+                            ),
+                            forProvider=k8sobjv1alpha1.ForProvider(
+                                manifest={
+                                    "apiVersion": "serving.kserve.io/v1alpha1",
+                                    "kind": "LLMInferenceServiceConfig",
+                                    "metadata": {
+                                        "name": preset,
+                                        "namespace": "kserve",
+                                    },
+                                    "spec": {},
+                                },
+                            ),
+                        ),
+                    ),
+                )
+                if conditions.has_condition(self.req, key, "Ready"):
+                    self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
         # Transition: cert-manager is ready, KServe not yet composed.
         if not cert_manager_ready:

@@ -7,7 +7,7 @@ set -euo pipefail
 DIR=$(cd "$(dirname "$0")" && pwd)
 
 # Pin the kubectl context. See demo.sh for rationale.
-KCTX="${MODELPLANE_CONTEXT:-$(kubectl config current-context)}"
+KCTX="${MODELPLANE_CONTEXT:-$(command kubectl config current-context)}"
 kubectl() {
 	command kubectl --context="$KCTX" "$@"
 }

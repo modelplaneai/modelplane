@@ -29,7 +29,7 @@ NS=ml-team
 # get-credentials` against the workload cluster from another shell)
 # silently retargets every subsequent kubectl call. Use `kubectl` as
 # an alias and pass --context explicitly so every call is pinned.
-KCTX="${MODELPLANE_CONTEXT:-$(kubectl config current-context)}"
+KCTX="${MODELPLANE_CONTEXT:-$(command kubectl config current-context)}"
 kubectl() {
 	command kubectl --context="$KCTX" "$@"
 }
