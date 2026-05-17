@@ -6,6 +6,13 @@ set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 
+# Pin the kubectl context. See demo.sh for rationale.
+KCTX="${MODELPLANE_CONTEXT:-$(kubectl config current-context)}"
+kubectl() {
+	command kubectl --context="$KCTX" "$@"
+}
+echo "    Using kubectl context: $KCTX"
+
 echo "==> Delete ModelServices"
 kubectl delete --ignore-not-found -f "${DIR}/03-service.yaml"
 kubectl delete --ignore-not-found -f "${DIR}/03b-service-uncached.yaml"

@@ -23,6 +23,18 @@ set -euo pipefail
 DIR=$(cd "$(dirname "$0")" && pwd)
 NS=ml-team
 
+# Pin the kubectl context at script start to the Modelplane control
+# plane the user started in. Without this, anything that mutates the
+# current context mid-run (e.g. a `gcloud container clusters
+# get-credentials` against the workload cluster from another shell)
+# silently retargets every subsequent kubectl call. Use `kubectl` as
+# an alias and pass --context explicitly so every call is pinned.
+KCTX="${MODELPLANE_CONTEXT:-$(kubectl config current-context)}"
+kubectl() {
+	command kubectl --context="$KCTX" "$@"
+}
+echo "    Using kubectl context: $KCTX"
+
 elapsed() {
 	local start=$1
 	echo "$(($(date +%s) - start))s"

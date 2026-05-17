@@ -6,6 +6,14 @@ set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 
+# Pin the kubectl context. See demo.sh for rationale.
+KCTX="${MODELPLANE_CONTEXT:-$(kubectl config current-context)}"
+kubectl() {
+	command kubectl --context="$KCTX" "$@"
+}
+export MODELPLANE_CONTEXT="$KCTX"
+echo "    Using kubectl context: $KCTX"
+
 bash "${DIR}/cleanup-demo.sh"
 
 echo "==> Delete InferenceCluster qwen-cached-demo"

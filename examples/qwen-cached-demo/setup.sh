@@ -22,6 +22,13 @@ fi
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 
+# Pin the kubectl context. See demo.sh for rationale.
+KCTX="${MODELPLANE_CONTEXT:-$(kubectl config current-context)}"
+kubectl() {
+	command kubectl --context="$KCTX" "$@"
+}
+echo "    Using kubectl context: $KCTX"
+
 # Filestore CSI provisioner needs the Cloud Filestore API enabled on
 # the project, otherwise PVCs sit Pending forever with
 # SERVICE_DISABLED. Enable it before provisioning the cluster so the
