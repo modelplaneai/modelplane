@@ -6,6 +6,10 @@ Idempotent, scripted end-to-end demo of `ModelCache` plus multi-node `TensorPipe
 
 *Warm-cluster run: cache pre-hydrated, LWS gang Ready in 65s, engine answers 86s after gang Ready. 4× speed.*
 
+![demo-full](demo-full.gif)
+
+*Fresh-cache run: `demo.sh` against an InferenceCluster that's already Ready but with no cache. Cache hydration → ModelDeployment → 2-pod LWS gang on two T4 nodes → IO-proof block (same NFS endpoint + same safetensors inode on both pods) → real chat-completion response. 4× speed, idle time collapsed.*
+
 | Phase | Script | What it does |
 |---|---|---|
 | Setup | `./setup.sh` | Applies shared prereqs (gateway, class), provisions a 2-node T4 `InferenceCluster`, waits for Ready (~5–10 min) |
