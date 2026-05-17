@@ -32,9 +32,11 @@ from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositionte
 # The xr.yaml here has name=gpu-us-central1-kserve so the expected CPC is:
 _EXPECTED_CPC_NAME = "gpu-us-central1-cluster-kubeconfig"
 
+# Must match _LLMISVC_PRESET_NAMES in compose-kserve-backend. The
+# v0.16 chart already creates kserve-config-llm-router-route, so we
+# don't compose it from our function — see comment in the function.
 _PRESET_NAMES = (
     "kserve-config-llm-default",
-    "kserve-config-llm-router-route",
     "kserve-config-llm-worker-tensor-parallel",
     "kserve-config-llm-worker-pipeline-parallel",
     "kserve-config-llm-decode",

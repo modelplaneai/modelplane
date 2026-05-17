@@ -44,9 +44,14 @@ _INFERENCE_EXTENSION_CRDS = json.loads((_HERE / "inference_extension_crds.json")
 # as provider-kubernetes Objects targeting the workload cluster so the
 # Helm chart packaging gap is closed by composition rather than by
 # every user remembering to apply them post-install.
+# NOTE: kserve-config-llm-router-route IS shipped by the chart, so
+# don't compose it from this function — Helm install will fail with
+# "exists and cannot be imported into the current release: invalid
+# ownership metadata" if our Object MR creates it first. The five
+# below are the truly-missing presets the controller looks up but
+# the chart leaves uncreated.
 _LLMISVC_PRESET_NAMES = (
     "kserve-config-llm-default",
-    "kserve-config-llm-router-route",
     "kserve-config-llm-worker-tensor-parallel",
     "kserve-config-llm-worker-pipeline-parallel",
     "kserve-config-llm-decode",
