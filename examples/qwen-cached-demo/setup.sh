@@ -22,6 +22,12 @@ fi
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 
+setup_start=$(date +%s)
+elapsed() {
+	local start=$1
+	echo "$(($(date +%s) - start))s"
+}
+
 # Pin the kubectl context. See demo.sh for rationale.
 KCTX="${MODELPLANE_CONTEXT:-$(command kubectl config current-context)}"
 kubectl() {
@@ -105,6 +111,8 @@ done
 
 echo "==> Waiting for InferenceCluster qwen-cached-demo to be Ready"
 echo "    (GKE provisioning + stack install typically 5-10 min on first run)"
+ic_start=$(date +%s)
 kubectl wait --for=condition=Ready --timeout=20m inferencecluster/qwen-cached-demo
+echo "    InferenceCluster Ready in $(elapsed "$ic_start")"
 
-echo "==> Setup complete. Run ./demo.sh next."
+echo "==> Setup complete in $(elapsed "$setup_start"). Run ./demo.sh next."
