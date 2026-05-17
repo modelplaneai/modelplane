@@ -278,6 +278,13 @@ class Composer:
                 ),
             ),
         )
+        # Reflect the observed Object MR's Ready condition into the
+        # function response so Crossplane's auto-readiness aggregator
+        # can promote the XR to Ready. Without this, the desired
+        # resource keyed "storage-class-rwx" is left at the default
+        # READY_UNSPECIFIED and the XR aggregates as Ready=False.
+        if conditions.has_condition(self.req, "storage-class-rwx", "Ready"):
+            self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
 
     def observed_gke_network_name(self):
         """Read the observed VPC name from GKECluster.status.network.name."""

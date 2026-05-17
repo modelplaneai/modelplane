@@ -115,6 +115,38 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
+            # Observed storage-class-rwx Object MR already at Ready=True
+            # on the workload cluster. The function must reflect this
+            # into rsp.desired.resources["storage-class-rwx"].ready —
+            # otherwise Crossplane's auto-readiness aggregator leaves
+            # the XR Ready=False even when the SC is applied fine.
+            libresource.model_to_fixture(
+                k8sobjv1alpha1.Object(
+                    metadata=metav1.ObjectMeta(
+                        namespace="modelplane-system",
+                        annotations={
+                            "crossplane.io/composition-resource-name": "storage-class-rwx",
+                        },
+                    ),
+                    spec=k8sobjv1alpha1.Spec(
+                        providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                            kind="ClusterProviderConfig",
+                            name="demo-us-central-cluster-kubeconfig",
+                        ),
+                        forProvider=k8sobjv1alpha1.ForProvider(manifest={}),
+                    ),
+                    status=k8sobjv1alpha1.Status(
+                        conditions=[
+                            k8sobjv1alpha1.Condition(
+                                type="Ready",
+                                status="True",
+                                reason="Available",
+                                lastTransitionTime="2025-01-01T00:00:00Z",
+                            )
+                        ],
+                    ),
+                )
+            ),
         ],
         assertResources=[
             # Assert the Object MR wrapping the workload-cluster
