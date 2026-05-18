@@ -19,19 +19,16 @@ spec:
   #   matchLabels:
   #     modelplane.ai/region: us-central
 
-  # Compute topology for one worker. Tensor = single-node tensor
-  # parallelism. tensor=1 means one GPU per pod.
   workers:
+    # Compute topology for one worker. tensor=1 means one GPU per pod.
     topology:
-      strategy: Tensor
       tensor: 1
-    resources:
-      cpu: "4"
-      memory: "10Gi"
-
-  # Engine configuration. The image and args are passed through to the
-  # container; the engine handles weight fetching natively.
-  engine:
-    image: vllm/vllm-openai:v0.7.3
-    args:
-    - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+    # Pod template for inference workers. The container named "engine"
+    # is the inference engine; its image and args are passed through.
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.7.3
+          args:
+          - "--model=Qwen/Qwen2.5-0.5B-Instruct"

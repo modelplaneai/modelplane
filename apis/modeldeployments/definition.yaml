@@ -25,7 +25,7 @@ spec:
         properties:
           spec:
             type: object
-            required: [replicas, workers, engine]
+            required: [replicas, workers]
             properties:
               replicas:
                 type: integer
@@ -45,7 +45,7 @@ spec:
                     x-kubernetes-preserve-unknown-fields: true
               workers:
                 type: object
-                required: [topology, resources]
+                required: [topology, template]
                 description: >-
                   Compute shape of one worker. Modelplane composes one
                   worker (or workers.count workers) per ModelReplica.
@@ -58,110 +58,133 @@ spec:
                       Number of workers per replica. Defaults to 1.
                   topology:
                     type: object
-                    required: [strategy]
+                    required: [tensor]
                     description: >-
-                      Compute topology for one worker. The strategy
-                      discriminator selects between single-node (Tensor)
-                      and multi-node (TensorPipeline) serving.
+                      Compute topology for one worker. The axes are
+                      independent and compose multiplicatively: GPUs per
+                      node = tensor, nodes per worker = pipeline.
                     properties:
-                      strategy:
-                        type: string
-                        enum: [Tensor, TensorPipeline]
-                        description: >-
-                          Tensor: single-node tensor parallelism. One pod
-                          with `tensor` GPUs. TensorPipeline: multi-node
-                          tensor+pipeline parallelism. `pipeline` pods
-                          each with `tensor` GPUs.
                       tensor:
                         type: integer
                         minimum: 1
                         description: >-
-                          GPUs per node. Required for both strategies.
+                          GPUs per node. Required.
                       pipeline:
                         type: integer
-                        minimum: 2
+                        minimum: 1
+                        default: 1
                         description: >-
-                          Number of nodes per worker. Required when
-                          strategy is TensorPipeline.
-                  resources:
+                          Nodes per worker. Defaults to 1 (single-node).
+                          Values greater than 1 enable multi-node serving
+                          via LeaderWorkerSet.
+                  template:
                     type: object
-                    required: [cpu, memory]
                     description: >-
-                      Non-GPU pod resources for one worker. GPU count is
-                      derived from topology.
+                      Pod template for inference workers. A curated subset
+                      of PodTemplateSpec.
                     properties:
-                      cpu:
-                        type: string
-                        description: CPU request and limit (e.g. "4").
-                        minLength: 1
-                      memory:
-                        type: string
-                        description: Memory request and limit (e.g. "16Gi").
-                        minLength: 1
-              engine:
-                type: object
-                required: [image]
-                description: >-
-                  Serving engine configuration. Modelplane treats engine
-                  args opaquely - they pass through to the container.
-                properties:
-                  image:
-                    type: string
-                    description: Container image.
-                    minLength: 1
-                  args:
-                    type: array
-                    description: >-
-                      Engine args. Opaque; passed through to the container.
-                      Includes the model identifier (e.g. --model=...).
-                    items:
-                      type: string
-                  env:
-                    type: array
-                    description: >-
-                      Environment variables. Standard PodSpec env shape;
-                      supports valueFrom.secretKeyRef for HF_TOKEN etc.
-                    items:
-                      type: object
-                      required: [name]
-                      properties:
-                        name:
-                          type: string
-                        value:
-                          type: string
-                        valueFrom:
-                          type: object
-                          properties:
-                            secretKeyRef:
+                      metadata:
+                        type: object
+                        description: >-
+                          Metadata applied to inference pods. Useful for
+                          labels and annotations that control cluster-level
+                          features like service mesh injection.
+                        properties:
+                          labels:
+                            type: object
+                            additionalProperties:
+                              type: string
+                          annotations:
+                            type: object
+                            additionalProperties:
+                              type: string
+                      spec:
+                        type: object
+                        required: [containers]
+                        description: >-
+                          Pod spec for inference workers.
+                        properties:
+                          containers:
+                            type: array
+                            minItems: 1
+                            description: >-
+                              Containers for the inference pod. The container
+                              named "engine" is the inference engine; additional
+                              containers pass through as sidecars.
+                            x-kubernetes-validations:
+                            - rule: "self.exists_one(c, c.name == 'engine')"
+                              message: "containers must include exactly one container named 'engine'"
+                            items:
                               type: object
-                              required: [name, key]
+                              required: [name, image]
                               properties:
                                 name:
                                   type: string
-                                key:
+                                  minLength: 1
+                                  description: >-
+                                    Container name. The container named "engine"
+                                    is the inference engine.
+                                image:
                                   type: string
-                                optional:
-                                  type: boolean
-                            configMapKeyRef:
+                                  minLength: 1
+                                  description: Container image.
+                                args:
+                                  type: array
+                                  description: >-
+                                    Container args. For the engine container,
+                                    these are passed through to the serving
+                                    engine. Includes the model identifier
+                                    (e.g. --model=...).
+                                  items:
+                                    type: string
+                                env:
+                                  type: array
+                                  description: >-
+                                    Environment variables. Supports
+                                    valueFrom.secretKeyRef for secrets
+                                    like HF_TOKEN.
+                                  items:
+                                    type: object
+                                    required: [name]
+                                    properties:
+                                      name:
+                                        type: string
+                                      value:
+                                        type: string
+                                      valueFrom:
+                                        type: object
+                                        properties:
+                                          secretKeyRef:
+                                            type: object
+                                            required: [name, key]
+                                            properties:
+                                              name:
+                                                type: string
+                                              key:
+                                                type: string
+                                              optional:
+                                                type: boolean
+                                          configMapKeyRef:
+                                            type: object
+                                            required: [name, key]
+                                            properties:
+                                              name:
+                                                type: string
+                                              key:
+                                                type: string
+                                              optional:
+                                                type: boolean
+                          imagePullSecrets:
+                            type: array
+                            description: >-
+                              Image pull secrets for private registries
+                              (NGC etc.).
+                            items:
                               type: object
-                              required: [name, key]
+                              required: [name]
                               properties:
                                 name:
                                   type: string
-                                key:
-                                  type: string
-                                optional:
-                                  type: boolean
-                  imagePullSecrets:
-                    type: array
-                    description: >-
-                      Image pull secrets for private registries (NGC etc.).
-                    items:
-                      type: object
-                      required: [name]
-                      properties:
-                        name:
-                          type: string
           status:
             type: object
             properties:

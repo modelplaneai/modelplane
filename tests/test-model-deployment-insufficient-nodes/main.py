@@ -1,7 +1,7 @@
 """Test that the scheduler rejects clusters with insufficient nodes.
 
-The deployment uses strategy TensorPipeline with pipeline=2, meaning
-each replica needs 2 nodes with 8 GPUs each. The cluster only has 1
+The deployment uses tensor=8, pipeline=2 topology, meaning each replica
+needs 2 nodes with 8 GPUs each. The cluster only has 1
 node. The scheduler should produce 0 replicas.
 """
 
@@ -69,22 +69,21 @@ test = compositiontest.CompositionTest(
                         name="llama405b-demo",
                         namespace="ml-team",
                     ),
-                    spec=mdv1alpha1.Spec(
+                    spec=mdv1alpha1.SpecModel(
                         replicas=1,
                         workers=mdv1alpha1.Workers(
-                            topology=mdv1alpha1.Topology(
-                                strategy="TensorPipeline",
-                                tensor=8,
-                                pipeline=2,
+                            topology=mdv1alpha1.Topology(tensor=8, pipeline=2),
+                            template=mdv1alpha1.Template(
+                                spec=mdv1alpha1.Spec(
+                                    containers=[
+                                        mdv1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:v0.7.3",
+                                            args=["--model=meta-llama/Llama-3.1-405B"],
+                                        ),
+                                    ],
+                                ),
                             ),
-                            resources=mdv1alpha1.Resources(
-                                cpu="16",
-                                memory="256Gi",
-                            ),
-                        ),
-                        engine=mdv1alpha1.Engine(
-                            image="vllm/vllm-openai:v0.7.3",
-                            args=["--model=meta-llama/Llama-3.1-405B"],
                         ),
                     ),
                     status=mdv1alpha1.Status(

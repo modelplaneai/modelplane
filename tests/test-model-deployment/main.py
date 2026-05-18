@@ -62,21 +62,21 @@ test = compositiontest.CompositionTest(
                         name="qwen-demo",
                         namespace="ml-team",
                     ),
-                    spec=mdv1alpha1.Spec(
+                    spec=mdv1alpha1.SpecModel(
                         replicas=1,
                         workers=mdv1alpha1.Workers(
-                            topology=mdv1alpha1.Topology(
-                                strategy="Tensor",
-                                tensor=1,
+                            topology=mdv1alpha1.Topology(tensor=1),
+                            template=mdv1alpha1.Template(
+                                spec=mdv1alpha1.Spec(
+                                    containers=[
+                                        mdv1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:v0.7.3",
+                                            args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
+                                        ),
+                                    ],
+                                ),
                             ),
-                            resources=mdv1alpha1.Resources(
-                                cpu="3",
-                                memory="10Gi",
-                            ),
-                        ),
-                        engine=mdv1alpha1.Engine(
-                            image="vllm/vllm-openai:v0.7.3",
-                            args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
                         ),
                     ),
                     status=mdv1alpha1.Status(
@@ -102,23 +102,23 @@ test = compositiontest.CompositionTest(
                             "modelplane.ai/cluster": "demo-us-central",
                         },
                     ),
-                    spec=mrv1alpha1.Spec(
+                    spec=mrv1alpha1.SpecModel(
                         inferenceClusterRef=mrv1alpha1.InferenceClusterRef(
                             name="demo-us-central",
                         ),
                         workers=mrv1alpha1.Workers(
-                            topology=mrv1alpha1.Topology(
-                                strategy="Tensor",
-                                tensor=1,
+                            topology=mrv1alpha1.Topology(tensor=1),
+                            template=mrv1alpha1.Template(
+                                spec=mrv1alpha1.Spec(
+                                    containers=[
+                                        mrv1alpha1.Container(
+                                            name="engine",
+                                            image="vllm/vllm-openai:v0.7.3",
+                                            args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
+                                        ),
+                                    ],
+                                ),
                             ),
-                            resources=mrv1alpha1.Resources(
-                                cpu="3",
-                                memory="10Gi",
-                            ),
-                        ),
-                        engine=mrv1alpha1.Engine(
-                            image="vllm/vllm-openai:v0.7.3",
-                            args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
                         ),
                     ),
                 )

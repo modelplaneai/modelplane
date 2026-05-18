@@ -2,15 +2,16 @@
 
 This function reads the referenced InferenceCluster via required
 resources, then composes a KServe LLMInferenceService on the remote
-cluster and an Envoy Gateway Backend on the control plane for
-ModelDeployment to route through.
+cluster.
 
 GPU count comes from spec.workers.topology directly:
-- Tensor:         1 pod, `tensor` GPUs.
-- TensorPipeline: `pipeline` pods (1 leader + pipeline-1 workers),
-                  `tensor` GPUs per pod.
+- tensor:   GPUs per node.
+- pipeline: nodes per worker (default 1). Values > 1 use
+            LeaderWorkerSet for multi-node serving.
 
-Non-GPU resources (CPU, memory) come from spec.workers.resources.
+The worker template is a curated subset of PodTemplateSpec. The
+container named "engine" is the inference engine; its image and args
+are passed through to the LLMInferenceService.
 """
 
 from crossplane.function import request, resource, response
@@ -34,10 +35,6 @@ CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 
 # Composed resource key for the model serving resource.
 MODEL_RESOURCE_KEY = "model-serving"
-
-# Topology strategy enum values.
-STRATEGY_TENSOR = "Tensor"
-STRATEGY_TENSOR_PIPELINE = "TensorPipeline"
 
 
 class Composer:
@@ -84,14 +81,22 @@ class Composer:
 
         return True
 
+    def _engine_container(self):
+        """Return the container named 'engine' from the worker template.
+
+        The XRD enforces via CEL validation that exactly one container
+        named 'engine' exists, so this always succeeds.
+        """
+        return next(c for c in self.xr.spec.workers.template.spec.containers if c.name == "engine")
+
     def compose_model_serving(self):
         """Compose the LLMInferenceService on the remote cluster."""
         topology = self.xr.spec.workers.topology
-        resources = self.xr.spec.workers.resources
-        engine = self.xr.spec.engine
+        template = self.xr.spec.workers.template
+        engine = self._engine_container()
 
         gpu_per_pod = int(topology.tensor)
-        multi_node = topology.strategy == STRATEGY_TENSOR_PIPELINE
+        multi_node = int(topology.pipeline or 1) > 1
 
         # Extract the model name from engine args (e.g. --model=Qwen/...)
         # to build the HuggingFace URI that KServe requires. Strip the
@@ -108,39 +113,18 @@ class Composer:
             else:
                 container_args.append(arg)
 
-        # Build the container spec. Image and args come straight from
-        # the engine block; env and imagePullSecrets pass through. The
-        # GPU count is set via the device plugin; DRA support is a
-        # future addition.
-        container: dict = {
-            "name": "main",
-            "image": engine.image,
-            "args": container_args,
-            "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
-            "resources": {
-                "limits": {
-                    "nvidia.com/gpu": str(gpu_per_pod),
-                    "cpu": resources.cpu,
-                    "memory": resources.memory,
-                },
-                "requests": {"cpu": "1", "memory": resources.memory},
-            },
-        }
-        if engine.env:
-            container["env"] = [e.model_dump(exclude_none=True) for e in engine.env]
-
-        pod_spec: dict = {"containers": [container]}
-        if engine.imagePullSecrets:
-            pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in engine.imagePullSecrets]
+        container = self._build_container(engine, gpu_per_pod, container_args)
+        pod_spec = self._build_pod_spec(template, container)
+        llmis_template = self._build_llmis_template(template, pod_spec)
 
         llmis_spec: dict = {
             "model": {"uri": f"hf://{model_name}" if model_name else "hf://unknown"},
             "replicas": 1,
-            "template": pod_spec,
+            "template": llmis_template,
             "router": {"gateway": {}, "route": {}},
         }
 
-        # Multi-node TensorPipeline: pipeline pods, each with `tensor` GPUs.
+        # Multi-node: pipeline pods, each with `tensor` GPUs.
         # Total tensor parallelism = tensor * pipeline. Worker count is
         # pipeline - 1 (the leader is the "main" template).
         if multi_node:
@@ -177,6 +161,46 @@ class Composer:
             ),
         )
 
+    def _build_container(self, engine, gpu_per_pod: int, args: list[str]) -> dict:
+        """Build the LLMInferenceService container dict from the engine container.
+
+        GPU count is set via the device plugin. CPU and memory resource
+        requirements are not set; DRA will handle device binding
+        (including non-GPU resources) in a future version.
+        """
+        container: dict = {
+            "name": "main",
+            "image": engine.image,
+            "args": args,
+            "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
+            "resources": {
+                "limits": {"nvidia.com/gpu": str(gpu_per_pod)},
+            },
+        }
+
+        if engine.env:
+            container["env"] = [e.model_dump(exclude_none=True) for e in engine.env]
+
+        return container
+
+    def _build_pod_spec(self, template, container: dict) -> dict:
+        """Build the pod spec dict from the worker template."""
+        pod_spec: dict = {"containers": [container]}
+        if template.spec.imagePullSecrets:
+            pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in template.spec.imagePullSecrets]
+        return pod_spec
+
+    def _build_llmis_template(self, template, pod_spec: dict) -> dict:
+        """Build the LLMInferenceService template, adding pod metadata if set."""
+        if not template.metadata:
+            return pod_spec
+        meta = {}
+        if template.metadata.labels:
+            meta["labels"] = dict(template.metadata.labels)
+        if template.metadata.annotations:
+            meta["annotations"] = dict(template.metadata.annotations)
+        return {"metadata": meta, **pod_spec} if meta else pod_spec
+
     def llmis_name(self):
         """LLMInferenceService name on the remote cluster.
 
@@ -193,20 +217,15 @@ class Composer:
         return naming.llmis_name(deployment_name)
 
     def derive_conditions(self):
-        """Derive ModelAccepted and ModelReady conditions.
-
-        Routing is no longer this function's concern - ModelEndpoint
-        composes the control-plane Backend and ModelService composes
-        the HTTPRoute.
-        """
+        """Derive ModelAccepted and ModelReady conditions."""
 
         # First-time transition: emit a normal event the first reconcile.
         if MODEL_RESOURCE_KEY not in self.req.observed.resources:
+            engine = self._engine_container()
+            image = engine.image
             response.normal(
                 self.rsp,
-                f"Composing {self.xr.spec.engine.image}"
-                f" on {self.xr.spec.inferenceClusterRef.name}"
-                f" ({self.xr.spec.workers.topology.strategy})",
+                f"Composing {image} on {self.xr.spec.inferenceClusterRef.name}",
             )
 
         # Check if the remote resource was created by reading the Object's

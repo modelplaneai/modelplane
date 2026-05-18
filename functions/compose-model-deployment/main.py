@@ -120,14 +120,13 @@ class Composer:
     def compose_replicas(self, matched):
         """Compose a ModelReplica per matched cluster.
 
-        Each replica inherits the deployment's workers and engine blocks
-        verbatim and adds an inferenceClusterRef.
+        Each replica inherits the deployment's workers block verbatim
+        and adds an inferenceClusterRef.
         """
-        # Convert via model_dump because the MD and MR Workers/Engine
-        # types are different Pydantic classes (generated from different
-        # XRDs with the same schema).
+        # Convert via model_dump because the MD and MR Workers types
+        # are different Pydantic classes (generated from different XRDs
+        # with the same schema).
         workers = mrv1alpha1.Workers.model_validate(self.xr.spec.workers.model_dump(exclude_none=True))
-        engine = mrv1alpha1.Engine.model_validate(self.xr.spec.engine.model_dump(exclude_none=True))
 
         for cluster_info in matched:
             replica_key = f"replica-{cluster_info.name}"
@@ -144,12 +143,11 @@ class Composer:
                             metadata.LABEL_KEY_CLUSTER: cluster_info.name,
                         },
                     ),
-                    spec=mrv1alpha1.Spec(
+                    spec=mrv1alpha1.SpecModel(
                         inferenceClusterRef=mrv1alpha1.InferenceClusterRef(
                             name=cluster_info.name,
                         ),
                         workers=workers,
-                        engine=engine,
                     ),
                 ),
             )

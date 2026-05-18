@@ -88,12 +88,6 @@ test = compositiontest.CompositionTest(
                                                 "resources": {
                                                     "limits": {
                                                         "nvidia.com/gpu": "1",
-                                                        "cpu": "3",
-                                                        "memory": "10Gi",
-                                                    },
-                                                    "requests": {
-                                                        "cpu": "1",
-                                                        "memory": "10Gi",
                                                     },
                                                 },
                                             }

@@ -1,7 +1,6 @@
 """Test multi-node KServe replica.
 
-A TensorPipeline replica with tensor=8 pipeline=2 should compose an
-LLMInferenceService with:
+A replica with tensor=8 pipeline=2 should compose an LLMInferenceService with:
 
 - 8 GPUs per pod (tensor)
 - parallelism.tensor = 16 (tensor * pipeline)
@@ -26,12 +25,6 @@ CONTAINER = {
     "resources": {
         "limits": {
             "nvidia.com/gpu": "8",
-            "cpu": "16",
-            "memory": "256Gi",
-        },
-        "requests": {
-            "cpu": "1",
-            "memory": "256Gi",
         },
     },
 }

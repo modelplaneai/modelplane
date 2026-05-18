@@ -14,9 +14,6 @@ from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 
-STRATEGY_TENSOR = "Tensor"
-STRATEGY_TENSOR_PIPELINE = "TensorPipeline"
-
 
 @dataclass
 class Candidate:
@@ -29,8 +26,8 @@ class Candidate:
 class Shape:
     """Physical shape derived from workers.topology and workers.count."""
 
-    gpus_per_node: int  # GPUs per pod.
-    nodes_per_worker: int  # Pods per worker (1 for Tensor, pipeline for TP).
+    gpus_per_node: int  # GPUs per pod (= tensor).
+    nodes_per_worker: int  # Pods per worker (= pipeline, default 1).
     total_gpus: int  # Total GPUs consumed by all workers in one replica.
 
 
@@ -39,8 +36,7 @@ def topology_shape(workers) -> Shape:
     topology = workers.topology
     count = int(workers.count or 1)
     gpus_per_node = int(topology.tensor)
-
-    nodes_per_worker = int(topology.pipeline) if topology.strategy == STRATEGY_TENSOR_PIPELINE else 1
+    nodes_per_worker = int(topology.pipeline or 1)
 
     total_gpus = gpus_per_node * nodes_per_worker * count
     return Shape(

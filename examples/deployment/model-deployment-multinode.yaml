@@ -1,10 +1,10 @@
 # A ModelDeployment using multi-node tensor + pipeline parallelism.
 #
-# strategy: TensorPipeline runs the model across `pipeline` nodes, each
-# with `tensor` GPUs. The scheduler picks a cluster with a pool that has
-# at least `tensor` GPUs per node and at least `pipeline` available
-# nodes. Modelplane composes a LeaderWorkerSet-backed LLMInferenceService
-# on the remote cluster.
+# pipeline > 1 runs the model across multiple nodes, each with `tensor`
+# GPUs. The scheduler picks a cluster with a pool that has at least
+# `tensor` GPUs per node and at least `pipeline` available nodes.
+# Modelplane composes a LeaderWorkerSet-backed LLMInferenceService on
+# the remote cluster.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -19,17 +19,15 @@ spec:
 
   workers:
     topology:
-      strategy: TensorPipeline
       tensor: 8        # 8 GPUs per node.
       pipeline: 2      # 2 nodes per worker.
-    resources:
-      cpu: "16"
-      memory: "256Gi"
-
-  engine:
-    image: vllm/vllm-openai:v0.9.1
-    args:
-    - "--model=meta-llama/Llama-3.1-405B-Instruct"
-    - "--tensor-parallel-size=8"
-    - "--pipeline-parallel-size=2"
-    - "--max-model-len=131072"
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.9.1
+          args:
+          - "--model=meta-llama/Llama-3.1-405B-Instruct"
+          - "--tensor-parallel-size=8"
+          - "--pipeline-parallel-size=2"
+          - "--max-model-len=131072"

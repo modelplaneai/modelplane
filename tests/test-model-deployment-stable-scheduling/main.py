@@ -13,23 +13,23 @@ from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
 
-REPLICA_SPEC = mrv1alpha1.Spec(
+REPLICA_SPEC = mrv1alpha1.SpecModel(
     inferenceClusterRef=mrv1alpha1.InferenceClusterRef(
         name="cluster-b",
     ),
     workers=mrv1alpha1.Workers(
-        topology=mrv1alpha1.Topology(
-            strategy="Tensor",
-            tensor=1,
+        topology=mrv1alpha1.Topology(tensor=1),
+        template=mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(
+                containers=[
+                    mrv1alpha1.Container(
+                        name="engine",
+                        image="vllm/vllm-openai:v0.7.3",
+                        args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
+                    ),
+                ],
+            ),
         ),
-        resources=mrv1alpha1.Resources(
-            cpu="3",
-            memory="10Gi",
-        ),
-    ),
-    engine=mrv1alpha1.Engine(
-        image="vllm/vllm-openai:v0.7.3",
-        args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
     ),
 )
 
