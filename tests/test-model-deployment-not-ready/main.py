@@ -1,8 +1,7 @@
-"""Test that the scheduler rejects clusters with insufficient nodes.
+"""Test that the scheduler skips clusters that aren't Ready.
 
-The deployment uses strategy TensorPipeline with pipeline=2, meaning
-each replica needs 2 nodes with 8 GPUs each. The cluster only has 1
-node. The scheduler should produce 0 replicas.
+The cluster has matching labels and sufficient GPU capacity, but its
+Ready condition is False. The scheduler should not schedule to it.
 """
 
 from datetime import UTC, datetime
@@ -15,45 +14,44 @@ from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositionte
 
 test = compositiontest.CompositionTest(
     metadata=metav1.ObjectMeta(
-        name="model-deployment-insufficient-nodes",
+        name="model-deployment-not-ready",
     ),
     spec=compositiontest.Spec(
         compositionPath="apis/modeldeployments/composition.yaml",
-        xrPath="tests/test-model-deployment-insufficient-nodes/xr.yaml",
+        xrPath="tests/test-model-deployment-not-ready/xr.yaml",
         xrdPath="apis/modeldeployments/definition.yaml",
         timeoutSeconds=120,
         validate=False,
         extraResources=[
-            # 1-node H100 cluster: 8 GPUs per node. The replica's topology
-            # asks for pipeline=2, which requires 2 nodes. Only 1 is
-            # available, so no replica should be scheduled.
+            # A cluster with capacity but Ready=False. The scheduler
+            # should skip it entirely.
             libresource.model_to_fixture(
                 icv1alpha1.InferenceCluster(
                     metadata=metav1.ObjectMeta(
-                        name="small-h100",
+                        name="not-ready-cluster",
                         labels={"modelplane.ai/cluster": "true"},
                     ),
-                    spec=icv1alpha1.Spec(cluster=icv1alpha1.Cluster(source="Existing")),
+                    spec=icv1alpha1.Spec(cluster=icv1alpha1.Cluster(source="GKE")),
                     status=icv1alpha1.Status(
                         conditions=[
                             icv1alpha1.Condition(
                                 type="Ready",
-                                status="True",
-                                reason="Available",
+                                status="False",
+                                reason="BackendNotReady",
                                 lastTransitionTime=datetime(2025, 1, 1, tzinfo=UTC),
                             ),
                         ],
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
-                            name="small-h100-cluster",
+                            name="not-ready-cluster-config",
                         ),
                         gateway=icv1alpha1.Gateway(address="10.0.0.1"),
                         capacity=icv1alpha1.Capacity(
                             gpuPools=[
                                 icv1alpha1.GpuPool(
-                                    acceleratorType="nvidia-h100-80gb",
-                                    countPerNode=8,
-                                    nodes=1,
-                                    memory="80Gi",
+                                    acceleratorType="nvidia-l4",
+                                    countPerNode=1,
+                                    nodes=2,
+                                    memory="24Gi",
                                 )
                             ],
                         ),
@@ -62,29 +60,28 @@ test = compositiontest.CompositionTest(
             ),
         ],
         assertResources=[
-            # Assert no replicas - the topology doesn't fit.
+            # Assert no replicas scheduled.
             libresource.model_to_dict(
                 mdv1alpha1.ModelDeployment(
                     metadata=metav1.ObjectMeta(
-                        name="llama405b-demo",
+                        name="qwen-demo",
                         namespace="ml-team",
                     ),
                     spec=mdv1alpha1.Spec(
                         replicas=1,
                         workers=mdv1alpha1.Workers(
                             topology=mdv1alpha1.Topology(
-                                strategy="TensorPipeline",
-                                tensor=8,
-                                pipeline=2,
+                                strategy="Tensor",
+                                tensor=1,
                             ),
                             resources=mdv1alpha1.Resources(
-                                cpu="16",
-                                memory="256Gi",
+                                cpu="3",
+                                memory="10Gi",
                             ),
                         ),
                         engine=mdv1alpha1.Engine(
                             image="vllm/vllm-openai:v0.7.3",
-                            args=["--model=meta-llama/Llama-3.1-405B"],
+                            args=["--model=Qwen/Qwen2.5-0.5B-Instruct"],
                         ),
                     ),
                     status=mdv1alpha1.Status(

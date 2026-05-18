@@ -158,21 +158,17 @@ class Composer:
         """Compose one ModelEndpoint per matched cluster.
 
         Endpoints are labeled with the deployment name so a ModelService
-        can select them. The URL is informational - the actual routing
-        target is the per-cluster gateway. The rewritePath tells
-        ModelService what URL prefix to rewrite to on the remote cluster.
+        can select them. The URL points at the per-replica path on the
+        remote cluster's gateway. The rewritePath tells ModelService what
+        URL prefix to rewrite to on the remote cluster.
         """
         llmis = naming.llmis_name(self.xr.metadata.name)
         rewrite_path = f"/{metadata.NAMESPACE_REMOTE}/{llmis}/"
 
         for cluster_info in matched:
             endpoint_key = f"endpoint-{cluster_info.name}"
-            cluster = self.clusters_by_name.get(cluster_info.name)
-            gateway_address = cluster.status.gateway.address if cluster else None
-
-            # URL is informational. For composed endpoints it points at
-            # the per-replica path on the remote cluster's gateway.
-            url = f"http://{gateway_address}{rewrite_path}v1" if gateway_address else f"http://pending{rewrite_path}v1"
+            cluster = self.clusters_by_name[cluster_info.name]
+            url = f"http://{cluster.status.gateway.address}{rewrite_path}v1"
 
             resource.update(
                 self.rsp.desired.resources[endpoint_key],

@@ -23,7 +23,6 @@ class Candidate:
     """A cluster that matched scheduling criteria."""
 
     name: str
-    gateway_address: str | None
 
 
 @dataclass
@@ -49,6 +48,18 @@ def topology_shape(workers) -> Shape:
         nodes_per_worker=nodes_per_worker,
         total_gpus=total_gpus,
     )
+
+
+def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
+    """Check that the cluster is Ready and has a gateway address.
+
+    A cluster without a Ready=True condition hasn't finished provisioning.
+    A cluster without a gateway address can't receive routed traffic.
+    Both must be true for the cluster to be schedulable.
+    """
+    if not cluster.status.gateway or not cluster.status.gateway.address:
+        return False
+    return any(c.type == "Ready" and c.status == "True" for c in cluster.status.conditions or [])
 
 
 def _pool_fits_shape(pool, shape: Shape) -> bool:
@@ -87,6 +98,9 @@ def schedule(
 
     candidates = []
     for cluster in clusters:
+        if not _cluster_ready(cluster):
+            continue
+
         # Find pools that can host the shape, accumulating total eligible
         # GPU capacity.
         eligible_total = 0
@@ -106,12 +120,7 @@ def schedule(
         if eligible_total - used_gpus < shape.total_gpus:
             continue
 
-        candidates.append(
-            Candidate(
-                name=cluster.metadata.name,
-                gateway_address=cluster.status.gateway.address,
-            )
-        )
+        candidates.append(Candidate(name=cluster.metadata.name))
 
     # Prefer clusters that already have a replica for this deployment.
     # Within each group (existing vs new), sort by name for determinism.

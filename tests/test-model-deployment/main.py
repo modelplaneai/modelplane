@@ -1,6 +1,7 @@
+from datetime import UTC, datetime
+
 from .lib import resource as libresource
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
-from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from .model.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from .model.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
@@ -27,6 +28,14 @@ test = compositiontest.CompositionTest(
                     ),
                     spec=icv1alpha1.Spec(cluster=icv1alpha1.Cluster(source="Existing")),
                     status=icv1alpha1.Status(
+                        conditions=[
+                            icv1alpha1.Condition(
+                                type="Ready",
+                                status="True",
+                                reason="Available",
+                                lastTransitionTime=datetime(2025, 1, 1, tzinfo=UTC),
+                            ),
+                        ],
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
                             name="demo-us-central-cluster",
                         ),
@@ -42,17 +51,6 @@ test = compositiontest.CompositionTest(
                             ],
                         ),
                     ),
-                )
-            ),
-            # The InferenceGateway. ModelDeployment doesn't currently read
-            # its address (that's ModelService's job), but it's still a
-            # required resource for environments where future composition
-            # steps may need it.
-            libresource.model_to_fixture(
-                igwv1alpha1.InferenceGateway(
-                    metadata=metav1.ObjectMeta(name="default"),
-                    spec=igwv1alpha1.Spec(backend="EnvoyGateway"),
-                    status=igwv1alpha1.Status(address="10.0.0.1"),
                 )
             ),
         ],

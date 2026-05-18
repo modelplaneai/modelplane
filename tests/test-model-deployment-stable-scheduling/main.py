@@ -5,9 +5,10 @@ previous reconcile. With replicas=1, the scheduler should keep cluster-b
 rather than rescheduling to cluster-a (which sorts first alphabetically).
 """
 
+from datetime import UTC, datetime
+
 from .lib import resource as libresource
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
-from .model.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from .model.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from .model.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from .model.io.upbound.dev.meta.compositiontest import v1alpha1 as compositiontest
@@ -54,6 +55,14 @@ test = compositiontest.CompositionTest(
                     ),
                     spec=icv1alpha1.Spec(cluster=icv1alpha1.Cluster(source="Existing")),
                     status=icv1alpha1.Status(
+                        conditions=[
+                            icv1alpha1.Condition(
+                                type="Ready",
+                                status="True",
+                                reason="Available",
+                                lastTransitionTime=datetime(2025, 1, 1, tzinfo=UTC),
+                            ),
+                        ],
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
                             name="cluster-a-cluster",
                         ),
@@ -83,6 +92,14 @@ test = compositiontest.CompositionTest(
                     ),
                     spec=icv1alpha1.Spec(cluster=icv1alpha1.Cluster(source="Existing")),
                     status=icv1alpha1.Status(
+                        conditions=[
+                            icv1alpha1.Condition(
+                                type="Ready",
+                                status="True",
+                                reason="Available",
+                                lastTransitionTime=datetime(2025, 1, 1, tzinfo=UTC),
+                            ),
+                        ],
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
                             name="cluster-b-cluster",
                         ),
@@ -98,14 +115,6 @@ test = compositiontest.CompositionTest(
                             ],
                         ),
                     ),
-                )
-            ),
-            # The InferenceGateway.
-            libresource.model_to_fixture(
-                igwv1alpha1.InferenceGateway(
-                    metadata=metav1.ObjectMeta(name="default"),
-                    spec=igwv1alpha1.Spec(backend="EnvoyGateway"),
-                    status=igwv1alpha1.Status(address="10.0.0.100"),
                 )
             ),
             # The existing replica on cluster-b, also visible as a required
