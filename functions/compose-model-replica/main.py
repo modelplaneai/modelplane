@@ -98,6 +98,8 @@ class Composer:
         # --model= arg from the container args — KServe handles model
         # fetching via model.uri and invokes the engine with the local
         # model path.
+        #
+        # TODO(negz): Stop doing this when we drop KServe. It's a hack.
         model_name = ""
         container_args = []
         for arg in list(engine.args or []):
