@@ -210,7 +210,7 @@ EOF
 ## Create the InferenceGateway
 
 The InferenceGateway installs Envoy Gateway and MetalLB on the control plane
-cluster and creates a Gateway that routes traffic to model replicas.
+cluster and creates a Gateway that routes traffic to model endpoints.
 
 ```bash
 kubectl apply -f examples/platform/inference-gateway.yaml
@@ -222,17 +222,17 @@ Wait for it to become ready (~3-5 minutes):
 kubectl get ig default --watch
 ```
 
-## Register a model
+## Create an InferenceClass and InferenceCluster
 
-Register Qwen 2.5 0.5B in the catalog:
+An InferenceClass defines a hardware recipe (GPU type, count, provisioning
+config). An InferenceCluster references it to provision GPU node pools.
+
+Apply the L4 InferenceClass, then edit the cluster example to set your GCP
+project ID and apply it:
 
 ```bash
-kubectl apply -f examples/platform/cluster-model.yaml
+kubectl apply -f examples/platform/inference-class-gke-l4.yaml
 ```
-
-## Create an InferenceCluster
-
-Edit the example to set your GCP project ID, then apply it:
 
 ```bash
 # Edit examples/platform/inference-cluster-gke.yaml and set
@@ -250,19 +250,21 @@ kubectl get ic --watch
 
 ## Deploy a model
 
-Create the `ml-team` namespace and deploy the model:
+Create the `ml-team` namespace, deploy the model, and create a ModelService to
+expose it:
 
 ```bash
 kubectl create namespace ml-team
 kubectl apply -f examples/deployment/model-deployment.yaml
+kubectl apply -f examples/deployment/model-service.yaml
 ```
 
-The scheduler matches the model's serving profile to the cluster, checks GPU
-capacity, and creates a ModelReplica. Wait for the replica to become ready:
+The scheduler matches the deployment's topology against the cluster's GPU
+capacity and creates a ModelReplica. Wait for the deployment to become ready:
 
 ```bash
 kubectl get md -n ml-team --watch
-# Wait until READY shows True, then Ctrl-C.
+# Wait until REPLICAS shows 1, then Ctrl-C.
 ```
 
 ## Talk to the model
@@ -274,7 +276,7 @@ Use a pod to send a request:
 kubectl run -i --rm curl-test \
   --image=curlimages/curl \
   --restart=Never \
-  -- curl -s http://172.18.255.200/ml-team/qwen-demo/v1/chat/completions \
+  -- curl -s http://172.18.255.200/ml-team/qwen/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "Qwen/Qwen2.5-0.5B-Instruct",
@@ -283,10 +285,10 @@ kubectl run -i --rm curl-test \
   }'
 ```
 
-You can also get the endpoint URL from the ModelDeployment status:
+You can also get the endpoint URL from the ModelService status:
 
 ```bash
-kubectl get md qwen-demo -n ml-team -o jsonpath='{.status.endpoint.url}'
+kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}'
 ```
 
 ## Clean up
@@ -301,6 +303,7 @@ the GKE resources will be orphaned.
 
 ```bash
 kubectl delete md --all -n ml-team
+kubectl delete ms --all -n ml-team
 kubectl delete ic --all
 
 # Wait for the InferenceCluster to be fully deleted.

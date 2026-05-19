@@ -1,8 +1,9 @@
 # Concepts
 
-Modelplane manages AI model inference as declarative infrastructure. It draws a
+Modelplane manages AI model inference across a fleet of GPU clusters. It draws a
 boundary between two teams: platform teams who provision infrastructure and
-curate a model catalog, and ML teams who deploy from that catalog.
+define hardware classes, and ML teams who deploy models and get unified
+endpoints.
 
 This page explains the key resources and how they relate.
 
@@ -12,29 +13,33 @@ This page explains the key resources and how they relate.
 graph TD
     subgraph "Platform team"
         IG[InferenceGateway]
-        IC1[InferenceCluster<br><i>gke-us-central</i>]
-        IC2[InferenceCluster<br><i>byo-us-east</i>]
-        CM[ClusterModel<br><i>qwen-2-5-0-5b</i>]
+        ICL[InferenceClass<br><i>gke-l4-1x-g2</i>]
+        IC1[InferenceCluster<br><i>prod-gke-us-central</i>]
+        IC2[InferenceCluster<br><i>prod-byo-us-east</i>]
     end
 
     subgraph "ML team"
         MD[ModelDeployment<br><i>qwen-demo</i>]
+        MS[ModelService<br><i>qwen</i>]
     end
 
     subgraph "Created by Modelplane"
-        MR1[ModelReplica<br><i>qwen-demo-gke-us-central</i>]
-        MR2[ModelReplica<br><i>qwen-demo-byo-us-east</i>]
+        MR1[ModelReplica<br><i>qwen-demo-prod-gke-us-central</i>]
+        MR2[ModelReplica<br><i>qwen-demo-prod-byo-us-east</i>]
+        ME1[ModelEndpoint<br><i>qwen-demo-prod-gke-us-central</i>]
+        ME2[ModelEndpoint<br><i>qwen-demo-prod-byo-us-east</i>]
     end
 
-    MD -- "references" --> CM
-    MD -- "scheduler selects" --> IC1
-    MD -- "scheduler selects" --> IC2
+    IC1 -- "references" --> ICL
     MD -. "creates" .-> MR1
     MD -. "creates" .-> MR2
+    MD -. "creates" .-> ME1
+    MD -. "creates" .-> ME2
     MR1 -- "deploys to" --> IC1
     MR2 -- "deploys to" --> IC2
-    IG -- "routes traffic to" --> MR1
-    IG -- "routes traffic to" --> MR2
+    MS -- "selects" --> ME1
+    MS -- "selects" --> ME2
+    MS -. "routing" .-> IG
 ```
 
 ## InferenceGateway
@@ -42,7 +47,7 @@ graph TD
 The InferenceGateway creates a unified, OpenAI-compatible endpoint on the
 control plane cluster. It installs [Envoy
 Gateway](https://gateway.envoyproxy.io) and creates a Gateway that routes
-requests to model replicas on remote inference clusters.
+requests to model endpoints on remote inference clusters.
 
 Create one InferenceGateway per control plane. It must be named `default`. When
 running the control plane in kind, set `loadBalancer: MetalLB` to get a
@@ -55,6 +60,19 @@ status:
 kubectl get ig default
 ```
 
+## InferenceClass
+
+An InferenceClass is a tested recipe for a GPU node pool. It bundles:
+
+- **Resources**: what hardware the class exposes (GPU count, memory). Used by
+  the scheduler to match deployments to clusters.
+- **Provisioning** (optional): how to create a node pool of this class on a
+  specific cloud. Classes without provisioning are for existing clusters where
+  the pool already exists.
+
+Different clouds and GPU types imply different classes. A GKE L4 pool is
+`gke-l4-1x-g2`. A bare-metal H100 pool is `h100-8x-ib` (no provisioning).
+
 ## InferenceCluster
 
 An InferenceCluster represents a Kubernetes cluster configured for model
@@ -64,74 +82,85 @@ Each cluster has:
 
 - A **cluster source**: `GKE` (Modelplane provisions the full cluster) or
   `Existing` (bring a cluster you manage yourself).
-- One or more **GPU node pools** describing the available accelerators.
+- One or more **node pools**, each referencing an `InferenceClass` for its
+  hardware capabilities and provisioning recipe.
+- **Labels** for organizational metadata: tier, region, provider. These are the
+  matching surface for `ModelDeployment.clusterSelector`.
 
-Modelplane installs the inference stack (including cert-manager, Envoy Gateway,
-Prometheus, and KEDA) on the cluster automatically.
+Modelplane installs an inference stack (including cert-manager, Envoy Gateway,
+KServe, Prometheus, and KEDA) on every cluster it manages. For provisioned
+clusters Modelplane handles this directly. For existing clusters the platform
+team is responsible for meeting the cluster prerequisites.
 
-The cluster's GPU capacity is used by the scheduler when placing models. For
-`GKE` clusters, the capacity is computed from the node pool configuration. For
-`Existing` clusters, you describe the node pools so the scheduler knows what's
-available.
-
-InferenceClusters must have the label `modelplane.ai/cluster: "true"` to be
-discoverable by the scheduler.
-
-## ClusterModel and Model
-
-A ClusterModel (cluster-scoped) or Model (namespaced) registers a model in the
-platform catalog. It describes:
-
-- Where to download weights from (currently HuggingFace).
-- How much VRAM the model needs.
-- One or more **serving profiles**, each specifying an engine (currently vLLM)
-  and a container image.
-
-Serving profiles are listed in priority order. When the scheduler places a model
-on a cluster, it picks the first applicable profile.
-
-ML teams don't need to know about serving profiles. They reference a catalog
-model by name and the platform decides how to serve it.
+The cluster's GPU capacity is derived from its node pools' InferenceClasses and
+used by the scheduler when placing models. A cluster must be `Ready` and have a
+gateway address to be eligible for scheduling.
 
 ## ModelDeployment
 
-A ModelDeployment is the ML team's interface. It says "deploy this model to N
-clusters" and produces a working endpoint.
+A ModelDeployment is the ML team's interface. It carries everything needed to
+deploy a model to the fleet: the worker template, hardware topology, and replica
+count.
 
 When a ModelDeployment is created, the scheduler:
 
-1. Discovers all InferenceClusters with the `modelplane.ai/cluster` label.
-2. Applies any `clusterSelector` label filter from the deployment.
-3. Selects a serving profile from the model's catalog entry.
-4. Checks GPU capacity (model VRAM vs available pool VRAM, minus other
-   replicas).
-5. Creates a ModelReplica for each selected cluster.
-6. Creates an HTTPRoute on the control plane gateway to route traffic to the
-   replicas.
+1. Discovers all ready InferenceClusters (filtered by `clusterSelector` labels
+   if set).
+2. Derives the physical shape from `workers.topology`: GPUs per node (tensor)
+   and nodes per worker (pipeline, default 1).
+3. Checks GPU capacity: does the cluster have a pool with enough GPUs per node
+   and enough available nodes?
+4. Creates a `ModelReplica` for each selected cluster.
+5. Creates a `ModelEndpoint` for each replica, carrying the URL and rewrite path
+   for routing.
 
-The deployment's endpoint URL follows this pattern:
-
-``` http://<gateway-address>/<namespace>/<deployment-name>/v1/chat/completions
-```
+The worker template is a curated subset of `PodTemplateSpec`. The container
+named `engine` is the inference engine; additional containers pass through as
+sidecars. A CEL validation rule on the XRD enforces that exactly one container
+named `engine` exists.
 
 ### Scaling
 
-ModelDeployments support two scaling modes:
+Replicas are the only scaling axis. Each `ModelReplica` is a complete,
+fixed-topology serving instance. Scaling `spec.replicas` adds or removes whole
+instances. There's no in-cluster pod autoscaling.
 
-- **Fixed**: a static number of replicas per ModelReplica.
-- **Concurrency**: autoscaling based on active concurrent requests per replica,
-  using KEDA and Prometheus. Supports scale-to-zero when `minReplicas` is 0.
-
-The default is fixed scaling with 1 replica.
+The `ModelDeployment` XRD declares a Kubernetes scale subresource. Autoscaling
+is opt-in via a separate KEDA `ScaledObject` or similar, following the same
+pattern as Kubernetes Deployment + HPA.
 
 ## ModelReplica
 
 A ModelReplica is created by the ModelDeployment's composition function. Users
 don't create these directly.
 
-Each replica represents a model deployed to a specific cluster. It resolves the
-serving profile, computes how many GPUs the model needs, and creates the
-inference resources (an `LLMInferenceService`) on the remote cluster.
+Each replica represents a model deployed to a specific cluster. It reads the
+worker template and topology, finds the engine container, and composes a KServe
+`LLMInferenceService` on the remote cluster. For multi-node serving (pipeline >
+1), it uses LeaderWorkerSet via KServe.
 
-The replica also creates an Envoy Gateway `Backend` on the control plane to
-route traffic from the gateway to the remote cluster's inference endpoint.
+## ModelEndpoint
+
+A ModelEndpoint is a reachable inference endpoint. Modelplane composes one per
+ModelReplica, but ML teams can also create them manually for external SaaS
+providers (Together, BaseTen).
+
+Each endpoint composes an Envoy Gateway `Backend` on the control plane. The
+Backend's name is surfaced in `status.routing.backendName` so that ModelService
+can reference it in its HTTPRoute.
+
+## ModelService
+
+A ModelService exposes one or more ModelEndpoints via a unified, OpenAI-
+compatible endpoint. It selects endpoints by label and composes a Gateway API
+`HTTPRoute` that load-balances across them.
+
+Each backendRef in the HTTPRoute carries its own `URLRewrite` filter derived
+from the endpoint's `spec.rewritePath`, so endpoints from different deployments
+or external providers with different path layouts coexist correctly.
+
+The service's public address is available in `status.address`:
+
+```bash
+kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}'
+```

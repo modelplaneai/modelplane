@@ -6,11 +6,11 @@
 
 **The open source control plane for AI models.**
 
-Modelplane extends [Crossplane] to manage AI model inference as declarative
-infrastructure. Platform teams provision GPU clusters, configure inference
-clusters, and curate a model catalog. ML teams deploy from that catalog and get
-back a working endpoint. The control plane handles scheduling, scaling, and
-reconciliation continuously.
+Modelplane extends [Crossplane] to manage AI model inference across a fleet of
+GPU clusters. Platform teams provision clusters and define hardware classes. ML
+teams deploy models and get back a unified, OpenAI-compatible endpoint.
+Modelplane handles fleet scheduling, multi-cluster routing, and infrastructure
+composition.
 
 ## Deploy a model
 
@@ -18,35 +18,44 @@ reconciliation continuously.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
-  name: qwen
+  name: qwen-demo
   namespace: ml-team
 spec:
-  modelRef:
-    name: qwen-2-5-0-5b
-  clusters: 2
+  replicas: 2
+  workers:
+    topology:
+      tensor: 1
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.7.3
+          args:
+          - "--model=Qwen/Qwen2.5-0.5B-Instruct"
 ```
 
 This deploys Qwen 2.5 0.5B to two inference clusters and produces a unified,
-OpenAI-compatible endpoint. The platform decides where to place the model based
-on GPU capacity.
+OpenAI-compatible endpoint. The scheduler picks clusters based on GPU capacity
+and the deployment's topology.
 
 ## How it works
 
 Modelplane draws a clear boundary between two teams.
 
-**Platform teams** create `InferenceClusters`, which are Kubernetes clusters
-configured for model serving. They also register approved models as `Models` in
-a catalog. Each model specifies its source, VRAM requirements, and one or more
-serving profiles that configure vLLM.
+**Platform teams** create `InferenceClusters` describing their GPU fleet and
+`InferenceClasses` defining hardware recipes (GPU type, count, provisioning
+config). They set organizational metadata via labels on clusters: tier, region,
+provider.
 
-**ML teams** create a `ModelDeployment` referencing a catalog model and specify
-how many clusters to deploy across. Modelplane matches serving profiles to
-available clusters, checks GPU capacity, and creates a `ModelReplica` per
-cluster. Traffic routes through a unified [Envoy Gateway] endpoint on the
-control plane.
+**ML teams** create a `ModelDeployment` carrying everything needed to serve a
+model: the worker template, hardware topology, and replica count. Modelplane
+schedules each replica to a ready cluster with matching capacity, composes a
+`ModelReplica` per cluster, and creates `ModelEndpoints` for routing. A
+`ModelService` routes traffic across endpoints through a unified [Envoy Gateway]
+endpoint on the control plane.
 
-Modelplane is the control plane layer above the inference engine. It doesn't
-compete with vLLM or KServe. It manages them.
+Modelplane is the fleet-level control plane above the inference engine. It
+doesn't compete with vLLM or KServe. It manages them across clusters.
 
 ## Current status
 
@@ -56,8 +65,8 @@ Modelplane is at v0.1. It's early and evolving fast.
 |---|---|
 | Cluster sources | GKE (provisioned), Existing (bring your own kubeconfig) |
 | Serving engines | vLLM |
-| Scaling | Fixed replicas, concurrency-based autoscaling |
-| Routing | Unified OpenAI-compatible endpoint |
+| Scaling | Scale ModelDeployment using `spec.replicas` |
+| Routing | Unified OpenAI-compatible endpoint via ModelService |
 
 See [issues labeled `enhancement`][enhancements] for what's planned.
 
