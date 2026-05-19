@@ -90,10 +90,10 @@ class Composer:
 
     def resolve_classes(self) -> bool:
         """Declare and fetch every InferenceClass referenced by
-        spec.nodePools[].class. Returns False if any class is missing,
+        spec.nodePools[].className. Returns False if any is missing,
         in which case the function gates and waits."""
         pools = self.xr.spec.nodePools or []
-        class_names = sorted({p.class_ for p in pools})
+        class_names = sorted({p.className for p in pools})
 
         for name in class_names:
             response.require_resources(
@@ -283,7 +283,7 @@ class Composer:
         gke_node_pools: list[gkev1alpha1.NodePool] = [self.system_pool_for_gke()]
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.class_)
+            cls = self.classes.get(pool.className)
             if not cls or not cls.spec.provisioning or not cls.spec.provisioning.gke:
                 # Class has no GKE provisioning block - can't provision
                 # this pool. Skip rather than fail; capacity reporting
@@ -387,7 +387,7 @@ class Composer:
         """
         gpu_pools = []
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.class_)
+            cls = self.classes.get(pool.className)
             if not cls or not cls.spec.resources or not cls.spec.resources.gpu:
                 continue
             gpu = cls.spec.resources.gpu

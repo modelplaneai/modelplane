@@ -20,7 +20,7 @@ def model_to_dict(model: pydantic.BaseModel) -> dict:
     explicitly set. For test fixtures (extraResources, observedResources),
     use model_to_fixture instead.
     """
-    data = model.model_dump(exclude_defaults=True, warnings=False, by_alias=True)
+    data = model.model_dump(exclude_defaults=True, warnings=False)
     if hasattr(model, "apiVersion"):
         data["apiVersion"] = model.apiVersion
     if hasattr(model, "kind"):
@@ -36,7 +36,7 @@ def model_to_fixture(model: pydantic.BaseModel) -> dict:
     correct for extraResources and observedResources where the fixture
     represents a fully-realized resource with defaults applied.
     """
-    data = model.model_dump(exclude_none=True, warnings=False, by_alias=True)
+    data = model.model_dump(exclude_none=True, warnings=False)
     if hasattr(model, "apiVersion"):
         data["apiVersion"] = model.apiVersion
     if hasattr(model, "kind"):
@@ -58,4 +58,4 @@ def update_status(r, status: pydantic.BaseModel) -> None:
     # via symlinks, so any top-level SDK import breaks tests.
     from crossplane.function import resource  # noqa: PLC0415
 
-    resource.update(r, {"status": status.model_dump(exclude_none=True, by_alias=True)})
+    resource.update(r, {"status": status.model_dump(exclude_none=True)})

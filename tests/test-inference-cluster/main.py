@@ -20,7 +20,7 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         extraResources=[
-            # The InferenceClass referenced by spec.nodePools[].class.
+            # The InferenceClass referenced by spec.nodePools[].className.
             libresource.model_to_fixture(
                 iclv1alpha1.InferenceClass(
                     metadata=metav1.ObjectMeta(name="gke-l4-1x-g2"),
@@ -114,7 +114,7 @@ test = compositiontest.CompositionTest(
                         nodePools=[
                             icv1alpha1.NodePool(
                                 name="gpu-l4",
-                                **{"class": "gke-l4-1x-g2"},
+                                className="gke-l4-1x-g2",
                                 maxNodeCount=2,
                                 zones=["us-central1-a", "us-central1-c"],
                             ),

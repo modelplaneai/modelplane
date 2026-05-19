@@ -14,5 +14,5 @@ spec:
         key: kubeconfig
   nodePools:
   - name: gpu-h100
-    class: h100-8x-byo
+    className: h100-8x-byo
     nodeCount: 2

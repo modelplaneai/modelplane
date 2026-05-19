@@ -13,7 +13,7 @@ spec:
       region: us-central1
   nodePools:
   - name: gpu-l4
-    class: gke-l4-1x-g2
+    className: gke-l4-1x-g2
     nodeCount: 1
     minNodeCount: 0
     maxNodeCount: 2

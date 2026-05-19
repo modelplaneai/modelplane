@@ -19,7 +19,7 @@ test = compositiontest.CompositionTest(
         timeoutSeconds=120,
         validate=False,
         extraResources=[
-            # The InferenceClass referenced by spec.nodePools[].class. No
+            # The InferenceClass referenced by spec.nodePools[].className. No
             # provisioning block - this class describes existing hardware.
             libresource.model_to_fixture(
                 iclv1alpha1.InferenceClass(
@@ -59,7 +59,7 @@ test = compositiontest.CompositionTest(
                         nodePools=[
                             icv1alpha1.NodePool(
                                 name="gpu-h100",
-                                **{"class": "h100-8x-byo"},
+                                className="h100-8x-byo",
                                 nodeCount=2,
                             ),
                         ],

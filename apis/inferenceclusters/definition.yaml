@@ -112,12 +112,12 @@ spec:
                 x-kubernetes-list-map-keys: [name]
                 items:
                   type: object
-                  required: [name, class]
+                  required: [name, className]
                   properties:
                     name:
                       type: string
                       maxLength: 40
-                    class:
+                    className:
                       type: string
                       description: >-
                         Name of the InferenceClass describing this pool's
