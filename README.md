@@ -34,18 +34,17 @@ spec:
           - "--model=Qwen/Qwen2.5-0.5B-Instruct"
 ```
 
-This deploys Qwen 2.5 0.5B to two inference clusters and produces a unified,
-OpenAI-compatible endpoint. The scheduler picks clusters based on GPU capacity
-and the deployment's topology.
+This deploys two replicas of Qwen 2.5 0.5B and produces a unified,
+OpenAI-compatible endpoint. The scheduler picks which clusters the replicas run
+on based on GPU capacity and the deployment's topology.
 
 ## How it works
 
 Modelplane draws a clear boundary between two teams.
 
 **Platform teams** create `InferenceClusters` describing their GPU fleet and
-`InferenceClasses` defining hardware recipes (GPU type, count, provisioning
-config). They set organizational metadata via labels on clusters: tier, region,
-provider.
+`InferenceClasses` defining hardware recipes (GPU type, count). They set
+organizational metadata via labels on clusters: tier, region, provider.
 
 **ML teams** create a `ModelDeployment` carrying everything needed to serve a
 model: the worker template, hardware topology, and replica count. Modelplane
@@ -55,7 +54,7 @@ schedules each replica to a ready cluster with matching capacity, composes a
 endpoint on the control plane.
 
 Modelplane is the fleet-level control plane above the inference engine. It
-doesn't compete with vLLM or KServe. It manages them across clusters.
+doesn't compete with vLLM or Dynamo. It manages them across clusters.
 
 ## Current status
 
@@ -73,8 +72,8 @@ See [issues labeled `enhancement`][enhancements] for what's planned.
 ## Getting started
 
 Follow the [getting started guide](docs/getting-started.md) to deploy Modelplane
-on a local kind cluster and serve a model on GKE. The
-[concepts page](docs/concepts.md) explains the key resources and how they relate.
+on a local kind cluster and serve a model on GKE. The [concepts
+page](docs/concepts.md) explains the key resources and how they relate.
 
 The [`examples/`](examples/) directory has annotated manifests covering the full
 workflow: gateway setup, cluster provisioning, and model deployments.
