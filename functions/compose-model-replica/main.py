@@ -18,6 +18,7 @@ from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
 from .lib import conditions, defaults, metadata, naming
+from .lib.metadata import LABEL_KEY_DEPLOYMENT
 from .model.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from .model.ai.modelplane.modelreplica import v1alpha1
 from .model.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
@@ -31,7 +32,6 @@ CONDITION_REASON_WAITING_FOR_MODEL = "WaitingForModel"
 CONDITION_REASON_DEPLOYING = "Deploying"
 CONDITION_REASON_ACCEPTED = "Accepted"
 CONDITION_REASON_SERVING = "Serving"
-CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 
 # Composed resource key for the model serving resource.
 MODEL_RESOURCE_KEY = "model-serving"
@@ -43,6 +43,7 @@ class Composer:
         self.rsp = rsp
         self.xr = v1alpha1.ModelReplica(**resource.struct_to_dict(req.observed.composite.resource))
         self.ic = None
+        self.engine = None  # Cached engine container; set in compose_model_serving.
 
     def compose(self):
         if not self.resolve_inputs():
@@ -93,7 +94,8 @@ class Composer:
         """Compose the LLMInferenceService on the remote cluster."""
         topology = self.xr.spec.workers.topology
         template = self.xr.spec.workers.template
-        engine = self._engine_container()
+        self.engine = self._engine_container()
+        engine = self.engine
 
         gpu_per_pod = int(topology.tensor)
         multi_node = int(topology.pipeline or 1) > 1
@@ -204,16 +206,12 @@ class Composer:
     def llmis_name(self):
         """LLMInferenceService name on the remote cluster.
 
-        Derived from the parent ModelDeployment name (the part of the
-        replica name before the cluster suffix), so all replicas of the
-        same deployment land at the same path on every remote gateway.
+        Read from the modelplane.ai/deployment label that
+        compose-model-deployment sets on every replica. All replicas of
+        the same deployment land at the same path on every remote gateway.
         """
-        # The replica name is "<deployment>-<cluster>" by construction.
-        cluster_suffix = f"-{self.xr.spec.inferenceClusterRef.name}"
-        replica_name = self.xr.metadata.name
-        deployment_name = (
-            replica_name[: -len(cluster_suffix)] if replica_name.endswith(cluster_suffix) else replica_name
-        )
+        labels = self.xr.metadata.labels or {}
+        deployment_name = labels.get(LABEL_KEY_DEPLOYMENT, self.xr.metadata.name)
         return naming.llmis_name(deployment_name)
 
     def derive_conditions(self):
@@ -221,8 +219,7 @@ class Composer:
 
         # First-time transition: emit a normal event the first reconcile.
         if MODEL_RESOURCE_KEY not in self.req.observed.resources:
-            engine = self._engine_container()
-            image = engine.image
+            image = self.engine.image
             response.normal(
                 self.rsp,
                 f"Composing {image} on {self.xr.spec.inferenceClusterRef.name}",
@@ -247,7 +244,7 @@ class Composer:
         if serving_ready:
             ready_reason = CONDITION_REASON_SERVING
         elif serving_accepted:
-            ready_reason = CONDITION_REASON_MODEL_STARTING
+            ready_reason = conditions.CONDITION_REASON_MODEL_STARTING
         else:
             ready_reason = CONDITION_REASON_WAITING_FOR_MODEL
         conditions.set_condition(self.rsp, CONDITION_TYPE_MODEL_READY, serving_ready, ready_reason)

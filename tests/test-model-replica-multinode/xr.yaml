@@ -3,6 +3,8 @@ kind: ModelReplica
 metadata:
   name: llama405b-h100-cluster
   namespace: ml-team
+  labels:
+    modelplane.ai/deployment: llama405b
 spec:
   inferenceClusterRef:
     name: h100-cluster

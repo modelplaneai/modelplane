@@ -20,6 +20,7 @@ class Candidate:
     """A cluster that matched scheduling criteria."""
 
     name: str
+    gateway_address: str
 
 
 @dataclass
@@ -116,7 +117,12 @@ def schedule(
         if eligible_total - used_gpus < shape.total_gpus:
             continue
 
-        candidates.append(Candidate(name=cluster.metadata.name))
+        candidates.append(
+            Candidate(
+                name=cluster.metadata.name,
+                gateway_address=cluster.status.gateway.address,
+            )
+        )
 
     # Prefer clusters that already have a replica for this deployment.
     # Within each group (existing vs new), sort by name for determinism.

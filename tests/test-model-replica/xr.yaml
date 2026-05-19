@@ -3,6 +3,8 @@ kind: ModelReplica
 metadata:
   name: qwen-demo-demo-us-central
   namespace: ml-team
+  labels:
+    modelplane.ai/deployment: qwen-demo
 spec:
   inferenceClusterRef:
     name: demo-us-central

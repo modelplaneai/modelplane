@@ -172,7 +172,9 @@ class Composer:
         status = v1alpha1.Status()
         gateway_ip = self.gateway.status.address if self.gateway else None
         if gateway_ip:
-            status.address = f"http://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}"
+            status.address = (
+                f"{metadata.GATEWAY_SCHEME}://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}"
+            )
         libresource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self):

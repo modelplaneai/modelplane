@@ -32,7 +32,6 @@ CONDITION_REASON_REPLICAS_CREATED = "ReplicasCreated"
 CONDITION_REASON_SCHEDULING = "Scheduling"
 CONDITION_REASON_NO_REPLICAS_SCHEDULED = "NoReplicasScheduled"
 CONDITION_REASON_ALL_REPLICAS_READY = "AllReplicasReady"
-CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 
 
 class Composer:
@@ -44,8 +43,6 @@ class Composer:
         # Required resources — set by resolve_inputs.
         self.clusters = []
         self.all_replicas = []
-        # InferenceClusters keyed by name; populated from self.clusters.
-        self.clusters_by_name: dict[str, icv1alpha1.InferenceCluster] = {}
 
     def compose(self):
         if not self.resolve_inputs():
@@ -98,7 +95,6 @@ class Composer:
         self.clusters = [
             defaults.inference_cluster(icv1alpha1.InferenceCluster.model_validate(c)) for c in cluster_dicts
         ]
-        self.clusters_by_name = {c.metadata.name: c for c in self.clusters}
         self.all_replicas = [defaults.model_replica(mrv1alpha1.ModelReplica.model_validate(r)) for r in replica_dicts]
 
         return True
@@ -165,8 +161,7 @@ class Composer:
 
         for cluster_info in matched:
             endpoint_key = f"endpoint-{cluster_info.name}"
-            cluster = self.clusters_by_name[cluster_info.name]
-            url = f"http://{cluster.status.gateway.address}{rewrite_path}v1"
+            url = f"{metadata.GATEWAY_SCHEME}://{cluster_info.gateway_address}{rewrite_path}v1"
 
             resource.update(
                 self.rsp.desired.resources[endpoint_key],
@@ -242,7 +237,7 @@ class Composer:
             reason = CONDITION_REASON_ALL_REPLICAS_READY
             msg = f"{replicas_ready} of {len(matched)} ready"
         else:
-            reason = CONDITION_REASON_MODEL_STARTING
+            reason = conditions.CONDITION_REASON_MODEL_STARTING
             msg = f"{replicas_ready} of {len(matched)} ready"
 
         conditions.set_condition(self.rsp, CONDITION_TYPE_REPLICAS_READY, all_ready, reason, msg)

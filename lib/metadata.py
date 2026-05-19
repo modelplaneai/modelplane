@@ -24,3 +24,8 @@ NAMESPACE_REMOTE = "default"
 # The control plane gateway name. Used as the Gateway resource name,
 # the MetalLB IP pool name, and the HTTPRoute parentRef.
 GATEWAY_NAME = "modelplane"
+
+# Scheme used for gateway-facing URLs. Inference traffic between the
+# control plane gateway and remote cluster gateways uses plain HTTP;
+# TLS terminates at the edge.
+GATEWAY_SCHEME = "http"

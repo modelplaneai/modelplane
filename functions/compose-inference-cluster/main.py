@@ -169,23 +169,25 @@ class Composer:
             response.warning(self.rsp, "Existing cluster configuration is required when source is Existing")
             return
 
-        identity = existing.identitySecretRef if hasattr(existing, "identitySecretRef") else None
+        identity = existing.identitySecretRef
 
         self.compose_cluster_provider_config(existing.secretRef.name, existing.secretRef.key, sa_key=identity)
 
         backend_secrets = [
-            {"type": secrets.SECRET_TYPE_KUBECONFIG, "name": existing.secretRef.name, "key": existing.secretRef.key},
+            kssv1alpha1.Secret(
+                type=secrets.SECRET_TYPE_KUBECONFIG, name=existing.secretRef.name, key=existing.secretRef.key
+            ),
         ]
         if identity:
             backend_secrets.append(
-                {"type": secrets.SECRET_TYPE_GCP_SA_KEY, "name": identity.name, "key": identity.key},
+                kssv1alpha1.Secret(type=secrets.SECRET_TYPE_GCP_SA_KEY, name=identity.name, key=identity.key),
             )
         self.compose_kserve_backend(backend_secrets)
 
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=True)
 
-    def compose_kserve_backend(self, backend_secrets):
+    def compose_kserve_backend(self, backend_secrets: list[kssv1alpha1.Secret]):
         """Compose a KServeBackend XR with the given secrets."""
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
@@ -196,7 +198,7 @@ class Composer:
                 ),
                 spec=kssv1alpha1.Spec(
                     versions=kssv1alpha1.Versions(kserve=KSERVE_VERSION),
-                    secrets=[kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in backend_secrets],
+                    secrets=backend_secrets,
                 ),
             ),
         )
@@ -357,14 +359,14 @@ class Composer:
         )
         self.rsp.desired.resources["usage-gke-by-backend"].ready = fnv1.READY_TRUE
 
-    def resolve_gke_backend_secrets(self, gke_ready, backend_exists):
+    def resolve_gke_backend_secrets(self, gke_ready, backend_exists) -> list[kssv1alpha1.Secret] | None:
         """Resolve secrets for the backend from GKECluster status. Falls
         back to the observed backend's spec.secrets if GKECluster secrets aren't
         available but the backend already exists."""
         gke_secrets = self.observed_gke_secrets()
 
         if gke_ready and gke_secrets:
-            return [{"type": s.type, "name": s.name, "key": s.key} for s in gke_secrets]
+            return [kssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in gke_secrets]
 
         if backend_exists:
             observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
@@ -372,7 +374,7 @@ class Composer:
                 d = resource.struct_to_dict(observed.resource)
                 observed_secrets = d.get("spec", {}).get("secrets", [])
                 if observed_secrets:
-                    return [{"type": s["type"], "name": s["name"], "key": s["key"]} for s in observed_secrets]
+                    return [kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
 
         return None
 
