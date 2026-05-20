@@ -48,6 +48,7 @@ CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_WAITING_FOR_CLASSES = "WaitingForClasses"
 CONDITION_REASON_BACKEND_HEALTHY = "BackendHealthy"
 CONDITION_REASON_INSTALLING = "Installing"
+CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "kserve-backend"
@@ -276,10 +277,16 @@ class Composer:
         for pool in self.xr.spec.nodePools or []:
             cls = self.classes.get(pool.className)
             if not cls or not cls.spec.provisioning or not cls.spec.provisioning.gke:
-                # Class has no GKE provisioning block - can't provision
-                # this pool. Skip rather than fail; capacity reporting
-                # still works for pre-existing pools.
-                continue
+                msg = f"InferenceClass {pool.className} has no GKE provisioning block"
+                conditions.set_condition(
+                    self.rsp,
+                    CONDITION_TYPE_CLUSTER_READY,
+                    False,
+                    CONDITION_REASON_INVALID_NODE_POOL,
+                    msg,
+                )
+                response.warning(self.rsp, msg)
+                return
             prov = cls.spec.provisioning.gke
             gke_node_pools.append(
                 gkev1alpha1.NodePool(
