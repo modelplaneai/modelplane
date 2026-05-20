@@ -94,7 +94,7 @@ test = compositiontest.CompositionTest(
                         annotations={
                             "crossplane.io/composition-resource-name": "replica-demo-us-central",
                         },
-                        name="qwen-demo-demo-us-central",
+                        name="qwen-demo-demo-us-central-7078d",
                         namespace="ml-team",
                         labels={
                             "modelplane.ai/replica": "true",
@@ -130,7 +130,7 @@ test = compositiontest.CompositionTest(
                         annotations={
                             "crossplane.io/composition-resource-name": "endpoint-demo-us-central",
                         },
-                        name="qwen-demo-demo-us-central",
+                        name="qwen-demo-demo-us-central-7078d",
                         namespace="ml-team",
                         labels={
                             "modelplane.ai/deployment": "qwen-demo",
@@ -138,8 +138,8 @@ test = compositiontest.CompositionTest(
                         },
                     ),
                     spec=mev1alpha1.Spec(
-                        url="http://34.55.100.10/default/qwen-demo/v1",
-                        rewritePath="/default/qwen-demo/",
+                        url="http://34.55.100.10/default/qwen-demo-86093/v1",
+                        rewritePath="/default/qwen-demo-86093/",
                     ),
                 )
             ),

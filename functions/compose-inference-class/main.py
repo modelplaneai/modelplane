@@ -18,11 +18,8 @@ CONDITION_REASON_AVAILABLE = "Available"
 
 def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
     """Mark the InferenceClass Ready. No resources are composed."""
-    xr = v1alpha1.InferenceClass(**resource.struct_to_dict(req.observed.composite.resource))
+    _ = v1alpha1.InferenceClass(**resource.struct_to_dict(req.observed.composite.resource))
 
     libresource.update_status(rsp.desired.composite, v1alpha1.Status())
     conditions.set_condition(rsp, CONDITION_TYPE_ACCEPTED, True, CONDITION_REASON_AVAILABLE)
     rsp.desired.composite.ready = fnv1.READY_TRUE
-
-    # Silence unused-variable lint; we read xr for parsing-side validation.
-    _ = xr

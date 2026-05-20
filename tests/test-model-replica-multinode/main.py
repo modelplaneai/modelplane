@@ -92,7 +92,7 @@ test = compositiontest.CompositionTest(
                                 "apiVersion": "serving.kserve.io/v1alpha1",
                                 "kind": "LLMInferenceService",
                                 "metadata": {
-                                    "name": "llama405b",
+                                    "name": "llama405b-ef974",
                                     "namespace": "default",
                                 },
                                 "spec": {

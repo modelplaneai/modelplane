@@ -45,7 +45,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 k8spcv1alpha1.ProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="gpu-us-central1-kserve-cluster",
+                        name="gpu-us-central1-kserve-cluster-59ea8",
                         annotations={
                             "crossplane.io/composition-resource-name": "provider-config-kubernetes",
                         },
@@ -58,7 +58,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 helmpcv1beta1.ProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="gpu-us-central1-kserve-cluster",
+                        name="gpu-us-central1-kserve-cluster-59ea8",
                         annotations={
                             "crossplane.io/composition-resource-name": "provider-config-helm",
                         },

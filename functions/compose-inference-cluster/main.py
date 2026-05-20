@@ -18,7 +18,7 @@ The system pool is not exposed in the user-facing API.
 from crossplane.function import request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, metadata, secrets
+from .lib import conditions, metadata, naming, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.inferenceclass import v1alpha1 as iclv1alpha1
 from .model.ai.modelplane.inferencecluster import v1alpha1
@@ -193,7 +193,7 @@ class Composer:
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             kssv1alpha1.KServeBackend(
                 metadata=metav1.ObjectMeta(
-                    name=f"{self.xr.metadata.name}-kserve",
+                    name=naming.dns_name(self.xr.metadata.name, "kserve"),
                     namespace=metadata.NAMESPACE_SYSTEM,
                 ),
                 spec=kssv1alpha1.Spec(
@@ -207,7 +207,7 @@ class Composer:
         """Compose a ClusterProviderConfig for provider-kubernetes so that
         ModelReplicas can create Objects on the remote cluster."""
         cpc = k8scpcv1alpha1.ClusterProviderConfig(
-            metadata=metav1.ObjectMeta(name=f"{self.xr.metadata.name}-cluster-kubeconfig"),
+            metadata=metav1.ObjectMeta(name=naming.dns_name(self.xr.metadata.name, "cluster-kubeconfig")),
             spec=k8scpcv1alpha1.Spec(
                 credentials=k8scpcv1alpha1.Credentials(
                     source="Secret",
@@ -239,7 +239,7 @@ class Composer:
         """Write the InferenceCluster status."""
         status = v1alpha1.Status(
             providerConfigRef=v1alpha1.ProviderConfigRef(
-                name=f"{self.xr.metadata.name}-cluster-kubeconfig",
+                name=naming.dns_name(self.xr.metadata.name, "cluster-kubeconfig"),
             ),
             namespace=metadata.NAMESPACE_SYSTEM,
             capacity=v1alpha1.Capacity(

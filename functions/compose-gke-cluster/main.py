@@ -9,7 +9,7 @@ and provider-helm to reach the cluster.
 from crossplane.function import resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, metadata, secrets
+from .lib import conditions, metadata, naming, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.gkecluster import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -33,12 +33,12 @@ _RANGE_SERVICES = "services"
 
 def _kubeconfig_secret_name(xr):
     """Derive the kubeconfig secret name from the XR."""
-    return f"{xr.metadata.name}-kubeconfig"
+    return naming.dns_name(xr.metadata.name, "kubeconfig")
 
 
 def _sa_key_secret_name(xr):
     """Derive the SA key secret name from the XR."""
-    return f"{xr.metadata.name}-sa-key"
+    return naming.dns_name(xr.metadata.name, "sa-key")
 
 
 class Composer:

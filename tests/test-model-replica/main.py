@@ -69,7 +69,7 @@ test = compositiontest.CompositionTest(
                                 "apiVersion": "serving.kserve.io/v1alpha1",
                                 "kind": "LLMInferenceService",
                                 "metadata": {
-                                    "name": "qwen-demo",
+                                    "name": "qwen-demo-86093",
                                     "namespace": "default",
                                 },
                                 "spec": {

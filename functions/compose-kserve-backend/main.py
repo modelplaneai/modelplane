@@ -16,7 +16,7 @@ from pathlib import Path
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-from .lib import conditions, helm, k8s, keda, metadata, prometheus, secrets
+from .lib import conditions, helm, k8s, keda, metadata, naming, prometheus, secrets
 from .lib import resource as libresource
 from .model.ai.modelplane.infrastructure.kservebackend import v1alpha1
 from .model.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
@@ -77,7 +77,7 @@ _KUSTOMIZE_STORAGE_PATCH = json.dumps(
 
 def _pc_name(xr):
     """Derive the ProviderConfig name from the XR."""
-    return f"{xr.metadata.name}-cluster"
+    return naming.dns_name(xr.metadata.name, "cluster")
 
 
 class Composer:
@@ -488,7 +488,7 @@ class Composer:
             )
 
         if gate or "kserve-controller" in self.req.observed.resources:
-            patch_cm_name = f"{self.xr.metadata.name}-storage-patch"
+            patch_cm_name = naming.dns_name(self.xr.metadata.name, "storage-patch")
             kserve_release = helm.helm_release(
                 chart="kserve-llmisvc-resources",
                 repo="oci://ghcr.io/kserve/charts",
@@ -525,7 +525,7 @@ class Composer:
                 "apiVersion": "v1",
                 "kind": "ConfigMap",
                 "metadata": {
-                    "name": f"{self.xr.metadata.name}-storage-patch",
+                    "name": naming.dns_name(self.xr.metadata.name, "storage-patch"),
                     "namespace": self.xr.metadata.namespace,
                 },
                 "data": {

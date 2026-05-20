@@ -21,7 +21,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_fixture(
                 k8spcv1alpha1.ProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="gpu-us-central1-kserve-cluster",
+                        name="gpu-us-central1-kserve-cluster-59ea8",
                         annotations={
                             "crossplane.io/composition-resource-name": "provider-config-kubernetes",
                         },
@@ -34,7 +34,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_fixture(
                 helmpcv1beta1.ProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="gpu-us-central1-kserve-cluster",
+                        name="gpu-us-central1-kserve-cluster-59ea8",
                         annotations={
                             "crossplane.io/composition-resource-name": "provider-config-helm",
                         },
@@ -65,7 +65,7 @@ test = compositiontest.CompositionTest(
                         ),
                         providerConfigRef=helmv1beta1.ProviderConfigRef(
                             kind="ProviderConfig",
-                            name="gpu-us-central1-kserve-cluster",
+                            name="gpu-us-central1-kserve-cluster-59ea8",
                         ),
                     ),
                 )
@@ -89,7 +89,7 @@ test = compositiontest.CompositionTest(
                         ),
                         providerConfigRef=helmv1beta1.ProviderConfigRef(
                             kind="ProviderConfig",
-                            name="gpu-us-central1-kserve-cluster",
+                            name="gpu-us-central1-kserve-cluster-59ea8",
                         ),
                     ),
                 )
@@ -113,7 +113,7 @@ test = compositiontest.CompositionTest(
                         ),
                         providerConfigRef=helmv1beta1.ProviderConfigRef(
                             kind="ProviderConfig",
-                            name="gpu-us-central1-kserve-cluster",
+                            name="gpu-us-central1-kserve-cluster-59ea8",
                         ),
                     ),
                 )

@@ -74,7 +74,7 @@ test = compositiontest.CompositionTest(
                         annotations={
                             "crossplane.io/composition-resource-name": "replica-compatible-cluster",
                         },
-                        name="qwen-demo-compatible-cluster",
+                        name="qwen-demo-compatible-cluster-bdaf4",
                         namespace="ml-team",
                         labels={
                             "modelplane.ai/replica": "true",

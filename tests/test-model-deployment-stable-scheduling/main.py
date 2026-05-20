@@ -122,7 +122,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_fixture(
                 mrv1alpha1.ModelReplica(
                     metadata=metav1.ObjectMeta(
-                        name="qwen-demo-cluster-b",
+                        name="qwen-demo-cluster-b-1ea0d",
                         namespace="ml-team",
                         labels={
                             "modelplane.ai/replica": "true",
@@ -140,7 +140,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 mrv1alpha1.ModelReplica(
                     metadata=metav1.ObjectMeta(
-                        name="qwen-demo-cluster-b",
+                        name="qwen-demo-cluster-b-1ea0d",
                         namespace="ml-team",
                         annotations={
                             "crossplane.io/composition-resource-name": "replica-cluster-b",
@@ -163,7 +163,7 @@ test = compositiontest.CompositionTest(
                         annotations={
                             "crossplane.io/composition-resource-name": "replica-cluster-b",
                         },
-                        name="qwen-demo-cluster-b",
+                        name="qwen-demo-cluster-b-1ea0d",
                         namespace="ml-team",
                         labels={
                             "modelplane.ai/replica": "true",

@@ -82,12 +82,12 @@ test = compositiontest.CompositionTest(
                         secrets=[
                             gkev1alpha1.Secret(
                                 type="Kubeconfig",
-                                name="demo-us-central-kubeconfig",
+                                name="demo-us-central-kubeconfig-edfc0",
                                 key="kubeconfig",
                             ),
                             gkev1alpha1.Secret(
                                 type="GCPServiceAccountKey",
-                                name="demo-us-central-sa-key",
+                                name="demo-us-central-sa-key-77d51",
                                 key="credentials.json",
                             ),
                         ],
@@ -122,7 +122,7 @@ test = compositiontest.CompositionTest(
                     ),
                     status=icv1alpha1.Status(
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
-                            name="demo-us-central-cluster-kubeconfig",
+                            name="demo-us-central-cluster-kubeconfig-65bed",
                         ),
                         namespace="modelplane-system",
                         capacity=icv1alpha1.Capacity(
@@ -184,7 +184,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 kssv1alpha1.KServeBackend(
                     metadata=metav1.ObjectMeta(
-                        name="demo-us-central-kserve",
+                        name="demo-us-central-kserve-1b3ff",
                         namespace="modelplane-system",
                         annotations={
                             "crossplane.io/composition-resource-name": "kserve-backend",
@@ -195,12 +195,12 @@ test = compositiontest.CompositionTest(
                         secrets=[
                             kssv1alpha1.Secret(
                                 type="Kubeconfig",
-                                name="demo-us-central-kubeconfig",
+                                name="demo-us-central-kubeconfig-edfc0",
                                 key="kubeconfig",
                             ),
                             kssv1alpha1.Secret(
                                 type="GCPServiceAccountKey",
-                                name="demo-us-central-sa-key",
+                                name="demo-us-central-sa-key-77d51",
                                 key="credentials.json",
                             ),
                         ],
@@ -212,7 +212,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 k8scpcv1alpha1.ClusterProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="demo-us-central-cluster-kubeconfig",
+                        name="demo-us-central-cluster-kubeconfig-65bed",
                         annotations={
                             "crossplane.io/composition-resource-name": "cluster-provider-config-kubernetes",
                         },
@@ -222,7 +222,7 @@ test = compositiontest.CompositionTest(
                             source="Secret",
                             secretRef=k8scpcv1alpha1.SecretRef(
                                 namespace="modelplane-system",
-                                name="demo-us-central-kubeconfig",
+                                name="demo-us-central-kubeconfig-edfc0",
                                 key="kubeconfig",
                             ),
                         ),
@@ -231,7 +231,7 @@ test = compositiontest.CompositionTest(
                             source="Secret",
                             secretRef=k8scpcv1alpha1.SecretRef(
                                 namespace="modelplane-system",
-                                name="demo-us-central-sa-key",
+                                name="demo-us-central-sa-key-77d51",
                                 key="credentials.json",
                             ),
                         ),

@@ -3,3 +3,4 @@ _output
 .up
 result
 .direnv
+__pycache__/

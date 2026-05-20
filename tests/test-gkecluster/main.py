@@ -61,12 +61,12 @@ test = compositiontest.CompositionTest(
                         secrets=[
                             gkev1alpha1.Secret(
                                 type="Kubeconfig",
-                                name="gpu-us-central1-kubeconfig",
+                                name="gpu-us-central1-kubeconfig-f1423",
                                 key="kubeconfig",
                             ),
                             gkev1alpha1.Secret(
                                 type="GCPServiceAccountKey",
-                                name="gpu-us-central1-sa-key",
+                                name="gpu-us-central1-sa-key-ea360",
                                 key="private_key",
                             ),
                         ],
@@ -121,7 +121,7 @@ test = compositiontest.CompositionTest(
                             ),
                         ),
                         writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
-                            name="gpu-us-central1-kubeconfig",
+                            name="gpu-us-central1-kubeconfig-f1423",
                             namespace="gpu-us-central1",
                         ),
                     ),
@@ -235,7 +235,7 @@ test = compositiontest.CompositionTest(
                             ),
                         ),
                         writeConnectionSecretToRef=sakeyv1beta1.WriteConnectionSecretToRef(
-                            name="gpu-us-central1-sa-key",
+                            name="gpu-us-central1-sa-key-ea360",
                             namespace="gpu-us-central1",
                         ),
                     ),

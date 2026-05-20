@@ -66,7 +66,7 @@ test = compositiontest.CompositionTest(
                     ),
                     status=icv1alpha1.Status(
                         providerConfigRef=icv1alpha1.ProviderConfigRef(
-                            name="byo-us-east-cluster-kubeconfig",
+                            name="byo-us-east-cluster-kubeconfig-74ade",
                         ),
                         namespace="modelplane-system",
                         capacity=icv1alpha1.Capacity(
@@ -87,7 +87,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 kssv1alpha1.KServeBackend(
                     metadata=metav1.ObjectMeta(
-                        name="byo-us-east-kserve",
+                        name="byo-us-east-kserve-13a06",
                         namespace="modelplane-system",
                         annotations={
                             "crossplane.io/composition-resource-name": "kserve-backend",
@@ -110,7 +110,7 @@ test = compositiontest.CompositionTest(
             libresource.model_to_dict(
                 k8scpcv1alpha1.ClusterProviderConfig(
                     metadata=metav1.ObjectMeta(
-                        name="byo-us-east-cluster-kubeconfig",
+                        name="byo-us-east-cluster-kubeconfig-74ade",
                         annotations={
                             "crossplane.io/composition-resource-name": "cluster-provider-config-kubernetes",
                         },
