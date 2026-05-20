@@ -12,13 +12,6 @@ spec:
     serviceCidr: "10.2.0.0/16"
     nodeCidr: "10.0.0.0/24"
   nodePools:
-  - name: system
-    role: System
-    machineType: e2-standard-4
-    diskSizeGb: 100
-    nodeCount: 2
-    minNodeCount: 1
-    maxNodeCount: 4
   - name: gpu-l4
     role: GPU
     machineType: g2-standard-4

@@ -32,15 +32,6 @@ test = compositiontest.CompositionTest(
                         region="us-central1",
                         nodePools=[
                             gkev1alpha1.NodePool(
-                                name="system",
-                                role="System",
-                                machineType="e2-standard-4",
-                                diskSizeGb=100,
-                                nodeCount=2,
-                                minNodeCount=1,
-                                maxNodeCount=4,
-                            ),
-                            gkev1alpha1.NodePool(
                                 name="gpu-l4",
                                 role="GPU",
                                 machineType="g2-standard-4",
@@ -141,14 +132,13 @@ test = compositiontest.CompositionTest(
                             clusterSelector=nodepoolv1beta1.ClusterSelector(
                                 matchControllerRef=True,
                             ),
-                            initialNodeCount=2,
+                            initialNodeCount=1,
                             autoscaling=nodepoolv1beta1.Autoscaling(
                                 minNodeCount=1,
-                                maxNodeCount=4,
+                                maxNodeCount=2,
                             ),
                             nodeConfig=nodepoolv1beta1.NodeConfig(
                                 machineType="e2-standard-4",
-                                diskSizeGb=100,
                                 imageType="COS_CONTAINERD",
                                 oauthScopes=[
                                     "https://www.googleapis.com/auth/cloud-platform",

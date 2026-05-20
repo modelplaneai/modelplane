@@ -30,6 +30,15 @@ from .model.io.upbound.m.gcp.container.nodepool import v1beta1 as nodepoolv1beta
 _RANGE_PODS = "pods"
 _RANGE_SERVICES = "services"
 
+# System pool injected into every GKE cluster to host control-plane
+# components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
+# the user-facing API — compose-inference-cluster only passes GPU pools.
+_SYSTEM_POOL_NAME = "system"
+_SYSTEM_POOL_MACHINE_TYPE = "e2-standard-4"
+_SYSTEM_POOL_NODE_COUNT = 1
+_SYSTEM_POOL_MIN_NODE_COUNT = 1
+_SYSTEM_POOL_MAX_NODE_COUNT = 2
+
 
 def _kubeconfig_secret_name(xr):
     """Derive the kubeconfig secret name from the XR."""
@@ -138,6 +147,7 @@ class Composer:
         )
 
     def compose_node_pools(self):
+        self._compose_system_pool()
         for pool in self.xr.spec.nodePools:
             node_config = nodepoolv1beta1.NodeConfig(
                 machineType=pool.machineType,
@@ -192,6 +202,38 @@ class Composer:
                 self.rsp.desired.resources[f"nodepool-{pool.name}"],
                 np,
             )
+
+    def _compose_system_pool(self):
+        """Compose the system node pool for control-plane components."""
+        resource.update(
+            self.rsp.desired.resources[f"nodepool-{_SYSTEM_POOL_NAME}"],
+            nodepoolv1beta1.NodePool(
+                spec=nodepoolv1beta1.Spec(
+                    forProvider=nodepoolv1beta1.ForProvider(
+                        project=self.xr.spec.project,
+                        location=self.xr.spec.region,
+                        clusterSelector=nodepoolv1beta1.ClusterSelector(
+                            matchControllerRef=True,
+                        ),
+                        initialNodeCount=_SYSTEM_POOL_NODE_COUNT,
+                        autoscaling=nodepoolv1beta1.Autoscaling(
+                            minNodeCount=_SYSTEM_POOL_MIN_NODE_COUNT,
+                            maxNodeCount=_SYSTEM_POOL_MAX_NODE_COUNT,
+                        ),
+                        nodeConfig=nodepoolv1beta1.NodeConfig(
+                            machineType=_SYSTEM_POOL_MACHINE_TYPE,
+                            imageType="COS_CONTAINERD",
+                            oauthScopes=[
+                                "https://www.googleapis.com/auth/cloud-platform",
+                            ],
+                            labels={
+                                metadata.LABEL_KEY_POOL: _SYSTEM_POOL_NAME,
+                            },
+                        ),
+                    ),
+                ),
+            ),
+        )
 
     def compose_service_account(self):
         resource.update(
@@ -324,6 +366,7 @@ class Composer:
             "service-account",
             "service-account-key",
         ]
+        managed_resources.append(f"nodepool-{_SYSTEM_POOL_NAME}")
         managed_resources += [f"nodepool-{pool.name}" for pool in self.xr.spec.nodePools]
         if self.observed_sa_email():
             managed_resources.append("iam-binding")

@@ -138,8 +138,9 @@ test = compositiontest.CompositionTest(
                     ),
                 )
             ),
-            # Assert GKECluster is composed with system pool + GPU pool
-            # derived from the InferenceClass.
+            # Assert GKECluster is composed with the GPU pool derived from
+            # the InferenceClass. The system pool is injected by
+            # compose-gke-cluster, not compose-inference-cluster.
             libresource.model_to_dict(
                 gkev1alpha1.GKECluster(
                     metadata=metav1.ObjectMeta(
@@ -153,14 +154,6 @@ test = compositiontest.CompositionTest(
                         project="my-gcp-project",
                         region="us-central1",
                         nodePools=[
-                            gkev1alpha1.NodePool(
-                                name="system",
-                                role="System",
-                                machineType="e2-standard-4",
-                                nodeCount=1,
-                                minNodeCount=1,
-                                maxNodeCount=2,
-                            ),
                             gkev1alpha1.NodePool(
                                 name="gpu-l4",
                                 role="GPU",

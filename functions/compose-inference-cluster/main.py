@@ -52,15 +52,6 @@ CONDITION_REASON_INSTALLING = "Installing"
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "kserve-backend"
 
-# Hardcoded system pool config. Provisioned for every GKE cluster to
-# host control-plane components (Envoy Gateway, KEDA, etc.). Not exposed
-# in the user-facing API.
-SYSTEM_POOL_NAME = "system"
-SYSTEM_POOL_MACHINE_TYPE = "e2-standard-4"
-SYSTEM_POOL_NODE_COUNT = 1
-SYSTEM_POOL_MIN_NODE_COUNT = 1
-SYSTEM_POOL_MAX_NODE_COUNT = 2
-
 
 class Composer:
     def __init__(self, req, rsp):
@@ -277,10 +268,10 @@ class Composer:
         """Compose a GKECluster XR.
 
         Combines the cluster-level config (project, region) with the
-        hardcoded system pool and the GPU pools derived from the user's
-        node pools + referenced classes.
+        GPU pools derived from the user's node pools + referenced classes.
+        The system pool is injected by compose-gke-cluster.
         """
-        gke_node_pools: list[gkev1alpha1.NodePool] = [self.system_pool_for_gke()]
+        gke_node_pools: list[gkev1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
             cls = self.classes.get(pool.className)
@@ -322,18 +313,6 @@ class Composer:
                     nodePools=gke_node_pools,
                 ),
             ),
-        )
-
-    def system_pool_for_gke(self) -> gkev1alpha1.NodePool:
-        """Hardcoded system pool config for GKE clusters. Hosts the
-        Envoy Gateway, KEDA, KServe controller, etc."""
-        return gkev1alpha1.NodePool(
-            name=SYSTEM_POOL_NAME,
-            role="System",
-            machineType=SYSTEM_POOL_MACHINE_TYPE,
-            nodeCount=SYSTEM_POOL_NODE_COUNT,
-            minNodeCount=SYSTEM_POOL_MIN_NODE_COUNT,
-            maxNodeCount=SYSTEM_POOL_MAX_NODE_COUNT,
         )
 
     def compose_gke_usage(self):
