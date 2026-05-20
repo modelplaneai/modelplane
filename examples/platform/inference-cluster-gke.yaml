@@ -26,6 +26,17 @@ spec:
       project: my-gcp-project  # Replace with your GCP project ID.
       region: us-central1
 
+  # Storage for Modelplane's invisible managed cache. When set, multi-
+  # node deployments to this cluster automatically get a ReadWriteMany
+  # PVC for their model weights. ML teams never see these fields.
+  #
+  # On GKE, Modelplane enables the Filestore CSI driver and composes
+  # the named StorageClass on the workload cluster.
+  storage:
+    rwxCache:
+      storageClassName: standard-rwx
+      defaultSizeGiB: 200
+
   nodePools:
   - name: gpu-l4
     className: gke-l4-1x-g2

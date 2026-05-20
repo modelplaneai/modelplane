@@ -28,6 +28,18 @@ spec:
       #   name: byo-cluster-sa-key
       #   key: private_key
 
+  # Storage for Modelplane's invisible managed cache. When set, multi-
+  # node deployments to this cluster automatically get a ReadWriteMany
+  # PVC for their model weights. ML teams never see these fields.
+  #
+  # On Existing clusters the cluster admin sets up the storage class
+  # out-of-band (CephFS, NFS, WekaIO, etc.); Modelplane just references
+  # it by name.
+  storage:
+    rwxCache:
+      storageClassName: cephfs-rwx
+      defaultSizeGiB: 200
+
   nodePools:
   - name: gpu-h100
     className: h100-8x-byo

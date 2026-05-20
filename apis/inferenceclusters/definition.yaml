@@ -98,6 +98,41 @@ spec:
                       kubernetesVersion:
                         type: string
                         default: "1.35"
+              storage:
+                type: object
+                description: >-
+                  Storage capabilities the cluster provides. Drives
+                  Modelplane's invisible cache for multi-node
+                  deployments — when set, the function provisions a
+                  ReadWriteMany PVC per matched replica and mounts it
+                  into the engine pod. ML teams never reference these
+                  fields; they're platform-owned.
+                properties:
+                  rwxCache:
+                    type: object
+                    required: [storageClassName]
+                    description: >-
+                      ReadWriteMany storage for managed model caches.
+                      For GKE-provisioned clusters, Modelplane creates
+                      the StorageClass and enables the underlying CSI
+                      driver. For Existing clusters, the cluster admin
+                      provides the storage class out-of-band and
+                      Modelplane references it by name.
+                    properties:
+                      storageClassName:
+                        type: string
+                        minLength: 1
+                        description: >-
+                          Name of the workload-cluster StorageClass to
+                          use. Must support ReadWriteMany.
+                      defaultSizeGiB:
+                        type: integer
+                        minimum: 1
+                        maximum: 10000
+                        default: 200
+                        description: >-
+                          Default PVC size for managed caches on this
+                          cluster.
               nodePools:
                 type: array
                 description: >-
