@@ -9,7 +9,7 @@ External / SaaS endpoints (fqdn-style Backends) are deferred. For now,
 spec.url is expected to be an http://<ip>:<port>/... shape.
 """
 
-from urllib.parse import urlparse
+import urllib.parse
 
 from crossplane.function import resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -44,7 +44,7 @@ class Composer:
     def parse_url(self):
         """Parse spec.url into (host, port). Returns (None, None) and
         marks the XR not-ready if the URL is invalid."""
-        parsed = urlparse(self.xr.spec.url)
+        parsed = urllib.parse.urlparse(self.xr.spec.url)
         if not parsed.hostname:
             conditions.set_condition(
                 self.rsp,
