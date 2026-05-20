@@ -1,0 +1,42 @@
+# A ModelCache stages a model artifact on workload-cluster storage as
+# a first-class resource. Create one when you want cross-deployment
+# sharing, independent lifecycle, or a size override. Multi-node
+# deployments without a ModelCache reference get per-replica storage
+# auto-provisioned from the target cluster's spec.storage.rwxCache.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen-2-5
+  namespace: ml-team
+spec:
+  artifact:
+    source:
+      huggingFace:
+        repo: Qwen/Qwen2.5-0.5B-Instruct
+        # Optional: pin to a specific commit, branch, or tag. Defaults
+        # to the repo's default branch.
+        # revision: main
+        # Optional: reference a Secret holding an HF token for gated
+        # or private repos. The Secret must exist on every matched
+        # workload cluster.
+        # tokenSecretRef:
+        #   name: hf-token
+        #   key: HF_TOKEN
+
+  # Where the artifact appears inside consuming pods. ModelDeployments
+  # mounting this cache see the model files at this path.
+  mount:
+    path: /mnt/models
+
+  # Optional: size override. The storage class is inherited from each
+  # target cluster's spec.storage.rwxCache; ML teams don't pick it.
+  # Default size also comes from the cluster's
+  # spec.storage.rwxCache.defaultSizeGiB.
+  # storage:
+  #   sizeGiB: 50
+
+  # Optional: scope which InferenceClusters stage this artifact. If
+  # omitted, the cache replicates to every cluster.
+  # clusterSelector:
+  #   matchLabels:
+  #     modelplane.ai/region: us-central

@@ -19,6 +19,7 @@ graph TD
     end
 
     subgraph "ML team"
+        MC[ModelCache<br><i>qwen-2-5</i>]
         MD[ModelDeployment<br><i>qwen-demo</i>]
         MS[ModelService<br><i>qwen</i>]
     end
@@ -31,6 +32,9 @@ graph TD
     end
 
     IC1 -- "references" --> ICL
+    MD -- "references" --> MC
+    MC -. "replicates to" .-> IC1
+    MC -. "replicates to" .-> IC2
     MD -. "creates" .-> MR1
     MD -. "creates" .-> MR2
     MD -. "creates" .-> ME1
@@ -112,11 +116,52 @@ The worker template is a curated subset of `PodTemplateSpec`. The container
 named `engine` is the inference engine (e.g. vLLM); additional containers pass
 through as sidecars.
 
+An optional `spec.modelCacheRef` mounts a [ModelCache](#modelcache)'s PVC into
+every worker pod, so the engine reads weights from the staged cache instead of
+fetching from the source at boot.
+
 ### Scaling
 
 Replicas are the only scaling axis. Each `ModelReplica` is a complete,
 fixed-topology serving instance. Scaling `spec.replicas` adds or removes whole
 instances. There's no in-cluster pod autoscaling.
+
+## ModelCache
+
+A ModelCache stages a model artifact on workload-cluster storage as a
+first-class resource, independently of any deployment. It enables
+cross-deployment sharing (one cache referenced by many ModelDeployments),
+independent lifecycle (the cache persists when deployments come and go),
+and proactive pre-staging.
+
+For multi-node deployments without a ModelCache reference, Modelplane
+auto-provisions per-replica storage using the target
+[InferenceCluster](#inferencecluster)'s `spec.storage.rwxCache` config —
+same RWX behavior, no shared lifecycle. ModelCache is the explicit opt-in
+for ML teams who want sharing, lifecycle control, or a size override.
+
+Each cache has:
+
+- An **artifact source**: today, a HuggingFace repo, with an optional
+  `revision` and `tokenSecretRef` for gated models.
+- A **mount path**: where the artifact appears inside consuming pods.
+- An optional **size override**. The storage class is inherited from
+  the target cluster's `rwxCache`; ML teams don't pick it.
+- Optional `clusterSelector` labels to scope replication. If omitted, the
+  cache replicates to every InferenceCluster.
+
+ModelDeployments reference a cache via `spec.modelCacheRef.name`;
+Modelplane mounts the cache's PVC into every worker pod automatically.
+
+These benefits scale with model size. A 1 TB+ frontier-scale model is hours
+of download and significant storage cost; ModelCache pays that cost once
+across every deployment that references it, and the per-cache size override
+avoids forcing the platform team to raise the cluster default for outliers.
+
+<!-- TODO(dennis): auto-mount behavior requires compose-model-replica to
+read modelCacheRef and mount the cache's PVC into every worker pod. Ships
+in the ModelCache impl MR. -->
+
 
 ## ModelReplica
 

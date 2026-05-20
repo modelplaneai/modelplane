@@ -1,0 +1,38 @@
+# A ModelDeployment that reads weights from a shared ModelCache instead
+# of fetching them from HuggingFace at startup. Reference a ModelCache
+# in the same namespace via spec.modelCacheRef; Modelplane mounts the
+# cache's PVC into every worker pod automatically.
+#
+# Use a ModelCache when you want cross-deployment sharing, independent
+# cache lifecycle, or a size override. Multi-node deployments without
+# modelCacheRef still get RWX storage automatically from the target
+# cluster's spec.storage.rwxCache; ModelCache is the explicit opt-in.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo-cached
+  namespace: ml-team
+spec:
+  replicas: 1
+
+  # Reference a ModelCache in the same namespace. Modelplane mounts
+  # the cache's PVC at the cache's spec.mount.path on every worker pod.
+  modelCacheRef:
+    name: qwen-2-5
+
+  workers:
+    topology:
+      tensor: 1
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.7.3
+          args:
+          # Point vLLM at the cache's mount path. Must match the
+          # referenced ModelCache's spec.mount.path; there's no
+          # validation today.
+          # TODO(dennis): inject --model=<cache.mount.path> from the
+          # composition function so users don't have to keep these
+          # in sync.
+          - "--model=/mnt/models"

@@ -35,6 +35,17 @@ spec:
                 properties:
                   name:
                     type: string
+              modelCacheRef:
+                type: object
+                required: [name]
+                description: >-
+                  Optional reference to a ModelCache mounted into the
+                  engine pod. Inherited verbatim from the parent
+                  ModelDeployment.
+                properties:
+                  name:
+                    type: string
+                    minLength: 1
               workers:
                 type: object
                 required: [topology, template]

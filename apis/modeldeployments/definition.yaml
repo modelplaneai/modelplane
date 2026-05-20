@@ -43,6 +43,20 @@ spec:
                   matchLabels:
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+              modelCacheRef:
+                type: object
+                required: [name]
+                description: >-
+                  Optional reference to a ModelCache. When set, the
+                  cache's PVC is mounted into every worker pod and the
+                  engine reads weights from the cache instead of
+                  fetching from the source at boot. Inherited verbatim
+                  by each composed ModelReplica.
+                properties:
+                  name:
+                    type: string
+                    description: ModelCache resource name in the same namespace.
+                    minLength: 1
               workers:
                 type: object
                 required: [topology, template]

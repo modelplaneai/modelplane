@@ -1,0 +1,135 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelcaches.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: ModelCache
+    plural: modelcaches
+    shortNames: [mc]
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    additionalPrinterColumns:
+    - name: REPO
+      type: string
+      jsonPath: .spec.artifact.source.huggingFace.repo
+    - name: READY
+      type: string
+      jsonPath: .status.summary.ready
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            required: [artifact, mount]
+            properties:
+              artifact:
+                type: object
+                required: [source]
+                description: >-
+                  What to stage and where to fetch it from.
+                properties:
+                  source:
+                    type: object
+                    description: >-
+                      Where to fetch the artifact from. Exactly one
+                      source must be set.
+                    properties:
+                      huggingFace:
+                        type: object
+                        required: [repo]
+                        properties:
+                          repo:
+                            type: string
+                            description: HuggingFace repository ID.
+                            minLength: 1
+                          revision:
+                            type: string
+                            description: >-
+                              Branch, tag, or commit SHA. Defaults to
+                              the repo's default branch.
+                          tokenSecretRef:
+                            type: object
+                            description: >-
+                              Reference to a Secret holding an HF token
+                              for gated or private repos. Resolved on
+                              the workload cluster at hydration time.
+                            required: [name]
+                            properties:
+                              name:
+                                type: string
+                                minLength: 1
+                              key:
+                                type: string
+                                default: HF_TOKEN
+              mount:
+                type: object
+                required: [path]
+                description: >-
+                  Where the artifact appears inside consuming pods.
+                  Consumers (e.g. ModelDeployment) reading this cache
+                  see the contents at this path.
+                properties:
+                  path:
+                    type: string
+                    description: Absolute filesystem path inside the pod.
+                    pattern: "^/.+"
+              storage:
+                type: object
+                description: >-
+                  How to stage the artifact on each matched cluster.
+                  The storage class is inherited from the target
+                  InferenceCluster's spec.storage.rwxCache; ML teams
+                  do not pick it. Only the size override is exposed.
+                properties:
+                  sizeGiB:
+                    type: integer
+                    minimum: 1
+                    maximum: 10000
+                    description: >-
+                      Optional PVC size override. Defaults to the
+                      target cluster's spec.storage.rwxCache.defaultSizeGiB.
+              clusterSelector:
+                type: object
+                description: >-
+                  Label selector to pick the InferenceClusters that
+                  stage this artifact. If omitted, all clusters match.
+                properties:
+                  matchLabels:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+          status:
+            type: object
+            properties:
+              conditions:
+                type: array
+                items:
+                  type: object
+              summary:
+                type: object
+                description: Per-cluster ready / total counts.
+                properties:
+                  ready:
+                    type: string
+                    description: e.g. "2/3"
+              clusters:
+                type: array
+                description: Per-cluster staging status.
+                items:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                    phase:
+                      type: string
+                      enum: [Pending, Hydrating, Ready, Failed]
+                    message:
+                      type: string
