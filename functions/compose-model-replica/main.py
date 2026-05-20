@@ -134,7 +134,7 @@ class Composer:
             llmis_spec["parallelism"] = {"tensor": total_gpus}
             llmis_spec["worker"] = {
                 "size": int(topology.pipeline) - 1,
-                "template": dict(pod_spec),
+                "template": self._build_llmis_template(template, pod_spec),
             }
 
         resource.update(
