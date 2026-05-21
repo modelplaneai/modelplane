@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "function"
-description = "A Crossplane composition function."
+name = "compose-model-endpoint"
+description = "Compose an Envoy Gateway Backend from a ModelEndpoint."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [

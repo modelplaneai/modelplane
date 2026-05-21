@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "function"
-description = "A Crossplane composition function."
+name = "compose-kserve-backend"
+description = "Install KServe and supporting components on a remote cluster."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [

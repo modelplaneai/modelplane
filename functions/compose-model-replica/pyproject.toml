@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "function"
-description = "A Crossplane composition function."
+name = "compose-model-replica"
+description = "Deploy a model on a single InferenceCluster via KServe."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
