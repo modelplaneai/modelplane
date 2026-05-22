@@ -4,7 +4,7 @@
 # Usage: ./nix.sh <command>
 #
 # Run './nix.sh flake show' for available apps and packages, or see flake.nix.
-# Examples: ./nix.sh run .#test-crossplane, ./nix.sh build, ./nix.sh develop
+# Examples: ./nix.sh flake check, ./nix.sh run .#build-crossplane, ./nix.sh develop
 #
 # The first run downloads dependencies into /nix/store (cached in a Docker
 # volume). Subsequent runs reuse the cache. To reset: docker volume rm modelplane-nix
