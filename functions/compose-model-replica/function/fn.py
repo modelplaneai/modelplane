@@ -96,7 +96,7 @@ class Composer:
             name="cluster",
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceCluster",
-            match_name=self.xr.spec.inferenceClusterRef.name,
+            match_name=self.xr.spec.clusterName,
         )
 
         ic_dict = request.get_required_resource(self.req, "cluster")
@@ -270,7 +270,7 @@ class Composer:
             image = self.engine.image
             response.normal(
                 self.rsp,
-                f"Composing {image} on {self.xr.spec.inferenceClusterRef.name}",
+                f"Composing {image} on {self.xr.spec.clusterName}",
             )
 
         # Check if the remote resource was created by reading the Object's

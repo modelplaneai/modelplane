@@ -505,6 +505,14 @@ The fleet scheduler picks `(InferenceCluster, pool)` per replica independently.
 Replicas of the same deployment can land on different clusters or the same
 cluster depending on capacity and (in future) anti-affinity policy.
 
+Replicas are pinned to a cluster at creation time via `spec.clusterName`.
+The scheduler retains the pin across reconciles: an existing replica stays
+on its cluster even if the cluster temporarily becomes unavailable. The
+parent `ModelDeployment` reflects the degraded state via its conditions,
+and the replica's endpoint is dropped from routing while the cluster has
+no gateway address. If the cluster is deleted entirely the scheduler
+re-places the replica on another viable cluster.
+
 The `ModelReplica` is the intermediate representation between the user-facing
 ModelDeployment and the cluster-level serving workload. The composition function
 maps the ModelReplica's topology to the appropriate cluster-level resource.
