@@ -196,7 +196,9 @@ class Composer:
         Endpoints are labeled with the deployment name so a ModelService
         can select them. The URL points at the per-replica path on the
         remote cluster's gateway. The rewritePath tells ModelService what
-        URL prefix to rewrite to on the remote cluster.
+        URL prefix to rewrite to on the remote cluster — today this is
+        KServe's LLMInferenceService path convention. Once KServe is
+        replaced, this becomes a simpler /v1/.
         """
         llmis = resource.child_name(self.xr.metadata.name)
         rewrite_path = f"/{_NAMESPACE_REMOTE}/{llmis}/"

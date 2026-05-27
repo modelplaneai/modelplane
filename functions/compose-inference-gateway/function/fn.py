@@ -1,9 +1,17 @@
 """Compose the control plane routing gateway.
 
-This function installs Envoy Gateway on the control plane cluster via Helm,
+This function installs Traefik Proxy on the control plane cluster via Helm,
 creates a GatewayClass and Gateway for unified endpoint routing, and
 optionally installs MetalLB for kind/bare-metal clusters. The gateway address
 is surfaced in status for compose-model-deployment to use.
+
+Traefik is used (instead of e.g. Envoy Gateway) because it supports
+per-backendRef URLRewrite filters. This is a Gateway API Extended feature
+that allows each backend in a weighted traffic split to have its own path
+rewrite, which Modelplane needs to route across endpoints with different
+path conventions (e.g. a self-hosted model at /v1/ alongside Groq at
+/openai/v1/). Envoy Gateway does not support this — see
+envoyproxy/gateway#7099.
 """
 
 import grpc
@@ -35,6 +43,23 @@ _GATEWAY_NAME = "modelplane"
 # Label key for Helm releases, used in Usage selectors to protect
 # ProviderConfigs from premature deletion.
 _LABEL_RELEASE = "modelplane.ai/release"
+
+# Traefik Helm chart coordinates.
+_TRAEFIK_CHART = "traefik"
+_TRAEFIK_REPO = "https://traefik.github.io/charts"
+_TRAEFIK_NAMESPACE = "traefik-system"
+_TRAEFIK_SERVICE_NAME = "traefik"
+
+# Traefik's GatewayClass controllerName and the GatewayClass name we
+# compose for it.
+_TRAEFIK_GATEWAY_CLASS = "traefik"
+_TRAEFIK_CONTROLLER_NAME = "traefik.io/gateway-controller"
+
+# Traefik's default "web" entryPoint listens on this port internally.
+# The Gateway listener port must match the entryPoint's internal port,
+# not the Service's exposed port. The Helm chart exposes the same
+# entryPoint at port 80 on the Service by default.
+_TRAEFIK_WEB_ENTRYPOINT_PORT = 8000
 
 
 def _helm_release(
@@ -115,7 +140,7 @@ class Composer:
     def compose(self):
         self.compose_provider_config()
         self.compose_metallb()
-        self.compose_envoy_gateway()
+        self.compose_traefik()
         self.compose_gateway()
         self.write_status()
         self.derive_conditions()
@@ -138,8 +163,8 @@ class Composer:
     def compose_metallb(self):
         """Optional MetalLB for kind/bare-metal clusters that don't have a
         cloud load balancer controller to assign Gateway addresses."""
-        eg = self.xr.spec.envoyGateway
-        if not (eg and eg.loadBalancer == "MetalLB" and eg.metallb and eg.metallb.addressPool):
+        t = self.xr.spec.traefik
+        if not (t and t.loadBalancer == "MetalLB" and t.metallb and t.metallb.addressPool):
             return
 
         metallb_ns = "metallb-system"
@@ -181,7 +206,7 @@ class Composer:
                 "apiVersion": "metallb.io/v1beta1",
                 "kind": "IPAddressPool",
                 "metadata": {"name": _GATEWAY_NAME, "namespace": metallb_ns},
-                "spec": {"addresses": [eg.metallb.addressPool]},
+                "spec": {"addresses": [t.metallb.addressPool]},
             },
         )
         self.rsp.desired.resources["metallb-pool"].ready = fnv1.READY_TRUE
@@ -197,59 +222,68 @@ class Composer:
         )
         self.rsp.desired.resources["metallb-l2"].ready = fnv1.READY_TRUE
 
-    def compose_envoy_gateway(self):
-        """Compose Envoy Gateway. Gated on ProviderConfig being observed."""
+    def compose_traefik(self):
+        """Compose Traefik Proxy. Gated on ProviderConfig being observed."""
         pc_observed = "provider-config-helm" in self.req.observed.resources
-        if not (pc_observed or "envoy-gateway" in self.req.observed.resources):
+        if not (pc_observed or "traefik" in self.req.observed.resources):
             return
 
-        eg = self.xr.spec.envoyGateway
         resource.update(
-            self.rsp.desired.resources["envoy-gateway"],
+            self.rsp.desired.resources["traefik"],
             _helm_release(
-                chart="gateway-helm",
-                repo="oci://docker.io/envoyproxy",
-                version=eg.version if eg else "v1.3.0",
-                namespace="envoy-gateway-system",
+                chart=_TRAEFIK_CHART,
+                repo=_TRAEFIK_REPO,
+                version=self.xr.spec.traefik.version,
+                namespace=_TRAEFIK_NAMESPACE,
                 provider_config=_PC_NAME,
                 values={
-                    "config": {
-                        "envoyGateway": {
-                            "extensionApis": {"enableBackend": True},
+                    "providers": {
+                        "kubernetesGateway": {
+                            "enabled": True,
+                            "statusAddress": {
+                                "service": {
+                                    "namespace": _TRAEFIK_NAMESPACE,
+                                    "name": _TRAEFIK_SERVICE_NAME,
+                                },
+                            },
                         },
+                        "kubernetesIngress": {"enabled": False},
                     },
+                    # Give the Traefik Service a predictable name so
+                    # statusAddress.service can reference it. The default
+                    # name includes Crossplane's generated release name.
+                    "service": {"nameOverride": _TRAEFIK_SERVICE_NAME},
+                    # Disable Traefik's built-in GatewayClass and Gateway
+                    # creation. Crossplane composes them so they appear in
+                    # observed resources and we can read status.addresses.
+                    "gateway": {"enabled": False},
                 },
-                labels={_LABEL_RELEASE: "envoy-gateway"},
+                labels={_LABEL_RELEASE: "traefik"},
                 metadata_namespace=_NAMESPACE_SYSTEM,
             ),
         )
-        self.compose_pc_usage("envoy-gateway")
+        self.compose_pc_usage("traefik")
 
     def compose_gateway(self):
-        """Compose GatewayClass and Gateway. Gated on Envoy Gateway being
-        ready."""
-        envoy_gw_ready = (
-            resource.get_condition(self.req.observed.resources.get("envoy-gateway"), "Ready").status == "True"
-        )
+        """Compose GatewayClass and Gateway. Gated on Traefik being ready."""
+        traefik_ready = resource.get_condition(self.req.observed.resources.get("traefik"), "Ready").status == "True"
 
-        if envoy_gw_ready or "gateway-class" in self.req.observed.resources:
+        if traefik_ready or "gateway-class" in self.req.observed.resources:
             resource.update(
                 self.rsp.desired.resources["gateway-class"],
                 {
                     "apiVersion": "gateway.networking.k8s.io/v1",
                     "kind": "GatewayClass",
-                    "metadata": {"name": "envoy"},
+                    "metadata": {"name": _TRAEFIK_GATEWAY_CLASS},
                     "spec": {
-                        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                        "controllerName": _TRAEFIK_CONTROLLER_NAME,
                     },
                 },
             )
 
-        if envoy_gw_ready or "gateway" in self.req.observed.resources:
-            gw = self.xr.spec.gateway
-            # Protobuf Struct delivers all numbers as float.
-            port = int(gw.port) if gw and gw.port else 80
-
+        if traefik_ready or "gateway" in self.req.observed.resources:
+            # The Gateway listener port must match Traefik's "web"
+            # entryPoint internal port, not the Service's exposed port.
             resource.update(
                 self.rsp.desired.resources["gateway"],
                 {
@@ -260,12 +294,12 @@ class Composer:
                         "namespace": _NAMESPACE_SYSTEM,
                     },
                     "spec": {
-                        "gatewayClassName": "envoy",
+                        "gatewayClassName": _TRAEFIK_GATEWAY_CLASS,
                         "listeners": [
                             {
-                                "name": "http",
+                                "name": "web",
                                 "protocol": "HTTP",
-                                "port": port,
+                                "port": _TRAEFIK_WEB_ENTRYPOINT_PORT,
                                 "allowedRoutes": {"namespaces": {"from": "All"}},
                             }
                         ],
@@ -291,31 +325,31 @@ class Composer:
         """Derive readiness for all composed resources and set custom
         conditions."""
         # MetalLB readiness.
-        eg = self.xr.spec.envoyGateway
+        t = self.xr.spec.traefik
         if (
-            eg
-            and eg.loadBalancer == "MetalLB"
-            and eg.metallb
-            and eg.metallb.addressPool
+            t
+            and t.loadBalancer == "MetalLB"
+            and t.metallb
+            and t.metallb.addressPool
             and resource.get_condition(self.req.observed.resources.get("metallb"), "Ready").status == "True"
         ):
             self.rsp.desired.resources["metallb"].ready = fnv1.READY_TRUE
 
-        # Envoy Gateway readiness.
-        envoy_ready = resource.get_condition(self.req.observed.resources.get("envoy-gateway"), "Ready").status == "True"
-        if envoy_ready:
-            self.rsp.desired.resources["envoy-gateway"].ready = fnv1.READY_TRUE
-            # Transition: Envoy Gateway just became ready.
+        # Traefik readiness.
+        traefik_ready = resource.get_condition(self.req.observed.resources.get("traefik"), "Ready").status == "True"
+        if traefik_ready:
+            self.rsp.desired.resources["traefik"].ready = fnv1.READY_TRUE
+            # Transition: Traefik just became ready.
             if "gateway" not in self.req.observed.resources:
-                response.normal(self.rsp, "Envoy Gateway ready, composing Gateway")
+                response.normal(self.rsp, "Traefik ready, composing Gateway")
 
         # ControllerReady condition.
         response.set_conditions(
             self.rsp,
             resource.Condition(
                 typ=CONDITION_TYPE_CONTROLLER_READY,
-                status="True" if envoy_ready else "False",
-                reason=CONDITION_REASON_CONTROLLER_HEALTHY if envoy_ready else CONDITION_REASON_INSTALLING,
+                status="True" if traefik_ready else "False",
+                reason=CONDITION_REASON_CONTROLLER_HEALTHY if traefik_ready else CONDITION_REASON_INSTALLING,
             ),
         )
 

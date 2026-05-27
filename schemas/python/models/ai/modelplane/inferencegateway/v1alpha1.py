@@ -50,7 +50,7 @@ class Metallb(BaseModel):
     """
 
 
-class EnvoyGateway(BaseModel):
+class Traefik(BaseModel):
     loadBalancer: Optional[Literal['MetalLB']] = None
     """
     Load balancer implementation for the gateway Service. Omit for cloud environments where a native LB controller is available.
@@ -59,29 +59,24 @@ class EnvoyGateway(BaseModel):
     """
     MetalLB configuration. Required when loadBalancer is MetalLB. Use for kind or bare-metal clusters.
     """
-    version: Optional[str] = 'v1.3.0'
-
-
-class Gateway(BaseModel):
-    port: Optional[int] = 80
+    version: str
+    """
+    Traefik Helm chart version.
+    """
 
 
 class Spec(BaseModel):
-    backend: Literal['EnvoyGateway'] = 'EnvoyGateway'
+    backend: Literal['Traefik'] = 'Traefik'
     """
-    Gateway implementation. MVP supports EnvoyGateway only.
+    Gateway implementation.
     """
     crossplane: Optional[Crossplane] = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    envoyGateway: Optional[EnvoyGateway] = None
+    traefik: Optional[Traefik] = None
     """
-    Envoy Gateway configuration. Required when backend is EnvoyGateway.
-    """
-    gateway: Optional[Gateway] = None
-    """
-    Gateway listener configuration.
+    Traefik Proxy configuration. Required when backend is Traefik.
     """
 
 

@@ -3,16 +3,18 @@
 ModelService selects ModelEndpoints by label and load-balances across
 them. This function fetches the InferenceGateway (for the public
 address and parentRef) and the matching ModelEndpoints (for their
-backend names and rewrite paths), then composes a single HTTPRoute on
-the control plane.
+backend service names and rewrite paths), then composes a single
+HTTPRoute on the control plane.
 
-The match prefix is `/<service-ns>/<service-name>/`. Endpoints are
-grouped by rewritePath; each group becomes one HTTPRoute rule with a
-rule-level URLRewrite filter. This is necessary because Gateway API
-only allows RequestHeaderModifier and ResponseHeaderModifier at the
-backendRef level. Endpoints with the same rewritePath share a rule and
-are load-balanced by weight within it.
+The match prefix is `/<service-ns>/<service-name>/`. Each endpoint's
+rewritePath is attached as a per-backendRef URLRewrite filter so that
+endpoints with different path conventions (e.g. composed replicas at
+/v1/ alongside external providers at /openai/v1/) each get the correct
+path rewrite. This is a Gateway API Extended feature (per-backendRef
+filters) supported by Traefik Proxy.
 """
+
+import urllib.parse
 
 import grpc
 from crossplane.function import logging, request, resource, response
@@ -46,6 +48,18 @@ def _inference_gateway(
     gw = gw.model_copy(deep=True)
     gw.status = gw.status or igwv1alpha1.Status()
     return gw
+
+
+def _port_from_url(url: str) -> int:
+    """Parse the backend port from a ModelEndpoint URL.
+
+    Defaults to 443 for https and 80 for http when not explicit, matching
+    what compose-model-endpoint uses when creating the backend Service.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.port:
+        return parsed.port
+    return 443 if parsed.scheme == "https" else 80
 
 
 def _has_parent_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) -> bool:
@@ -165,61 +179,45 @@ class Composer:
     def compose_httproute(self):
         """Compose an HTTPRoute that load-balances across matched endpoints.
 
-        Endpoints are grouped by rewritePath. Each group becomes one
-        HTTPRoute rule sharing the same PathPrefix match. The URLRewrite
-        filter is attached at the rule level (not per-backendRef) because
-        Gateway API only permits RequestHeaderModifier and
-        ResponseHeaderModifier on individual backendRefs.
+        A single rule matches the service prefix and fans out to all
+        ready endpoints via weighted backendRefs. Each backendRef carries
+        its own URLRewrite filter derived from the endpoint's rewritePath,
+        so endpoints with different path conventions are rewritten
+        correctly per-backend. This is a Gateway API Extended feature
+        supported by Traefik Proxy.
         """
-        # Group ready endpoints by rewritePath. Endpoints without a
-        # rewritePath use None as the key (no rewrite filter).
-        groups: dict[str | None, list[dict]] = {}
-        for ep in self.endpoints:
-            if not ep.status or not ep.status.routing or not ep.status.routing.backendName:
-                continue
-            ref: dict = {
-                "group": "gateway.envoyproxy.io",
-                "kind": "Backend",
-                "name": ep.status.routing.backendName,
-                "port": 80,
-                "weight": 1,
-            }
-            key = ep.spec.rewritePath or None
-            groups.setdefault(key, []).append(ref)
-
         match_prefix = f"/{self.xr.metadata.namespace}/{self.xr.metadata.name}/"
         match = {"path": {"type": "PathPrefix", "value": match_prefix}}
 
-        rules = []
-        # Emit rules in a deterministic order: sorted rewritePaths first,
-        # then the no-rewrite group (None key) last.
-        for key in sorted(groups, key=lambda k: (k is None, k or "")):
-            rule: dict = {"matches": [match]}
-            if key is not None:
-                rule["filters"] = [
+        backend_refs = []
+        for ep in self.endpoints:
+            if not ep.status or not ep.status.routing or not ep.status.routing.backendName:
+                continue
+            # Derive the backend Service port from the endpoint's URL.
+            # compose-model-endpoint creates a Service with this port.
+            port = _port_from_url(ep.spec.url)
+            ref: dict = {
+                "name": ep.status.routing.backendName,
+                "port": port,
+                "weight": 1,
+            }
+            if ep.spec.rewritePath:
+                ref["filters"] = [
                     {
                         "type": "URLRewrite",
                         "urlRewrite": {
                             "path": {
                                 "type": "ReplacePrefixMatch",
-                                "replacePrefixMatch": key,
+                                "replacePrefixMatch": ep.spec.rewritePath,
                             },
                         },
                     }
                 ]
-            rule["backendRefs"] = groups[key]
-            rules.append(rule)
+            backend_refs.append(ref)
 
-        # No ready backends — emit a single rule with no backendRefs so
-        # the HTTPRoute still exists (Envoy returns 500 until backends
-        # appear, but the route object is valid).
-        if not rules:
-            rules.append({"matches": [match]})
-
-        httproute_spec = {
-            "parentRefs": [{"name": _GATEWAY_NAME, "namespace": _NAMESPACE_SYSTEM}],
-            "rules": rules,
-        }
+        rule: dict = {"matches": [match]}
+        if backend_refs:
+            rule["backendRefs"] = backend_refs
 
         resource.update(
             self.rsp.desired.resources["httproute"],
@@ -227,7 +225,10 @@ class Composer:
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "HTTPRoute",
                 "metadata": {"namespace": self.xr.metadata.namespace},
-                "spec": httproute_spec,
+                "spec": {
+                    "parentRefs": [{"name": _GATEWAY_NAME, "namespace": _NAMESPACE_SYSTEM}],
+                    "rules": [rule],
+                },
             },
         )
 

@@ -26,6 +26,32 @@ def setUpModule() -> None:
     logging.configure(level=logging.Level.DISABLED)
 
 
+def _service_only(name: str, namespace: str = "ml-team") -> fnv1.Resource:
+    """Build an observed Service resource with just metadata.name set."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "v1",
+                "kind": "Service",
+                "metadata": {"name": name, "namespace": namespace},
+            }
+        ),
+    )
+
+
+def _endpointslice_only(name: str, namespace: str = "ml-team") -> fnv1.Resource:
+    """Build an observed EndpointSlice resource with just metadata.name set."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "discovery.k8s.io/v1",
+                "kind": "EndpointSlice",
+                "metadata": {"name": name, "namespace": namespace},
+            }
+        ),
+    )
+
+
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
     """Tests for FunctionRunner.RunFunction."""
 
@@ -34,20 +60,74 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         cls.runner = fn.FunctionRunner()
 
     async def test_compose(self) -> None:
-        """The function composes an Envoy Backend from a ModelEndpoint."""
+        """The function composes a Service and EndpointSlice from a ModelEndpoint."""
+
+        ip_xr = v1alpha1.ModelEndpoint(
+            metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
+            spec=v1alpha1.Spec(url="http://34.55.100.10/v1"),
+        ).model_dump(exclude_none=True, mode="json")
+
+        ip_service = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {"namespace": "ml-team"},
+            "spec": {
+                "ports": [{"port": 80, "protocol": "TCP"}],
+            },
+        }
+        ip_endpointslice = {
+            "apiVersion": "discovery.k8s.io/v1",
+            "kind": "EndpointSlice",
+            "metadata": {
+                "namespace": "ml-team",
+                "labels": {"kubernetes.io/service-name": "my-service"},
+            },
+            "addressType": "IPv4",
+            "ports": [{"name": "", "port": 80, "protocol": "TCP"}],
+            "endpoints": [
+                {
+                    "addresses": ["34.55.100.10"],
+                    "conditions": {"ready": True},
+                }
+            ],
+        }
+
+        fqdn_xr = v1alpha1.ModelEndpoint(
+            metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
+            spec=v1alpha1.Spec(url="https://api.together.xyz/v1"),
+        ).model_dump(exclude_none=True, mode="json")
+
+        fqdn_service = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {"namespace": "ml-team"},
+            "spec": {
+                "ports": [{"port": 443, "protocol": "TCP"}],
+            },
+        }
+        fqdn_endpointslice = {
+            "apiVersion": "discovery.k8s.io/v1",
+            "kind": "EndpointSlice",
+            "metadata": {
+                "namespace": "ml-team",
+                "labels": {"kubernetes.io/service-name": "together-svc"},
+            },
+            "addressType": "FQDN",
+            "ports": [{"name": "", "port": 443, "protocol": "TCP"}],
+            "endpoints": [
+                {
+                    "addresses": ["api.together.xyz"],
+                    "conditions": {"ready": True},
+                }
+            ],
+        }
+
         cases = [
             Case(
-                name="http URL composes a Backend with the correct IP and default port",
+                name="IP URL first pass composes Service only; EndpointSlice gated on Service name",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                v1alpha1.ModelEndpoint(
-                                    metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
-                                    spec=v1alpha1.Spec(url="http://34.55.100.10/default/qwen-demo/v1"),
-                                ).model_dump(exclude_none=True, mode="json")
-                            ),
-                        ),
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(ip_xr)),
                     ),
                 ),
                 want=fnv1.RunFunctionResponse(
@@ -57,15 +137,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             resource=resource.dict_to_struct({"status": {}}),
                         ),
                         resources={
-                            "backend": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    {
-                                        "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                                        "kind": "Backend",
-                                        "metadata": {"namespace": "ml-team"},
-                                        "spec": {"endpoints": [{"ip": {"address": "34.55.100.10", "port": 80}}]},
-                                    }
-                                ),
+                            "service": fnv1.Resource(
+                                resource=resource.dict_to_struct(ip_service),
                             ),
                         },
                     ),
@@ -78,27 +151,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             Case(
-                name="observed backend sets RoutingReady and status.routing.backendName",
+                name="IP URL second pass composes EndpointSlice; backendName not yet set",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                v1alpha1.ModelEndpoint(
-                                    metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
-                                    spec=v1alpha1.Spec(url="http://34.55.100.10/default/qwen-demo/v1"),
-                                ).model_dump(exclude_none=True, mode="json")
-                            ),
-                        ),
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(ip_xr)),
                         resources={
-                            "backend": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    {
-                                        "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                                        "kind": "Backend",
-                                        "metadata": {"name": "my-backend", "namespace": "ml-team"},
-                                    }
-                                ),
-                            ),
+                            "service": _service_only("my-service"),
                         },
                     ),
                 ),
@@ -106,16 +164,180 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
                     desired=fnv1.State(
                         composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {"routing": {"backendName": "my-backend"}}}),
+                            resource=resource.dict_to_struct({"status": {}}),
                         ),
                         resources={
-                            "backend": fnv1.Resource(
+                            "service": fnv1.Resource(
+                                resource=resource.dict_to_struct(ip_service),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "endpointslice": fnv1.Resource(
+                                resource=resource.dict_to_struct(ip_endpointslice),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="RoutingReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForBackend"
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="IP URL third pass with EndpointSlice observed sets backendName and RoutingReady",
+                req=fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(ip_xr)),
+                        resources={
+                            "service": _service_only("my-service"),
+                            "endpointslice": _endpointslice_only("my-slice"),
+                        },
+                    ),
+                ),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"routing": {"backendName": "my-service"}}}),
+                        ),
+                        resources={
+                            "service": fnv1.Resource(
+                                resource=resource.dict_to_struct(ip_service),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "endpointslice": fnv1.Resource(
+                                resource=resource.dict_to_struct(ip_endpointslice),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="RoutingReady", status=fnv1.STATUS_CONDITION_TRUE, reason="BackendConfigured"
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="FQDN URL first pass composes Service only",
+                req=fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(fqdn_xr)),
+                    ),
+                ),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {}}),
+                        ),
+                        resources={
+                            "service": fnv1.Resource(
+                                resource=resource.dict_to_struct(fqdn_service),
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="RoutingReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForBackend"
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="FQDN URL with EndpointSlice observed sets backendName and RoutingReady",
+                req=fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(fqdn_xr)),
+                        resources={
+                            "service": _service_only("together-svc"),
+                            "endpointslice": _endpointslice_only("together-slice"),
+                        },
+                    ),
+                ),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"routing": {"backendName": "together-svc"}}}),
+                        ),
+                        resources={
+                            "service": fnv1.Resource(
+                                resource=resource.dict_to_struct(fqdn_service),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "endpointslice": fnv1.Resource(
+                                resource=resource.dict_to_struct(fqdn_endpointslice),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                        },
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="RoutingReady", status=fnv1.STATUS_CONDITION_TRUE, reason="BackendConfigured"
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="IPv6 URL composes EndpointSlice with addressType IPv6",
+                req=fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                v1alpha1.ModelEndpoint(
+                                    metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
+                                    spec=v1alpha1.Spec(url="http://[2001:db8::1]/v1"),
+                                ).model_dump(exclude_none=True, mode="json")
+                            ),
+                        ),
+                        resources={
+                            "service": _service_only("v6-svc"),
+                            "endpointslice": _endpointslice_only("v6-slice"),
+                        },
+                    ),
+                ),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"routing": {"backendName": "v6-svc"}}}),
+                        ),
+                        resources={
+                            "service": fnv1.Resource(
                                 resource=resource.dict_to_struct(
                                     {
-                                        "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                                        "kind": "Backend",
+                                        "apiVersion": "v1",
+                                        "kind": "Service",
                                         "metadata": {"namespace": "ml-team"},
-                                        "spec": {"endpoints": [{"ip": {"address": "34.55.100.10", "port": 80}}]},
+                                        "spec": {
+                                            "ports": [{"port": 80, "protocol": "TCP"}],
+                                        },
+                                    }
+                                ),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "endpointslice": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "discovery.k8s.io/v1",
+                                        "kind": "EndpointSlice",
+                                        "metadata": {
+                                            "namespace": "ml-team",
+                                            "labels": {"kubernetes.io/service-name": "v6-svc"},
+                                        },
+                                        "addressType": "IPv6",
+                                        "ports": [{"name": "", "port": 80, "protocol": "TCP"}],
+                                        "endpoints": [
+                                            {
+                                                "addresses": ["2001:db8::1"],
+                                                "conditions": {"ready": True},
+                                            }
+                                        ],
                                     }
                                 ),
                                 ready=fnv1.READY_TRUE,
@@ -131,7 +353,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             Case(
-                name="invalid URL produces a warning and no backend",
+                name="invalid URL produces a warning and no service",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(

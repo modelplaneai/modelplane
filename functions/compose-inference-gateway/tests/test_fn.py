@@ -37,7 +37,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         """The function composes an InferenceGateway."""
         cases = [
             Case(
-                name="first pass composes provider config only; envoy gateway and gateway are gated",
+                name="first pass composes provider config only; traefik and gateway are gated",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(
@@ -47,7 +47,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         name="test-gateway",
                                         namespace="modelplane-system",
                                     ),
-                                    spec=v1alpha1.Spec(),
+                                    spec=v1alpha1.Spec(traefik=v1alpha1.Traefik(version="40.2.0")),
                                 ).model_dump(exclude_none=True, mode="json")
                             ),
                         ),
@@ -87,7 +87,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             Case(
-                name="second pass with observed provider config and envoy gateway ready composes gateway resources",
+                name="second pass with observed provider config and traefik ready composes gateway resources",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(
@@ -97,7 +97,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         name="test-gateway",
                                         namespace="modelplane-system",
                                     ),
-                                    spec=v1alpha1.Spec(),
+                                    spec=v1alpha1.Spec(traefik=v1alpha1.Traefik(version="40.2.0")),
                                 ).model_dump(exclude_none=True, mode="json")
                             ),
                         ),
@@ -111,7 +111,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     }
                                 ),
                             ),
-                            "envoy-gateway": fnv1.Resource(
+                            "traefik": fnv1.Resource(
                                 resource=resource.dict_to_struct(
                                     {
                                         "apiVersion": "helm.m.crossplane.io/v1beta1",
@@ -140,7 +140,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     {
                                         "apiVersion": "gateway.networking.k8s.io/v1",
                                         "kind": "GatewayClass",
-                                        "metadata": {"name": "envoy"},
+                                        "metadata": {"name": "traefik"},
                                         "status": {
                                             "conditions": [{"type": "Accepted", "status": "True"}],
                                         },
@@ -173,14 +173,14 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 ),
                                 ready=fnv1.READY_TRUE,
                             ),
-                            "envoy-gateway": fnv1.Resource(
+                            "traefik": fnv1.Resource(
                                 resource=resource.dict_to_struct(
                                     {
                                         "apiVersion": "helm.m.crossplane.io/v1beta1",
                                         "kind": "Release",
                                         "metadata": {
                                             "namespace": "modelplane-system",
-                                            "labels": {"modelplane.ai/release": "envoy-gateway"},
+                                            "labels": {"modelplane.ai/release": "traefik"},
                                         },
                                         "spec": {
                                             "providerConfigRef": {
@@ -189,17 +189,26 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "forProvider": {
                                                 "chart": {
-                                                    "name": "gateway-helm",
-                                                    "repository": "oci://docker.io/envoyproxy",
-                                                    "version": "v1.3.0",
+                                                    "name": "traefik",
+                                                    "repository": "https://traefik.github.io/charts",
+                                                    "version": "40.2.0",
                                                 },
-                                                "namespace": "envoy-gateway-system",
+                                                "namespace": "traefik-system",
                                                 "values": {
-                                                    "config": {
-                                                        "envoyGateway": {
-                                                            "extensionApis": {"enableBackend": True},
+                                                    "providers": {
+                                                        "kubernetesGateway": {
+                                                            "enabled": True,
+                                                            "statusAddress": {
+                                                                "service": {
+                                                                    "namespace": "traefik-system",
+                                                                    "name": "traefik",
+                                                                },
+                                                            },
                                                         },
+                                                        "kubernetesIngress": {"enabled": False},
                                                     },
+                                                    "service": {"nameOverride": "traefik"},
+                                                    "gateway": {"enabled": False},
                                                 },
                                             },
                                         },
@@ -207,7 +216,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 ),
                                 ready=fnv1.READY_TRUE,
                             ),
-                            "usage-pc-by-envoy-gateway": fnv1.Resource(
+                            "usage-pc-by-traefik": fnv1.Resource(
                                 resource=resource.dict_to_struct(
                                     {
                                         "apiVersion": "protection.crossplane.io/v1beta1",
@@ -224,7 +233,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "kind": "Release",
                                                 "resourceSelector": {
                                                     "matchControllerRef": True,
-                                                    "matchLabels": {"modelplane.ai/release": "envoy-gateway"},
+                                                    "matchLabels": {"modelplane.ai/release": "traefik"},
                                                 },
                                             },
                                             "replayDeletion": True,
@@ -238,9 +247,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     {
                                         "apiVersion": "gateway.networking.k8s.io/v1",
                                         "kind": "GatewayClass",
-                                        "metadata": {"name": "envoy"},
+                                        "metadata": {"name": "traefik"},
                                         "spec": {
-                                            "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                                            "controllerName": "traefik.io/gateway-controller",
                                         },
                                     }
                                 ),
@@ -256,12 +265,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "namespace": "modelplane-system",
                                         },
                                         "spec": {
-                                            "gatewayClassName": "envoy",
+                                            "gatewayClassName": "traefik",
                                             "listeners": [
                                                 {
-                                                    "name": "http",
+                                                    "name": "web",
                                                     "protocol": "HTTP",
-                                                    "port": 80,
+                                                    "port": 8000,
                                                     "allowedRoutes": {"namespaces": {"from": "All"}},
                                                 },
                                             ],

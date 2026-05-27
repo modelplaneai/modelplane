@@ -15,7 +15,7 @@ spec:
     served: true
     referenceable: true
     additionalPrinterColumns:
-    - name: BACKEND
+    - name: GATEWAY
       type: string
       jsonPath: .spec.backend
     - name: ADDRESS
@@ -32,18 +32,18 @@ spec:
             properties:
               backend:
                 type: string
-                description: >-
-                  Gateway implementation. MVP supports EnvoyGateway only.
-                enum: [EnvoyGateway]
-              envoyGateway:
+                description: Gateway implementation.
+                enum: [Traefik]
+              traefik:
                 type: object
                 description: >-
-                  Envoy Gateway configuration. Required when backend is
-                  EnvoyGateway.
+                  Traefik Proxy configuration. Required when backend is
+                  Traefik.
+                required: [version]
                 properties:
                   version:
                     type: string
-                    default: "v1.3.0"
+                    description: Traefik Helm chart version.
                   loadBalancer:
                     type: string
                     description: >-
@@ -64,14 +64,6 @@ spec:
                           IP address range for the MetalLB pool
                           (e.g. "172.18.255.200-172.18.255.250").
                           Must be within the cluster's network CIDR.
-              gateway:
-                type: object
-                description: >-
-                  Gateway listener configuration.
-                properties:
-                  port:
-                    type: integer
-                    default: 80
           status:
             type: object
             properties:

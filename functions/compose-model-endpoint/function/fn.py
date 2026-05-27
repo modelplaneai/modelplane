@@ -1,14 +1,17 @@
-"""Compose an Envoy Backend from a ModelEndpoint.
+"""Compose a Kubernetes Service and EndpointSlice from a ModelEndpoint.
 
 ModelEndpoint is a reachable inference endpoint. This function parses
-spec.url and composes an Envoy Gateway Backend on the control plane
-pointing at the URL's host:port. ModelService reads the resulting
-backend name from status.routing.backendName to build its HTTPRoute.
+spec.url and composes a selectorless Service plus a manually-managed
+EndpointSlice on the control plane pointing at the URL's host:port.
+ModelService reads the resulting service name from
+status.routing.backendName to build its HTTPRoute.
 
-External / SaaS endpoints (fqdn-style Backends) are deferred. For now,
-spec.url is expected to be an http://<ip>:<port>/... shape.
+For IPv4 URLs (e.g. workload cluster gateways) the EndpointSlice uses
+addressType IPv4; for IPv6 URLs, IPv6; for FQDN URLs (e.g. external
+SaaS providers like Together or Groq), FQDN.
 """
 
+import ipaddress
 import urllib.parse
 
 import grpc
@@ -17,7 +20,8 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.modelendpoint import v1alpha1
 
-BACKEND_RESOURCE_KEY = "backend"
+SERVICE_RESOURCE_KEY = "service"
+ENDPOINTSLICE_RESOURCE_KEY = "endpointslice"
 
 # Condition type shared with compose-model-service. Both functions write
 # RoutingReady to signal whether traffic can reach the endpoint.
@@ -25,6 +29,15 @@ CONDITION_TYPE_ROUTING_READY = "RoutingReady"
 CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
 CONDITION_REASON_WAITING_FOR_BACKEND = "WaitingForBackend"
 CONDITION_REASON_INVALID_URL = "InvalidURL"
+
+
+def _address_type(host: str) -> str:
+    """Return the EndpointSlice addressType for a host: IPv4, IPv6, or FQDN."""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return "FQDN"
+    return "IPv6" if isinstance(addr, ipaddress.IPv6Address) else "IPv4"
 
 
 class FunctionRunner(grpcv1.FunctionRunnerService):
@@ -56,7 +69,7 @@ class Composer:
         if host is None:
             return
 
-        self.compose_backend(host, port)
+        self.compose_backend(host, port, _address_type(host))
         self.write_status()
         self.derive_conditions()
 
@@ -80,42 +93,95 @@ class Composer:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         return parsed.hostname, port
 
-    def compose_backend(self, host: str, port: int):
-        """Compose an Envoy Gateway Backend on the control plane."""
+    def compose_backend(self, host: str, port: int, address_type: str):
+        """Compose a selectorless Service and EndpointSlice for the endpoint.
+
+        The Service has no selector (Kubernetes will not auto-populate
+        EndpointSlices for it) so we compose the EndpointSlice ourselves.
+        The kubernetes.io/service-name label associates the slice with
+        the Service. The slice is gated on the Service being observed
+        because Crossplane generates the Service's name.
+
+        ExternalName Services aren't an option for FQDN endpoints:
+        Traefik's Gateway API provider explicitly rejects them. See
+        https://github.com/traefik/traefik/blob/fa49e2bcad7ffd8a80accdf1fae1ae480913d93d/pkg/provider/kubernetes/gateway/kubernetes.go#L890.
+        """
+        ns = self.xr.metadata.namespace
+
         resource.update(
-            self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
+            self.rsp.desired.resources[SERVICE_RESOURCE_KEY],
             {
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                "kind": "Backend",
-                "metadata": {"namespace": self.xr.metadata.namespace},
+                "apiVersion": "v1",
+                "kind": "Service",
+                "metadata": {"namespace": ns},
                 "spec": {
-                    "endpoints": [{"ip": {"address": host, "port": port}}],
+                    "ports": [{"port": port, "protocol": "TCP"}],
                 },
             },
         )
 
+        svc_observed = self.req.observed.resources.get(SERVICE_RESOURCE_KEY)
+        svc_name = (
+            resource.struct_to_dict(svc_observed.resource).get("metadata", {}).get("name") if svc_observed else None
+        )
+        if svc_name:
+            resource.update(
+                self.rsp.desired.resources[ENDPOINTSLICE_RESOURCE_KEY],
+                {
+                    "apiVersion": "discovery.k8s.io/v1",
+                    "kind": "EndpointSlice",
+                    "metadata": {
+                        "namespace": ns,
+                        "labels": {"kubernetes.io/service-name": svc_name},
+                    },
+                    "addressType": address_type,
+                    "ports": [{"name": "", "port": port, "protocol": "TCP"}],
+                    # Traefik's Gateway API provider skips endpoints
+                    # whose ready condition is nil, contradicting the
+                    # Kubernetes spec which says nil should be
+                    # interpreted as true. See
+                    # https://github.com/traefik/traefik/blob/fa49e2bcad7ffd8a80accdf1fae1ae480913d93d/pkg/provider/kubernetes/gateway/kubernetes.go#L948.
+                    "endpoints": [
+                        {
+                            "addresses": [host],
+                            "conditions": {"ready": True},
+                        }
+                    ],
+                },
+            )
+
     def write_status(self):
-        """Surface the composed Backend's name in status."""
+        """Surface the composed Service's name in status, but only once the
+        EndpointSlice is observed too. ModelService treats backendName as
+        routable, so we must not advertise it until the backing endpoint
+        exists or Traefik will report ResolvedRefs=False until the next
+        reconcile catches up."""
         status = v1alpha1.Status()
 
-        backend_observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
-        if backend_observed:
-            backend_name = resource.struct_to_dict(backend_observed.resource).get("metadata", {}).get("name")
-            if backend_name:
-                status.routing = v1alpha1.Routing(backendName=backend_name)
+        svc_observed = self.req.observed.resources.get(SERVICE_RESOURCE_KEY)
+        slice_observed = ENDPOINTSLICE_RESOURCE_KEY in self.req.observed.resources
+        if svc_observed and slice_observed:
+            svc_name = resource.struct_to_dict(svc_observed.resource).get("metadata", {}).get("name")
+            if svc_name:
+                status.routing = v1alpha1.Routing(backendName=svc_name)
 
         resource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self):
-        """RoutingReady: the Backend has been observed on the control plane."""
-        backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
+        """RoutingReady: both the Service and the EndpointSlice have been
+        observed on the control plane."""
+        svc_exists = SERVICE_RESOURCE_KEY in self.req.observed.resources
+        slice_exists = ENDPOINTSLICE_RESOURCE_KEY in self.req.observed.resources
+        ready = svc_exists and slice_exists
         response.set_conditions(
             self.rsp,
             resource.Condition(
                 typ=CONDITION_TYPE_ROUTING_READY,
-                status="True" if backend_exists else "False",
-                reason=CONDITION_REASON_BACKEND_CONFIGURED if backend_exists else CONDITION_REASON_WAITING_FOR_BACKEND,
+                status="True" if ready else "False",
+                reason=CONDITION_REASON_BACKEND_CONFIGURED if ready else CONDITION_REASON_WAITING_FOR_BACKEND,
             ),
         )
-        if backend_exists:
-            self.rsp.desired.resources[BACKEND_RESOURCE_KEY].ready = fnv1.READY_TRUE
+        if svc_exists:
+            self.rsp.desired.resources[SERVICE_RESOURCE_KEY].ready = fnv1.READY_TRUE
+        if ready:
+            self.rsp.desired.resources[ENDPOINTSLICE_RESOURCE_KEY].ready = fnv1.READY_TRUE

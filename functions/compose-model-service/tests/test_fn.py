@@ -56,7 +56,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "InferenceGateway",
                         "metadata": {"name": "default"},
-                        "spec": {"backend": "EnvoyGateway"},
+                        "spec": {"backend": "Traefik"},
                         "status": {"address": "34.55.100.10"},
                     }
                 )
@@ -69,8 +69,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "ModelEndpoint",
                         "metadata": {"name": "ep-1", "namespace": "ml-team"},
-                        "spec": {"url": "http://10.0.0.1/default/model/v1", "rewritePath": "/default/model/"},
-                        "status": {"routing": {"backendName": "backend-1"}},
+                        "spec": {"url": "http://10.0.0.1/v1", "rewritePath": "/v1/"},
+                        "status": {"routing": {"backendName": "svc-1"}},
                     }
                 )
             )
@@ -98,24 +98,22 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "matches": [
                                                 {"path": {"type": "PathPrefix", "value": "/ml-team/test-service/"}}
                                             ],
-                                            "filters": [
-                                                {
-                                                    "type": "URLRewrite",
-                                                    "urlRewrite": {
-                                                        "path": {
-                                                            "type": "ReplacePrefixMatch",
-                                                            "replacePrefixMatch": "/default/model/",
-                                                        },
-                                                    },
-                                                }
-                                            ],
                                             "backendRefs": [
                                                 {
-                                                    "group": "gateway.envoyproxy.io",
-                                                    "kind": "Backend",
-                                                    "name": "backend-1",
+                                                    "name": "svc-1",
                                                     "port": 80,
                                                     "weight": 1,
+                                                    "filters": [
+                                                        {
+                                                            "type": "URLRewrite",
+                                                            "urlRewrite": {
+                                                                "path": {
+                                                                    "type": "ReplacePrefixMatch",
+                                                                    "replacePrefixMatch": "/v1/",
+                                                                },
+                                                            },
+                                                        }
+                                                    ],
                                                 },
                                             ],
                                         }
@@ -195,7 +193,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "InferenceGateway",
                         "metadata": {"name": "default"},
-                        "spec": {"backend": "EnvoyGateway"},
+                        "spec": {"backend": "Traefik"},
                         "status": {"address": "34.55.100.10"},
                     }
                 )
@@ -208,7 +206,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "ModelEndpoint",
                         "metadata": {"name": "ep-1", "namespace": "ml-team"},
-                        "spec": {"url": "http://10.0.0.1/default/model/v1"},
+                        "spec": {"url": "http://10.0.0.1/v1"},
                     }
                 )
             )
@@ -279,7 +277,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "InferenceGateway",
                         "metadata": {"name": "default"},
-                        "spec": {"backend": "EnvoyGateway"},
+                        "spec": {"backend": "Traefik"},
                         "status": {"address": "34.55.100.10"},
                     }
                 )
@@ -293,8 +291,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "apiVersion": "modelplane.ai/v1alpha1",
                             "kind": "ModelEndpoint",
                             "metadata": {"name": name, "namespace": "ml-team"},
-                            "spec": {"url": f"http://{ip}/default/model/v1", "rewritePath": "/default/model/"},
-                            "status": {"routing": {"backendName": f"backend-{name}"}},
+                            "spec": {"url": f"http://{ip}/v1", "rewritePath": "/v1/"},
+                            "status": {"routing": {"backendName": f"svc-{name}"}},
                         }
                     )
                 )
@@ -322,31 +320,38 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "matches": [
                                                 {"path": {"type": "PathPrefix", "value": "/ml-team/test-service/"}}
                                             ],
-                                            "filters": [
-                                                {
-                                                    "type": "URLRewrite",
-                                                    "urlRewrite": {
-                                                        "path": {
-                                                            "type": "ReplacePrefixMatch",
-                                                            "replacePrefixMatch": "/default/model/",
-                                                        },
-                                                    },
-                                                }
-                                            ],
                                             "backendRefs": [
                                                 {
-                                                    "group": "gateway.envoyproxy.io",
-                                                    "kind": "Backend",
-                                                    "name": "backend-ep-1",
+                                                    "name": "svc-ep-1",
                                                     "port": 80,
                                                     "weight": 1,
+                                                    "filters": [
+                                                        {
+                                                            "type": "URLRewrite",
+                                                            "urlRewrite": {
+                                                                "path": {
+                                                                    "type": "ReplacePrefixMatch",
+                                                                    "replacePrefixMatch": "/v1/",
+                                                                },
+                                                            },
+                                                        }
+                                                    ],
                                                 },
                                                 {
-                                                    "group": "gateway.envoyproxy.io",
-                                                    "kind": "Backend",
-                                                    "name": "backend-ep-2",
+                                                    "name": "svc-ep-2",
                                                     "port": 80,
                                                     "weight": 1,
+                                                    "filters": [
+                                                        {
+                                                            "type": "URLRewrite",
+                                                            "urlRewrite": {
+                                                                "path": {
+                                                                    "type": "ReplacePrefixMatch",
+                                                                    "replacePrefixMatch": "/v1/",
+                                                                },
+                                                            },
+                                                        }
+                                                    ],
                                                 },
                                             ],
                                         }
@@ -392,7 +397,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "InferenceGateway",
                         "metadata": {"name": "default"},
-                        "spec": {"backend": "EnvoyGateway"},
+                        "spec": {"backend": "Traefik"},
                         "status": {"address": "34.55.100.10"},
                     }
                 )
@@ -405,8 +410,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "ModelEndpoint",
                         "metadata": {"name": "ep-a", "namespace": "ml-team"},
-                        "spec": {"url": "http://10.0.0.1/default/model-a/v1", "rewritePath": "/default/model-a/"},
-                        "status": {"routing": {"backendName": "backend-a"}},
+                        "spec": {"url": "http://10.0.0.1/v1", "rewritePath": "/v1/"},
+                        "status": {"routing": {"backendName": "svc-a"}},
                     }
                 )
             )
@@ -418,8 +423,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "ModelEndpoint",
                         "metadata": {"name": "ep-b", "namespace": "ml-team"},
-                        "spec": {"url": "http://10.0.0.2/default/model-b/v1", "rewritePath": "/default/model-b/"},
-                        "status": {"routing": {"backendName": "backend-b"}},
+                        "spec": {"url": "https://api.groq.com/openai/v1", "rewritePath": "/openai/v1/"},
+                        "status": {"routing": {"backendName": "svc-groq"}},
                     }
                 )
             )
@@ -447,52 +452,41 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "matches": [
                                                 {"path": {"type": "PathPrefix", "value": "/ml-team/test-service/"}}
                                             ],
-                                            "filters": [
-                                                {
-                                                    "type": "URLRewrite",
-                                                    "urlRewrite": {
-                                                        "path": {
-                                                            "type": "ReplacePrefixMatch",
-                                                            "replacePrefixMatch": "/default/model-a/",
-                                                        },
-                                                    },
-                                                }
-                                            ],
                                             "backendRefs": [
                                                 {
-                                                    "group": "gateway.envoyproxy.io",
-                                                    "kind": "Backend",
-                                                    "name": "backend-a",
+                                                    "name": "svc-a",
                                                     "port": 80,
                                                     "weight": 1,
+                                                    "filters": [
+                                                        {
+                                                            "type": "URLRewrite",
+                                                            "urlRewrite": {
+                                                                "path": {
+                                                                    "type": "ReplacePrefixMatch",
+                                                                    "replacePrefixMatch": "/v1/",
+                                                                },
+                                                            },
+                                                        }
+                                                    ],
                                                 },
-                                            ],
-                                        },
-                                        {
-                                            "matches": [
-                                                {"path": {"type": "PathPrefix", "value": "/ml-team/test-service/"}}
-                                            ],
-                                            "filters": [
                                                 {
-                                                    "type": "URLRewrite",
-                                                    "urlRewrite": {
-                                                        "path": {
-                                                            "type": "ReplacePrefixMatch",
-                                                            "replacePrefixMatch": "/default/model-b/",
-                                                        },
-                                                    },
-                                                }
-                                            ],
-                                            "backendRefs": [
-                                                {
-                                                    "group": "gateway.envoyproxy.io",
-                                                    "kind": "Backend",
-                                                    "name": "backend-b",
-                                                    "port": 80,
+                                                    "name": "svc-groq",
+                                                    "port": 443,
                                                     "weight": 1,
+                                                    "filters": [
+                                                        {
+                                                            "type": "URLRewrite",
+                                                            "urlRewrite": {
+                                                                "path": {
+                                                                    "type": "ReplacePrefixMatch",
+                                                                    "replacePrefixMatch": "/openai/v1/",
+                                                                },
+                                                            },
+                                                        }
+                                                    ],
                                                 },
                                             ],
-                                        },
+                                        }
                                     ],
                                 },
                             }
@@ -527,7 +521,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             Case(name="no endpoints produces warning and EndpointsResolved=False", req=req2, want=want2),
             Case(name="endpoint without backend composes HTTPRoute without backendRefs", req=req3, want=want3),
             Case(name="same rewritePath produces one rule with two backendRefs", req=req4, want=want4),
-            Case(name="different rewritePaths produce one rule per path", req=req5, want=want5),
+            Case(name="different rewritePaths produce per-backendRef URLRewrite filters", req=req5, want=want5),
         ]
 
         for case in cases:
