@@ -46,7 +46,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 },
             ),
             spec=v1alpha1.SpecModel(
-                inferenceClusterRef=v1alpha1.InferenceClusterRef(name="cluster-a"),
+                clusterName="cluster-a",
                 workers=v1alpha1.Workers(
                     topology=v1alpha1.Topology(tensor=1),
                     template=v1alpha1.Template(

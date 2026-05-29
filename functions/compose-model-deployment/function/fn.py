@@ -159,7 +159,10 @@ class Composer:
         """Compose a ModelReplica per matched cluster.
 
         Each replica inherits the deployment's workers block verbatim
-        and adds an inferenceClusterRef.
+        and is pinned to a specific cluster via spec.clusterName. Once
+        composed, the pin is stable - the scheduler retains the
+        assignment across reconciles. See scheduling.schedule for the
+        retain-then-place logic.
         """
         # Convert via model_dump because the MD and MR Workers types
         # are different Pydantic classes (generated from different XRDs
@@ -182,9 +185,7 @@ class Composer:
                         },
                     ),
                     spec=mrv1alpha1.SpecModel(
-                        inferenceClusterRef=mrv1alpha1.InferenceClusterRef(
-                            name=cluster_info.name,
-                        ),
+                        clusterName=cluster_info.name,
                         workers=workers,
                     ),
                 ),
@@ -199,11 +200,20 @@ class Composer:
         URL prefix to rewrite to on the remote cluster — today this is
         KServe's LLMInferenceService path convention. Once KServe is
         replaced, this becomes a simpler /v1/.
+
+        Replicas pinned to clusters that are currently unavailable (no
+        gateway address) get no endpoint. Routing must not direct
+        traffic at a dead backend. When the cluster recovers and its
+        gateway address is observed again the endpoint will be composed
+        on the next reconcile.
         """
         llmis = resource.child_name(self.xr.metadata.name)
         rewrite_path = f"/{_NAMESPACE_REMOTE}/{llmis}/"
 
         for cluster_info in matched:
+            if not cluster_info.gateway_address:
+                continue
+
             endpoint_key = f"endpoint-{cluster_info.name}"
             url = f"{_GATEWAY_SCHEME}://{cluster_info.gateway_address}{rewrite_path}v1"
 

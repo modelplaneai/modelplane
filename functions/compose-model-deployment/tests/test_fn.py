@@ -116,7 +116,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "inferenceClusterRef": {"name": "cluster-a"},
+                                    "clusterName": "cluster-a",
                                     "workers": {
                                         "topology": {"tensor": 1},
                                         "template": {
@@ -317,7 +317,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             },
                         },
                         "spec": {
-                            "inferenceClusterRef": {"name": "cluster-a"},
+                            "clusterName": "cluster-a",
                             "workers": {
                                 "topology": {"tensor": 1, "pipeline": 1},
                                 "count": 1,
@@ -357,7 +357,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "inferenceClusterRef": {"name": "cluster-a"},
+                                    "clusterName": "cluster-a",
                                     "workers": {
                                         "topology": {"tensor": 1},
                                         "template": {
@@ -417,11 +417,263 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         want4.requirements.resources["clusters"].CopyFrom(cluster_sel)
         want4.requirements.resources["all-replicas"].CopyFrom(replica_sel)
 
+        # Case 5: pinned cluster has gone offline (still exists but is
+        # no longer Ready and has no gateway address). The replica stays
+        # pinned to it; the endpoint is not composed.
+        cluster_a_offline = {
+            "apiVersion": "modelplane.ai/v1alpha1",
+            "kind": "InferenceCluster",
+            "metadata": {"name": "cluster-a"},
+            "spec": {
+                "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Ready",
+                        "status": "False",
+                        "reason": "Unavailable",
+                        "lastTransitionTime": "2025-01-01T00:00:00Z",
+                    }
+                ],
+                "providerConfigRef": {"name": "cluster-a"},
+                "capacity": {"gpuPools": [{"countPerNode": 1, "nodes": 2}]},
+            },
+        }
+        existing_replica = {
+            "apiVersion": "modelplane.ai/v1alpha1",
+            "kind": "ModelReplica",
+            "metadata": {
+                "name": "my-model-cluster-a-bc3c4",
+                "namespace": "ml-team",
+                "labels": {
+                    "modelplane.ai/replica": "true",
+                    "modelplane.ai/deployment": "my-model",
+                    "modelplane.ai/cluster": "cluster-a",
+                },
+            },
+            "spec": {
+                "clusterName": "cluster-a",
+                "workers": {
+                    "topology": {"tensor": 1, "pipeline": 1},
+                    "count": 1,
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {"name": "engine", "image": "vllm/vllm-openai:latest"},
+                            ]
+                        }
+                    },
+                },
+            },
+        }
+        req5 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
+                resources={
+                    "replica-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(existing_replica)),
+                },
+            ),
+        )
+        req5.required_resources["clusters"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(cluster_a_offline))
+        )
+        req5.required_resources["all-replicas"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(existing_replica))
+        )
+
+        want5 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                ),
+                resources={
+                    "replica-cluster-a": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelReplica",
+                                "metadata": {
+                                    "name": "my-model-cluster-a-bc3c4",
+                                    "namespace": "ml-team",
+                                    "labels": {
+                                        "modelplane.ai/replica": "true",
+                                        "modelplane.ai/deployment": "my-model",
+                                        "modelplane.ai/cluster": "cluster-a",
+                                    },
+                                },
+                                "spec": {
+                                    "clusterName": "cluster-a",
+                                    "workers": {
+                                        "topology": {"tensor": 1},
+                                        "template": {
+                                            "spec": {
+                                                "containers": [
+                                                    {
+                                                        "name": "engine",
+                                                        "image": "vllm/vllm-openai:latest",
+                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                    }
+                                                ],
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ReplicasScheduled",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="ReplicasCreated",
+                    message="Matched 1 clusters",
+                ),
+                fnv1.Condition(
+                    type="ReplicasReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 ready",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want5.requirements.resources["clusters"].CopyFrom(cluster_sel)
+        want5.requirements.resources["all-replicas"].CopyFrom(replica_sel)
+
+        # Case 6: pinned cluster has disappeared entirely. cluster-b is
+        # available with capacity, so the scheduler re-places the
+        # replica onto it.
+        cluster_b = {
+            "apiVersion": "modelplane.ai/v1alpha1",
+            "kind": "InferenceCluster",
+            "metadata": {"name": "cluster-b"},
+            "spec": {
+                "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "Available",
+                        "lastTransitionTime": "2025-01-01T00:00:00Z",
+                    }
+                ],
+                "gateway": {"address": "10.0.0.2"},
+                "providerConfigRef": {"name": "cluster-b"},
+                "capacity": {"gpuPools": [{"countPerNode": 1, "nodes": 2}]},
+            },
+        }
+        req6 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
+                resources={
+                    "replica-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(existing_replica)),
+                },
+            ),
+        )
+        req6.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cluster_b)))
+        # The existing replica is observed - its pinned cluster-a is
+        # gone from the cluster list, so the scheduler must re-place it.
+        req6.required_resources["all-replicas"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(existing_replica))
+        )
+
+        want6 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                ),
+                resources={
+                    "replica-cluster-b": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelReplica",
+                                "metadata": {
+                                    "name": "my-model-cluster-b-a9d2c",
+                                    "namespace": "ml-team",
+                                    "labels": {
+                                        "modelplane.ai/replica": "true",
+                                        "modelplane.ai/deployment": "my-model",
+                                        "modelplane.ai/cluster": "cluster-b",
+                                    },
+                                },
+                                "spec": {
+                                    "clusterName": "cluster-b",
+                                    "workers": {
+                                        "topology": {"tensor": 1},
+                                        "template": {
+                                            "spec": {
+                                                "containers": [
+                                                    {
+                                                        "name": "engine",
+                                                        "image": "vllm/vllm-openai:latest",
+                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                    }
+                                                ],
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                    "endpoint-cluster-b": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelEndpoint",
+                                "metadata": {
+                                    "name": "my-model-cluster-b-a9d2c",
+                                    "namespace": "ml-team",
+                                    "labels": {
+                                        "modelplane.ai/deployment": "my-model",
+                                        "modelplane.ai/cluster": "cluster-b",
+                                    },
+                                },
+                                "spec": {
+                                    "url": "http://10.0.0.2/default/my-model-98ad2/v1",
+                                    "rewritePath": "/default/my-model-98ad2/",
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ReplicasScheduled",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Scheduling",
+                ),
+                fnv1.Condition(
+                    type="ReplicasReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 ready",
+                ),
+            ],
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Matched 1 clusters: cluster-b"),
+            ],
+            context=structpb.Struct(),
+        )
+        want6.requirements.resources["clusters"].CopyFrom(cluster_sel)
+        want6.requirements.resources["all-replicas"].CopyFrom(replica_sel)
+
         cases = [
             Case(name="one ready cluster composes replica and endpoint", req=req1, want=want1),
             Case(name="no clusters produces warning", req=req2, want=want2),
             Case(name="insufficient capacity produces no replicas", req=req3, want=want3),
             Case(name="existing replica is preserved with stable scheduling", req=req4, want=want4),
+            Case(name="offline pinned cluster keeps replica but drops endpoint", req=req5, want=want5),
+            Case(name="deleted pinned cluster triggers replica re-placement", req=req6, want=want6),
         ]
 
         for case in cases:

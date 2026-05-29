@@ -42,10 +42,6 @@ class Crossplane(BaseModel):
     resourceRefs: Optional[List[ResourceRef]] = None
 
 
-class InferenceClusterRef(BaseModel):
-    name: str
-
-
 class ModelCacheRef(BaseModel):
     name: constr(min_length=1)
 
@@ -111,13 +107,13 @@ class Workers(BaseModel):
 
 
 class SpecModel(BaseModel):
+    clusterName: constr(min_length=1)
+    """
+    Name of the InferenceCluster this replica is pinned to. Replicas are pinned at creation time. If the cluster is temporarily unavailable the replica stays pinned and the parent ModelDeployment surfaces the degraded state via its conditions. If the cluster is deleted entirely the parent ModelDeployment re-places the replica on another viable cluster.
+    """
     crossplane: Optional[Crossplane] = None
     """
     Configures how Crossplane will reconcile this composite resource
-    """
-    inferenceClusterRef: InferenceClusterRef
-    """
-    Reference to the InferenceCluster this replica targets.
     """
     modelCacheRef: Optional[ModelCacheRef] = None
     """
