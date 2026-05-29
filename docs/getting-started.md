@@ -295,14 +295,22 @@ Delete the ModelDeployment before the InferenceCluster. If you delete the
 cluster first, the deployment gets stuck reconciling against a cluster
 Crossplane is tearing down.
 
-Wait for the GKE cluster to be fully deprovisioned before deleting the kind
+Delete the InferenceCluster with foreground cascading deletion. The inference
+stack runs on the workload cluster and must uninstall while that cluster's API
+server and kubeconfig still exist. Foreground deletion holds the cluster until
+the stack is uninstalled; the default (background) deletion tears everything
+down at once, which leaves the stack's Helm releases unable to reach the
+cluster and can orphan cloud resources - for example a load balancer's security
+group, which then blocks the VPC from deleting.
+
+Wait for the cluster to be fully deprovisioned before deleting the kind
 cluster. If you delete the kind cluster while Crossplane is still cleaning up,
-Crossplane orphans the GKE resources.
+Crossplane orphans the cloud resources.
 
 ```bash
 kubectl delete md --all -n ml-team
 kubectl delete ms --all -n ml-team
-kubectl delete ic --all
+kubectl delete ic --all --cascade=foreground
 
 # Wait for the InferenceCluster to be fully deleted.
 kubectl get ic --watch

@@ -18,6 +18,19 @@
 #
 # The modelplane.ai/cluster label is required for the ModelDeployment
 # scheduler to discover this cluster.
+#
+# Delete this InferenceCluster with foreground cascading deletion for a
+# clean teardown:
+#
+#   kubectl delete inferencecluster eks-us-west --cascade=foreground
+#
+# The inference stack runs on the EKS cluster and must uninstall while
+# the cluster's API server and kubeconfig still exist - otherwise its
+# Helm releases hang, and a load balancer one of them created can leak
+# its security group and block the VPC from deleting. Foreground
+# deletion holds the cluster until the stack is uninstalled. Background
+# deletion (the kubectl default) tears everything down at once and can
+# orphan cloud resources.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
