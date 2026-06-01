@@ -465,6 +465,38 @@ class Composer:
         )
         self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
 
+        # KServe CRD Release protected by the KServe resources Release. The
+        # resources chart installs LLMInferenceServiceConfig CRs whose CRD the
+        # CRD chart owns. On teardown the CRs must be deleted before their CRD;
+        # otherwise the resources Release's uninstall fails (the CR's kind no
+        # longer resolves) and hangs. Holding the CRD Release until the
+        # resources Release is gone enforces that order.
+        resource.update(
+            self.rsp.desired.resources["usage-kserve-crds-by-controller"],
+            usagev1beta1.Usage(
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="Release",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_RESOURCE: "kserve-crds"},
+                        ),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="Release",
+                        resourceSelector=usagev1beta1.ResourceSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_RESOURCE: "kserve-controller"},
+                        ),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources["usage-kserve-crds-by-controller"].ready = fnv1.READY_TRUE
+
     def compose_cert_manager(self):
         """Compose cert-manager. Gated on ProviderConfigs being observed."""
         pc_observed = self.provider_configs_observed()
@@ -659,6 +691,7 @@ class Composer:
                     version=v.kserve,
                     namespace="kserve",
                     provider_config=pc,
+                    labels={_LABEL_RESOURCE: "kserve-crds"},
                 ),
             )
 
@@ -670,6 +703,7 @@ class Composer:
                 version=v.kserve,
                 namespace="kserve",
                 provider_config=pc,
+                labels={_LABEL_RESOURCE: "kserve-controller"},
             )
             kserve_release.spec.forProvider.patchesFrom = [
                 helmv1beta1.PatchesFromItem(

@@ -648,6 +648,30 @@ _USAGE_GATEWAY_CLASS_BY_GATEWAY = {
     },
 }
 
+_USAGE_KSERVE_CRDS_BY_CONTROLLER = {
+    "apiVersion": "protection.crossplane.io/v1beta1",
+    "kind": "Usage",
+    "spec": {
+        "by": {
+            "apiVersion": "helm.m.crossplane.io/v1beta1",
+            "kind": "Release",
+            "resourceSelector": {
+                "matchControllerRef": True,
+                "matchLabels": {"modelplane.ai/resource": "kserve-controller"},
+            },
+        },
+        "of": {
+            "apiVersion": "helm.m.crossplane.io/v1beta1",
+            "kind": "Release",
+            "resourceSelector": {
+                "matchControllerRef": True,
+                "matchLabels": {"modelplane.ai/resource": "kserve-crds"},
+            },
+        },
+        "replayDeletion": True,
+    },
+}
+
 _KSERVE_STORAGE_PATCH = {
     "apiVersion": "v1",
     "kind": "ConfigMap",
@@ -883,6 +907,7 @@ _PROMETHEUS = {
 _KSERVE_CRDS = {
     "apiVersion": "helm.m.crossplane.io/v1beta1",
     "kind": "Release",
+    "metadata": {"labels": {"modelplane.ai/resource": "kserve-crds"}},
     "spec": {
         "forProvider": {
             "chart": {
@@ -902,6 +927,7 @@ _KSERVE_CRDS = {
 _KSERVE_CONTROLLER = {
     "apiVersion": "helm.m.crossplane.io/v1beta1",
     "kind": "Release",
+    "metadata": {"labels": {"modelplane.ai/resource": "kserve-controller"}},
     "spec": {
         "forProvider": {
             "chart": {
@@ -1008,6 +1034,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
                         ready=fnv1.READY_TRUE,
                     ),
+                    "usage-kserve-crds-by-controller": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_KSERVE_CRDS_BY_CONTROLLER),
+                        ready=fnv1.READY_TRUE,
+                    ),
                     "usage-helm-pc": fnv1.Resource(
                         resource=resource.dict_to_struct(_USAGE_HELM_PC),
                         ready=fnv1.READY_TRUE,
@@ -1095,6 +1125,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                     "usage-gateway-class-by-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-kserve-crds-by-controller": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_KSERVE_CRDS_BY_CONTROLLER),
                         ready=fnv1.READY_TRUE,
                     ),
                     "usage-helm-pc": fnv1.Resource(
@@ -1222,6 +1256,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                     "usage-gateway-class-by-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-kserve-crds-by-controller": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_KSERVE_CRDS_BY_CONTROLLER),
                         ready=fnv1.READY_TRUE,
                     ),
                     "usage-helm-pc": fnv1.Resource(
