@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "compose-model-replica"
 version = "0.0.0"
-description = "Deploy a model on a single InferenceCluster via KServe."
+description = "Deploy a model on a single InferenceCluster."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
