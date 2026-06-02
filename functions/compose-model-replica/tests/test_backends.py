@@ -2,7 +2,7 @@
 
 import unittest
 
-from function.backends import base, native
+from function.backends import base, dynamo, native
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -104,3 +104,14 @@ class TestNativeBackend(unittest.TestCase):
         dep = next(o for o in out.values() if o.spec.forProvider.manifest["kind"] == "Deployment")
         container = dep.spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]
         self.assertIn({"name": "HF_TOKEN", "value": "secret"}, container["env"])
+
+
+class TestDynamoStub(unittest.TestCase):
+    def test_not_selected_in_v01(self):
+        # No Dynamo-only capability is wired, so dispatch never returns DYNAMO.
+        self.assertNotEqual(base.select_backend(_replica(tensor=8, pipeline=2)), base.DYNAMO)
+
+    def test_build_raises(self):
+        cluster = icv1alpha1.InferenceCluster(spec=icv1alpha1.Spec(cluster=icv1alpha1.Cluster(source="Existing")))
+        with self.assertRaises(NotImplementedError):
+            dynamo.DynamoBackend().build(_replica(tensor=8, pipeline=2), cluster, "d")
