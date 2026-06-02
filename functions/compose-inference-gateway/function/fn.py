@@ -14,7 +14,7 @@ path conventions (e.g. a self-hosted model at /v1/ alongside Groq at
 envoyproxy/gateway#7099.
 """
 
-from pathlib import Path
+import pathlib
 
 import grpc
 import yaml
@@ -27,7 +27,7 @@ from models.io.crossplane.protection.clusterusage import v1beta1 as clusterusage
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-_HERE = Path(__file__).parent
+_HERE = pathlib.Path(__file__).parent
 
 # Gateway API CRDs (standard channel, v1.5.1) vendored from upstream:
 # https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
@@ -35,18 +35,14 @@ _HERE = Path(__file__).parent
 # Traefik's Helm chart does not ship the Gateway API CRDs, and on a fresh
 # control plane nothing else installs them, so the Traefik release fails to
 # render its GatewayClass. We compose the CRDs directly onto the control
-# plane (they are plain Kubernetes resources, not managed resources) before
-# the Traefik release. v1.5.1 is the version Traefik v3.7 supports, and its
-# standard channel serves TLSRoute and BackendTLSPolicy as v1, which Traefik
-# watches.
+# plane before the Traefik release. v1.5.1 is the version Traefik v3.7
+# supports, and its standard channel serves TLSRoute and BackendTLSPolicy as
+# v1, which Traefik watches.
 #
-# We install only the CustomResourceDefinitions. The bundle also ships a
-# ValidatingAdmissionPolicy ("safe-upgrades") that blocks installing
-# experimental-channel or pre-v1.5.0 CRDs cluster-wide. We don't compose it:
-# it would impose a cluster-scoped policy the user didn't ask for (e.g.
-# blocking a later switch to experimental CRDs for another controller), and
-# composing a policy that governs CRD writes alongside the very CRD writes it
-# governs is needlessly fragile.
+# We install only the CustomResourceDefinitions, not the
+# ValidatingAdmissionPolicy ("safe-upgrades") that the upstream bundle also
+# ships. Composing a policy that governs CRD writes alongside the very CRD
+# writes it governs is needlessly fragile.
 _GATEWAY_API_CRDS = [
     doc
     for doc in yaml.safe_load_all((_HERE / "gateway_api_crds.yaml").read_text())
@@ -201,32 +197,21 @@ class Composer:
     def compose_gateway_api_crds(self):
         """Compose the Gateway API CRDs onto the control plane.
 
-        These are composed unconditionally and directly (not via a provider),
-        so Crossplane applies them to the control plane cluster itself. They
-        must exist before the Traefik release renders its resources and before
-        Traefik watches the Gateway API types.
-
-        They need no deletion protection. The only Gateway API objects on the
-        control plane are the GatewayClass and Gateway this function composes;
-        Traefik renders none itself (gateway and gatewayClass are disabled in
-        its chart). A CRD won't delete until its instances are gone, and those
-        instances are ordered ahead of the Traefik controller by their own
-        Usages (see compose_gateway_usages), so the CRDs are free to delete
-        last."""
+        These must exist before the Traefik release renders its resources and
+        before Traefik watches the Gateway API types."""
         for doc in _GATEWAY_API_CRDS:
             key = _crd_key(doc)
             resource.update(self.rsp.desired.resources[key], doc)
-            if self._crd_established(key):
+            if resource.get_condition(self.req.observed.resources.get(key), "Established").status == "True":
                 self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
-
-    def _crd_established(self, key):
-        """Whether a composed CRD reports Established (its schema is served)."""
-        return resource.get_condition(self.req.observed.resources.get(key), "Established").status == "True"
 
     def gateway_api_crds_ready(self):
         """True once every composed Gateway API CRD is Established, so Traefik
         can render its resources and watch the Gateway API types."""
-        return all(self._crd_established(_crd_key(doc)) for doc in _GATEWAY_API_CRDS)
+        return all(
+            resource.get_condition(self.req.observed.resources.get(_crd_key(doc)), "Established").status == "True"
+            for doc in _GATEWAY_API_CRDS
+        )
 
     def compose_metallb(self):
         """Optional MetalLB for kind/bare-metal clusters that don't have a
