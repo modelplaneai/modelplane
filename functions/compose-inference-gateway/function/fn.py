@@ -14,14 +14,40 @@ path conventions (e.g. a self-hosted model at /v1/ alongside Groq at
 envoyproxy/gateway#7099.
 """
 
+import pathlib
+
 import grpc
+import yaml
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferencegateway import v1alpha1
 from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
+from models.io.crossplane.protection.clusterusage import v1beta1 as clusterusagev1beta1
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+_HERE = pathlib.Path(__file__).parent
+
+# Gateway API CRDs (standard channel, v1.5.1) vendored from upstream:
+# https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
+#
+# Traefik's Helm chart does not ship the Gateway API CRDs, and on a fresh
+# control plane nothing else installs them, so the Traefik release fails to
+# render its GatewayClass. We compose the CRDs directly onto the control
+# plane before the Traefik release. v1.5.1 is the version Traefik v3.7
+# supports, and its standard channel serves TLSRoute and BackendTLSPolicy as
+# v1, which Traefik watches.
+#
+# We install only the CustomResourceDefinitions, not the
+# ValidatingAdmissionPolicy ("safe-upgrades") that the upstream bundle also
+# ships. Composing a policy that governs CRD writes alongside the very CRD
+# writes it governs is needlessly fragile.
+_GATEWAY_API_CRDS = [
+    doc
+    for doc in yaml.safe_load_all((_HERE / "gateway_api_crds.yaml").read_text())
+    if doc and doc.get("kind") == "CustomResourceDefinition"
+]
 
 # Condition types and reasons for the InferenceGateway XR.
 CONDITION_TYPE_CONTROLLER_READY = "ControllerReady"
@@ -60,6 +86,12 @@ _TRAEFIK_CONTROLLER_NAME = "traefik.io/gateway-controller"
 # not the Service's exposed port. The Helm chart exposes the same
 # entryPoint at port 80 on the Service by default.
 _TRAEFIK_WEB_ENTRYPOINT_PORT = 8000
+
+
+def _crd_key(doc: dict) -> str:
+    """Stable composed-resource key for a Gateway API CRD."""
+    name = doc["metadata"]["name"]
+    return f"gateway-api-crd-{name}"
 
 
 def _helm_release(
@@ -139,9 +171,11 @@ class Composer:
 
     def compose(self):
         self.compose_provider_config()
+        self.compose_gateway_api_crds()
         self.compose_metallb()
         self.compose_traefik()
         self.compose_gateway()
+        self.compose_gateway_usages()
         self.write_status()
         self.derive_conditions()
 
@@ -159,6 +193,25 @@ class Composer:
             },
         )
         self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
+
+    def compose_gateway_api_crds(self):
+        """Compose the Gateway API CRDs onto the control plane.
+
+        These must exist before the Traefik release renders its resources and
+        before Traefik watches the Gateway API types."""
+        for doc in _GATEWAY_API_CRDS:
+            key = _crd_key(doc)
+            resource.update(self.rsp.desired.resources[key], doc)
+            if resource.get_condition(self.req.observed.resources.get(key), "Established").status == "True":
+                self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
+
+    def gateway_api_crds_ready(self):
+        """True once every composed Gateway API CRD is Established, so Traefik
+        can render its resources and watch the Gateway API types."""
+        return all(
+            resource.get_condition(self.req.observed.resources.get(_crd_key(doc)), "Established").status == "True"
+            for doc in _GATEWAY_API_CRDS
+        )
 
     def compose_metallb(self):
         """Optional MetalLB for kind/bare-metal clusters that don't have a
@@ -223,9 +276,13 @@ class Composer:
         self.rsp.desired.resources["metallb-l2"].ready = fnv1.READY_TRUE
 
     def compose_traefik(self):
-        """Compose Traefik Proxy. Gated on ProviderConfig being observed."""
+        """Compose Traefik Proxy. Gated on the ProviderConfig being observed
+        (so provider-helm can act on the Release) and the Gateway API CRDs
+        being established (so the release can render its resources and Traefik
+        can watch the Gateway API types without erroring)."""
         pc_observed = "provider-config-helm" in self.req.observed.resources
-        if not (pc_observed or "traefik" in self.req.observed.resources):
+        gate = pc_observed and self.gateway_api_crds_ready()
+        if not (gate or "traefik" in self.req.observed.resources):
             return
 
         resource.update(
@@ -253,10 +310,14 @@ class Composer:
                     # statusAddress.service can reference it. The default
                     # name includes Crossplane's generated release name.
                     "service": {"nameOverride": _TRAEFIK_SERVICE_NAME},
-                    # Disable Traefik's built-in GatewayClass and Gateway
-                    # creation. Crossplane composes them so they appear in
-                    # observed resources and we can read status.addresses.
+                    # Disable Traefik's built-in Gateway creation. Crossplane
+                    # composes the Gateway so it appears in observed resources
+                    # and we can read status.addresses.
                     "gateway": {"enabled": False},
+                    # Disable the chart's GatewayClass too. The chart renders
+                    # it even when gateway.enabled is false; Crossplane
+                    # composes its own GatewayClass instead.
+                    "gatewayClass": {"enabled": False},
                 },
                 labels={_LABEL_RELEASE: "traefik"},
                 metadata_namespace=_NAMESPACE_SYSTEM,
@@ -388,3 +449,72 @@ class Composer:
             ),
         )
         self.rsp.desired.resources[f"usage-pc-by-{release_key}"].ready = fnv1.READY_TRUE
+
+    def compose_gateway_usages(self):
+        """Compose Usages so the Traefik release outlives the GatewayClass and
+        Gateway it controls.
+
+        On XR deletion every composed resource is deleted concurrently. The
+        Traefik controller sets a finalizer on the GatewayClass (and Gateway);
+        if the release (and thus the controller) is uninstalled first, that
+        finalizer is never cleared and deletion wedges. These Usages hold the
+        release until the GatewayClass and Gateway are gone, so the controller
+        is still running to clear their finalizers.
+
+        The GatewayClass is cluster-scoped, so it needs a ClusterUsage; the
+        Gateway is namespaced. Both are gated on Traefik being composed this
+        pass. The Usages select the Release by label rather than referencing
+        it directly, so they don't need it to exist yet; composing them
+        alongside the Release puts deletion-order protection in place from the
+        moment the Release is first emitted as desired state."""
+        if "traefik" not in self.rsp.desired.resources:
+            return
+
+        release_by = clusterusagev1beta1.By(
+            apiVersion="helm.m.crossplane.io/v1beta1",
+            kind="Release",
+            resourceSelector=clusterusagev1beta1.ResourceSelector(
+                matchControllerRef=True,
+                matchLabels={_LABEL_RELEASE: "traefik"},
+            ),
+        )
+
+        resource.update(
+            self.rsp.desired.resources["usage-gateway-class-by-traefik"],
+            clusterusagev1beta1.ClusterUsage(
+                spec=clusterusagev1beta1.Spec(
+                    of=clusterusagev1beta1.Of(
+                        apiVersion="gateway.networking.k8s.io/v1",
+                        kind="GatewayClass",
+                        resourceRef=clusterusagev1beta1.ResourceRef(name=_TRAEFIK_GATEWAY_CLASS),
+                    ),
+                    by=release_by,
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources["usage-gateway-class-by-traefik"].ready = fnv1.READY_TRUE
+
+        resource.update(
+            self.rsp.desired.resources["usage-gateway-by-traefik"],
+            usagev1beta1.Usage(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="gateway.networking.k8s.io/v1",
+                        kind="Gateway",
+                        resourceRef=usagev1beta1.ResourceRefModel(name=_GATEWAY_NAME),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="helm.m.crossplane.io/v1beta1",
+                        kind="Release",
+                        resourceSelector=usagev1beta1.ResourceSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_RELEASE: "traefik"},
+                        ),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources["usage-gateway-by-traefik"].ready = fnv1.READY_TRUE

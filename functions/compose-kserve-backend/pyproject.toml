@@ -13,6 +13,7 @@ dependencies = [
   "click>=8.1.0",
   "grpcio>=1.73.1",
   "crossplane-models",
+  "pyyaml>=6.0",
 ]
 
 [tool.uv.sources]

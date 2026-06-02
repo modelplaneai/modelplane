@@ -60,8 +60,9 @@ kind: Namespace
 metadata:
   name: modelplane-system
 ---
-# Grant Crossplane permissions to compose Gateway API, MetalLB, and Usage
-# resources. This ClusterRole is aggregated into Crossplane's role automatically.
+# Grant Crossplane permissions to compose Gateway API, MetalLB, and
+# Service/EndpointSlice routing resources. This ClusterRole is aggregated
+# into Crossplane's role automatically.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -71,6 +72,14 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
+    verbs: ["*"]
+  # Selectorless Service plus EndpointSlice composed by ModelEndpoint to route
+  # the control plane gateway to a remote model endpoint.
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["*"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
     verbs: ["*"]
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["gateways", "gatewayclasses", "httproutes"]

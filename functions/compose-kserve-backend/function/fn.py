@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import grpc
+import yaml
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
@@ -54,7 +55,9 @@ _KEDA_REPO = "https://kedacore.github.io/charts"
 
 # Gateway API Inference Extension CRDs (InferenceModel, InferencePool).
 # Not part of any Helm chart — applied as raw provider-kubernetes Objects.
-_INFERENCE_EXTENSION_CRDS = json.loads((_HERE / "inference_extension_crds.json").read_text())
+_INFERENCE_EXTENSION_CRDS = [
+    doc for doc in yaml.safe_load_all((_HERE / "inference_extension_crds.yaml").read_text()) if doc
+]
 
 # KServe storage initializer config override. Enables modelcar support
 # for model caching, which the default KServe config doesn't include.
