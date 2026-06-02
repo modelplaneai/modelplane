@@ -1,13 +1,13 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: kservebackends.infrastructure.modelplane.ai
+  name: servingstacks.infrastructure.modelplane.ai
 spec:
   compositeTypeRef:
     apiVersion: infrastructure.modelplane.ai/v1alpha1
-    kind: KServeBackend
+    kind: ServingStack
   mode: Pipeline
   pipeline:
   - functionRef:
-      name: modelplane-modelplanecompose-kserve-backend
-    step: compose-kserve-backend
+      name: modelplane-modelplanecompose-serving-stack
+    step: compose-serving-stack

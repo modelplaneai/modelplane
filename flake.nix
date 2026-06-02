@@ -59,7 +59,7 @@
         "compose-inference-class"
         "compose-inference-cluster"
         "compose-inference-gateway"
-        "compose-kserve-backend"
+        "compose-serving-stack"
         "compose-model-deployment"
         "compose-model-endpoint"
         "compose-model-replica"

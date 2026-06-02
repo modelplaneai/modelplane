@@ -18,7 +18,7 @@ import yaml
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
-from models.ai.modelplane.infrastructure.kservebackend import v1alpha1
+from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
@@ -258,7 +258,7 @@ class Composer:
     def __init__(self, req, rsp):
         self.req = req
         self.rsp = rsp
-        self.xr = v1alpha1.KServeBackend(**resource.struct_to_dict(req.observed.composite.resource))
+        self.xr = v1alpha1.ServingStack(**resource.struct_to_dict(req.observed.composite.resource))
 
     def compose(self):
         if not self.compose_provider_configs():

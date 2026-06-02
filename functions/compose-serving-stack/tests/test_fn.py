@@ -1,4 +1,4 @@
-"""Tests for the compose-kserve-backend function."""
+"""Tests for the compose-serving-stack function."""
 
 import unittest
 
@@ -8,7 +8,7 @@ from function import fn
 from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format
 from google.protobuf import struct_pb2 as structpb
-from models.ai.modelplane.infrastructure.kservebackend import v1alpha1
+from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 
@@ -978,7 +978,7 @@ def _base_request() -> fnv1.RunFunctionRequest:
         observed=fnv1.State(
             composite=fnv1.Resource(
                 resource=resource.dict_to_struct(
-                    v1alpha1.KServeBackend(
+                    v1alpha1.ServingStack(
                         metadata=metav1.ObjectMeta(
                             name="test-backend",
                             namespace="test-ns",

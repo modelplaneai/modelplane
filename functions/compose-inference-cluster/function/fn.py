@@ -2,7 +2,7 @@
 
 This function orchestrates the internal XRs that make up an inference
 cluster. It dispatches on the cluster source (GKE, Existing) to determine
-how the cluster is obtained, then composes a KServeBackend on it.
+how the cluster is obtained, then composes a ServingStack on it.
 
 GPU node pools reference InferenceClasses. For provisioned (GKE)
 clusters the class's provisioning block describes how to build the pool;
@@ -23,7 +23,7 @@ from models.ai.modelplane.inferenceclass import v1alpha1 as iclv1alpha1
 from models.ai.modelplane.inferencecluster import v1alpha1
 from models.ai.modelplane.infrastructure.ekscluster import v1alpha1 as eksv1alpha1
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
-from models.ai.modelplane.infrastructure.kservebackend import v1alpha1 as kssv1alpha1
+from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alpha1
 from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
@@ -52,14 +52,14 @@ CONDITION_REASON_INSTALLING = "Installing"
 CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 
 # Composed resource key for the backend XR.
-BACKEND_RESOURCE_KEY = "kserve-backend"
+BACKEND_RESOURCE_KEY = "serving-stack"
 
 # Secret types that couple compose-gke-cluster (writer) to this function
-# (reader) and compose-kserve-backend (reader).
+# (reader) and compose-serving-stack (reader).
 _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
 _SECRET_TYPE_GCP_SA_KEY = "GCPServiceAccountKey"
 
-# The modelplane-system namespace. Used for the KServeBackend XR,
+# The modelplane-system namespace. Used for the ServingStack XR,
 # ClusterProviderConfig secretRefs, and status.namespace.
 _NAMESPACE_SYSTEM = "modelplane-system"
 
@@ -173,7 +173,7 @@ class Composer:
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready, backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_kserve_backend(backend_secrets)
+                self.compose_serving_stack(backend_secrets)
             self.compose_gke_usage()
 
         if gke_ready:
@@ -234,28 +234,28 @@ class Composer:
         self.compose_cluster_provider_config(existing.secretRef.name, existing.secretRef.key, sa_key=identity)
 
         backend_secrets = [
-            kssv1alpha1.Secret(type=_SECRET_TYPE_KUBECONFIG, name=existing.secretRef.name, key=existing.secretRef.key),
+            ssv1alpha1.Secret(type=_SECRET_TYPE_KUBECONFIG, name=existing.secretRef.name, key=existing.secretRef.key),
         ]
         if identity:
             backend_secrets.append(
-                kssv1alpha1.Secret(type=_SECRET_TYPE_GCP_SA_KEY, name=identity.name, key=identity.key),
+                ssv1alpha1.Secret(type=_SECRET_TYPE_GCP_SA_KEY, name=identity.name, key=identity.key),
             )
-        self.compose_kserve_backend(backend_secrets)
+        self.compose_serving_stack(backend_secrets)
 
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=True)
 
-    def compose_kserve_backend(self, backend_secrets: list[kssv1alpha1.Secret]):
-        """Compose a KServeBackend XR with the given secrets."""
+    def compose_serving_stack(self, backend_secrets: list[ssv1alpha1.Secret]):
+        """Compose a ServingStack XR with the given secrets."""
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
-            kssv1alpha1.KServeBackend(
+            ssv1alpha1.ServingStack(
                 metadata=metav1.ObjectMeta(
-                    name=resource.child_name(self.xr.metadata.name, "kserve"),
+                    name=resource.child_name(self.xr.metadata.name, "serving-stack"),
                     namespace=_NAMESPACE_SYSTEM,
                 ),
-                spec=kssv1alpha1.Spec(
-                    versions=kssv1alpha1.Versions(kserve=KSERVE_VERSION),
+                spec=ssv1alpha1.Spec(
+                    versions=ssv1alpha1.Versions(kserve=KSERVE_VERSION),
                     secrets=backend_secrets,
                 ),
             ),
@@ -529,7 +529,7 @@ class Composer:
                     ),
                     by=usagev1beta1.By(
                         apiVersion="infrastructure.modelplane.ai/v1alpha1",
-                        kind="KServeBackend",
+                        kind="ServingStack",
                         resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
                     ),
                     replayDeletion=True,
@@ -538,14 +538,14 @@ class Composer:
         )
         self.rsp.desired.resources["usage-gke-by-backend"].ready = fnv1.READY_TRUE
 
-    def resolve_gke_backend_secrets(self, gke_ready, backend_exists) -> list[kssv1alpha1.Secret] | None:
+    def resolve_gke_backend_secrets(self, gke_ready, backend_exists) -> list[ssv1alpha1.Secret] | None:
         """Resolve secrets for the backend from GKECluster status. Falls
         back to the observed backend's spec.secrets if GKECluster secrets aren't
         available but the backend already exists."""
         gke_secrets = self.observed_gke_secrets()
 
         if gke_ready and gke_secrets:
-            return [kssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in gke_secrets]
+            return [ssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in gke_secrets]
 
         if backend_exists:
             observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
@@ -553,7 +553,7 @@ class Composer:
                 d = resource.struct_to_dict(observed.resource)
                 observed_secrets = d.get("spec", {}).get("secrets", [])
                 if observed_secrets:
-                    return [kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
+                    return [ssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
 
         return None
 
