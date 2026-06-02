@@ -161,9 +161,11 @@ The ModelDeployment's composition function creates ModelReplicas. Don't create
 them directly.
 
 Each replica represents a model deployed to a specific cluster. It reads the
-worker template and topology, finds the engine container, and composes a KServe
-`LLMInferenceService` on the remote cluster. For multi-node serving (pipeline >
-1), it uses LeaderWorkerSet via KServe.
+worker template and topology, finds the engine container, and composes the
+serving workload by topology: a native Kubernetes Deployment + Service +
+HTTPRoute for a single self-contained pod (pipeline = 1), or an llm-d
+LeaderWorkerSet with Gateway API Inference Extension routing (InferencePool +
+endpoint picker) for multi-pod deployments (pipeline > 1).
 
 ## ModelEndpoint
 

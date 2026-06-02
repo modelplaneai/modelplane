@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "compose-inference-cluster"
 version = "0.0.0"
-description = "Compose an InferenceCluster from a cluster source and KServe backend."
+description = "Compose an InferenceCluster from a cluster source and serving stack."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [

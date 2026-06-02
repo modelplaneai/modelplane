@@ -2,7 +2,7 @@
 #
 # Modelplane provisions the full GKE cluster (VPC, subnet, system pool,
 # GPU pools, service account, IAM bindings) and installs the inference
-# stack (cert-manager, Envoy Gateway, Prometheus, KEDA, LeaderWorkerSet).
+# stack (cert-manager, Envoy Gateway, Prometheus, LeaderWorkerSet, Gateway API Inference Extension).
 #
 # The system pool that hosts control-plane components is provisioned
 # automatically and is not declared here. Only GPU pools - each
