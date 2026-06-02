@@ -37,9 +37,6 @@ _LABEL_REPLICA = "modelplane.ai/replica"
 _LABEL_DEPLOYMENT = "modelplane.ai/deployment"
 _LABEL_VALUE_TRUE = "true"
 
-# Namespace for LLMInferenceService on remote clusters.
-_NAMESPACE_REMOTE = "default"
-
 # Scheme for gateway-facing URLs. Traffic between the control plane gateway
 # and remote cluster gateways uses plain HTTP; TLS terminates at the edge.
 _GATEWAY_SCHEME = "http"
@@ -197,9 +194,9 @@ class Composer:
         Endpoints are labeled with the deployment name so a ModelService
         can select them. The URL points at the per-replica path on the
         remote cluster's gateway. The rewritePath tells ModelService what
-        URL prefix to rewrite to on the remote cluster — today this is
-        KServe's LLMInferenceService path convention. Once KServe is
-        replaced, this becomes a simpler /v1/.
+        URL prefix to rewrite to on the remote cluster. The path follows
+        the backend HTTPRoute convention: /<namespace>/<deployment-name>/,
+        matching the HTTPRoute emitted by compose-model-replica's backends.
 
         Replicas pinned to clusters that are currently unavailable (no
         gateway address) get no endpoint. Routing must not direct
@@ -207,8 +204,8 @@ class Composer:
         gateway address is observed again the endpoint will be composed
         on the next reconcile.
         """
-        llmis = resource.child_name(self.xr.metadata.name)
-        rewrite_path = f"/{_NAMESPACE_REMOTE}/{llmis}/"
+        deployment_name = self.xr.metadata.name
+        rewrite_path = f"/{self.xr.metadata.namespace}/{deployment_name}/"
 
         for cluster_info in matched:
             if not cluster_info.gateway_address:

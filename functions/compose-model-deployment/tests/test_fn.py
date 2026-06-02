@@ -149,8 +149,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/default/my-model-98ad2/v1",
-                                    "rewritePath": "/default/my-model-98ad2/",
+                                    "url": "http://10.0.0.1/ml-team/my-model/v1",
+                                    "rewritePath": "/ml-team/my-model/",
                                 },
                             }
                         ),
@@ -390,8 +390,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/default/my-model-98ad2/v1",
-                                    "rewritePath": "/default/my-model-98ad2/",
+                                    "url": "http://10.0.0.1/ml-team/my-model/v1",
+                                    "rewritePath": "/ml-team/my-model/",
                                 },
                             }
                         ),
@@ -638,8 +638,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.2/default/my-model-98ad2/v1",
-                                    "rewritePath": "/default/my-model-98ad2/",
+                                    "url": "http://10.0.0.2/ml-team/my-model/v1",
+                                    "rewritePath": "/ml-team/my-model/",
                                 },
                             }
                         ),
