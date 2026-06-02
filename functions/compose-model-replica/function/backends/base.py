@@ -67,5 +67,10 @@ class Backend(Protocol):
         cluster: icv1alpha1.InferenceCluster,
         deployment_name: str,
     ) -> dict[str, ComposedResource]:
-        """Return a mapping of response resource-key -> composed resource."""
+        """Return a mapping of response resource-key -> composed resource.
+
+        The caller (fn.py) must pass a cluster whose
+        ``status.providerConfigRef.name`` is populated; backends read it to
+        target the remote cluster and do not re-default it.
+        """
         ...
