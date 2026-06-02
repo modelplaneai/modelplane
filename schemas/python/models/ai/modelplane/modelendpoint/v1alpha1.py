@@ -49,7 +49,7 @@ class Spec(BaseModel):
     """
     rewritePath: Optional[str] = None
     """
-    Path prefix that requests should be rewritten to when routed through this endpoint. Used by ModelService to configure URLRewrite on its HTTPRoute. For Modelplane- composed endpoints this is the LLMInferenceService path on the remote cluster, e.g. /default/qwen-demo/.
+    Path prefix that requests should be rewritten to when routed through this endpoint. Used by ModelService to configure URLRewrite on its HTTPRoute. For Modelplane- composed endpoints this is the per-replica serving path on the remote cluster's gateway, e.g. /ml-team/qwen-demo/.
     """
     url: constr(min_length=1)
     """
