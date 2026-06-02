@@ -1,10 +1,11 @@
-"""Install KServe and supporting components on a remote cluster.
+"""Install the serving substrate on a remote cluster.
 
-This function composes the full KServe inference backend on a GKE cluster:
-cert-manager, Envoy Gateway, LeaderWorkerSet, KServe CRDs and controller,
-inference extension CRDs, and a Gateway. Resources are composed as Helm
-releases and provider-kubernetes Objects, all targeting the remote cluster
-via ProviderConfigs.
+This function composes the serving substrate (the cluster-side CRDs,
+controllers, and gateway) that the native and llm-d model-serving backends
+depend on: cert-manager, Envoy Gateway, Prometheus, LeaderWorkerSet, the
+Gateway API Inference Extension CRDs, and an inference Gateway. Resources are
+composed as Helm releases and provider-kubernetes Objects, all targeting the
+remote cluster via ProviderConfigs.
 
 Usage resources protect ProviderConfigs from premature deletion during
 teardown, ensuring Helm releases can uninstall before losing connectivity.
@@ -48,57 +49,16 @@ _PROMETHEUS_URL = f"http://{_PROMETHEUS_FULLNAME_OVERRIDE}-prometheus.{_PROMETHE
 _PROMETHEUS_CHART = "kube-prometheus-stack"
 _PROMETHEUS_REPO = "https://prometheus-community.github.io/helm-charts"
 
-# KEDA constants.
-_KEDA_NAMESPACE = "keda"
-_KEDA_CHART = "keda"
-_KEDA_REPO = "https://kedacore.github.io/charts"
-
-# Gateway API Inference Extension CRDs (InferenceModel, InferencePool).
-# Not part of any Helm chart — applied as raw provider-kubernetes Objects.
+# Gateway API Inference Extension CRDs. Not part of any Helm chart — applied
+# as raw provider-kubernetes Objects.
+# TODO(servingstack): refresh inference_extension_crds to GAIE v1.5.0
+# (InferencePool inference.networking.k8s.io/v1 + InferenceObjective
+# inference.networking.x-k8s.io/v1alpha2, renamed from InferenceModel) —
+# verify against the v1.5.0 release. The bundled file is still the old
+# InferenceModel/InferencePool v1alpha2 set.
 _INFERENCE_EXTENSION_CRDS = [
     doc for doc in yaml.safe_load_all((_HERE / "inference_extension_crds.yaml").read_text()) if doc
 ]
-
-# KServe storage initializer config override. Enables modelcar support
-# for model caching, which the default KServe config doesn't include.
-_STORAGE_INITIALIZER_CONFIG = json.dumps(
-    {
-        "image": "kserve/storage-initializer:latest",
-        "memoryRequest": "100Mi",
-        "memoryLimit": "4Gi",
-        "cpuRequest": "100m",
-        "cpuLimit": "1",
-        "caBundleConfigMapName": "",
-        "caBundleVolumeMountPath": "/etc/ssl/custom-certs",
-        "enableModelcar": True,
-        "cpuModelcar": "10m",
-        "memoryModelcar": "15Mi",
-        "uidModelcar": 1010,
-    }
-)
-
-# Kustomize patch applied via Helm's patchesFrom to override the
-# inferenceservice-config ConfigMap with the storage initializer config.
-_KUSTOMIZE_STORAGE_PATCH = json.dumps(
-    {
-        "patches": [
-            {
-                "patch": json.dumps(
-                    {
-                        "apiVersion": "v1",
-                        "kind": "ConfigMap",
-                        "metadata": {"name": "inferenceservice-config"},
-                        "data": {"storageInitializer": _STORAGE_INITIALIZER_CONFIG},
-                    }
-                ),
-                "target": {
-                    "kind": "ConfigMap",
-                    "name": "inferenceservice-config",
-                },
-            }
-        ],
-    }
-)
 
 
 def _helm_release(
@@ -220,17 +180,6 @@ def _prometheus_release(version: str, provider_config: str) -> helmv1beta1.Relea
     )
 
 
-def _keda_release(version: str, provider_config: str) -> helmv1beta1.Release:
-    """Build a KEDA Helm release for a backend cluster."""
-    return _helm_release(
-        chart=_KEDA_CHART,
-        repo=_KEDA_REPO,
-        version=version,
-        namespace=_KEDA_NAMESPACE,
-        provider_config=provider_config,
-    )
-
-
 def _pc_name(xr):
     """Derive the ProviderConfig name from the XR."""
     return resource.child_name(xr.metadata.name, "cluster")
@@ -267,12 +216,9 @@ class Composer:
         self.compose_cert_manager()
         self.compose_envoy_gateway()
         self.compose_prometheus()
-        self.compose_keda()
         self.compose_leader_worker_set()
         self.compose_inference_ext_crds()
         self.compose_gateway()
-        self.compose_kserve()
-        self.compose_storage_patch()
         self.write_status()
         self.mark_readiness()
 
@@ -468,37 +414,6 @@ class Composer:
         )
         self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
 
-        # KServe CRD Release protected by the KServe resources Release. The
-        # resources chart installs LLMInferenceServiceConfig CRs whose CRD the
-        # CRD chart owns. On teardown the CRs must be deleted before their CRD;
-        # otherwise the resources Release's uninstall fails (the CR's kind no
-        # longer resolves) and hangs. Holding the CRD Release until the
-        # resources Release is gone enforces that order.
-        resource.update(
-            self.rsp.desired.resources["usage-kserve-crds-by-controller"],
-            usagev1beta1.Usage(
-                spec=usagev1beta1.Spec(
-                    of=usagev1beta1.Of(
-                        apiVersion="helm.m.crossplane.io/v1beta1",
-                        kind="Release",
-                        resourceSelector=usagev1beta1.ResourceSelectorModel(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "kserve-crds"},
-                        ),
-                    ),
-                    by=usagev1beta1.By(
-                        apiVersion="helm.m.crossplane.io/v1beta1",
-                        kind="Release",
-                        resourceSelector=usagev1beta1.ResourceSelector(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "kserve-controller"},
-                        ),
-                    ),
-                    replayDeletion=True,
-                ),
-            ),
-        )
-        self.rsp.desired.resources["usage-kserve-crds-by-controller"].ready = fnv1.READY_TRUE
 
     def compose_cert_manager(self):
         """Compose cert-manager. Gated on ProviderConfigs being observed."""
@@ -556,25 +471,6 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["prometheus"],
             _prometheus_release(v.prometheus, _pc_name(self.xr)),
-        )
-
-    def compose_keda(self):
-        """Compose KEDA. Gated on ProviderConfigs being observed AND
-        cert-manager being ready. KEDA uses admission webhooks that require
-        cert-manager for TLS."""
-        pc_observed = self.provider_configs_observed()
-        cert_manager_ready = (
-            resource.get_condition(self.req.observed.resources.get("cert-manager"), "Ready").status == "True"
-        )
-        gate = pc_observed and cert_manager_ready
-
-        if not (gate or "keda" in self.req.observed.resources):
-            return
-
-        v = self.xr.spec.versions or v1alpha1.Versions()
-        resource.update(
-            self.rsp.desired.resources["keda"],
-            _keda_release(v.keda, _pc_name(self.xr)),
         )
 
     def compose_leader_worker_set(self):
@@ -652,8 +548,8 @@ class Composer:
                         "apiVersion": "gateway.networking.k8s.io/v1",
                         "kind": "Gateway",
                         "metadata": {
-                            "name": "kserve-ingress-gateway",
-                            "namespace": "kserve",
+                            "name": "inference-gateway",
+                            "namespace": "modelplane-system",
                         },
                         "spec": {
                             "gatewayClassName": gw.className,
@@ -669,82 +565,6 @@ class Composer:
                     metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "gateway"}),
                 ),
             )
-
-    def compose_kserve(self):
-        """Compose KServe CRDs and controller. Gated on ProviderConfigs being
-        observed AND cert-manager being ready. The kserve chart creates
-        Certificate and Issuer resources, and the kserve controller registers a
-        validating webhook that Helm calls during install. Both fail if
-        cert-manager isn't fully up."""
-        pc_observed = self.provider_configs_observed()
-        cert_manager_ready = (
-            resource.get_condition(self.req.observed.resources.get("cert-manager"), "Ready").status == "True"
-        )
-        gate = pc_observed and cert_manager_ready
-
-        v = self.xr.spec.versions or v1alpha1.Versions()
-        pc = _pc_name(self.xr)
-
-        if gate or "kserve-crds" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["kserve-crds"],
-                _helm_release(
-                    chart="kserve-llmisvc-crd",
-                    repo="oci://ghcr.io/kserve/charts",
-                    version=v.kserve,
-                    namespace="kserve",
-                    provider_config=pc,
-                    labels={_LABEL_RESOURCE: "kserve-crds"},
-                ),
-            )
-
-        if gate or "kserve-controller" in self.req.observed.resources:
-            patch_cm_name = resource.child_name(self.xr.metadata.name, "storage-patch")
-            kserve_release = _helm_release(
-                chart="kserve-llmisvc-resources",
-                repo="oci://ghcr.io/kserve/charts",
-                version=v.kserve,
-                namespace="kserve",
-                provider_config=pc,
-                labels={_LABEL_RESOURCE: "kserve-controller"},
-            )
-            kserve_release.spec.forProvider.patchesFrom = [
-                helmv1beta1.PatchesFromItem(
-                    configMapKeyRef=helmv1beta1.ConfigMapKeyRef(
-                        name=patch_cm_name,
-                        namespace=self.xr.metadata.namespace,
-                        key="patches",
-                    ),
-                ),
-            ]
-            resource.update(self.rsp.desired.resources["kserve-controller"], kserve_release)
-
-        # Transition: cert-manager is ready, KServe not yet composed.
-        if not cert_manager_ready:
-            return
-        if resource.get_condition(self.req.observed.resources.get("kserve-controller"), "Ready").status == "True":
-            return
-        if "kserve-controller" in self.req.observed.resources:
-            return
-        response.normal(self.rsp, "cert-manager ready, composing KServe")
-
-    def compose_storage_patch(self):
-        """Compose the storage initializer config patch ConfigMap. This is a
-        local resource (not remote), so it's not gated."""
-        resource.update(
-            self.rsp.desired.resources["kserve-storage-patch"],
-            {
-                "apiVersion": "v1",
-                "kind": "ConfigMap",
-                "metadata": {
-                    "name": resource.child_name(self.xr.metadata.name, "storage-patch"),
-                    "namespace": self.xr.metadata.namespace,
-                },
-                "data": {
-                    "patches": _KUSTOMIZE_STORAGE_PATCH,
-                },
-            },
-        )
 
     def write_status(self):
         """Extract the gateway address from the observed Gateway Object and
@@ -777,7 +597,6 @@ class Composer:
         always_ready = [
             "provider-config-kubernetes",
             "provider-config-helm",
-            "kserve-storage-patch",
         ]
         for r in always_ready:
             if r in self.rsp.desired.resources:
@@ -787,10 +606,7 @@ class Composer:
             "cert-manager",
             "envoy-gateway",
             "prometheus",
-            "keda",
             "leader-worker-set",
-            "kserve-crds",
-            "kserve-controller",
             "inference-ext-crd-inferencemodels",
             "inference-ext-crd-inferencepools",
             "gateway-class",

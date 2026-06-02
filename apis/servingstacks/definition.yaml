@@ -17,21 +17,21 @@ spec:
   - name: v1alpha1
     referenceable: true
     additionalPrinterColumns:
-    - name: KSERVE
+    - name: GAIE
       type: string
-      jsonPath: .spec.versions.kserve
+      jsonPath: .spec.versions.gatewayApiInferenceExtension
     - name: GATEWAY
       type: string
       jsonPath: .status.gateway.address
     schema:
       openAPIV3Schema:
         description: >-
-          A ServingStack installs the serving backend on a Kubernetes
-          cluster, including cert-manager, Gateway API, Envoy Gateway,
-          LeaderWorkerSet, and KServe itself.
+          A ServingStack installs the serving substrate (LeaderWorkerSet,
+          Gateway API + Inference Extension, cert-manager, Prometheus) on a
+          Kubernetes cluster.
         properties:
           spec:
-            description: KServeBackendSpec defines the desired state of KServeBackend.
+            description: ServingStackSpec defines the desired state of ServingStack.
             required:
             - secrets
             properties:
@@ -40,7 +40,7 @@ spec:
                 description: >-
                   Secrets used to authenticate to the target cluster. Typically
                   sourced from a GKECluster's status.secrets. All secrets must
-                  be in the same namespace as this KServeBackend. A Kubeconfig
+                  be in the same namespace as this ServingStack. A Kubeconfig
                   secret is required. If a cloud-specific credential secret is
                   present (e.g. GCPServiceAccountKey), the ProviderConfigs
                   will use it for identity-based authentication instead of
@@ -77,10 +77,16 @@ spec:
                   tested combination. Override individual versions to upgrade
                   components independently.
                 properties:
-                  kserve:
+                  gatewayApiInferenceExtension:
                     type: string
-                    default: "v0.16.0"
-                    description: KServe LLMInferenceService chart version.
+                    default: "v1.5.0"
+                    description: Gateway API Inference Extension version.
+                    minLength: 1
+                    maxLength: 32
+                  gatewayApi:
+                    type: string
+                    default: "v1.5.1"
+                    description: Gateway API CRD version.
                     minLength: 1
                     maxLength: 32
                   certManager:
@@ -95,12 +101,6 @@ spec:
                     description: Envoy Gateway chart version.
                     minLength: 1
                     maxLength: 32
-                  keda:
-                    type: string
-                    default: "2.17.1"
-                    description: KEDA chart version.
-                    minLength: 1
-                    maxLength: 32
                   prometheus:
                     type: string
                     default: "72.6.2"
@@ -109,7 +109,7 @@ spec:
                     maxLength: 32
                   leaderWorkerSet:
                     type: string
-                    default: "v0.7.0"
+                    default: "v0.8.0"
                     description: LeaderWorkerSet chart version.
                     minLength: 1
                     maxLength: 32
@@ -160,7 +160,7 @@ spec:
                           - TCP
             type: object
           status:
-            description: KServeBackendStatus defines the observed state of KServeBackend.
+            description: ServingStackStatus defines the observed state of ServingStack.
             properties:
               gateway:
                 type: object

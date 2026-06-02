@@ -158,7 +158,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
-                                    "versions": {},
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",
@@ -406,7 +405,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
-                                    "versions": {},
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",

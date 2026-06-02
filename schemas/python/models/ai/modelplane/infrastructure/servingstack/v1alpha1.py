@@ -92,15 +92,17 @@ class Versions(BaseModel):
     """
     Envoy Gateway chart version.
     """
-    keda: Optional[constr(min_length=1, max_length=32)] = '2.17.1'
+    gatewayApi: Optional[constr(min_length=1, max_length=32)] = 'v1.5.1'
     """
-    KEDA chart version.
+    Gateway API CRD version.
     """
-    kserve: Optional[constr(min_length=1, max_length=32)] = 'v0.16.0'
+    gatewayApiInferenceExtension: Optional[constr(min_length=1, max_length=32)] = (
+        'v1.5.0'
+    )
     """
-    KServe LLMInferenceService chart version.
+    Gateway API Inference Extension version.
     """
-    leaderWorkerSet: Optional[constr(min_length=1, max_length=32)] = 'v0.7.0'
+    leaderWorkerSet: Optional[constr(min_length=1, max_length=32)] = 'v0.8.0'
     """
     LeaderWorkerSet chart version.
     """
@@ -121,7 +123,7 @@ class Spec(BaseModel):
     """
     secrets: List[Secret] = Field(..., min_length=1)
     """
-    Secrets used to authenticate to the target cluster. Typically sourced from a GKECluster's status.secrets. All secrets must be in the same namespace as this KServeBackend. A Kubeconfig secret is required. If a cloud-specific credential secret is present (e.g. GCPServiceAccountKey), the ProviderConfigs will use it for identity-based authentication instead of relying on the kubeconfig's embedded credentials.
+    Secrets used to authenticate to the target cluster. Typically sourced from a GKECluster's status.secrets. All secrets must be in the same namespace as this ServingStack. A Kubeconfig secret is required. If a cloud-specific credential secret is present (e.g. GCPServiceAccountKey), the ProviderConfigs will use it for identity-based authentication instead of relying on the kubeconfig's embedded credentials.
     """
     versions: Optional[Versions] = None
     """
@@ -173,11 +175,11 @@ class ServingStack(BaseModel):
     """
     spec: Spec
     """
-    KServeBackendSpec defines the desired state of KServeBackend.
+    ServingStackSpec defines the desired state of ServingStack.
     """
     status: Optional[Status] = None
     """
-    KServeBackendStatus defines the observed state of KServeBackend.
+    ServingStackStatus defines the observed state of ServingStack.
     """
 
 

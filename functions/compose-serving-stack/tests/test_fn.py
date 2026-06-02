@@ -16,12 +16,8 @@ def setUpModule() -> None:
     logging.configure(level=logging.Level.DISABLED)
 
 
-# The kustomize storage patch value, as it appears in function output.
-_KUSTOMIZE_STORAGE_PATCH = '{"patches": [{"patch": "{\\"apiVersion\\": \\"v1\\", \\"kind\\": \\"ConfigMap\\", \\"metadata\\": {\\"name\\": \\"inferenceservice-config\\"}, \\"data\\": {\\"storageInitializer\\": \\"{\\\\\\"image\\\\\\": \\\\\\"kserve/storage-initializer:latest\\\\\\", \\\\\\"memoryRequest\\\\\\": \\\\\\"100Mi\\\\\\", \\\\\\"memoryLimit\\\\\\": \\\\\\"4Gi\\\\\\", \\\\\\"cpuRequest\\\\\\": \\\\\\"100m\\\\\\", \\\\\\"cpuLimit\\\\\\": \\\\\\"1\\\\\\", \\\\\\"caBundleConfigMapName\\\\\\": \\\\\\"\\\\\\", \\\\\\"caBundleVolumeMountPath\\\\\\": \\\\\\"/etc/ssl/custom-certs\\\\\\", \\\\\\"enableModelcar\\\\\\": true, \\\\\\"cpuModelcar\\\\\\": \\\\\\"10m\\\\\\", \\\\\\"memoryModelcar\\\\\\": \\\\\\"15Mi\\\\\\", \\\\\\"uidModelcar\\\\\\": 1010}\\"}}", "target": {"kind": "ConfigMap", "name": "inferenceservice-config"}}]}'
-
 # Precomputed child_name values for test-backend.
 _PC_NAME = "test-backend-cluster-63fde"
-_STORAGE_PATCH_NAME = "test-backend-storage-patch-bc0a3"
 
 # The InferenceModel CRD manifest, used in cases 2 and 3.
 _INFERENCE_MODEL_CRD = {
@@ -648,40 +644,6 @@ _USAGE_GATEWAY_CLASS_BY_GATEWAY = {
     },
 }
 
-_USAGE_KSERVE_CRDS_BY_CONTROLLER = {
-    "apiVersion": "protection.crossplane.io/v1beta1",
-    "kind": "Usage",
-    "spec": {
-        "by": {
-            "apiVersion": "helm.m.crossplane.io/v1beta1",
-            "kind": "Release",
-            "resourceSelector": {
-                "matchControllerRef": True,
-                "matchLabels": {"modelplane.ai/resource": "kserve-controller"},
-            },
-        },
-        "of": {
-            "apiVersion": "helm.m.crossplane.io/v1beta1",
-            "kind": "Release",
-            "resourceSelector": {
-                "matchControllerRef": True,
-                "matchLabels": {"modelplane.ai/resource": "kserve-crds"},
-            },
-        },
-        "replayDeletion": True,
-    },
-}
-
-_KSERVE_STORAGE_PATCH = {
-    "apiVersion": "v1",
-    "kind": "ConfigMap",
-    "metadata": {
-        "name": _STORAGE_PATCH_NAME,
-        "namespace": "test-ns",
-    },
-    "data": {"patches": _KUSTOMIZE_STORAGE_PATCH},
-}
-
 _CERT_MANAGER = {
     "apiVersion": "helm.m.crossplane.io/v1beta1",
     "kind": "Release",
@@ -748,8 +710,8 @@ _GATEWAY = {
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "Gateway",
                 "metadata": {
-                    "name": "kserve-ingress-gateway",
-                    "namespace": "kserve",
+                    "name": "inference-gateway",
+                    "namespace": "modelplane-system",
                 },
                 "spec": {
                     "gatewayClassName": "envoy",
@@ -833,7 +795,7 @@ _LEADER_WORKER_SET = {
             "chart": {
                 "name": "lws",
                 "repository": "oci://registry.k8s.io/lws/charts",
-                "version": "v0.7.0",
+                "version": "v0.8.0",
             },
             "namespace": "lws-system",
         },
@@ -904,73 +866,6 @@ _PROMETHEUS = {
     },
 }
 
-_KSERVE_CRDS = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"labels": {"modelplane.ai/resource": "kserve-crds"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "kserve-llmisvc-crd",
-                "repository": "oci://ghcr.io/kserve/charts",
-                "version": "v0.16.0",
-            },
-            "namespace": "kserve",
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_KSERVE_CONTROLLER = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"labels": {"modelplane.ai/resource": "kserve-controller"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "kserve-llmisvc-resources",
-                "repository": "oci://ghcr.io/kserve/charts",
-                "version": "v0.16.0",
-            },
-            "namespace": "kserve",
-            "patchesFrom": [
-                {
-                    "configMapKeyRef": {
-                        "key": "patches",
-                        "name": _STORAGE_PATCH_NAME,
-                    },
-                },
-            ],
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_KEDA = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "keda",
-                "repository": "https://kedacore.github.io/charts",
-                "version": "2.17.1",
-            },
-            "namespace": "keda",
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
 
 def _base_request() -> fnv1.RunFunctionRequest:
     """Build the base RunFunctionRequest used by all test cases."""
@@ -1004,7 +899,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         cls.runner = fn.FunctionRunner()
 
     async def test_first_pass(self) -> None:
-        """First pass composes provider configs, usages, and storage patch; releases gated."""
+        """First pass composes provider configs and usages; releases gated."""
         req = _base_request()
 
         want = fnv1.RunFunctionResponse(
@@ -1014,10 +909,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     resource=resource.dict_to_struct({"status": {}}),
                 ),
                 resources={
-                    "kserve-storage-patch": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KSERVE_STORAGE_PATCH),
-                        ready=fnv1.READY_TRUE,
-                    ),
                     "provider-config-helm": fnv1.Resource(
                         resource=resource.dict_to_struct(_PROVIDER_CONFIG_HELM),
                         ready=fnv1.READY_TRUE,
@@ -1032,10 +923,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                     "usage-gateway-class-by-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kserve-crds-by-controller": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KSERVE_CRDS_BY_CONTROLLER),
                         ready=fnv1.READY_TRUE,
                     ),
                     "usage-helm-pc": fnv1.Resource(
@@ -1101,10 +988,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     "inference-ext-crd-inferencepools": fnv1.Resource(
                         resource=resource.dict_to_struct(_INFERENCE_EXT_CRD_INFERENCEPOOLS),
                     ),
-                    "kserve-storage-patch": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KSERVE_STORAGE_PATCH),
-                        ready=fnv1.READY_TRUE,
-                    ),
                     "leader-worker-set": fnv1.Resource(
                         resource=resource.dict_to_struct(_LEADER_WORKER_SET),
                     ),
@@ -1125,10 +1008,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                     "usage-gateway-class-by-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kserve-crds-by-controller": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KSERVE_CRDS_BY_CONTROLLER),
                         ready=fnv1.READY_TRUE,
                     ),
                     "usage-helm-pc": fnv1.Resource(
@@ -1152,7 +1031,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_third_pass(self) -> None:
-        """cert-manager ready ungates KServe CRDs, controller, and KEDA; gateway address surfaced."""
+        """Steady state: observed readiness propagates and the gateway address is surfaced."""
         req = _base_request()
         req.observed.resources["provider-config-helm"].CopyFrom(
             fnv1.Resource(
@@ -1223,19 +1102,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     "inference-ext-crd-inferencepools": fnv1.Resource(
                         resource=resource.dict_to_struct(_INFERENCE_EXT_CRD_INFERENCEPOOLS),
                     ),
-                    "keda": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KEDA),
-                    ),
-                    "kserve-controller": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KSERVE_CONTROLLER),
-                    ),
-                    "kserve-crds": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KSERVE_CRDS),
-                    ),
-                    "kserve-storage-patch": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KSERVE_STORAGE_PATCH),
-                        ready=fnv1.READY_TRUE,
-                    ),
                     "leader-worker-set": fnv1.Resource(
                         resource=resource.dict_to_struct(_LEADER_WORKER_SET),
                     ),
@@ -1258,10 +1124,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
                         ready=fnv1.READY_TRUE,
                     ),
-                    "usage-kserve-crds-by-controller": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KSERVE_CRDS_BY_CONTROLLER),
-                        ready=fnv1.READY_TRUE,
-                    ),
                     "usage-helm-pc": fnv1.Resource(
                         resource=resource.dict_to_struct(_USAGE_HELM_PC),
                         ready=fnv1.READY_TRUE,
@@ -1272,12 +1134,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 },
             ),
-            results=[
-                fnv1.Result(
-                    severity=fnv1.SEVERITY_NORMAL,
-                    message="cert-manager ready, composing KServe",
-                ),
-            ],
             context=structpb.Struct(),
         )
 

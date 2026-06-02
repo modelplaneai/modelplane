@@ -11,7 +11,7 @@ that already exist. Either way, the class's resources block populates
 status.capacity.gpuPools so the scheduler can match models.
 
 For provisioned clusters, a system node pool is injected automatically
-to host control-plane components (Envoy Gateway, KEDA, KServe etc.).
+to host control-plane components (Envoy Gateway, Prometheus, etc.).
 The system pool is not exposed in the user-facing API.
 """
 
@@ -29,10 +29,6 @@ from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
 )
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
-
-# KServe version installed on remote clusters. Hardcoded as an internal
-# implementation detail — users don't choose or see this.
-KSERVE_VERSION = "v0.16.0"
 
 # Cluster source discriminator values from the XRD enum.
 CLUSTER_SOURCE_GKE = "GKE"
@@ -254,10 +250,7 @@ class Composer:
                     name=resource.child_name(self.xr.metadata.name, "serving-stack"),
                     namespace=_NAMESPACE_SYSTEM,
                 ),
-                spec=ssv1alpha1.Spec(
-                    versions=ssv1alpha1.Versions(kserve=KSERVE_VERSION),
-                    secrets=backend_secrets,
-                ),
+                spec=ssv1alpha1.Spec(secrets=backend_secrets),
             ),
         )
 
