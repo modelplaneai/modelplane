@@ -22,6 +22,87 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+def _crd_desired_resources(ready: bool) -> dict:
+    """Desired Gateway API CRD resources, built from the same vendored bundle
+    the function composes so the test stays in sync. When ready is True each
+    CRD is marked READY_TRUE, matching a pass where the CRDs are observed as
+    Established."""
+    out = {}
+    for doc in fn._GATEWAY_API_CRDS:
+        key = fn._crd_key(doc)
+        res = fnv1.Resource(resource=resource.dict_to_struct(doc))
+        if ready:
+            res.ready = fnv1.READY_TRUE
+        out[key] = res
+    return out
+
+
+def _crd_observed_resources() -> dict:
+    """Observed Gateway API CRD resources, each reporting Established."""
+    out = {}
+    for doc in fn._GATEWAY_API_CRDS:
+        key = fn._crd_key(doc)
+        observed = {
+            "apiVersion": doc["apiVersion"],
+            "kind": doc["kind"],
+            "status": {"conditions": [{"type": "Established", "status": "True"}]},
+        }
+        out[key] = fnv1.Resource(resource=resource.dict_to_struct(observed))
+    return out
+
+
+def _gateway_usage_resources() -> dict:
+    """The Usages ordering the GatewayClass and Gateway ahead of the Traefik
+    release on teardown."""
+    release_by = {
+        "apiVersion": "helm.m.crossplane.io/v1beta1",
+        "kind": "Release",
+        "resourceSelector": {
+            "matchControllerRef": True,
+            "matchLabels": {"modelplane.ai/release": "traefik"},
+        },
+    }
+    return {
+        "usage-gateway-class-by-traefik": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "apiVersion": "protection.crossplane.io/v1beta1",
+                    "kind": "ClusterUsage",
+                    "spec": {
+                        "of": {
+                            "apiVersion": "gateway.networking.k8s.io/v1",
+                            "kind": "GatewayClass",
+                            "resourceRef": {"name": "traefik"},
+                        },
+                        "by": release_by,
+                        "replayDeletion": True,
+                    },
+                }
+            ),
+            ready=fnv1.READY_TRUE,
+        ),
+        "usage-gateway-by-traefik": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "apiVersion": "protection.crossplane.io/v1beta1",
+                    "kind": "Usage",
+                    "metadata": {"namespace": "modelplane-system"},
+                    "spec": {
+                        "of": {
+                            "apiVersion": "gateway.networking.k8s.io/v1",
+                            "kind": "Gateway",
+                            "resourceRef": {"name": "modelplane"},
+                        },
+                        "by": release_by,
+                        "replayDeletion": True,
+                    },
+                }
+            ),
+            ready=fnv1.READY_TRUE,
+        ),
+    }
+
+
 def setUpModule() -> None:
     logging.configure(level=logging.Level.DISABLED)
 
@@ -37,7 +118,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         """The function composes an InferenceGateway."""
         cases = [
             Case(
-                name="first pass composes provider config only; traefik and gateway are gated",
+                name="first pass composes provider config and gateway api crds; traefik and gateway are gated",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(
@@ -74,6 +155,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 ),
                                 ready=fnv1.READY_TRUE,
                             ),
+                            # CRDs are composed on the first pass but not yet
+                            # observed as Established, so they aren't ready and
+                            # Traefik stays gated.
+                            **_crd_desired_resources(ready=False),
                         },
                     ),
                     conditions=[
@@ -87,7 +172,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             Case(
-                name="second pass with observed provider config and traefik ready composes gateway resources",
+                name="second pass with observed crds and traefik ready composes gateway resources",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(
@@ -147,6 +232,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     }
                                 ),
                             ),
+                            # CRDs observed as Established ungate Traefik.
+                            **_crd_observed_resources(),
                         },
                     ),
                 ),
@@ -209,6 +296,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                     },
                                                     "service": {"nameOverride": "traefik"},
                                                     "gateway": {"enabled": False},
+                                                    "gatewayClass": {"enabled": False},
                                                 },
                                             },
                                         },
@@ -279,6 +367,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 ),
                                 ready=fnv1.READY_TRUE,
                             ),
+                            # CRDs remain composed and are ready now that
+                            # they're observed as Established.
+                            **_crd_desired_resources(ready=True),
+                            # Usages ordering GatewayClass/Gateway ahead of the
+                            # Traefik release on teardown.
+                            **_gateway_usage_resources(),
                         },
                     ),
                     conditions=[
