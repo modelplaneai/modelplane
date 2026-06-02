@@ -54,17 +54,27 @@ single_self_contained_pod(replica) =
     AND not multi_node_data_parallel(replica)
 ```
 
-`nodes_per_worker` is derived from `workers.topology` using the formula already
-in the v0.1 design doc: `pipeline * (data / dataLocal)`. A replica is "just
+`nodes_per_worker` is derived from `workers.topology`. A replica is "just
 Kubernetes" only when it is exactly one pod with no cross-pod coordination.
 
-This **corrects a latent bug** in the current code, which decides multi-node
-with `topology.pipeline > 1` alone. That predicate misroutes:
-- **disaggregated prefill/decode** (the `prefill` block can carry `tensor: 1`,
-  `pipeline` unset → 1, yet it is inherently multi-pod), and
+> **v0.1 implemented topology.** The current `ModelReplica` / `ModelDeployment`
+> CRDs implement only `topology.tensor` and `topology.pipeline` — there is **no
+> `prefill` block and no `data`/`dataLocal`** (those appear in the aspirational
+> `design/design.md` but are not yet in the schema). So in v0.1
+> `nodes_per_worker == pipeline`, and the predicate reduces to **`pipeline == 1`
+> → native, else llm-d**. The dispatcher implements this as a
+> `needs_cross_pod_coordination(replica)` function whose body is `pipeline > 1`
+> today, with documented extension points for the `prefill` and
+> `data`/`dataLocal` clauses below so they drop in unchanged when those fields
+> are added.
+
+When the richer topology lands, the predicate extends to also route to llm-d:
+- **disaggregated prefill/decode** (a `prefill` block is inherently multi-pod
+  even when each role is `tensor: 1`, `pipeline: 1`), and
 - **multi-node data parallelism** (`data > dataLocal` with `pipeline == 1`).
 
-Both must go to llm-d; the corrected predicate routes them correctly.
+This is a known correctness improvement the dispatcher is shaped for, not a bug
+fixable on the v0.1 schema (which cannot yet express those topologies).
 
 ### Why Dynamo selection is capability-driven
 
