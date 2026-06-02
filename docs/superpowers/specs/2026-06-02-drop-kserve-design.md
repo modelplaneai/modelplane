@@ -32,6 +32,45 @@ dispatch abstraction is designed so **Dynamo** slots in later as a third
 multi-pod path without reworking dispatch. Dynamo, `KVOffloadTier` (#72), and
 any in-cluster autoscaling are out of scope for v0.1.
 
+## Revision 2026-06-02 — llm-d v0.7 spike outcomes
+
+The Task 0 verification spike (`docs/superpowers/notes/llm-d-v0.7-surface.md`)
+established facts that supersede some assumptions below. Where this section
+conflicts with text further down, **this section wins.**
+
+**Decisions:**
+- **llm-d workload is rendered as provider-kubernetes `Object`s, not a Helm
+  chart.** llm-d v0.7.0 **deprecated** both the `llm-d-modelservice` and
+  `llm-d-infra` charts. So `llmd.py` composes the serving `Deployment` (or
+  `LeaderWorkerSet` for multi-node) plus the GAIE routing (`InferencePool` +
+  EPP + `HTTPRoute`) directly as `Object`s — the same style as `native.py`. No
+  `provider-helm` is used for the multi-pod workload.
+- **Keep Envoy Gateway**, pending verification that it is GAIE `InferencePool`
+  v1 conformant. `ServingStack` adds GAIE **v1.5.0** CRDs/controller and bumps
+  Gateway API to **v1.5.1**; it does **not** install the deprecated
+  llm-d-infra/modelservice charts.
+
+**Mechanical corrections (apply throughout):**
+- `InferencePool` is GA at **`inference.networking.k8s.io/v1`**; its spec uses
+  **`targetPorts[].number`** (a list) and **`endpointPickerRef`** (name + `port.number`
+  + `failureMode`) — **not** `targetPortNumber` / `extensionRef`.
+- `InferenceObjective` (`inference.networking.x-k8s.io/v1alpha2`) carries only
+  `priority` + `poolRef` — no `modelName`, no `criticality`. The public
+  model-name → pool mapping is the engine's advertised model name plus the
+  `HTTPRoute` whose `backendRef` is the `InferencePool`. **v0.1 omits
+  `InferenceObjective`** (priority is the only thing it adds — YAGNI); routing is
+  `InferencePool` + per-pool EPP + `HTTPRoute`.
+- llm-d serving pods carry the label `llm-d.ai/inference-serving: "true"` (+
+  `llm-d.ai/role`); the `InferencePool.spec.selector` must select that label.
+- The EPP is **per-pool** (GAIE's endpoint-picker image), referenced by the
+  pool's `endpointPickerRef` (default `port.number: 9002`, `failureMode: FailOpen`).
+- Weight loading for the llm-d path is identical to native (we render the pod):
+  no-cache → `--model=org/model` direct fetch with `engine.env` creds; cache →
+  mount the PVC and `--model=/mnt/models`. There is no chart `modelArtifacts.uri`.
+- `ComposedResource` stays `Object | Release`, but in v0.1 **both** replica
+  backends (native, llm-d) return only `Object`s; `Release` remains used by
+  `ServingStack` for the per-cluster component installs.
+
 ## Dispatch model
 
 `compose-model-replica` selects a backend from topology and capabilities. There
@@ -178,11 +217,12 @@ provides the union substrate the dispatch paths depend on.
 | Component | v0.1 | Notes |
 |---|---|---|
 | LeaderWorkerSet | keep | bump **v0.7.0 → v0.8.0** |
-| Gateway API + Inference Extension (GAIE) | keep / add | GAIE GA **v1.0.1**; `InferencePool` v1 |
-| Envoy Gateway | keep | GAIE-conformant in-cluster gateway |
-| cert-manager | keep | webhooks for GAIE / llm-d |
+| Gateway API | keep | bump to **v1.5.1** |
+| Gateway API Inference Extension (GAIE) | **add** | **v1.5.0** CRDs + controller; `InferencePool` GA `v1` |
+| Envoy Gateway | keep | **verify GAIE `InferencePool` v1 conformance** (open item) |
+| cert-manager | keep | webhooks |
 | Prometheus (kube-prometheus-stack) | keep | **observability** (distinct from autoscaling) |
-| llm-d-infra + `llm-d-modelservice` chart | **add** | the multi-pod path |
+| llm-d-infra / llm-d-modelservice charts | **not installed** | deprecated in v0.7; `llmd.py` renders the workload as `Object`s |
 | KServe | **drop** | replaced by direct composition |
 | KEDA | **drop** | autoscaling is fleet-level on the control plane |
 | NVIDIA Dynamo operator | future, flag | added when the Dynamo path lands |
@@ -252,16 +292,21 @@ where a KVBM-backed `KVOffloadTier` eventually triggers the Dynamo path.
 
 | Dependency | Version | Notes |
 |---|---|---|
-| llm-d | v0.7.0 | Helm-based; no operator |
-| `llm-d-modelservice` chart | `llm-d-incubation/llm-d-modelservice` | active path; CRD version archived 2025-07-24 |
-| Gateway API Inference Extension | v1.0.1 (GA) | `InferencePool` v1; `InferenceObjective` (was `InferenceModel`) |
+| llm-d | v0.7.0 | reference release; workload rendered as `Object`s |
+| `llm-d-modelservice` / `llm-d-infra` charts | — | **deprecated in v0.7; not used** |
+| Gateway API Inference Extension | **v1.5.0** | `InferencePool` GA `v1`; `InferenceObjective` `v1alpha2` (omitted in v0.1) |
+| Gateway API | **v1.5.1** | bump |
 | LeaderWorkerSet | v0.8.0 | from v0.7.0 |
 | NVIDIA Dynamo | v1.0 | `DynamoGraphDeployment` `nvidia.com/v1alpha1` (future) |
-| cert-manager | (carry current pin) | verify GAIE/llm-d webhook needs |
-| Envoy Gateway | (carry current pin) | confirm GAIE-conformant version |
+| cert-manager | (carry current pin) | webhooks |
+| Envoy Gateway | (carry current pin) | **verify InferencePool v1 conformance** |
 | kube-prometheus-stack | (carry current pin) | observability |
 
-llm-d requires Kubernetes 1.30+ / Helm 3.12+; GAIE requires 1.29+. These are
+Spike-recorded alternatives considered for the gateway: **agentgateway v2.2.1**
+(llm-d v0.7's preferred GAIE-conformant gateway) and **Istio 1.29.1**. We keep
+Envoy Gateway for v0.1 to minimize disruption, pending the conformance check.
+
+llm-d requires Kubernetes 1.30+; GAIE requires a recent Gateway API. These are
 within the cluster requirements Modelplane already imposes.
 
 ## Migration & blast radius

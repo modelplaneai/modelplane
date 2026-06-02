@@ -573,6 +573,41 @@ git commit -s -m "refactor(replica): dispatch to backends, drop KServe LLMInfere
 
 ### Task 4: llm-d backend (multi-pod)
 
+> **⚠️ REVISED by the 2026-06-02 llm-d v0.7 spike — this block supersedes the
+> Helm-Release code in Steps 1/3 below.** The `llm-d-modelservice` chart is
+> deprecated in v0.7, so `llmd.py` **renders provider-kubernetes `Object`s**
+> (like `native.py`), not a Helm `Release`. In v0.1 the llm-d path is always
+> multi-node (it is only selected when `pipeline > 1`), so it emits a
+> **`LeaderWorkerSet`** plus GAIE routing. Concretely `build()` returns:
+> - `model-serving`: `Object` wrapping a `leaderworkerset.x-k8s.io/v1` `LeaderWorkerSet`
+>   whose `leaderWorkerTemplate.size` = `nodes_per_worker` (= `pipeline`), engine
+>   container with `nvidia.com/gpu: tensor` per pod, `--tensor-parallel-size`/
+>   `--pipeline-parallel-size` injected into args, `/dev/shm` emptyDir, env/
+>   imagePullSecrets passthrough, pod label `llm-d.ai/inference-serving: "true"`.
+>   Weight loading is identical to native (no chart `modelArtifacts.uri`): no
+>   cache → `--model=org/model` passthrough; `modelCacheRef` set → PVC mount +
+>   `--model=/mnt/models`.
+> - `model-inferencepool`: `Object` wrapping `inference.networking.k8s.io/v1`
+>   `InferencePool` with `spec.selector.matchLabels = {llm-d.ai/inference-serving: "true"}`,
+>   `spec.targetPorts: [{number: 8000}]`, `spec.endpointPickerRef: {name: <name>-epp, port: {number: 9002}, failureMode: FailOpen}`.
+> - `model-epp` (+ `model-epp-svc`): `Object`s for the per-pool endpoint-picker
+>   `Deployment` + `Service` (GAIE EPP image). Ground the exact image/args by
+>   running `helm template` on GAIE's `inferencepool` chart at `v1.5.0` (see
+>   spike §3c) and replicating the rendered EPP.
+> - `model-route`: `Object` wrapping a `gateway.networking.k8s.io/v1` `HTTPRoute`
+>   whose `backendRefs[0]` is the `InferencePool` (group `inference.networking.k8s.io`,
+>   kind `InferencePool`), parentRef the `inference-gateway`, path prefix
+>   `/<namespace>/<deployment>/`.
+>
+> **Do NOT** emit an `InferenceObjective` in v0.1 (it only carries `priority` +
+> `poolRef` — YAGNI). **Do NOT** use `targetPortNumber` or `extensionRef` (those
+> are pre-v1 names). To ground the `LeaderWorkerSet` + pod spec, the implementer
+> should `helm template llm-d-modelservice` at `v0.4.9` with representative values
+> once as a reference for the rendered multi-node manifest, then render the
+> equivalent `Object`s. Update the Step-1 test to assert the kinds
+> `{LeaderWorkerSet, InferencePool, Deployment(EPP), Service, HTTPRoute}` and the
+> corrected GAIE field names. The `_helm_release` code below is obsolete; ignore it.
+
 Uses the coordinates and shapes recorded in `docs/superpowers/notes/llm-d-v0.7-surface.md` (Task 0).
 
 **Files:**
@@ -878,27 +913,28 @@ git mv apis/kservebackends apis/servingstacks
 - Update the `description` to "installs the serving substrate (LeaderWorkerSet, Gateway
   API + inference extension, cert-manager, Prometheus, and llm-d) on a Kubernetes cluster."
 - In `spec.versions[0].schema...properties.spec.properties.versions.properties`:
-  remove `kserve` and `keda`; add:
+  remove `kserve` and `keda`; add (per the 2026-06-02 spike — no `llmD` pin,
+  since no llm-d chart is installed):
 
 ```yaml
-                  llmD:
-                    type: string
-                    default: "v0.7.0"
-                    description: llm-d-modelservice chart version.
-                    minLength: 1
-                    maxLength: 32
                   gatewayApiInferenceExtension:
                     type: string
-                    default: "v1.0.1"
+                    default: "v1.5.0"
                     description: Gateway API Inference Extension version.
+                    minLength: 1
+                    maxLength: 32
+                  gatewayApi:
+                    type: string
+                    default: "v1.5.1"
+                    description: Gateway API CRD version.
                     minLength: 1
                     maxLength: 32
 ```
 
   Bump `leaderWorkerSet` default `"v0.7.0"` → `"v0.8.0"`. Keep `certManager`,
   `envoyGateway`, `prometheus`.
-- Update the `KSERVE` printer column (`jsonPath: .spec.versions.kserve`) to
-  `name: LLMD`, `jsonPath: .spec.versions.llmD`.
+- Replace the `KSERVE` printer column (`jsonPath: .spec.versions.kserve`) with
+  `name: GAIE`, `jsonPath: .spec.versions.gatewayApiInferenceExtension`.
 
 - [ ] **Step 3: Edit `apis/servingstacks/composition.yaml`**
 
@@ -976,9 +1012,28 @@ git add functions/compose-serving-stack crossplane-project.yaml
 git commit -s -m "feat(fn): rename compose-kserve-backend to compose-serving-stack"
 ```
 
-### Task 8: Swap ServingStack contents — drop KServe/KEDA, add llm-d
+### Task 8: Swap ServingStack contents — drop KServe/KEDA, add GAIE
 
-Uses the chart coordinates from `docs/superpowers/notes/llm-d-v0.7-surface.md` (Task 0).
+> **⚠️ REVISED by the 2026-06-02 llm-d v0.7 spike — this block supersedes the
+> "add llm-d-infra + modelservice" instruction in Step 3 below.** Those charts
+> are deprecated and are **not installed**; `llmd.py` renders the workload as
+> `Object`s instead. So `compose-serving-stack` installs:
+> - **add** the GAIE **v1.5.0** CRDs + controller (via Helm `Release` of GAIE's
+>   chart, or `Object`s for the CRDs — match the existing inference-extension-CRD
+>   pattern already in this function, bumping to v1.5.0 with the `v1` `InferencePool`
+>   and `v1alpha2` `InferenceObjective` CRDs);
+> - **bump** Gateway API CRDs to **v1.5.1** and LeaderWorkerSet to **v0.8.0**;
+> - **keep** Envoy Gateway, cert-manager, Prometheus, the GatewayClass + Gateway
+>   (rename the Gateway to `inference-gateway` / `modelplane-system`);
+> - **drop** the KServe releases (`kserve-crds`, `kserve-controller`,
+>   `kserve-storage-patch`) and **KEDA**.
+> - **No** `llm-d-infra` / `llm-d-modelservice` Helm releases.
+> Add a code comment + an entry in the Open-items / Task 11 notes to **verify
+> Envoy Gateway is GAIE `InferencePool` v1 conformant** (spike §4). The `Versions`
+> schema (Task 6) gains `gatewayApiInferenceExtension` (default `v1.5.0`); drop
+> the planned `llmD` pin since no llm-d chart is installed.
+
+Uses the version pins from `docs/superpowers/notes/llm-d-v0.7-surface.md` (Task 0).
 
 **Files:**
 - Modify: `functions/compose-serving-stack/function/fn.py`
