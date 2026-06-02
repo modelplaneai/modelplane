@@ -55,7 +55,10 @@ _PROMETHEUS_REPO = "https://prometheus-community.github.io/helm-charts"
 # (InferencePool inference.networking.k8s.io/v1 + InferenceObjective
 # inference.networking.x-k8s.io/v1alpha2, renamed from InferenceModel) —
 # verify against the v1.5.0 release. The bundled file is still the old
-# InferenceModel/InferencePool v1alpha2 set.
+# InferenceModel/InferencePool v1alpha2 set. NOTE: when refreshed, the
+# mark_readiness keys "inference-ext-crd-inferencemodels"/"-inferencepools"
+# must update in lockstep (InferenceObjective replaces InferenceModel), and
+# the llm-d backend already emits inference.networking.k8s.io/v1 InferencePool.
 _INFERENCE_EXTENSION_CRDS = [
     doc for doc in yaml.safe_load_all((_HERE / "inference_extension_crds.yaml").read_text()) if doc
 ]
@@ -173,7 +176,7 @@ def _prometheus_release(version: str, provider_config: str) -> helmv1beta1.Relea
                     ],
                 },
             },
-            # Disable components we don't need for autoscaling.
+            # Disable components we don't need for observability.
             "grafana": {"enabled": False},
             "alertmanager": {"enabled": False},
         },
@@ -462,7 +465,7 @@ class Composer:
 
     def compose_prometheus(self):
         """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
-        observed. Prometheus scrapes Envoy Gateway metrics for autoscaling."""
+        observed. Provides cluster observability (metrics scraping)."""
         pc_observed = self.provider_configs_observed()
         if not (pc_observed or "prometheus" in self.req.observed.resources):
             return
