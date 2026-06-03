@@ -11,7 +11,6 @@ Usage resources protect ProviderConfigs from premature deletion during
 teardown, ensuring Helm releases can uninstall before losing connectivity.
 """
 
-import json
 from pathlib import Path
 
 import grpc
@@ -416,7 +415,6 @@ class Composer:
             ),
         )
         self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
-
 
     def compose_cert_manager(self):
         """Compose cert-manager. Gated on ProviderConfigs being observed."""

@@ -472,14 +472,14 @@ class Composer:
         )
         self.rsp.desired.resources["usage-eks-by-backend"].ready = fnv1.READY_TRUE
 
-    def resolve_eks_backend_secrets(self, eks_ready, backend_exists) -> list[kssv1alpha1.Secret] | None:
+    def resolve_eks_backend_secrets(self, eks_ready, backend_exists) -> list[ssv1alpha1.Secret] | None:
         """Resolve secrets for the backend from EKSCluster status. Falls
         back to the observed backend's spec.secrets if EKSCluster secrets
         aren't available but the backend already exists."""
         eks_secrets = self.observed_eks_secrets()
 
         if eks_ready and eks_secrets:
-            return [kssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in eks_secrets]
+            return [ssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in eks_secrets]
 
         if backend_exists:
             observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
@@ -487,7 +487,7 @@ class Composer:
                 d = resource.struct_to_dict(observed.resource)
                 observed_secrets = d.get("spec", {}).get("secrets", [])
                 if observed_secrets:
-                    return [kssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
+                    return [ssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
 
         return None
 

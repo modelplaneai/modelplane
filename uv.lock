@@ -9,11 +9,11 @@ members = [
     "compose-inference-class",
     "compose-inference-cluster",
     "compose-inference-gateway",
-    "compose-kserve-backend",
     "compose-model-deployment",
     "compose-model-endpoint",
     "compose-model-replica",
     "compose-model-service",
+    "compose-serving-stack",
     "crossplane-models",
     "modelplane",
 ]
@@ -146,27 +146,6 @@ requires-dist = [
 ]
 
 [[package]]
-name = "compose-kserve-backend"
-version = "0.0.0"
-source = { editable = "functions/compose-kserve-backend" }
-dependencies = [
-    { name = "click" },
-    { name = "crossplane-function-sdk-python" },
-    { name = "crossplane-models" },
-    { name = "grpcio" },
-    { name = "pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
-    { name = "crossplane-models", editable = "schemas/python" },
-    { name = "grpcio", specifier = ">=1.73.1" },
-    { name = "pyyaml", specifier = ">=6.0" },
-]
-
-[[package]]
 name = "compose-model-deployment"
 version = "0.0.0"
 source = { editable = "functions/compose-model-deployment" }
@@ -240,6 +219,27 @@ requires-dist = [
     { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
+]
+
+[[package]]
+name = "compose-serving-stack"
+version = "0.0.0"
+source = { editable = "functions/compose-serving-stack" }
+dependencies = [
+    { name = "click" },
+    { name = "crossplane-function-sdk-python" },
+    { name = "crossplane-models" },
+    { name = "grpcio" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-models", editable = "schemas/python" },
+    { name = "grpcio", specifier = ">=1.73.1" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
