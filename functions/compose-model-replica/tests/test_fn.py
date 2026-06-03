@@ -228,6 +228,17 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                                 },
                                                             },
                                                         ],
+                                                        "filters": [
+                                                            {
+                                                                "type": "URLRewrite",
+                                                                "urlRewrite": {
+                                                                    "path": {
+                                                                        "type": "ReplacePrefixMatch",
+                                                                        "replacePrefixMatch": "/",
+                                                                    },
+                                                                },
+                                                            },
+                                                        ],
                                                         "backendRefs": [
                                                             {"name": "my-deployment-1154c", "port": 80},
                                                         ],

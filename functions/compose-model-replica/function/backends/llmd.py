@@ -50,7 +50,9 @@ _LABEL_SERVING = "modelplane.ai/serving"
 # GAIE endpoint-picker image. Pinned to GAIE v1.5.0 (the version llm-d v0.7.0
 # pins, spike §0). The spike notes do not give an exact image ref for the EPP, so
 # this uses the conventional GAIE ref.
-# TODO: verify EPP image ref against the GAIE v1.5.0 release.
+# TODO: verify EPP image ref against the GAIE v1.5.0 release, and add a
+# readiness/liveness probe to the EPP Deployment once the image's health
+# endpoint is confirmed (a wedged EPP otherwise reports Ready).
 _EPP_IMAGE = "registry.k8s.io/gateway-api-inference-extension/epp:v1.5.0"
 
 # GA group for the InferencePool / HTTPRoute backendRef (spike §3a).
@@ -212,6 +214,14 @@ class LLMDBackend:
                                     "type": "PathPrefix",
                                     "value": f"/{replica.metadata.namespace}/{deployment_name}/",
                                 }
+                            }
+                        ],
+                        # Strip the /<ns>/<deployment>/ routing prefix so the engine
+                        # (which serves /v1/...) sees the path it expects.
+                        "filters": [
+                            {
+                                "type": "URLRewrite",
+                                "urlRewrite": {"path": {"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}},
                             }
                         ],
                         "backendRefs": [

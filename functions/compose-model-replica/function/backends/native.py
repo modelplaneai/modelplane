@@ -106,6 +106,14 @@ class NativeBackend:
                                 }
                             }
                         ],
+                        # Strip the /<ns>/<deployment>/ routing prefix so the engine
+                        # (which serves /v1/...) sees the path it expects.
+                        "filters": [
+                            {
+                                "type": "URLRewrite",
+                                "urlRewrite": {"path": {"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}},
+                            }
+                        ],
                         "backendRefs": [{"name": name, "port": 80}],
                     }
                 ],

@@ -95,6 +95,9 @@ class TestNativeBackend(unittest.TestCase):
         route = next(o for o in out.values() if o.spec.forProvider.manifest["kind"] == "HTTPRoute")
         rule = route.spec.forProvider.manifest["spec"]["rules"][0]
         self.assertEqual(rule["matches"][0]["path"]["value"], "/ml-team/my-deployment/")
+        # The prefix must be stripped before the engine (serves /v1/...).
+        self.assertEqual(rule["filters"][0]["type"], "URLRewrite")
+        self.assertEqual(rule["filters"][0]["urlRewrite"]["path"]["replacePrefixMatch"], "/")
 
     def test_engine_env_passed_through(self):
         self.replica.spec.workers.template.spec.containers[0].env = [
@@ -195,10 +198,11 @@ class TestLLMDBackend(unittest.TestCase):
     def test_httproute_path_matches_namespace_and_deployment(self):
         out = self._build()
         route = self._manifest(out, "HTTPRoute")
-        self.assertEqual(
-            route["spec"]["rules"][0]["matches"][0]["path"]["value"],
-            "/ml-team/my-deployment/",
-        )
+        rule = route["spec"]["rules"][0]
+        self.assertEqual(rule["matches"][0]["path"]["value"], "/ml-team/my-deployment/")
+        # The prefix must be stripped before the engine (serves /v1/...).
+        self.assertEqual(rule["filters"][0]["type"], "URLRewrite")
+        self.assertEqual(rule["filters"][0]["urlRewrite"]["path"]["replacePrefixMatch"], "/")
 
     def test_parallelism_flags_not_double_injected(self):
         # User-supplied parallelism flags must be respected, not duplicated.
