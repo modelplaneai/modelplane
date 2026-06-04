@@ -523,6 +523,23 @@ class Composer:
         else:
             listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
 
+        # The Gateway (and the model-serving HTTPRoutes that target it) live in
+        # modelplane-system on the remote cluster. Create the namespace; unlike
+        # the old KServe path (whose chart created its kserve namespace), nothing
+        # else provisions it.
+        if pc_observed or "gateway-namespace" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["gateway-namespace"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "v1",
+                        "kind": "Namespace",
+                        "metadata": {"name": "modelplane-system"},
+                    },
+                ),
+            )
+
         if pc_observed or "gateway-class" in self.req.observed.resources:
             resource.update(
                 self.rsp.desired.resources["gateway-class"],
@@ -610,6 +627,7 @@ class Composer:
             "leader-worker-set",
             "inference-ext-crd-inferencemodels",
             "inference-ext-crd-inferencepools",
+            "gateway-namespace",
             "gateway-class",
             "gateway",
         ]

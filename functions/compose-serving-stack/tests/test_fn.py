@@ -735,6 +735,24 @@ _GATEWAY = {
     },
 }
 
+_GATEWAY_NAMESPACE = {
+    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+    "kind": "Object",
+    "spec": {
+        "forProvider": {
+            "manifest": {
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "metadata": {"name": "modelplane-system"},
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
 _GATEWAY_CLASS = {
     "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
     "kind": "Object",
@@ -979,6 +997,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     "gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY),
                     ),
+                    "gateway-namespace": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
+                    ),
                     "gateway-class": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY_CLASS),
                     ),
@@ -1092,6 +1113,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                     "gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY),
+                    ),
+                    "gateway-namespace": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
                     ),
                     "gateway-class": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY_CLASS),
