@@ -140,6 +140,19 @@ spec:
                                   type: string
                                   minLength: 1
                                   description: Container image.
+                                command:
+                                  type: array
+                                  description: >-
+                                    Container entrypoint override. When set on the
+                                    engine container of a multi-node deployment,
+                                    it bypasses the built-in vLLM/Ray bootstrap and
+                                    runs on every gang pod — the command owns
+                                    cross-node coordination against the LWS_*
+                                    environment (LWS_WORKER_INDEX,
+                                    LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for
+                                    non-vLLM engines (e.g. SGLang).
+                                  items:
+                                    type: string
                                 args:
                                   type: array
                                   description: >-

@@ -108,6 +108,14 @@ class TestNativeBackend(unittest.TestCase):
         container = dep.spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]
         self.assertIn({"name": "HF_TOKEN", "value": "secret"}, container["env"])
 
+    def test_engine_command_passed_through(self):
+        # A user-supplied command overrides the image entrypoint (single-pod).
+        self.replica.spec.workers.template.spec.containers[0].command = ["python3", "-m", "my.server"]
+        out = native.NativeBackend().build(self.replica, self.cluster, "my-deployment")
+        dep = next(o for o in out.values() if o.spec.forProvider.manifest["kind"] == "Deployment")
+        container = dep.spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]
+        self.assertEqual(container["command"], ["python3", "-m", "my.server"])
+
 
 class TestLLMDBackend(unittest.TestCase):
     def setUp(self):
@@ -230,6 +238,26 @@ class TestLLMDBackend(unittest.TestCase):
         cmd = self._leader(self._build())["spec"]["containers"][0]["command"]
         self.assertEqual(cmd.count("--tensor-parallel-size=4"), 1)
         self.assertEqual(len([a for a in cmd if a.startswith("--tensor-parallel-size")]), 1)
+
+    def test_user_command_override_bypasses_bootstrap(self):
+        # Escape hatch for non-vLLM engines: a user command runs verbatim on
+        # both templates; no Ray bootstrap, no vLLM parallelism flags injected.
+        self.replica.spec.workers.template.spec.containers[0].command = ["python3", "-m", "sglang.launch_server"]
+        self.replica.spec.workers.template.spec.containers[0].args = [
+            "--nnodes",
+            "$(LWS_GROUP_SIZE)",
+            "--node-rank",
+            "$(LWS_WORKER_INDEX)",
+        ]
+        out = self._build()
+        leader = self._leader(out)["spec"]["containers"][0]
+        worker = self._worker(out)["spec"]["containers"][0]
+        # Same user command on both roles (symmetric); no /bin/sh bootstrap wrapper.
+        self.assertEqual(leader["command"], ["python3", "-m", "sglang.launch_server"])
+        self.assertEqual(worker["command"], leader["command"])
+        # Args passed through verbatim; vLLM parallelism flags NOT injected.
+        self.assertEqual(leader["args"], ["--nnodes", "$(LWS_GROUP_SIZE)", "--node-rank", "$(LWS_WORKER_INDEX)"])
+        self.assertFalse(any(a.startswith("--tensor-parallel-size") for a in leader["args"]))
 
 
 class TestDynamoStub(unittest.TestCase):

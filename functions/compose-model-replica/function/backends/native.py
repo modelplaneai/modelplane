@@ -61,6 +61,8 @@ class NativeBackend:
                 "periodSeconds": 10,
             },
         }
+        if engine.command:
+            container["command"] = list(engine.command)
         if engine.env:
             container["env"] = [e.model_dump(exclude_none=True) for e in engine.env]
 

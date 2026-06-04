@@ -86,6 +86,10 @@ class Container(BaseModel):
     """
     Container args. For the engine container, these are passed through to the serving engine. Includes the model identifier (e.g. --model=...).
     """
+    command: Optional[List[str]] = None
+    """
+    Container entrypoint override. When set on the engine container of a multi-node deployment, it bypasses the built-in vLLM/Ray bootstrap and runs on every gang pod — the command owns cross-node coordination against the LWS_* environment (LWS_WORKER_INDEX, LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for non-vLLM engines (e.g. SGLang).
+    """
     env: Optional[List[EnvItem]] = None
     """
     Environment variables. Supports valueFrom.secretKeyRef for secrets like HF_TOKEN.

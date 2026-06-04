@@ -18,12 +18,11 @@ upstream LWS/vLLM/KServe convention. `LWS_LEADER_ADDRESS` / `LWS_WORKER_INDEX` /
 `LWS_GROUP_SIZE` (injected by LWS into every pod) are the documented public
 contract a custom bootstrap is written against.
 
-Non-vLLM engines (FOLLOW-UP): the escape hatch — a user-supplied container
-`command` that bypasses this injection and owns coordination against the
-`LWS_*` contract (e.g. SGLang's `--nnodes/--node-rank/--dist-init-addr`, which
-is symmetric across pods) — needs `command` added to the curated Container in
-the ModelReplica CRD first; it is NOT in the v0.1 schema (only args/env/image/
-name). Until then vLLM/Ray is the only multi-node bootstrap.
+Non-vLLM engines: if the engine container sets its own `command`, we inject no
+bootstrap — that command runs verbatim on both templates and owns cross-node
+coordination against the `LWS_*` contract (e.g. SGLang's symmetric
+`--nnodes/--node-rank/--dist-init-addr`). vLLM/Ray is the turnkey default used
+when no `command` is set.
 
 Weight loading mirrors native: the engine's --model arg is passed through
 unmodified (no hf:// rewrite), so the engine fetches from its source at startup
@@ -103,14 +102,19 @@ class LLMDBackend:
         size = base.nodes_per_worker(replica)
         pipeline = int(replica.spec.workers.topology.pipeline or 1)
 
-        # v0.1 always injects the vLLM/Ray bootstrap. The args are folded into the
-        # leader command (consumed as "$@"); the worker only joins the gang.
-        # TODO(#65 follow-up): once `command` is added to the curated Container,
-        # bypass injection when set so non-vLLM engines (SGLang etc.) can run
-        # their own symmetric command on both templates against the LWS_* contract.
-        args = _engine_args(engine, tensor, pipeline)
-        leader_command = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *args]
-        worker_command = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
+        # A user-supplied command owns cross-node coordination: inject neither the
+        # Ray bootstrap nor vLLM-specific parallelism flags. It runs verbatim on
+        # both templates (e.g. SGLang's symmetric launch against the LWS_* env).
+        user_command = list(engine.command) if engine.command else None
+        if user_command:
+            leader_command = worker_command = user_command
+            args = list(engine.args or [])
+        else:
+            # Args are folded into the leader command (consumed as "$@"); the
+            # worker only joins the gang.
+            args = _engine_args(engine, tensor, pipeline)
+            leader_command = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *args]
+            worker_command = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
 
         pull_secrets = None
         tmpl = replica.spec.workers.template
@@ -128,6 +132,10 @@ class LLMDBackend:
                 "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
                 "command": command,
             }
+            # A user command takes args the normal way; an injected bootstrap
+            # folds args into the command itself.
+            if user_command and args:
+                c["args"] = args
             if env:
                 c["env"] = env
             if serving:
