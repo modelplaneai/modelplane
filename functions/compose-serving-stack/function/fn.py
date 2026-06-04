@@ -2,19 +2,16 @@
 
 This function composes the serving substrate (the cluster-side CRDs,
 controllers, and gateway) that the native and llm-d model-serving backends
-depend on: cert-manager, Envoy Gateway, Prometheus, LeaderWorkerSet, the
-Gateway API Inference Extension CRDs, and an inference Gateway. Resources are
-composed as Helm releases and provider-kubernetes Objects, all targeting the
-remote cluster via ProviderConfigs.
+depend on: cert-manager, Envoy Gateway, Prometheus, LeaderWorkerSet, and an
+inference Gateway. Resources are composed as Helm releases and
+provider-kubernetes Objects, all targeting the remote cluster via
+ProviderConfigs.
 
 Usage resources protect ProviderConfigs from premature deletion during
 teardown, ensuring Helm releases can uninstall before losing connectivity.
 """
 
-from pathlib import Path
-
 import grpc
-import yaml
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
@@ -27,8 +24,6 @@ from models.io.crossplane.m.kubernetes.providerconfig import (
 )
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
-
-_HERE = Path(__file__).parent
 
 # Label key for composed resources that need deletion ordering via Usages.
 _LABEL_RESOURCE = "modelplane.ai/resource"
@@ -47,20 +42,6 @@ _PROMETHEUS_FULLNAME_OVERRIDE = "prometheus"
 _PROMETHEUS_URL = f"http://{_PROMETHEUS_FULLNAME_OVERRIDE}-prometheus.{_PROMETHEUS_NAMESPACE}.svc.cluster.local:9090"
 _PROMETHEUS_CHART = "kube-prometheus-stack"
 _PROMETHEUS_REPO = "https://prometheus-community.github.io/helm-charts"
-
-# Gateway API Inference Extension CRDs. Not part of any Helm chart — applied
-# as raw provider-kubernetes Objects.
-# TODO(servingstack): refresh inference_extension_crds to GAIE v1.5.0
-# (InferencePool inference.networking.k8s.io/v1 + InferenceObjective
-# inference.networking.x-k8s.io/v1alpha2, renamed from InferenceModel) —
-# verify against the v1.5.0 release. The bundled file is still the old
-# InferenceModel/InferencePool v1alpha2 set. NOTE: when refreshed, the
-# mark_readiness keys "inference-ext-crd-inferencemodels"/"-inferencepools"
-# must update in lockstep (InferenceObjective replaces InferenceModel), and
-# the llm-d backend already emits inference.networking.k8s.io/v1 InferencePool.
-_INFERENCE_EXTENSION_CRDS = [
-    doc for doc in yaml.safe_load_all((_HERE / "inference_extension_crds.yaml").read_text()) if doc
-]
 
 
 def _helm_release(
@@ -219,7 +200,6 @@ class Composer:
         self.compose_envoy_gateway()
         self.compose_prometheus()
         self.compose_leader_worker_set()
-        self.compose_inference_ext_crds()
         self.compose_gateway()
         self.write_status()
         self.mark_readiness()
@@ -492,24 +472,6 @@ class Composer:
             ),
         )
 
-    def compose_inference_ext_crds(self):
-        """Compose inference extension CRDs. Gated on ProviderConfigs being
-        observed."""
-        pc_observed = self.provider_configs_observed()
-
-        for crd in _INFERENCE_EXTENSION_CRDS:
-            crd_name = crd["metadata"]["name"]
-            short = crd_name.split(".")[0]
-            key = f"inference-ext-crd-{short}"
-
-            if not (pc_observed or key in self.req.observed.resources):
-                continue
-
-            resource.update(
-                self.rsp.desired.resources[key],
-                _k8s_object(_pc_name(self.xr), crd),
-            )
-
     def compose_gateway(self):
         """Compose the GatewayClass and Gateway on the remote cluster. Gated on
         ProviderConfigs being observed."""
@@ -625,8 +587,6 @@ class Composer:
             "envoy-gateway",
             "prometheus",
             "leader-worker-set",
-            "inference-ext-crd-inferencemodels",
-            "inference-ext-crd-inferencepools",
             "gateway-namespace",
             "gateway-class",
             "gateway",

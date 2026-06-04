@@ -1,27 +1,34 @@
-"""llm-d multi-pod backend: LeaderWorkerSet + GAIE routing (InferencePool/EPP/HTTPRoute).
+"""llm-d multi-pod backend: LeaderWorkerSet + Service + HTTPRoute.
 
 Selected only for multi-node replicas (pipeline > 1), so this always renders a
 LeaderWorkerSet whose gang size is the per-worker node count.
 
-The `llm-d-modelservice` Helm chart is DEPRECATED in llm-d v0.7, so this backend
-renders the workload as provider-kubernetes Objects directly (mirroring native.py),
-NOT a Helm Release. GAIE field names/versions follow the verified v0.7 / GAIE
-v1.5.0 surface in docs/superpowers/notes/llm-d-v0.7-surface.md.
+Routing is plain Gateway API — `HTTPRoute -> Service`, exactly like native.py —
+NOT a GAIE `InferencePool`. The control-plane gateway is Traefik (which is not
+GAIE-conformant: it can't consume an `InferencePool` backendRef or call an
+ext-proc endpoint-picker), so the llm-d path routes to a Service that selects
+the LWS *leader* pods (only the leader serves the OpenAI API; workers just join
+the gang). Inference-aware endpoint picking (KV-/load-aware) is tracked
+separately in issue #8 as a Traefik-compatible in-path picker.
 
-KNOWN FOLLOW-UP (out of scope for v0.1): the exact multi-node vLLM/Ray
-leader+worker bootstrap command must be validated against a live multi-node GPU
-cluster (see spec "Open items" and the spike notes). v0.1 renders the structural
-manifest with the parallelism flags injected; the engine command may still need a
-Ray bootstrap wrapper (the leader starts the Ray head, workers join, then `vllm
-serve` runs on the leader). Unit tests validate structure, not live execution.
-Do not block on getting Ray exactly right here.
+Multi-node bootstrap: the LWS leader and worker run different commands (no
+`LWS_WORKER_INDEX` branch). The leader starts the Ray head then execs the
+engine; workers join the leader's Ray cluster and block. This mirrors the
+upstream LWS/vLLM/KServe convention. `LWS_LEADER_ADDRESS` / `LWS_WORKER_INDEX` /
+`LWS_GROUP_SIZE` (injected by LWS into every pod) are the documented public
+contract a custom bootstrap is written against.
+
+Non-vLLM engines (FOLLOW-UP): the escape hatch — a user-supplied container
+`command` that bypasses this injection and owns coordination against the
+`LWS_*` contract (e.g. SGLang's `--nnodes/--node-rank/--dist-init-addr`, which
+is symmetric across pods) — needs `command` added to the curated Container in
+the ModelReplica CRD first; it is NOT in the v0.1 schema (only args/env/image/
+name). Until then vLLM/Ray is the only multi-node bootstrap.
 
 Weight loading mirrors native: the engine's --model arg is passed through
 unmodified (no hf:// rewrite), so the engine fetches from its source at startup
 using credentials from engine.env.
 """
-
-import copy
 
 from crossplane.function import resource
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
@@ -33,30 +40,25 @@ from function.backends import base
 # Namespace for serving workloads on remote clusters.
 _REMOTE_NAMESPACE = "default"
 
-# Port the engine serves the OpenAI-compatible API on. Must match the
-# InferencePool targetPorts[].number (GAIE join contract, spike notes §2f/§3a).
+# Port the engine serves the OpenAI-compatible API on.
 _ENGINE_PORT = 8000
 
-# EPP (endpoint-picker) ext-proc port — GAIE inferencepool chart default (spike §3c).
-_EPP_PORT = 9002
-
-# Label joining the LWS pods to the InferencePool selector (spike notes §2g/§3a).
-# llm-d's well-lit path keys on this exact label.
-_LABEL_INFERENCE = "llm-d.ai/inference-serving"
-
-# Modelplane's own serving label (mirrors native.py).
+# Label joining the LWS pods and the Service selector (mirrors native.py).
 _LABEL_SERVING = "modelplane.ai/serving"
 
-# GAIE endpoint-picker image. Pinned to GAIE v1.5.0 (the version llm-d v0.7.0
-# pins, spike §0). The spike notes do not give an exact image ref for the EPP, so
-# this uses the conventional GAIE ref.
-# TODO: verify EPP image ref against the GAIE v1.5.0 release, and add a
-# readiness/liveness probe to the EPP Deployment once the image's health
-# endpoint is confirmed (a wedged EPP otherwise reports Ready).
-_EPP_IMAGE = "registry.k8s.io/gateway-api-inference-extension/epp:v1.5.0"
+# Label set only on the LWS leader pod. The Service selects on it so traffic
+# reaches the gang leader (the only pod that serves the OpenAI API for vLLM
+# multi-node; for symmetric engines like SGLang the API server also runs on
+# rank 0).
+_LABEL_ROLE = "modelplane.ai/lws-role"
 
-# GA group for the InferencePool / HTTPRoute backendRef (spike §3a).
-_INFERENCE_GROUP = "inference.networking.k8s.io"
+# Default vLLM multi-node bootstrap, split across the leader and worker
+# templates. `ray start --head` daemonizes and returns, so the engine becomes
+# the container's foreground process; `--block` keeps the worker alive for the
+# pod's lifetime. Without this, vLLM's pipeline-parallel placement group sees
+# only the local node and waits forever.
+_LEADER_BOOTSTRAP = 'set -e\nray start --head --port=6379\nexec python3 -m vllm.entrypoints.openai.api_server "$@"'
+_WORKER_BOOTSTRAP = 'exec ray start --address="$LWS_LEADER_ADDRESS:6379" --block'
 
 
 def _object(provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
@@ -73,7 +75,7 @@ def _object(provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
 
 
 def _engine_args(engine, tensor: int, pipeline: int) -> list[str]:
-    """Engine args with parallelism flags injected (only if not already set).
+    """vLLM engine args with parallelism flags injected (only if not already set).
 
     --model is passed through unmodified (no hf:// rewrite).
     """
@@ -95,45 +97,66 @@ class LLMDBackend:
         engine = base.engine_container(replica)
         pc = cluster.status.providerConfigRef.name
         name = resource.child_name(deployment_name)
-        epp_name = f"{name}-epp"
 
         tensor = int(replica.spec.workers.topology.tensor)
         # nodes_per_worker == pipeline: the LWS gang size (leader + workers).
         size = base.nodes_per_worker(replica)
         pipeline = int(replica.spec.workers.topology.pipeline or 1)
 
-        # Pod labels join the LWS pods to the InferencePool selector, plus
-        # Modelplane's own per-replica serving label.
-        pod_labels = {_LABEL_INFERENCE: "true", _LABEL_SERVING: name}
+        # v0.1 always injects the vLLM/Ray bootstrap. The args are folded into the
+        # leader command (consumed as "$@"); the worker only joins the gang.
+        # TODO(#65 follow-up): once `command` is added to the curated Container,
+        # bypass injection when set so non-vLLM engines (SGLang etc.) can run
+        # their own symmetric command on both templates against the LWS_* contract.
+        args = _engine_args(engine, tensor, pipeline)
+        leader_command = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *args]
+        worker_command = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
 
-        container = {
-            "name": "engine",
-            "image": engine.image,
-            "args": _engine_args(engine, tensor, pipeline),
-            "ports": [{"containerPort": _ENGINE_PORT}],
-            # GPUs PER POD (one tensor-parallel shard runs per pod in the gang).
-            "resources": {"limits": {"nvidia.com/gpu": str(tensor)}},
-            # vLLM tensor parallelism needs a large /dev/shm.
-            "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
-        }
-        if engine.env:
-            container["env"] = [e.model_dump(exclude_none=True) for e in engine.env]
-
-        pod_spec = {
-            "containers": [container],
-            "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
-        }
+        pull_secrets = None
         tmpl = replica.spec.workers.template
         if tmpl.spec.imagePullSecrets:
-            pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
+            pull_secrets = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
+        env = [e.model_dump(exclude_none=True) for e in engine.env] if engine.env else None
 
-        pod_template = {"metadata": {"labels": pod_labels}, "spec": pod_spec}
+        def container(command: list[str], *, serving: bool) -> dict:
+            c = {
+                "name": "engine",
+                "image": engine.image,
+                # GPUs PER POD (one tensor-parallel shard runs per pod in the gang).
+                "resources": {"limits": {"nvidia.com/gpu": str(tensor)}},
+                # vLLM tensor parallelism needs a large /dev/shm.
+                "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                "command": command,
+            }
+            if env:
+                c["env"] = env
+            if serving:
+                c["ports"] = [{"containerPort": _ENGINE_PORT}]
+                c["readinessProbe"] = {
+                    "httpGet": {"path": "/health", "port": _ENGINE_PORT},
+                    "initialDelaySeconds": 30,
+                    "periodSeconds": 10,
+                }
+            return c
+
+        def pod_spec(c: dict) -> dict:
+            spec = {"containers": [c], "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}]}
+            if pull_secrets:
+                spec["imagePullSecrets"] = pull_secrets
+            return spec
+
+        # Only the leader serves the OpenAI API → it carries the role label the
+        # Service selects on, plus the serving port and readiness probe.
+        leader_pod = {
+            "metadata": {"labels": {_LABEL_SERVING: name, _LABEL_ROLE: "leader"}},
+            "spec": pod_spec(container(leader_command, serving=True)),
+        }
+        worker_pod = {
+            "metadata": {"labels": {_LABEL_SERVING: name}},
+            "spec": pod_spec(container(worker_command, serving=False)),
+        }
 
         # LeaderWorkerSet: spec.replicas gangs, each of `size` pods (leader+workers).
-        # leaderTemplate and workerTemplate are structurally identical in v0.1 but
-        # kept as independent copies: the known Ray-bootstrap follow-up (leader runs
-        # the head, workers join) will mutate them divergently, and a shared
-        # reference would silently mutate both.
         leader_worker_set = {
             "apiVersion": "leaderworkerset.x-k8s.io/v1",
             "kind": "LeaderWorkerSet",
@@ -142,64 +165,24 @@ class LLMDBackend:
                 "replicas": int(replica.spec.workers.count or 1),
                 "leaderWorkerTemplate": {
                     "size": size,
-                    "leaderTemplate": pod_template,
-                    "workerTemplate": copy.deepcopy(pod_template),
+                    "leaderTemplate": leader_pod,
+                    "workerTemplate": worker_pod,
                 },
             },
         }
 
-        # GAIE InferencePool (v1). Field names per spike §3a: targetPorts (list),
-        # endpointPickerRef (NOT targetPortNumber / extensionRef).
-        inference_pool = {
-            "apiVersion": f"{_INFERENCE_GROUP}/v1",
-            "kind": "InferencePool",
-            "metadata": {"name": name, "namespace": _REMOTE_NAMESPACE},
-            "spec": {
-                # Scope the pool to THIS replica's pods (both labels), not every
-                # llm-d pod on the cluster — otherwise co-located replicas
-                # cross-select each other's endpoints.
-                "selector": {"matchLabels": {_LABEL_INFERENCE: "true", _LABEL_SERVING: name}},
-                "targetPorts": [{"number": _ENGINE_PORT}],
-                "endpointPickerRef": {
-                    "name": epp_name,
-                    "port": {"number": _EPP_PORT},
-                    "failureMode": "FailOpen",
-                },
-            },
-        }
-
-        # Per-pool EPP (GAIE endpoint-picker): Deployment + Service exposing 9002.
-        epp_labels = {_LABEL_SERVING: epp_name}
-        epp_deployment = {
-            "apiVersion": "apps/v1",
-            "kind": "Deployment",
-            "metadata": {"name": epp_name, "namespace": _REMOTE_NAMESPACE},
-            "spec": {
-                "replicas": 1,
-                "selector": {"matchLabels": epp_labels},
-                "template": {
-                    "metadata": {"labels": epp_labels},
-                    "spec": {
-                        "containers": [
-                            {
-                                "name": "epp",
-                                "image": _EPP_IMAGE,
-                                "args": [f"--pool-name={name}", f"--pool-namespace={_REMOTE_NAMESPACE}"],
-                                "ports": [{"containerPort": _EPP_PORT}],
-                            }
-                        ],
-                    },
-                },
-            },
-        }
-        epp_service = {
+        # Service selects the leader pods of every gang in this replica.
+        service = {
             "apiVersion": "v1",
             "kind": "Service",
-            "metadata": {"name": epp_name, "namespace": _REMOTE_NAMESPACE},
-            "spec": {"selector": epp_labels, "ports": [{"port": _EPP_PORT, "targetPort": _EPP_PORT}]},
+            "metadata": {"name": name, "namespace": _REMOTE_NAMESPACE},
+            "spec": {
+                "selector": {_LABEL_SERVING: name, _LABEL_ROLE: "leader"},
+                "ports": [{"port": 80, "targetPort": _ENGINE_PORT}],
+            },
         }
 
-        # HTTPRoute: route to the InferencePool (not a Service).
+        # HTTPRoute -> Service (plain Gateway API; Traefik- and Envoy-compatible).
         http_route = {
             "apiVersion": "gateway.networking.k8s.io/v1",
             "kind": "HTTPRoute",
@@ -224,14 +207,7 @@ class LLMDBackend:
                                 "urlRewrite": {"path": {"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}},
                             }
                         ],
-                        "backendRefs": [
-                            {
-                                "group": _INFERENCE_GROUP,
-                                "kind": "InferencePool",
-                                "name": name,
-                                "port": _ENGINE_PORT,
-                            }
-                        ],
+                        "backendRefs": [{"name": name, "port": 80}],
                     }
                 ],
             },
@@ -239,8 +215,6 @@ class LLMDBackend:
 
         return {
             "model-serving": _object(pc, leader_worker_set),
-            "model-inferencepool": _object(pc, inference_pool),
-            "model-epp": _object(pc, epp_deployment),
-            "model-epp-svc": _object(pc, epp_service),
+            "model-service": _object(pc, service),
             "model-route": _object(pc, http_route),
         }

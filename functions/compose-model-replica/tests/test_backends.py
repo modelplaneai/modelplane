@@ -150,55 +150,72 @@ class TestLLMDBackend(unittest.TestCase):
     def _manifest(self, out, kind):
         return next(o.spec.forProvider.manifest for o in out.values() if o.spec.forProvider.manifest["kind"] == kind)
 
+    def _lws(self, out):
+        return self._manifest(out, "LeaderWorkerSet")
+
+    def _leader(self, out):
+        return self._lws(out)["spec"]["leaderWorkerTemplate"]["leaderTemplate"]
+
+    def _worker(self, out):
+        return self._lws(out)["spec"]["leaderWorkerTemplate"]["workerTemplate"]
+
     def test_emits_expected_kinds(self):
+        # Plain Gateway-API routing (Traefik-compatible): LWS + Service +
+        # HTTPRoute. No GAIE InferencePool / EPP.
         out = self._build()
-        kinds = {o.spec.forProvider.manifest["kind"] for o in out.values()}
-        self.assertEqual(kinds, {"LeaderWorkerSet", "InferencePool", "Deployment", "Service", "HTTPRoute"})
+        kinds = sorted(o.spec.forProvider.manifest["kind"] for o in out.values())
+        self.assertEqual(kinds, ["HTTPRoute", "LeaderWorkerSet", "Service"])
+        self.assertEqual(set(out.keys()), {"model-serving", "model-service", "model-route"})
 
-    def test_inferencepool_uses_v1_field_names(self):
-        out = self._build()
-        pool = self._manifest(out, "InferencePool")
-        self.assertEqual(pool["apiVersion"], "inference.networking.k8s.io/v1")
-        # v1: targetPorts is a LIST of {number}, not the pre-v1 scalar targetPortNumber.
-        self.assertEqual(pool["spec"]["targetPorts"], [{"number": 8000}])
-        self.assertNotIn("targetPortNumber", pool["spec"])
-        # v1: endpointPickerRef, not the v1alpha2 extensionRef.
-        self.assertNotIn("extensionRef", pool["spec"])
-        self.assertEqual(pool["spec"]["endpointPickerRef"]["failureMode"], "FailOpen")
-        # The pool must select THIS replica's pods exactly (per-replica scoping),
-        # so co-located replicas don't cross-select. Selector == LWS pod labels.
-        lws = self._manifest(out, "LeaderWorkerSet")
-        pod_labels = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["metadata"]["labels"]
-        self.assertEqual(pool["spec"]["selector"]["matchLabels"]["llm-d.ai/inference-serving"], "true")
-        self.assertIn("modelplane.ai/serving", pool["spec"]["selector"]["matchLabels"])
-        self.assertEqual(pool["spec"]["selector"]["matchLabels"], pod_labels)
+    def test_no_gaie_resources(self):
+        kinds = {o.spec.forProvider.manifest["kind"] for o in self._build().values()}
+        self.assertNotIn("InferencePool", kinds)
 
-    def test_lws_size_and_parallelism_flags(self):
-        out = self._build()
-        lws = self._manifest(out, "LeaderWorkerSet")
-        self.assertEqual(lws["spec"]["leaderWorkerTemplate"]["size"], 2)
-        leader = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]
-        self.assertIn("--tensor-parallel-size=8", leader["args"])
-        self.assertIn("--pipeline-parallel-size=2", leader["args"])
+    def test_lws_size(self):
+        self.assertEqual(self._lws(self._build())["spec"]["leaderWorkerTemplate"]["size"], 2)
 
-    def test_model_arg_passed_through_unmodified(self):
-        out = self._build()
-        lws = self._manifest(out, "LeaderWorkerSet")
-        leader = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]
+    def test_leader_runs_ray_head_then_engine(self):
+        cmd = self._leader(self._build())["spec"]["containers"][0]["command"]
+        self.assertEqual(cmd[:2], ["/bin/sh", "-c"])
+        self.assertIn("ray start --head", cmd[2])
+        self.assertIn("vllm.entrypoints.openai.api_server", cmd[2])
+        # Engine args are folded into the command (consumed as "$@"), not a
+        # separate container args field.
+        self.assertEqual(cmd[3], "vllm")
+        self.assertIn("--tensor-parallel-size=8", cmd[4:])
+        self.assertIn("--pipeline-parallel-size=2", cmd[4:])
         # No hf:// rewrite: --model passed through as-is.
-        self.assertIn("--model=meta-llama/Llama-3.1-405B", leader["args"])
+        self.assertIn("--model=meta-llama/Llama-3.1-405B", cmd[4:])
 
-    def test_httproute_targets_inferencepool(self):
-        out = self._build()
-        route = self._manifest(out, "HTTPRoute")
-        backend_ref = route["spec"]["rules"][0]["backendRefs"][0]
-        self.assertEqual(backend_ref["kind"], "InferencePool")
-        self.assertEqual(backend_ref["group"], "inference.networking.k8s.io")
+    def test_worker_joins_leader_ray_cluster(self):
+        worker = self._worker(self._build())["spec"]["containers"][0]
+        self.assertIn('ray start --address="$LWS_LEADER_ADDRESS:6379"', worker["command"][2])
+        self.assertIn("--block", worker["command"][2])
+        # The worker doesn't serve the API: no port, no readiness probe.
+        self.assertNotIn("ports", worker)
+        self.assertNotIn("readinessProbe", worker)
 
-    def test_httproute_path_matches_namespace_and_deployment(self):
+    def test_only_leader_labeled_for_service(self):
         out = self._build()
-        route = self._manifest(out, "HTTPRoute")
-        rule = route["spec"]["rules"][0]
+        self.assertEqual(self._leader(out)["metadata"]["labels"]["modelplane.ai/lws-role"], "leader")
+        self.assertNotIn("modelplane.ai/lws-role", self._worker(out)["metadata"]["labels"])
+
+    def test_service_selects_leader_pods(self):
+        out = self._build()
+        svc = self._manifest(out, "Service")
+        lws_name = self._lws(out)["metadata"]["name"]
+        self.assertEqual(svc["spec"]["selector"]["modelplane.ai/lws-role"], "leader")
+        self.assertEqual(svc["spec"]["selector"]["modelplane.ai/serving"], lws_name)
+        self.assertEqual(svc["spec"]["ports"], [{"port": 80, "targetPort": 8000}])
+
+    def test_httproute_targets_service(self):
+        out = self._build()
+        backend_ref = self._manifest(out, "HTTPRoute")["spec"]["rules"][0]["backendRefs"][0]
+        # Plain Service backendRef — no InferencePool kind/group.
+        self.assertEqual(backend_ref, {"name": self._lws(out)["metadata"]["name"], "port": 80})
+
+    def test_httproute_path_matches_and_strips_prefix(self):
+        rule = self._manifest(self._build(), "HTTPRoute")["spec"]["rules"][0]
         self.assertEqual(rule["matches"][0]["path"]["value"], "/ml-team/my-deployment/")
         # The prefix must be stripped before the engine (serves /v1/...).
         self.assertEqual(rule["filters"][0]["type"], "URLRewrite")
@@ -210,17 +227,9 @@ class TestLLMDBackend(unittest.TestCase):
             "--model=m",
             "--tensor-parallel-size=4",
         ]
-        out = self._build()
-        lws = self._manifest(out, "LeaderWorkerSet")
-        args = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]["args"]
-        self.assertEqual(args.count("--tensor-parallel-size=4"), 1)
-        self.assertEqual(len([a for a in args if a.startswith("--tensor-parallel-size")]), 1)
-
-    def test_epp_service_selects_epp_deployment(self):
-        out = self._build()
-        dep = self._manifest(out, "Deployment")
-        svc = self._manifest(out, "Service")
-        self.assertEqual(dep["spec"]["selector"]["matchLabels"], svc["spec"]["selector"])
+        cmd = self._leader(self._build())["spec"]["containers"][0]["command"]
+        self.assertEqual(cmd.count("--tensor-parallel-size=4"), 1)
+        self.assertEqual(len([a for a in cmd if a.startswith("--tensor-parallel-size")]), 1)
 
 
 class TestDynamoStub(unittest.TestCase):
