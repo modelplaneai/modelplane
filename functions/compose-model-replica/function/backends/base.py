@@ -26,9 +26,10 @@ def engine_container(replica: v1alpha1.ModelReplica):
     """Return the container named 'engine'. The XRD's CEL validation
     guarantees exactly one exists, so this always succeeds.
 
-    TODO(#65 follow-up): backends render only this container. Non-engine
-    containers in the ModelDeployment template (e.g. sidecars) are dropped —
-    decide whether/how to carry them (non-trivial for the LWS gang).
+    v0.1 constrains the template to a single container (the engine) via the
+    XRD (containers maxItems: 1), so there is nothing to drop. Sidecar /
+    multi-container support is tracked in #108 — it needs design for the LWS
+    gang (which containers run on the leader vs the workers).
     """
     return next(c for c in replica.spec.workers.template.spec.containers if c.name == "engine")
 

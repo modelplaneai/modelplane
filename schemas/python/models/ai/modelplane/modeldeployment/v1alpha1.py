@@ -109,9 +109,9 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: List[Container] = Field(..., min_length=1)
+    containers: List[Container] = Field(..., max_length=1, min_length=1)
     """
-    Containers for the inference pod. The container named "engine" is the inference engine; additional containers pass through as sidecars.
+    Containers for the inference pod. v0.1 supports a single container, which must be named "engine" (the inference engine). Sidecar / multi-container support is tracked separately.
     """
     imagePullSecrets: Optional[List[ImagePullSecret]] = None
     """

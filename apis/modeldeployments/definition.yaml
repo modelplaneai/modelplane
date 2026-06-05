@@ -119,13 +119,15 @@ spec:
                           containers:
                             type: array
                             minItems: 1
+                            maxItems: 1
                             description: >-
-                              Containers for the inference pod. The container
-                              named "engine" is the inference engine; additional
-                              containers pass through as sidecars.
+                              Containers for the inference pod. v0.1 supports a
+                              single container, which must be named "engine" (the
+                              inference engine). Sidecar / multi-container support
+                              is tracked separately.
                             x-kubernetes-validations:
                             - rule: "self.exists_one(c, c.name == 'engine')"
-                              message: "containers must include exactly one container named 'engine'"
+                              message: "the single container must be named 'engine'"
                             items:
                               type: object
                               required: [name, image]

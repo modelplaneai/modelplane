@@ -87,7 +87,7 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: List[Container] = Field(..., min_length=1)
+    containers: List[Container] = Field(..., max_length=1, min_length=1)
     imagePullSecrets: Optional[List[ImagePullSecret]] = None
 
 
