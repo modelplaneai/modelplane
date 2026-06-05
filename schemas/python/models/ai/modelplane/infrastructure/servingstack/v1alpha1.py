@@ -96,12 +96,6 @@ class Versions(BaseModel):
     """
     Gateway API CRD version.
     """
-    gatewayApiInferenceExtension: Optional[constr(min_length=1, max_length=32)] = (
-        'v1.5.0'
-    )
-    """
-    Gateway API Inference Extension version.
-    """
     leaderWorkerSet: Optional[constr(min_length=1, max_length=32)] = 'v0.8.0'
     """
     LeaderWorkerSet chart version.

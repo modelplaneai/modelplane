@@ -16,6 +16,5 @@ class DynamoBackend:
         self,
         replica: v1alpha1.ModelReplica,
         cluster: icv1alpha1.InferenceCluster,
-        deployment_name: str,
     ) -> dict[str, base.ComposedResource]:
         raise NotImplementedError("the Dynamo backend is not implemented in v0.1")

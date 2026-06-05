@@ -4,12 +4,13 @@ Selected only for multi-node replicas (pipeline > 1), so this always renders a
 LeaderWorkerSet whose gang size is the per-worker node count.
 
 Routing is plain Gateway API — `HTTPRoute -> Service`, exactly like native.py —
-NOT a GAIE `InferencePool`. The control-plane gateway is Traefik (which is not
-GAIE-conformant: it can't consume an `InferencePool` backendRef or call an
-ext-proc endpoint-picker), so the llm-d path routes to a Service that selects
-the LWS *leader* pods (only the leader serves the OpenAI API; workers just join
-the gang). Inference-aware endpoint picking (KV-/load-aware) is tracked
-separately in issue #8 as a Traefik-compatible in-path picker.
+NOT a GAIE `InferencePool`. The HTTPRoute attaches to the *workload* cluster's
+inference gateway (Envoy Gateway, installed by ServingStack) and the Service
+selects the LWS *leader* pods (only the leader serves the OpenAI API; workers
+just join the gang). v0.1 does no inference-aware (KV-/load-aware) endpoint
+picking — that is tracked in issue #8, at the *control-plane* layer above this
+one (the unified endpoint runs on Traefik, which is not GAIE-conformant), so
+#8's solution is a Traefik-compatible in-path picker, not a GAIE InferencePool.
 
 Multi-node bootstrap: the LWS leader and worker run different commands (no
 `LWS_WORKER_INDEX` branch). The leader starts the Ray head then execs the
@@ -29,7 +30,6 @@ unmodified (no hf:// rewrite), so the engine fetches from its source at startup
 using credentials from engine.env.
 """
 
-from crossplane.function import resource
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
@@ -91,11 +91,12 @@ class LLMDBackend:
         self,
         replica: v1alpha1.ModelReplica,
         cluster: icv1alpha1.InferenceCluster,
-        deployment_name: str,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         engine = base.engine_container(replica)
         pc = cluster.status.providerConfigRef.name
-        name = resource.child_name(deployment_name)
+        # Name resources after the replica (unique per placement) so multiple
+        # replicas of one deployment can co-exist on the same InferenceCluster.
+        name = replica.metadata.name
 
         tensor = int(replica.spec.workers.topology.tensor)
         # nodes_per_worker == pipeline: the LWS gang size (leader + workers).
@@ -203,12 +204,13 @@ class LLMDBackend:
                             {
                                 "path": {
                                     "type": "PathPrefix",
-                                    "value": f"/{replica.metadata.namespace}/{deployment_name}/",
+                                    "value": f"/{replica.metadata.namespace}/{name}/",
                                 }
                             }
                         ],
-                        # Strip the /<ns>/<deployment>/ routing prefix so the engine
-                        # (which serves /v1/...) sees the path it expects.
+                        # The control plane rewrites the public /<ns>/<service>/
+                        # prefix to this replica's /<ns>/<replica>/ (per-IC
+                        # addressing); strip it here so the engine sees /v1/...
                         "filters": [
                             {
                                 "type": "URLRewrite",

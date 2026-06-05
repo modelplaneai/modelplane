@@ -194,9 +194,10 @@ class Composer:
         Endpoints are labeled with the deployment name so a ModelService
         can select them. The URL points at the per-replica path on the
         remote cluster's gateway. The rewritePath tells ModelService what
-        URL prefix to rewrite to on the remote cluster. The path follows
-        the backend HTTPRoute convention: /<namespace>/<deployment-name>/,
-        matching the HTTPRoute emitted by compose-model-replica's backends.
+        URL prefix to rewrite to on the remote cluster. The path is
+        per-replica — /<namespace>/<replica-name>/ — matching the HTTPRoute
+        emitted by compose-model-replica's backends (named after the replica
+        so co-located replicas on one cluster don't collide).
 
         Replicas pinned to clusters that are currently unavailable (no
         gateway address) get no endpoint. Routing must not direct
@@ -204,13 +205,14 @@ class Composer:
         gateway address is observed again the endpoint will be composed
         on the next reconcile.
         """
-        deployment_name = self.xr.metadata.name
-        rewrite_path = f"/{self.xr.metadata.namespace}/{deployment_name}/"
-
         for cluster_info in matched:
             if not cluster_info.gateway_address:
                 continue
 
+            # The replica name (== the ModelReplica and the backend's workload
+            # resources) is the per-placement routing key.
+            replica_name = resource.child_name(self.xr.metadata.name, cluster_info.name)
+            rewrite_path = f"/{self.xr.metadata.namespace}/{replica_name}/"
             endpoint_key = f"endpoint-{cluster_info.name}"
             url = f"{_GATEWAY_SCHEME}://{cluster_info.gateway_address}{rewrite_path}v1"
 
@@ -218,7 +220,7 @@ class Composer:
                 self.rsp.desired.resources[endpoint_key],
                 mev1alpha1.ModelEndpoint(
                     metadata=metav1.ObjectMeta(
-                        name=resource.child_name(self.xr.metadata.name, cluster_info.name),
+                        name=replica_name,
                         namespace=self.xr.metadata.namespace,
                         labels={
                             _LABEL_DEPLOYMENT: self.xr.metadata.name,

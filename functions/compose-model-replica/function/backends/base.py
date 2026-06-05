@@ -24,7 +24,12 @@ DYNAMO = "dynamo"
 
 def engine_container(replica: v1alpha1.ModelReplica):
     """Return the container named 'engine'. The XRD's CEL validation
-    guarantees exactly one exists, so this always succeeds."""
+    guarantees exactly one exists, so this always succeeds.
+
+    TODO(#65 follow-up): backends render only this container. Non-engine
+    containers in the ModelDeployment template (e.g. sidecars) are dropped —
+    decide whether/how to carry them (non-trivial for the LWS gang).
+    """
     return next(c for c in replica.spec.workers.template.spec.containers if c.name == "engine")
 
 
@@ -65,12 +70,13 @@ class Backend(Protocol):
         self,
         replica: v1alpha1.ModelReplica,
         cluster: icv1alpha1.InferenceCluster,
-        deployment_name: str,
     ) -> dict[str, ComposedResource]:
         """Return a mapping of response resource-key -> composed resource.
 
         The caller (fn.py) must pass a cluster whose
         ``status.providerConfigRef.name`` is populated; backends read it to
-        target the remote cluster and do not re-default it.
+        target the remote cluster and do not re-default it. Composed resources
+        are named after ``replica.metadata.name`` (unique per placement) so
+        co-located replicas don't collide.
         """
         ...

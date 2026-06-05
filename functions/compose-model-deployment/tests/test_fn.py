@@ -149,8 +149,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model/v1",
-                                    "rewritePath": "/ml-team/my-model/",
+                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-bc3c4/v1",
+                                    "rewritePath": "/ml-team/my-model-cluster-a-bc3c4/",
                                 },
                             }
                         ),
@@ -390,8 +390,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model/v1",
-                                    "rewritePath": "/ml-team/my-model/",
+                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-bc3c4/v1",
+                                    "rewritePath": "/ml-team/my-model-cluster-a-bc3c4/",
                                 },
                             }
                         ),
@@ -638,8 +638,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.2/ml-team/my-model/v1",
-                                    "rewritePath": "/ml-team/my-model/",
+                                    "url": "http://10.0.0.2/ml-team/my-model-cluster-b-a9d2c/v1",
+                                    "rewritePath": "/ml-team/my-model-cluster-b-a9d2c/",
                                 },
                             }
                         ),

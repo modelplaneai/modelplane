@@ -40,10 +40,6 @@ CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 # reads it to track acceptance/readiness.
 MODEL_RESOURCE_KEY = "model-serving"
 
-# Label key written by compose-model-deployment, read here to derive the
-# deployment name on the remote cluster.
-_LABEL_DEPLOYMENT = "modelplane.ai/deployment"
-
 # Backend registry: topology selects which one composes the workload.
 _BACKENDS: dict[str, type[base.Backend]] = {
     base.NATIVE: native.NativeBackend,
@@ -148,19 +144,8 @@ class Composer:
         """Dispatch to the backend that matches the replica's topology."""
         self.engine = base.engine_container(self.xr)
         backend = _BACKENDS[base.select_backend(self.xr)]()
-        deployment_name = self._deployment_name()
-        for key, composed in backend.build(self.xr, self.ic, deployment_name).items():
+        for key, composed in backend.build(self.xr, self.ic).items():
             resource.update(self.rsp.desired.resources[key], composed)
-
-    def _deployment_name(self):
-        """Raw deployment name shared by all replicas of one deployment.
-
-        Read from the modelplane.ai/deployment label that
-        compose-model-deployment sets on every replica. Backends call
-        resource.child_name themselves, so this returns the raw name.
-        """
-        labels = self.xr.metadata.labels or {}
-        return labels.get(_LABEL_DEPLOYMENT, self.xr.metadata.name)
 
     def derive_conditions(self):
         """Derive ModelAccepted and ModelReady conditions."""

@@ -5,7 +5,6 @@ directly: the engine's --model arg is passed through unmodified, so vLLM/SGLang
 fetches from its source at startup using credentials from engine.env.
 """
 
-from crossplane.function import resource
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
@@ -40,11 +39,13 @@ class NativeBackend:
         self,
         replica: v1alpha1.ModelReplica,
         cluster: icv1alpha1.InferenceCluster,
-        deployment_name: str,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         engine = base.engine_container(replica)
         pc = cluster.status.providerConfigRef.name
-        name = resource.child_name(deployment_name)
+        # Name workload resources after the replica (unique per placement), not
+        # the deployment — so multiple replicas of one deployment can co-exist on
+        # the same InferenceCluster without colliding on the remote cluster.
+        name = replica.metadata.name
         labels = {_LABEL_SERVING: name}
 
         container = {
@@ -104,12 +105,14 @@ class NativeBackend:
                             {
                                 "path": {
                                     "type": "PathPrefix",
-                                    "value": f"/{replica.metadata.namespace}/{deployment_name}/",
+                                    "value": f"/{replica.metadata.namespace}/{name}/",
                                 }
                             }
                         ],
-                        # Strip the /<ns>/<deployment>/ routing prefix so the engine
-                        # (which serves /v1/...) sees the path it expects.
+                        # The control plane rewrites the public /<ns>/<service>/
+                        # prefix to this replica's /<ns>/<replica>/ (per-IC
+                        # addressing, so it survives to this gateway and routes
+                        # among deployments); strip it here so the engine sees /v1/.
                         "filters": [
                             {
                                 "type": "URLRewrite",

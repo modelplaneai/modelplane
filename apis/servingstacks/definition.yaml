@@ -17,9 +17,6 @@ spec:
   - name: v1alpha1
     referenceable: true
     additionalPrinterColumns:
-    - name: GAIE
-      type: string
-      jsonPath: .spec.versions.gatewayApiInferenceExtension
     - name: GATEWAY
       type: string
       jsonPath: .status.gateway.address
@@ -27,8 +24,7 @@ spec:
       openAPIV3Schema:
         description: >-
           A ServingStack installs the serving substrate (LeaderWorkerSet,
-          Gateway API + Inference Extension, cert-manager, Prometheus) on a
-          Kubernetes cluster.
+          Gateway API, cert-manager, Prometheus) on a Kubernetes cluster.
         properties:
           spec:
             description: ServingStackSpec defines the desired state of ServingStack.
@@ -77,12 +73,6 @@ spec:
                   tested combination. Override individual versions to upgrade
                   components independently.
                 properties:
-                  gatewayApiInferenceExtension:
-                    type: string
-                    default: "v1.5.0"
-                    description: Gateway API Inference Extension version.
-                    minLength: 1
-                    maxLength: 32
                   gatewayApi:
                     type: string
                     default: "v1.5.1"

@@ -115,20 +115,20 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "apiVersion": "apps/v1",
                                             "kind": "Deployment",
                                             "metadata": {
-                                                "name": "my-deployment-1154c",
+                                                "name": "test-replica",
                                                 "namespace": "default",
                                             },
                                             "spec": {
                                                 "replicas": 1,
                                                 "selector": {
                                                     "matchLabels": {
-                                                        "modelplane.ai/serving": "my-deployment-1154c",
+                                                        "modelplane.ai/serving": "test-replica",
                                                     },
                                                 },
                                                 "template": {
                                                     "metadata": {
                                                         "labels": {
-                                                            "modelplane.ai/serving": "my-deployment-1154c",
+                                                            "modelplane.ai/serving": "test-replica",
                                                         },
                                                     },
                                                     "spec": {
@@ -179,11 +179,11 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "apiVersion": "v1",
                                             "kind": "Service",
                                             "metadata": {
-                                                "name": "my-deployment-1154c",
+                                                "name": "test-replica",
                                                 "namespace": "default",
                                             },
                                             "spec": {
-                                                "selector": {"modelplane.ai/serving": "my-deployment-1154c"},
+                                                "selector": {"modelplane.ai/serving": "test-replica"},
                                                 "ports": [{"port": 80, "targetPort": 8000}],
                                             },
                                         },
@@ -208,7 +208,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "apiVersion": "gateway.networking.k8s.io/v1",
                                             "kind": "HTTPRoute",
                                             "metadata": {
-                                                "name": "my-deployment-1154c",
+                                                "name": "test-replica",
                                                 "namespace": "default",
                                             },
                                             "spec": {
@@ -224,7 +224,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                             {
                                                                 "path": {
                                                                     "type": "PathPrefix",
-                                                                    "value": "/ml-team/my-deployment/",
+                                                                    "value": "/ml-team/test-replica/",
                                                                 },
                                                             },
                                                         ],
@@ -240,7 +240,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                             },
                                                         ],
                                                         "backendRefs": [
-                                                            {"name": "my-deployment-1154c", "port": 80},
+                                                            {"name": "test-replica", "port": 80},
                                                         ],
                                                     },
                                                 ],

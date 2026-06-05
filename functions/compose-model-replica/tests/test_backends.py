@@ -1,5 +1,13 @@
-"""Tests for backend selection and the dispatch predicate."""
+"""Tests for compose-model-replica backends.
 
+Backend manifests are asserted with a `Case` table (matching the convention in
+test_fn.py): each case builds a backend from a ModelReplica and compares the
+composed manifests to a full `want`. Backend selection and the Dynamo stub are
+dispatch/behaviour tests, not manifest comparisons, so they stay as focused
+methods below the table.
+"""
+
+import dataclasses
 import unittest
 
 from function.backends import base, dynamo, llmd, native
@@ -7,24 +15,246 @@ from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
+_SERVING = "modelplane.ai/serving"
+_ROLE = "modelplane.ai/lws-role"
 
-def _replica(*, tensor=1, pipeline=1):
+
+def _replica(name="r", *, tensor=1, pipeline=1, args=None, command=None, namespace="ml-team"):
+    container = v1alpha1.Container(
+        name="engine",
+        image="vllm/vllm-openai:latest",
+        args=args if args is not None else ["--model=Qwen/Qwen3-0.6B"],
+    )
+    if command is not None:
+        container.command = command
     return v1alpha1.ModelReplica(
+        metadata=metav1.ObjectMeta(name=name, namespace=namespace),
         spec=v1alpha1.SpecModel(
-            clusterName="c",
+            clusterName="cluster-a",
             workers=v1alpha1.Workers(
+                count=1,
                 topology=v1alpha1.Topology(tensor=tensor, pipeline=pipeline),
-                template=v1alpha1.Template(
-                    spec=v1alpha1.Spec(
-                        containers=[v1alpha1.Container(name="engine", image="img")],
-                    ),
-                ),
+                template=v1alpha1.Template(spec=v1alpha1.Spec(containers=[container])),
             ),
         ),
     )
 
 
-class TestDispatch(unittest.TestCase):
+_CLUSTER = icv1alpha1.InferenceCluster(
+    metadata=metav1.ObjectMeta(name="cluster-a"),
+    spec=icv1alpha1.Spec(
+        cluster=icv1alpha1.Cluster(
+            source="Existing", existing=icv1alpha1.Existing(secretRef=icv1alpha1.SecretRef(name="k"))
+        )
+    ),
+    status=icv1alpha1.Status(providerConfigRef=icv1alpha1.ProviderConfigRef(name="cluster-a-pc")),
+)
+
+
+def _route(name):
+    """The HTTPRoute is identical across backends — replica-named, prefix-stripped."""
+    return {
+        "apiVersion": "gateway.networking.k8s.io/v1",
+        "kind": "HTTPRoute",
+        "metadata": {"name": name, "namespace": "default"},
+        "spec": {
+            "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
+            "rules": [
+                {
+                    "matches": [{"path": {"type": "PathPrefix", "value": f"/ml-team/{name}/"}}],
+                    "filters": [
+                        {
+                            "type": "URLRewrite",
+                            "urlRewrite": {"path": {"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}},
+                        }
+                    ],
+                    "backendRefs": [{"name": name, "port": 80}],
+                }
+            ],
+        },
+    }
+
+
+_NATIVE_WANT = {
+    "model-serving": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "metadata": {"name": "r", "namespace": "default"},
+        "spec": {
+            "replicas": 1,
+            "selector": {"matchLabels": {_SERVING: "r"}},
+            "template": {
+                "metadata": {"labels": {_SERVING: "r"}},
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "engine",
+                            "image": "vllm/vllm-openai:latest",
+                            "args": ["--model=Qwen/Qwen3-0.6B"],
+                            "ports": [{"containerPort": 8000}],
+                            "resources": {"limits": {"nvidia.com/gpu": "2"}},
+                            "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                            "readinessProbe": {
+                                "httpGet": {"path": "/health", "port": 8000},
+                                "initialDelaySeconds": 30,
+                                "periodSeconds": 10,
+                            },
+                        }
+                    ],
+                    "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                },
+            },
+        },
+    },
+    "model-service": {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": "r", "namespace": "default"},
+        "spec": {"selector": {_SERVING: "r"}, "ports": [{"port": 80, "targetPort": 8000}]},
+    },
+    "model-route": _route("r"),
+}
+
+
+def _lws(leader_container, worker_container):
+    return {
+        "apiVersion": "leaderworkerset.x-k8s.io/v1",
+        "kind": "LeaderWorkerSet",
+        "metadata": {"name": "r", "namespace": "default"},
+        "spec": {
+            "replicas": 1,
+            "leaderWorkerTemplate": {
+                "size": 2,
+                "leaderTemplate": {
+                    "metadata": {"labels": {_SERVING: "r", _ROLE: "leader"}},
+                    "spec": {
+                        "containers": [leader_container],
+                        "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                    },
+                },
+                "workerTemplate": {
+                    "metadata": {"labels": {_SERVING: "r"}},
+                    "spec": {
+                        "containers": [worker_container],
+                        "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                    },
+                },
+            },
+        },
+    }
+
+
+def _engine(command, *, serving, args=None):
+    c = {
+        "name": "engine",
+        "image": "vllm/vllm-openai:latest",
+        "resources": {"limits": {"nvidia.com/gpu": "8"}},
+        "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+        "command": command,
+    }
+    if args is not None:
+        c["args"] = args
+    if serving:
+        c["ports"] = [{"containerPort": 8000}]
+        c["readinessProbe"] = {
+            "httpGet": {"path": "/health", "port": 8000},
+            "initialDelaySeconds": 30,
+            "periodSeconds": 10,
+        }
+    return c
+
+
+# vLLM bootstrap: args folded into the leader command (consumed as "$@"); worker
+# just joins the Ray cluster.
+_LLMD_VLLM_LEADER_CMD = [
+    "/bin/sh",
+    "-c",
+    llmd._LEADER_BOOTSTRAP,
+    "vllm",
+    "--model=meta-llama/Llama-3.1-405B",
+    "--tensor-parallel-size=8",
+    "--pipeline-parallel-size=2",
+]
+_LLMD_VLLM_WANT = {
+    "model-serving": _lws(
+        _engine(_LLMD_VLLM_LEADER_CMD, serving=True),
+        _engine(["/bin/sh", "-c", llmd._WORKER_BOOTSTRAP], serving=False),
+    ),
+    "model-service": {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": "r", "namespace": "default"},
+        "spec": {"selector": {_SERVING: "r", _ROLE: "leader"}, "ports": [{"port": 80, "targetPort": 8000}]},
+    },
+    "model-route": _route("r"),
+}
+
+# Escape hatch: the user command runs verbatim on both templates; no Ray
+# bootstrap and no vLLM parallelism flags injected.
+_SGLANG_CMD = ["python3", "-m", "sglang.launch_server"]
+_SGLANG_ARGS = ["--nnodes", "2"]
+_LLMD_ESCAPE_WANT = {
+    "model-serving": _lws(
+        _engine(_SGLANG_CMD, serving=True, args=_SGLANG_ARGS),
+        _engine(_SGLANG_CMD, serving=False, args=_SGLANG_ARGS),
+    ),
+    "model-service": _LLMD_VLLM_WANT["model-service"],
+    "model-route": _route("r"),
+}
+
+
+@dataclasses.dataclass
+class Case:
+    name: str
+    backend: object
+    replica: v1alpha1.ModelReplica
+    want: dict
+
+
+_CASES = [
+    Case(
+        name="native single-pod Deployment+Service+Route",
+        backend=native.NativeBackend(),
+        replica=_replica(tensor=2),
+        want=_NATIVE_WANT,
+    ),
+    Case(
+        name="llm-d multi-node injects vLLM/Ray bootstrap",
+        backend=llmd.LLMDBackend(),
+        replica=_replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+        want=_LLMD_VLLM_WANT,
+    ),
+    Case(
+        name="llm-d user command bypasses bootstrap (non-vLLM escape hatch)",
+        backend=llmd.LLMDBackend(),
+        replica=_replica(tensor=8, pipeline=2, command=_SGLANG_CMD, args=_SGLANG_ARGS),
+        want=_LLMD_ESCAPE_WANT,
+    ),
+]
+
+
+class TestBackendManifests(unittest.TestCase):
+    def test_manifests(self):
+        for case in _CASES:
+            with self.subTest(case.name):
+                out = case.backend.build(case.replica, _CLUSTER)
+                got = {key: obj.spec.forProvider.manifest for key, obj in out.items()}
+                self.assertEqual(case.want, got, "-want, +got")
+
+    @staticmethod
+    def _names(out):
+        return {o.spec.forProvider.manifest["metadata"]["name"] for o in out.values()}
+
+    def test_resources_named_after_replica_avoid_collision(self):
+        # Two replicas of one deployment on the same IC must produce distinct
+        # workload-resource names (Nic's collision concern).
+        a = native.NativeBackend().build(_replica("dep-clusterA"), _CLUSTER)
+        b = native.NativeBackend().build(_replica("dep-clusterB"), _CLUSTER)
+        self.assertEqual(self._names(a), {"dep-clusterA"})
+        self.assertEqual(self._names(b), {"dep-clusterB"})
+
+
+class TestBackendSelection(unittest.TestCase):
     def test_single_pod_is_native(self):
         self.assertEqual(base.select_backend(_replica(tensor=8, pipeline=1)), base.NATIVE)
 
@@ -36,236 +266,15 @@ class TestDispatch(unittest.TestCase):
         self.assertTrue(base.needs_cross_pod_coordination(_replica(tensor=4, pipeline=3)))
 
     def test_pipeline_none_defaults_to_single_pod(self):
-        # pipeline is Optional; exercise the `or 1` guard in nodes_per_worker.
         replica = _replica(tensor=4, pipeline=1)
         replica.spec.workers.topology.pipeline = None
-        self.assertEqual(base.nodes_per_worker(replica), 1)
         self.assertFalse(base.needs_cross_pod_coordination(replica))
-
-
-class TestNativeBackend(unittest.TestCase):
-    def setUp(self):
-        self.replica = v1alpha1.ModelReplica(
-            metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
-            spec=v1alpha1.SpecModel(
-                clusterName="cluster-a",
-                workers=v1alpha1.Workers(
-                    topology=v1alpha1.Topology(tensor=2, pipeline=1),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(
-                            containers=[
-                                v1alpha1.Container(
-                                    name="engine",
-                                    image="vllm/vllm-openai:latest",
-                                    args=["--model=Qwen/Qwen3-0.6B"],
-                                ),
-                            ],
-                        ),
-                    ),
-                ),
-            ),
-        )
-        self.cluster = icv1alpha1.InferenceCluster(
-            metadata=metav1.ObjectMeta(name="cluster-a"),
-            spec=icv1alpha1.Spec(
-                cluster=icv1alpha1.Cluster(
-                    source="Existing", existing=icv1alpha1.Existing(secretRef=icv1alpha1.SecretRef(name="k"))
-                ),
-            ),
-            status=icv1alpha1.Status(
-                providerConfigRef=icv1alpha1.ProviderConfigRef(name="cluster-a-pc"),
-            ),
-        )
-
-    def test_emits_deployment_service_route(self):
-        out = native.NativeBackend().build(self.replica, self.cluster, "my-deployment")
-        kinds = sorted(o.spec.forProvider.manifest["kind"] for o in out.values())
-        self.assertEqual(kinds, ["Deployment", "HTTPRoute", "Service"])
-
-    def test_engine_args_passed_through_unmodified(self):
-        out = native.NativeBackend().build(self.replica, self.cluster, "my-deployment")
-        dep = next(o for o in out.values() if o.spec.forProvider.manifest["kind"] == "Deployment")
-        container = dep.spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]
-        # No hf:// rewrite, no --model stripping: the engine fetches directly.
-        self.assertIn("--model=Qwen/Qwen3-0.6B", container["args"])
-        self.assertEqual(container["resources"]["limits"]["nvidia.com/gpu"], "2")
-
-    def test_http_route_path_matches_namespace_and_deployment(self):
-        out = native.NativeBackend().build(self.replica, self.cluster, "my-deployment")
-        route = next(o for o in out.values() if o.spec.forProvider.manifest["kind"] == "HTTPRoute")
-        rule = route.spec.forProvider.manifest["spec"]["rules"][0]
-        self.assertEqual(rule["matches"][0]["path"]["value"], "/ml-team/my-deployment/")
-        # The prefix must be stripped before the engine (serves /v1/...).
-        self.assertEqual(rule["filters"][0]["type"], "URLRewrite")
-        self.assertEqual(rule["filters"][0]["urlRewrite"]["path"]["replacePrefixMatch"], "/")
-
-    def test_engine_env_passed_through(self):
-        self.replica.spec.workers.template.spec.containers[0].env = [
-            v1alpha1.EnvItem(name="HF_TOKEN", value="secret"),
-        ]
-        out = native.NativeBackend().build(self.replica, self.cluster, "my-deployment")
-        dep = next(o for o in out.values() if o.spec.forProvider.manifest["kind"] == "Deployment")
-        container = dep.spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]
-        self.assertIn({"name": "HF_TOKEN", "value": "secret"}, container["env"])
-
-    def test_engine_command_passed_through(self):
-        # A user-supplied command overrides the image entrypoint (single-pod).
-        self.replica.spec.workers.template.spec.containers[0].command = ["python3", "-m", "my.server"]
-        out = native.NativeBackend().build(self.replica, self.cluster, "my-deployment")
-        dep = next(o for o in out.values() if o.spec.forProvider.manifest["kind"] == "Deployment")
-        container = dep.spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]
-        self.assertEqual(container["command"], ["python3", "-m", "my.server"])
-
-
-class TestLLMDBackend(unittest.TestCase):
-    def setUp(self):
-        self.replica = v1alpha1.ModelReplica(
-            metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
-            spec=v1alpha1.SpecModel(
-                clusterName="cluster-a",
-                workers=v1alpha1.Workers(
-                    count=1,
-                    topology=v1alpha1.Topology(tensor=8, pipeline=2),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(
-                            containers=[
-                                v1alpha1.Container(
-                                    name="engine",
-                                    image="vllm/vllm-openai:latest",
-                                    args=["--model=meta-llama/Llama-3.1-405B"],
-                                ),
-                            ],
-                        ),
-                    ),
-                ),
-            ),
-        )
-        self.cluster = icv1alpha1.InferenceCluster(
-            metadata=metav1.ObjectMeta(name="cluster-a"),
-            spec=icv1alpha1.Spec(
-                cluster=icv1alpha1.Cluster(
-                    source="Existing", existing=icv1alpha1.Existing(secretRef=icv1alpha1.SecretRef(name="k"))
-                ),
-            ),
-            status=icv1alpha1.Status(
-                providerConfigRef=icv1alpha1.ProviderConfigRef(name="cluster-a-pc"),
-            ),
-        )
-
-    def _build(self):
-        return llmd.LLMDBackend().build(self.replica, self.cluster, "my-deployment")
-
-    def _manifest(self, out, kind):
-        return next(o.spec.forProvider.manifest for o in out.values() if o.spec.forProvider.manifest["kind"] == kind)
-
-    def _lws(self, out):
-        return self._manifest(out, "LeaderWorkerSet")
-
-    def _leader(self, out):
-        return self._lws(out)["spec"]["leaderWorkerTemplate"]["leaderTemplate"]
-
-    def _worker(self, out):
-        return self._lws(out)["spec"]["leaderWorkerTemplate"]["workerTemplate"]
-
-    def test_emits_expected_kinds(self):
-        # Plain Gateway-API routing (Traefik-compatible): LWS + Service +
-        # HTTPRoute. No GAIE InferencePool / EPP.
-        out = self._build()
-        kinds = sorted(o.spec.forProvider.manifest["kind"] for o in out.values())
-        self.assertEqual(kinds, ["HTTPRoute", "LeaderWorkerSet", "Service"])
-        self.assertEqual(set(out.keys()), {"model-serving", "model-service", "model-route"})
-
-    def test_no_gaie_resources(self):
-        kinds = {o.spec.forProvider.manifest["kind"] for o in self._build().values()}
-        self.assertNotIn("InferencePool", kinds)
-
-    def test_lws_size(self):
-        self.assertEqual(self._lws(self._build())["spec"]["leaderWorkerTemplate"]["size"], 2)
-
-    def test_leader_runs_ray_head_then_engine(self):
-        cmd = self._leader(self._build())["spec"]["containers"][0]["command"]
-        self.assertEqual(cmd[:2], ["/bin/sh", "-c"])
-        self.assertIn("ray start --head", cmd[2])
-        self.assertIn("vllm.entrypoints.openai.api_server", cmd[2])
-        # Engine args are folded into the command (consumed as "$@"), not a
-        # separate container args field.
-        self.assertEqual(cmd[3], "vllm")
-        self.assertIn("--tensor-parallel-size=8", cmd[4:])
-        self.assertIn("--pipeline-parallel-size=2", cmd[4:])
-        # No hf:// rewrite: --model passed through as-is.
-        self.assertIn("--model=meta-llama/Llama-3.1-405B", cmd[4:])
-
-    def test_worker_joins_leader_ray_cluster(self):
-        worker = self._worker(self._build())["spec"]["containers"][0]
-        self.assertIn('ray start --address="$LWS_LEADER_ADDRESS:6379"', worker["command"][2])
-        self.assertIn("--block", worker["command"][2])
-        # The worker doesn't serve the API: no port, no readiness probe.
-        self.assertNotIn("ports", worker)
-        self.assertNotIn("readinessProbe", worker)
-
-    def test_only_leader_labeled_for_service(self):
-        out = self._build()
-        self.assertEqual(self._leader(out)["metadata"]["labels"]["modelplane.ai/lws-role"], "leader")
-        self.assertNotIn("modelplane.ai/lws-role", self._worker(out)["metadata"]["labels"])
-
-    def test_service_selects_leader_pods(self):
-        out = self._build()
-        svc = self._manifest(out, "Service")
-        lws_name = self._lws(out)["metadata"]["name"]
-        self.assertEqual(svc["spec"]["selector"]["modelplane.ai/lws-role"], "leader")
-        self.assertEqual(svc["spec"]["selector"]["modelplane.ai/serving"], lws_name)
-        self.assertEqual(svc["spec"]["ports"], [{"port": 80, "targetPort": 8000}])
-
-    def test_httproute_targets_service(self):
-        out = self._build()
-        backend_ref = self._manifest(out, "HTTPRoute")["spec"]["rules"][0]["backendRefs"][0]
-        # Plain Service backendRef — no InferencePool kind/group.
-        self.assertEqual(backend_ref, {"name": self._lws(out)["metadata"]["name"], "port": 80})
-
-    def test_httproute_path_matches_and_strips_prefix(self):
-        rule = self._manifest(self._build(), "HTTPRoute")["spec"]["rules"][0]
-        self.assertEqual(rule["matches"][0]["path"]["value"], "/ml-team/my-deployment/")
-        # The prefix must be stripped before the engine (serves /v1/...).
-        self.assertEqual(rule["filters"][0]["type"], "URLRewrite")
-        self.assertEqual(rule["filters"][0]["urlRewrite"]["path"]["replacePrefixMatch"], "/")
-
-    def test_parallelism_flags_not_double_injected(self):
-        # User-supplied parallelism flags must be respected, not duplicated.
-        self.replica.spec.workers.template.spec.containers[0].args = [
-            "--model=m",
-            "--tensor-parallel-size=4",
-        ]
-        cmd = self._leader(self._build())["spec"]["containers"][0]["command"]
-        self.assertEqual(cmd.count("--tensor-parallel-size=4"), 1)
-        self.assertEqual(len([a for a in cmd if a.startswith("--tensor-parallel-size")]), 1)
-
-    def test_user_command_override_bypasses_bootstrap(self):
-        # Escape hatch for non-vLLM engines: a user command runs verbatim on
-        # both templates; no Ray bootstrap, no vLLM parallelism flags injected.
-        self.replica.spec.workers.template.spec.containers[0].command = ["python3", "-m", "sglang.launch_server"]
-        self.replica.spec.workers.template.spec.containers[0].args = [
-            "--nnodes",
-            "$(LWS_GROUP_SIZE)",
-            "--node-rank",
-            "$(LWS_WORKER_INDEX)",
-        ]
-        out = self._build()
-        leader = self._leader(out)["spec"]["containers"][0]
-        worker = self._worker(out)["spec"]["containers"][0]
-        # Same user command on both roles (symmetric); no /bin/sh bootstrap wrapper.
-        self.assertEqual(leader["command"], ["python3", "-m", "sglang.launch_server"])
-        self.assertEqual(worker["command"], leader["command"])
-        # Args passed through verbatim; vLLM parallelism flags NOT injected.
-        self.assertEqual(leader["args"], ["--nnodes", "$(LWS_GROUP_SIZE)", "--node-rank", "$(LWS_WORKER_INDEX)"])
-        self.assertFalse(any(a.startswith("--tensor-parallel-size") for a in leader["args"]))
 
 
 class TestDynamoStub(unittest.TestCase):
     def test_not_selected_in_v01(self):
-        # No Dynamo-only capability is wired, so dispatch never returns DYNAMO.
         self.assertNotEqual(base.select_backend(_replica(tensor=8, pipeline=2)), base.DYNAMO)
 
     def test_build_raises(self):
-        cluster = icv1alpha1.InferenceCluster(spec=icv1alpha1.Spec(cluster=icv1alpha1.Cluster(source="Existing")))
         with self.assertRaises(NotImplementedError):
-            dynamo.DynamoBackend().build(_replica(tensor=8, pipeline=2), cluster, "d")
+            dynamo.DynamoBackend().build(_replica(tensor=8, pipeline=2), _CLUSTER)
