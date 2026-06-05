@@ -5,12 +5,18 @@ LeaderWorkerSet whose gang size is the per-worker node count.
 
 Routing is plain Gateway API — `HTTPRoute -> Service`, exactly like native.py —
 NOT a GAIE `InferencePool`. The HTTPRoute attaches to the *workload* cluster's
-inference gateway (Envoy Gateway, installed by ServingStack) and the Service
-selects the LWS *leader* pods (only the leader serves the OpenAI API; workers
-just join the gang). v0.1 does no inference-aware (KV-/load-aware) endpoint
-picking — that is tracked in issue #8, at the *control-plane* layer above this
-one (the unified endpoint runs on Traefik, which is not GAIE-conformant), so
-#8's solution is a Traefik-compatible in-path picker, not a GAIE InferencePool.
+inference gateway (Envoy Gateway, named `inference-gateway`, installed by
+ServingStack) and the Service selects the LWS *leader* pods (only the leader
+serves the OpenAI API; workers just join the gang).
+
+Why a Service, not a GAIE `InferencePool`: v0.1 does no KV-/load-aware endpoint
+picking, so the `InferencePool` + EPP this path originally emitted aren't needed
+yet. Reintroducing them is a *workload-gateway* concern — it needs a
+GAIE-conformant workload gateway (Envoy Gateway's `InferencePool` v1 support is
+unconfirmed; alternatively switch the workload gateway to Istio/agentgateway).
+That is independent of the control-plane gateway (Traefik, named `modelplane`),
+which never sees these resources. (Issue #8 — inference-aware routing *across
+replicas* on the control plane — is a separate problem at that layer.)
 
 Multi-node bootstrap: the LWS leader and worker run different commands (no
 `LWS_WORKER_INDEX` branch). The leader starts the Ray head then execs the
