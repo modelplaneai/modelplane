@@ -94,7 +94,7 @@ changed a composition function, make sure there's a test covering the change.
 
 ### Writing style
 
-Using an agent to help write code, commits, or PRs is fine. But the prose it
+Using an agent to help write code, commits, PRs, or issues is fine. But the prose it
 produces should be indistinguishable from something you'd write yourself. An
 agent's first draft rarely is: it tends to pad, hedge, and decorate. Treat that
 draft as a starting point and cut it hard, often by half or more. If a sentence
@@ -211,3 +211,24 @@ This makes the scheduler skip environments without a `Ready=True` condition. Whe
 
 The pool-fitting logic moves into a `_best_pool_fit` helper to keep `schedule()` under the branch-count lint threshold. A new `test-model-deployment-not-ready-env` case covers the skip behavior.
 ```
+
+## Reporting issues
+
+Open an issue with the bug report or feature request template. The Writing style
+section above applies here too: lead with the problem, be specific, and don't pad
+or invent.
+
+For a bug, the title should name the symptom, and the root cause if you know it:
+"InferenceGateway never becomes ready on a fresh control plane: Gateway API CRDs
+not installed". Describe what you observed before what you think causes it, and
+back it with evidence a reader can't reconstruct themselves — the actual error
+message, status condition, or log output in a fenced block, and a link to the
+offending code with line numbers if you found it. Give numbered, copy-pasteable
+reproduction steps, and a workaround if you have one. List the versions of
+everything involved: Modelplane, Crossplane, the inference backend, the cluster
+and its provider, and Kubernetes.
+
+For a feature request, describe the problem or limitation before any solution; a
+well-framed problem is worth more than a proposed fix. If you do have a shape in
+mind, show it concretely — the YAML, CLI, or API a user would write — and note
+the trade-offs and the alternatives you considered.

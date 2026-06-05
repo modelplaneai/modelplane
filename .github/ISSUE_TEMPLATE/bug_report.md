@@ -4,37 +4,33 @@ about: Help us diagnose and fix bugs in Modelplane
 labels: bug
 ---
 <!--
-Please search for open issues before raising a new one.
+Search open issues before raising a new one.
 
-Clearly describe the problem. Focus on what's broken and how to reproduce it.
-Include enough context that someone unfamiliar with your setup could understand
-the issue.
+See the Reporting issues section of CONTRIBUTING.md for what makes a good bug
+report: https://github.com/modelplaneai/modelplane/blob/main/CONTRIBUTING.md
+Lead with the problem, be specific, and back it with evidence.
 -->
 
 ### What happened?
 <!--
-Describe the behaviour you observed and how it differs from what you expected.
-Include error messages, log output, or unexpected resource status if relevant.
+Describe what you observed and how it differs from what you expected, before
+what you think causes it. Include the actual error message, status condition, or
+log output in a fenced block, and link to the offending code with line numbers
+if you found it.
 -->
 
 
 ### How can we reproduce it?
 <!--
-Provide the minimal steps needed to trigger the bug. Include relevant manifests,
-function inputs, or scripts. The easier this is to reproduce, the faster it gets
-fixed.
+Numbered, copy-pasteable steps: commands, manifests, or function inputs. Include
+a workaround if you have one.
 -->
 
 
 ### What environment did it happen in?
-Modelplane version:
-
 <!--
-Include at least the version or commit of Modelplane. Consider also including:
-
-* Crossplane version (crossplane xpkg list or similar)
-* Inference backend (KServe, KubeAI, etc.)
-* Cloud provider and cluster type (GKE, EKS, AKS, etc.)
-* Kubernetes version (kubectl version)
-* Relevant provider versions (provider-gcp, provider-helm, etc.)
+List the versions of everything involved: Crossplane, the inference backend, the
+cloud provider and cluster type, Kubernetes, and the relevant providers
+(provider-helm, provider-kubernetes, provider-gcp, etc.).
 -->
+Modelplane version:
