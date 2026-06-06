@@ -38,6 +38,65 @@ spec:
                   degraded state via its conditions. If the cluster is
                   deleted entirely the parent ModelDeployment re-places
                   the replica on another viable cluster.
+              nodePoolName:
+                type: string
+                description: >-
+                  Name of the node pool on the pinned InferenceCluster the
+                  scheduler selected for this replica. Set when the parent
+                  ModelDeployment's nodeSelector matched a specific pool.
+              deviceRequests:
+                type: array
+                description: >-
+                  Resolved DRA device requests for the matched pool. The parent
+                  ModelDeployment's compose function joins the nodeSelector
+                  requests with the matched InferenceClass devices and stamps the
+                  claim: DRA devices here. This function turns each into a
+                  DeviceRequest in a DRA ResourceClaim for the serving pods.
+                  Empty when the deployment has no nodeSelector or matched only
+                  synthetic devices.
+                maxItems: 16
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
+                items:
+                  type: object
+                  required: [name, deviceClassName]
+                  properties:
+                    name:
+                      type: string
+                      description: Request name; becomes the DeviceRequest name.
+                      minLength: 1
+                      maxLength: 63
+                    deviceClassName:
+                      type: string
+                      description: >-
+                        Cluster-scoped DRA DeviceClass to claim through, from the
+                        matched InferenceClass device.
+                      minLength: 1
+                      maxLength: 253
+                    count:
+                      type: integer
+                      description: How many devices to claim.
+                      default: 1
+                      minimum: 1
+                      maximum: 64
+                    selectors:
+                      type: array
+                      description: >-
+                        DRA CEL selectors copied verbatim from the nodeSelector
+                        request, ANDed in the DeviceRequest.
+                      maxItems: 8
+                      x-kubernetes-list-type: atomic
+                      items:
+                        type: object
+                        # A selector must carry a selector kind (today only cel).
+                        # An empty {} selector would match any device, silently
+                        # widening the DRA claim the serving pod binds through.
+                        minProperties: 1
+                        properties:
+                          cel:
+                            type: string
+                            minLength: 1
+                            maxLength: 10240
               modelCacheRef:
                 type: object
                 required: [name]

@@ -43,6 +43,70 @@ spec:
                   matchLabels:
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+              nodeSelector:
+                type: object
+                description: >-
+                  Optional node-level matching, a list of device requests
+                  mirroring a DRA ResourceClaim. The scheduler matches each
+                  request against a candidate pool's InferenceClass devices
+                  (surfaced on InferenceCluster status.capacity.gpuPools). A pool
+                  matches when it has a device satisfying every request. If
+                  omitted, any pool matches.
+                required: [devices]
+                properties:
+                  devices:
+                    type: array
+                    description: >-
+                      Device requests. A pool matches a request when it has a
+                      device whose count covers the request and whose driver,
+                      attributes, and capacity satisfy every selector.
+                    minItems: 1
+                    maxItems: 16
+                    x-kubernetes-list-type: map
+                    x-kubernetes-list-map-keys: [name]
+                    items:
+                      type: object
+                      required: [name, selectors]
+                      properties:
+                        name:
+                          type: string
+                          description: >-
+                            Name of this request. Mirrors a DRA DeviceRequest
+                            name; carried through to the ResourceClaim.
+                          minLength: 1
+                          maxLength: 63
+                        count:
+                          type: integer
+                          description: >-
+                            How many matching devices a node must have. For a GPU
+                            request this is the per-node GPU count (matches the
+                            worker topology's GPUs per node).
+                          default: 1
+                          minimum: 1
+                          maximum: 64
+                        selectors:
+                          type: array
+                          description: >-
+                            Selectors a device must satisfy, all ANDed. Each is a
+                            one-of; today only cel is supported.
+                          minItems: 1
+                          maxItems: 8
+                          x-kubernetes-list-type: atomic
+                          items:
+                            type: object
+                            properties:
+                              cel:
+                                type: string
+                                description: >-
+                                  A DRA CEL expression evaluated against one
+                                  device. Reads device.driver,
+                                  device.attributes["<driver>"].<name> (typed),
+                                  and device.capacity["<driver>"].<name> (a
+                                  Quantity), with quantity() and semver() helpers,
+                                  e.g.
+                                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
+                                minLength: 1
+                                maxLength: 10240
               modelCacheRef:
                 type: object
                 required: [name]

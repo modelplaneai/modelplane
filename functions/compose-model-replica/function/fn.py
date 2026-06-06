@@ -56,7 +56,7 @@ def _inference_cluster(
     ic.status = ic.status or icv1alpha1.Status()
     ic.status.providerConfigRef = ic.status.providerConfigRef or icv1alpha1.ProviderConfigRef()
     ic.status.gateway = ic.status.gateway or icv1alpha1.Gateway()
-    ic.status.capacity = ic.status.capacity or icv1alpha1.Capacity()
+    ic.status.capacity = ic.status.capacity or icv1alpha1.CapacityModel()
     ic.status.capacity.gpuPools = ic.status.capacity.gpuPools or []
     return ic
 

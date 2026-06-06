@@ -52,6 +52,35 @@ class ModelCacheRef(BaseModel):
     """
 
 
+class Selector(BaseModel):
+    cel: constr(min_length=1, max_length=10240) | None = None
+    """
+    A DRA CEL expression evaluated against one device. Reads device.driver, device.attributes["<driver>"].<name> (typed), and device.capacity["<driver>"].<name> (a Quantity), with quantity() and semver() helpers, e.g. device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
+    """
+
+
+class Device(BaseModel):
+    count: conint(ge=1, le=64) | None = 1
+    """
+    How many matching devices a node must have. For a GPU request this is the per-node GPU count (matches the worker topology's GPUs per node).
+    """
+    name: constr(min_length=1, max_length=63)
+    """
+    Name of this request. Mirrors a DRA DeviceRequest name; carried through to the ResourceClaim.
+    """
+    selectors: list[Selector] = Field(..., max_length=8, min_length=1)
+    """
+    Selectors a device must satisfy, all ANDed. Each is a one-of; today only cel is supported.
+    """
+
+
+class NodeSelector(BaseModel):
+    devices: list[Device] = Field(..., max_length=16, min_length=1)
+    """
+    Device requests. A pool matches a request when it has a device whose count covers the request and whose driver, attributes, and capacity satisfy every selector.
+    """
+
+
 class Metadata(BaseModel):
     annotations: dict[str, str] | None = None
     labels: dict[str, str] | None = None
@@ -167,6 +196,10 @@ class SpecModel(BaseModel):
     modelCacheRef: ModelCacheRef | None = None
     """
     Reference to a ModelCache in the same namespace. Optional for single-node deployments; required for multi-node (workers.topology.pipeline > 1).
+    """
+    nodeSelector: NodeSelector | None = None
+    """
+    Optional node-level matching, a list of device requests mirroring a DRA ResourceClaim. The scheduler matches each request against a candidate pool's InferenceClass devices (surfaced on InferenceCluster status.capacity.gpuPools). A pool matches when it has a device satisfying every request. If omitted, any pool matches.
     """
     replicas: conint(ge=1, le=10)
     """

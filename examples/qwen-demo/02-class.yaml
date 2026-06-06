@@ -13,7 +13,13 @@ spec:
       accelerator:
         type: nvidia-l4
         count: 1
-  resources:
-    gpu:
-      count: 1
-      memory: 24Gi
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      memory: { value: "24Gi" }

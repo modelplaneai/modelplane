@@ -12,26 +12,13 @@ from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from function.backends import base
 
 # Namespace for serving workloads on remote clusters.
-_REMOTE_NAMESPACE = "default"
+_REMOTE_NAMESPACE = base.REMOTE_NAMESPACE
 
 # Port the engine serves the OpenAI-compatible API on.
 _ENGINE_PORT = 8000
 
 # Label joining the Deployment, its pods, and the Service selector.
 _LABEL_SERVING = "modelplane.ai/serving"
-
-
-def _object(provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
-    return k8sobjv1alpha1.Object(
-        spec=k8sobjv1alpha1.Spec(
-            providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                kind="ClusterProviderConfig",
-                name=provider_config,
-            ),
-            readiness=k8sobjv1alpha1.Readiness(policy="DeriveFromObject"),
-            forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
-        ),
-    )
 
 
 class NativeBackend:
@@ -56,7 +43,9 @@ class NativeBackend:
             "image": engine.image,
             "args": args,
             "ports": [{"containerPort": _ENGINE_PORT}],
-            "resources": {"limits": {"nvidia.com/gpu": str(replica.spec.workers.topology.tensor)}},
+            # GPUs bind via DRA when the replica has device requests, else via the
+            # nvidia.com/gpu device-plugin limit.
+            "resources": base.engine_resources(replica),
             # vLLM tensor parallelism needs a large /dev/shm.
             "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
             "readinessProbe": {
@@ -74,6 +63,8 @@ class NativeBackend:
             "containers": [container],
             "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
         }
+        # Reference the per-replica ResourceClaimTemplate (no-op without DRA).
+        base.attach_device_claims(pod_spec, replica)
         tmpl = replica.spec.workers.template
         if tmpl.spec.imagePullSecrets:
             pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
@@ -128,8 +119,13 @@ class NativeBackend:
             },
         }
 
-        return {
-            "model-serving": _object(pc, deployment),
-            "model-service": _object(pc, service),
-            "model-route": _object(pc, http_route),
+        out = {
+            "model-serving": base.wrap_object(pc, deployment),
+            "model-service": base.wrap_object(pc, service),
+            "model-route": base.wrap_object(pc, http_route),
         }
+        # Emit a DRA ResourceClaimTemplate when the replica has device requests.
+        claim = base.resource_claim_template(replica, pc)
+        if claim is not None:
+            out[base.RESOURCE_CLAIM_KEY] = claim
+        return out

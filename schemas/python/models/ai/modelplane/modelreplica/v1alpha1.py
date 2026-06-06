@@ -41,6 +41,29 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
+class Selector(BaseModel):
+    cel: constr(min_length=1, max_length=10240) | None = None
+
+
+class DeviceRequest(BaseModel):
+    count: conint(ge=1, le=64) | None = 1
+    """
+    How many devices to claim.
+    """
+    deviceClassName: constr(min_length=1, max_length=253)
+    """
+    Cluster-scoped DRA DeviceClass to claim through, from the matched InferenceClass device.
+    """
+    name: constr(min_length=1, max_length=63)
+    """
+    Request name; becomes the DeviceRequest name.
+    """
+    selectors: list[Selector] | None = Field(None, max_length=8)
+    """
+    DRA CEL selectors copied verbatim from the nodeSelector request, ANDed in the DeviceRequest.
+    """
+
+
 class ModelCacheRef(BaseModel):
     name: constr(min_length=1)
 
@@ -115,9 +138,17 @@ class SpecModel(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
+    deviceRequests: list[DeviceRequest] | None = Field(None, max_length=16)
+    """
+    Resolved DRA device requests for the matched pool. The parent ModelDeployment's compose function joins the nodeSelector requests with the matched InferenceClass devices and stamps the claim: DRA devices here. This function turns each into a DeviceRequest in a DRA ResourceClaim for the serving pods. Empty when the deployment has no nodeSelector or matched only synthetic devices.
+    """
     modelCacheRef: ModelCacheRef | None = None
     """
     Optional reference to a ModelCache mounted into the engine pod. Inherited verbatim from the parent ModelDeployment.
+    """
+    nodePoolName: str | None = None
+    """
+    Name of the node pool on the pinned InferenceCluster the scheduler selected for this replica. Set when the parent ModelDeployment's nodeSelector matched a specific pool.
     """
     workers: Workers
 

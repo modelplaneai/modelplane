@@ -43,7 +43,7 @@ from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from function.backends import base
 
 # Namespace for serving workloads on remote clusters.
-_REMOTE_NAMESPACE = "default"
+_REMOTE_NAMESPACE = base.REMOTE_NAMESPACE
 
 # Port the engine serves the OpenAI-compatible API on.
 _ENGINE_PORT = 8000
@@ -64,19 +64,6 @@ _LABEL_ROLE = "modelplane.ai/lws-role"
 # only the local node and waits forever.
 _LEADER_BOOTSTRAP = 'set -e\nray start --head --port=6379\nexec python3 -m vllm.entrypoints.openai.api_server "$@"'
 _WORKER_BOOTSTRAP = 'exec ray start --address="$LWS_LEADER_ADDRESS:6379" --block'
-
-
-def _object(provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
-    return k8sobjv1alpha1.Object(
-        spec=k8sobjv1alpha1.Spec(
-            providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                kind="ClusterProviderConfig",
-                name=provider_config,
-            ),
-            readiness=k8sobjv1alpha1.Readiness(policy="DeriveFromObject"),
-            forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
-        ),
-    )
 
 
 def _engine_args(engine, tensor: int, pipeline: int) -> list[str]:
@@ -136,8 +123,10 @@ class LLMDBackend:
             c = {
                 "name": "engine",
                 "image": engine.image,
-                # GPUs PER POD (one tensor-parallel shard runs per pod in the gang).
-                "resources": {"limits": {"nvidia.com/gpu": str(tensor)}},
+                # GPUs PER POD (one tensor-parallel shard runs per pod in the
+                # gang). Bound via DRA when the replica has device requests, else
+                # via the nvidia.com/gpu device-plugin limit.
+                "resources": base.engine_resources(replica),
                 # vLLM tensor parallelism needs a large /dev/shm.
                 "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
                 "command": command,
@@ -162,6 +151,9 @@ class LLMDBackend:
                 "containers": [c],
                 "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
             }
+            # Both the leader and worker pods reference the per-replica
+            # ResourceClaimTemplate (no-op without DRA).
+            base.attach_device_claims(spec, replica)
             if pull_secrets:
                 spec["imagePullSecrets"] = pull_secrets
             return spec
@@ -235,8 +227,13 @@ class LLMDBackend:
             },
         }
 
-        return {
-            "model-serving": _object(pc, leader_worker_set),
-            "model-service": _object(pc, service),
-            "model-route": _object(pc, http_route),
+        out = {
+            "model-serving": base.wrap_object(pc, leader_worker_set),
+            "model-service": base.wrap_object(pc, service),
+            "model-route": base.wrap_object(pc, http_route),
         }
+        # Emit a DRA ResourceClaimTemplate when the replica has device requests.
+        claim = base.resource_claim_template(replica, pc)
+        if claim is not None:
+            out[base.RESOURCE_CLAIM_KEY] = claim
+        return out

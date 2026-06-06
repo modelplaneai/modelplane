@@ -21,7 +21,7 @@ spec:
         properties:
           spec:
             type: object
-            required: [resources]
+            required: [devices]
             properties:
               description:
                 type: string
@@ -50,6 +50,12 @@ spec:
                         minimum: 10
                       accelerator:
                         type: object
+                        description: >-
+                          GPU accelerator to attach when provisioning the node
+                          pool. Provisioning input only: the scheduler matches
+                          against spec.devices, not this block, so count here is
+                          the GCP machine's GPU count and need not be restated in
+                          devices.
                         required: [type, count]
                         properties:
                           type:
@@ -81,6 +87,10 @@ spec:
                         minimum: 10
                       accelerator:
                         type: object
+                        description: >-
+                          GPU accelerator to attach when provisioning the node
+                          group. Provisioning input only: the scheduler matches
+                          against spec.devices, not this block.
                         required: [type, count]
                         properties:
                           type:
@@ -95,26 +105,112 @@ spec:
                             type: integer
                             minimum: 1
                             maximum: 16
-              resources:
-                type: object
+              devices:
+                type: array
                 description: >-
-                  Hardware resources a node of this class exposes.
-                required: [gpu]
-                properties:
-                  gpu:
-                    type: object
-                    required: [count, memory]
-                    properties:
-                      count:
-                        type: integer
-                        description: GPUs per node.
-                        minimum: 1
-                        maximum: 16
-                      memory:
-                        type: string
-                        description: Per-GPU VRAM (e.g. "24Gi", "80Gi").
-                        minLength: 1
-                        maxLength: 16
+                  Devices a node of this class has, following DRA's model
+                  (KEP-4381). Each entry describes one kind of device with a
+                  count, mirroring what a DRA driver publishes in a
+                  ResourceSlice (one entry per kind rather than per physical
+                  device). ModelDeployment.nodeSelector matches against these,
+                  and claim: DRA devices are emitted as requests in a DRA
+                  ResourceClaim when scheduling a worker to this pool.
+                minItems: 1
+                maxItems: 16
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
+                items:
+                  type: object
+                  required: [name, driver]
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Name of this device within the class (e.g. gpu, nic).
+                      minLength: 1
+                      maxLength: 63
+                    claim:
+                      type: string
+                      description: >-
+                        How Modelplane treats this device. DRA emits it as a
+                        request in a ResourceClaim, so DRA binds a matching
+                        device to the pod at admission time; use it for hardware
+                        a real DRA driver exposes. Synthetic describes the device
+                        for fleet scheduling only and never claims it; use it for
+                        hardware that matters for placement but has no DRA driver
+                        yet, like an InfiniBand fabric.
+                      enum: [DRA, Synthetic]
+                      default: DRA
+                    driver:
+                      type: string
+                      description: >-
+                        DRA driver that owns this device (e.g. gpu.nvidia.com).
+                        Becomes the attribute/capacity domain a nodeSelector
+                        reads as device.attributes["<driver>"].<name>.
+                      minLength: 1
+                      maxLength: 253
+                    deviceClassName:
+                      type: string
+                      description: >-
+                        Name of the cluster-scoped DRA DeviceClass to claim this
+                        device through. Required for claim: DRA devices; the DRA
+                        driver install creates the DeviceClass (e.g.
+                        gpu.nvidia.com). Ignored for Synthetic devices.
+                      minLength: 1
+                      maxLength: 253
+                    count:
+                      type: integer
+                      description: How many of this device a node has.
+                      default: 1
+                      minimum: 1
+                      maximum: 64
+                    attributes:
+                      type: object
+                      description: >-
+                        DRA-style typed attributes for this device. Keys are
+                        bare names (e.g. architecture); the domain comes from the
+                        device's driver. Each value sets exactly one typed field.
+                      maxProperties: 32
+                      additionalProperties:
+                        type: object
+                        properties:
+                          string:
+                            type: string
+                            maxLength: 253
+                          version:
+                            type: string
+                            description: Semantic version (e.g. "9.0.0").
+                            maxLength: 32
+                          # TODO(negz): rename boolean/integer back to DRA's
+                          # bool/int once
+                          # https://github.com/crossplane/cli/issues/63 is fixed.
+                          boolean:
+                            type: boolean
+                          integer:
+                            type: integer
+                            format: int64
+                        x-kubernetes-validations:
+                        - rule: "[has(self.string), has(self.version), has(self.boolean), has(self.integer)].filter(x, x).size() == 1"
+                          message: "exactly one of string, version, boolean, integer must be set"
+                    capacity:
+                      type: object
+                      description: >-
+                        DRA-style capacity quantities for this device. Keys are
+                        bare names (e.g. memory); values are Kubernetes
+                        Quantities.
+                      maxProperties: 32
+                      additionalProperties:
+                        type: object
+                        required: [value]
+                        properties:
+                          value:
+                            type: string
+                            description: A Kubernetes Quantity (e.g. "141Gi").
+                            minLength: 1
+                            maxLength: 32
+                  x-kubernetes-validations:
+                  - rule: "self.claim != 'DRA' || has(self.deviceClassName)"
+                    message: "deviceClassName is required when claim is DRA"
           status:
             type: object
             properties:

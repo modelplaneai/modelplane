@@ -81,6 +81,43 @@ def apply_cache_args(args: list[str], replica: v1alpha1.ModelReplica, engine) ->
     return [*args, f"--model={CACHE_MOUNT_PATH}"]
 
 
+# Namespace for serving workloads (and their ResourceClaimTemplate) on remote
+# clusters.
+REMOTE_NAMESPACE = "default"
+
+# Response resource key for the DRA ResourceClaimTemplate.
+RESOURCE_CLAIM_KEY = "resource-claim"
+
+# DRA API the ResourceClaimTemplate targets. The manifest is a raw dict wrapped
+# in a provider-kubernetes Object, so no generated model is needed.
+_DRA_API_VERSION = "resource.k8s.io/v1"
+
+# Name of the pod-level claim that references the per-replica
+# ResourceClaimTemplate, and the suffix of the template's own name. Containers
+# reference individual requests within the claim.
+_POD_CLAIM_NAME = "devices"
+
+
+def wrap_object(provider_config: str, manifest: dict, *, readiness: str = "DeriveFromObject") -> k8sobjv1alpha1.Object:
+    """Wrap a raw manifest in a provider-kubernetes Object for a remote cluster.
+
+    readiness defaults to DeriveFromObject (the workload resources report their
+    own status). Pass SuccessfulCreate for resources that have no runtime status
+    to derive from - a ResourceClaimTemplate is a template, never reconciled, so
+    DeriveFromObject would leave its Object permanently not-ready.
+    """
+    return k8sobjv1alpha1.Object(
+        spec=k8sobjv1alpha1.Spec(
+            providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                kind="ClusterProviderConfig",
+                name=provider_config,
+            ),
+            readiness=k8sobjv1alpha1.Readiness(policy=readiness),
+            forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
+        ),
+    )
+
+
 def engine_container(replica: v1alpha1.ModelReplica):
     """Return the container named 'engine'. The XRD's CEL validation
     guarantees exactly one exists, so this always succeeds.
@@ -121,6 +158,90 @@ def select_backend(replica: v1alpha1.ModelReplica) -> str:
     if not needs_cross_pod_coordination(replica):
         return NATIVE
     return LLMD
+
+
+def _device_requests(replica: v1alpha1.ModelReplica):
+    """Resolved claim: DRA device requests stamped by compose-model-deployment."""
+    return replica.spec.deviceRequests or []
+
+
+def claim_template_name(replica: v1alpha1.ModelReplica) -> str:
+    """ResourceClaimTemplate name on the remote cluster.
+
+    Per-replica, derived from the replica's own name so concurrent replicas of
+    the same deployment on one cluster don't collide.
+    """
+    return resource.child_name(replica.metadata.name, _POD_CLAIM_NAME)
+
+
+def engine_resources(replica: v1alpha1.ModelReplica) -> dict:
+    """Container resources for the engine.
+
+    When the replica carries DRA device requests, GPUs are bound via a
+    ResourceClaim, so the container references the whole claim and sets no
+    device-plugin limit. When it has none (the deployment had no nodeSelector),
+    fall back to the legacy nvidia.com/gpu limit derived from the topology so the
+    engine still gets GPUs.
+
+    We emit one container claim entry referencing the pod-level claim, with no
+    `request` field, so the entire claim (all of its device requests) is made
+    available to the engine. A per-request entry would need a unique `name` per
+    entry - resources.claims is a list-map keyed on `name` alone - and the engine
+    uses every device anyway, so referencing the whole claim is both correct and
+    simplest.
+    """
+    requests = _device_requests(replica)
+    if not requests:
+        return {"limits": {"nvidia.com/gpu": str(replica.spec.workers.topology.tensor)}}
+    return {"claims": [{"name": _POD_CLAIM_NAME}]}
+
+
+def attach_device_claims(pod_spec: dict, replica: v1alpha1.ModelReplica) -> None:
+    """Wire a pod spec to the per-replica ResourceClaimTemplate.
+
+    Adds a pod-level resourceClaims entry pointing at the template. No-op when
+    there are no device requests (GPU binding then falls back to the device-plugin
+    limit set by engine_resources). Every pod that shares this spec - a native
+    Deployment pod, or an llm-d LWS leader and worker - gets its own
+    template-backed claim, which is why we use a ResourceClaimTemplate rather than
+    a shared ResourceClaim.
+    """
+    if not _device_requests(replica):
+        return
+    pod_spec["resourceClaims"] = [{"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_template_name(replica)}]
+
+
+def resource_claim_template(replica: v1alpha1.ModelReplica, provider_config: str) -> k8sobjv1alpha1.Object | None:
+    """Compose a DRA ResourceClaimTemplate Object for the replica, or None.
+
+    Each resolved device request (stamped by compose-model-deployment from the
+    matched InferenceClass claim: DRA devices) becomes one DeviceRequest carrying
+    its DeviceClass, count, and CEL selectors verbatim. Returns None when the
+    replica has no device requests.
+    """
+    requests = _device_requests(replica)
+    if not requests:
+        return None
+
+    device_requests = []
+    for r in requests:
+        exactly: dict = {"deviceClassName": r.deviceClassName, "count": int(r.count or 1)}
+        selectors = [{"cel": {"expression": s.cel}} for s in (r.selectors or []) if s.cel]
+        if selectors:
+            exactly["selectors"] = selectors
+        device_requests.append({"name": r.name, "exactly": exactly})
+
+    return wrap_object(
+        provider_config,
+        {
+            "apiVersion": _DRA_API_VERSION,
+            "kind": "ResourceClaimTemplate",
+            "metadata": {"name": claim_template_name(replica), "namespace": REMOTE_NAMESPACE},
+            "spec": {"spec": {"devices": {"requests": device_requests}}},
+        },
+        # A ResourceClaimTemplate has no runtime status; it's ready once applied.
+        readiness="SuccessfulCreate",
+    )
 
 
 class Backend(Protocol):

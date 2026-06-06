@@ -159,12 +159,35 @@ class Spec(BaseModel):
     """
 
 
+class Attributes(BaseModel):
+    boolean: bool | None = None
+    integer: int | None = None
+    string: constr(max_length=253) | None = None
+    version: constr(max_length=32) | None = None
+
+
+class Capacity(BaseModel):
+    value: constr(max_length=32)
+
+
+class Device(BaseModel):
+    attributes: dict[str, Attributes] | None = Field(None, max_length=32)
+    capacity: dict[str, Capacity] | None = Field(None, max_length=32)
+    claim: Literal['DRA', 'Synthetic'] | None = None
+    count: int | None = None
+    deviceClassName: constr(max_length=253) | None = None
+    driver: constr(max_length=253)
+    name: constr(max_length=63)
+
+
 class GpuPool(BaseModel):
-    acceleratorType: str | None = None
-    countPerNode: int | None = None
-    memory: str | None = None
+    devices: list[Device] | None = Field(None, max_length=16)
     """
-    Per-GPU VRAM (e.g. "24Gi").
+    Devices copied from the pool's InferenceClass. ModelDeployment.nodeSelector matches against these.
+    """
+    name: str
+    """
+    Node pool name, matching spec.nodePools[].name. Used to pin a ModelReplica to a specific pool via spec.nodePoolName.
     """
     nodes: int | None = None
     """
@@ -172,8 +195,8 @@ class GpuPool(BaseModel):
     """
 
 
-class Capacity(BaseModel):
-    gpuPools: list[GpuPool] | None = None
+class CapacityModel(BaseModel):
+    gpuPools: list[GpuPool] | None = Field(None, max_length=8)
 
 
 class Condition(BaseModel):
@@ -200,7 +223,7 @@ class ProviderConfigRef(BaseModel):
 
 
 class Status(BaseModel):
-    capacity: Capacity | None = None
+    capacity: CapacityModel | None = None
     """
     Declared capacity derived from the referenced classes and the per-pool node counts.
     """

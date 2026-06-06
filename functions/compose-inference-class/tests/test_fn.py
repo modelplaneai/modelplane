@@ -45,9 +45,16 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 v1alpha1.InferenceClass(
                                     metadata=metav1.ObjectMeta(name="gpu-l4"),
                                     spec=v1alpha1.Spec(
-                                        resources=v1alpha1.Resources(
-                                            gpu=v1alpha1.Gpu(count=1, memory="24Gi"),
-                                        ),
+                                        devices=[
+                                            v1alpha1.Device(
+                                                name="gpu",
+                                                claim="DRA",
+                                                driver="gpu.nvidia.com",
+                                                deviceClassName="gpu.nvidia.com",
+                                                count=1,
+                                                capacity={"memory": v1alpha1.Capacity(value="24Gi")},
+                                            ),
+                                        ],
                                     ),
                                 ).model_dump(exclude_none=True, mode="json")
                             ),

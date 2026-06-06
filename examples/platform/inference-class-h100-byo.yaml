@@ -1,15 +1,35 @@
 # An InferenceClass describing a BYO 8x H100 node pool.
 #
 # No provisioning block: this class describes hardware that already
-# exists on a bring-your-own cluster. Modelplane uses the resources
-# block to populate the cluster's status.capacity for scheduling.
+# exists on a bring-your-own cluster. Modelplane copies the devices block
+# onto the cluster's status.gpuPools for the scheduler to match against.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
   name: h100-8x-byo
 spec:
   description: "BYO 8x NVIDIA H100 80GB"
-  resources:
-    gpu:
-      count: 8
-      memory: 80Gi
+  # DRA-style devices. These are the contract a ModelDeployment's
+  # nodeSelector matches against. Keys are bare names; the domain comes
+  # from each device's driver. claim: DRA devices are emitted as requests
+  # in a DRA ResourceClaim; claim: Synthetic devices (here the InfiniBand
+  # fabric, which has no DRA driver) are matched for scheduling only.
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 8
+    attributes:
+      architecture: { string: Hopper }
+      cudaComputeCapability: { version: "9.0.0" }
+    capacity:
+      # The H100 80GB's real usable VRAM, what the NVIDIA DRA driver reports,
+      # not its nominal 80GB. A nodeSelector asking for >= 80Gi would never bind.
+      memory: { value: "81559Mi" }
+  - name: nic
+    claim: Synthetic
+    driver: nic.nvidia.com
+    count: 8
+    attributes:
+      linkType: { string: infiniband }

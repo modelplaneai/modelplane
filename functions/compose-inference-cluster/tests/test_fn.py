@@ -43,9 +43,16 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "kind": "InferenceClass",
             "metadata": {"name": "gpu-l4"},
             "spec": {
-                "resources": {
-                    "gpu": {"count": 1, "memory": "24Gi"},
-                },
+                "devices": [
+                    {
+                        "name": "gpu",
+                        "claim": "DRA",
+                        "driver": "gpu.nvidia.com",
+                        "deviceClassName": "gpu.nvidia.com",
+                        "count": 1,
+                        "capacity": {"memory": {"value": "24Gi"}},
+                    },
+                ],
                 "provisioning": {
                     "provider": "GKE",
                     "gke": {
@@ -116,10 +123,18 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "capacity": {
                                     "gpuPools": [
                                         {
-                                            "acceleratorType": "nvidia-l4",
-                                            "memory": "24Gi",
-                                            "countPerNode": 1,
+                                            "name": "l4-pool",
                                             "nodes": 4,
+                                            "devices": [
+                                                {
+                                                    "name": "gpu",
+                                                    "claim": "DRA",
+                                                    "driver": "gpu.nvidia.com",
+                                                    "deviceClassName": "gpu.nvidia.com",
+                                                    "count": 1,
+                                                    "capacity": {"memory": {"value": "24Gi"}},
+                                                },
+                                            ],
                                         },
                                     ],
                                 },
@@ -238,10 +253,18 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "capacity": {
                                     "gpuPools": [
                                         {
-                                            "acceleratorType": "nvidia-l4",
-                                            "memory": "24Gi",
-                                            "countPerNode": 1,
+                                            "name": "l4-pool",
                                             "nodes": 4,
+                                            "devices": [
+                                                {
+                                                    "name": "gpu",
+                                                    "claim": "DRA",
+                                                    "driver": "gpu.nvidia.com",
+                                                    "deviceClassName": "gpu.nvidia.com",
+                                                    "count": 1,
+                                                    "capacity": {"memory": {"value": "24Gi"}},
+                                                },
+                                            ],
                                         },
                                     ],
                                 },
@@ -365,10 +388,18 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "capacity": {
                                     "gpuPools": [
                                         {
-                                            "acceleratorType": "nvidia-l4",
-                                            "memory": "24Gi",
-                                            "countPerNode": 1,
+                                            "name": "l4-pool",
                                             "nodes": 4,
+                                            "devices": [
+                                                {
+                                                    "name": "gpu",
+                                                    "claim": "DRA",
+                                                    "driver": "gpu.nvidia.com",
+                                                    "deviceClassName": "gpu.nvidia.com",
+                                                    "count": 1,
+                                                    "capacity": {"memory": {"value": "24Gi"}},
+                                                },
+                                            ],
                                         },
                                     ],
                                 },
@@ -444,9 +475,16 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "kind": "InferenceClass",
             "metadata": {"name": "gpu-l4-eks"},
             "spec": {
-                "resources": {
-                    "gpu": {"count": 1, "memory": "24Gi"},
-                },
+                "devices": [
+                    {
+                        "name": "gpu",
+                        "claim": "DRA",
+                        "driver": "gpu.nvidia.com",
+                        "deviceClassName": "gpu.nvidia.com",
+                        "count": 1,
+                        "capacity": {"memory": {"value": "24Gi"}},
+                    },
+                ],
                 "provisioning": {
                     "provider": "EKS",
                     "eks": {
@@ -510,10 +548,18 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "capacity": {
                                     "gpuPools": [
                                         {
-                                            "acceleratorType": "nvidia-l4",
-                                            "memory": "24Gi",
-                                            "countPerNode": 1,
+                                            "name": "l4-pool",
                                             "nodes": 4,
+                                            "devices": [
+                                                {
+                                                    "name": "gpu",
+                                                    "claim": "DRA",
+                                                    "driver": "gpu.nvidia.com",
+                                                    "deviceClassName": "gpu.nvidia.com",
+                                                    "count": 1,
+                                                    "capacity": {"memory": {"value": "24Gi"}},
+                                                },
+                                            ],
                                         },
                                     ],
                                 },
@@ -684,10 +730,18 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "capacity": {
                                     "gpuPools": [
                                         {
-                                            "acceleratorType": "nvidia-l4",
-                                            "memory": "24Gi",
-                                            "countPerNode": 1,
+                                            "name": "l4-pool",
                                             "nodes": 4,
+                                            "devices": [
+                                                {
+                                                    "name": "gpu",
+                                                    "claim": "DRA",
+                                                    "driver": "gpu.nvidia.com",
+                                                    "deviceClassName": "gpu.nvidia.com",
+                                                    "count": 1,
+                                                    "capacity": {"memory": {"value": "24Gi"}},
+                                                }
+                                            ],
                                         },
                                     ],
                                 },

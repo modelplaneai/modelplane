@@ -1,9 +1,9 @@
 # An InferenceClass describing EKS g6.xlarge with one NVIDIA L4 GPU.
 #
 # The provisioning block tells Modelplane how to create a node group of
-# this class on EKS. The resources block describes what hardware a node
-# of this class exposes - used by the scheduler to match models to
-# clusters.
+# this class on EKS. The devices block describes what hardware a node of
+# this class has, DRA-style - used by the scheduler to match models to
+# clusters, and to form DRA ResourceClaims for claim: DRA devices.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
@@ -18,7 +18,17 @@ spec:
       accelerator:
         type: nvidia-l4
         count: 1
-  resources:
-    gpu:
-      count: 1
-      memory: 24Gi
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      # The L4's real usable VRAM, what the NVIDIA DRA driver reports in the
+      # node's ResourceSlice, not its nominal 24GB. The scheduler matches a
+      # nodeSelector against this, so declaring the marketing number would let
+      # it place a model that wants 23Gi onto a node DRA then can't satisfy.
+      memory: { value: "23034Mi" }

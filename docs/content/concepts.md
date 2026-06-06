@@ -70,8 +70,11 @@ kubectl get ig default
 
 An InferenceClass is a tested recipe for a GPU node pool. It bundles:
 
-- **Resources**: what hardware the class exposes (GPU count, memory). Used by
-  the scheduler to match deployments to clusters.
+- **Devices**: the node's hardware as a list of DRA-style devices, each with a
+  driver, count, typed attributes, and capacity. A `claim: DRA` device (a GPU) is
+  bound to pods through a DRA `ResourceClaim`; a `claim: Synthetic` device (an
+  InfiniBand NIC, say) is described for scheduling only. The scheduler matches a
+  `ModelDeployment.nodeSelector` against these devices.
 - **Provisioning** (optional): how to create a node pool of this class on a
   specific cloud. Classes without provisioning are for existing clusters where
   the pool already exists.
@@ -86,8 +89,8 @@ serving. Platform teams create these to provide GPU capacity.
 
 Each cluster has:
 
-- A **cluster source**: `GKE` (Modelplane provisions the full cluster) or
-  `Existing` (bring a cluster you manage yourself).
+- A **cluster source**: `GKE` or `EKS` (Modelplane provisions the full cluster)
+  or `Existing` (bring a cluster you manage yourself).
 - One or more **node pools**, each referencing an `InferenceClass` for its
   hardware capabilities and provisioning recipe.
 - **Labels** for organizational metadata: tier, region, provider. These are the
@@ -109,15 +112,16 @@ When you create a ModelDeployment, the scheduler:
    if set).
 2. Derives the physical shape from `workers.topology`: GPUs per node (tensor)
    and nodes per worker (pipeline, default 1).
-3. Checks GPU capacity: does the cluster have a pool with enough GPUs per node
-   and enough available nodes?
-4. Creates a `ModelReplica` for each selected cluster.
+3. Matches each `nodeSelector` device request against a candidate pool's
+   InferenceClass devices, gated on the pool having enough available nodes, and
+   pins the replica to a pool that satisfies every request.
+4. Creates a `ModelReplica` for each selected cluster, carrying the resolved
+   `claim: DRA` requests so the replica forms a DRA `ResourceClaim`.
 5. Creates a `ModelEndpoint` for each replica, carrying the URL and rewrite path
    for routing.
 
-The worker template is a curated subset of `PodTemplateSpec`. The container
-named `engine` is the inference engine (e.g. vLLM); additional containers pass
-through as sidecars.
+The worker template is a curated subset of `PodTemplateSpec`. It carries a
+single container named `engine`, the inference engine (e.g. vLLM).
 
 ### Scaling
 

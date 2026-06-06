@@ -1,7 +1,7 @@
 """Compose an InferenceClass.
 
-InferenceClass is a data resource: it describes hardware (resources)
-and optionally how to provision it (provisioning). It has no composed
+InferenceClass is a data resource: it describes hardware (devices) and
+optionally how to provision it (provisioning). It has no composed
 children. This function just marks the XR Ready.
 """
 

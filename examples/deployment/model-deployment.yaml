@@ -1,6 +1,7 @@
 # A ModelDeployment deploys a model to one or more inference clusters.
-# The scheduler picks clusters based on the workers.topology shape and
-# optional label selectors. Each matched cluster gets one ModelReplica.
+# The scheduler picks clusters by clusterSelector labels and nodeSelector
+# device requests, gated on available nodes. Each matched cluster gets one
+# ModelReplica.
 #
 # The control plane creates a unified OpenAI-compatible endpoint:
 #   http://<gateway-address>/<namespace>/<name>/v1/chat/completions
@@ -18,6 +19,25 @@ spec:
   # clusterSelector:
   #   matchLabels:
   #     modelplane.ai/region: us-central
+
+  # Optional: node-level matching, a list of DRA device requests. The
+  # scheduler matches each request against a candidate pool's InferenceClass
+  # devices and pins the replica to a pool that matches. Each request's CEL
+  # is real DRA CEL over a single device; quantity() and semver() are
+  # helpers. claim: DRA devices also become requests in the DRA
+  # ResourceClaim the serving pods claim GPUs through.
+  # nodeSelector:
+  #   devices:
+  #   - name: gpu
+  #     count: 1
+  #     selectors:
+  #     - cel: |
+  #         device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0 &&
+  #         device.attributes["gpu.nvidia.com"].cudaComputeCapability.isGreaterThan(semver("8.9.0"))
+  #   - name: nic
+  #     count: 1
+  #     selectors:
+  #     - cel: device.attributes["nic.nvidia.com"].linkType == "infiniband"
 
   workers:
     # Compute topology for one worker. tensor=1 means one GPU per pod.

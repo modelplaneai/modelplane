@@ -1,9 +1,9 @@
 # An InferenceClass describing GKE g2-standard-8 with one NVIDIA L4 GPU.
 #
 # The provisioning block tells Modelplane how to create a node pool of
-# this class on GKE. The resources block describes what hardware a node
-# of this class exposes - used by the scheduler to match models to
-# clusters.
+# this class on GKE. The devices block describes what hardware a node of
+# this class has, DRA-style - used by the scheduler to match models to
+# clusters, and to form DRA ResourceClaims for claim: DRA devices.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
@@ -18,7 +18,13 @@ spec:
       accelerator:
         type: nvidia-l4
         count: 1
-  resources:
-    gpu:
-      count: 1
-      memory: 24Gi
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      memory: { value: "23034Mi" }

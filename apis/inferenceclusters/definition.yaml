@@ -232,21 +232,81 @@ spec:
                 properties:
                   gpuPools:
                     type: array
+                    maxItems: 8
+                    x-kubernetes-list-type: map
+                    x-kubernetes-list-map-keys: [name]
                     items:
                       type: object
+                      required: [name]
                       properties:
-                        acceleratorType:
+                        name:
                           type: string
-                        memory:
-                          type: string
-                          description: Per-GPU VRAM (e.g. "24Gi").
-                        countPerNode:
-                          type: integer
+                          description: >-
+                            Node pool name, matching spec.nodePools[].name.
+                            Used to pin a ModelReplica to a specific pool via
+                            spec.nodePoolName.
                         nodes:
                           type: integer
                           description: >-
                             Number of nodes in this pool. Derived from
                             maxNodeCount (if autoscaling) or nodeCount.
+                        devices:
+                          type: array
+                          description: >-
+                            Devices copied from the pool's InferenceClass.
+                            ModelDeployment.nodeSelector matches against these.
+                          maxItems: 16
+                          x-kubernetes-list-type: map
+                          x-kubernetes-list-map-keys: [name]
+                          items:
+                            type: object
+                            required: [name, driver]
+                            properties:
+                              name:
+                                type: string
+                                maxLength: 63
+                              claim:
+                                type: string
+                                enum: [DRA, Synthetic]
+                              driver:
+                                type: string
+                                maxLength: 253
+                              deviceClassName:
+                                type: string
+                                maxLength: 253
+                              count:
+                                type: integer
+                              attributes:
+                                type: object
+                                maxProperties: 32
+                                additionalProperties:
+                                  type: object
+                                  properties:
+                                    string:
+                                      type: string
+                                      maxLength: 253
+                                    version:
+                                      type: string
+                                      maxLength: 32
+                                    # TODO(negz): rename boolean/integer back to
+                                    # DRA's bool/int once
+                                    # https://github.com/crossplane/cli/issues/63
+                                    # is fixed.
+                                    boolean:
+                                      type: boolean
+                                    integer:
+                                      type: integer
+                                      format: int64
+                              capacity:
+                                type: object
+                                maxProperties: 32
+                                additionalProperties:
+                                  type: object
+                                  required: [value]
+                                  properties:
+                                    value:
+                                      type: string
+                                      maxLength: 32
               namespace:
                 type: string
                 description: >-

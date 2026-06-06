@@ -366,7 +366,7 @@ class Composer:
                 name=resource.child_name(self.xr.metadata.name, "cluster-kubeconfig"),
             ),
             namespace=_NAMESPACE_SYSTEM,
-            capacity=v1alpha1.Capacity(
+            capacity=v1alpha1.CapacityModel(
                 gpuPools=gpu_pools,
             ),
         )
@@ -626,30 +626,25 @@ class Composer:
     def gpu_pools(self):
         """Derive status.capacity.gpuPools from each node pool's class.
 
-        The same logic applies to every cluster source: the class
-        declares the per-node GPU resources, the pool declares how many
-        nodes. The accelerator type comes from whichever provisioning
-        block the class carries (GKE or EKS); for BYO classes the
-        accelerator type is empty.
+        The class declares the node's devices (DRA-style); the pool declares how
+        many nodes. We copy the class's devices verbatim so
+        ModelDeployment.nodeSelector can match against them, and record the node
+        count for the scheduler's available-node gate.
         """
         gpu_pools = []
         for pool in self.xr.spec.nodePools or []:
             cls = self.classes.get(pool.className)
-            if not cls or not cls.spec.resources or not cls.spec.resources.gpu:
+            if not cls or not cls.spec.devices:
                 continue
-            gpu = cls.spec.resources.gpu
-            accelerator_type = ""
-            prov = cls.spec.provisioning
-            if prov and prov.gke and prov.gke.accelerator:
-                accelerator_type = prov.gke.accelerator.type
-            elif prov and prov.eks and prov.eks.accelerator:
-                accelerator_type = prov.eks.accelerator.type
+            # Copy the class's devices verbatim. model_dump drops None fields,
+            # keeping the typed attribute value objects
+            # (string/version/boolean/integer) one-of clean.
+            devices = [d.model_dump(exclude_none=True) for d in cls.spec.devices]
             gpu_pools.append(
                 {
-                    "acceleratorType": accelerator_type,
-                    "memory": gpu.memory,
-                    "countPerNode": gpu.count,
+                    "name": pool.name,
                     "nodes": pool.maxNodeCount or pool.nodeCount,
+                    "devices": devices,
                 }
             )
         return gpu_pools

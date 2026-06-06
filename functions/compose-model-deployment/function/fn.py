@@ -16,7 +16,7 @@ from models.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-from function import scheduling
+from function import cel, scheduling
 
 # Condition types and reasons for the ModelDeployment XR.
 CONDITION_TYPE_REPLICAS_SCHEDULED = "ReplicasScheduled"
@@ -24,6 +24,7 @@ CONDITION_TYPE_REPLICAS_READY = "ReplicasReady"
 
 CONDITION_REASON_NO_CLUSTERS = "NoClusters"
 CONDITION_REASON_INSUFFICIENT_CAPACITY = "InsufficientCapacity"
+CONDITION_REASON_INVALID_NODE_SELECTOR = "InvalidNodeSelector"
 CONDITION_REASON_REPLICAS_CREATED = "ReplicasCreated"
 CONDITION_REASON_SCHEDULING = "Scheduling"
 CONDITION_REASON_NO_REPLICAS_SCHEDULED = "NoReplicasScheduled"
@@ -50,7 +51,7 @@ def _inference_cluster(
     ic.status = ic.status or icv1alpha1.Status()
     ic.status.providerConfigRef = ic.status.providerConfigRef or icv1alpha1.ProviderConfigRef()
     ic.status.gateway = ic.status.gateway or icv1alpha1.Gateway()
-    ic.status.capacity = ic.status.capacity or icv1alpha1.Capacity()
+    ic.status.capacity = ic.status.capacity or icv1alpha1.CapacityModel()
     ic.status.capacity.gpuPools = ic.status.capacity.gpuPools or []
     return ic
 
@@ -86,7 +87,23 @@ class Composer:
     def compose(self):
         if not self.resolve_inputs():
             return
-        matched = self.schedule()
+        try:
+            matched = self.schedule()
+        except cel.CELCompileError as e:
+            # A malformed nodeSelector CEL selector is a user error. Surface it
+            # and stop - we can't schedule without valid selectors.
+            response.set_conditions(
+                self.rsp,
+                resource.Condition(
+                    typ=CONDITION_TYPE_REPLICAS_SCHEDULED,
+                    status="False",
+                    reason=CONDITION_REASON_INVALID_NODE_SELECTOR,
+                    message=f"Invalid nodeSelector CEL expression: {e}",
+                ),
+            )
+            response.warning(self.rsp, f"Invalid nodeSelector CEL expression: {e}")
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
+            return
         self.compose_replicas(matched)
         self.compose_endpoints(matched)
         self.write_status(matched)
@@ -169,6 +186,20 @@ class Composer:
         for cluster_info in matched:
             replica_key = f"replica-{cluster_info.name}"
 
+            # Stamp the resolved claim: DRA device requests so the replica
+            # function can form a DRA ResourceClaim. Only set the field when
+            # there are requests, so we don't claim ownership of an empty list
+            # (no nodeSelector, or only synthetic devices matched) under SSA.
+            device_requests = [
+                mrv1alpha1.DeviceRequest(
+                    name=r.name,
+                    deviceClassName=r.device_class_name,
+                    count=r.count,
+                    selectors=[mrv1alpha1.Selector(cel=c) for c in r.cel_selectors],
+                )
+                for r in cluster_info.device_requests
+            ]
+
             replica = mrv1alpha1.ModelReplica(
                 metadata=metav1.ObjectMeta(
                     name=resource.child_name(self.xr.metadata.name, cluster_info.name),
@@ -179,7 +210,16 @@ class Composer:
                         _LABEL_CLUSTER: cluster_info.name,
                     },
                 ),
-                spec=mrv1alpha1.SpecModel(clusterName=cluster_info.name, workers=workers),
+                spec=mrv1alpha1.SpecModel(
+                    clusterName=cluster_info.name,
+                    workers=workers,
+                    # Only set nodePoolName when the scheduler matched a
+                    # specific pool. Leaving it unset (rather than null)
+                    # avoids claiming ownership of a field we have no
+                    # opinion on under server-side apply.
+                    **({"nodePoolName": cluster_info.pool} if cluster_info.pool else {}),
+                    **({"deviceRequests": device_requests} if device_requests else {}),
+                ),
             )
             if self.xr.spec.modelCacheRef:
                 replica.spec.modelCacheRef = mrv1alpha1.ModelCacheRef(name=self.xr.spec.modelCacheRef.name)
