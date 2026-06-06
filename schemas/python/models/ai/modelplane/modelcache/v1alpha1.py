@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, conint, constr
+from pydantic import AwareDatetime, BaseModel, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ClusterSelector(BaseModel):
-    matchLabels: Optional[Dict[str, Any]] = None
+    matchLabels: dict[str, Any] | None = None
 
 
 class CompositionRef(BaseModel):
@@ -24,35 +23,35 @@ class CompositionRevisionRef(BaseModel):
 
 
 class CompositionRevisionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class CompositionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class ResourceRef(BaseModel):
     apiVersion: str
     kind: str
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Crossplane(BaseModel):
-    compositionRef: Optional[CompositionRef] = None
-    compositionRevisionRef: Optional[CompositionRevisionRef] = None
-    compositionRevisionSelector: Optional[CompositionRevisionSelector] = None
-    compositionSelector: Optional[CompositionSelector] = None
-    compositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = None
-    resourceRefs: Optional[List[ResourceRef]] = None
+    compositionRef: CompositionRef | None = None
+    compositionRevisionRef: CompositionRevisionRef | None = None
+    compositionRevisionSelector: CompositionRevisionSelector | None = None
+    compositionSelector: CompositionSelector | None = None
+    compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
+    resourceRefs: list[ResourceRef] | None = None
 
 
 class AuthSecret(BaseModel):
-    key: Optional[str] = 'HF_TOKEN'
+    key: str | None = 'HF_TOKEN'
     name: constr(min_length=1)
 
 
 class HuggingFace(BaseModel):
-    authSecret: Optional[AuthSecret] = None
+    authSecret: AuthSecret | None = None
     """
     Optional Secret holding an HF token for gated or private repos. Resolved on the workload cluster at hydration time.
     """
@@ -60,7 +59,7 @@ class HuggingFace(BaseModel):
     """
     HuggingFace repository ID.
     """
-    revision: Optional[str] = None
+    revision: str | None = None
     """
     Branch, tag, or commit SHA. Defaults to the repo's default branch.
     """
@@ -71,15 +70,15 @@ class HuggingFace(BaseModel):
 
 
 class Spec(BaseModel):
-    clusterSelector: Optional[ClusterSelector] = None
+    clusterSelector: ClusterSelector | None = None
     """
     Label selector to pick the InferenceClusters that stage this artifact. If omitted, the cache replicates to every cluster.
     """
-    crossplane: Optional[Crossplane] = None
+    crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    huggingFace: Optional[HuggingFace] = None
+    huggingFace: HuggingFace | None = None
     """
     HuggingFace source. Required when source is HuggingFace.
     """
@@ -90,73 +89,73 @@ class Spec(BaseModel):
 
 
 class Cluster(BaseModel):
-    message: Optional[str] = None
+    message: str | None = None
     name: str
-    phase: Optional[Literal['Pending', 'Hydrating', 'Ready', 'Failed']] = None
+    phase: Literal['Pending', 'Hydrating', 'Ready', 'Failed'] | None = None
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
-    message: Optional[str] = None
-    observedGeneration: Optional[int] = None
+    lastTransitionTime: AwareDatetime
+    message: str | None = None
+    observedGeneration: int | None = None
     reason: str
     status: str
     type: str
 
 
 class Summary(BaseModel):
-    ready: Optional[str] = None
+    ready: str | None = None
     """
     e.g. "2/3"
     """
 
 
 class Status(BaseModel):
-    clusters: Optional[List[Cluster]] = None
+    clusters: list[Cluster] | None = None
     """
     Per-cluster staging status.
     """
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    summary: Optional[Summary] = None
+    summary: Summary | None = None
     """
     Per-cluster ready / total counts.
     """
 
 
 class ModelCache(BaseModel):
-    apiVersion: Optional[Literal['modelplane.ai/v1alpha1']] = 'modelplane.ai/v1alpha1'
+    apiVersion: Literal['modelplane.ai/v1alpha1'] | None = 'modelplane.ai/v1alpha1'
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ModelCache']] = 'ModelCache'
+    kind: Literal['ModelCache'] | None = 'ModelCache'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
     spec: Spec
-    status: Optional[Status] = None
+    status: Status | None = None
 
 
 class ModelCacheList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ModelCache]
+    items: list[ModelCache]
     """
     List of modelcaches. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

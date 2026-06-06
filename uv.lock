@@ -63,7 +63,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -82,7 +82,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -101,7 +101,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -120,7 +120,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -140,7 +140,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -179,7 +179,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -198,7 +198,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -217,7 +217,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -236,7 +236,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -256,7 +256,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -264,18 +264,14 @@ requires-dist = [
 
 [[package]]
 name = "crossplane-function-sdk-python"
-version = "0.12.0"
-source = { registry = "https://pypi.org/simple" }
+version = "0.0.0"
+source = { git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset#fa72dd044faaef8632f6b4a4e793654302e2c2d1" }
 dependencies = [
     { name = "grpcio" },
     { name = "grpcio-reflection" },
     { name = "protobuf" },
     { name = "pydantic" },
     { name = "structlog" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/e6/560dd1ba24dd4267be4c257319af8e5bcc69ca9e5f022e662e684cbd3183/crossplane_function_sdk_python-0.12.0.tar.gz", hash = "sha256:667801e58c0358bdb0f11bf7ac944c0380372676006b025ff9b80581687bac97", size = 57268, upload-time = "2026-05-21T22:23:03.525Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/9c/f7c1ecaa7531d2b668665adb2554f536f5ad7d77ad513c150c913416f77e/crossplane_function_sdk_python-0.12.0-py3-none-any.whl", hash = "sha256:b0c399c94f23f3c658c0013cd1b1f60a03daa05501ebf910be467d29593f89ef", size = 42733, upload-time = "2026-05-21T22:23:01.64Z" },
 ]
 
 [[package]]
@@ -350,7 +346,7 @@ dev = [
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "crossplane-function-sdk-python", specifier = ">=0.12.0" }]
+dev = [{ name = "crossplane-function-sdk-python", git = "https://github.com/negz/function-sdk-python.git?branch=best-left-unset" }]
 
 [[package]]
 name = "protobuf"

@@ -3,27 +3,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Cache(BaseModel):
-    storageClassName: Optional[constr(min_length=1)] = 'modelplane-rwx-efs'
+    storageClassName: constr(min_length=1) | None = 'modelplane-rwx-efs'
     """
     Name of the RWX StorageClass for ModelCache PVCs. Modelplane does not currently provision EFS automatically; the admin must create an EFS file system and the EFS CSI StorageClass on the cluster.
     """
 
 
 class Eks(BaseModel):
-    cache: Optional[Cache] = None
+    cache: Cache | None = None
     """
     ModelCache configuration for this cluster.
     """
-    kubernetesVersion: Optional[str] = '1.31'
+    kubernetesVersion: str | None = '1.31'
     region: constr(min_length=1, max_length=32)
     """
     AWS region for the cluster (e.g. us-west-2).
@@ -31,28 +30,28 @@ class Eks(BaseModel):
 
 
 class CacheModel(BaseModel):
-    storageClassName: Optional[constr(min_length=1)] = 'modelplane-rwx'
+    storageClassName: constr(min_length=1) | None = 'modelplane-rwx'
     """
     Name of the RWX StorageClass for ModelCache PVCs. The admin creates the StorageClass on the workload cluster (must support ReadWriteMany dynamic provisioning).
     """
 
 
 class IdentitySecretRef(BaseModel):
-    key: Optional[constr(min_length=1, max_length=253)] = 'private_key'
+    key: constr(min_length=1, max_length=253) | None = 'private_key'
     name: constr(min_length=1, max_length=253)
 
 
 class SecretRef(BaseModel):
-    key: Optional[constr(min_length=1, max_length=253)] = 'kubeconfig'
+    key: constr(min_length=1, max_length=253) | None = 'kubeconfig'
     name: constr(min_length=1, max_length=253)
 
 
 class Existing(BaseModel):
-    cache: Optional[CacheModel] = None
+    cache: CacheModel | None = None
     """
     ModelCache configuration for this cluster.
     """
-    identitySecretRef: Optional[IdentitySecretRef] = None
+    identitySecretRef: IdentitySecretRef | None = None
     """
     Optional reference to a Secret containing cloud provider credentials for IAM-based authentication.
     """
@@ -63,32 +62,32 @@ class Existing(BaseModel):
 
 
 class CacheModel1(BaseModel):
-    storageClassName: Optional[constr(min_length=1)] = 'modelplane-rwx'
+    storageClassName: constr(min_length=1) | None = 'modelplane-rwx'
     """
     Name of the RWX StorageClass for ModelCache PVCs. At the default value, Modelplane provisions Filestore Enterprise via the Filestore CSI addon and composes the StorageClass; set this to a different name to use one the admin has already created.
     """
 
 
 class Gke(BaseModel):
-    cache: Optional[CacheModel1] = None
+    cache: CacheModel1 | None = None
     """
     ModelCache configuration for this cluster.
     """
-    kubernetesVersion: Optional[str] = '1.35'
+    kubernetesVersion: str | None = '1.35'
     project: constr(min_length=6, max_length=30)
     region: constr(min_length=1, max_length=32)
 
 
 class Cluster(BaseModel):
-    eks: Optional[Eks] = None
+    eks: Eks | None = None
     """
     EKS cluster configuration. Required when source is EKS.
     """
-    existing: Optional[Existing] = None
+    existing: Existing | None = None
     """
     Bring-your-own cluster configuration. Required when source is Existing. Modelplane manages the inference stack on the cluster but does not provision the cluster itself.
     """
-    gke: Optional[Gke] = None
+    gke: Gke | None = None
     """
     GKE cluster configuration. Required when source is GKE.
     """
@@ -107,27 +106,27 @@ class CompositionRevisionRef(BaseModel):
 
 
 class CompositionRevisionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class CompositionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class ResourceRef(BaseModel):
     apiVersion: str
     kind: str
-    name: Optional[str] = None
-    namespace: Optional[str] = None
+    name: str | None = None
+    namespace: str | None = None
 
 
 class Crossplane(BaseModel):
-    compositionRef: Optional[CompositionRef] = None
-    compositionRevisionRef: Optional[CompositionRevisionRef] = None
-    compositionRevisionSelector: Optional[CompositionRevisionSelector] = None
-    compositionSelector: Optional[CompositionSelector] = None
-    compositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = None
-    resourceRefs: Optional[List[ResourceRef]] = None
+    compositionRef: CompositionRef | None = None
+    compositionRevisionRef: CompositionRevisionRef | None = None
+    compositionRevisionSelector: CompositionRevisionSelector | None = None
+    compositionSelector: CompositionSelector | None = None
+    compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
+    resourceRefs: list[ResourceRef] | None = None
 
 
 class NodePool(BaseModel):
@@ -135,14 +134,14 @@ class NodePool(BaseModel):
     """
     Name of the InferenceClass describing this pool's hardware.
     """
-    maxNodeCount: Optional[conint(ge=1)] = None
+    maxNodeCount: conint(ge=1) | None = None
     """
     Maximum node count for autoscaling. Omit for fixed-size pools.
     """
-    minNodeCount: Optional[conint(ge=0)] = None
+    minNodeCount: conint(ge=0) | None = None
     name: constr(max_length=40)
-    nodeCount: Optional[conint(ge=0)] = 1
-    zones: Optional[List[str]] = None
+    nodeCount: conint(ge=0) | None = 1
+    zones: list[str] | None = None
     """
     Zones to restrict this node pool to. Required for provisioned pools because not all zones in a region have every GPU type.
     """
@@ -150,104 +149,104 @@ class NodePool(BaseModel):
 
 class Spec(BaseModel):
     cluster: Cluster
-    crossplane: Optional[Crossplane] = None
+    crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    nodePools: Optional[List[NodePool]] = Field(None, max_length=8, min_length=1)
+    nodePools: list[NodePool] | None = Field(None, max_length=8, min_length=1)
     """
     GPU node pools available on this cluster. Each pool references an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools for control-plane components are provisioned automatically.
     """
 
 
 class GpuPool(BaseModel):
-    acceleratorType: Optional[str] = None
-    countPerNode: Optional[int] = None
-    memory: Optional[str] = None
+    acceleratorType: str | None = None
+    countPerNode: int | None = None
+    memory: str | None = None
     """
     Per-GPU VRAM (e.g. "24Gi").
     """
-    nodes: Optional[int] = None
+    nodes: int | None = None
     """
     Number of nodes in this pool. Derived from maxNodeCount (if autoscaling) or nodeCount.
     """
 
 
 class Capacity(BaseModel):
-    gpuPools: Optional[List[GpuPool]] = None
+    gpuPools: list[GpuPool] | None = None
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
-    message: Optional[str] = None
-    observedGeneration: Optional[int] = None
+    lastTransitionTime: AwareDatetime
+    message: str | None = None
+    observedGeneration: int | None = None
     reason: str
     status: str
     type: str
 
 
 class Gateway(BaseModel):
-    address: Optional[str] = None
+    address: str | None = None
     """
     External IP of the inference gateway on the remote cluster. Used by ModelDeployment for unified endpoint routing.
     """
 
 
 class ProviderConfigRef(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the ProviderConfig targeting the remote cluster. Used by ModelReplica to create resources on the cluster.
     """
 
 
 class Status(BaseModel):
-    capacity: Optional[Capacity] = None
+    capacity: Capacity | None = None
     """
     Declared capacity derived from the referenced classes and the per-pool node counts.
     """
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    gateway: Optional[Gateway] = None
-    namespace: Optional[str] = None
+    gateway: Gateway | None = None
+    namespace: str | None = None
     """
     Namespace where the internal XRs (cluster, backend) were created.
     """
-    providerConfigRef: Optional[ProviderConfigRef] = None
+    providerConfigRef: ProviderConfigRef | None = None
 
 
 class InferenceCluster(BaseModel):
-    apiVersion: Optional[Literal['modelplane.ai/v1alpha1']] = 'modelplane.ai/v1alpha1'
+    apiVersion: Literal['modelplane.ai/v1alpha1'] | None = 'modelplane.ai/v1alpha1'
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['InferenceCluster']] = 'InferenceCluster'
+    kind: Literal['InferenceCluster'] | None = 'InferenceCluster'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
     spec: Spec
-    status: Optional[Status] = None
+    status: Status | None = None
 
 
 class InferenceClusterList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[InferenceCluster]
+    items: list[InferenceCluster]
     """
     List of inferenceclusters. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

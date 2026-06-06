@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ClusterSelector(BaseModel):
-    matchLabels: Optional[Dict[str, Any]] = None
+    matchLabels: dict[str, Any] | None = None
 
 
 class CompositionRef(BaseModel):
@@ -24,26 +23,26 @@ class CompositionRevisionRef(BaseModel):
 
 
 class CompositionRevisionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class CompositionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class ResourceRef(BaseModel):
     apiVersion: str
     kind: str
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Crossplane(BaseModel):
-    compositionRef: Optional[CompositionRef] = None
-    compositionRevisionRef: Optional[CompositionRevisionRef] = None
-    compositionRevisionSelector: Optional[CompositionRevisionSelector] = None
-    compositionSelector: Optional[CompositionSelector] = None
-    compositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = None
-    resourceRefs: Optional[List[ResourceRef]] = None
+    compositionRef: CompositionRef | None = None
+    compositionRevisionRef: CompositionRevisionRef | None = None
+    compositionRevisionSelector: CompositionRevisionSelector | None = None
+    compositionSelector: CompositionSelector | None = None
+    compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
+    resourceRefs: list[ResourceRef] | None = None
 
 
 class ModelCacheRef(BaseModel):
@@ -54,43 +53,43 @@ class ModelCacheRef(BaseModel):
 
 
 class Metadata(BaseModel):
-    annotations: Optional[Dict[str, str]] = None
-    labels: Optional[Dict[str, str]] = None
+    annotations: dict[str, str] | None = None
+    labels: dict[str, str] | None = None
 
 
 class ConfigMapKeyRef(BaseModel):
     key: str
     name: str
-    optional: Optional[bool] = None
+    optional: bool | None = None
 
 
 class SecretKeyRef(BaseModel):
     key: str
     name: str
-    optional: Optional[bool] = None
+    optional: bool | None = None
 
 
 class ValueFrom(BaseModel):
-    configMapKeyRef: Optional[ConfigMapKeyRef] = None
-    secretKeyRef: Optional[SecretKeyRef] = None
+    configMapKeyRef: ConfigMapKeyRef | None = None
+    secretKeyRef: SecretKeyRef | None = None
 
 
 class EnvItem(BaseModel):
     name: str
-    value: Optional[str] = None
-    valueFrom: Optional[ValueFrom] = None
+    value: str | None = None
+    valueFrom: ValueFrom | None = None
 
 
 class Container(BaseModel):
-    args: Optional[List[str]] = None
+    args: list[str] | None = None
     """
     Container args. For the engine container, these are passed through to the serving engine. Includes the model identifier (e.g. --model=...).
     """
-    command: Optional[List[str]] = None
+    command: list[str] | None = None
     """
     Container entrypoint override. When set on the engine container of a multi-node deployment, it bypasses the built-in vLLM/Ray bootstrap and runs on every gang pod — the command owns cross-node coordination against the LWS_* environment (LWS_WORKER_INDEX, LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for non-vLLM engines (e.g. SGLang).
     """
-    env: Optional[List[EnvItem]] = None
+    env: list[EnvItem] | None = None
     """
     Environment variables. Supports valueFrom.secretKeyRef for secrets like HF_TOKEN.
     """
@@ -109,29 +108,29 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: List[Container] = Field(..., max_length=1, min_length=1)
+    containers: list[Container] = Field(..., max_length=1, min_length=1)
     """
     Containers for the inference pod. v0.1 supports a single container, which must be named "engine" (the inference engine). Sidecar / multi-container support is tracked separately.
     """
-    imagePullSecrets: Optional[List[ImagePullSecret]] = None
+    imagePullSecrets: list[ImagePullSecret] | None = None
     """
     Image pull secrets for private registries (NGC etc.).
     """
 
 
 class Template(BaseModel):
-    metadata: Optional[Metadata] = None
+    metadata: Metadata | None = None
     """
     Metadata applied to inference pods. Useful for labels and annotations that control cluster-level features like service mesh injection.
     """
-    spec: Optional[Spec] = None
+    spec: Spec | None = None
     """
     Pod spec for inference workers.
     """
 
 
 class Topology(BaseModel):
-    pipeline: Optional[conint(ge=1)] = 1
+    pipeline: conint(ge=1) | None = 1
     """
     Nodes per worker. Defaults to 1 (single-node). Values greater than 1 enable multi-node serving via LeaderWorkerSet.
     """
@@ -142,7 +141,7 @@ class Topology(BaseModel):
 
 
 class Workers(BaseModel):
-    count: Optional[conint(ge=1)] = 1
+    count: conint(ge=1) | None = 1
     """
     Number of workers per replica. Defaults to 1.
     """
@@ -157,15 +156,15 @@ class Workers(BaseModel):
 
 
 class SpecModel(BaseModel):
-    clusterSelector: Optional[ClusterSelector] = None
+    clusterSelector: ClusterSelector | None = None
     """
     Optional label selector to filter InferenceClusters. If omitted, all ready clusters are candidates.
     """
-    crossplane: Optional[Crossplane] = None
+    crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    modelCacheRef: Optional[ModelCacheRef] = None
+    modelCacheRef: ModelCacheRef | None = None
     """
     Reference to a ModelCache in the same namespace. Optional for single-node deployments; required for multi-node (workers.topology.pipeline > 1).
     """
@@ -180,58 +179,58 @@ class SpecModel(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
-    message: Optional[str] = None
-    observedGeneration: Optional[int] = None
+    lastTransitionTime: AwareDatetime
+    message: str | None = None
+    observedGeneration: int | None = None
     reason: str
     status: str
     type: str
 
 
 class Replicas(BaseModel):
-    ready: Optional[int] = None
-    total: Optional[int] = None
+    ready: int | None = None
+    total: int | None = None
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    replicas: Optional[Replicas] = None
+    replicas: Replicas | None = None
 
 
 class ModelDeployment(BaseModel):
-    apiVersion: Optional[Literal['modelplane.ai/v1alpha1']] = 'modelplane.ai/v1alpha1'
+    apiVersion: Literal['modelplane.ai/v1alpha1'] | None = 'modelplane.ai/v1alpha1'
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ModelDeployment']] = 'ModelDeployment'
+    kind: Literal['ModelDeployment'] | None = 'ModelDeployment'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
     spec: SpecModel
-    status: Optional[Status] = None
+    status: Status | None = None
 
 
 class ModelDeploymentList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ModelDeployment]
+    items: list[ModelDeployment]
     """
     List of modeldeployments. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

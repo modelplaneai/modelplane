@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, constr
+from pydantic import AwareDatetime, BaseModel, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -20,34 +19,34 @@ class CompositionRevisionRef(BaseModel):
 
 
 class CompositionRevisionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class CompositionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class ResourceRef(BaseModel):
     apiVersion: str
     kind: str
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Crossplane(BaseModel):
-    compositionRef: Optional[CompositionRef] = None
-    compositionRevisionRef: Optional[CompositionRevisionRef] = None
-    compositionRevisionSelector: Optional[CompositionRevisionSelector] = None
-    compositionSelector: Optional[CompositionSelector] = None
-    compositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = None
-    resourceRefs: Optional[List[ResourceRef]] = None
+    compositionRef: CompositionRef | None = None
+    compositionRevisionRef: CompositionRevisionRef | None = None
+    compositionRevisionSelector: CompositionRevisionSelector | None = None
+    compositionSelector: CompositionSelector | None = None
+    compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
+    resourceRefs: list[ResourceRef] | None = None
 
 
 class Spec(BaseModel):
-    crossplane: Optional[Crossplane] = None
+    crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    rewritePath: Optional[str] = None
+    rewritePath: str | None = None
     """
     Path prefix that requests should be rewritten to when routed through this endpoint. Used by ModelService to configure URLRewrite on its HTTPRoute. For Modelplane- composed endpoints this is the per-replica serving path on the remote cluster's gateway, e.g. /ml-team/qwen-demo/.
     """
@@ -58,63 +57,63 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
-    message: Optional[str] = None
-    observedGeneration: Optional[int] = None
+    lastTransitionTime: AwareDatetime
+    message: str | None = None
+    observedGeneration: int | None = None
     reason: str
     status: str
     type: str
 
 
 class Routing(BaseModel):
-    backendName: Optional[str] = None
+    backendName: str | None = None
     """
     Crossplane-generated name of the Backend resource composed by this endpoint.
     """
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    routing: Optional[Routing] = None
+    routing: Routing | None = None
     """
     Routing details for this endpoint. ModelService reads backendName to build HTTPRoute backendRefs.
     """
 
 
 class ModelEndpoint(BaseModel):
-    apiVersion: Optional[Literal['modelplane.ai/v1alpha1']] = 'modelplane.ai/v1alpha1'
+    apiVersion: Literal['modelplane.ai/v1alpha1'] | None = 'modelplane.ai/v1alpha1'
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ModelEndpoint']] = 'ModelEndpoint'
+    kind: Literal['ModelEndpoint'] | None = 'ModelEndpoint'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
     spec: Spec
-    status: Optional[Status] = None
+    status: Status | None = None
 
 
 class ModelEndpointList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ModelEndpoint]
+    items: list[ModelEndpoint]
     """
     List of modelendpoints. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

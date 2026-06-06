@@ -118,7 +118,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "clusterName": "cluster-a",
                                     "workers": {
-                                        "topology": {"tensor": 1},
+                                        "topology": {"tensor": 1, "pipeline": 1},
+                                        "count": 1,
                                         "template": {
                                             "spec": {
                                                 "containers": [
@@ -359,7 +360,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "clusterName": "cluster-a",
                                     "workers": {
-                                        "topology": {"tensor": 1},
+                                        "topology": {"tensor": 1, "pipeline": 1},
+                                        "count": 1,
                                         "template": {
                                             "spec": {
                                                 "containers": [
@@ -506,7 +508,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "clusterName": "cluster-a",
                                     "workers": {
-                                        "topology": {"tensor": 1},
+                                        "topology": {"tensor": 1, "pipeline": 1},
+                                        "count": 1,
                                         "template": {
                                             "spec": {
                                                 "containers": [
@@ -607,7 +610,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "clusterName": "cluster-b",
                                     "workers": {
-                                        "topology": {"tensor": 1},
+                                        "topology": {"tensor": 1, "pipeline": 1},
+                                        "count": 1,
                                         "template": {
                                             "spec": {
                                                 "containers": [
@@ -725,7 +729,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "clusterName": "cluster-a",
                                     "modelCacheRef": {"name": "qwen"},
                                     "workers": {
-                                        "topology": {"tensor": 1},
+                                        "topology": {"tensor": 1, "pipeline": 1},
+                                        "count": 1,
                                         "template": {
                                             "spec": {
                                                 "containers": [

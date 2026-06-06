@@ -13,12 +13,23 @@
 }:
 let
   workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = self; };
+  # TODO(negz): Remove sdkBuildSystem once the function-sdk-python git pin in
+  # pyproject.toml is dropped (after #208 is released). It's only needed because
+  # the git pin is built from sdist rather than a wheel: its build backend is
+  # hatchling, which the wheel overlay doesn't provide, so inject it as a
+  # build-system input.
+  sdkBuildSystem = final: prev: {
+    crossplane-function-sdk-python = prev.crossplane-function-sdk-python.overrideAttrs (old: {
+      nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem { hatchling = [ ]; };
+    });
+  };
   pythonSet =
     (pkgs.callPackage pyproject-nix.build.packages { python = pkgs.python312; }).overrideScope
       (
         pkgs.lib.composeManyExtensions [
           pyproject-build-systems.overlays.wheel
           (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
+          sdkBuildSystem
         ]
       );
 

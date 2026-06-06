@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
 from .....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -20,26 +19,26 @@ class CompositionRevisionRef(BaseModel):
 
 
 class CompositionRevisionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class CompositionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class ResourceRef(BaseModel):
     apiVersion: str
     kind: str
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Crossplane(BaseModel):
-    compositionRef: Optional[CompositionRef] = None
-    compositionRevisionRef: Optional[CompositionRevisionRef] = None
-    compositionRevisionSelector: Optional[CompositionRevisionSelector] = None
-    compositionSelector: Optional[CompositionSelector] = None
-    compositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = None
-    resourceRefs: Optional[List[ResourceRef]] = None
+    compositionRef: CompositionRef | None = None
+    compositionRevisionRef: CompositionRevisionRef | None = None
+    compositionRevisionSelector: CompositionRevisionSelector | None = None
+    compositionSelector: CompositionSelector | None = None
+    compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
+    resourceRefs: list[ResourceRef] | None = None
 
 
 class Listener(BaseModel):
@@ -58,11 +57,11 @@ class Listener(BaseModel):
 
 
 class Gateway(BaseModel):
-    className: Optional[constr(min_length=1, max_length=63)] = 'envoy'
+    className: constr(min_length=1, max_length=63) | None = 'envoy'
     """
     GatewayClass name. Override if the cluster already has a GatewayClass named envoy.
     """
-    listeners: Optional[List[Listener]] = Field(None, max_length=8)
+    listeners: list[Listener] | None = Field(None, max_length=8)
     """
     Gateway listeners. Defaults to a single HTTP listener on port 80 if not specified.
     """
@@ -84,86 +83,86 @@ class Secret(BaseModel):
 
 
 class Versions(BaseModel):
-    certManager: Optional[constr(min_length=1, max_length=32)] = 'v1.17.1'
+    certManager: constr(min_length=1, max_length=32) | None = 'v1.17.1'
     """
     cert-manager chart version.
     """
-    envoyGateway: Optional[constr(min_length=1, max_length=32)] = 'v1.3.0'
+    envoyGateway: constr(min_length=1, max_length=32) | None = 'v1.3.0'
     """
     Envoy Gateway chart version.
     """
-    gatewayApi: Optional[constr(min_length=1, max_length=32)] = 'v1.5.1'
+    gatewayApi: constr(min_length=1, max_length=32) | None = 'v1.5.1'
     """
     Gateway API CRD version.
     """
-    leaderWorkerSet: Optional[constr(min_length=1, max_length=32)] = 'v0.8.0'
+    leaderWorkerSet: constr(min_length=1, max_length=32) | None = 'v0.8.0'
     """
     LeaderWorkerSet chart version.
     """
-    prometheus: Optional[constr(min_length=1, max_length=32)] = '72.6.2'
+    prometheus: constr(min_length=1, max_length=32) | None = '72.6.2'
     """
     kube-prometheus-stack chart version.
     """
 
 
 class Spec(BaseModel):
-    crossplane: Optional[Crossplane] = None
+    crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    gateway: Optional[Gateway] = None
+    gateway: Gateway | None = None
     """
     Configuration for the cluster's inference traffic gateway.
     """
-    secrets: List[Secret] = Field(..., min_length=1)
+    secrets: list[Secret] = Field(..., min_length=1)
     """
     Secrets used to authenticate to the target cluster. Typically sourced from a GKECluster's status.secrets. All secrets must be in the same namespace as this ServingStack. A Kubeconfig secret is required. If a cloud-specific credential secret is present (e.g. GCPServiceAccountKey), the ProviderConfigs will use it for identity-based authentication instead of relying on the kubeconfig's embedded credentials.
     """
-    versions: Optional[Versions] = None
+    versions: Versions | None = None
     """
     Version pins for each component. Defaults are the latest tested combination. Override individual versions to upgrade components independently.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
-    message: Optional[str] = None
-    observedGeneration: Optional[int] = None
+    lastTransitionTime: AwareDatetime
+    message: str | None = None
+    observedGeneration: int | None = None
     reason: str
     status: str
     type: str
 
 
 class GatewayModel(BaseModel):
-    address: Optional[constr(max_length=256)] = None
+    address: constr(max_length=256) | None = None
     """
     The gateway's external address, once assigned by the cloud load balancer.
     """
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    gateway: Optional[GatewayModel] = None
+    gateway: GatewayModel | None = None
     """
     Status of the cluster's inference gateway.
     """
 
 
 class ServingStack(BaseModel):
-    apiVersion: Optional[Literal['infrastructure.modelplane.ai/v1alpha1']] = (
+    apiVersion: Literal['infrastructure.modelplane.ai/v1alpha1'] | None = (
         'infrastructure.modelplane.ai/v1alpha1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ServingStack']] = 'ServingStack'
+    kind: Literal['ServingStack'] | None = 'ServingStack'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -171,26 +170,26 @@ class ServingStack(BaseModel):
     """
     ServingStackSpec defines the desired state of ServingStack.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ServingStackStatus defines the observed state of ServingStack.
     """
 
 
 class ServingStackList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ServingStack]
+    items: list[ServingStack]
     """
     List of servingstacks. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

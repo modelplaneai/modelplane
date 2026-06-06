@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -20,26 +19,26 @@ class CompositionRevisionRef(BaseModel):
 
 
 class CompositionRevisionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class CompositionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class ResourceRef(BaseModel):
     apiVersion: str
     kind: str
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Crossplane(BaseModel):
-    compositionRef: Optional[CompositionRef] = None
-    compositionRevisionRef: Optional[CompositionRevisionRef] = None
-    compositionRevisionSelector: Optional[CompositionRevisionSelector] = None
-    compositionSelector: Optional[CompositionSelector] = None
-    compositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = None
-    resourceRefs: Optional[List[ResourceRef]] = None
+    compositionRef: CompositionRef | None = None
+    compositionRevisionRef: CompositionRevisionRef | None = None
+    compositionRevisionSelector: CompositionRevisionSelector | None = None
+    compositionSelector: CompositionSelector | None = None
+    compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
+    resourceRefs: list[ResourceRef] | None = None
 
 
 class ModelCacheRef(BaseModel):
@@ -47,37 +46,37 @@ class ModelCacheRef(BaseModel):
 
 
 class Metadata(BaseModel):
-    annotations: Optional[Dict[str, str]] = None
-    labels: Optional[Dict[str, str]] = None
+    annotations: dict[str, str] | None = None
+    labels: dict[str, str] | None = None
 
 
 class ConfigMapKeyRef(BaseModel):
     key: str
     name: str
-    optional: Optional[bool] = None
+    optional: bool | None = None
 
 
 class SecretKeyRef(BaseModel):
     key: str
     name: str
-    optional: Optional[bool] = None
+    optional: bool | None = None
 
 
 class ValueFrom(BaseModel):
-    configMapKeyRef: Optional[ConfigMapKeyRef] = None
-    secretKeyRef: Optional[SecretKeyRef] = None
+    configMapKeyRef: ConfigMapKeyRef | None = None
+    secretKeyRef: SecretKeyRef | None = None
 
 
 class EnvItem(BaseModel):
     name: str
-    value: Optional[str] = None
-    valueFrom: Optional[ValueFrom] = None
+    value: str | None = None
+    valueFrom: ValueFrom | None = None
 
 
 class Container(BaseModel):
-    args: Optional[List[str]] = None
-    command: Optional[List[str]] = None
-    env: Optional[List[EnvItem]] = None
+    args: list[str] | None = None
+    command: list[str] | None = None
+    env: list[EnvItem] | None = None
     image: constr(min_length=1)
     name: constr(min_length=1)
 
@@ -87,22 +86,22 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: List[Container] = Field(..., max_length=1, min_length=1)
-    imagePullSecrets: Optional[List[ImagePullSecret]] = None
+    containers: list[Container] = Field(..., max_length=1, min_length=1)
+    imagePullSecrets: list[ImagePullSecret] | None = None
 
 
 class Template(BaseModel):
-    metadata: Optional[Metadata] = None
-    spec: Optional[Spec] = None
+    metadata: Metadata | None = None
+    spec: Spec | None = None
 
 
 class Topology(BaseModel):
-    pipeline: Optional[conint(ge=1)] = 1
+    pipeline: conint(ge=1) | None = 1
     tensor: conint(ge=1)
 
 
 class Workers(BaseModel):
-    count: Optional[conint(ge=1)] = 1
+    count: conint(ge=1) | None = 1
     template: Template
     topology: Topology
 
@@ -112,11 +111,11 @@ class SpecModel(BaseModel):
     """
     Name of the InferenceCluster this replica is pinned to. Replicas are pinned at creation time. If the cluster is temporarily unavailable the replica stays pinned and the parent ModelDeployment surfaces the degraded state via its conditions. If the cluster is deleted entirely the parent ModelDeployment re-places the replica on another viable cluster.
     """
-    crossplane: Optional[Crossplane] = None
+    crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    modelCacheRef: Optional[ModelCacheRef] = None
+    modelCacheRef: ModelCacheRef | None = None
     """
     Optional reference to a ModelCache mounted into the engine pod. Inherited verbatim from the parent ModelDeployment.
     """
@@ -124,52 +123,52 @@ class SpecModel(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
-    message: Optional[str] = None
-    observedGeneration: Optional[int] = None
+    lastTransitionTime: AwareDatetime
+    message: str | None = None
+    observedGeneration: int | None = None
     reason: str
     status: str
     type: str
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
 
 
 class ModelReplica(BaseModel):
-    apiVersion: Optional[Literal['modelplane.ai/v1alpha1']] = 'modelplane.ai/v1alpha1'
+    apiVersion: Literal['modelplane.ai/v1alpha1'] | None = 'modelplane.ai/v1alpha1'
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ModelReplica']] = 'ModelReplica'
+    kind: Literal['ModelReplica'] | None = 'ModelReplica'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
     spec: SpecModel
-    status: Optional[Status] = None
+    status: Status | None = None
 
 
 class ModelReplicaList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ModelReplica]
+    items: list[ModelReplica]
     """
     List of modelreplicas. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

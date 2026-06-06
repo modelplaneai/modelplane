@@ -55,6 +55,15 @@ let
         pkgs.lib.composeManyExtensions [
           pyproject-build-systems.overlays.wheel
           (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
+          # TODO(negz): Remove this overlay once the function-sdk-python git pin
+          # in pyproject.toml is dropped (after #208 is released). It's only
+          # needed because the git pin is built from sdist with hatchling, which
+          # the wheel overlay doesn't provide; inject it as a build-system input.
+          (final: prev: {
+            crossplane-function-sdk-python = prev.crossplane-function-sdk-python.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem { hatchling = [ ]; };
+            });
+          })
         ]
       );
 

@@ -262,6 +262,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "project": "my-gcp-project",
                                     "region": "us-central1",
+                                    "kubernetesVersion": "1.35",
                                     "nodePools": [
                                         {
                                             "name": "l4-pool",
@@ -270,8 +271,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "nodeCount": 2,
                                             "minNodeCount": None,
                                             "maxNodeCount": 4,
+                                            "diskSizeGb": 100,
                                             "gpu": {
                                                 "acceleratorType": "nvidia-l4",
+                                                "acceleratorCount": 1,
                                             },
                                             "zones": ["us-central1-a"],
                                         },
@@ -530,6 +533,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 },
                                 "spec": {
                                     "region": "us-west-2",
+                                    "kubernetesVersion": "1.31",
                                     "nodePools": [
                                         {
                                             "name": "l4-pool",
@@ -538,6 +542,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "nodeCount": 2,
                                             "minNodeCount": None,
                                             "maxNodeCount": 4,
+                                            "diskSizeGb": 100,
                                             "gpu": {
                                                 "acceleratorType": "nvidia-l4",
                                             },
@@ -703,6 +708,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "project": "my-gcp-project",
                                     "region": "us-central1",
+                                    "kubernetesVersion": "1.35",
                                     "nodePools": [
                                         {
                                             "name": "l4-pool",
@@ -711,8 +717,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "nodeCount": 2,
                                             "minNodeCount": None,
                                             "maxNodeCount": 4,
+                                            "diskSizeGb": 100,
                                             "gpu": {
                                                 "acceleratorType": "nvidia-l4",
+                                                "acceleratorCount": 1,
                                             },
                                             "zones": ["us-central1-a"],
                                         },
@@ -762,9 +770,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         "kind": "ClusterProviderConfig",
                                         "name": "test-cluster-cluster-kubeconfig-d0f89",
                                     },
-                                    # policy defaults to SuccessfulCreate, so
-                                    # the typed model drops it on serialization.
-                                    "readiness": {},
+                                    "readiness": {"policy": "SuccessfulCreate"},
                                     "forProvider": {
                                         "manifest": {
                                             "apiVersion": "storage.k8s.io/v1",

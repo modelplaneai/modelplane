@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field, RootModel, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, RootModel, conint, constr
 
 from .....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -20,26 +19,26 @@ class CompositionRevisionRef(BaseModel):
 
 
 class CompositionRevisionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class CompositionSelector(BaseModel):
-    matchLabels: Dict[str, str]
+    matchLabels: dict[str, str]
 
 
 class ResourceRef(BaseModel):
     apiVersion: str
     kind: str
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Crossplane(BaseModel):
-    compositionRef: Optional[CompositionRef] = None
-    compositionRevisionRef: Optional[CompositionRevisionRef] = None
-    compositionRevisionSelector: Optional[CompositionRevisionSelector] = None
-    compositionSelector: Optional[CompositionSelector] = None
-    compositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = None
-    resourceRefs: Optional[List[ResourceRef]] = None
+    compositionRef: CompositionRef | None = None
+    compositionRevisionRef: CompositionRevisionRef | None = None
+    compositionRevisionSelector: CompositionRevisionSelector | None = None
+    compositionSelector: CompositionSelector | None = None
+    compositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = None
+    resourceRefs: list[ResourceRef] | None = None
 
 
 class SubnetCidr(RootModel[constr(max_length=18)]):
@@ -47,18 +46,16 @@ class SubnetCidr(RootModel[constr(max_length=18)]):
 
 
 class Networking(BaseModel):
-    subnetCidrs: Optional[List[SubnetCidr]] = Field(
-        default_factory=lambda: [
-            SubnetCidr.model_validate(v)
-            for v in ['10.0.0.0/20', '10.0.16.0/20', '10.0.32.0/20']
-        ],
+    subnetCidrs: list[SubnetCidr] | None = Field(
+        ['10.0.0.0/20', '10.0.16.0/20', '10.0.32.0/20'],
         max_length=6,
         min_length=2,
+        validate_default=True,
     )
     """
     Subnet CIDRs, one per Availability Zone. EKS requires at least two subnets in different AZs. The function picks AZs by index from the region — index 0 maps to the region's first AZ alphabetically (e.g. us-west-2a), index 1 to the second, etc.
     """
-    vpcCidr: Optional[constr(max_length=18)] = '10.0.0.0/16'
+    vpcCidr: constr(max_length=18) | None = '10.0.0.0/16'
     """
     Primary CIDR block for the VPC.
     """
@@ -76,11 +73,11 @@ class Zone(RootModel[constr(min_length=1, max_length=63)]):
 
 
 class NodePool(BaseModel):
-    diskSizeGb: Optional[conint(ge=10, le=65536)] = 100
+    diskSizeGb: conint(ge=10, le=65536) | None = 100
     """
     Root volume size in GB.
     """
-    gpu: Optional[Gpu] = None
+    gpu: Gpu | None = None
     """
     GPU configuration. Required when role is GPU.
     """
@@ -88,11 +85,11 @@ class NodePool(BaseModel):
     """
     EC2 instance type (e.g. m6i.large, g6.xlarge, p4d.24xlarge).
     """
-    maxNodeCount: Optional[conint(ge=0, le=1000)] = 8
+    maxNodeCount: conint(ge=0, le=1000) | None = 8
     """
     Maximum number of nodes for autoscaling.
     """
-    minNodeCount: Optional[conint(ge=0, le=1000)] = 0
+    minNodeCount: conint(ge=0, le=1000) | None = 0
     """
     Minimum number of nodes for autoscaling. Set to 1 or higher for groups that must always be available.
     """
@@ -100,7 +97,7 @@ class NodePool(BaseModel):
     """
     Unique name for this node group. Used as a suffix in the EKS NodeGroup resource name.
     """
-    nodeCount: Optional[conint(ge=0, le=1000)] = 1
+    nodeCount: conint(ge=0, le=1000) | None = 1
     """
     Initial number of nodes.
     """
@@ -108,26 +105,26 @@ class NodePool(BaseModel):
     """
     Determines what workloads this group runs. System groups host controllers, gateways, and infrastructure. GPU groups host inference workloads and use a GPU-enabled AMI.
     """
-    zones: Optional[List[Zone]] = Field(None, max_length=8, min_length=1)
+    zones: list[Zone] | None = Field(None, max_length=8, min_length=1)
     """
     Availability Zones to restrict this node group to. Required for GPU groups because not all AZs in a region have every instance type. Example: ["us-west-2a", "us-west-2b"].
     """
 
 
 class Spec(BaseModel):
-    crossplane: Optional[Crossplane] = None
+    crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    kubernetesVersion: Optional[constr(min_length=1, max_length=16)] = '1.31'
+    kubernetesVersion: constr(min_length=1, max_length=16) | None = '1.31'
     """
     EKS cluster Kubernetes version. Must be a version EKS currently supports.
     """
-    networking: Optional[Networking] = None
+    networking: Networking | None = None
     """
     VPC networking configuration. Defaults give a /16 VPC carved into three /20 subnets, one per Availability Zone. Override when VPC-peering multiple clusters to avoid CIDR collisions.
     """
-    nodePools: List[NodePool] = Field(..., max_length=8, min_length=1)
+    nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
     """
     Node groups for the cluster. At least one System pool is required for controllers and infrastructure workloads.
     """
@@ -138,9 +135,9 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
-    message: Optional[str] = None
-    observedGeneration: Optional[int] = None
+    lastTransitionTime: AwareDatetime
+    message: str | None = None
+    observedGeneration: int | None = None
     reason: str
     status: str
     type: str
@@ -162,28 +159,28 @@ class Secret(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    secrets: Optional[List[Secret]] = None
+    secrets: list[Secret] | None = None
     """
     Secrets produced by this cluster. Consumers use these to authenticate to the cluster. All secrets are in the same namespace as this EKSCluster.
     """
 
 
 class EKSCluster(BaseModel):
-    apiVersion: Optional[Literal['infrastructure.modelplane.ai/v1alpha1']] = (
+    apiVersion: Literal['infrastructure.modelplane.ai/v1alpha1'] | None = (
         'infrastructure.modelplane.ai/v1alpha1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['EKSCluster']] = 'EKSCluster'
+    kind: Literal['EKSCluster'] | None = 'EKSCluster'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -191,26 +188,26 @@ class EKSCluster(BaseModel):
     """
     EKSClusterSpec defines the desired state of EKSCluster.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     EKSClusterStatus defines the observed state of EKSCluster.
     """
 
 
 class EKSClusterList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[EKSCluster]
+    items: list[EKSCluster]
     """
     List of eksclusters. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

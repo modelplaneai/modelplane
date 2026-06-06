@@ -57,10 +57,17 @@ def _helm_release(
     """Build a Helm Release targeting a remote (or local) cluster."""
     md = None
     if labels or metadata_namespace:
-        md = metav1.ObjectMeta(namespace=metadata_namespace, labels=labels)
+        # Only set fields that are present; under exclude_unset, an explicit
+        # namespace=None or labels=None would leak a null into the metadata.
+        md = metav1.ObjectMeta(
+            **({"namespace": metadata_namespace} if metadata_namespace is not None else {}),
+            **({"labels": labels} if labels is not None else {}),
+        )
 
     release = helmv1beta1.Release(
-        metadata=md,
+        # Only set metadata when present (see _k8s_object: avoids a null
+        # metadata leaking under exclude_unset serialization).
+        **({"metadata": md} if md is not None else {}),
         spec=helmv1beta1.Spec(
             providerConfigRef=helmv1beta1.ProviderConfigRef(
                 kind="ProviderConfig",
@@ -89,7 +96,10 @@ def _k8s_object(
 ) -> k8sobjv1alpha1.Object:
     """Build a provider-kubernetes Object wrapping an arbitrary manifest."""
     obj = k8sobjv1alpha1.Object(
-        metadata=metadata,
+        # Only set metadata when present. Under exclude_unset serialization,
+        # passing metadata=None would emit a null metadata into the composed
+        # resource rather than omitting it.
+        **({"metadata": metadata} if metadata is not None else {}),
         spec=k8sobjv1alpha1.Spec(
             providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                 kind="ProviderConfig",

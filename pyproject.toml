@@ -12,6 +12,15 @@ package = false
 [tool.uv.workspace]
 members = ["functions/*", "schemas/python"]
 
+[tool.uv.sources]
+# TODO(negz): Remove this source pin once crossplane/function-sdk-python#208
+# is released, and bump the dependency below to the release that includes it.
+# Pinned to #208 (serialize models with exclude_unset, not exclude_defaults).
+# See https://github.com/crossplane/function-sdk-python/pull/208. The nix
+# hatchling build-system overrides in nix/checks.nix and nix/functions.nix
+# exist only because this git pin is built from sdist; remove them too.
+crossplane-function-sdk-python = { git = "https://github.com/negz/function-sdk-python.git", branch = "best-left-unset" }
+
 [dependency-groups]
 dev = [
   "crossplane-function-sdk-python>=0.12.0",
