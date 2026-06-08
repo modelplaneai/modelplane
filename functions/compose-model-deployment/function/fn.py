@@ -169,6 +169,12 @@ class Composer:
         for cluster_info in matched:
             replica_key = f"replica-{cluster_info.name}"
 
+            spec_kwargs = {"clusterName": cluster_info.name, "workers": workers}
+            if self.xr.spec.modelCacheRef:
+                spec_kwargs["modelCacheRef"] = mrv1alpha1.ModelCacheRef(
+                    name=self.xr.spec.modelCacheRef.name,
+                )
+
             resource.update(
                 self.rsp.desired.resources[replica_key],
                 mrv1alpha1.ModelReplica(
@@ -181,10 +187,7 @@ class Composer:
                             _LABEL_CLUSTER: cluster_info.name,
                         },
                     ),
-                    spec=mrv1alpha1.SpecModel(
-                        clusterName=cluster_info.name,
-                        workers=workers,
-                    ),
+                    spec=mrv1alpha1.SpecModel(**spec_kwargs),
                 ),
             )
 
