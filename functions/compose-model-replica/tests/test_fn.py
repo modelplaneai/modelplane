@@ -34,7 +34,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         cls.runner = fn.FunctionRunner()
 
     async def test_compose(self) -> None:
-        """The function composes an LLMInferenceService on a remote cluster."""
+        """The function dispatches to a backend to compose serving resources on a remote cluster."""
 
         xr = v1alpha1.ModelReplica(
             metadata=metav1.ObjectMeta(
@@ -70,7 +70,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             match_name="cluster-a",
         )
 
-        # Case 1: cluster resolved with providerConfigRef — composes LLMInferenceService.
+        # Case 1: cluster resolved with providerConfigRef — composes native Deployment.
         req1 = fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
@@ -112,32 +112,138 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "readiness": {"policy": "DeriveFromObject"},
                                     "forProvider": {
                                         "manifest": {
-                                            "apiVersion": "serving.kserve.io/v1alpha1",
-                                            "kind": "LLMInferenceService",
+                                            "apiVersion": "apps/v1",
+                                            "kind": "Deployment",
                                             "metadata": {
-                                                "name": "my-deployment-1154c",
+                                                "name": "test-replica",
                                                 "namespace": "default",
                                             },
                                             "spec": {
-                                                "model": {"uri": "hf://Qwen/Qwen3-0.6B"},
                                                 "replicas": 1,
-                                                "template": {
-                                                    "containers": [
-                                                        {
-                                                            "name": "main",
-                                                            "image": "vllm/vllm-openai:latest",
-                                                            "args": [],
-                                                            "securityContext": {
-                                                                "runAsUser": 0,
-                                                                "runAsNonRoot": False,
-                                                            },
-                                                            "resources": {
-                                                                "limits": {"nvidia.com/gpu": "1"},
-                                                            },
-                                                        }
-                                                    ],
+                                                "selector": {
+                                                    "matchLabels": {
+                                                        "modelplane.ai/serving": "test-replica",
+                                                    },
                                                 },
-                                                "router": {"gateway": {}, "route": {}},
+                                                "template": {
+                                                    "metadata": {
+                                                        "labels": {
+                                                            "modelplane.ai/serving": "test-replica",
+                                                        },
+                                                    },
+                                                    "spec": {
+                                                        "containers": [
+                                                            {
+                                                                "name": "engine",
+                                                                "image": "vllm/vllm-openai:latest",
+                                                                "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                                "ports": [{"containerPort": 8000}],
+                                                                "resources": {
+                                                                    "limits": {"nvidia.com/gpu": "1"},
+                                                                },
+                                                                "volumeMounts": [
+                                                                    {"name": "dshm", "mountPath": "/dev/shm"},
+                                                                ],
+                                                                "readinessProbe": {
+                                                                    "httpGet": {"path": "/health", "port": 8000},
+                                                                    "initialDelaySeconds": 30,
+                                                                    "periodSeconds": 10,
+                                                                },
+                                                            },
+                                                        ],
+                                                        "volumes": [
+                                                            {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                                                        ],
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                    "model-service": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "spec": {
+                                    "providerConfigRef": {
+                                        "kind": "ClusterProviderConfig",
+                                        "name": "cluster-a-pc",
+                                    },
+                                    "readiness": {"policy": "DeriveFromObject"},
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "v1",
+                                            "kind": "Service",
+                                            "metadata": {
+                                                "name": "test-replica",
+                                                "namespace": "default",
+                                            },
+                                            "spec": {
+                                                "selector": {"modelplane.ai/serving": "test-replica"},
+                                                "ports": [{"port": 80, "targetPort": 8000}],
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                    "model-route": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "spec": {
+                                    "providerConfigRef": {
+                                        "kind": "ClusterProviderConfig",
+                                        "name": "cluster-a-pc",
+                                    },
+                                    "readiness": {"policy": "DeriveFromObject"},
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "gateway.networking.k8s.io/v1",
+                                            "kind": "HTTPRoute",
+                                            "metadata": {
+                                                "name": "test-replica",
+                                                "namespace": "default",
+                                            },
+                                            "spec": {
+                                                "parentRefs": [
+                                                    {
+                                                        "name": "inference-gateway",
+                                                        "namespace": "modelplane-system",
+                                                    },
+                                                ],
+                                                "rules": [
+                                                    {
+                                                        "matches": [
+                                                            {
+                                                                "path": {
+                                                                    "type": "PathPrefix",
+                                                                    "value": "/ml-team/test-replica/",
+                                                                },
+                                                            },
+                                                        ],
+                                                        "filters": [
+                                                            {
+                                                                "type": "URLRewrite",
+                                                                "urlRewrite": {
+                                                                    "path": {
+                                                                        "type": "ReplacePrefixMatch",
+                                                                        "replacePrefixMatch": "/",
+                                                                    },
+                                                                },
+                                                            },
+                                                        ],
+                                                        "backendRefs": [
+                                                            {"name": "test-replica", "port": 80},
+                                                        ],
+                                                    },
+                                                ],
                                             },
                                         },
                                     },
@@ -248,7 +354,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         want3.requirements.resources["cluster"].CopyFrom(cluster_requirement)
 
         cases = [
-            Case(name="cluster ready composes LLMInferenceService via Object", req=req1, want=want1),
+            Case(name="cluster ready composes native Deployment", req=req1, want=want1),
             Case(name="cluster not resolved returns waiting conditions", req=req2, want=want2),
             Case(name="cluster without providerConfigRef returns waiting conditions", req=req3, want=want3),
         ]

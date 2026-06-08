@@ -5,3 +5,6 @@ _output
 result
 .direnv
 __pycache__/
+
+# Local superpowers planning artifacts (specs/plans/notes) — not repo content
+docs/superpowers/

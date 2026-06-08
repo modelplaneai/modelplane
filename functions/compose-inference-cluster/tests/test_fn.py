@@ -148,17 +148,16 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ),
                         ready=fnv1.READY_TRUE,
                     ),
-                    "kserve-backend": fnv1.Resource(
+                    "serving-stack": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                                "kind": "KServeBackend",
+                                "kind": "ServingStack",
                                 "metadata": {
-                                    "name": "test-cluster-kserve-86cf4",
+                                    "name": "test-cluster-serving-stack-fd00b",
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
-                                    "versions": {},
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",
@@ -329,12 +328,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "kserve-backend": fnv1.Resource(
+                    "serving-stack": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                                "kind": "KServeBackend",
-                                "metadata": {"name": "test-cluster-kserve-86cf4"},
+                                "kind": "ServingStack",
+                                "metadata": {"name": "test-cluster-serving-stack-fd00b"},
                                 "status": {
                                     "conditions": [{"type": "Ready", "status": "True"}],
                                     "gateway": {"address": "34.55.100.10"},
@@ -396,17 +395,16 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ),
                         ready=fnv1.READY_TRUE,
                     ),
-                    "kserve-backend": fnv1.Resource(
+                    "serving-stack": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                                "kind": "KServeBackend",
+                                "kind": "ServingStack",
                                 "metadata": {
-                                    "name": "test-cluster-kserve-86cf4",
+                                    "name": "test-cluster-serving-stack-fd00b",
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
-                                    "versions": {},
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",

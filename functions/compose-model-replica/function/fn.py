@@ -1,17 +1,17 @@
 """Deploy a model on a single InferenceCluster.
 
 This function reads the referenced InferenceCluster via required
-resources, then composes a KServe LLMInferenceService on the remote
-cluster.
+resources, then dispatches to the backend that matches the replica's
+topology to compose the cluster-level serving resources.
 
 GPU count comes from spec.workers.topology directly:
 - tensor:   GPUs per node.
-- pipeline: nodes per worker (default 1). Values > 1 use
-            LeaderWorkerSet for multi-node serving.
+- pipeline: nodes per worker (default 1). Values > 1 select a
+            multi-node backend (llm-d / LeaderWorkerSet).
 
 The worker template is a curated subset of PodTemplateSpec. The
 container named "engine" is the inference engine; its image and args
-are passed through to the LLMInferenceService.
+are passed through to the composed workload.
 """
 
 import grpc
@@ -21,6 +21,8 @@ from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+
+from function.backends import base, dynamo, llmd, native
 
 # Condition types and reasons for the ModelReplica XR.
 CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
@@ -33,15 +35,17 @@ CONDITION_REASON_ACCEPTED = "Accepted"
 CONDITION_REASON_SERVING = "Serving"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 
-# Composed resource key for the model serving resource.
+# Composed resource key for the primary model serving resource. The
+# native and llm-d backends both emit this key, and derive_conditions
+# reads it to track acceptance/readiness.
 MODEL_RESOURCE_KEY = "model-serving"
 
-# Label key written by compose-model-deployment, read here to derive the
-# LLMInferenceService name on the remote cluster.
-_LABEL_DEPLOYMENT = "modelplane.ai/deployment"
-
-# Namespace for LLMInferenceService on remote clusters.
-_NAMESPACE_REMOTE = "default"
+# Backend registry: topology selects which one composes the workload.
+_BACKENDS: dict[str, type[base.Backend]] = {
+    base.NATIVE: native.NativeBackend,
+    base.LLMD: llmd.LLMDBackend,
+    base.DYNAMO: dynamo.DynamoBackend,
+}
 
 
 def _inference_cluster(
@@ -136,131 +140,12 @@ class Composer:
 
         return True
 
-    def _engine_container(self):
-        """Return the container named 'engine' from the worker template.
-
-        The XRD enforces via CEL validation that exactly one container
-        named 'engine' exists, so this always succeeds.
-        """
-        return next(c for c in self.xr.spec.workers.template.spec.containers if c.name == "engine")
-
     def compose_model_serving(self):
-        """Compose the LLMInferenceService on the remote cluster."""
-        topology = self.xr.spec.workers.topology
-        template = self.xr.spec.workers.template
-        self.engine = self._engine_container()
-        engine = self.engine
-
-        multi_node = int(topology.pipeline or 1) > 1
-
-        # Extract the model name from engine args (e.g. --model=Qwen/...)
-        # to build the HuggingFace URI that KServe requires. Strip the
-        # --model= arg from the container args — KServe handles model
-        # fetching via model.uri and invokes the engine with the local
-        # model path.
-        #
-        # TODO(negz): Stop doing this when we drop KServe. It's a hack.
-        model_name = ""
-        container_args = []
-        for arg in list(engine.args or []):
-            if arg.startswith("--model="):
-                model_name = arg.split("=", 1)[1]
-            else:
-                container_args.append(arg)
-
-        container = self._build_container(engine, topology.tensor, container_args)
-        pod_spec = self._build_pod_spec(template, container)
-
-        llmis_spec: dict = {
-            "model": {"uri": f"hf://{model_name}" if model_name else "hf://unknown"},
-            "replicas": int(self.xr.spec.workers.count or 1),
-            "template": pod_spec,
-            "router": {"gateway": {}, "route": {}},
-        }
-
-        # Pod metadata (labels, annotations) goes on the WorkloadSpec,
-        # not inside the PodSpec. KServe applies WorkloadSpec-level
-        # labels/annotations to both leader and worker pods.
-        if template.metadata:
-            if template.metadata.labels:
-                llmis_spec["labels"] = dict(template.metadata.labels)
-            if template.metadata.annotations:
-                llmis_spec["annotations"] = dict(template.metadata.annotations)
-
-        # Multi-node: set parallelism axes and a worker PodSpec.
-        # KServe derives the LWS group size from parallelism.pipeline.
-        if multi_node:
-            llmis_spec["parallelism"] = {
-                "tensor": topology.tensor,
-                "pipeline": topology.pipeline,
-            }
-            llmis_spec["worker"] = pod_spec
-
-        resource.update(
-            self.rsp.desired.resources[MODEL_RESOURCE_KEY],
-            k8sobjv1alpha1.Object(
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=self.ic.status.providerConfigRef.name,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(
-                        policy="DeriveFromObject",
-                    ),
-                    forProvider=k8sobjv1alpha1.ForProvider(
-                        manifest={
-                            "apiVersion": "serving.kserve.io/v1alpha1",
-                            "kind": "LLMInferenceService",
-                            "metadata": {
-                                "name": self.llmis_name(),
-                                "namespace": _NAMESPACE_REMOTE,
-                            },
-                            "spec": llmis_spec,
-                        },
-                    ),
-                ),
-            ),
-        )
-
-    def _build_container(self, engine, gpu_per_pod: int, args: list[str]) -> dict:
-        """Build the LLMInferenceService container dict from the engine container.
-
-        GPU count is set via the device plugin. CPU and memory resource
-        requirements are not set; DRA will handle device binding
-        (including non-GPU resources) in a future version.
-        """
-        container: dict = {
-            "name": "main",
-            "image": engine.image,
-            "args": args,
-            "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
-            "resources": {
-                "limits": {"nvidia.com/gpu": str(gpu_per_pod)},
-            },
-        }
-
-        if engine.env:
-            container["env"] = [e.model_dump(exclude_none=True) for e in engine.env]
-
-        return container
-
-    def _build_pod_spec(self, template, container: dict) -> dict:
-        """Build the pod spec dict from the worker template."""
-        pod_spec: dict = {"containers": [container]}
-        if template.spec.imagePullSecrets:
-            pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in template.spec.imagePullSecrets]
-        return pod_spec
-
-    def llmis_name(self):
-        """LLMInferenceService name on the remote cluster.
-
-        Read from the modelplane.ai/deployment label that
-        compose-model-deployment sets on every replica. All replicas of
-        the same deployment land at the same path on every remote gateway.
-        """
-        labels = self.xr.metadata.labels or {}
-        deployment_name = labels.get(_LABEL_DEPLOYMENT, self.xr.metadata.name)
-        return resource.child_name(deployment_name)
+        """Dispatch to the backend that matches the replica's topology."""
+        self.engine = base.engine_container(self.xr)
+        backend = _BACKENDS[base.select_backend(self.xr)]()
+        for key, composed in backend.build(self.xr, self.ic).items():
+            resource.update(self.rsp.desired.resources[key], composed)
 
     def derive_conditions(self):
         """Derive ModelAccepted and ModelReady conditions."""
@@ -311,6 +196,8 @@ class Composer:
             ),
         )
 
-        # Per-resource readiness.
+        # Per-resource readiness. Only the workload (model-serving) gates XR
+        # readiness; the Service/HTTPRoute (and llm-d's pool/EPP) Objects derive
+        # their own readiness via provider-kubernetes DeriveFromObject.
         if MODEL_RESOURCE_KEY in self.rsp.desired.resources and serving_ready:
             self.rsp.desired.resources[MODEL_RESOURCE_KEY].ready = fnv1.READY_TRUE

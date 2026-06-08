@@ -30,7 +30,7 @@ _RANGE_PODS = "pods"
 _RANGE_SERVICES = "services"
 
 # System pool injected into every GKE cluster to host control-plane
-# components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
+# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part of
 # the user-facing API — compose-inference-cluster only passes GPU pools.
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_MACHINE_TYPE = "e2-standard-4"

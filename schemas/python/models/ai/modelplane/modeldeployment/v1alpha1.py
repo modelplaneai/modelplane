@@ -86,6 +86,10 @@ class Container(BaseModel):
     """
     Container args. For the engine container, these are passed through to the serving engine. Includes the model identifier (e.g. --model=...).
     """
+    command: Optional[List[str]] = None
+    """
+    Container entrypoint override. When set on the engine container of a multi-node deployment, it bypasses the built-in vLLM/Ray bootstrap and runs on every gang pod — the command owns cross-node coordination against the LWS_* environment (LWS_WORKER_INDEX, LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for non-vLLM engines (e.g. SGLang).
+    """
     env: Optional[List[EnvItem]] = None
     """
     Environment variables. Supports valueFrom.secretKeyRef for secrets like HF_TOKEN.
@@ -105,9 +109,9 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: List[Container] = Field(..., min_length=1)
+    containers: List[Container] = Field(..., max_length=1, min_length=1)
     """
-    Containers for the inference pod. The container named "engine" is the inference engine; additional containers pass through as sidecars.
+    Containers for the inference pod. v0.1 supports a single container, which must be named "engine" (the inference engine). Sidecar / multi-container support is tracked separately.
     """
     imagePullSecrets: Optional[List[ImagePullSecret]] = None
     """

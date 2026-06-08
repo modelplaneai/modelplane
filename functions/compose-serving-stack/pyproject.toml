@@ -3,9 +3,9 @@ requires = ["uv_build>=0.11.0,<0.12"]
 build-backend = "uv_build"
 
 [project]
-name = "compose-kserve-backend"
+name = "compose-serving-stack"
 version = "0.0.0"
-description = "Install KServe and supporting components on a remote cluster."
+description = "Install the serving stack and supporting components on a remote cluster."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [

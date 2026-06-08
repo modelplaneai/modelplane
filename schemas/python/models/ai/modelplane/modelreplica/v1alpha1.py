@@ -76,6 +76,7 @@ class EnvItem(BaseModel):
 
 class Container(BaseModel):
     args: Optional[List[str]] = None
+    command: Optional[List[str]] = None
     env: Optional[List[EnvItem]] = None
     image: constr(min_length=1)
     name: constr(min_length=1)
@@ -86,7 +87,7 @@ class ImagePullSecret(BaseModel):
 
 
 class Spec(BaseModel):
-    containers: List[Container] = Field(..., min_length=1)
+    containers: List[Container] = Field(..., max_length=1, min_length=1)
     imagePullSecrets: Optional[List[ImagePullSecret]] = None
 
 
