@@ -154,6 +154,43 @@ class TestModelCache(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["summary"]["ready"], "0/1")
         self.assertNotEqual(rsp.desired.composite.ready, fnv1.READY_TRUE)
 
+    async def test_status_failed_when_job_failed(self) -> None:
+        # Observed remote state: the hydration Job reports a Failed condition.
+        # A Failed Job takes precedence over PVC binding, so the cluster phase
+        # is Failed, nothing is ready, and the XR is not ready.
+        observed = {
+            "pvc-cluster-a": {"phase": "Bound"},
+            "hydrate-cluster-a": {"conditions": [{"type": "Failed", "status": "True"}]},
+        }
+        rsp = await self.runner.RunFunction(
+            _req(_cache_xr(), [_cluster_dict("cluster-a", "cluster-a-pc")], observed),
+            None,
+        )
+        status = json_format.MessageToDict(rsp.desired.composite.resource)["status"]
+        self.assertEqual(status["clusters"][0]["phase"], "Failed")
+        self.assertEqual(status["summary"]["ready"], "0/1")
+        self.assertNotEqual(rsp.desired.composite.ready, fnv1.READY_TRUE)
+
+    async def test_status_partial_when_one_of_two_clusters_ready(self) -> None:
+        # Cluster a is Ready (PVC Bound + Job succeeded); cluster b is still
+        # Hydrating (PVC Bound only). Summary reports 1/2, ArtifactReady is
+        # False with reason Partial, and the XR is not ready overall.
+        observed = {
+            "pvc-a": {"phase": "Bound"},
+            "hydrate-a": {"succeeded": 1},
+            "pvc-b": {"phase": "Bound"},
+        }
+        rsp = await self.runner.RunFunction(
+            _req(_cache_xr(), [_cluster_dict("a", "a-pc"), _cluster_dict("b", "b-pc")], observed),
+            None,
+        )
+        status = json_format.MessageToDict(rsp.desired.composite.resource)["status"]
+        self.assertEqual(status["summary"]["ready"], "1/2")
+        self.assertNotEqual(rsp.desired.composite.ready, fnv1.READY_TRUE)
+        conds = {c.type: c for c in rsp.conditions}
+        self.assertEqual(conds["ArtifactReady"].status, fnv1.STATUS_CONDITION_FALSE)
+        self.assertEqual(conds["ArtifactReady"].reason, "Partial")
+
     async def test_no_source_set_warns_and_composes_nothing(self) -> None:
         # The XRD can't enforce "exactly one source" yet (#28), so an empty
         # source must be handled gracefully, not crash the function.

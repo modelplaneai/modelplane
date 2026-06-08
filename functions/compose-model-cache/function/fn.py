@@ -338,7 +338,7 @@ class Composer:
 
     def mark_ready_resources(self, per_cluster_phase) -> None:
         """Mark PVC + Job Objects ready once their cluster reaches Ready.
-        Must run AFTER resource.update() — update() resets the ready flag."""
+        Runs after compose_cluster_resources() so the desired entries exist."""
         for name, phase in per_cluster_phase:
             if phase != PHASE_READY:
                 continue
