@@ -362,3 +362,67 @@ class TestNativeBackendCache(unittest.TestCase):
         container = pod["containers"][0]
         self.assertIn({"name": "model-cache", "mountPath": "/mnt/models"}, container["volumeMounts"])
         self.assertIn("--model=/mnt/models", container["args"])
+
+
+class TestLLMDBackendCache(unittest.TestCase):
+    def _replica(self, *, command=None, args=None):
+        return v1alpha1.ModelReplica(
+            metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
+            spec=v1alpha1.SpecModel(
+                clusterName="cluster-a",
+                modelCacheRef=v1alpha1.ModelCacheRef(name="kimi"),
+                workers=v1alpha1.Workers(
+                    count=1,
+                    topology=v1alpha1.Topology(tensor=8, pipeline=2),
+                    template=v1alpha1.Template(
+                        spec=v1alpha1.Spec(
+                            containers=[
+                                v1alpha1.Container(name="engine", image="img", args=args or [], command=command)
+                            ]
+                        )
+                    ),
+                ),
+            ),
+        )
+
+    def test_both_lws_templates_mount_cache(self):
+        lws = llmd.LLMDBackend().build(self._replica(), _CLUSTER)["model-serving"].spec.forProvider.manifest
+        tmpl = lws["spec"]["leaderWorkerTemplate"]
+        for role in ("leaderTemplate", "workerTemplate"):
+            pod = tmpl[role]["spec"]
+            self.assertIn("model-cache", {v["name"] for v in pod["volumes"]})
+            self.assertIn(
+                {"name": "model-cache", "mountPath": "/mnt/models"},
+                pod["containers"][0]["volumeMounts"],
+            )
+
+    def test_injects_model_into_leader_command_for_vllm(self):
+        lws = llmd.LLMDBackend().build(self._replica(), _CLUSTER)["model-serving"].spec.forProvider.manifest
+        leader_cmd = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]["command"]
+        self.assertIn("--model=/mnt/models", leader_cmd)
+
+    def test_sglang_command_engine_mounts_cache_without_injecting_model(self):
+        # SGLang multi-node: symmetric bring-your-own command using LWS_* env,
+        # --model-path (not --model). Both gang templates still mount the cache,
+        # but we must not inject --model.
+        sglang_cmd = [
+            "/bin/sh",
+            "-c",
+            "python3 -m sglang.launch_server --model-path /mnt/models "
+            "--tp 16 --nnodes $LWS_GROUP_SIZE --node-rank $LWS_WORKER_INDEX "
+            "--dist-init-addr $LWS_LEADER_ADDRESS:20000 --host 0.0.0.0 --port 8000",
+        ]
+        r = self._replica(command=sglang_cmd)
+        lws = llmd.LLMDBackend().build(r, _CLUSTER)["model-serving"].spec.forProvider.manifest
+        tmpl = lws["spec"]["leaderWorkerTemplate"]
+        for role in ("leaderTemplate", "workerTemplate"):
+            pod = tmpl[role]["spec"]
+            # Cache mounted on every node of the gang.
+            self.assertIn(
+                {"name": "model-cache", "mountPath": "/mnt/models"},
+                pod["containers"][0]["volumeMounts"],
+            )
+            # Verbatim user command; no injected --model anywhere.
+            container = pod["containers"][0]
+            self.assertEqual(container["command"], sglang_cmd)
+            self.assertNotIn("--model=/mnt/models", container.get("args", []))

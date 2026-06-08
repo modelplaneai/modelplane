@@ -109,6 +109,8 @@ class LLMDBackend:
         size = base.nodes_per_worker(replica)
         pipeline = int(replica.spec.workers.topology.pipeline or 1)
 
+        cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
+
         # A user-supplied command owns cross-node coordination: inject neither the
         # Ray bootstrap nor vLLM-specific parallelism flags. It runs verbatim on
         # both templates (e.g. SGLang's symmetric launch against the LWS_* env).
@@ -120,6 +122,7 @@ class LLMDBackend:
             # Args are folded into the leader command (consumed as "$@"); the
             # worker only joins the gang.
             args = _engine_args(engine, tensor, pipeline)
+            args = base.apply_cache_args(args, replica, engine)
             leader_command = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *args]
             worker_command = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
 
@@ -136,7 +139,7 @@ class LLMDBackend:
                 # GPUs PER POD (one tensor-parallel shard runs per pod in the gang).
                 "resources": {"limits": {"nvidia.com/gpu": str(tensor)}},
                 # vLLM tensor parallelism needs a large /dev/shm.
-                "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+                "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
                 "command": command,
             }
             # A user command takes args the normal way; an injected bootstrap
@@ -155,7 +158,10 @@ class LLMDBackend:
             return c
 
         def pod_spec(c: dict) -> dict:
-            spec = {"containers": [c], "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}]}
+            spec = {
+                "containers": [c],
+                "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
+            }
             if pull_secrets:
                 spec["imagePullSecrets"] = pull_secrets
             return spec
