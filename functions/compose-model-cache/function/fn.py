@@ -11,11 +11,12 @@ Modelplane-managed RWX PVC, replication to all matching clusters.
 """
 
 import grpc
-from crossplane.function import logging, resource, response
+from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelcache import v1alpha1
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
 # Condition types/reasons for the ModelCache XR.
 CONDITION_TYPE_SOURCE_VALID = "SourceValid"
@@ -65,6 +66,22 @@ HYDRATION_MOUNT = "/mnt/artifact"
 # Pydantic doesn't apply the nested storageClassName default in that case, so a
 # flat "modelplane-rwx" fallback would point an EKS PVC at a non-existent class.
 _DEFAULT_STORAGE_CLASS = {"GKE": "modelplane-rwx", "EKS": "modelplane-rwx-efs", "Existing": "modelplane-rwx"}
+
+
+def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str:
+    """RWX storage class for the cache PVC, from the InferenceCluster's
+    per-source cache config, falling back to the source's XRD default."""
+    c = cluster.spec.cluster
+    cache = None
+    if c.source == "GKE" and c.gke:
+        cache = c.gke.cache
+    elif c.source == "EKS" and c.eks:
+        cache = c.eks.cache
+    elif c.source == "Existing" and c.existing:
+        cache = c.existing.cache
+    if cache and cache.storageClassName:
+        return cache.storageClassName
+    return _DEFAULT_STORAGE_CLASS.get(c.source, "modelplane-rwx")
 
 
 class FunctionRunner(grpcv1.FunctionRunnerService):
@@ -128,17 +145,104 @@ class Composer:
         dispatch in _job_manifest()."""
         return self.xr.spec.source.huggingFace is not None
 
+    def resolve_inputs(self) -> bool:
+        """Require all InferenceClusters matching the (optional) selector.
+
+        Returns False when Crossplane hasn't resolved the requirement yet;
+        Crossplane re-calls the function once it's available. A resolved-but-
+        empty match flows through (match_clusters() -> NoClusters condition).
+        """
+        match_labels = {LABEL_KEY_CLUSTER: LABEL_VALUE_CLUSTER}
+        if self.xr.spec.clusterSelector and self.xr.spec.clusterSelector.matchLabels:
+            match_labels.update({k: str(v) for k, v in self.xr.spec.clusterSelector.matchLabels.items()})
+
+        response.require_resources(
+            self.rsp,
+            name="clusters",
+            api_version="modelplane.ai/v1alpha1",
+            kind="InferenceCluster",
+            match_labels=match_labels,
+        )
+
+        # get_required_resources returns [] both when unresolved AND when
+        # resolved-empty; the requirement key presence is the SDK-blessed way
+        # to tell them apart (see crossplane.function.request docstring).
+        if "clusters" not in self.req.required_resources:
+            return False
+        self.clusters = [
+            icv1alpha1.InferenceCluster.model_validate(c) for c in request.get_required_resources(self.req, "clusters")
+        ]
+        return True
+
+    def match_clusters(self) -> list[icv1alpha1.InferenceCluster]:
+        """Clusters that have finished provisioning (providerConfigRef set)."""
+        return [c for c in self.clusters if c.status and c.status.providerConfigRef and c.status.providerConfigRef.name]
+
+    def compose_cluster_resources(self, cluster: icv1alpha1.InferenceCluster) -> None:
+        """Always emit the PVC + Job for a matched cluster (never gate on
+        readiness — omitting an Object tells Crossplane to delete it, which
+        would re-trigger hydration on every dependency flap)."""
+        pc = cluster.status.providerConfigRef.name
+        name = cluster.metadata.name
+        resource.update(
+            self.rsp.desired.resources[self._pvc_key(name)],
+            self._wrap_remote(pc, self._pvc_manifest(cluster)),
+        )
+        resource.update(
+            self.rsp.desired.resources[self._job_key(name)],
+            self._wrap_remote(pc, self._job_manifest()),
+        )
+
+    def _pvc_manifest(self, cluster: icv1alpha1.InferenceCluster) -> dict:
+        hf = self.xr.spec.source.huggingFace
+        size_gib = int(hf.sizeGiB)  # protobuf delivers XRD ints as float
+        return {
+            "apiVersion": "v1",
+            "kind": "PersistentVolumeClaim",
+            "metadata": {"name": self._pvc_name(), "namespace": REMOTE_NS, "labels": self._labels()},
+            "spec": {
+                "accessModes": ["ReadWriteMany"],
+                "storageClassName": _storage_class(cluster),
+                "resources": {"requests": {"storage": f"{size_gib}Gi"}},
+            },
+        }
+
+    def _wrap_remote(self, provider_config: str, manifest: dict) -> k8sobjv1alpha1.Object:
+        return k8sobjv1alpha1.Object(
+            spec=k8sobjv1alpha1.Spec(
+                providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                    kind="ClusterProviderConfig",
+                    name=provider_config,
+                ),
+                readiness=k8sobjv1alpha1.Readiness(policy="DeriveFromObject"),
+                forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
+            ),
+        )
+
+    # --- naming (must stay in sync with backends/base.cache_pvc_name) ---
+    # Namespace-qualified so caches of the same name from different Modelplane
+    # namespaces don't collide in the workload cluster's `default` namespace
+    # (Nic's recurring #99 collision concern).
+    def _pvc_name(self) -> str:
+        return f"modelcache-{self.xr.metadata.namespace}-{self.xr.metadata.name}"[:63]
+
+    def _job_name(self) -> str:
+        return f"{self._pvc_name()}-hydrate"[:63]
+
+    def _pvc_key(self, cluster_name: str) -> str:
+        return f"pvc-{cluster_name}"
+
+    def _job_key(self, cluster_name: str) -> str:
+        return f"hydrate-{cluster_name}"
+
+    def _labels(self) -> dict[str, str]:
+        return {"modelplane.ai/modelcache": self.xr.metadata.name}
+
     # Stubs — each is replaced by its real implementation in a later task, so
     # the Composer is complete and importable from Task 1 onward and every
     # task's tests run against a whole object (no AttributeError mid-pipeline).
-    def resolve_inputs(self) -> bool:  # Task 2
-        return False
-
-    def match_clusters(self) -> list:  # Task 2
-        return []
-
-    def compose_cluster_resources(self, cluster) -> None:  # Task 2
-        pass
+    def _job_manifest(self) -> dict:  # Task 3
+        return {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": self._job_name()}}
 
     def derive_cluster_phase(self, cluster_name: str) -> str:  # Task 4  # noqa: ARG002 (stub)
         return PHASE_PENDING
