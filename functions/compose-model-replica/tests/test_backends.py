@@ -335,3 +335,30 @@ class TestCacheMounts(unittest.TestCase):
         args = base.apply_cache_args(["--model-path=/mnt/models"], r, self._engine(r))
         self.assertNotIn("--model=/mnt/models", args)
         self.assertEqual(args, ["--model-path=/mnt/models"])
+
+
+class TestNativeBackendCache(unittest.TestCase):
+    def _replica(self):
+        return v1alpha1.ModelReplica(
+            metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
+            spec=v1alpha1.SpecModel(
+                clusterName="cluster-a",
+                modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
+                workers=v1alpha1.Workers(
+                    topology=v1alpha1.Topology(tensor=1, pipeline=1),
+                    template=v1alpha1.Template(
+                        spec=v1alpha1.Spec(containers=[v1alpha1.Container(name="engine", image="img", args=[])])
+                    ),
+                ),
+            ),
+        )
+
+    def test_mounts_pvc_and_injects_model(self):
+        out = native.NativeBackend().build(self._replica(), _CLUSTER)
+        dep = out["model-serving"].spec.forProvider.manifest
+        pod = dep["spec"]["template"]["spec"]
+        vol_names = {v["name"] for v in pod["volumes"]}
+        self.assertIn("model-cache", vol_names)
+        container = pod["containers"][0]
+        self.assertIn({"name": "model-cache", "mountPath": "/mnt/models"}, container["volumeMounts"])
+        self.assertIn("--model=/mnt/models", container["args"])

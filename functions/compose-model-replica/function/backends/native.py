@@ -48,14 +48,17 @@ class NativeBackend:
         name = replica.metadata.name
         labels = {_LABEL_SERVING: name}
 
+        cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
+        args = base.apply_cache_args(list(engine.args or []), replica, engine)
+
         container = {
             "name": "engine",
             "image": engine.image,
-            "args": list(engine.args or []),
+            "args": args,
             "ports": [{"containerPort": _ENGINE_PORT}],
             "resources": {"limits": {"nvidia.com/gpu": str(replica.spec.workers.topology.tensor)}},
             # vLLM tensor parallelism needs a large /dev/shm.
-            "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+            "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
             "readinessProbe": {
                 "httpGet": {"path": "/health", "port": _ENGINE_PORT},
                 "initialDelaySeconds": 30,
@@ -69,7 +72,7 @@ class NativeBackend:
 
         pod_spec = {
             "containers": [container],
-            "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+            "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
         }
         tmpl = replica.spec.workers.template
         if tmpl.spec.imagePullSecrets:
