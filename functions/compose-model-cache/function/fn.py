@@ -84,6 +84,52 @@ def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str:
     return _DEFAULT_STORAGE_CLASS.get(c.source, "modelplane-rwx")
 
 
+# A completion marker written only after a fully successful download. The Job
+# skips when the marker is present, so a re-run (eviction, replay, backoff)
+# doesn't redownload a complete cache. Checking for the marker — not for a
+# non-empty directory — is what makes a re-run SAFE: a download interrupted
+# mid-pull leaves files but no marker, so the retry resumes (`hf download` is
+# resumable) instead of seeing a non-empty dir and falsely concluding "already
+# hydrated", which would serve truncated weights. Using the marker also
+# sidesteps the Filestore `lost+found` directory that broke a bare emptiness
+# check (it sits at the mount root of ext4-backed PVCs). Supersedes PR #78's
+# emptiness check, which had the partial-download false-skip bug.
+_HYDRATED_MARKER = f"{HYDRATION_MOUNT}/.modelplane-hydrated"
+_SKIP_IF_HYDRATED = f"if [ -f {_HYDRATED_MARKER} ]; then echo 'already hydrated, skipping'; exit 0; fi; "
+
+
+def _hf_hydration(hf) -> tuple[list[dict], str]:
+    """Return (env, shell command) for a HuggingFace source.
+
+    huggingface-hub 1.x deprecated `huggingface-cli` (and dropped the `[cli]`
+    extra), so the Job previously died at install. Use `hf download` directly.
+    The marker is touched only after a successful download (set -e aborts the
+    chain on failure, so a failed pull never marks the cache complete).
+    """
+    env: list[dict] = []
+    if hf.authSecret:
+        env.append(
+            {
+                "name": "HF_TOKEN",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": hf.authSecret.name,
+                        "key": hf.authSecret.key or "HF_TOKEN",
+                    }
+                },
+            }
+        )
+    revision_arg = f" --revision {hf.revision}" if hf.revision else ""
+    command = (
+        "set -e; "
+        f"{_SKIP_IF_HYDRATED}"
+        "pip install --quiet huggingface_hub; "
+        f"hf download {hf.repo}{revision_arg} --local-dir {HYDRATION_MOUNT}; "
+        f"touch {_HYDRATED_MARKER}"
+    )
+    return env, command
+
+
 class FunctionRunner(grpcv1.FunctionRunnerService):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
@@ -238,12 +284,42 @@ class Composer:
     def _labels(self) -> dict[str, str]:
         return {"modelplane.ai/modelcache": self.xr.metadata.name}
 
+    def _job_manifest(self) -> dict:
+        env, command = _hf_hydration(self.xr.spec.source.huggingFace)
+        return {
+            "apiVersion": "batch/v1",
+            "kind": "Job",
+            "metadata": {"name": self._job_name(), "namespace": REMOTE_NS, "labels": self._labels()},
+            "spec": {
+                "backoffLimit": 3,
+                "ttlSecondsAfterFinished": 3600,
+                "template": {
+                    "metadata": {"labels": self._labels()},
+                    "spec": {
+                        "restartPolicy": "OnFailure",
+                        "containers": [
+                            {
+                                "name": "hydrate",
+                                "image": HYDRATION_IMAGE,
+                                "command": ["/bin/sh", "-c", command],
+                                "env": env,
+                                "volumeMounts": [{"name": "artifact", "mountPath": HYDRATION_MOUNT}],
+                            }
+                        ],
+                        "volumes": [
+                            {
+                                "name": "artifact",
+                                "persistentVolumeClaim": {"claimName": self._pvc_name()},
+                            }
+                        ],
+                    },
+                },
+            },
+        }
+
     # Stubs — each is replaced by its real implementation in a later task, so
     # the Composer is complete and importable from Task 1 onward and every
     # task's tests run against a whole object (no AttributeError mid-pipeline).
-    def _job_manifest(self) -> dict:  # Task 3
-        return {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": self._job_name()}}
-
     def derive_cluster_phase(self, cluster_name: str) -> str:  # Task 4  # noqa: ARG002 (stub)
         return PHASE_PENDING
 

@@ -103,3 +103,28 @@ class TestModelCache(unittest.IsolatedAsyncioTestCase):
         pvc = json_format.MessageToDict(rsp.desired.resources["pvc-eks-a"].resource)
         sc = pvc["spec"]["forProvider"]["manifest"]["spec"]["storageClassName"]
         self.assertEqual(sc, "modelplane-rwx-efs")
+
+    async def test_hydration_job_uses_hf_download_and_skips_lost_found(self) -> None:
+        xr = _cache_xr()
+        xr.spec.source.huggingFace.revision = "main"
+        xr.spec.source.huggingFace.authSecret = v1alpha1.AuthSecret(name="hf-token")
+        rsp = await self.runner.RunFunction(
+            _req(xr, [_cluster_dict("cluster-a", "cluster-a-pc")]),
+            None,
+        )
+        job = json_format.MessageToDict(rsp.desired.resources["hydrate-cluster-a"].resource)
+        manifest = job["spec"]["forProvider"]["manifest"]
+        self.assertEqual(manifest["kind"], "Job")
+        container = manifest["spec"]["template"]["spec"]["containers"][0]
+        cmd = container["command"][2]  # ["/bin/sh", "-c", "<script>"]
+        # hf download, NOT the removed huggingface-cli.
+        self.assertIn("hf download Qwen/Qwen3-0.6B --revision main --local-dir /mnt/artifact", cmd)
+        self.assertNotIn("huggingface-cli", cmd)
+        # Completion-marker guard: skip only when the marker exists, and write
+        # it only after a successful download (re-run safe; no partial skip).
+        self.assertIn("if [ -f /mnt/artifact/.modelplane-hydrated ]", cmd)
+        self.assertTrue(cmd.rstrip().endswith("touch /mnt/artifact/.modelplane-hydrated"))
+        # HF_TOKEN wired from the auth secret.
+        env = {e["name"]: e for e in container["env"]}
+        self.assertEqual(env["HF_TOKEN"]["valueFrom"]["secretKeyRef"]["name"], "hf-token")
+        self.assertEqual(env["HF_TOKEN"]["valueFrom"]["secretKeyRef"]["key"], "HF_TOKEN")
