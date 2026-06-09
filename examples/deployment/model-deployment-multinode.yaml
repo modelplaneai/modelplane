@@ -3,7 +3,7 @@
 # pipeline > 1 runs the model across multiple nodes, each with `tensor`
 # GPUs. The scheduler picks a cluster with a pool that has at least
 # `tensor` GPUs per node and at least `pipeline` available nodes.
-# Modelplane composes a LeaderWorkerSet-backed LLMInferenceService on
+# Modelplane composes a LeaderWorkerSet-backed llm-d serving instance on
 # the remote cluster.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment

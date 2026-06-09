@@ -147,6 +147,13 @@ class Condition(BaseModel):
     type: str
 
 
+class Network(BaseModel):
+    name: Optional[str] = None
+    """
+    Name of the composed VPC network.
+    """
+
+
 class Secret(BaseModel):
     key: constr(max_length=253)
     """
@@ -166,6 +173,10 @@ class Status(BaseModel):
     conditions: Optional[List[Condition]] = None
     """
     Conditions of the resource.
+    """
+    network: Optional[Network] = None
+    """
+    The VPC network this cluster runs in. Consumers pin network-scoped resources (e.g. the ModelCache Filestore StorageClass) to this name. Populated once the composed Network is observed; the name carries the provider's generated suffix, so it can't be derived from the XR name.
     """
     secrets: Optional[List[Secret]] = None
     """

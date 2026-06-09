@@ -20,7 +20,7 @@ from function import fn
     is_flag=True,
     help="Run without mTLS credentials. If you supply this flag --tls-certs-dir will be ignored.",
 )
-def cli(debug: bool, address: str, tls_certs_dir: str, insecure: bool) -> None:  # noqa:FBT001
+def cli(debug: bool, address: str, tls_certs_dir: str, insecure: bool) -> None:
     """A Crossplane composition function."""
     try:
         level = logging.Level.INFO

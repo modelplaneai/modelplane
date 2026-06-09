@@ -33,8 +33,12 @@ spec:
       pathPrefix: _output/functions/compose-inference-gateway
   - source: Tarball
     tarball:
-      name: compose-kserve-backend
-      pathPrefix: _output/functions/compose-kserve-backend
+      name: compose-serving-stack
+      pathPrefix: _output/functions/compose-serving-stack
+  - source: Tarball
+    tarball:
+      name: compose-model-cache
+      pathPrefix: _output/functions/compose-model-cache
   - source: Tarball
     tarball:
       name: compose-model-deployment

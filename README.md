@@ -100,7 +100,6 @@ Modelplane is under the [Apache 2.0 license](LICENSE).
 [Crossplane]: https://crossplane.io
 [Configuration]: https://docs.crossplane.io/latest/concepts/packages/#configuration-packages
 [Envoy Gateway]: https://gateway.envoyproxy.io
-[KServe]: https://kserve.github.io/website/
 [CONTRIBUTING.md]: CONTRIBUTING.md
 [Nix]: https://nixos.org
 [issues]: https://github.com/modelplaneai/modelplane/issues

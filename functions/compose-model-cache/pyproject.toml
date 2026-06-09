@@ -1,0 +1,26 @@
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12"]
+build-backend = "uv_build"
+
+[project]
+name = "compose-model-cache"
+version = "0.0.0"
+description = "Stage a model onto an RWX PVC on every matched InferenceCluster."
+requires-python = ">=3.11,<3.14"
+license = "Apache-2.0"
+dependencies = [
+  "crossplane-function-sdk-python>=0.12.0",
+  "click>=8.1.0",
+  "grpcio>=1.73.1",
+  "crossplane-models",
+]
+
+[tool.uv.sources]
+crossplane-models = { workspace = true }
+
+[project.scripts]
+function = "function.main:cli"
+
+[tool.uv.build-backend]
+module-name = "function"
+module-root = ""

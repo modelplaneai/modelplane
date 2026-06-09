@@ -1,7 +1,7 @@
 # An InferenceCluster wrapping an existing GKE cluster.
 #
 # The GKE cluster was provisioned separately (e.g. via GKECluster XR).
-# Modelplane installs the inference stack (KServe, Envoy Gateway, etc.)
+# Modelplane installs the serving stack (LeaderWorkerSet, Gateway API + Inference Extension, Envoy Gateway, cert-manager, Prometheus)
 # and uses the cluster's kubeconfig to deploy models.
 #
 # The kubeconfig and SA key Secrets must exist in modelplane-system

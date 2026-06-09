@@ -105,6 +105,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     }
                                 ),
                             ),
+                            "projectservice-filestore": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
+                                        "kind": "ProjectService",
+                                        "spec": {
+                                            "forProvider": {
+                                                "project": "my-gcp-project",
+                                                "service": "file.googleapis.com",
+                                                "disableOnDestroy": False,
+                                            },
+                                        },
+                                    }
+                                ),
+                            ),
                             "subnet": fnv1.Resource(
                                 resource=resource.dict_to_struct(
                                     {
@@ -432,6 +447,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 ),
                                 ready=fnv1.READY_TRUE,
                             ),
+                            "projectservice-filestore": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "cloudplatform.gcp.m.upbound.io/v1beta1",
+                                        "kind": "ProjectService",
+                                        "spec": {
+                                            "forProvider": {
+                                                "project": "my-gcp-project",
+                                                "service": "file.googleapis.com",
+                                                "disableOnDestroy": False,
+                                            },
+                                        },
+                                    }
+                                ),
+                            ),
                             "subnet": fnv1.Resource(
                                 resource=resource.dict_to_struct(
                                     {
@@ -586,7 +616,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "forProvider": {
                                                 "project": "my-gcp-project",
                                                 "role": "roles/container.admin",
-                                                "member": "serviceAccount:test-sa@my-gcp-project.iam.gserviceaccount.com",  # noqa: E501
+                                                "member": "serviceAccount:test-sa@my-gcp-project.iam.gserviceaccount.com",
                                             },
                                         },
                                     }
@@ -665,3 +695,45 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(got),
                     "-want, +got",
                 )
+
+    async def test_status_reports_observed_network_name(self) -> None:
+        """status.network.name surfaces the composed Network's external-name
+        (which carries a provider-generated suffix) so network-scoped consumers
+        can pin to the real VPC name rather than guess it from the XR name."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.GKECluster(
+                            metadata=metav1.ObjectMeta(name="test-cluster", namespace="modelplane-system"),
+                            spec=v1alpha1.Spec(
+                                project="my-gcp-project",
+                                region="us-central1",
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="gpu-pool",
+                                        role="GPU",
+                                        machineType="a2-highgpu-8g",
+                                        gpu=v1alpha1.Gpu(acceleratorType="nvidia-tesla-a100", acceleratorCount=8),
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json")
+                    ),
+                ),
+                resources={
+                    "network": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+                                "kind": "Network",
+                                "metadata": {"annotations": {"crossplane.io/external-name": "test-cluster-abc12"}},
+                            }
+                        ),
+                    ),
+                },
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+        status = json_format.MessageToDict(got.desired.composite.resource).get("status", {})
+        self.assertEqual(status.get("network", {}).get("name"), "test-cluster-abc12")

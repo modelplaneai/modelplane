@@ -22,12 +22,12 @@ metadata:
   name: kimi-k2
   namespace: ml-team
 spec:
-  source:
-    huggingFace:
-      repo: moonshotai/Kimi-K2-Instruct
-      authSecret:
-        name: hf-token
-      sizeGiB: 1500
+  source: HuggingFace
+  huggingFace:
+    repo: moonshotai/Kimi-K2-Instruct
+    authSecret:
+      name: hf-token
+    sizeGiB: 1500
 ```
 
 The cache is mounted at `/mnt/models` on every consuming pod; the engine
@@ -36,14 +36,18 @@ than configurable to keep Modelplane out of engine-specific arg rewriting —
 different engines take different flags (e.g. `--model=` for vLLM,
 `--model-path=` for SGLang) and users pass whatever their engine expects.
 
-`spec.source` is a discriminated union — each source declares its own fields,
-including capacity when the source uses central storage. `huggingFace` is the
-only source today. Future sources compose differently: `dragonfly` would
-distribute the artifact to per-node local caches via P2P with no shared PVC
-(no `sizeGiB` because no central storage); `s3` would mirror the
-`huggingFace` model with a different fetch protocol; `oci` would pull a
-bundled OCI artifact into the PVC, which is where NVIDIA NIM-style
-prepackaged engine+weights bundles fit.
+`spec.source` is a required discriminator: an enum naming the source kind, with
+the matching source object set alongside it (e.g. `source: HuggingFace` selects
+`spec.huggingFace`). A CEL rule requires that object, so the API is validated at
+admission rather than inferring the source from which fields are set, and the
+variant a user wants is always explicit. `HuggingFace` is the only value today;
+each source declares its own fields, including capacity when the source uses
+central storage. Future sources add an enum value and a sibling object:
+`Dragonfly` would distribute the artifact to per-node local caches via P2P with
+no shared PVC (no `sizeGiB`, since there's no central storage); `S3` would
+mirror the `huggingFace` shape with a different fetch protocol; `OCI` would pull
+a bundled OCI artifact into the PVC, which is where NVIDIA NIM-style prepackaged
+engine+weights bundles fit.
 
 ## Multi-node
 

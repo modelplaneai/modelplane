@@ -4,23 +4,25 @@ about: Help us make Modelplane more useful
 labels: enhancement
 ---
 <!--
-Please search for open issues before raising a new one.
+Search open issues before raising a new one.
 
-Lead with the problem, not the solution. A well-described problem makes it much
-easier to evaluate and implement the right fix.
+See the Reporting issues section of CONTRIBUTING.md for what makes a good feature
+request: https://github.com/modelplaneai/modelplane/blob/main/CONTRIBUTING.md
+Lead with the problem, not the solution.
 -->
 
 ### What problem are you facing?
 <!--
-Describe the problem or limitation you're running into. It's okay if the use
-case is hypothetical. Leading with context helps frame the request so we can
-ensure we address it sensibly.
+Describe the problem or limitation you're running into, before any solution. A
+well-framed problem is worth more than a proposed fix. It's fine if the use case
+is hypothetical.
 -->
 
 
 ### How could Modelplane help solve your problem?
 <!--
-Describe your ideal outcome. What would the experience look like? If you have a
-specific API shape or workflow in mind, sketch it out. If you're not sure,
-that's fine too - describing the problem well is more important.
+Describe your ideal outcome. If you have a shape in mind, show it concretely —
+the YAML, CLI, or API a user would write — and note the trade-offs and the
+alternatives you considered. If you're not sure, describing the problem well is
+enough.
 -->

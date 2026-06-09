@@ -1,0 +1,639 @@
+"""Tests for the compose-serving-stack function."""
+
+import unittest
+
+from crossplane.function import logging, resource
+from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+from function import fn
+from google.protobuf import duration_pb2 as durationpb
+from google.protobuf import json_format
+from google.protobuf import struct_pb2 as structpb
+from models.ai.modelplane.infrastructure.servingstack import v1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+
+def setUpModule() -> None:
+    logging.configure(level=logging.Level.DISABLED)
+
+
+# Precomputed child_name values for test-backend.
+_PC_NAME = "test-backend-cluster-63fde"
+
+# Shared resource dicts used across test cases.
+_PROVIDER_CONFIG_KUBERNETES = {
+    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+    "kind": "ProviderConfig",
+    "metadata": {"name": _PC_NAME},
+    "spec": {
+        "credentials": {
+            "secretRef": {
+                "key": "kubeconfig",
+                "name": "kube-secret",
+                "namespace": "test-ns",
+            },
+            "source": "Secret",
+        },
+        "identity": {
+            "secretRef": {
+                "key": "private_key",
+                "name": "sa-secret",
+                "namespace": "test-ns",
+            },
+            "source": "Secret",
+            "type": "GoogleApplicationCredentials",
+        },
+    },
+}
+
+_PROVIDER_CONFIG_HELM = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "ProviderConfig",
+    "metadata": {"name": _PC_NAME},
+    "spec": {
+        "credentials": {
+            "secretRef": {
+                "key": "kubeconfig",
+                "name": "kube-secret",
+                "namespace": "test-ns",
+            },
+            "source": "Secret",
+        },
+        "identity": {
+            "secretRef": {
+                "key": "private_key",
+                "name": "sa-secret",
+                "namespace": "test-ns",
+            },
+            "source": "Secret",
+            "type": "GoogleApplicationCredentials",
+        },
+    },
+}
+
+_USAGE_HELM_PC = {
+    "apiVersion": "protection.crossplane.io/v1beta1",
+    "kind": "Usage",
+    "spec": {
+        "by": {
+            "apiVersion": "helm.m.crossplane.io/v1beta1",
+            "kind": "Release",
+            "resourceSelector": {"matchControllerRef": True},
+        },
+        "of": {
+            "apiVersion": "helm.m.crossplane.io/v1beta1",
+            "kind": "ProviderConfig",
+            "resourceRef": {"name": _PC_NAME},
+        },
+        "replayDeletion": True,
+    },
+}
+
+_USAGE_K8S_PC = {
+    "apiVersion": "protection.crossplane.io/v1beta1",
+    "kind": "Usage",
+    "spec": {
+        "by": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "resourceSelector": {"matchControllerRef": True},
+        },
+        "of": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "ProviderConfig",
+            "resourceRef": {"name": _PC_NAME},
+        },
+        "replayDeletion": True,
+    },
+}
+
+_USAGE_ENVOY_GW_BY_GATEWAY_CLASS = {
+    "apiVersion": "protection.crossplane.io/v1beta1",
+    "kind": "Usage",
+    "spec": {
+        "by": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "resourceSelector": {
+                "matchControllerRef": True,
+                "matchLabels": {"modelplane.ai/resource": "gateway-class"},
+            },
+        },
+        "of": {
+            "apiVersion": "helm.m.crossplane.io/v1beta1",
+            "kind": "Release",
+            "resourceSelector": {
+                "matchControllerRef": True,
+                "matchLabels": {"modelplane.ai/resource": "envoy-gateway"},
+            },
+        },
+        "replayDeletion": True,
+    },
+}
+
+_USAGE_GATEWAY_CLASS_BY_GATEWAY = {
+    "apiVersion": "protection.crossplane.io/v1beta1",
+    "kind": "Usage",
+    "spec": {
+        "by": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "resourceSelector": {
+                "matchControllerRef": True,
+                "matchLabels": {"modelplane.ai/resource": "gateway"},
+            },
+        },
+        "of": {
+            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+            "kind": "Object",
+            "resourceSelector": {
+                "matchControllerRef": True,
+                "matchLabels": {"modelplane.ai/resource": "gateway-class"},
+            },
+        },
+        "replayDeletion": True,
+    },
+}
+
+_CERT_MANAGER = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "cert-manager",
+                "repository": "https://charts.jetstack.io",
+                "version": "v1.17.1",
+            },
+            "namespace": "cert-manager",
+            "values": {
+                "crds": {
+                    "enabled": True,
+                    "keep": False,
+                },
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_ENVOY_GATEWAY = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "metadata": {
+        "labels": {"modelplane.ai/resource": "envoy-gateway"},
+    },
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "gateway-helm",
+                "repository": "oci://docker.io/envoyproxy",
+                "version": "v1.3.0",
+            },
+            "namespace": "envoy-gateway-system",
+            "values": {
+                "config": {
+                    "envoyGateway": {
+                        "extensionApis": {"enableBackend": True},
+                    },
+                },
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_GATEWAY = {
+    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+    "kind": "Object",
+    "metadata": {
+        "labels": {"modelplane.ai/resource": "gateway"},
+    },
+    "spec": {
+        "forProvider": {
+            "manifest": {
+                "apiVersion": "gateway.networking.k8s.io/v1",
+                "kind": "Gateway",
+                "metadata": {
+                    "name": "inference-gateway",
+                    "namespace": "modelplane-system",
+                },
+                "spec": {
+                    "gatewayClassName": "envoy",
+                    "listeners": [
+                        {
+                            "allowedRoutes": {
+                                "namespaces": {"from": "All"},
+                            },
+                            "name": "http",
+                            "port": 80.0,
+                            "protocol": "HTTP",
+                        },
+                    ],
+                },
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_GATEWAY_NAMESPACE = {
+    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+    "kind": "Object",
+    "spec": {
+        "forProvider": {
+            "manifest": {
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "metadata": {"name": "modelplane-system"},
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_GATEWAY_CLASS = {
+    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+    "kind": "Object",
+    "metadata": {
+        "labels": {"modelplane.ai/resource": "gateway-class"},
+    },
+    "spec": {
+        "forProvider": {
+            "manifest": {
+                "apiVersion": "gateway.networking.k8s.io/v1",
+                "kind": "GatewayClass",
+                "metadata": {"name": "envoy"},
+                "spec": {
+                    "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                },
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_LEADER_WORKER_SET = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "lws",
+                "repository": "oci://registry.k8s.io/lws/charts",
+                "version": "v0.8.0",
+            },
+            "namespace": "lws-system",
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_PROMETHEUS = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "kube-prometheus-stack",
+                "repository": "https://prometheus-community.github.io/helm-charts",
+                "version": "72.6.2",
+            },
+            "namespace": "monitoring",
+            "values": {
+                "alertmanager": {"enabled": False},
+                "fullnameOverride": "prometheus",
+                "grafana": {"enabled": False},
+                "prometheus": {
+                    "prometheusSpec": {
+                        "additionalScrapeConfigs": [
+                            {
+                                "job_name": "envoy-gateway-proxy",
+                                "kubernetes_sd_configs": [
+                                    {
+                                        "namespaces": {
+                                            "names": ["envoy-gateway-system"],
+                                        },
+                                        "role": "pod",
+                                    },
+                                ],
+                                "metrics_path": "/stats/prometheus",
+                                "relabel_configs": [
+                                    {
+                                        "action": "keep",
+                                        "regex": "proxy",
+                                        "source_labels": [
+                                            "__meta_kubernetes_pod_label_app_kubernetes_io_component",
+                                        ],
+                                    },
+                                    {
+                                        "action": "replace",
+                                        "regex": "([^:]+)(?::\\d+)?",
+                                        "replacement": "$1:19001",
+                                        "source_labels": ["__address__"],
+                                        "target_label": "__address__",
+                                    },
+                                ],
+                            },
+                        ],
+                        "podMonitorNamespaceSelector": {},
+                        "podMonitorSelectorNilUsesHelmValues": False,
+                    },
+                },
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+
+def _base_request() -> fnv1.RunFunctionRequest:
+    """Build the base RunFunctionRequest used by all test cases."""
+    return fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    v1alpha1.ServingStack(
+                        metadata=metav1.ObjectMeta(
+                            name="test-backend",
+                            namespace="test-ns",
+                        ),
+                        spec=v1alpha1.Spec(
+                            secrets=[
+                                v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
+                                v1alpha1.Secret(type="GCPServiceAccountKey", name="sa-secret", key="private_key"),
+                            ],
+                        ),
+                    ).model_dump(exclude_none=True, mode="json")
+                ),
+            ),
+        ),
+    )
+
+
+class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
+    """Tests for FunctionRunner.RunFunction."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
+
+    async def test_first_pass(self) -> None:
+        """First pass composes provider configs and usages; releases gated."""
+        req = _base_request()
+
+        want = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {}}),
+                ),
+                resources={
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_HELM),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_KUBERNETES),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-envoy-gw-by-gateway-class": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_ENVOY_GW_BY_GATEWAY_CLASS),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-gateway-class-by-gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-helm-pc": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_HELM_PC),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-k8s-pc": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_K8S_PC),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+        self.assertEqual(
+            json_format.MessageToDict(want),
+            json_format.MessageToDict(got),
+            "-want, +got",
+        )
+
+    async def test_second_pass(self) -> None:
+        """Observed PCs ungate Helm releases, CRD objects, and gateway objects."""
+        req = _base_request()
+        req.observed.resources["provider-config-helm"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+        req.observed.resources["provider-config-kubernetes"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+
+        want = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {}}),
+                ),
+                resources={
+                    "cert-manager": fnv1.Resource(
+                        resource=resource.dict_to_struct(_CERT_MANAGER),
+                    ),
+                    "envoy-gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_ENVOY_GATEWAY),
+                    ),
+                    "gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY),
+                    ),
+                    "gateway-namespace": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
+                    ),
+                    "gateway-class": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_CLASS),
+                    ),
+                    "leader-worker-set": fnv1.Resource(
+                        resource=resource.dict_to_struct(_LEADER_WORKER_SET),
+                    ),
+                    "prometheus": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROMETHEUS),
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_HELM),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_KUBERNETES),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-envoy-gw-by-gateway-class": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_ENVOY_GW_BY_GATEWAY_CLASS),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-gateway-class-by-gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-helm-pc": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_HELM_PC),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-k8s-pc": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_K8S_PC),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+        self.assertEqual(
+            json_format.MessageToDict(want),
+            json_format.MessageToDict(got),
+            "-want, +got",
+        )
+
+    async def test_third_pass(self) -> None:
+        """Steady state: observed readiness propagates and the gateway address is surfaced."""
+        req = _base_request()
+        req.observed.resources["provider-config-helm"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+        req.observed.resources["provider-config-kubernetes"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+        req.observed.resources["cert-manager"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "helm.m.crossplane.io/v1beta1",
+                        "kind": "Release",
+                        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                    }
+                ),
+            ),
+        )
+        req.observed.resources["gateway"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "status": {
+                            "atProvider": {
+                                "manifest": {"status": {"addresses": [{"value": "172.18.255.200"}]}},
+                            },
+                        },
+                    }
+                ),
+            ),
+        )
+
+        want = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {"status": {"gateway": {"address": "172.18.255.200"}}},
+                    ),
+                ),
+                resources={
+                    "cert-manager": fnv1.Resource(
+                        resource=resource.dict_to_struct(_CERT_MANAGER),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "envoy-gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_ENVOY_GATEWAY),
+                    ),
+                    "gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY),
+                    ),
+                    "gateway-namespace": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
+                    ),
+                    "gateway-class": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_CLASS),
+                    ),
+                    "leader-worker-set": fnv1.Resource(
+                        resource=resource.dict_to_struct(_LEADER_WORKER_SET),
+                    ),
+                    "prometheus": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROMETHEUS),
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_HELM),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_KUBERNETES),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-envoy-gw-by-gateway-class": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_ENVOY_GW_BY_GATEWAY_CLASS),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-gateway-class-by-gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-helm-pc": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_HELM_PC),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "usage-k8s-pc": fnv1.Resource(
+                        resource=resource.dict_to_struct(_USAGE_K8S_PC),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+        self.assertEqual(
+            json_format.MessageToDict(want),
+            json_format.MessageToDict(got),
+            "-want, +got",
+        )

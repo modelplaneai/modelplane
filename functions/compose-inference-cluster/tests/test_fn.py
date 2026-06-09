@@ -148,17 +148,16 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ),
                         ready=fnv1.READY_TRUE,
                     ),
-                    "kserve-backend": fnv1.Resource(
+                    "serving-stack": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                                "kind": "KServeBackend",
+                                "kind": "ServingStack",
                                 "metadata": {
-                                    "name": "test-cluster-kserve-86cf4",
+                                    "name": "test-cluster-serving-stack-fd00b",
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
-                                    "versions": {},
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",
@@ -329,12 +328,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "kserve-backend": fnv1.Resource(
+                    "serving-stack": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                                "kind": "KServeBackend",
-                                "metadata": {"name": "test-cluster-kserve-86cf4"},
+                                "kind": "ServingStack",
+                                "metadata": {"name": "test-cluster-serving-stack-fd00b"},
                                 "status": {
                                     "conditions": [{"type": "Ready", "status": "True"}],
                                     "gateway": {"address": "34.55.100.10"},
@@ -396,17 +395,16 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ),
                         ready=fnv1.READY_TRUE,
                     ),
-                    "kserve-backend": fnv1.Resource(
+                    "serving-stack": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
-                                "kind": "KServeBackend",
+                                "kind": "ServingStack",
                                 "metadata": {
-                                    "name": "test-cluster-kserve-86cf4",
+                                    "name": "test-cluster-serving-stack-fd00b",
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
-                                    "versions": {},
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",
@@ -598,12 +596,274 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         want5 = fnv1.RunFunctionResponse()
         want5.CopyFrom(want4)
 
+        # --- Case 6: GKE cluster ready - composes CPC, backend, usage, and the
+        # VPC-pinned modelplane-rwx Filestore StorageClass on the workload
+        # cluster (default cache storage class). ---
+        observed_gke_ready = {
+            "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+            "kind": "GKECluster",
+            "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+            "spec": {
+                "project": "my-gcp-project",
+                "region": "us-central1",
+                "nodePools": [{"name": "system", "role": "System", "machineType": "e2-standard-4"}],
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "Available",
+                        "lastTransitionTime": "2026-06-08T00:00:00Z",
+                    },
+                ],
+                # The composed VPC's real name carries a provider-generated
+                # suffix; the StorageClass must pin to THIS, not the bare XR name.
+                "network": {"name": "test-cluster-abc12"},
+                "secrets": [
+                    {"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"},
+                    {"type": "GCPServiceAccountKey", "name": "test-cluster-sa-key-fghij", "key": "credentials.json"},
+                ],
+            },
+        }
+        req6 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="GKE",
+                                    gke=v1alpha1.Gke(
+                                        project="my-gcp-project",
+                                        region="us-central1",
+                                    ),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="l4-pool",
+                                        className="gpu-l4",
+                                        nodeCount=2,
+                                        maxNodeCount=4,
+                                        zones=["us-central1-a"],
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json")
+                    ),
+                ),
+                resources={
+                    "gke-cluster": fnv1.Resource(resource=resource.dict_to_struct(observed_gke_ready)),
+                },
+            ),
+        )
+        req6.required_resources["class-gpu-l4"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_l4))
+        )
+
+        want6 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "providerConfigRef": {
+                                    "name": "test-cluster-cluster-kubeconfig-d0f89",
+                                },
+                                "namespace": "modelplane-system",
+                                "capacity": {
+                                    "gpuPools": [
+                                        {
+                                            "acceleratorType": "nvidia-l4",
+                                            "memory": "24Gi",
+                                            "countPerNode": 1,
+                                            "nodes": 4,
+                                        },
+                                    ],
+                                },
+                            },
+                        }
+                    ),
+                ),
+                resources={
+                    "gke-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "GKECluster",
+                                "metadata": {
+                                    "name": "test-cluster",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "project": "my-gcp-project",
+                                    "region": "us-central1",
+                                    "nodePools": [
+                                        {
+                                            "name": "l4-pool",
+                                            "role": "GPU",
+                                            "machineType": "g2-standard-48",
+                                            "nodeCount": 2,
+                                            "minNodeCount": None,
+                                            "maxNodeCount": 4,
+                                            "gpu": {
+                                                "acceleratorType": "nvidia-l4",
+                                            },
+                                            "zones": ["us-central1-a"],
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "cluster-provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "ClusterProviderConfig",
+                                "metadata": {"name": "test-cluster-cluster-kubeconfig-d0f89"},
+                                "spec": {
+                                    "credentials": {
+                                        "source": "Secret",
+                                        "secretRef": {
+                                            "namespace": "modelplane-system",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                    },
+                                    "identity": {
+                                        "type": "GoogleApplicationCredentials",
+                                        "source": "Secret",
+                                        "secretRef": {
+                                            "namespace": "modelplane-system",
+                                            "name": "test-cluster-sa-key-fghij",
+                                            "key": "credentials.json",
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "storage-class-rwx": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "metadata": {"namespace": "modelplane-system"},
+                                "spec": {
+                                    "providerConfigRef": {
+                                        "kind": "ClusterProviderConfig",
+                                        "name": "test-cluster-cluster-kubeconfig-d0f89",
+                                    },
+                                    # policy defaults to SuccessfulCreate, so
+                                    # the typed model drops it on serialization.
+                                    "readiness": {},
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "storage.k8s.io/v1",
+                                            "kind": "StorageClass",
+                                            "metadata": {"name": "modelplane-rwx"},
+                                            "provisioner": "filestore.csi.storage.gke.io",
+                                            "parameters": {
+                                                "tier": "enterprise",
+                                                "network": "test-cluster-abc12",
+                                            },
+                                            "volumeBindingMode": "Immediate",
+                                            "allowVolumeExpansion": True,
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "serving-stack": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "ServingStack",
+                                "metadata": {
+                                    "name": "test-cluster-serving-stack-fd00b",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "secrets": [
+                                        {
+                                            "type": "Kubeconfig",
+                                            "name": "test-cluster-kubeconfig-abcde",
+                                            "key": "kubeconfig",
+                                        },
+                                        {
+                                            "type": "GCPServiceAccountKey",
+                                            "name": "test-cluster-sa-key-fghij",
+                                            "key": "credentials.json",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                    "usage-gke-by-backend": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "protection.crossplane.io/v1beta1",
+                                "kind": "Usage",
+                                "metadata": {"namespace": "modelplane-system"},
+                                "spec": {
+                                    "of": {
+                                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                        "kind": "GKECluster",
+                                        "resourceSelector": {"matchControllerRef": True},
+                                    },
+                                    "by": {
+                                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                        "kind": "ServingStack",
+                                        "resourceSelector": {"matchControllerRef": True},
+                                    },
+                                    "replayDeletion": True,
+                                },
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="ClusterRunning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Installing",
+                ),
+            ],
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="GKE cluster ready, composing backend",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want6.requirements.resources["class-gpu-l4"].CopyFrom(class_selector)
+
         cases = [
             Case(name="existing cluster with secrets composes backend and CPC", req=req1, want=want1),
             Case(name="GKE cluster first pass composes GKECluster XR only", req=req2, want=want2),
             Case(name="existing cluster second pass with backend ready", req=req3, want=want3),
             Case(name="EKS cluster first pass composes EKSCluster XR only", req=req4, want=want4),
             Case(name="EKS cluster not ready re-emits existing CPC unchanged", req=req5, want=want5),
+            Case(name="GKE cluster ready composes CPC, backend, usage, and RWX StorageClass", req=req6, want=want6),
         ]
 
         for case in cases:

@@ -29,47 +29,54 @@ spec:
           spec:
             type: object
             required: [source]
+            x-kubernetes-validations:
+            - rule: "self.source != 'HuggingFace' || has(self.huggingFace)"
+              message: spec.huggingFace is required when spec.source is HuggingFace.
             properties:
               source:
+                type: string
+                enum: [HuggingFace]
+                description: >-
+                  Which kind of artifact source to stage from. The
+                  matching source object (e.g. spec.huggingFace) must
+                  be set.
+              huggingFace:
                 type: object
                 description: >-
-                  Where to fetch the artifact from. A discriminated
-                  union; exactly one source must be set.
+                  HuggingFace source. Required when source is
+                  HuggingFace.
+                required: [repo, sizeGiB]
                 properties:
-                  huggingFace:
+                  repo:
+                    type: string
+                    description: HuggingFace repository ID.
+                    minLength: 1
+                  revision:
+                    type: string
+                    description: >-
+                      Branch, tag, or commit SHA. Defaults to the
+                      repo's default branch.
+                  authSecret:
                     type: object
-                    required: [repo, sizeGiB]
+                    description: >-
+                      Optional Secret holding an HF token for gated or
+                      private repos. Resolved on the workload cluster at
+                      hydration time.
+                    required: [name]
                     properties:
-                      repo:
+                      name:
                         type: string
-                        description: HuggingFace repository ID.
                         minLength: 1
-                      revision:
+                      key:
                         type: string
-                        description: >-
-                          Branch, tag, or commit SHA. Defaults to
-                          the repo's default branch.
-                      authSecret:
-                        type: object
-                        description: >-
-                          Optional Secret holding an HF token for
-                          gated or private repos. Resolved on the
-                          workload cluster at hydration time.
-                        required: [name]
-                        properties:
-                          name:
-                            type: string
-                            minLength: 1
-                          key:
-                            type: string
-                            default: HF_TOKEN
-                      sizeGiB:
-                        type: integer
-                        description: >-
-                          Capacity to allocate for the staged artifact
-                          on each matched cluster.
-                        minimum: 1
-                        maximum: 100000
+                        default: HF_TOKEN
+                  sizeGiB:
+                    type: integer
+                    description: >-
+                      Capacity to allocate for the staged artifact on
+                      each matched cluster.
+                    minimum: 1
+                    maximum: 100000
               clusterSelector:
                 type: object
                 description: >-

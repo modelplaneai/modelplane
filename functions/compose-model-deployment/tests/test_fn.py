@@ -33,7 +33,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls) -> None:
         cls.runner = fn.FunctionRunner()
 
-    async def test_compose(self) -> None:
+    async def test_compose(self) -> None:  # noqa: PLR0915
         """The function fans out ModelReplicas and ModelEndpoints."""
 
         xr = v1alpha1.ModelDeployment(
@@ -149,8 +149,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/default/my-model-98ad2/v1",
-                                    "rewritePath": "/default/my-model-98ad2/",
+                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-bc3c4/v1",
+                                    "rewritePath": "/ml-team/my-model-cluster-a-bc3c4/",
                                 },
                             }
                         ),
@@ -390,8 +390,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/default/my-model-98ad2/v1",
-                                    "rewritePath": "/default/my-model-98ad2/",
+                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-bc3c4/v1",
+                                    "rewritePath": "/ml-team/my-model-cluster-a-bc3c4/",
                                 },
                             }
                         ),
@@ -638,8 +638,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.2/default/my-model-98ad2/v1",
-                                    "rewritePath": "/default/my-model-98ad2/",
+                                    "url": "http://10.0.0.2/ml-team/my-model-cluster-b-a9d2c/v1",
+                                    "rewritePath": "/ml-team/my-model-cluster-b-a9d2c/",
                                 },
                             }
                         ),
@@ -667,6 +667,124 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         want6.requirements.resources["clusters"].CopyFrom(cluster_sel)
         want6.requirements.resources["all-replicas"].CopyFrom(replica_sel)
 
+        # Case 7: deployment sets spec.modelCacheRef — the ref is
+        # propagated onto the composed replica's spec so the backend
+        # knows which cache PVC to mount.
+        xr_cached = v1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=v1alpha1.SpecModel(
+                replicas=1,
+                modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
+                workers=v1alpha1.Workers(
+                    topology=v1alpha1.Topology(tensor=1),
+                    template=v1alpha1.Template(
+                        spec=v1alpha1.Spec(
+                            containers=[
+                                v1alpha1.Container(
+                                    name="engine",
+                                    image="vllm/vllm-openai:latest",
+                                    args=["--model=Qwen/Qwen3-0.6B"],
+                                ),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        ).model_dump(exclude_none=True, mode="json")
+
+        req7 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(xr_cached)),
+            ),
+        )
+        req7.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cluster_a)))
+        req7.required_resources["all-replicas"].SetInParent()
+
+        want7 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                ),
+                resources={
+                    "replica-cluster-a": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelReplica",
+                                "metadata": {
+                                    "name": "my-model-cluster-a-bc3c4",
+                                    "namespace": "ml-team",
+                                    "labels": {
+                                        "modelplane.ai/replica": "true",
+                                        "modelplane.ai/deployment": "my-model",
+                                        "modelplane.ai/cluster": "cluster-a",
+                                    },
+                                },
+                                "spec": {
+                                    "clusterName": "cluster-a",
+                                    "modelCacheRef": {"name": "qwen"},
+                                    "workers": {
+                                        "topology": {"tensor": 1},
+                                        "template": {
+                                            "spec": {
+                                                "containers": [
+                                                    {
+                                                        "name": "engine",
+                                                        "image": "vllm/vllm-openai:latest",
+                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                    }
+                                                ],
+                                            },
+                                        },
+                                    },
+                                },
+                            }
+                        ),
+                    ),
+                    "endpoint-cluster-a": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "modelplane.ai/v1alpha1",
+                                "kind": "ModelEndpoint",
+                                "metadata": {
+                                    "name": "my-model-cluster-a-bc3c4",
+                                    "namespace": "ml-team",
+                                    "labels": {
+                                        "modelplane.ai/deployment": "my-model",
+                                        "modelplane.ai/cluster": "cluster-a",
+                                    },
+                                },
+                                "spec": {
+                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-bc3c4/v1",
+                                    "rewritePath": "/ml-team/my-model-cluster-a-bc3c4/",
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ReplicasScheduled",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Scheduling",
+                ),
+                fnv1.Condition(
+                    type="ReplicasReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="ModelStarting",
+                    message="0 of 1 ready",
+                ),
+            ],
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Matched 1 clusters: cluster-a"),
+            ],
+            context=structpb.Struct(),
+        )
+        want7.requirements.resources["clusters"].CopyFrom(cluster_sel)
+        want7.requirements.resources["all-replicas"].CopyFrom(replica_sel)
+
         cases = [
             Case(name="one ready cluster composes replica and endpoint", req=req1, want=want1),
             Case(name="no clusters produces warning", req=req2, want=want2),
@@ -674,6 +792,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             Case(name="existing replica is preserved with stable scheduling", req=req4, want=want4),
             Case(name="offline pinned cluster keeps replica but drops endpoint", req=req5, want=want5),
             Case(name="deleted pinned cluster triggers replica re-placement", req=req6, want=want6),
+            Case(name="modelCacheRef is propagated onto the composed replica", req=req7, want=want7),
         ]
 
         for case in cases:

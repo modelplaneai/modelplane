@@ -262,6 +262,14 @@ kubectl get ic --watch
 
 ## Deploy a model
 
+When a ModelDeployment does **not** reference a ModelCache, the inference engine
+fetches model weights directly from the source (e.g. Hugging Face) at pod
+startup. The deployment must supply any required credentials via the engine
+container's `env` (e.g. `HF_TOKEN`), and the engine image must support fetching
+from that source. For large models or frequent restarts, a
+[ModelCache](#modelcache) avoids repeated downloads; see `examples/cache/` for
+cached single-pod and multi-node deployments.
+
 Create the `ml-team` namespace, deploy the model, and create a ModelService to
 expose it:
 

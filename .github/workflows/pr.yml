@@ -1,0 +1,25 @@
+name: PR
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  checklist-completed:
+    permissions:
+      # The action reads the PR body through the issues API, so it needs issues
+      # access on top of pull-requests. The repo's default workflow token is
+      # read-only, so these have to be granted explicitly.
+      issues: read
+      pull-requests: read
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: mheap/require-checklist-action@46d2ca1a0f90144bd081fd13a80b1dc581759365 # v2
+        with:
+          # The checklist must exist and be filled out.
+          requireChecklist: true
+          # Only check the PR description, ignore checklists in comments.
+          skipComments: true

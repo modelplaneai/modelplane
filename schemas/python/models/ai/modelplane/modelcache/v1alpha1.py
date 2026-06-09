@@ -70,10 +70,6 @@ class HuggingFace(BaseModel):
     """
 
 
-class Source(BaseModel):
-    huggingFace: Optional[HuggingFace] = None
-
-
 class Spec(BaseModel):
     clusterSelector: Optional[ClusterSelector] = None
     """
@@ -83,9 +79,13 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    source: Source
+    huggingFace: Optional[HuggingFace] = None
     """
-    Where to fetch the artifact from. A discriminated union; exactly one source must be set.
+    HuggingFace source. Required when source is HuggingFace.
+    """
+    source: Literal['HuggingFace'] = 'HuggingFace'
+    """
+    Which kind of artifact source to stage from. The matching source object (e.g. spec.huggingFace) must be set.
     """
 
 

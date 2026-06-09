@@ -1,0 +1,47 @@
+# Single-pod deployment served from a managed cache.
+#
+# The ModelCache stages the weights on workload-cluster storage once; the
+# ModelDeployment references it and mounts it at /mnt/models on its pod.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen3-0.6B
+    # Qwen3-0.6B is a public repo, so no authSecret is needed.
+    sizeGiB: 20
+  # Optional: stage only on clusters matching these labels. Omit to stage on
+  # every matched cluster.
+  # clusterSelector:
+  #   matchLabels:
+  #     modelplane.ai/tier: frontier
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  replicas: 1
+
+  # Reference the ModelCache above; Modelplane mounts it at /mnt/models on
+  # the worker pod.
+  modelCacheRef:
+    name: qwen
+
+  workers:
+    # One GPU per pod, one pod per worker: a single self-contained pod.
+    topology:
+      tensor: 1
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.8.5
+          args:
+          # The cache mounts at /mnt/models; point the engine there
+          # explicitly. Modelplane only injects this flag when it is absent.
+          - "--model=/mnt/models"

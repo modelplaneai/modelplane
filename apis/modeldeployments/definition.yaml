@@ -119,13 +119,15 @@ spec:
                           containers:
                             type: array
                             minItems: 1
+                            maxItems: 1
                             description: >-
-                              Containers for the inference pod. The container
-                              named "engine" is the inference engine; additional
-                              containers pass through as sidecars.
+                              Containers for the inference pod. v0.1 supports a
+                              single container, which must be named "engine" (the
+                              inference engine). Sidecar / multi-container support
+                              is tracked separately.
                             x-kubernetes-validations:
                             - rule: "self.exists_one(c, c.name == 'engine')"
-                              message: "containers must include exactly one container named 'engine'"
+                              message: "the single container must be named 'engine'"
                             items:
                               type: object
                               required: [name, image]
@@ -140,6 +142,19 @@ spec:
                                   type: string
                                   minLength: 1
                                   description: Container image.
+                                command:
+                                  type: array
+                                  description: >-
+                                    Container entrypoint override. When set on the
+                                    engine container of a multi-node deployment,
+                                    it bypasses the built-in vLLM/Ray bootstrap and
+                                    runs on every gang pod — the command owns
+                                    cross-node coordination against the LWS_*
+                                    environment (LWS_WORKER_INDEX,
+                                    LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for
+                                    non-vLLM engines (e.g. SGLang).
+                                  items:
+                                    type: string
                                 args:
                                   type: array
                                   description: >-

@@ -216,6 +216,18 @@ spec:
                       description: >-
                         Key within the Secret that holds the credential data.
                       maxLength: 253
+              network:
+                type: object
+                description: >-
+                  The VPC network this cluster runs in. Consumers pin
+                  network-scoped resources (e.g. the ModelCache Filestore
+                  StorageClass) to this name. Populated once the composed
+                  Network is observed; the name carries the provider's
+                  generated suffix, so it can't be derived from the XR name.
+                properties:
+                  name:
+                    type: string
+                    description: Name of the composed VPC network.
             type: object
         required:
         - spec

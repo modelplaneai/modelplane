@@ -48,7 +48,7 @@ spec:
       name: provider-helm-modelplane
 ---
 # Grant provider-helm cluster-admin. It installs full Helm charts
-# (MetalLB, Envoy Gateway, KServe, etc.) that create arbitrary
+# (MetalLB, Envoy Gateway, LeaderWorkerSet, etc.) that create arbitrary
 # resource types across namespaces.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
