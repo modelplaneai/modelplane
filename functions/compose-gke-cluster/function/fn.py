@@ -15,6 +15,9 @@ from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from models.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from models.io.upbound.m.gcp.cloudplatform.projectiammember import v1beta1 as iamv1beta1
+from models.io.upbound.m.gcp.cloudplatform.projectservice import (
+    v1beta1 as projectsvcv1beta1,
+)
 from models.io.upbound.m.gcp.cloudplatform.serviceaccount import v1beta1 as sav1beta1
 from models.io.upbound.m.gcp.cloudplatform.serviceaccountkey import (
     v1beta1 as sakeyv1beta1,
@@ -96,6 +99,7 @@ class Composer:
 
     def compose(self):
         self.compose_network()
+        self.compose_filestore_api()
         self.compose_subnet()
         self.compose_cluster()
         self.compose_node_pools()
@@ -113,6 +117,23 @@ class Composer:
                     forProvider=networkv1beta1.ForProvider(
                         project=self.xr.spec.project,
                         autoCreateSubnetworks=False,
+                    ),
+                ),
+            ),
+        )
+
+    def compose_filestore_api(self):
+        """Enable file.googleapis.com so the Filestore CSI addon can provision
+        RWX volumes (fresh projects have it disabled → PVCs Pending with
+        SERVICE_DISABLED)."""
+        resource.update(
+            self.rsp.desired.resources["projectservice-filestore"],
+            projectsvcv1beta1.ProjectService(
+                spec=projectsvcv1beta1.Spec(
+                    forProvider=projectsvcv1beta1.ForProvider(
+                        project=self.xr.spec.project,
+                        service="file.googleapis.com",
+                        disableOnDestroy=False,
                     ),
                 ),
             ),
@@ -373,28 +394,44 @@ class Composer:
         )
 
     def write_status(self):
-        resource.update_status(
-            self.rsp.desired.composite,
-            v1alpha1.Status(
-                secrets=[
-                    v1alpha1.Secret(
-                        type=_SECRET_TYPE_KUBECONFIG,
-                        name=_kubeconfig_secret_name(self.xr),
-                        key=_SECRET_KEY_KUBECONFIG,
-                    ),
-                    v1alpha1.Secret(
-                        type=_SECRET_TYPE_GCP_SA_KEY,
-                        name=_sa_key_secret_name(self.xr),
-                        key=_SECRET_KEY_GCP_SA,
-                    ),
-                ],
-            ),
+        status = v1alpha1.Status(
+            secrets=[
+                v1alpha1.Secret(
+                    type=_SECRET_TYPE_KUBECONFIG,
+                    name=_kubeconfig_secret_name(self.xr),
+                    key=_SECRET_KEY_KUBECONFIG,
+                ),
+                v1alpha1.Secret(
+                    type=_SECRET_TYPE_GCP_SA_KEY,
+                    name=_sa_key_secret_name(self.xr),
+                    key=_SECRET_KEY_GCP_SA,
+                ),
+            ],
         )
+        # Surface the composed VPC's real name so network-scoped consumers (the
+        # ModelCache Filestore StorageClass) can pin to it. The provider-assigned
+        # name carries a generated suffix, so it can't be derived from the XR name.
+        network_name = self._observed_network_name()
+        if network_name:
+            status.network = v1alpha1.Network(name=network_name)
+        resource.update_status(self.rsp.desired.composite, status)
+
+    def _observed_network_name(self):
+        """The composed VPC network's GCP name, from the observed Network MR's
+        external-name annotation (set by the provider once the network exists).
+        None on early reconciles before the network is created."""
+        observed = self.req.observed.resources.get("network")
+        if not observed:
+            return None
+        manifest = resource.struct_to_dict(observed.resource)
+        annotations = manifest.get("metadata", {}).get("annotations", {}) or {}
+        return annotations.get("crossplane.io/external-name") or None
 
     def mark_readiness(self):
         """Mark composed resources as ready based on their observed conditions."""
         managed_resources = [
             "network",
+            "projectservice-filestore",
             "subnet",
             "cluster",
             "service-account",

@@ -7,6 +7,7 @@ provider-helm Releases; the dispatcher (fn.py) applies them to the response.
 
 from typing import Protocol
 
+from crossplane.function import resource
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
@@ -20,6 +21,64 @@ ComposedResource = k8sobjv1alpha1.Object | helmv1beta1.Release
 NATIVE = "native"
 LLMD = "llmd"
 DYNAMO = "dynamo"
+
+# Mount path the cache PVC is exposed at inside every engine pod. Intrinsic
+# to the cache contract; the deployment points the engine here.
+CACHE_MOUNT_PATH = "/mnt/models"
+
+# Volume name shared by the PVC volume and its mount.
+_CACHE_VOLUME = "model-cache"
+
+
+def cache_pvc_name(namespace: str, cache_name: str) -> str:
+    # MUST stay in sync with compose-model-cache's _pvc_name()
+    # (functions/compose-model-cache/function/fn.py) — both sides share
+    # resource.child_name("modelcache", namespace, name). The namespace
+    # qualifier keeps caches of the same name from different Modelplane
+    # namespaces from colliding in the workload cluster's `default` namespace.
+    return resource.child_name("modelcache", namespace, cache_name)
+
+
+def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]]:
+    """Return (volumes, volumeMounts) for the replica's cache, or ([], []).
+
+    modelCacheRef carries only a name; the ModelCache is in the replica's own
+    namespace, so the PVC name is qualified by replica.metadata.namespace.
+    """
+    ref = replica.spec.modelCacheRef
+    if not ref:
+        return [], []
+    pvc = cache_pvc_name(replica.metadata.namespace, ref.name)
+    # Mounted read-write (NOT readOnly): engines write into the model dir
+    # (tokenizer/compile/lock artifacts), and a readOnly mount hard-fails them.
+    # The PVC is ReadWriteMany, so every pod in the gang shares one read-write
+    # mount; the hydration Job populates it once and serving pods read N times.
+    return (
+        [{"name": _CACHE_VOLUME, "persistentVolumeClaim": {"claimName": pvc}}],
+        [{"name": _CACHE_VOLUME, "mountPath": CACHE_MOUNT_PATH}],
+    )
+
+
+def apply_cache_args(args: list[str], replica: v1alpha1.ModelReplica, engine) -> list[str]:
+    """Inject --model=<mount> for the turnkey vLLM path only.
+
+    KServe used to inject this; nothing does now, and without it vLLM silently
+    serves facebook/opt-125m. It is vLLM-specific (the `--model` flag), so it is
+    skipped when:
+    - no cache is referenced;
+    - the engine brings its own `command` — a non-vLLM engine like SGLang owns
+      its args and points at the mount with its own flag (`--model-path`), so
+      injecting `--model` would hand it an unknown flag; or
+    - the user already set `--model`.
+
+    The cache *volume/mount* (cache_mounts) is added regardless of engine shape;
+    only this arg injection is vLLM-specific.
+    """
+    if not replica.spec.modelCacheRef or engine.command:
+        return args
+    if any(a == "--model" or a.startswith("--model=") for a in args):
+        return args
+    return [*args, f"--model={CACHE_MOUNT_PATH}"]
 
 
 def engine_container(replica: v1alpha1.ModelReplica):

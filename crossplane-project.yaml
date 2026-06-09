@@ -37,6 +37,10 @@ spec:
       pathPrefix: _output/functions/compose-serving-stack
   - source: Tarball
     tarball:
+      name: compose-model-cache
+      pathPrefix: _output/functions/compose-model-cache
+  - source: Tarball
+    tarball:
       name: compose-model-deployment
       pathPrefix: _output/functions/compose-model-deployment
   - source: Tarball

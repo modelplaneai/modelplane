@@ -9,6 +9,7 @@ members = [
     "compose-inference-class",
     "compose-inference-cluster",
     "compose-inference-gateway",
+    "compose-model-cache",
     "compose-model-deployment",
     "compose-model-endpoint",
     "compose-model-replica",
@@ -143,6 +144,25 @@ requires-dist = [
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
     { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "compose-model-cache"
+version = "0.0.0"
+source = { editable = "functions/compose-model-cache" }
+dependencies = [
+    { name = "click" },
+    { name = "crossplane-function-sdk-python" },
+    { name = "crossplane-models" },
+    { name = "grpcio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-models", editable = "schemas/python" },
+    { name = "grpcio", specifier = ">=1.73.1" },
 ]
 
 [[package]]

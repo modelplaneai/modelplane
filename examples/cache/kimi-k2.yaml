@@ -1,24 +1,20 @@
 # Kimi K2 multi-node deployment with a managed cache.
-#
-# NOTE: this example targets the design in design/design.md. The composition
-# function (compose-model-cache) lands in a follow-up MR; applying this YAML
-# before that ships will fail with "no composition found for kind ModelCache."
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
 metadata:
   name: kimi-k2
   namespace: ml-team
 spec:
-  source:
-    huggingFace:
-      repo: moonshotai/Kimi-K2-Instruct
-      # Secret holding an HF token (Kimi K2 is a gated repo). The Secret
-      # must exist on every matched workload cluster.
-      authSecret:
-        name: hf-token
-      # ~1 TB of weights plus headroom. Modelplane sizes the underlying
-      # storage to absorb this (Filestore Enterprise multishare on GKE).
-      sizeGiB: 1500
+  source: HuggingFace
+  huggingFace:
+    repo: moonshotai/Kimi-K2-Instruct
+    # Secret holding an HF token (Kimi K2 is a gated repo). The Secret
+    # must exist on every matched workload cluster.
+    authSecret:
+      name: hf-token
+    # ~1 TB of weights plus headroom. Modelplane sizes the underlying
+    # storage to absorb this (Filestore Enterprise multishare on GKE).
+    sizeGiB: 1500
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment

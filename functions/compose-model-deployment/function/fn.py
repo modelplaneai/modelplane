@@ -169,24 +169,21 @@ class Composer:
         for cluster_info in matched:
             replica_key = f"replica-{cluster_info.name}"
 
-            resource.update(
-                self.rsp.desired.resources[replica_key],
-                mrv1alpha1.ModelReplica(
-                    metadata=metav1.ObjectMeta(
-                        name=resource.child_name(self.xr.metadata.name, cluster_info.name),
-                        namespace=self.xr.metadata.namespace,
-                        labels={
-                            _LABEL_REPLICA: _LABEL_VALUE_TRUE,
-                            _LABEL_DEPLOYMENT: self.xr.metadata.name,
-                            _LABEL_CLUSTER: cluster_info.name,
-                        },
-                    ),
-                    spec=mrv1alpha1.SpecModel(
-                        clusterName=cluster_info.name,
-                        workers=workers,
-                    ),
+            replica = mrv1alpha1.ModelReplica(
+                metadata=metav1.ObjectMeta(
+                    name=resource.child_name(self.xr.metadata.name, cluster_info.name),
+                    namespace=self.xr.metadata.namespace,
+                    labels={
+                        _LABEL_REPLICA: _LABEL_VALUE_TRUE,
+                        _LABEL_DEPLOYMENT: self.xr.metadata.name,
+                        _LABEL_CLUSTER: cluster_info.name,
+                    },
                 ),
+                spec=mrv1alpha1.SpecModel(clusterName=cluster_info.name, workers=workers),
             )
+            if self.xr.spec.modelCacheRef:
+                replica.spec.modelCacheRef = mrv1alpha1.ModelCacheRef(name=self.xr.spec.modelCacheRef.name)
+            resource.update(self.rsp.desired.resources[replica_key], replica)
 
     def compose_endpoints(self, matched):
         """Compose one ModelEndpoint per matched cluster.

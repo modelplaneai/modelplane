@@ -27,6 +27,7 @@ from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alp
 from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
@@ -159,12 +160,20 @@ class Composer:
         self.compose_gke_cluster(gke)
 
         gke_ready = resource.get_condition(self.req.observed.resources.get("gke-cluster"), "Ready").status == "True"
-        kubeconfig = self.observed_gke_secret(_SECRET_TYPE_KUBECONFIG)
+        kubeconfig_secret = self.observed_gke_secret(_SECRET_TYPE_KUBECONFIG)
         sa_key = self.observed_gke_secret(_SECRET_TYPE_GCP_SA_KEY)
         backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
 
-        if gke_ready and kubeconfig:
-            self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key, sa_key)
+        if gke_ready and kubeconfig_secret:
+            self.compose_cluster_provider_config(kubeconfig_secret.name, kubeconfig_secret.key, sa_key)
+
+            provider_config = self.observed_provider_config_name()
+            # Gate on the real network name: the GKECluster reports it only once
+            # its Network is observed. The StorageClass can't pin to the bare XR
+            # name — the VPC name carries a provider-generated suffix.
+            network_name = self.gke_network_name()
+            if network_name:
+                self.compose_rwx_storage_class(gke, provider_config, network_name)
 
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready, backend_exists)
         if backend_secrets or backend_exists:
@@ -285,6 +294,70 @@ class Composer:
             cpc,
         )
         self.rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
+
+    def observed_provider_config_name(self):
+        """The ClusterProviderConfig name to reference from the StorageClass
+        Object. Prefer the observed resource's actual name so it stays correct
+        if the naming scheme ever changes; fall back to the derived name on the
+        first reconcile, before the CPC is observed."""
+        observed = self.req.observed.resources.get("cluster-provider-config-kubernetes")
+        if observed:
+            cpc = k8scpcv1alpha1.ClusterProviderConfig.model_validate(resource.struct_to_dict(observed.resource))
+            if cpc.metadata and cpc.metadata.name:
+                return cpc.metadata.name
+        return resource.child_name(self.xr.metadata.name, "cluster-kubeconfig")
+
+    def gke_network_name(self):
+        """The VPC name the GKECluster reports in status, for pinning the
+        Filestore StorageClass to the right network.
+
+        Read from the observed GKECluster's status.network.name (populated by
+        compose-gke-cluster from the composed Network's external-name). The GCP
+        VPC name carries a provider-generated suffix, so it cannot be derived
+        from the XR name. None until the GKECluster observes its network; the
+        StorageClass is gated on this being present.
+        """
+        observed = self.req.observed.resources.get("gke-cluster")
+        if not observed:
+            return None
+        gke = gkev1alpha1.GKECluster.model_validate(resource.struct_to_dict(observed.resource))
+        if gke.status and gke.status.network and gke.status.network.name:
+            return gke.status.network.name
+        return None
+
+    def compose_rwx_storage_class(self, gke, provider_config: str, network_name: str):
+        """Compose a Filestore RWX StorageClass when the GKE cache uses the
+        managed default. Filestore CSI defaults to the `default` VPC → PVCs
+        hang; pin parameters.network to our VPC. StorageClass has no Ready
+        condition, so use SuccessfulCreate (DeriveFromObject would hang)."""
+        cache = gke.cache
+        sc_name = cache.storageClassName if (cache and cache.storageClassName) else "modelplane-rwx"
+        if sc_name != "modelplane-rwx":
+            return  # admin-provided class; don't manage it
+        manifest = {
+            "apiVersion": "storage.k8s.io/v1",
+            "kind": "StorageClass",
+            "metadata": {"name": sc_name},
+            "provisioner": "filestore.csi.storage.gke.io",
+            "parameters": {"tier": "enterprise", "network": network_name},
+            "volumeBindingMode": "Immediate",
+            "allowVolumeExpansion": True,
+        }
+        resource.update(
+            self.rsp.desired.resources["storage-class-rwx"],
+            k8sobjv1alpha1.Object(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=provider_config,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
+                    forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
+                ),
+            ),
+        )
+        self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
 
     def write_status(self, gpu_pools):
         """Write the InferenceCluster status."""
