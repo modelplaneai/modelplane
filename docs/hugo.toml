@@ -1,6 +1,6 @@
 baseURL = "/"
 languageCode = "en-us"
-title = "My Project"
+title = "Modelplane.ai"
 theme = "geekboot"
 enableRobotsTXT = true
 enableGitInfo = true
@@ -47,7 +47,7 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
 
 [params]
   docs = true
-  description = "My Project documentation."
+  description = "Modelplane documentation."
   [params.anchors]
     min = 2
     max = 5
