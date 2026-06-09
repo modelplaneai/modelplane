@@ -215,18 +215,29 @@ def engine_resources(replica: v1alpha1.ModelReplica) -> dict:
     return {"claims": [{"name": _POD_CLAIM_NAME}]}
 
 
-def attach_device_claims(pod_spec: dict, replica: v1alpha1.ModelReplica) -> None:
-    """Wire a pod spec to the per-replica ResourceClaimTemplate.
+# Taint GPU node groups carry so non-GPU pods don't land on them. A pod that
+# claims a GPU must tolerate it to schedule there. With GPUs bound via DRA (not
+# the device plugin's extended resource), nothing injects this toleration for us
+# - the ExtendedResourceToleration admission controller only acts on
+# nvidia.com/gpu resource requests, which DRA pods don't make.
+_GPU_TOLERATION = {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}
 
-    Adds a pod-level resourceClaims entry pointing at the template. No-op when the
-    replica has no device requests (then there's no ResourceClaimTemplate to
-    reference). Every pod that shares this spec - a native Deployment pod, or an
-    llm-d LWS leader and worker - gets its own template-backed claim, which is why
-    we use a ResourceClaimTemplate rather than a shared ResourceClaim.
+
+def attach_device_claims(pod_spec: dict, replica: v1alpha1.ModelReplica) -> None:
+    """Wire a pod spec to claim its GPUs via DRA.
+
+    Adds a pod-level resourceClaims entry pointing at the per-replica
+    ResourceClaimTemplate, and a toleration for the GPU node taint so the pod can
+    land on a GPU node. No-op when the replica has no device requests (then
+    there's no ResourceClaimTemplate to reference and no GPU node to reach). Every
+    pod that shares this spec - a native Deployment pod, or an llm-d LWS leader
+    and worker - gets its own template-backed claim, which is why we use a
+    ResourceClaimTemplate rather than a shared ResourceClaim.
     """
     if not _device_requests(replica):
         return
     pod_spec["resourceClaims"] = [{"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_template_name(replica)}]
+    pod_spec.setdefault("tolerations", []).append(_GPU_TOLERATION)
 
 
 def resource_claim_template(replica: v1alpha1.ModelReplica, provider_config: str) -> k8sobjv1alpha1.Object | None:

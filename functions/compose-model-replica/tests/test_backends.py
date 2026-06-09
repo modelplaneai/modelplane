@@ -275,6 +275,7 @@ _NATIVE_DRA_WANT = {
                     "resourceClaims": [
                         {"name": "devices", "resourceClaimTemplateName": resource.child_name("r", "devices")}
                     ],
+                    "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
                 },
             },
         },
@@ -288,6 +289,7 @@ _NATIVE_DRA_WANT = {
 def _lws_dra(leader_container, worker_container):
     """An LWS whose leader and worker pods both reference the claim template."""
     claims = [{"name": "devices", "resourceClaimTemplateName": resource.child_name("r", "devices")}]
+    tolerations = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
     return {
         "apiVersion": "leaderworkerset.x-k8s.io/v1",
         "kind": "LeaderWorkerSet",
@@ -302,6 +304,7 @@ def _lws_dra(leader_container, worker_container):
                         "containers": [leader_container],
                         "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
                         "resourceClaims": claims,
+                        "tolerations": tolerations,
                     },
                 },
                 "workerTemplate": {
@@ -310,6 +313,7 @@ def _lws_dra(leader_container, worker_container):
                         "containers": [worker_container],
                         "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
                         "resourceClaims": claims,
+                        "tolerations": tolerations,
                     },
                 },
             },
