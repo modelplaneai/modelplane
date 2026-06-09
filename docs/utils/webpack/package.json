@@ -7,7 +7,7 @@
     "@popperjs/core": "^2.11.6",
     "clipboard": "^2.0.11",
     "instant.page": "^5.1.1",
-    "webpack": "^5.75.0",
+    "webpack": "^5.107.2",
     "webpack-cli": "^5.0.0",
     "webpack-manifest-plugin": "^5.0.0"
   }
