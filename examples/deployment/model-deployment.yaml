@@ -20,24 +20,24 @@ spec:
   #   matchLabels:
   #     modelplane.ai/region: us-central
 
-  # Optional: node-level matching, a list of DRA device requests. The
-  # scheduler matches each request against a candidate pool's InferenceClass
-  # devices and pins the replica to a pool that matches. Each request's CEL
-  # is real DRA CEL over a single device; quantity() and semver() are
-  # helpers. claim: DRA devices also become requests in the DRA
-  # ResourceClaim the serving pods claim GPUs through.
-  # nodeSelector:
-  #   devices:
-  #   - name: gpu
-  #     count: 1
-  #     selectors:
-  #     - cel: |
-  #         device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0 &&
-  #         device.attributes["gpu.nvidia.com"].cudaComputeCapability.isGreaterThan(semver("8.9.0"))
-  #   - name: nic
-  #     count: 1
-  #     selectors:
-  #     - cel: device.attributes["nic.nvidia.com"].linkType == "infiniband"
+  # Node-level matching: a list of DRA device requests. The scheduler matches
+  # each request against a candidate pool's InferenceClass devices and pins the
+  # replica to a pool that satisfies them. Each request's CEL is real DRA CEL
+  # over a single device; quantity() and semver() are helpers. claim: DRA
+  # devices also become requests in the DRA ResourceClaim the serving pods claim
+  # GPUs through, so a deployment must declare the GPUs its model needs.
+  nodeSelector:
+    devices:
+    - name: gpu
+      count: 1
+      selectors:
+      # Qwen2.5-0.5B needs very little VRAM; 20Gi comfortably selects an L4
+      # without over-constraining. A larger model would ask for more memory or a
+      # specific architecture here. This CEL is real DRA CEL: the scheduler
+      # matches it against the pool's declared device, and DRA matches it again
+      # against the GPU's ResourceSlice when it binds the claim.
+      - cel: |
+          device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
 
   workers:
     # Compute topology for one worker. tensor=1 means one GPU per pod.

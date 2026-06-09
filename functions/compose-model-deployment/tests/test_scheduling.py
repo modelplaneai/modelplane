@@ -53,13 +53,16 @@ def _deployment(
     count: int = 1,
     requests: list[mdv1alpha1.Device] | None = None,
 ):
-    """Construct a ModelDeployment with the given topology and device requests."""
-    node_selector = mdv1alpha1.NodeSelector(devices=requests) if requests else None
+    """Construct a ModelDeployment with the given topology and device requests.
+
+    nodeSelector is required, so callers that don't care about pool matching get
+    a single default GPU request that any test pool's GPU device satisfies.
+    """
     return mdv1alpha1.ModelDeployment(
         metadata=metav1.ObjectMeta(name=name, namespace="ml-team"),
         spec=mdv1alpha1.SpecModel(
             replicas=replicas,
-            nodeSelector=node_selector,
+            nodeSelector=mdv1alpha1.NodeSelector(devices=requests if requests is not None else [_request()]),
             workers=mdv1alpha1.Workers(
                 count=count,
                 topology=mdv1alpha1.Topology(tensor=tensor, pipeline=pipeline),
@@ -211,12 +214,6 @@ def _replica_with_pool(
     return r
 
 
-# Convenience: build an expected Candidate defaulting to index 0, so the many
-# single-replica-per-cluster cases stay terse. Multi-replica cases pass index=.
-def _cand(name: str, *, index: int = 0, **kwargs) -> Candidate:
-    return Candidate(name=name, index=index, **kwargs)
-
-
 # Convenience: the resolved DeviceRequest for a default GPU request matching a
 # default pool, used in expected candidates for nodeSelector cases.
 def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = None) -> DeviceRequest:
@@ -228,8 +225,23 @@ def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = N
     )
 
 
+# Convenience: build an expected Candidate defaulting to index 0, so the many
+# single-replica-per-cluster cases stay terse. Since nodeSelector is required,
+# a placed or retained replica resolves to the default pool's GPU request;
+# degraded/unplaced cases pass pool="" and device_requests=[] explicitly.
+def _cand(name: str, *, index: int = 0, **kwargs) -> Candidate:
+    kwargs.setdefault("pool", "default")
+    kwargs.setdefault("device_requests", [_resolved()])
+    return Candidate(name=name, index=index, **kwargs)
+
+
 class TestSchedule(unittest.TestCase):
-    """Tests for scheduling.schedule without a nodeSelector."""
+    """Tests for scheduling.schedule placement: retain, spread, scale, capacity.
+
+    Deployments use the default single-GPU nodeSelector request (any pool's GPU
+    device satisfies it), so these focus on placement rather than pool matching;
+    TestScheduleNodeSelector covers request-to-device matching.
+    """
 
     def test_schedule(self) -> None:
         """The scheduler retains existing pins and places new replicas."""
@@ -274,16 +286,16 @@ class TestSchedule(unittest.TestCase):
                 name="existing replica is retained on its pinned cluster",
                 deployment=_deployment(),
                 clusters=[_cluster("cluster-a"), _cluster("cluster-b", gateway_address="10.0.0.2")],
-                all_replicas=[_replica("my-model", "cluster-a")],
-                # cluster-a wins even though cluster-b is also viable. No
-                # nodeSelector, so pool/device_requests stay empty on retain.
+                all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
+                # cluster-a wins even though cluster-b is also viable. The pin
+                # still matches, so it's retained with its resolved pool/requests.
                 want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
             ),
             Case(
                 name="degraded pinned cluster is retained with empty gateway",
                 deployment=_deployment(),
                 clusters=[_cluster("cluster-a", ready=False, gateway_address="")],
-                all_replicas=[_replica("my-model", "cluster-a")],
+                all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
                 want=[_cand(name="cluster-a", gateway_address="")],
             ),
             Case(
@@ -511,10 +523,10 @@ class TestSchedule(unittest.TestCase):
                 name="our own observed replicas don't double-count against us",
                 deployment=_deployment(pipeline=1),
                 clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=1)])],
-                all_replicas=[_replica("my-model", "cluster-a")],
-                # Retained: keeps the replica's own (empty) pool pin, since
-                # this deployment has no nodeSelector.
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="")],
+                all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
+                # Retained on its pin: the single node it already occupies isn't
+                # charged against itself, so it stays rather than being evicted.
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
             ),
             Case(
                 name="replica labeled for our deployment but pinned to unknown cluster is ignored",
@@ -672,7 +684,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 all_replicas=[],
                 # nic is synthetic, so resolved requests is empty, but the pool
                 # is still recorded.
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="frontier")],
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="frontier", device_requests=[])],
             ),
             Case(
                 name="retained replica keeps its pinned pool",
@@ -701,7 +713,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                     )
                 ],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="a")],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="b")],
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="b", device_requests=[])],
             ),
             Case(
                 name="pinned pool that still matches stays pinned (attribute drift is sticky)",
@@ -716,7 +728,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                     )
                 ],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="a")],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="a")],
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="a", device_requests=[])],
             ),
             Case(
                 name="no matching pool anywhere drops the replica entirely",
@@ -732,7 +744,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                     _cluster("cluster-a", pools=[_pool("frontier", devices=[_nic_device(link_type="infiniband")])])
                 ],
                 all_replicas=[_replica("my-model", "cluster-a")],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="frontier")],
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="frontier", device_requests=[])],
             ),
             Case(
                 name="dropping a non-matching replica frees its node for the refill",

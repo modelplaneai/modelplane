@@ -197,9 +197,9 @@ class SpecModel(BaseModel):
     """
     Reference to a ModelCache in the same namespace. Optional for single-node deployments; required for multi-node (workers.topology.pipeline > 1).
     """
-    nodeSelector: NodeSelector | None = None
+    nodeSelector: NodeSelector
     """
-    Optional node-level matching, a list of device requests mirroring a DRA ResourceClaim. The scheduler matches each request against a candidate pool's InferenceClass devices (surfaced on InferenceCluster status.capacity.gpuPools). A pool matches when it has a device satisfying every request. If omitted, any pool matches.
+    Node-level matching, a list of device requests mirroring a DRA ResourceClaim. The scheduler matches each request against a candidate pool's InferenceClass devices (surfaced on InferenceCluster status.gpuPools) and pins the replica to a pool that satisfies every request. claim: DRA requests also become DeviceRequests in the ResourceClaim the serving pods bind GPUs through. Required: GPUs bind only via DRA, so a deployment must declare the devices its model needs.
     """
     replicas: conint(ge=1, le=10)
     """

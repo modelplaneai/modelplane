@@ -25,7 +25,7 @@ spec:
         properties:
           spec:
             type: object
-            required: [replicas, workers]
+            required: [replicas, workers, nodeSelector]
             properties:
               replicas:
                 type: integer
@@ -46,12 +46,14 @@ spec:
               nodeSelector:
                 type: object
                 description: >-
-                  Optional node-level matching, a list of device requests
-                  mirroring a DRA ResourceClaim. The scheduler matches each
-                  request against a candidate pool's InferenceClass devices
-                  (surfaced on InferenceCluster status.capacity.gpuPools). A pool
-                  matches when it has a device satisfying every request. If
-                  omitted, any pool matches.
+                  Node-level matching, a list of device requests mirroring a
+                  DRA ResourceClaim. The scheduler matches each request against a
+                  candidate pool's InferenceClass devices (surfaced on
+                  InferenceCluster status.gpuPools) and pins the replica to a
+                  pool that satisfies every request. claim: DRA requests also
+                  become DeviceRequests in the ResourceClaim the serving pods
+                  bind GPUs through. Required: GPUs bind only via DRA, so a
+                  deployment must declare the devices its model needs.
                 required: [devices]
                 properties:
                   devices:
@@ -94,6 +96,12 @@ spec:
                           x-kubernetes-list-type: atomic
                           items:
                             type: object
+                            # A selector must carry at least one selector kind
+                            # (today only cel). Without this an empty {} selector
+                            # would match every device, and since nodeSelector is
+                            # the only path to a GPU that silently claims an
+                            # arbitrary one.
+                            minProperties: 1
                             properties:
                               cel:
                                 type: string

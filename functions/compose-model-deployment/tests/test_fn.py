@@ -12,6 +12,18 @@ from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.modeldeployment import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
+# The resolved DRA device requests the scheduler stamps onto each ModelReplica,
+# derived from the deployment's nodeSelector matched against the cluster's GPU
+# device (deviceClassName gpu.nvidia.com).
+_DEVICE_REQUESTS = [
+    {
+        "name": "gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 1,
+        "selectors": [{"cel": 'device.driver == "gpu.nvidia.com"'}],
+    }
+]
+
 
 @dataclasses.dataclass
 class Case:
@@ -40,6 +52,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
             spec=v1alpha1.SpecModel(
                 replicas=1,
+                nodeSelector=v1alpha1.NodeSelector(
+                    devices=[
+                        v1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+                        ),
+                    ],
+                ),
                 workers=v1alpha1.Workers(
                     topology=v1alpha1.Topology(tensor=1),
                     template=v1alpha1.Template(
@@ -133,6 +154,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "clusterName": "cluster-a",
                                     "nodePoolName": "default",
+                                    "deviceRequests": _DEVICE_REQUESTS,
                                     "workers": {
                                         "topology": {"tensor": 1, "pipeline": 1},
                                         "count": 1,
@@ -352,6 +374,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         },
                         "spec": {
                             "clusterName": "cluster-a",
+                            "nodePoolName": "default",
+                            "deviceRequests": _DEVICE_REQUESTS,
                             "workers": {
                                 "topology": {"tensor": 1, "pipeline": 1},
                                 "count": 1,
@@ -393,6 +417,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 },
                                 "spec": {
                                     "clusterName": "cluster-a",
+                                    "nodePoolName": "default",
+                                    "deviceRequests": _DEVICE_REQUESTS,
                                     "workers": {
                                         "topology": {"tensor": 1, "pipeline": 1},
                                         "count": 1,
@@ -506,6 +532,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             },
             "spec": {
                 "clusterName": "cluster-a",
+                "nodePoolName": "default",
+                "deviceRequests": _DEVICE_REQUESTS,
                 "workers": {
                     "topology": {"tensor": 1, "pipeline": 1},
                     "count": 1,
@@ -558,6 +586,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 },
                                 "spec": {
                                     "clusterName": "cluster-a",
+                                    "nodePoolName": "default",
+                                    "deviceRequests": _DEVICE_REQUESTS,
                                     "workers": {
                                         "topology": {"tensor": 1, "pipeline": 1},
                                         "count": 1,
@@ -676,6 +706,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "clusterName": "cluster-b",
                                     "nodePoolName": "default",
+                                    "deviceRequests": _DEVICE_REQUESTS,
                                     "workers": {
                                         "topology": {"tensor": 1, "pipeline": 1},
                                         "count": 1,
@@ -747,6 +778,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             spec=v1alpha1.SpecModel(
                 replicas=1,
                 modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
+                nodeSelector=v1alpha1.NodeSelector(
+                    devices=[
+                        v1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+                        ),
+                    ],
+                ),
                 workers=v1alpha1.Workers(
                     topology=v1alpha1.Topology(tensor=1),
                     template=v1alpha1.Template(
@@ -797,6 +837,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "spec": {
                                     "clusterName": "cluster-a",
                                     "nodePoolName": "default",
+                                    "deviceRequests": _DEVICE_REQUESTS,
                                     "modelCacheRef": {"name": "qwen"},
                                     "workers": {
                                         "topology": {"tensor": 1, "pipeline": 1},
@@ -897,6 +938,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
             spec=v1alpha1.SpecModel(
                 replicas=2,
+                nodeSelector=v1alpha1.NodeSelector(
+                    devices=[
+                        v1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+                        ),
+                    ],
+                ),
                 workers=v1alpha1.Workers(
                     topology=v1alpha1.Topology(tensor=1),
                     template=v1alpha1.Template(
@@ -924,7 +974,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ],
                 "gateway": {"address": "10.0.0.1"},
                 "providerConfigRef": {"name": "cluster-a"},
-                "gpuPools": [{"name": "default", "nodes": 2}],
+                "gpuPools": [
+                    {
+                        "name": "default",
+                        "nodes": 2,
+                        "devices": [
+                            {
+                                "name": "gpu",
+                                "claim": "DRA",
+                                "driver": "gpu.nvidia.com",
+                                "deviceClassName": "gpu.nvidia.com",
+                                "count": 1,
+                            }
+                        ],
+                    }
+                ],
             },
         }
 

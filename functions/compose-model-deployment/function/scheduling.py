@@ -98,15 +98,13 @@ class Candidate:
     # Callers should not compose a ModelEndpoint when this is empty -
     # there is nothing to route traffic to.
     gateway_address: str = ""
-    # The node pool the scheduler matched on this cluster. Empty when there is
-    # no nodeSelector (any pool is acceptable) or when the pool of a retained
-    # replica can't be re-derived (e.g. the cluster is degraded). Propagated to
-    # the ModelReplica as spec.nodePoolName.
+    # The node pool the scheduler matched on this cluster. Empty when the pool of
+    # a retained replica can't be re-derived (e.g. the cluster is degraded).
+    # Propagated to the ModelReplica as spec.nodePoolName.
     pool: str = ""
     # Resolved claim: DRA device requests for the matched pool, in nodeSelector
-    # order. Stamped onto the ModelReplica as spec.deviceRequests. Empty when
-    # there is no nodeSelector, the cluster is degraded (pool not re-derived), or
-    # only synthetic devices matched.
+    # order. Stamped onto the ModelReplica as spec.deviceRequests. Empty when the
+    # cluster is degraded (pool not re-derived) or only synthetic devices matched.
     device_requests: list[DeviceRequest] = field(default_factory=list)
 
 
@@ -160,15 +158,14 @@ class _CompiledRequest:
     programs: list[cel.Program]
 
 
-def compile_requests(deployment: mdv1alpha1.ModelDeployment) -> "list[_CompiledRequest] | None":
+def compile_requests(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledRequest]:
     """Compile every nodeSelector device request's selectors once.
 
-    Returns None when the deployment has no nodeSelector. Raises
-    cel.CELCompileError on a malformed expression; the caller turns that into an
-    InvalidNodeSelector condition.
+    nodeSelector is required (the XRD enforces at least one device request), so
+    GPUs always bind through a DRA ResourceClaim derived from these requests.
+    Raises cel.CELCompileError on a malformed expression; the caller turns that
+    into an InvalidNodeSelector condition.
     """
-    if not deployment.spec.nodeSelector:
-        return None
     requests = []
     for req in deployment.spec.nodeSelector.devices:
         cel_selectors = [s.cel for s in req.selectors if s.cel]
@@ -192,13 +189,12 @@ def _device_satisfies(device, programs: list[cel.Program]) -> bool:
     return all(p.matches(raw) for p in programs)
 
 
-def _match_pool(pool, requests: "list[_CompiledRequest] | None") -> "list[DeviceRequest] | None":
+def _match_pool(pool, requests: list[_CompiledRequest]) -> "list[DeviceRequest] | None":
     """Match a pool against the device requests.
 
     Returns the resolved claim: DRA DeviceRequests (possibly empty if only
     synthetic devices matched) when the pool satisfies every request, or None
-    when the pool fails any request. A pool with no requests trivially matches
-    with no resolved requests.
+    when the pool fails any request.
 
     A request matches a pool device when the device has enough UNCONSUMED count
     to cover the request and every selector evaluates true against that device.
@@ -209,9 +205,6 @@ def _match_pool(pool, requests: "list[_CompiledRequest] | None") -> "list[Device
     within that device's count. Without this accounting the scheduler would place
     a replica onto a node DRA can't actually satisfy.
     """
-    if requests is None:
-        return []
-
     devices = pool.devices or []
     # Track remaining count per device by its index in the pool, so capacity
     # consumed by an earlier request isn't offered again to a later one.
@@ -361,7 +354,7 @@ def _retain(
     deployment: mdv1alpha1.ModelDeployment,
     clusters_by_name: dict[str, icv1alpha1.InferenceCluster],
     all_replicas: list[mrv1alpha1.ModelReplica],
-    requests: "list[_CompiledRequest] | None",
+    requests: list[_CompiledRequest],
 ) -> list[Candidate]:
     """Keep existing replicas whose cluster exists and pool still matches.
 
@@ -401,7 +394,7 @@ def _retain(
 def _pinned_pool_still_matches(
     replica: mrv1alpha1.ModelReplica,
     cluster: icv1alpha1.InferenceCluster,
-    requests: "list[_CompiledRequest] | None",
+    requests: list[_CompiledRequest],
 ) -> bool:
     """Whether a retained replica's pinned pool still satisfies the requests.
 
@@ -413,16 +406,11 @@ def _pinned_pool_still_matches(
     still-matching replica, which we leave pinned (Kubernetes'
     IgnoredDuringExecution: node-label drift does not evict a bound Pod).
 
-    Returns True (keep the pin) when there is no nodeSelector. Returns False
-    (re-place) when:
-      * the replica carries no pool pin but the deployment now has a
-        nodeSelector (we can't confirm a match, and the replica needs a real
-        pool pin), or
+    Returns False (re-place) when:
+      * the replica carries no pool pin (it needs a real pool pin), or
       * the pinned pool no longer exists on the cluster, or
       * the pinned pool no longer satisfies the requests.
     """
-    if requests is None:
-        return True
     pool_name = replica.spec.nodePoolName
     if not pool_name:
         return False
@@ -433,15 +421,13 @@ def _pinned_pool_still_matches(
     return _match_pool(pool, requests) is not None
 
 
-def _retained_requests(replica, cluster, requests: "list[_CompiledRequest] | None") -> list[DeviceRequest]:
+def _retained_requests(replica, cluster, requests: list[_CompiledRequest]) -> list[DeviceRequest]:
     """Resolve device requests for a retained replica's pinned pool.
 
-    Returns the claim: DRA requests for the pinned pool, or empty if there's no
-    nodeSelector or the pool can't be found (degraded cluster). The pin itself
-    was already validated by _pinned_pool_still_matches.
+    Returns the claim: DRA requests for the pinned pool, or empty if the pool
+    can't be found (degraded cluster). The pin itself was already validated by
+    _pinned_pool_still_matches.
     """
-    if requests is None:
-        return []
     pool_name = replica.spec.nodePoolName
     if not pool_name:
         return []
@@ -454,7 +440,7 @@ def _retained_requests(replica, cluster, requests: "list[_CompiledRequest] | Non
 def _eligible_pool(
     cluster: icv1alpha1.InferenceCluster,
     shape: Shape,
-    requests: "list[_CompiledRequest] | None",
+    requests: list[_CompiledRequest],
     ledger: _Ledger,
 ) -> "tuple[str, list[DeviceRequest]] | None":
     """Pick the first pool on a cluster that can host one more replica.
@@ -481,7 +467,7 @@ def _fill(
     clusters: list[icv1alpha1.InferenceCluster],
     retained: list[Candidate],
     ledger: _Ledger,
-    requests: "list[_CompiledRequest] | None",
+    requests: list[_CompiledRequest],
     n: int,
 ) -> list[Candidate]:
     """Place n new replicas, spreading across clusters and packing when forced.
@@ -536,7 +522,7 @@ def _pick_cluster(
     clusters: list[icv1alpha1.InferenceCluster],
     load: dict[str, int],
     ledger: _Ledger,
-    requests: "list[_CompiledRequest] | None",
+    requests: list[_CompiledRequest],
 ) -> "tuple[icv1alpha1.InferenceCluster, str, list[DeviceRequest]] | None":
     """Pick the eligible cluster hosting the fewest of this deployment's replicas.
 

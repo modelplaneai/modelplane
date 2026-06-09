@@ -223,7 +223,7 @@ class Composer:
             # Stamp the resolved claim: DRA device requests so the replica
             # function can form a DRA ResourceClaim. Only set the field when
             # there are requests, so we don't claim ownership of an empty list
-            # (no nodeSelector, or only synthetic devices matched) under SSA.
+            # (only synthetic devices matched) under SSA.
             device_requests = [
                 mrv1alpha1.DeviceRequest(
                     name=r.name,

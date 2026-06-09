@@ -17,6 +17,21 @@ spec:
     matchLabels:
       modelplane.ai/tier: production
 
+  # Request 8 GPUs per node with enough memory for a 405B model. count matches
+  # the tensor topology (GPUs per node); the scheduler pins the replica to a
+  # pool whose devices satisfy this, and the request becomes a DRA DeviceRequest
+  # the serving pods claim GPUs through. 70Gi selects an 80GB-class GPU (an H100
+  # reports ~79Gi of its nominal 80GB): the threshold has to sit below the
+  # device's real reported memory, since DRA evaluates this CEL against the
+  # GPU's actual ResourceSlice at admission, not its marketing capacity.
+  nodeSelector:
+    devices:
+    - name: gpu
+      count: 8
+      selectors:
+      - cel: |
+          device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("70Gi")) >= 0
+
   workers:
     topology:
       tensor: 8        # 8 GPUs per node.
