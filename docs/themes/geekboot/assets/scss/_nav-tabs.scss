@@ -1,0 +1,41 @@
+
+.highlight ~ .nav-tabs {
+    margin-top: 2rem;
+}
+
+// Override Bootstrap Tab styles
+.nav-tabs{
+
+    border-bottom: none;
+    font-weight: bold;
+
+    @include media-breakpoint-down(xl) {
+      li {
+        display: block !important;
+        margin: 0px;
+      }
+
+    }
+
+    &:not(.nav-link){
+      margin-bottom: 12px !important;
+    }
+
+    // Remove tab outline and background.
+    .nav-link {
+        --bs-nav-tabs-link-active-bg: none;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+
+        @include media-breakpoint-down(xl) {
+            padding-left: 12px !important;
+        }
+
+        // Override bootstrap hover behaviors.
+        &:hover{
+            border-bottom-width: 0;
+        }
+    }
+    
+}

@@ -1,0 +1,28 @@
+
+{{/*
+        The Hugo TOC function can't be changed gracefully.
+        This edits the HTML output from the TOC function to add Bootstrap Nav classes.
+
+        The multiple variable chaining is for readablity.
+    */}}
+
+    {{/*  The H1 element isn't in the TOC. Remove the extra <ul><li> Hugo generates  */}}
+{{ $topNavFix := replaceRE  `(\<nav id="TableOfContents"\>\s*\<ul\>\s*\<li\>)` "<nav id=\"TableOfContents\">" .TableOfContents  }}
+
+
+{{/*  Remove the extra closing <li><ul>  */}}
+{{ $bottomNavFix := replaceRE  `(\<\/li\>s*\<\/ul\>\s*\<\/nav\>)` "</nav>" $topNavFix }}
+
+{{/*  Add class="nav" to each <ul> element  */}}
+{{$ulFix := replace $bottomNavFix "<ul>" "<ul class=\"nav\">" }}
+
+
+{{/*  Add class="nav-item" to each <li> element  */}}
+{{$liFix := replace $ulFix "<li" "<li class=\"nav-item\"" }}
+
+
+{{/*  Add class="nav-link" to each <a> element   */}}
+{{ $linkFix := replace $liFix "<a href" "<a class=\"nav-link\" href" }}
+
+{{/*  Print the new ToC and tell Hugo to render it instead of printing HTML  */}}
+{{ $linkFix | safeHTML }}

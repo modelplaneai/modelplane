@@ -1,0 +1,155 @@
+@mixin light-mode {
+    // body and content
+    --body-background: #{$fog-0};
+    --body-font-color: #{$fog-1000};
+    --content-link-color: #{$aqua-700};
+    --anchor-link-color: #{$fog-600};
+    --rss-icon-fill: #{$aqua-600};
+
+    // Add underline to light mode small font links due to being similar color to main text
+    p > a, .admonition-content > a, li > a, td > a, .home-link-description > a {
+        text-decoration: underline;
+    }
+    .nav-item > a {
+        text-decoration: none;
+    }
+
+    // Single code lines inside text. Code blocks are in _code_theme_light.scss
+    --code-background: #{$fog-1000}20;
+    --code-color: #{$fog-1000};
+    --code-line-number-color: #{$aqua-700};
+
+    //Tabs
+    --nav-tab-background-color: var(--body-background);
+    --active-tab-color: #{$aqua-700};
+    --inactive-tab-hover-color: #{$fog-1000};
+
+    // Sidebar nav
+    --nav-highlight-color: #{$aqua-50};
+    --btn-close-color: #{$fog-1000};
+
+    //Version dropdown
+    --dropdown-highlight: #{$fog-75};
+    --dropdown-background: var(--body-background);
+    --latest-pill-background: #{$fog-150};
+    --latest-pill-color: #{$fog-800};
+    --dropdown-color: var(--body-font-color);
+    --dropdown-border-color: #{$fog-100};
+
+    //Right-side table of contents
+    --toc-font-color: #{$fog-600};
+    --toc-mobile-menu-outline: #{$fog-200};
+    --toc-mobile-menu-background: #{$fog-0};
+
+    //hint boxes
+    --hint-important:       #{$tangerine-400}; //"exclamation",
+    --hint-important-background: #{$tangerine-100};
+
+    --hint-warning:         #{$salmon-400}; //"fire",
+    --hint-warning-background: #{$salmon-100};
+
+    --hint-tip:             #{$grass-400}; //"check",
+    --hint-tip-background: #{$grass-100};
+
+    --hint-note:            #{$fog-200}; //"info",
+    --hint-note-background:  #{$fog-50};
+
+    //Search Results
+    --search-box-background: var(--body-background);
+    --result-path: var(--body-background);
+
+    // API Page
+    --sort-up: url("/img/sort-up-light.svg");
+    --sort-down: url("/img/sort-down-light.svg");
+    --expand-box-background: #{$fog-100};
+    --minus-svg: url("/img/minus-white.svg");
+    --plus-svg: url("/img/plus-black.svg");
+    --crd-header-color: #{$fog-600};
+    --crd-row-border: #{$fog-600};
+    --crd-description-color: #{$fog-600};
+    --link-icon-fill: #{$fog-400};
+
+    --required-color: #{$fog-0};
+    --required-background: #{$fog-800};
+
+    --string-color: #{$grass-700};
+    --string-border: #{$grass-700};
+
+    --object-color: #{$tangerine-700};
+    --object-border-color: #{$tangerine-700};
+
+    --boolean-color: #{$sun-600};
+    --boolean-border-color: #{$sun-600};
+
+    --integer-color: #{$salmon-600};
+    --integer-border-color: #{$salmon-600};
+
+    --enumDefault-color: #{$fog-600};
+
+    // Override Bootstrap accordion colors in the body
+    .accordion {
+        --bs-accordion-border-color: #{$fog-400};
+        --bs-accordion-active-bg: #{$fog-0};
+        --bs-accordion-btn-focus-border-color: #{$fog-400};
+        --bs-accordion-button-focus-border-color: #{$fog-400};
+        --bs-accordion-btn-focus-box-shadow: 0 0 0 2px #{$fog-400};
+    }
+    // Improve spacing and top-border on open Bootstrap accordions
+    .accordion-body {
+        border-top: 2px solid #{$fog-200};
+    }
+    // Add hover border over clickable area
+    .accordion-button:hover, .accordion-button:not(.collapsed):hover {
+        outline: 2px solid #{$fog-1000};
+    }
+    // Color text and background
+    .accordion-button {
+        background-color: #{$fog-0};
+        color: #{$fog-1000} !important;
+    }
+    .accordion-item {
+        background-color: #{$fog-0};
+        color: #{$fog-1000};
+    }
+    // Load chevron svg as manually-inputed $fog-1000 hex code
+    .accordion-button::after {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23051513'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e") !important;
+    }
+
+    // Tables
+    .table {
+        --bs-table-bg: var(--body-background);
+        --bs-table-color-state: var(--body-font-color);
+        --bs-table-striped-color: #{$fog-50};
+        --bs-table-striped-bg: #{$fog-50};
+    }
+
+    .table-hover > tbody > tr:hover > * {
+        background-color: #{$fog-50};
+        color: var(--body-font-color);
+    }
+
+    // Tab Colors
+    .nav-tabs{
+
+        &:not(.nav-link){
+            border-bottom: 2px solid #{$fog-200};
+        }
+
+        // Active tab style
+        .active, .active:hover {
+            color: #{$aqua-600} !important;
+            border-bottom: 2px solid #{$aqua-600} !important;
+        }
+
+        // Dim the text of non-active tabs
+        .nav-link {
+            color: #{$fog-600};
+
+            // Make the text dark on hover
+            &:hover{
+                color: #{$fog-1000};
+            }
+        }
+    }
+}

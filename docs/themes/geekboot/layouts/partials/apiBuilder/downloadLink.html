@@ -1,0 +1,16 @@
+{{/* Generate the proper HTML for the link to download the YAML file of the CRD */}}
+{{ $bigName := partial "apiBuilder/checkBigName" .kind }}
+
+{{ if $bigName }}
+    {{/* BigNames hide the group and version. This prints the group/version on the same row as the download link */}}
+    <div class="row">
+        <div class="col col-4 bigName-row-padding mobile-hidden"><a class="icon-link" href="{{.downloadPath}}"><span class="yaml-svg"></span>YAML</a></div>
+        <div class="mobile-hidden col col-4">{{.group}}/{{.version}}</div>
+        <div class="col col-2 align-middle expand-link text-truncate mobile-hidden" onclick="showAll('.{{ .kind }}')">Expand All</div>
+        <div class="col col-2 align-middle collapse-link text-truncate mobile-hidden" onclick="hideAll('.{{ .kind }}')">Collapse All</div>
+    </div>
+{{ else }}
+<div class="yaml-link-padding mobile-hidden"><a class="icon-link" href="{{.downloadPath}}"><span class="yaml-svg"></span>YAML</a></div>
+{{ end }}
+{{/* If it's mobile view we don't show the download link and instead only show the group/version */}}
+<div class="mobile-show">{{.group}}/{{.version}}</div>

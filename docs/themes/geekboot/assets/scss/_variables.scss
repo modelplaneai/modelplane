@@ -1,0 +1,149 @@
+// stylelint-disable scss/dollar-variable-default
+
+//$bd-gutter-x: 3rem;
+$bd-callout-variants: info, warning, danger !default;
+$font-family-sans-serif:      "Inter", -apple-system, BlinkMacSystemFont, sans-serif !default;
+$font-family-monospace:       "DM Mono", "Fira Code", monospace !default;
+$line-height-base:            1.8 !default;
+$font-size-root:              16px !default;
+$font-size-base:              1.125rem !default;
+$body-font-size:              16px !default;
+
+
+// Grayscale palette. These are equivalent to varying opacities of the darkest shade over white (e.g. $fog-500 is the equivalent to $fog-1000 at 50% opacity over white).
+$fog-0:                     #FFFFFF !default;
+$fog-25:                    #F9F9F9 !default;
+$fog-50:                    #F3F3F3 !default;
+$fog-75:                    #ECEDED !default;
+$fog-100:                   #E5E5E5 !default;
+$fog-150:                   #DADCDC !default;
+$fog-200:                   #CECFCF !default;
+$fog-300:                   #B5B7B7 !default;
+$fog-400:                   #9DA0A0 !default;
+$fog-500:                   #848888 !default;
+$fog-600:                   #6C7070 !default;
+$fog-700:                   #535858 !default;
+$fog-800:                   #3B4141 !default;
+$fog-850:                   #2F3434 !default;
+$fog-900:                   #222828 !default;
+$fog-950:                   #161D1D !default;
+$fog-1000:                  #0A1111 !default;
+
+// Colored palettes. Spectrums gradually transition into white with numbers below "-500" and transition into $fog-1000 on numbers after "-500".
+
+// $Aqua-500 is the teal color pulled from the Crossplane popsicle logo. Aqua is the primary color hue to be used for actions.
+$aqua-25:                    #F5FDFB !default;
+$aqua-50:                    #EAFAF8 !default;
+$aqua-75:                    #E1F8F5 !default;
+$aqua-100:                   #D7F6F1 !default;
+$aqua-150:                   #C2F1EA !default;
+$aqua-200:                   #AEECE3 !default;
+$aqua-300:                   #86E3D6 !default;
+$aqua-400:                   #5DD9C8 !default;
+$aqua-500:                   #35D0BA !default;
+$aqua-600:                   #2CA998 !default;
+$aqua-700:                   #248477 !default;
+$aqua-800:                   #1B5D54 !default;
+$aqua-850:                   #174B44 !default;
+$aqua-900:                   #133833 !default;
+$aqua-950:                   #0E2422 !default;
+
+// $Grass-500 is the middle-point between $Aqua-500 and $Sun-500.
+$grass-25:                    #FCFEFB !default;
+$grass-50:                    #FAFDF8 !default;
+$grass-75:                    #F7FBF5 !default;
+$grass-100:                   #EBF5E5 !default;
+$grass-150:                   #F0F8EB !default;
+$grass-200:                   #D7ECCA !default;
+$grass-300:                   #C2E2B0 !default;
+$grass-400:                   #AED995 !default;
+$grass-500:                   #9ACF7B !default;
+$grass-600:                   #7DA965 !default;
+$grass-700:                   #608351 !default;
+$grass-800:                   #445D3B !default;
+$grass-850:                   #364B31 !default;
+$grass-900:                   #273727 !default;
+$grass-950:                   #19241C !default;
+
+// $Sun-500 is pulled from the Crossplane popsicle logo.
+$sun-25:                    #FFFCF5 !default;
+$sun-50:                    #FFFAEB !default;
+$sun-75:                    #FFF8E2 !default;
+$sun-100:                   #FFF5D8 !default;
+$sun-150:                   #FFF0C4 !default;
+$sun-200:                   #FFEBB1 !default;
+$sun-300:                   #FFE18A !default;
+$sun-400:                   #FFD763 !default;
+$sun-500:                   #FFCD3C !default;
+$sun-600:                   #CEA733 !default;
+$sun-700:                   #9D822B !default;
+$sun-800:                   #6C5C22 !default;
+$sun-850:                   #544A1E !default;
+$sun-900:                   #3B371A !default;
+$sun-950:                   #232415 !default;
+
+// $Tangerine-500 is the middle-point between $Sun-500 and $Salmon-500.
+$tangerine-25:                    #FFFCFB !default;
+$tangerine-50:                    #FEF6EE !default;
+$tangerine-75:                    #FEF8F3 !default;
+$tangerine-100:                   #FEEDDE !default;
+$tangerine-150:                   #FEF2E7 !default;
+$tangerine-200:                   #FDDBBE !default;
+$tangerine-300:                   #FBCA9D !default;
+$tangerine-400:                   #FAB87D !default;
+$tangerine-500:                   #F9A65C !default;
+$tangerine-600:                   #C9884D !default;
+$tangerine-700:                   #996B3E !default;
+$tangerine-800:                   #6A4C2F !default;
+$tangerine-850:                   #523E28 !default;
+$tangerine-900:                   #3A2F20 !default;
+$tangerine-950:                   #222018 !default;
+
+// $Salmon-500 is pulled from the Crossplane popsicle logo.
+$salmon-25:                    #FEF9F8 !default;
+$salmon-50:                    #FEF2F2 !default;
+$salmon-75:                    #FDECEB !default;
+$salmon-100:                   #FDE6E5 !default;
+$salmon-150:                   #FBD9D7 !default;
+$salmon-200:                   #FACCCA !default;
+$salmon-300:                   #F8B3B0 !default;
+$salmon-400:                   #F59995 !default;
+$salmon-500:                   #F3807B !default;
+$salmon-600:                   #C46965 !default;
+$salmon-700:                   #965451 !default;
+$salmon-800:                   #673D3B !default;
+$salmon-850:                   #503331 !default;
+$salmon-900:                   #392827 !default;
+$salmon-950:                   #221C1C !default;
+
+
+// Modelplane brand colors
+$mp-bg:           #070714 !default;
+$mp-bg-mid:       #0d0d1f !default;
+$mp-bg-card:      #0f0f22 !default;
+$mp-border:       rgba(255,255,255,0.07) !default;
+$mp-border-hi:    rgba(173,123,252,0.25) !default;
+$mp-purple:       #AD7BFC !default;
+$mp-purple-hi:    #C39EFD !default;
+$mp-cyan:         #22d3ee !default;
+$mp-green:        #34d399 !default;
+$mp-muted:        #8b8aae !default;
+$mp-muted-hi:     #b0afcc !default;
+
+$navbar-background-color:   #{$mp-bg} !default;
+$navbar-link-color:         #{$fog-0} !default;
+$navbar-link-color-hover:   #{$fog-200} !default;
+$navbar-link-font-size:     17px !default;
+$navbar-link-padding-left:  16px !default;
+$navbar-link-padding-right: 16px !default;
+$navbar-background:         #{$fog-1000} !default;
+
+$body-font-weight:          normal !default;
+$body-min-width:            20rem !default;
+$body-font-size:            18px !default;
+
+$color-admonition-background: transparent;
+
+:root {
+  font-size: $font-size-root;
+}

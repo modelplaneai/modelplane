@@ -1,0 +1,26 @@
+.latest {
+    background-color:  var(--latest-pill-background);
+    letter-spacing: .7px;
+    font-weight: 500;
+    color: var(--latest-pill-color);
+    margin-left: 5px;
+}
+
+.bd-dropdown {
+    color: var(--body-font-color);
+    background-color: var(--dropdown-background);
+}
+
+.bd-dropdown-item{
+    background-color: var(--dropdown-background);
+    color: var(--dropdown-color);
+
+    &.active, &:hover {
+        background-color: var(--dropdown-highlight);
+        color: var(--body-font-color);
+    }
+}
+
+.bd-border-color{
+    border-color: var(--dropdown-border-color);
+}

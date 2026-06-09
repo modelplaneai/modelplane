@@ -1,0 +1,18 @@
+<!-- 2000 is the maxium Hugo seq length -->
+{{ $randNum := index (seq 2000 | shuffle) 0 }}
+{{ $title := .Get 0 | default "Expand"}}
+{{ $id := (replaceRE "(\\s)" "" (printf "%s-%d" (anchorize $title) $randNum))  }}
+<div class="accordion mb-3" id="{{$id}}-Parent">
+  <div class="accordion-item">
+    <h2 class="accordion-header" id="{{$id}}">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#{{$id}}-Content" aria-expanded="false" aria-controls="{{$id}}-Content">
+        {{ $title }}
+      </button>
+    </h2>
+    <div id="{{$id}}-Content" class="accordion-collapse collapse" aria-labelledby="{{$id}}" data-bs-parent="#{{$id}}-Parent">
+      <div class="accordion-body rounded-bottom">
+        {{ .Inner | .Page.RenderString }}
+      </div>
+    </div>
+  </div>
+</div>

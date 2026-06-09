@@ -1,0 +1,47 @@
+{{ if .Page.Store.Get "hasMermaid" }}
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
+<script type="module">
+
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs';
+  document.addEventListener("DOMContentLoaded", setMermaidStyle());
+  document.addEventListener("DOMContentLoaded", colorModeListener());
+
+  function getMermaidConfig(){
+    var style = getComputedStyle(document.body)
+    var font = style.getPropertyValue("font-family")
+    var fontColor = style.getPropertyValue('--body-font-color')
+    var backgroundColor = style.getPropertyValue('--body-background')
+
+    var config = {
+      "theme": "base",
+      "fontFamily": font,
+      "themeVariables": {
+        "background": backgroundColor,
+        "textColor": fontColor,
+        }
+    }
+
+    return config
+  }
+
+  function setMermaidStyle(){
+    var config = getMermaidConfig()
+    mermaid.initialize( config )
+  }
+
+  function colorModeListener(){
+    darkSwitch.addEventListener("click", resetMermaidStyle())
+  }
+
+  function resetMermaidStyle(){
+    console.log("resetting")
+
+    var config = getMermaidConfig()
+    console.log(config)
+    mermaid.mermaidAPI.setConfig( config )
+    mermaid.mermaidAPI.reset()
+
+  }
+
+</script>
+{{ end }}

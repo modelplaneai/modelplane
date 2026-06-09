@@ -1,0 +1,8 @@
+{{- $rand_id := now.UnixNano -}}
+{{- if not (.Get "label") -}}
+{{- errorf "\n\nNo \"label\" element for {{< hover >}} tag on %s\n\n\n" .Position -}}
+{{- end -}}
+{{- if not (.Get "line") -}}
+{{- errorf "\n\nNo \"line\" number element for {{< hover >}} tag on %s \n\n\n" .Position -}}
+{{- end -}}
+<code><highlight-term id="{{$rand_id}}" data-label={{.Get "label" }} data-line={{.Get "line" }}>{{ .Inner }}</highlight-term></code>

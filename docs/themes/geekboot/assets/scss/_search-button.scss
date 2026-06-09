@@ -1,0 +1,246 @@
+@include media-breakpoint-down(lg) {
+
+    .search-icon {
+        right: initial !important;
+    }
+
+    .DocSearch-Button2 {
+        .searchLabel {
+            .thedocs{
+                display: none;
+            }
+        }
+    }
+
+    .search-container {
+        padding-right: 1.5rem !important;
+    }
+}
+
+.docsearch {
+
+    min-height: 36px;
+    .DocSearch-Button2 {
+
+        font-size: 1rem;
+        font-weight: initial;
+        box-shadow: initial !important;
+        &:active,
+        &:focus,
+        &:hover {
+            border-color: #{$sun-500};
+        }
+    }
+
+    .DocSearch-Button {
+        display: flex !important;
+
+        /* In order to get the buttons to render like Bootstrap buttons
+        the following just copies all the styles of the desired button and
+        overrides the Algolia generated button. */
+        &:active,
+        &:focus,
+        &:hover {
+            border-color: #{$sun-500};
+            color: var(--bs-btn-hover-color);
+            background-color: var(--bs-btn-hover-bg);
+        }
+        --docsearch-primary-color: #5468ff;
+        --docsearch-text-color: #1c1e21;
+        --docsearch-spacing: 12px;
+        --docsearch-icon-stroke-width: 1.4;
+        --docsearch-highlight-color: var(--docsearch-primary-color);
+        --docsearch-muted-color: #969faf;
+        --docsearch-container-background: rgba(101,108,133,0.8);
+        --docsearch-logo-color: #5468ff;
+        --docsearch-modal-width: 560px;
+        --docsearch-modal-height: 600px;
+        --docsearch-modal-background: #f5f6f7;
+        --docsearch-modal-shadow: inset 1px 1px 0 0 hsla(0,0%,100%,0.5),0 3px 8px 0 #555a64;
+        --docsearch-searchbox-height: 56px;
+        --docsearch-searchbox-background: #ebedf0;
+        --docsearch-searchbox-focus-background: #fff;
+        --docsearch-searchbox-shadow: inset 0 0 0 2px var(--docsearch-primary-color);
+        --docsearch-hit-height: 56px;
+        --docsearch-hit-color: #444950;
+        --docsearch-hit-active-color: #fff;
+        --docsearch-hit-background: #fff;
+        --docsearch-hit-shadow: 0 1px 3px 0 #d4d9e1;
+        --docsearch-key-gradient: linear-gradient(-225deg,#d5dbe4,#f8f8f8);
+        --docsearch-key-shadow: inset 0 -2px 0 0 #cdcde6,inset 0 0 1px 1px #fff,0 1px 2px 1px rgba(30,35,90,0.4);
+        --docsearch-footer-height: 44px;
+        --docsearch-footer-background: #fff;
+        --docsearch-footer-shadow: 0 -1px 0 0 #e0e3e8,0 -3px 6px 0 rgba(69,98,155,0.12);
+        --bs-blue: #0d6efd;
+        --bs-indigo: #6610f2;
+        --bs-purple: #6f42c1;
+        --bs-pink: #d63384;
+        --bs-red: #dc3545;
+        --bs-orange: #fd7e14;
+        --bs-yellow: #ffc107;
+        --bs-green: #198754;
+        --bs-teal: #20c997;
+        --bs-cyan: #0dcaf0;
+        --bs-black: #000;
+        --bs-white: #fff;
+        --bs-gray: #6c757d;
+        --bs-gray-dark: #343a40;
+        --bs-gray-100: #f8f9fa;
+        --bs-gray-200: #e9ecef;
+        --bs-gray-300: #dee2e6;
+        --bs-gray-400: #ced4da;
+        --bs-gray-500: #adb5bd;
+        --bs-gray-600: #6c757d;
+        --bs-gray-700: #495057;
+        --bs-gray-800: #343a40;
+        --bs-gray-900: #212529;
+        --bs-primary: #0d6efd;
+        --bs-secondary: #6c757d;
+        --bs-success: #198754;
+        --bs-info: #0dcaf0;
+        --bs-warning: #ffc107;
+        --bs-danger: #dc3545;
+        --bs-light: #f8f9fa;
+        --bs-dark: #212529;
+        --bs-primary-rgb: 13, 110, 253;
+        --bs-secondary-rgb: 108, 117, 125;
+        --bs-success-rgb: 25, 135, 84;
+        --bs-info-rgb: 13, 202, 240;
+        --bs-warning-rgb: 255, 193, 7;
+        --bs-danger-rgb: 220, 53, 69;
+        --bs-light-rgb: 248, 249, 250;
+        --bs-dark-rgb: 33, 37, 41;
+        --bs-white-rgb: 255, 255, 255;
+        --bs-black-rgb: 0, 0, 0;
+        --bs-body-color-rgb: 33, 37, 41;
+        --bs-body-bg-rgb: 255, 255, 255;
+        --bs-font-sans-serif: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        --bs-font-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --bs-body-font-family: var(--bs-font-sans-serif);
+        --bs-body-font-size: 1rem;
+        --bs-body-font-weight: 400;
+        --bs-body-line-height: 1.5;
+        --bs-body-color: #212529;
+        --bs-body-bg: #fff;
+        --bs-border-width: 1px;
+        --bs-border-style: solid;
+        --bs-border-color: #dee2e6;
+        --bs-border-color-translucent: rgba(0, 0, 0, 0.175);
+        --bs-border-radius: 0.375rem;
+        --bs-border-radius-sm: 0.25rem;
+        --bs-border-radius-lg: 0.5rem;
+        --bs-border-radius-xl: 1rem;
+        --bs-border-radius-2xl: 2rem;
+        --bs-border-radius-pill: 50rem;
+        --bs-link-color: #0d6efd;
+        --bs-link-hover-color: #0a58ca;
+        --bs-code-color: #d63384;
+        --bs-highlight-bg: #fff3cd;
+        color-scheme: light dark;
+        --body-background: white;
+        --body-font-color: rgba(52, 58, 64, 1);
+        --content-link-color: #0a539a;
+        --anchor-link-color: #6d7a86;
+        --code-background: #e9ecef;
+        --code-color: #505a72;
+        --nav-tab-background-color: var(--body-background);
+        --active-tab-color: #f3807b;
+        --inactive-tab-hover-color: #37ccb7;
+        --nav-highlight-color: rgba(80,90,114, .1);
+        --dropdown-highlight: var(--nav-highlight-color);
+        --dropdown-background: var(--body-background);
+        --latest-pill-background: #f3807b;
+        --latest-pill-color: #141414;
+        --dropdown-color: var(--body-font-color);
+        --dropdown-border-color: #b2bac1;
+        --toc-font-color: #6b7884;
+        --toc-mobile-menu-outline: #ffcd3c;
+        --toc-mobile-menu-background: #f8f9fa;
+        --hint-important: rgba(255, 145, 0, 1);
+        --hint-important-background: rgba(255, 145, 0, .1);
+        --hint-warning: rgba(255, 82, 82, 1);
+        --hint-warning-background: rgba(255, 82, 82, .1);
+        --hint-tip: rgba(0,200,82,1);
+        --hint-tip-background: rgba(0,200,82,.1);
+        --hint-note: rgba(0,176,255,1);
+        --hint-note-background: rgba(0,176,255,.1);
+        --code-block-background-color: #19212C;
+        --code-line-numbers-background-color: #151c25;
+        -webkit-text-size-adjust: 100%;
+        -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+        -webkit-font-smoothing: antialiased;
+        --bs-offcanvas-zindex: 1045;
+        --bs-offcanvas-width: 400px;
+        --bs-offcanvas-padding-x: 1rem;
+        --bs-offcanvas-padding-y: 1rem;
+        --bs-offcanvas-color: ;
+        --bs-offcanvas-bg: #fff;
+        --bs-offcanvas-border-color: var(--bs-border-color-translucent);
+        --bs-offcanvas-box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        --bs-offcanvas-height: auto;
+        --bs-offcanvas-border-width: 0;
+        --bs-gutter-x: 1.5rem;
+        --bs-gutter-y: 0;
+        box-sizing: border-box;
+        margin: 0;
+        text-transform: none;
+        -webkit-appearance: button;
+        flex-shrink: 0;
+        width: 100%;
+        max-width: 100%;
+        margin-top: var(--bs-gutter-y);
+        --bs-btn-padding-x: 0.75rem;
+        --bs-btn-padding-y: 0.375rem;
+        --bs-btn-font-family: ;
+        --bs-btn-font-size: 1rem;
+        --bs-btn-font-weight: 400;
+        --bs-btn-line-height: 1.5;
+        --bs-btn-bg: transparent;
+        --bs-btn-border-width: 1px;
+        --bs-btn-border-radius: 0.375rem;
+        --bs-btn-box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 1px rgba(0, 0, 0, 0.075);
+        --bs-btn-disabled-opacity: 0.65;
+        --bs-btn-focus-box-shadow: 0 0 0 0.25rem rgba(var(--bs-btn-focus-shadow-rgb), .5);
+        font-family: var(--bs-btn-font-family);
+        text-decoration: none;
+        user-select: none;
+        border: var(--bs-btn-border-width) solid var(--bs-btn-border-color);
+        transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        --bs-btn-color: #6c757d;
+        --bs-btn-border-color: #6c757d;
+        --bs-btn-hover-color: #fff;
+        --bs-btn-hover-bg: #6c757d;
+        --bs-btn-hover-border-color: #6c757d;
+        --bs-btn-focus-shadow-rgb: 108, 117, 125;
+        --bs-btn-active-color: #fff;
+        --bs-btn-active-bg: #6c757d;
+        --bs-btn-active-border-color: #6c757d;
+        --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+        --bs-btn-disabled-color: #6c757d;
+        --bs-btn-disabled-bg: transparent;
+        --bs-btn-disabled-border-color: #6c757d;
+        --bs-gradient: none;
+        --bs-badge-padding-x: 0.65em;
+        --bs-badge-padding-y: 0.35em;
+        --bs-badge-font-size: 0.75em;
+        --bs-badge-font-weight: 700;
+        --bs-badge-color: #fff;
+        --bs-badge-border-radius: 0.375rem;
+        display: inline-block;
+        padding: var(--bs-badge-padding-y) var(--bs-badge-padding-x);
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: baseline;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        border-radius: var(--bs-border-radius-pill) !important;
+        line-height: 1.5;
+        color: var(--body-font-color);
+        background-color: var(--dropdown-background);
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: initial;
+        box-shadow: initial !important;
+
+    }
+}

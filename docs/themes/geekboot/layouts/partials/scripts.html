@@ -1,0 +1,21 @@
+{{ $js := resources.Get (index (index .Site.Data.assets "main.js") "src" | relURL) }}
+<script src="{{ $js.Permalink }}" data-no-instant></script>
+{{- $jsmap := resources.Get (printf "%s.map" (index (index .Site.Data.assets "main.js") "src")) -}}
+{{- $jsmap.Publish -}}
+
+{{ if eq hugo.Environment "production" -}}
+    {{ partialCached "analytics" . }}
+{{ end }}
+
+<script src="https://cdn.jsdelivr.net/npm/@docsearch/js@3"></script>
+<script>
+
+    docsearch({
+    container: '#docSearch',
+    appId: '9UXKYX61NK',
+    indexName: 'crossplane',
+    apiKey: 'e07e181044d561f6a4cb7261931d980a',
+    placeholder: 'Search the docs'
+    });
+
+</script>

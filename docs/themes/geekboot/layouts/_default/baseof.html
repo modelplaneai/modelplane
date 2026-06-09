@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"
+class="color-toggle-hidden"
+color-theme="dark">
+  <head>
+    {{ partial "header" . }}
+  </head>
+  {{ block "body_override" . }}<body>{{ end }}
+    {{ partialCached "icons" . }}
+    {{ partialCached "docs-navbar" . .IsHome }}
+    {{ block "main" . }}
+    {{ end }}
+    {{ partialCached "footer" . }}
+    {{ partialCached "scripts" . }}
+  </body>
+</html>

@@ -1,0 +1,21 @@
+{{ partialCached "meta-common" . }}
+<meta name="description" content="{{ .Page.Params.description | default .Site.Params.description | markdownify }}">
+<meta property="og:url" content="{{ .Permalink }}" />
+{{if not .Page.IsHome }}
+    <meta name="docsearch:modified" content='{{printf "%s" (.Page.Lastmod | time.Format ":date_long") }}' />
+{{ end }}
+<title>
+    {{- if .IsHome -}}
+        {{- .Site.Title | markdownify }} · {{ .Site.Params.subtitle | markdownify }}
+    {{- else -}}
+        {{- .Title | markdownify }} · {{ .Site.Title | markdownify }}
+    {{- end -}}
+</title>
+<link rel="canonical" href="{{ .Permalink }}">
+{{ partialCached "stylesheet-cached" . }}
+{{ partial "stylesheet-dynamic" . }}
+{{ partialCached "favicons" . }}
+{{ partial "social" . }}
+{{ with .OutputFormats.Get "rss" -}}
+  {{ printf `<link rel=%q type=%q href=%q title=%q>` .Rel .MediaType.Type .Permalink site.Title | safeHTML }}
+{{ end }}

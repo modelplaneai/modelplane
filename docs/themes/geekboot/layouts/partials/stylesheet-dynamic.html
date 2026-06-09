@@ -1,0 +1,9 @@
+{{ $style := false }}
+{{ $sassOptions := (dict "outputStyle" "expanded" "precision" 6 "enableSourceMap" true ) }}
+
+{{ if eq hugo.Environment "production" -}}
+  {{ $style = resources.Get "scss/docs.scss" | toCSS $sassOptions | css.PostCSS | fingerprint | resources.PostProcess }}
+{{ else }}
+  {{ $style = resources.Get "scss/docs.scss" | toCSS $sassOptions | fingerprint  }}
+{{ end }}
+<link href="{{ $style.Permalink}}" rel="stylesheet">

@@ -1,0 +1,28 @@
+{{ $tab_ids := .Scratch.Get "ids" }}
+{{ $tab_names := .Scratch.Get "names" }}
+{{ $first_tab := true }}
+{{ $counter := 0 }}
+<!-- 2000 is the maxium Hugo seq length -->
+{{ $ariaId := index (seq 2000 | shuffle) 0 }}
+
+<ul class="nav nav-tabs" id="{{$ariaId}}" role="tablist">
+
+  {{ range (seq (len $tab_names)) }}
+  {{ $id := index $tab_ids $counter }}
+  {{ $name := index $tab_names $counter }}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {{if $first_tab }} active {{ end }} "
+    id="tab-{{$id}}"
+    data-bs-toggle="tab"
+    data-bs-target="#tab-pane-{{$id}}"
+    type="button"
+    role="tab"
+    aria-controls="tab-pane-{{$id}}" aria-selected="false">{{ $name }}</button>
+    {{ $first_tab = false }}
+    {{ $counter = (add $counter 1) }}
+  </li>
+  {{ end }}
+</ul>
+<div class="tab-content" id="Content-{{$ariaId}}">
+  {{ .Inner }}
+</div>

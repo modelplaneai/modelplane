@@ -1,4 +1,9 @@
-# Getting started
+---
+title: Your first voyage
+weight: 10
+description: Get started with Modelplane
+---
+
 
 This guide walks through deploying Modelplane on a local kind cluster and using
 it to serve a model on GKE. By the end you'll have a working OpenAI-compatible

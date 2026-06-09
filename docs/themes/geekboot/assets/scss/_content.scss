@@ -1,0 +1,185 @@
+//
+// Bootstrap docs content theming
+//
+
+body {
+  letter-spacing: 0.33px;
+  scroll-behavior: smooth;
+}
+
+.bd-content {
+  font-size: $body-font-size;
+  line-height: 1.5em;
+
+  code {
+    background-color: var(--code-background);
+    color: var(--code-color);
+    padding: 0.2em 0.4em;
+  }
+
+  a {
+    text-decoration: none;
+    color: var(--content-link-color);
+
+    &:hover, code{
+      text-decoration: underline !important;
+      color: var(--content-link-color);
+    }
+
+    &:visited {
+      color: var(--content-link-color);
+    }
+
+  }
+
+  // Offset content from fixed navbar when jumping to headings
+  & :target {
+    padding-top: 5rem;
+    margin-top: -5rem;
+  }
+
+
+}
+
+.bd-title {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 2.75rem;
+  margin-top: 0px !important;
+}
+
+
+.bi {
+  width: 1em;
+  height: 1em;
+  fill: currentcolor;
+}
+
+blockquote {
+  border-left: 3px solid var(--dropdown-border-color) !important;
+  padding-left: 1rem !important;
+  background: var(--nav-highlight-color) !important;
+  line-height: 1.5rem;
+  font-size: 1rem
+}
+
+h1,h2,h3,h4,h5,h6 {
+  padding-top: 1rem;
+  font-weight: 900;
+  line-height: 1.25;
+
+  &.accordion-header {
+    padding-top: 0 !important;
+  }
+}
+// H1s when manually added
+h1 {
+  margin-top: 3rem;
+  margin-bottom: 1.5rem !important;
+  font-size: 2rem !important;
+}
+// Section titles
+h2 {
+  margin-top: 3rem !important;
+  margin-bottom: 1.5rem !important;
+  font-size: 1.5rem !important;
+}
+h2.accordion-header {
+  margin-top: 0px !important;
+  margin-bottom: 0px !important;
+}
+// Subhead titles
+h3, h4, h5, h6 {
+  margin-top: 2.5rem !important;
+  margin-bottom: 1.25rem !important;
+  font-size: 1.25rem !important;
+}
+.d-none.d-md-block.h6.my-2 {
+  margin-top: 0px !important;
+}
+
+// These accordion stylings do not apply correctly when in _accordion
+.accordion-button {
+  font-weight: 900;
+}
+.accordion-item {
+  border-width: 2px;
+}
+// Improve spacing and top-border on open Bootstrap accordions
+.accordion-body > .highlight {
+  margin: 0px !important;
+}
+
+// Tables
+.table {
+  border-radius: 6px;
+  border-collapse: separate;
+  border-spacing: 0px;
+  margin-bottom: 0px !important;
+}
+
+.table-responsive {
+  margin-bottom: 1rem;
+  border: 1px solid #{$fog-200};
+  background-color: var(--body-background) !important;
+  color: var(--body-font-color);
+}
+
+// Hide bottom borders and wider padding for header items
+.table th {
+  border-bottom: none;
+  padding-left: 24px;
+  padding-right: 24px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+// Add only top borders and wider padding for content items
+.table td {
+  border-bottom: none;
+  padding-left: 24px;
+  padding-right: 24px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-top: 1px solid #{$fog-300};
+}
+// Decrease padding for small tables
+.table.table-sm th {
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.table.table-sm td {
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.table a{
+  color: var(--content-link-color);
+}
+
+// Color theme toggle
+.form-check-input:checked {
+  background-color: #{$mp-purple};
+  border-color: #{$mp-purple};
+}
+
+.ga-tag{
+  color: var(--toc-font-color);
+
+}
+
+.rn-summary-meta,.rn-page-meta{
+  margin-top: -1.5rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.rn-title, .rn-body>h3,h4,h5 {
+  margin-top: 0 !important;
+}
+
+.rss-icon {
+  fill: var(--rss-icon-fill);
+}

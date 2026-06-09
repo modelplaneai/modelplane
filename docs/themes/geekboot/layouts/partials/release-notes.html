@@ -1,0 +1,23 @@
+{{ range .Pages.Reverse }}
+    {{ if ne .Title "Docs Changelog" }}
+    {{ if not .Page.Params.released }}
+        {{ errorf (printf "Release Notes Page %q requires 'released' Front Matter." .Page.File.Path ) }}
+    {{ end }}
+    {{ if not .Title }}
+        {{ errorf (printf "Release Notes Page %q requires 'title' Front Matter." .Page.File.Path ) }}
+    {{ end }}
+    <div class="rn-container pb-3">
+        <h2 class="rn-title">{{ .Title}}</h2>
+
+        <div class="rn-summary-meta">
+        Released: {{ .Page.Params.released }} -
+        <a href="https://github.com/crossplane/crossplane/releases/tag/{{.Title}}">GitHub</a>
+        </div>
+
+        <div class="rn-body ps-3">
+        {{ .Summary | markdownify }}
+        <a href="{{.Permalink}}">Full {{.Title}} release notes</a>
+        </div>
+    </div>
+    {{ end }}
+{{ end }}

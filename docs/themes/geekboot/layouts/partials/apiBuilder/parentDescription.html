@@ -1,0 +1,10 @@
+{{/* Print the description for the top level CRD element. */}}
+{{ $group := .spec.group }}
+{{ $kind  := .spec.names.kind  }}
+{{ $version := .version }}
+{{ $bigName := partial "apiBuilder/checkBigName" $kind }}
+
+{{/* bigName-reset prevents the description from expanding into the x-scroll */}}
+<div class="description bigName-reset">
+    {{ .description | markdownify}}</div>
+</div>

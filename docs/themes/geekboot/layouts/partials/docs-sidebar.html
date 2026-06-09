@@ -1,0 +1,45 @@
+{{ $current := . }}
+
+<nav class="bd-links-nav w-100" aria-label="Docs navigation">
+  {{ with .Site.GetPage "section" .Section }}
+    {{ $sectionPages := (.Pages | append .) }}
+    {{ range $sectionPages.ByWeight }}
+      {{ $expand := (eq $current .) }}
+      {{ $expand = (and (eq $current.CurrentSection .) (ne .FirstSection .)) }}
+      {{ $id := substr (sha1 .Permalink) 0 8 }}
+
+      {{ if not .Page.Params.tocHidden }}
+        <div class="section-container container pe-0 pt-1">
+          <div class="container nav-container pe-0 d-flex w-100 {{if eq . $current}}active{{ else if $expand }}active-parent{{end}}">
+            <a class="d-flex w-100 border-0" href="{{.Permalink}}">{{ .Title }} </a>
+            {{ if and .IsSection (ne .FirstSection .) }}
+              {{/* Don't put an expand icon on pages that aren't sections or the section index */}}
+              <div class="d-flex flex-shrink-1 sidebar-control-container align-self-center">
+                <input type="checkbox" class="d-flex sidebar-checkbox" {{if $expand}}checked{{ end }} aria-label="Close or Expand {{.Title}} Section" />
+                <label for="collapse-{{$id}}" class="sidebar-label {{if not $expand}} collapsed {{ end }}" data-bs-toggle="collapse" data-bs-target="#collapse-{{$id}}" aria-expanded="false" aria-label="Close or Expand {{.Title}} Section">
+                  <svg class="flex bi sidebar-icon plus" ><use xlink:href="#plus"></use></svg>
+                  <svg class="flex bi sidebar-icon x " ><use xlink:href="#x"></use></svg>
+                </label>
+              </div>
+            {{ end }}
+          </div>
+          {{ if ne .FirstSection . }}
+            {{ range .Pages }}
+              {{ if not .Page.Params.tocHidden }}
+                <div class="container flex-row collapse {{if $expand}} show {{ end }}" id="collapse-{{$id }}">
+                  <div class="d-flex flex-column">
+                    <a class="bd-links d-flex {{if eq $current . }}active{{end}}" href="{{ .Permalink }} ">{{.Title }}</a>
+                  </div>
+                </div>
+              {{ end }}
+            {{ end }}
+          {{ end }}
+        </div>
+      {{ end }}
+    {{ end }}
+  {{ end }}
+
+  {{ if not ($.Param "docs") }}
+    {{ partialCached "sidebar/user-docs" . }}
+  {{ end }}
+</nav>

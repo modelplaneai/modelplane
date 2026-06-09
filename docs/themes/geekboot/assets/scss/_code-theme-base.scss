@@ -1,0 +1,106 @@
+@mixin code-theme-base {
+
+  .language-shell :first-child .cl::before{
+      content: "$ "
+  }
+
+  // Style for highlighted lines when hovering over copy button
+  .copyHover {
+    background-color: #{$fog-800};
+  }
+
+  // Code box div
+  .highlight {
+    overflow-x: auto;
+    width: 100% !important;
+    background-color: var(--code-block-background-color);
+    display: flex !important;
+    margin-top: 1rem; // prevent boxes from running together
+    margin-bottom: 1rem;
+
+    [contentEditable=true]:empty:before{
+      content:attr(data-default);
+    }
+
+
+    [contentEditable=true]:empty:focus:before{
+      color:#ddd;
+    }
+
+    // Color edit icon
+    .text-white {
+      fill: #{$fog-300};
+    }
+
+    :target{
+      margin-top: 0;
+      padding-top: 0;
+    }
+
+      // Clipboard div
+    .bd-clipboard{
+
+      background-color: var(--code-block-background-color);
+      display: flex !important;
+      padding-right: 10px;
+
+      .btn-clipboard{
+        border: 0;
+        color: #{$fog-300};
+        background-color: inherit;
+        &:hover {
+          color: #{$fog-0};
+        }
+      }
+    }
+
+
+    //.highlight.chroma is applied to the entire code block div and the line number and
+    // code pre elements.
+    .chroma {
+      width: 100%;
+      font-size: .95rem !important;
+      line-height: 1.45em;
+      display: flex !important;
+      background-color: var(--code-block-background-color);
+      margin-bottom: 0;
+      padding-bottom: .5rem;
+      padding-top: .5rem;
+
+      code {
+        color: #f8f9fa;   // Code color if there is no defined highlighter style
+        background-color: var(--code-block-background-color);
+
+        .line {
+          @include media-breakpoint-down(lg){
+            padding-bottom: 3px;
+            padding-top: 3px;
+          }
+        }
+        // Line numbers
+        .ln {
+          background-color: var(--code-line-numbers-background-color);
+          border-right: 1px solid #505a72;
+
+           // Line number anchors
+          a {
+            color: var(--code-line-number-color);
+            scroll-margin-top: 90px;
+            &:hover{
+              // text-decoration: none !important;
+              color: #fff;
+              font-weight: 800;
+              text-decoration: none !important;
+            }
+        }
+        }
+
+        // code line
+        .cl {
+          padding-left: 1rem;
+        }
+      }
+
+    }
+  }
+}

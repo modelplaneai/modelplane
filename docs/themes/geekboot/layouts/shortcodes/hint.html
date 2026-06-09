@@ -1,0 +1,18 @@
+{{- $cssClass := .Get 0 | lower | default "tip" -}}
+
+{{ $icons := dict
+  "tip" "#check"
+  "note" "#info"
+  "important" "#exclamation"
+  "warning" "#fire" }}
+
+<div class="admonition {{$cssClass}} d-flex flex-column mx-4 p-0">
+  <div class="admonition-title">
+    <svg class="bi flex-shrink-0" role="img" aria-label="{{$cssClass}}:"><use
+    xlink:href="{{index $icons $cssClass }}"/></svg>
+    <span class="ps-1">{{ $cssClass | humanize}}</span>
+  </div>
+  <div class="admonition-content">
+    {{ .Inner | .Page.RenderString }}
+  </div>
+</div>

@@ -1,0 +1,20 @@
+{{/* Print the page header with the sort buttons  */}}
+<!-- Kind | Group | Version | Expand | Collapse header -->
+<div class="row crd-header-row bigName-row" id="crd-header-row">
+    <div class="col col-xl-4 col-8 sortable" onclick="sortIt('kind')">
+        <span data-sort="kind">Kind</span>
+        <span class="kind-sort sort-icon sort-icon-down d-none"></span>
+        <span class="kind-sort sort-icon sort-icon-up d-none"></span>
+    </div>
+    <div class="col col-lg-4 mobile-hidden sortable" onclick="sortIt('group')">
+        <span data-sort="group">Group/Version</span>
+        <span class="group-sort sort-icon sort-icon-down d-none"></span>
+        <span class="group-sort sort-icon sort-icon-up d-none"></span>
+    </div>
+    <div class="col col-2 expand-link mobile-hidden text-truncate" onclick="showAll('all')">
+        <a href="#">Expand All</a>
+    </div>
+    <div class="col col-2 collapse-link mobile-hidden text-truncate" onclick="hideAll('all')">
+        <a href="#">Collapse All</a>
+    </div>
+</div>

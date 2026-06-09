@@ -1,0 +1,83 @@
+// Modelplane visual overrides
+
+// Grid-line background (matches website)
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 80px 80px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+// Lift content above the grid
+.docs-navbar,
+.bd-layout,
+.bd-footer {
+  position: relative;
+  z-index: 1;
+}
+
+// Sidebar active border uses purple
+.bd-links-nav {
+  .nav-container, .bd-links {
+    &.active-parent {
+      border-left-color: #{$mp-purple} !important;
+    }
+    &:hover, &.active {
+      border-left-color: #{$mp-purple} !important;
+    }
+  }
+}
+
+// Inline code uses purple-tinted bg
+.bd-content code {
+  background-color: rgba(173,123,252,0.12);
+  color: #{$mp-purple-hi};
+  border-radius: 4px;
+}
+
+// Heading link anchors
+.bd-content h2,
+.bd-content h3,
+.bd-content h4 {
+  color: inherit;
+}
+
+// Table border uses mp-border
+.table-responsive {
+  border-color: #{$mp-border} !important;
+}
+.table td {
+  border-top-color: #{$mp-border} !important;
+}
+
+// Dark mode color-theme toggle thumb
+.form-check-input:checked {
+  background-color: #{$mp-purple} !important;
+  border-color: #{$mp-purple} !important;
+}
+
+// Page title
+.bd-title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+// Footer simplified
+.bd-footer {
+  background: #{$mp-bg} !important;
+  color: #{$mp-muted};
+
+  p, .footer-link {
+    color: #{$mp-muted} !important;
+    font-size: 13px;
+  }
+
+  a.footer-link:hover {
+    color: #ffffff !important;
+    opacity: 1;
+  }
+}

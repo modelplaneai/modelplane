@@ -1,0 +1,117 @@
+{{/* Recursively process the "spec" portion of a CRD */}}
+{{/* Required parameters:
+    - "key" representing the kind (yaml key)
+    - "contents" representing all child yaml content of "key"
+    - "page" is the current context (The . value)
+    - "kind" is a hyphenated complete string of the kind, for example CompositeResourceDefinition-spec-claimNames-plural
+    - "descDir" is the Hugo data object of all the remaining YAML to process.
+*/}}
+
+
+{{/* identify the element for collapsables */}}
+{{ $elemID := (printf "%s-%s" .kind .key) }}
+
+{{/* make field access easier */}}
+{{ $contentFields := partial "apiBuilder/getSpecFields" .contents }}
+
+{{/* data types for styling */}}
+{{ $dataTypeStyle := $contentFields.dataTypeStyle }}
+{{ $dataType := $contentFields.dataType }}
+
+{{/* The inner "properties", if it exists */}}
+{{ $properties := $contentFields.properties }}
+
+{{/* Is this field an enum? */}}
+{{ $enum := false }}
+
+
+{{ partial "apiBuilder/specCollapseButtonStart" (dict "elemID" $elemID "key" .key) }}
+
+
+{{/* Check if the type is `enum` or `oneOf`/`allOf` */}}
+{{ $isEnum := partial "apiBuilder/isEnum" .contents }}
+
+{{/* Print the correct data type tag */}}
+{{ if $isEnum }}
+    {{/* enum fields handle "oneOf" type data lists */}}
+    {{ partial "apiBuilder/enumHandler" .contents }}
+{{ else }}
+    <span class="dataType {{ $dataTypeStyle }} align-middle">{{ $dataType }}</span>
+{{ end }}
+
+{{/* Add the "Required" tag if necessary */}}
+{{if .required }}
+    <span class="dataType required align-middle">required</span>
+{{ end }}
+
+{{ partial "apiBuilder/specCollapseButtonEnd" (dict "elemID" $elemID "page" .page) }}
+
+{{/* The container to show/hide with information related to the CRD */}}
+<div class="collapse crd-expand expand-buttons {{.rootKind}}" id="{{ $elemID }}">
+
+    <div class="description bigName-reset">
+
+        {{/* If the `default` value is set inside the CRD, print it */}}
+        {{ if isset .contents "default" }}
+            <div class="default mb-1">
+                <i>Default: <code>{{.contents.default}}</code></i>
+            </div>
+        {{ end}}
+
+        {{ $contentFields.description | markdownify }}
+
+    </div>
+
+
+    <div class="crd-children align-middle">
+        {{/* Assignments to maintain variable scoping in the 'range' block */}}
+        {{ $descDir := .descDir }}
+        {{ $key := .key }}
+
+
+        {{/*
+            An example YAML structure to process.
+            spec:
+            description: ...
+            properties:
+              compositeTypeRef:
+                description: ...
+                properties:
+                  apiVersion:
+                    description: ...
+                  kind:
+                    description: ...
+                    type: string
+              environment:
+                description: ...
+                properties:
+                  defaultData:
+                    additionalProperties: ...
+                    description: ...
+        */}}
+
+        {{/*
+            Starting at a key, e.g., 'spec', look for the child key "properties".
+            Iterate over all the keys (compositeTypeRef, environment) and their contents,
+            processing any inner 'properties' through this same processSpec partial.
+
+            If a key doesn't have a 'properties' field Hugo ignores the recursion.
+        */}}
+        {{ $requiredKeys := .contents.required }}
+        {{ range $innerKey, $contents := $properties }}
+
+            {{/*
+                - key = $innerKey to process the next element
+                - contents = $contents, the contents of the $innerKey element
+                - page = ., the current context
+                - kind = $elemID, the updated hyphenated string of the kind path
+                - required = $required, the list of required elements at this level
+            */}}
+            {{ $required := (in $requiredKeys $innerKey) }}
+            {{ partial "apiBuilder/processSpec" (dict "key" $innerKey "contents" $contents "page" . "kind" $elemID "required" $required) }}
+        {{ end }}
+    </div>
+
+
+    </div>
+</div>

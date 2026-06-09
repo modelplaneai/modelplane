@@ -1,0 +1,157 @@
+@mixin dark-mode {
+    // body and content
+    --body-background: #{$mp-bg};
+    --body-font-color: #ffffff;
+    --content-link-color: #{$mp-purple-hi};
+    --anchor-link-color: #{$mp-muted};
+    --rss-icon-fill: #{$mp-purple};
+
+    // Single code lines inside text. Code blocks are in _code_theme_dark.scss
+    --code-background: rgba(255,255,255,0.07);
+    --code-line-number-color: #{$mp-cyan};
+
+    //Tabs
+    --nav-tab-background-color: var(--body-background);
+    --active-tab-color: #{$mp-purple};
+    --inactive-tab-hover-color: #ffffff;
+
+    // Sidebar nav
+    --nav-highlight-color: rgba(173,123,252,0.08);
+    --btn-close-color: #ffffff;
+    --btn-close-filter: invert(1);
+
+    //Dropdown
+    --dropdown-highlight: #{$mp-bg-mid};
+    --dropdown-background: #{$mp-bg-card};
+    --latest-pill-background: rgba(173,123,252,0.15);
+    --latest-pill-color: #{$mp-purple-hi};
+    --dropdown-color: var(--body-font-color);
+    --dropdown-border-color: #{$mp-border};
+
+    //Right-side table of contents
+    --toc-font-color: #{$mp-muted};
+    --toc-mobile-menu-outline: #{$mp-border};
+    --toc-mobile-menu-background: #{$mp-bg};
+
+    //hint boxes
+    --hint-important:       #{$tangerine-600}; //"exclamation",
+    --hint-important-background: #{$tangerine-850};
+
+    --hint-warning:         #{$salmon-600}; //"fire",
+    --hint-warning-background: #{$salmon-850};
+
+    --hint-tip:             #{$grass-600}; //"check",
+    --hint-tip-background: #{$grass-850};
+
+    --hint-note:            #{$fog-600}; //"info",
+    --hint-note-background:  #{$fog-850};
+
+    //Search Related
+    --search-box-background: var(--body-background);
+    --result-path: var(--body-background);
+
+    // API Page
+    --sort-up: url("/img/sort-up-light.svg");
+    --sort-down: url("/img/sort-down-light.svg");
+    --expand-box-background: #{$mp-bg-card};
+    --minus-svg: url("/img/minus-white.svg");
+    --plus-svg: url("/img/plus-150.svg");
+    --crd-header-color: #{$mp-muted};
+    --crd-row-border: #{$mp-border};
+    --crd-description-color: #{$mp-muted};
+    --link-icon-fill: #{$mp-muted};
+
+    --required-color: #{$fog-1000};
+    --required-background: #{$fog-200};
+
+    --string-color: #{$grass-300};
+    --string-border: #{$grass-300};
+
+    --object-color: #{$tangerine-300};
+    --object-border-color: #{$tangerine-300};
+
+    --boolean-color: #{$sun-300};
+    --boolean-border-color: #{$sun-300};
+
+    --integer-color: #{$salmon-300};
+    --integer-border-color: #{$salmon-300};
+
+    --enumDefault-color: #{$fog-400};
+
+    // Override Bootstrap accordion colors in the body
+    .accordion {
+        --bs-accordion-border-color: #{$fog-500};
+        --bs-accordion-active-bg: #{$fog-1000};
+        --bs-accordion-btn-focus-border-color: #{$fog-600};
+        --bs-accordion-button-focus-border-color: #{$fog-600};
+        --bs-accordion-btn-focus-box-shadow: 0 0 0 2px #{$fog-600};
+    }
+    // Improve spacing and top-border on open Bootstrap accordions
+    .accordion-body {
+        border-top: 2px solid #{$fog-800};
+        background-color: #{$fog-1000} !important;
+    }
+    // Add hover border over clickable area
+    .accordion-button:hover, .accordion-button:not(.collapsed):hover {
+        outline: 2px solid #{$fog-0};
+    }
+    // Color text and background
+    .accordion-button {
+        background-color: #{$fog-1000};
+        color: #{$fog-0} !important;
+    }
+    .accordion-item {
+        background-color: #{$fog-1000};
+        color: #{$fog-0};
+    }
+    // Load chevron svg as manually-inputed $fog-0 hex code
+    .accordion-button::after {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23FFFFFF'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e") !important;
+    }
+
+    .table {
+        --bs-table-bg: var(--body-background);
+        --bs-table-color-state: var(--body-font-color);
+        --bs-table-striped-color: #{$fog-800};
+        --bs-table-striped-bg: #{$fog-800};
+    }
+
+    .table-hover > tbody > tr:hover > * {
+        background-color: #{$fog-700};
+        color: var(--body-font-color);
+    }
+
+
+    // Add border to top nav and footer
+    .docs-navbar {
+        border-bottom: 1px solid #{$mp-border};
+    }
+    .bd-footer {
+        border-top: 1px solid #{$mp-border};
+    }
+
+    // Tab colors
+    .nav-tabs{
+        &:not(.nav-link){
+          border-bottom: 2px solid #{$mp-border};
+        }
+
+        // Active tab style
+        .active, .active:hover {
+          color: #{$mp-purple} !important;
+          border-bottom: 2px solid #{$mp-purple} !important;
+        }
+
+        // Dim the text of non-active tabs
+        .nav-link {
+            color: #{$mp-muted};
+
+            // Make the text light on hover
+            &:hover{
+                color: #ffffff;
+            }
+        }
+    }
+}
+
+

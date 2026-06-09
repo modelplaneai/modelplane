@@ -1,0 +1,29 @@
+button.bd-accordion {
+    background-color: var(--nav-highlight-color) !important;
+}
+
+// Override Bootstrap accordion colors in the body
+.accordion {
+    --bs-accordion-border-color: #{$fog-200};
+    --bs-accordion-active-bg: #{$fog-0};
+    --bs-accordion-btn-focus-border-color: #{$aqua-400};
+    --bs-accordion-button-focus-border-color: #{$aqua-400};
+    --bs-accordion-btn-focus-box-shadow: 0 0 0 2px #{$fog-400};
+  }
+  // Override Bootstrap accordion general properties
+  .accordion-header {
+    margin-top: 0px;
+  }
+  // Improve spacing and top-border on open Bootstrap accordions
+  .accordion-body {
+    border-top: 2px solid #{$fog-200};
+  }
+  .accordion-button:hover, .accordion-button:not(.collapsed):hover {
+    outline: 2px solid #{$fog-400};
+  }
+  .accordion-button:not(.collapsed) {
+    color: #{$fog-1000} !important;
+  }
+  .accordion-button:not(.collapsed)::after {
+    background-image: var(--bs-accordion-btn-icon);
+  }

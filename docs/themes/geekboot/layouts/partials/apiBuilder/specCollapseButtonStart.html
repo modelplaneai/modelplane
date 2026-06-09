@@ -1,0 +1,10 @@
+{{/* Print out the beginning part of a CRD spec element */}}
+
+<div class="crd-child-container crd-container align-middle expand-buttons">
+    {{/* Plus/Minus Button */}}
+    <button class="expand-button collapsed align-middle" data-bs-toggle="collapse" data-bs-target="#{{ .elemID }}" type="button" aria-expanded="false" aria-controls="{{ .elemID }}"></button>
+
+    {{/* CRD name text */}}
+    <button class="crd-root collapsed align-middle" data-bs-toggle="collapse" data-bs-target="#{{ .elemID }}" type="button" aria-expanded="false" aria-controls="{{ .elemID }}">
+        <div>
+            <span class="kind align-middle">{{ .key }}</span>

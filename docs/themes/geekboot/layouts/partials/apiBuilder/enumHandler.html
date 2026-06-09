@@ -1,0 +1,56 @@
+{{/* Hugo partials can't print outputs AND return a value /*}}
+{{/* this partial assumes it's processing content with an enum and prints the outputs */}}
+{{ $enumOf := "" }}
+{{ $enumTypes := dict }}
+{{ $isEnum := false }}
+
+
+{{/* There are two types of enums */}}
+{{/* example:
+divisor:
+    anyOf:
+    - type: integer
+    - type: string
+    description: Specifies the output format of the exposed
+    resources, defaults to "1"
+
+defaultCompositeDeletePolicy:
+    default: Background
+    description: DefaultCompositeDeletePolicy is the policy used when
+        deleting the Composite that is associated with the Claim if no policy
+        has been specified.
+    enum:
+    - Background
+    - Foreground
+    type: string
+*/}}
+
+{{ if .oneOf }}
+    {{ $enumOf = "One of" }}
+    {{ $enumTypes = .oneOf }}
+{{ else if .anyOf }}
+    {{ $enumOf = "Any of" }}
+    {{ $enumTypes = .anyOf }}
+{{ else if .allOf }}
+    {{ $enumOf = "All of" }}
+    {{ $enumTypes = .allOf }}
+{{ else if .enum }}
+    {{ $isEnum = true }}
+    {{ $enumOf = "One of" }}
+{{ end }}
+
+<span class="enum">{{$enumOf}}
+    {{ if $isEnum }}
+        {{ $type := .type }}
+        {{ range .enum }}
+            <span class="dataType {{ $type }} align-middle">{{ . }}</span>
+        {{ end }}
+
+    {{ else }}
+        {{ range $enumTypes }}
+            {{ range . }}
+                <span class="dataType {{ . }}  align-middle">{{ . }}</span>
+            {{ end }}
+        {{ end }}
+    {{ end }}
+</span>

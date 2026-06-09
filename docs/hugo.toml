@@ -1,0 +1,53 @@
+baseURL = "/"
+languageCode = "en-us"
+title = "Modelplane.ai"
+theme = "geekboot"
+enableRobotsTXT = true
+enableGitInfo = true
+
+disableKinds = ["taxonomy", "term"]
+ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
+
+[outputs]
+  home = ["html"]
+  section = ["html", "rss"]
+
+
+[build]
+  # writeStats = true
+
+[markup]
+  [markup.goldmark.renderer]
+    unsafe = true
+  [markup.tableOfContents]
+    startLevel = 1
+    endLevel = 9
+  [markup.highlight]
+    codeFences = true
+    noClasses = false
+    linenos = true
+    anchorLineNos = true
+    lineNumbersInTable = false
+
+[module]
+  [[module.mounts]]
+    source = "content"
+    target = "content"
+  [[module.mounts]]
+    source = "assets"
+    target = "assets"
+  [[module.mounts]]
+    source = "content"
+    target = "assets/content"
+    includeFiles = ["**/**.png", "**/**.jpg", "**/**.jpeg", "**/**.gif"]
+
+[security]
+  [security.funcs]
+    getenv = ["^CONTEXT", "^REVIEW_ID"]
+
+[params]
+  docs = true
+  description = "Modelplane documentation."
+  [params.anchors]
+    min = 2
+    max = 5

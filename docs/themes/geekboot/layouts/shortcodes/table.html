@@ -1,0 +1,8 @@
+{{ $htmlTable := .Inner | markdownify }}
+{{ $old := "<table>" }}
+{{ $class := .Get 0 | default "table"}}
+{{ $new := printf "<table class=\"%s \">" $class }}
+{{ $htmlTable := replace $htmlTable $old $new }}
+<div class="table-responsive border rounded">
+{{ $htmlTable | safeHTML }}
+</div>

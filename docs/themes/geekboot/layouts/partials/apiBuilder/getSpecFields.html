@@ -1,0 +1,28 @@
+{{/* Process elements of a spec and pull out the important parts. */}}
+{{/* Mainly handles the exception case for array items */}}
+
+{{ $dataTypeStyle := .type }}
+{{ $dataType := .type }}
+{{ $description := .description }}
+{{ $properties := .properties }}
+{{ $required := .required }}
+
+{{/* Special handling for arrays to check if it's a list of 'items' */}}
+{{ if eq .type "array" }}
+    {{ if .items }}
+        {{ $dataType = (printf "[ ]%s" .items.type) }}
+        {{ $dataTypeStyle = .items.type }}
+        {{ $description = .items.description }}
+        {{ $properties = .items.properties }}
+        {{ $required = .items.required }}
+    {{ else }}
+        {{ $dataType = (printf "[ ]%s" .type) }}
+    {{ end }}
+{{ end }}
+
+{{ return (dict
+    "dataTypeStyle" $dataTypeStyle
+    "dataType" $dataType
+    "description" $description
+    "properties" $properties
+    "required" $required) }}

@@ -1,0 +1,5 @@
+{{ if .Params.docs_root }}
+{{ partial "redirect" (dict "dest" (printf "/v%s/" (string .Site.Params.latest) ) ) }}
+{{ else }}
+{{ partial "redirect" (dict "dest" .Params.to) }}
+{{ end }}

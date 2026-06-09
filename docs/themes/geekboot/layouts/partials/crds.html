@@ -1,0 +1,240 @@
+{{/* Responsible for building the API page */}}
+
+<div class="crds">
+
+    {{ partialCached "apiBuilder/GKVHeader" . }}
+
+    <div id="crd-rows-container">
+        {{/* $.Site.Data is from the hugo config file module.mounts.target. */}}
+        {{/* Hugo requires YAML to be in the 'data' location for processing */}}
+        {{/* https://gohugo.io/methods/site/data/ */}}
+        {{ $crdFiles := index $.Site.Data.crds .Section "api" "crds" }}
+
+
+        {{/* Iterate over each CRD file */}}
+        {{ range $fileName, $crdContent := $crdFiles }}
+            {{/* The path to download the CRD files. Relative to the _index.md file using "product: crds" */}}
+            {{ $downloadPath := (printf "crds/%s.yaml" $fileName) }}
+
+            {{ $group   := $crdContent.spec.group }}
+            {{ $kind    := $crdContent.spec.names.kind }}
+
+            {{/* bigName is the kind length limit to change CSS styles when it needs to be truncated */}}
+            {{ $bigName := partial "apiBuilder/checkBigName" $kind }}
+
+            {{/* Iterate over each served version and create separate entries */}}
+            {{ range $versionItem := $crdContent.spec.versions }}
+                {{ if $versionItem.served }}
+                    {{ $schema := $versionItem.schema.openAPIV3Schema }}
+                    {{ $version := $versionItem.name }}
+                    {{ $deprecated := $versionItem.deprecated }}
+                    {{ $description := $schema.description }}
+
+                    {{/* The div containing the entire CRD information including the Expand All/Collapse All row */}}
+                    <div class="crd-root-row crd-container row align-middle bigName-row" data-kind="{{ $kind }}" data-group="{{ $group }}-{{ $kind}}" data-version="{{ $version }}-{{ $kind }}">
+
+                        {{/* generate the GKV line to expand/collapse the CRD data */}}
+                        {{ partial "apiBuilder/printGKVExpander" (dict  "group" $group "version" $version "kind" $kind "deprecated" $deprecated) }}
+
+
+                        {{/* The container to show/hide with information related to the CRD */}}
+                        <div class="collapse crd-expand {{$kind}}" id="{{$kind}}-{{$version}}">
+                            {{/* Generate the "Download YAML" link */}}
+                            {{ partial "apiBuilder/downloadLink" (dict  "group" $group "version" $version "kind" $kind "downloadPath" $downloadPath) }}
+
+                            {{/* bigName-reset prevents the description from expanding into the x-scroll */}}
+                            <div class="description bigName-reset">
+                                {{ $description | markdownify}}
+                                <br />
+                            </div>
+
+                            {{/* Loop over each key inside the schema */}}
+                            {{ range $key, $contents := $schema.properties }}
+
+                                {{/* Skip irrelevant keys at the top level */}}
+                                {{ if not (in (slice "apiVersion" "description" "kind" "metadata") $key) }}
+                                    {{ partial "apiBuilder/processSpec" (dict "key" $key "contents" $contents "page" . "kind" $kind) }}
+                                {{ end }}
+
+                            {{ end }}
+
+                            {{/* Generate the "Return to top" link */}}
+                            {{ partialCached "apiBuilder/backToTopButton" . }}
+
+                        </div>
+                    </div>
+                {{ end }}
+            {{ end }}
+        {{ end}}
+    </div>
+
+<script>
+
+    function getCRDElements(type){
+
+        if(type === "all"){
+            var root = document;
+        }
+        else{
+            var typeElem = document.querySelector(type);
+            var root = typeElem.closest(".crd-container")
+        }
+        var buttons = root.querySelectorAll(".expand-buttons > button");
+        var hiddenElems = root.querySelectorAll(".crd-expand");
+
+        return {
+            "buttons": buttons,
+            "hiddenElems": hiddenElems
+        }
+    }
+
+    /**
+     * Add the "show" class and remove the "collapse" class from all elements
+     * matching the 'type' queryselector.
+     *
+     * Alternatively the type `all` will apply to all elements.
+     * @param {string} type - a CSS query selector or "all"
+     */
+    function showAll(type){
+
+        var crdElements = getCRDElements(type);
+        var buttons = crdElements["buttons"];
+        var hiddenElems = crdElements["hiddenElems"];
+
+        // This works by changing the classes bootstrap uses.
+        // It would be more accurate to click() or invoke the bootstrap JS API.
+        // This has major performance problems for large APIs and isn't used.
+        for(var i = 0; i < buttons.length; i++){
+            buttons[i].classList.remove("collapsed");
+        }
+
+        for(var i = 0; i < hiddenElems.length; i++){
+            hiddenElems[i].classList.remove("collapse");
+            hiddenElems[i].classList.add("show");
+        }
+
+    }
+
+    /**
+     * Add the "collapse" class and remove the "show" class from all elements
+     * matching the 'type' queryselector.
+     *
+     * Alternatively the type `all` will apply to all elements.
+     * @param {string} type - a CSS query selector or "all"
+     */
+    function hideAll(type){
+
+        var crdElements = getCRDElements(type);
+        var buttons = crdElements["buttons"];
+        var hiddenElems = crdElements["hiddenElems"];
+
+        // This works by changing the classes bootstrap uses.
+        // It would be more accurate to click() or invoke the bootstrap JS API.
+        // This has major performance problems for large APIs and isn't used.
+        for(var i = 0; i < buttons.length; i++){
+            buttons[i].classList.add("collapsed");
+        }
+
+        for(var i = 0; i < hiddenElems.length; i++){
+            hiddenElems[i].classList.add("collapse");
+            hiddenElems[i].classList.remove("show");
+        }
+
+    }
+
+    /**
+     * Sorts the API by 'kind', 'group' or 'version'.
+     *
+     * @param {string} sortOn - One of "kind", "group" or "version"
+     */
+    function sortIt(sortOn="kind"){
+
+        // only look at elements labeled as "stortable"
+        var titleElements = document.getElementsByClassName("sortable");
+
+        // natural or reverse sort?
+        var reverseSort = false;
+
+        // iterate over the sortable items and set the proper sort icon
+        for(var i = 0; i < titleElements.length; i++){
+            if(titleElements[i].children[0].dataset.sort === sortOn){
+
+                titleElements[i].classList.add("sorted");
+
+                // If we can't see the first element then sort natural
+                if(titleElements[i].children[1].classList.contains("d-none")){
+                    titleElements[i].children[1].classList.remove("d-none");
+                    titleElements[i].children[2].classList.add("d-none");
+                }
+                // Otherwise, the first element is visible and the second isn't.
+                // Make it visible and reverse sort
+                else if(titleElements[i].children[2].classList.contains("d-none")){
+                    titleElements[i].children[2].classList.remove("d-none");
+                    titleElements[i].children[1].classList.add("d-none");
+                    reverseSort = true
+                }
+            }
+            else {
+                titleElements[i].classList.remove("sorted");
+                titleElements[i].children[1].classList.add("d-none");
+                titleElements[i].children[2].classList.add("d-none");
+            }
+        }
+
+        // element sorting from https://jsfiddle.net/fkling/nXkDp/
+        var toSort = document.getElementById('crd-rows-container').children;
+        toSort = Array.prototype.slice.call(toSort, 0);
+
+        toSort.sort(function(a, b) {
+            var aord = a.dataset[sortOn];
+            var bord = b.dataset[sortOn];
+
+            if(reverseSort){
+                return (bord.localeCompare(aord));
+            }
+            else {
+                return (aord.localeCompare(bord));
+            }
+        });
+
+        var parent = document.getElementById('crd-rows-container');
+        parent.innerHTML = "";
+
+        for(var i = 0, l = toSort.length; i < l; i++) {
+            parent.appendChild(toSort[i]);
+        }
+    }
+
+    // on page load sort the fields and expand and scroll to the anchor if it's set.
+    document.addEventListener("DOMContentLoaded", function(event){
+        sortIt();
+        scrollToAnchor();
+    })
+
+    function scrollToAnchor(){
+        var hash = window.location.hash.replace("#","");
+
+        if(hash === "content"){
+            return
+        }
+
+         // hash on this page means they linked directly to an API object
+        if(hash.length > 0){
+
+            var hashes = hash.split("-");
+
+            // set an event listener on the last element to scroll it into view when expanded.
+            var lastElement = document.getElementById(hash);
+            lastElement.closest(".crd-child-container").classList.add("anchor-target");
+
+            // loop through the parent elements and click them to expand
+            var workingHash = [];
+            for(var index = 0; index < hashes.length; index++){
+                workingHash.push(hashes[index]);
+                document.querySelector("#" + workingHash.join("-")).classList.add("show");
+            }
+
+
+        }
+    }
+</script>

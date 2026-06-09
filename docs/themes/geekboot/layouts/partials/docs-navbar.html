@@ -1,0 +1,60 @@
+<header class="navbar docs-navbar navbar-expand-lg py-0 align-items-center">
+
+  <div class="docs-left-toggle">
+    <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas"
+    data-bs-target="#bdSidebar" aria-controls="bdSidebar" aria-label="Toggle docs content">
+      {{ partialCached "icons/hamburger.svg" (dict "class" "" "width" "1.5rem" "height" "1.5rem") }}
+      <span class="d-none fs-6 pe-1">Browse</span>
+    </button>
+  </div>
+
+  <div class="docs-right-toggle order-3">
+    <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas"
+    data-bs-target="#offcanvas" aria-controls="offcanvas" aria-label="Toggle navigation">
+      <svg class="bi white" aria-hidden="true"><use xlink:href="#three-dots"></use></svg>
+    </button>
+  </div>
+
+  <div class="navbar-brand">
+    <a href="/" aria-label="Modelplane">
+      <img src="/img/modelplane-logo-inverted.svg" alt="Modelplane" height="28" decoding="async" loading="lazy">
+    </a>
+  </div>
+
+  <div class="w-100 offcanvas-lg offcanvas-end" tabindex="-1" id="offcanvas" aria-labelledby="offcanvasLabel">
+
+    <div class="offcanvas-body p-0">
+
+      <div class="offcanvas-header p-0">
+        <div class="navbar-brand">
+          <a href="/" aria-label="Modelplane">
+            <img src="/img/modelplane-logo-inverted.svg" alt="Modelplane" height="28" decoding="async" loading="lazy">
+          </a>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close" data-bs-target="#offcanvas"></button>
+      </div>
+
+      <div class="navbar-icons flex-shrink-1 show ms-auto">
+        <ul class="navbar-nav">
+          <li class="nav-item col-xs p-2">
+            <a class="navbar-link" href="https://github.com/modelplaneai" title="Modelplane on GitHub" target="_blank" rel="noopener">
+              {{ partialCached "icons/github.svg" .}} <span class="icon-label">GitHub</span>
+            </a>
+          </li>
+
+          <li class="nav-item col-x p-2">
+            <div class="vr d-lg-flex mx-lg-2 text-white"></div>
+          </li>
+
+          <li class="nav-item col-xs p-2">
+            <div class="form-check form-switch color-switcher">
+              <input class="d-flex form-check-input" type="checkbox" id="darkSwitch" />
+              <label class="d-flex navbar-link form-check-label" for="darkSwitch">Dark Mode</label>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</header>

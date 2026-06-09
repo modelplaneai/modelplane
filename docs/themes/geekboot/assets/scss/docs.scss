@@ -1,0 +1,57 @@
+/*!
+ * Bootstrap Docs (https://getbootstrap.com/)
+ * Copyright 2011-2022 The Bootstrap Authors
+ * Copyright 2011-2022 Twitter, Inc.
+ * Licensed under the Creative Commons Attribution 3.0 Unported License.
+ * For details, see https://creativecommons.org/licenses/by/3.0/.
+ */
+
+// Dev notes
+//
+// Background information on nomenclature and architecture decisions here.
+//
+// - Bootstrap functions, variables, and mixins are included for easy reuse.
+//   Doing so gives us access to the same core utilities provided by Bootstrap.
+//   For example, consistent media queries through those mixins.
+//
+// - Bootstrap's **docs variables** are prefixed with `$bd-`.
+//   These custom colors avoid collision with the components Bootstrap provides.
+//
+// - Classes are prefixed with `.bd-`.
+//   These classes indicate custom-built or modified components for the design
+//   and layout of the Bootstrap docs. They are not included in our builds.
+//
+// Happy Bootstrapping!
+
+
+// Import the entire Bootstrap library and let PurgeCSS optimize in production
+@import "bootstrap/bootstrap";
+@import "variables";
+/* purgecss start ignore */
+@import "color-modes";
+/* purgecss end ignore */
+@import "layout";
+@import "navbar";
+@import "home";
+@import "content";
+@import "sidebar";
+@import "toc";
+@import "footer";
+@import "nav-tabs";
+@import "buttons";
+@import "dropdown";
+@import "hints";
+@import "callouts";
+@import "anchor";
+/* purgecss start ignore */
+@import "search-button";
+@import "search-results";
+@import "crds";
+/* purgecss end ignore */
+@import "skippy";
+@import "fonts";
+// TODO(negz): Does import order matter? Can this go in the existing ignore block above?
+/* purgecss start ignore */
+@import "mermaid";
+/* purgecss end ignore */
+@import "modelplane";

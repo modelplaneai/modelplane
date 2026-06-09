@@ -1,0 +1,34 @@
+<script>
+  // Try and ensure the color theme is applied as early as possible to prevent "flash of inaccurate color"
+(() => {
+  // Is the system set to dark mode?
+  var darkPrefered = window.matchMedia('(prefers-color-scheme: dark)').matches
+
+  // Do we have a dark mode cookie saved?
+  var darkThemeSelected =
+    localStorage.getItem("darkSwitch") !== null &&
+    localStorage.getItem("darkSwitch") === "dark";
+
+  // Do we have a light mode cookie saved?
+  var lightThemeSelected =
+    localStorage.getItem("darkSwitch") !== null &&
+    localStorage.getItem("darkSwitch") === "light";
+
+  // if a light mode cookie is saved ignore the system dark mode
+  if (lightThemeSelected) {
+    darkPrefered = false;
+  }
+
+  // Set the document color theme based on the user's system or cookie  preference
+  if (darkThemeSelected || darkPrefered) {
+    document.documentElement.setAttribute("color-theme", "dark")
+  }
+  else {
+    document.documentElement.setAttribute("color-theme", "light")
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@docsearch/css@3" media="print" onload="this.media='all'"/>
+<link rel="preconnect" href="https://9UXKYX61NK-dsn.algolia.net" crossorigin data-proofer-ignore/>
+

@@ -1,0 +1,30 @@
+{{/* Print the CRD top-level expandable row */}}
+{{ $group := .group }}
+{{ $kind  := .kind  }}
+{{ $version := .version }}
+{{ $deprecated  := .deprecated  }}
+{{ $bigName := partial "apiBuilder/checkBigName" $kind }}
+
+{{/* Collapse/Expand Button and Kind name */}}
+<div class="col col-xl-4 col-10 align-middle expand-buttons bigName-col">
+    {{/* Plus/Minus Button */}}
+    <button class="expand-button collapsed align-middle" data-bs-toggle="collapse" data-bs-target="#{{$kind}}-{{$version}}" type="button" aria-expanded="false" aria-controls="{{$kind}}-{{$version}}"></button>
+
+    {{/* CRD name text */}}
+    <button class="crd-root collapsed align-middle" data-bs-toggle="collapse" data-bs-target="#{{$kind}}-{{$version}}" type="button" aria-expanded="false" aria-controls="{{$kind}}-{{$version}}">
+        <span class="align-middle {{ $kind }}"><a class="expansion-link" name="{{ $kind }}-{{$version}}">{{ $kind }}{{ if $deprecated }} (deprecated){{ end }}</a></span>
+    </button>
+</div>
+
+{{/* If the CRD name is longer than 24 characters hide the other fields, regardless of viewport size */}}
+<div class="{{ if $bigName }}d-none{{end}} col col-lg-4 col-2 mobile-hidden group-name text-truncate">
+    {{ $group }}/{{ $version }}
+</div>
+
+<div class="{{ if $bigName }}d-none{{end}} col col-2 align-middle expand-link mobile-hidden text-truncate" onclick="showAll('.{{ $kind }}')">
+    Expand All
+</div>
+
+<div class="{{ if $bigName }}d-none{{end}} col col-2 align-middle collapse-link mobile-hidden text-truncate" onclick="hideAll('.{{ $kind }}')">
+    Collapse All
+</div>

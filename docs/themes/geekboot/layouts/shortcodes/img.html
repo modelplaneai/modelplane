@@ -1,0 +1,52 @@
+{{- if not (.Get "src") -}}
+{{ errorf "\n\nNo src for {{< img >}} tag on %s \n\n\n" .Position }}
+{{ end }}
+
+{{- if not (.Get "alt") -}}
+{{ errorf "\n\nNo alt for {{< img >}} tag on %s \n\n\n" .Position }}
+{{ end }}
+
+{{ $loading := "lazy" }}
+{{ if .Get "eager" }}
+  {{ $loading = "eager" }}
+{{ end }}
+
+{{ $customAlt := .Get "alt" }}
+{{ $customSize := .Get "size" | default "original" }}
+{{ $align := .Get "align" | default "" }}
+{{ if eq $align "center" }}
+  {{ $align = "d-flex justify-content-center" }}
+{{ else if eq $align "right" }}
+  {{ $align = "d-flex justify-content-end" }}
+{{ else }}
+  {{ $align = "d-flex" }}
+{{ end }}
+
+
+{{ $source := resources.Get (printf "content%s" (.Get "src")) }}
+{{ if not $source }}
+{{ warnf "Unable to find image %s on page ./content/%s" (.Get "src") .Page.File }}
+{{ end }}
+
+
+{{ with $source }}
+
+  {{ $original := (.Resize (printf "%dx%d webp q75" .Width .Height)).Permalink }}
+  {{ $xtiny := (.Resize "150x webp q75").Permalink }}
+  {{ $tiny := (.Resize "320x webp q75").Permalink }}
+  {{ $small := (.Resize "600x webp q75" ).Permalink }}
+  {{ $medium := (.Resize "1200x webp q75" ).Permalink }}
+  {{ $large := (.Resize "1800x webp q75" ).Permalink }}
+
+  {{ $size := dict "xtiny" $xtiny "tiny" $tiny "small" $small "medium" $medium "large" $large "original" $original }}
+<div class="{{ $align }}">
+  <img loading="{{$loading}}"
+  src="{{ index $size $customSize }}"
+  srcset="{{$size.tiny}} 320w, {{ $size.small }} 600w, {{ $size.medium }} 1200w" sizes="100vw"
+  height="{{ .Height }}"
+  width="{{ .Width }}"
+  class="rounded img-fluid"
+  alt="{{ $customAlt }}"
+  decoding="async">
+</div>
+{{ end }}

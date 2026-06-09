@@ -1,0 +1,41 @@
+<div class="bd-callout bd-callout-warning d-flex flex-column w-100">
+    <div class="d-flex bd-title fs-6 fw-bold border-bottom border-danger">
+        <div class="d-flex pe-3 align-self-center">
+            <svg class="bi flex-shrink-0" role="img" aria-label="Warning:"><use xlink:href="#fire"/></svg>
+        </div>
+        <div class="d-flex">
+            {{ if eq .Page.Params.state "alpha"}}
+            {{- if not .Page.Params.alphaVersion -}}
+            {{- errorf "\n\nNo \"alphaVersion\" front matter in page %q\n\n\n" .Page.File.Path -}}
+            {{- end -}}
+            This is an alpha feature.
+            Crossplane may change or drop this feature at any time. <br />
+            {{ end }}
+            {{ if eq .Page.Params.state "beta" }}
+                {{- if not .Page.Params.alphaVersion -}}
+                {{- errorf "\n\nNo \"alphaVersion\" front matter in page %q\n\n\n" .Page.File.Path -}}
+                {{- end -}}
+                {{- if not .Page.Params.betaVersion -}}
+                    {{- errorf "\n\nNo \"betaVersion\" front matter in page %q\n\n\n" .Page.File.Path -}}
+                {{- end -}}
+            This is a beta feature.
+            {{ end }}
+        </div>
+    </div>
+    <div class="bd-content mt-3">
+        <p>
+            This feature was introduced in v{{.Page.Params.alphaVersion}}.
+            {{ if eq .Page.Params.state "beta" }}
+                <br />
+                This feature graduated to beta status in v{{.Page.Params.betaVersion}}.
+            {{ end }}
+            {{ $verParam := .Page.Params.version | default .Site.Params.latest }}
+            {{ $ver := (printf "v%s" $verParam) }}
+            {{ if eq $verParam "master" }}
+                {{ $ver = "master" }}
+            {{ end }}
+            <br /><br />
+            For more information read the <a href="{{.Site.BaseURL}}{{$ver}}/learn/feature-lifecycle/">Crossplane feature lifecycle</a>.
+        </p>
+    </div>
+</div>

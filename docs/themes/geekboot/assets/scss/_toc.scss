@@ -1,0 +1,115 @@
+// stylelint-disable selector-max-type
+
+.bd-toc {
+  color: var(--toc-font-color);
+
+  @include media-breakpoint-up(lg) {
+    position: sticky;
+    top: 5rem;
+    right: 0;
+    z-index: 2;
+    height: subtract(100vh, 7rem);
+    overflow-y: auto;
+    top: 0;
+  }
+
+  nav {
+    @include font-size(.875rem);
+
+    ul {
+      padding-left: 0;
+      margin-bottom: 0;
+      list-style: none;
+      display: inherit;
+
+
+      ul {
+        padding-left: 1rem;
+        margin-top: .25rem;
+      }
+
+    }
+
+    li {
+      margin-bottom: .25rem;
+    }
+
+    a {
+      color: inherit;
+      display: inherit;
+      padding: inherit;
+
+      &.active {
+        color: var(--content-link-color);
+        font-weight: 600;
+        letter-spacing: .60px;
+
+        &:hover{
+          color: var(--content-link-color);;
+          text-decoration: underline !important;
+        }
+      }
+
+      &:not(:hover) {
+        text-decoration: none;
+      }
+
+      &:hover{
+        color: inherit;
+        text-decoration: underline !important;
+      }
+
+      code {
+        font: inherit;
+      }
+    }
+  }
+}
+
+.bd-toc-toggle {
+  display: flex;
+  align-items: center;
+
+  @include media-breakpoint-down(sm) {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  @include media-breakpoint-down(md) {
+    border: 1px solid var(--body-font-color);
+    @include border-radius(.4rem);
+    color: var(--toc-font-color);
+
+    &:hover,
+    &:focus,
+    &:active,
+    &[aria-expanded="true"] {
+      color: var(--toc-font-color) !important;
+      background-color: var(--body-background);
+      border-color: var(--toc-mobile-menu-outline);
+    }
+
+    &:focus,
+    &[aria-expanded="true"] {
+      box-shadow: 0 0 0 3px rgba(var(--toc-mobile-menu-outline), .25);
+    }
+  }
+}
+
+.bd-toc-collapse {
+  @include media-breakpoint-down(md) {
+    nav {
+      padding: 1.25rem;
+      background-color: var(--toc-mobile-menu-background);
+      color: var(--body-font-color);
+      border: 1px solid var(--body-font-color);
+      font-size: 1rem;
+      line-height: 2rem;
+      @include border-radius(.25rem);
+    }
+  }
+
+  @include media-breakpoint-up(md) {
+    display: block !important; // stylelint-disable-line declaration-no-important
+  }
+}

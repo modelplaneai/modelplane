@@ -1,0 +1,30 @@
+.bd-content {
+
+
+  // Offset content from fixed navbar when jumping to headings
+  :target > .anchor-link {
+    text-decoration: none !important;
+    opacity: 1 !important;
+  }
+
+  .anchor-link {
+    padding: 0 .175rem;
+    font-weight: 400;
+    color: var(--anchor-link-color);
+    text-decoration: none;
+    opacity: 0;
+    @include transition(color .15s ease-in-out, opacity .15s ease-in-out);
+
+    &::after {
+      content: "#";
+    }
+
+    &:hover {
+      color: var(--anchor-link-color);
+      text-decoration: none;
+      opacity: 1;
+    }
+
+
+  }
+}

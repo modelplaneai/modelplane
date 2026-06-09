@@ -1,0 +1,49 @@
+{{ $sorted_list := partial "utils/sorted-versions" . }}
+{{ $cur_ver := .Page.Params.version | default .Site.Params.latest }}
+
+<div class="dropdown float-end bd-dropdown">
+    <a class="btn btn-outline-secondary dropdown-toggle bd-dropdown-item text-reset" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        {{ if ne .Page.Params.version "master" }}v{{ end }}{{ $cur_ver }}
+        {{ if eq $cur_ver .Site.Params.latest }}
+        <div class="badge rounded-pill latest">Latest</div>
+        {{ end }}
+    </a>
+
+    <div class="dropdown-menu bd-border-color bd-dropdown" aria-labelledby="dropdownMenuLink">
+        {{ $master_url := replaceRE "v[0-9].[0-9]" "master" .Permalink }}
+        {{/*  Iterate over the ordered list of available versions. */}}
+        {{ range $sorted_list }}
+            {{ $matchingTitle := $.Title }}
+            {{ if $.Params.matchTitle }}
+                {{ $matchingTitle = $.Params.matchTitle }}
+            {{ end }}
+            {{/*  For a version, see if there is a page with an identical title to the page we're on. If not use the page at /content/v<version>  */}}
+            {{ $versionPage :=  index (where (where $.Site.Pages "Title" $matchingTitle) ".Page.Params.version" .) 0 | default ($.Site.GetPage (printf "v%s" .)) }}
+            {{/*  If the version is master get the master page since "vmaster" doesn't exist  */}}
+            {{ if not $versionPage }}
+                {{ $versionPage = $.Site.GetPage "master" }}
+            {{ end }}
+                {{ with $versionPage }}
+                    {{ $isLatest := false }}
+                    {{ if or (eq .Page.Params.version "") (eq .Page.Params.version $cur_ver) }}
+                        {{ $isLatest = true }}
+                    {{ end }}
+                    <a class="dropdown-item bd-dropdown-item {{- if $isLatest }} active {{- end}}" {{- if $isLatest }}aria-current="true"{{end}} href="{{ .Permalink }}">
+                        {{ if eq .Page.Params.version "master" }}
+                            master
+                        {{ else }}
+                            {{ if eq .Page.Params.version "" }}
+                                {{ (printf "v%s" .Site.Params.latest) }}
+                            {{ else }}
+                                {{ (printf "v%s" .Page.Params.version) }}
+                            {{ end }}
+                        {{ end }}
+                        {{ if or (eq .Page.Params.version .Site.Params.latest) (eq .Page.Params.version "") }}
+                        <div class="badge rounded-pill latest">Latest</div>
+                        {{ end }}
+                    </a>
+                {{ end }}
+            {{ end }}
+    </div>
+</div>
+

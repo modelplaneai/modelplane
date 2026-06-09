@@ -1,0 +1,31 @@
+{{/* Pass a schema and find the currently active version and return a dict of (version: <version>, schema: <schema>) */}}
+{{ $version := "" }}
+{{ $schema := dict }}
+{{ $deprecated := false }}
+
+{{ range .versions }}
+    {{ if and (index . "storage") (not .deprecated) }}
+        {{ $version = .name }}
+        {{ $schema = .schema }}
+        {{ $deprecated = .deprecated }}
+    {{ else if and (index . "served") (not .deprecated) (not $version) }}
+        {{ $version = .name }}
+        {{ $schema = .schema }}
+        {{ $deprecated = .deprecated }}
+    {{ else if and (index . "storage") (not $version) }}
+        {{ $version = .name }}
+        {{ $schema = .schema }}
+        {{ $deprecated = .deprecated }}
+    {{ else if and (index . "served") (not $version) }}
+        {{ $version = .name }}
+        {{ $schema = .schema }}
+        {{ $deprecated = .deprecated }}
+    {{ end }}
+{{ end }}
+
+{{ return (dict "version" $version
+                "schema" $schema
+                "deprecated" $deprecated)
+}}
+
+

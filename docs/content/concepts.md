@@ -1,4 +1,9 @@
-# Concepts
+---
+title: Concepts 
+weight: 20
+description: Learn about Modelplane concepts.
+---
+
 
 Modelplane manages AI model inference across a fleet of GPU clusters. It draws a
 boundary between two teams: platform teams who provision infrastructure and

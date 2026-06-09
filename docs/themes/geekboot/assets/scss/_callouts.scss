@@ -1,0 +1,43 @@
+//
+// Callouts
+//
+
+.bd-callout {
+  padding-left: 1.25rem;
+  padding-top: 1.25rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1rem;
+  background-color: var(--bd-callout-bg, var(--bs-gray-100));
+  border-left: .25rem solid var(--bd-callout-border, var(--bs-gray-300));
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  + .bd-callout {
+    margin-top: -.25rem;
+  }
+
+  .highlight {
+    background-color: rgba($black, .05);
+  }
+
+  .bd-title {
+    margin-top: -.5rem;
+    padding-bottom: .1rem;
+    border-bottom: 1px;
+
+    >svg {
+      height: 1rem;
+    }
+  }
+
+}
+
+// Variations
+@each $variant in $bd-callout-variants {
+  .bd-callout-#{$variant} {
+    --bd-callout-bg: rgba(var(--bs-#{$variant}-rgb), .075);
+    --bd-callout-border: rgba(var(--bs-#{$variant}-rgb), .5);
+  }
+}

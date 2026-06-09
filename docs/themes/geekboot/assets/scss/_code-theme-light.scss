@@ -1,0 +1,109 @@
+@mixin code-theme-light {
+
+  --code-block-background-color: #{$fog-900};
+  --code-line-number-color: #{$fog-300};
+
+  /* Theme: Colors customized for Crossplane. Was originally Dracula */
+
+  /* Background */
+  .bg {
+    color: #f8f8f2;
+    background-color: #1b1c16;
+  }
+  /* PreWrapper */
+  .chroma {
+    color: #f8f8f2;
+    //background-color: #1b1c16;
+  }
+  /* Other */
+  .chroma .x {
+  }
+  /* Error */
+  .chroma .err {
+    border-color: #{$salmon-300};
+  }
+  /* CodeLine */
+  .chroma .cl {
+  }
+  /* LineTableTD */
+  .chroma .lntd {
+    vertical-align: top;
+    padding: 0;
+    margin: 0;
+    border: 0;
+  }
+  /* LineTable */
+  .chroma .lntable {
+    border-spacing: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+  }
+  /* LineHighlight */
+  .chroma .hl {
+    background-color: #{$fog-800};
+  }
+  /* LineNumbersTable */
+  .chroma .lnt {
+    white-space: pre;
+    user-select: none;
+    margin-right: 0.4em;
+    padding: 0 0.4em 0 0.4em;
+    color: #{$fog-300};
+  }
+  /* LineNumbers */
+  .chroma .ln {
+    white-space: pre;
+    user-select: none;
+    margin-right: 0.4em;
+    padding: 0 0.4em 0 0.4em;
+    color: #{$fog-300};
+  }
+  /* LineNumber Right Border */
+  .highlight .chroma code .ln {
+    border-right: 1px solid #{$fog-700};
+  }
+  /* Line */
+  .chroma .line {
+    display: flex;
+  }
+  /* Keyword, KeywordDeclaration, KeywordCosntant, KeywordPseudo, KeywordReserved, KeywordType, NameConstant, GenericOutput */
+  .chroma .k, .chroma .kd, .chroma .kc, .chroma .kp, .chroma .kr, .chroma .kt, .chroma .no, .chroma .go {
+    color: #{$tangerine-300};
+  }
+  /* KeywordNamespace, NameTag, Operator, OperatorWord */
+  .chroma .kn, .chroma .nt, .chroma .o, .chroma .ow {
+    color: #{$aqua-300};
+  }
+  /* Name, NameBuiltin, NameBuiltinPseudo, NameEntity, NameFunctionMagic, NameLabel, NameNamespace, NameProperty, NameVariable, NameVariableClass, NameVariableGlobal, NameVariableInstance, NameVariableMagic, Punctuation, Generic, GenericHeading, GenericError, GenericPrompt, GenericTraceback, GenericUnderline, TextWhitespace */
+  .chroma .n, .chroma .nb, .chroma .bp, .chroma .ni, .chroma .fm, .chroma .nl, .chroma .nn, .chroma .py, .chroma .nv, .chroma .vc, .chroma .vg, .chroma .vi, .chroma .vm, .chroma .p, .chroma .g, .chroma .gh, .chroma .gr, .chroma .gp, .chroma .gt, .chroma .gl, .chroma .w {
+  }
+  /* NameAttribute, NameClass, NameDecorator, NameException, NameFunction, NameOther, GenericInserted, Unsure what GH is */
+  .chroma .na, .chroma .nc, .chroma .nd, .chroma .ne, .chroma .nf, .chroma .nx, .chroma .gi, .chroma .gh {
+    color: #{$grass-300};
+  }
+  /* Literal, LiteralStringEscape, LiteralNumber, LiteralNumberBin, LiteralNumberFloat, LiteralNumberHex, LiteralNumberInteger, LiteralNumberIntegerLong, LiteralNumberOct, GenericDeleted */
+  .chroma .l, .chroma .se, .chroma .m, .chroma .mb, .chroma .mf, .chroma .mh, .chroma .mi, .chroma .il, .chroma .mo, .chroma .gd {
+    color: #{$salmon-300};
+  }
+  /* LiteralDate, LiteralString, LiteralStringAffix, LiteralStringBacktick, LiteralStringChar, LiteralStringDelimiter, LiteralStringDoc, LiteralStringDouble, LiteralStringHeredoc, LiteralStringInterpol, LiteralStringOther, LiteralStringRegex, LiteralStringSingle, LiteralStringSymbol */
+  .chroma .ld, .chroma .s, .chroma .sa, .chroma .sb, .chroma .sc, .chroma .dl, .chroma .sd, .chroma .s2, .chroma .sh, .chroma .si, .chroma .sx, .chroma .sr, .chroma .s1, .chroma .ss {
+    color: #{$sun-300};
+  }
+  /* Comment, CommentHashbang, CommentMultiline, CommentSingle, CommentSpecial, CommentPreproc, CommentPreprocFile, GenericSubheading */
+  .chroma .c, .chroma .ch, .chroma .cm, .chroma .c1, .chroma .cs, .chroma .cp, .chroma .cpf, .chroma .gu {
+    color: #{$fog-300};
+  }
+  /* GenericEmph */
+  .chroma .ge {
+    font-style: italic;
+  }
+  /* GenericStrong */
+  .chroma .gs {
+    font-weight: bold;
+  }
+  // Add custom border radius
+  .highlight {
+    border-radius: 0.375rem;
+  }
+}

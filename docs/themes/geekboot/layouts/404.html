@@ -1,0 +1,70 @@
+{{ define "main" }}
+<div class="bd-layout docs-container">
+    <aside class="bd-sidebar">
+      <div class="offcanvas-lg offcanvas-start bd-sidebar-container" tabindex="-1" id="bdSidebar" aria-labelledby="bdSidebarOffcanvasLabel">
+        <div class="offcanvas-header pb-4 border-bottom">
+          <div class="d-flex offcanvas-title fw-bold" id="bdNavbarOffcanvasLabel">
+            Crossplane Documentation -
+            {{- if $.Param "docs" -}}
+            {{ if ne .Page.Params.version "master" }} v{{ end}}{{.Page.Params.version}}
+            {{- else }}
+             {{.Page.Params.product }}
+            {{ end }}
+          </div>
+          <div class="d-flex"><button type="button" class="btn-close bi align-self-center p-0" data-bs-dismiss="offcanvas" aria-label="Close" data-bs-target="#bdSidebar"></button></div>
+        </div>
+        <div class="offcanvas-body">
+          <div class="container-fluid p-0">
+              {{ partialCached "search-button" . }}
+          </div>
+      </div>
+    </aside>
+
+    <main class="bd-main order-1">
+      <div class="bd-intro pt-2 ps-lg-2">
+        <div class="d-md-flex flex-md-row-reverse align-items-center justify-content-between">
+          <div class="mb-3 mb-md-0 d-flex">
+          </div>
+          <h1 class="bd-title mb-0" id="content">Page not found</h1>
+        </div>
+      </div>
+
+
+        <div class="bd-content ps-lg-2 DocSearch-content">
+          The page you're looking for couldn't be found.
+          <br /><br />
+          Only currently maintained versions of Crossplane are documented. Try
+          looking at one of the following sections:
+          <br /><br />
+          {{ $sorted_list := partial "utils/sorted-versions" . }}
+
+          <strong>Documentation Versions:</strong><br />
+          {{ range $sorted_list }}
+              {{ $versionPage := $.Site.GetPage (printf "v%s" .) | default ($.Site.GetPage .) }}
+              {{ with $versionPage }}
+                  <a href="{{ .Permalink }}">{{ if ne .Page.Params.version "master" }}v{{ end }}{{ .Page.Params.version }}</a>
+                  {{ if eq .Page.Params.version $.Site.Params.latest }}
+                      <span class="badge rounded-pill latest">Latest</span>
+                  {{ end }}
+                  {{ if eq .Page.Params.version "master" }}
+                      <small><em>(unreleased upcoming version)</em></small>
+                  {{ end }}
+                  <br />
+              {{ end }}
+          {{ end }}
+
+          <br />
+          <p><small>Looking for an older version? Archived versions are available as tags in the <a href="https://github.com/crossplane/docs/tags">GitHub repository</a> (e.g., v1.19-archive, v1.18-archive).</small></p>
+
+          <br />
+          <strong>Other Resources:</strong><br />
+          {{ range .Site.Sections }}
+              {{ if and (not .Page.Params.hidden) (eq .Page.Params.version "0") }}
+                  <a href="{{ .Permalink }}">{{ .Title }}</a><br />
+              {{ end }}
+          {{ end }}
+        </div>
+    </main>
+  </div>
+
+{{ end }}
