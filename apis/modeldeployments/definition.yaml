@@ -26,18 +26,16 @@ spec:
           spec:
             type: object
             required: [replicas, workers, nodeSelector]
-            # NOTE: this rule is currently advisory. Both `count` fields carry
-            # `default: 1`, and CEL validation runs after defaulting, so has()
-            # is always true and the rule never rejects — a disaggregated
-            # deployment that omits the counts gets a 1:1 prefill:decode ratio.
-            # Truly requiring explicit counts means dropping `default: 1` from
-            # the shared workers schema, which would make `count` mandatory for
-            # unified deployments too (and break prefill/decode codegen dedup,
-            # which relies on the prefill workers schema being byte-identical to
-            # decode). That tradeoff is left as a design decision.
+            # A disaggregated deployment (prefill set) declares everything
+            # explicitly — counts and routing are not defaulted. workers.count
+            # and prefill.workers.count carry no schema default, so these has()
+            # checks are meaningful; the composition function treats an omitted
+            # count as 1 for unified deployments, where these rules don't apply.
             x-kubernetes-validations:
             - rule: "!has(self.prefill) || (has(self.workers.count) && has(self.prefill.workers.count))"
               message: "a disaggregated deployment (prefill set) must set both workers.count and prefill.workers.count"
+            - rule: "!has(self.prefill) || has(self.routing)"
+              message: "a disaggregated deployment (prefill set) must set routing"
             properties:
               replicas:
                 type: integer
@@ -156,9 +154,7 @@ spec:
                   count:
                     type: integer
                     minimum: 1
-                    default: 1
-                    description: >-
-                      Number of workers per replica. Defaults to 1.
+                    description: Number of workers per replica.
                   topology:
                     type: object
                     required: [tensor]
@@ -323,9 +319,7 @@ spec:
                       count:
                         type: integer
                         minimum: 1
-                        default: 1
-                        description: >-
-                          Number of workers per replica. Defaults to 1.
+                        description: Number of workers per replica.
                       topology:
                         type: object
                         required: [tensor]

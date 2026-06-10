@@ -170,9 +170,9 @@ class Topology(BaseModel):
 
 
 class Workers(BaseModel):
-    count: conint(ge=1) | None = 1
+    count: conint(ge=1) | None = None
     """
-    Number of workers per replica. Defaults to 1.
+    Number of workers per replica.
     """
     template: Template
     """

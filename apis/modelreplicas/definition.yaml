@@ -118,7 +118,6 @@ spec:
                   count:
                     type: integer
                     minimum: 1
-                    default: 1
                   topology:
                     type: object
                     required: [tensor]
@@ -232,7 +231,6 @@ spec:
                       count:
                         type: integer
                         minimum: 1
-                        default: 1
                       topology:
                         type: object
                         required: [tensor]

@@ -190,6 +190,11 @@ class Composer:
         # are different Pydantic classes (generated from different XRDs
         # with the same schema).
         workers = mrv1alpha1.Workers.model_validate(self.xr.spec.workers.model_dump(exclude_none=True))
+        # Materialize the effective worker count onto the replica. workers.count
+        # no longer carries a schema default (a disaggregated deployment must set
+        # it explicitly; a unified one may omit it and means 1), so record the
+        # resolved value here rather than leave the replica to re-default it.
+        workers.count = int(self.xr.spec.workers.count or 1)
 
         for cluster_info in matched:
             replica_key = name.replica_key(cluster_info)
@@ -232,6 +237,7 @@ class Composer:
                 prefill_workers = mrv1alpha1.Workers.model_validate(
                     self.xr.spec.prefill.workers.model_dump(exclude_none=True)
                 )
+                prefill_workers.count = int(self.xr.spec.prefill.workers.count or 1)
                 prefill_requests = [
                     mrv1alpha1.DeviceRequest(
                         name=r.name,

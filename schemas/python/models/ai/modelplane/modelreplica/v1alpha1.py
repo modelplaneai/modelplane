@@ -124,7 +124,7 @@ class Topology(BaseModel):
 
 
 class Workers(BaseModel):
-    count: conint(ge=1) | None = 1
+    count: conint(ge=1) | None = None
     template: Template
     topology: Topology
 
