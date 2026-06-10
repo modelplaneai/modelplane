@@ -203,8 +203,8 @@ def _match_pool(pool, requests: list[_CompiledRequest]) -> list[DeviceRequest] |
     ResourceClaim, and DRA allocates distinct devices per request, so a device's
     count is consumed as requests claim it: two requests cannot both be satisfied
     by the same single-count device, and N requests against one device must fit
-    within that device's count. Without this accounting the scheduler would place
-    a replica onto a node DRA can't actually satisfy.
+    within that device's count. This accounting keeps us from accepting a pool
+    DRA can't actually satisfy.
 
     A replica's serving workload binds its GPUs through this ResourceClaim, so a
     pool that matches only synthetic devices (claim: Synthetic, matched for fleet
@@ -214,6 +214,27 @@ def _match_pool(pool, requests: list[_CompiledRequest]) -> list[DeviceRequest] |
     the workload with no claim, so we reject the pool. The deployment then finds
     no eligible pool and surfaces InsufficientCapacity. The ModelDeployment XRD
     documents that a nodeSelector must match at least one claimable device.
+
+    Assignment is GREEDY in request order: each request takes the first device
+    that satisfies it and has count left, with no backtracking. Greedy is exact
+    when no device satisfies two different requests, and that holds for both
+    patterns that occur in practice. First, a workload asking for N of one device
+    is a single request, so nothing contends. Second, a workload asking for
+    different device DOMAINS (e.g. a GPU and a NIC) writes selectors that read
+    different attribute domains, so again no device satisfies two requests and
+    order can't starve either.
+
+    Greedy can falsely reject only when two requests' match sets OVERLAP on a
+    shared device kind - e.g. a broad request (memory >= 80Gi, matches an H100
+    and an H200) and a narrow one (an H200 specifically) against a pool holding
+    one of each. If the broad request takes the H200 first, the narrow one finds
+    nothing and we reject the pool, though broad->H100, narrow->H200 would have
+    fit. This needs one deployment to ask for multiple GPUs of deliberately
+    different specificity from one mixed-GPU pool, written as overlapping rather
+    than disjoint selectors - a shape no real workload writes (you'd name both
+    GPUs, or use one request with a count). It also fails SAFE: a false reject
+    surfaces as InsufficientCapacity, never an overcommit or a bad placement, and
+    the user can resolve it by making the selectors disjoint.
     """
     devices = pool.devices or []
     # Track remaining count per device by its index in the pool, so capacity
