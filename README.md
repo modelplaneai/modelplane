@@ -8,7 +8,7 @@
 
 Modelplane extends [Crossplane] to manage AI model inference across a fleet of
 GPU clusters. Platform teams provision clusters and define hardware classes. ML
-teams deploy models and get back a unified, OpenAI-compatible endpoint.
+teams deploy models and get back unified, OpenAI-compatible endpoints.
 Modelplane handles fleet scheduling, multi-cluster routing, and infrastructure
 composition.
 
@@ -54,7 +54,7 @@ schedules each replica to a ready cluster with matching capacity, composes a
 endpoint on the control plane.
 
 Modelplane is the fleet-level control plane above the inference engine. It
-doesn't compete with vLLM or Dynamo. It manages them across clusters.
+does not compete with vLLM or Dynamo. It manages them across clusters.
 
 ## Current status
 
