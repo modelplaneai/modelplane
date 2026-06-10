@@ -54,7 +54,7 @@ schedules each replica to a ready cluster with matching capacity, composes a
 endpoint on the control plane.
 
 Modelplane is the fleet-level control plane above the inference engine. It
-doesn't compete with vLLM or Dynamo. It manages them across clusters.
+does not compete with vLLM or Dynamo. It manages them across clusters.
 
 ## Current status
 
