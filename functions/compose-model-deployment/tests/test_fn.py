@@ -5,11 +5,13 @@ import unittest
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
-from function import fn, name
+from function import fn
 from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format
 from google.protobuf import struct_pb2 as structpb
+from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modeldeployment import v1alpha1
+from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 # The resolved DRA device requests the scheduler stamps onto each ModelReplica,
@@ -23,6 +25,160 @@ _DEVICE_REQUESTS = [
         "selectors": [{"cel": 'device.driver == "gpu.nvidia.com"'}],
     }
 ]
+
+# A one-replica deployment requesting a single GPU. Reused across most cases.
+_XR = v1alpha1.ModelDeployment(
+    metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+    spec=v1alpha1.SpecModel(
+        replicas=1,
+        nodeSelector=v1alpha1.NodeSelector(
+            devices=[
+                v1alpha1.Device(
+                    name="gpu",
+                    count=1,
+                    selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+                ),
+            ],
+        ),
+        workers=v1alpha1.Workers(
+            topology=v1alpha1.Topology(tensor=1),
+            template=v1alpha1.Template(
+                spec=v1alpha1.Spec(
+                    containers=[
+                        v1alpha1.Container(
+                            name="engine",
+                            image="vllm/vllm-openai:latest",
+                            args=["--model=Qwen/Qwen3-0.6B"],
+                        ),
+                    ],
+                ),
+            ),
+        ),
+    ),
+).model_dump(exclude_none=True, mode="json")
+
+
+def _cluster(name: str, *, ready: bool = True, address: str | None = "10.0.0.1", nodes: int = 2) -> dict:
+    """An InferenceCluster input fixture, dumped to a dict.
+
+    A ready cluster has a Ready=True condition and a gateway address. ready=False
+    flips the condition to Unavailable; address=None drops the gateway entirely
+    (mirroring an offline cluster). nodes=0 yields a pool with no capacity.
+    """
+    return icv1alpha1.InferenceCluster(
+        metadata=metav1.ObjectMeta(name=name),
+        spec=icv1alpha1.Spec(
+            cluster=icv1alpha1.Cluster(
+                source="Existing",
+                existing=icv1alpha1.Existing(secretRef=icv1alpha1.SecretRef(name="k")),
+            ),
+        ),
+        status=icv1alpha1.Status(
+            conditions=[
+                icv1alpha1.Condition(
+                    type="Ready",
+                    status="True" if ready else "False",
+                    reason="Available" if ready else "Unavailable",
+                    lastTransitionTime="2025-01-01T00:00:00Z",
+                )
+            ],
+            gateway=icv1alpha1.Gateway(address=address) if address else None,
+            providerConfigRef=icv1alpha1.ProviderConfigRef(name=name),
+            gpuPools=[
+                icv1alpha1.GpuPool(
+                    name="default",
+                    nodes=nodes,
+                    devices=[
+                        icv1alpha1.Device(
+                            name="gpu",
+                            claim="DRA",
+                            driver="gpu.nvidia.com",
+                            deviceClassName="gpu.nvidia.com",
+                            count=1,
+                        )
+                    ],
+                )
+            ],
+        ),
+    ).model_dump(exclude_none=True, mode="json")
+
+
+# A ready cluster with a two-node GPU pool. Reused across most cases.
+_CLUSTER_A = _cluster("cluster-a")
+
+# An existing ModelReplica pinned to cluster-a, observed across cases 5 and 6.
+_EXISTING_REPLICA = mrv1alpha1.ModelReplica(
+    metadata=metav1.ObjectMeta(
+        name="my-model-5ab63",
+        namespace="ml-team",
+        labels={
+            "modelplane.ai/replica": "true",
+            "modelplane.ai/deployment": "my-model",
+            "modelplane.ai/cluster": "cluster-a",
+            "modelplane.ai/replica-index": "0",
+        },
+    ),
+    spec=mrv1alpha1.SpecModel(
+        clusterName="cluster-a",
+        nodePoolName="default",
+        deviceRequests=[
+            mrv1alpha1.DeviceRequest(
+                name="gpu",
+                deviceClassName="gpu.nvidia.com",
+                count=1,
+                selectors=[mrv1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+            ),
+        ],
+        workers=mrv1alpha1.Workers(
+            count=1,
+            topology=mrv1alpha1.Topology(tensor=1, pipeline=1),
+            template=mrv1alpha1.Template(
+                spec=mrv1alpha1.Spec(
+                    containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
+                ),
+            ),
+        ),
+    ),
+).model_dump(exclude_none=True, mode="json")
+
+# The requirements selectors every want echoes back.
+_CLUSTER_SEL = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster")
+_CLUSTER_SEL.match_labels.labels.update({"modelplane.ai/cluster": "true"})
+_REPLICA_SEL = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelReplica")
+_REPLICA_SEL.match_labels.labels.update({"modelplane.ai/replica": "true"})
+
+
+def _req(xr: dict, *, clusters: list[dict], replicas: list[dict] | None = None, observed: dict | None = None):
+    """Build a RunFunctionRequest with the standard required_resources.
+
+    clusters and replicas populate the "clusters" and "all-replicas" required
+    resources respectively; both keys are always present (empty when there are
+    no items). observed populates observed.resources.
+    """
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
+            resources={key: fnv1.Resource(resource=resource.dict_to_struct(r)) for key, r in (observed or {}).items()},
+        ),
+    )
+    if clusters:
+        for c in clusters:
+            req.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(c)))
+    else:
+        req.required_resources["clusters"].SetInParent()
+    if replicas:
+        for r in replicas:
+            req.required_resources["all-replicas"].items.append(fnv1.Resource(resource=resource.dict_to_struct(r)))
+    else:
+        req.required_resources["all-replicas"].SetInParent()
+    return req
+
+
+def _want(resp: fnv1.RunFunctionResponse) -> fnv1.RunFunctionResponse:
+    """Attach the standard requirements selectors to a response."""
+    resp.requirements.resources["clusters"].CopyFrom(_CLUSTER_SEL)
+    resp.requirements.resources["all-replicas"].CopyFrom(_REPLICA_SEL)
+    return resp
 
 
 @dataclasses.dataclass
@@ -45,734 +201,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls) -> None:
         cls.runner = fn.FunctionRunner()
 
-    async def test_compose(self) -> None:  # noqa: PLR0915
+    async def test_compose(self) -> None:
         """The function fans out ModelReplicas and ModelEndpoints."""
 
-        xr = v1alpha1.ModelDeployment(
-            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel(
-                replicas=1,
-                nodeSelector=v1alpha1.NodeSelector(
-                    devices=[
-                        v1alpha1.Device(
-                            name="gpu",
-                            count=1,
-                            selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
-                        ),
-                    ],
-                ),
-                workers=v1alpha1.Workers(
-                    topology=v1alpha1.Topology(tensor=1),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(
-                            containers=[
-                                v1alpha1.Container(
-                                    name="engine",
-                                    image="vllm/vllm-openai:latest",
-                                    args=["--model=Qwen/Qwen3-0.6B"],
-                                ),
-                            ],
-                        ),
-                    ),
-                ),
-            ),
-        ).model_dump(exclude_none=True, mode="json")
-
-        cluster_a = {
-            "apiVersion": "modelplane.ai/v1alpha1",
-            "kind": "InferenceCluster",
-            "metadata": {"name": "cluster-a"},
-            "spec": {
-                "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
-            },
-            "status": {
-                "conditions": [
-                    {
-                        "type": "Ready",
-                        "status": "True",
-                        "reason": "Available",
-                        "lastTransitionTime": "2025-01-01T00:00:00Z",
-                    }
-                ],
-                "gateway": {"address": "10.0.0.1"},
-                "providerConfigRef": {"name": "cluster-a"},
-                "gpuPools": [
-                    {
-                        "name": "default",
-                        "nodes": 2,
-                        "devices": [
-                            {
-                                "name": "gpu",
-                                "claim": "DRA",
-                                "driver": "gpu.nvidia.com",
-                                "deviceClassName": "gpu.nvidia.com",
-                                "count": 1,
-                            }
-                        ],
-                    }
-                ],
-            },
-        }
-
-        # Requirements are the same for all cases that reach resolve_inputs.
-        cluster_sel = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster")
-        cluster_sel.match_labels.labels.update({"modelplane.ai/cluster": "true"})
-        replica_sel = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelReplica")
-        replica_sel.match_labels.labels.update({"modelplane.ai/replica": "true"})
-
-        # Case 1: one ready cluster matches — composes replica and endpoint.
-        req1 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-            ),
-        )
-        req1.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cluster_a)))
-        req1.required_resources["all-replicas"].SetInParent()
-
-        want1 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                ),
-                resources={
-                    "replica-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelReplica",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/replica": "true",
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "clusterName": "cluster-a",
-                                    "nodePoolName": "default",
-                                    "deviceRequests": _DEVICE_REQUESTS,
-                                    "workers": {
-                                        "topology": {"tensor": 1, "pipeline": 1},
-                                        "count": 1,
-                                        "template": {
-                                            "spec": {
-                                                "containers": [
-                                                    {
-                                                        "name": "engine",
-                                                        "image": "vllm/vllm-openai:latest",
-                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                    }
-                                                ],
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                    "endpoint-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelEndpoint",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                    "rewritePath": "/ml-team/my-model-5ab63/",
-                                },
-                            }
-                        ),
-                    ),
-                },
-            ),
-            conditions=[
-                fnv1.Condition(
-                    type="ReplicasScheduled",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="Scheduling",
-                ),
-                fnv1.Condition(
-                    type="ReplicasReady",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="ModelStarting",
-                    message="0 of 1 ready",
-                ),
-            ],
-            results=[
-                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Scheduled 1 replicas across 1 clusters: cluster-a"),
-            ],
-            context=structpb.Struct(),
-        )
-        want1.requirements.resources["clusters"].CopyFrom(cluster_sel)
-        want1.requirements.resources["all-replicas"].CopyFrom(replica_sel)
-
-        # Case 2: no clusters — warning.
-        req2 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-            ),
-        )
-        req2.required_resources["clusters"].SetInParent()
-        req2.required_resources["all-replicas"].SetInParent()
-
-        want2 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(),
-            conditions=[
-                fnv1.Condition(
-                    type="ReplicasScheduled",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="NoClusters",
-                ),
-            ],
-            results=[
-                fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="No InferenceClusters found"),
-            ],
-            context=structpb.Struct(),
-        )
-        want2.requirements.resources["clusters"].CopyFrom(cluster_sel)
-        want2.requirements.resources["all-replicas"].CopyFrom(replica_sel)
-
-        # Case 3: cluster has insufficient capacity.
-        req3 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-            ),
-        )
-        req3.required_resources["clusters"].items.append(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "modelplane.ai/v1alpha1",
-                        "kind": "InferenceCluster",
-                        "metadata": {"name": "cluster-a"},
-                        "spec": {
-                            "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
-                        },
-                        "status": {
-                            "conditions": [
-                                {
-                                    "type": "Ready",
-                                    "status": "True",
-                                    "reason": "Available",
-                                    "lastTransitionTime": "2025-01-01T00:00:00Z",
-                                }
-                            ],
-                            "gateway": {"address": "10.0.0.1"},
-                            "providerConfigRef": {"name": "cluster-a"},
-                            "gpuPools": [
-                                {
-                                    "name": "default",
-                                    "nodes": 0,
-                                    "devices": [
-                                        {
-                                            "name": "gpu",
-                                            "claim": "DRA",
-                                            "driver": "gpu.nvidia.com",
-                                            "deviceClassName": "gpu.nvidia.com",
-                                            "count": 1,
-                                        }
-                                    ],
-                                }
-                            ],
-                        },
-                    }
-                )
-            )
-        )
-        req3.required_resources["all-replicas"].SetInParent()
-
-        want3 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
-                    ready=fnv1.READY_FALSE,
-                ),
-            ),
-            conditions=[
-                fnv1.Condition(
-                    type="ReplicasScheduled",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="InsufficientCapacity",
-                    message="0 of 1 replicas scheduled (checked 1 clusters)",
-                ),
-                fnv1.Condition(
-                    type="ReplicasReady",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="NoReplicasScheduled",
-                ),
-            ],
-            context=structpb.Struct(),
-        )
-        want3.requirements.resources["clusters"].CopyFrom(cluster_sel)
-        want3.requirements.resources["all-replicas"].CopyFrom(replica_sel)
-
-        # Case 4: existing replica is preserved (stable scheduling).
-        req4 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-                resources={
-                    "replica-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelReplica",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/replica": "true",
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                    "endpoint-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelEndpoint",
-                                "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
-                            }
-                        ),
-                    ),
-                },
-            ),
-        )
-        req4.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cluster_a)))
-        req4.required_resources["all-replicas"].items.append(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "modelplane.ai/v1alpha1",
-                        "kind": "ModelReplica",
-                        "metadata": {
-                            "name": "my-model-5ab63",
-                            "namespace": "ml-team",
-                            "labels": {
-                                "modelplane.ai/replica": "true",
-                                "modelplane.ai/deployment": "my-model",
-                                "modelplane.ai/cluster": "cluster-a",
-                                "modelplane.ai/replica-index": "0",
-                            },
-                        },
-                        "spec": {
-                            "clusterName": "cluster-a",
-                            "nodePoolName": "default",
-                            "deviceRequests": _DEVICE_REQUESTS,
-                            "workers": {
-                                "topology": {"tensor": 1, "pipeline": 1},
-                                "count": 1,
-                                "template": {
-                                    "spec": {
-                                        "containers": [
-                                            {"name": "engine", "image": "vllm/vllm-openai:latest"},
-                                        ]
-                                    }
-                                },
-                            },
-                        },
-                    }
-                )
-            )
-        )
-
-        want4 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                ),
-                resources={
-                    "replica-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelReplica",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/replica": "true",
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "clusterName": "cluster-a",
-                                    "nodePoolName": "default",
-                                    "deviceRequests": _DEVICE_REQUESTS,
-                                    "workers": {
-                                        "topology": {"tensor": 1, "pipeline": 1},
-                                        "count": 1,
-                                        "template": {
-                                            "spec": {
-                                                "containers": [
-                                                    {
-                                                        "name": "engine",
-                                                        "image": "vllm/vllm-openai:latest",
-                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                    }
-                                                ],
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                    "endpoint-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelEndpoint",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                    "rewritePath": "/ml-team/my-model-5ab63/",
-                                },
-                            }
-                        ),
-                    ),
-                },
-            ),
-            conditions=[
-                fnv1.Condition(
-                    type="ReplicasScheduled",
-                    status=fnv1.STATUS_CONDITION_TRUE,
-                    reason="ReplicasCreated",
-                    message="Scheduled 1 of 1 replicas",
-                ),
-                fnv1.Condition(
-                    type="ReplicasReady",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="ModelStarting",
-                    message="0 of 1 ready",
-                ),
-            ],
-            context=structpb.Struct(),
-        )
-        want4.requirements.resources["clusters"].CopyFrom(cluster_sel)
-        want4.requirements.resources["all-replicas"].CopyFrom(replica_sel)
-
-        # Case 5: pinned cluster has gone offline (still exists but is
-        # no longer Ready and has no gateway address). The replica stays
-        # pinned to it; the endpoint is not composed.
-        cluster_a_offline = {
-            "apiVersion": "modelplane.ai/v1alpha1",
-            "kind": "InferenceCluster",
-            "metadata": {"name": "cluster-a"},
-            "spec": {
-                "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
-            },
-            "status": {
-                "conditions": [
-                    {
-                        "type": "Ready",
-                        "status": "False",
-                        "reason": "Unavailable",
-                        "lastTransitionTime": "2025-01-01T00:00:00Z",
-                    }
-                ],
-                "providerConfigRef": {"name": "cluster-a"},
-                "gpuPools": [
-                    {
-                        "name": "default",
-                        "nodes": 2,
-                        "devices": [
-                            {
-                                "name": "gpu",
-                                "claim": "DRA",
-                                "driver": "gpu.nvidia.com",
-                                "deviceClassName": "gpu.nvidia.com",
-                                "count": 1,
-                            }
-                        ],
-                    }
-                ],
-            },
-        }
-        existing_replica = {
-            "apiVersion": "modelplane.ai/v1alpha1",
-            "kind": "ModelReplica",
-            "metadata": {
-                "name": "my-model-5ab63",
-                "namespace": "ml-team",
-                "labels": {
-                    "modelplane.ai/replica": "true",
-                    "modelplane.ai/deployment": "my-model",
-                    "modelplane.ai/cluster": "cluster-a",
-                    "modelplane.ai/replica-index": "0",
-                },
-            },
-            "spec": {
-                "clusterName": "cluster-a",
-                "nodePoolName": "default",
-                "deviceRequests": _DEVICE_REQUESTS,
-                "workers": {
-                    "topology": {"tensor": 1, "pipeline": 1},
-                    "count": 1,
-                    "template": {
-                        "spec": {
-                            "containers": [
-                                {"name": "engine", "image": "vllm/vllm-openai:latest"},
-                            ]
-                        }
-                    },
-                },
-            },
-        }
-        req5 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-                resources={
-                    "replica-cluster-a-0": fnv1.Resource(resource=resource.dict_to_struct(existing_replica)),
-                },
-            ),
-        )
-        req5.required_resources["clusters"].items.append(
-            fnv1.Resource(resource=resource.dict_to_struct(cluster_a_offline))
-        )
-        req5.required_resources["all-replicas"].items.append(
-            fnv1.Resource(resource=resource.dict_to_struct(existing_replica))
-        )
-
-        want5 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                ),
-                resources={
-                    "replica-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelReplica",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/replica": "true",
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "clusterName": "cluster-a",
-                                    "nodePoolName": "default",
-                                    "deviceRequests": _DEVICE_REQUESTS,
-                                    "workers": {
-                                        "topology": {"tensor": 1, "pipeline": 1},
-                                        "count": 1,
-                                        "template": {
-                                            "spec": {
-                                                "containers": [
-                                                    {
-                                                        "name": "engine",
-                                                        "image": "vllm/vllm-openai:latest",
-                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                    }
-                                                ],
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                },
-            ),
-            conditions=[
-                fnv1.Condition(
-                    type="ReplicasScheduled",
-                    status=fnv1.STATUS_CONDITION_TRUE,
-                    reason="ReplicasCreated",
-                    message="Scheduled 1 of 1 replicas",
-                ),
-                fnv1.Condition(
-                    type="ReplicasReady",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="ModelStarting",
-                    message="0 of 1 ready",
-                ),
-            ],
-            context=structpb.Struct(),
-        )
-        want5.requirements.resources["clusters"].CopyFrom(cluster_sel)
-        want5.requirements.resources["all-replicas"].CopyFrom(replica_sel)
-
-        # Case 6: pinned cluster has disappeared entirely. cluster-b is
-        # available with capacity, so the scheduler re-places the
-        # replica onto it.
-        cluster_b = {
-            "apiVersion": "modelplane.ai/v1alpha1",
-            "kind": "InferenceCluster",
-            "metadata": {"name": "cluster-b"},
-            "spec": {
-                "cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}},
-            },
-            "status": {
-                "conditions": [
-                    {
-                        "type": "Ready",
-                        "status": "True",
-                        "reason": "Available",
-                        "lastTransitionTime": "2025-01-01T00:00:00Z",
-                    }
-                ],
-                "gateway": {"address": "10.0.0.2"},
-                "providerConfigRef": {"name": "cluster-b"},
-                "gpuPools": [
-                    {
-                        "name": "default",
-                        "nodes": 2,
-                        "devices": [
-                            {
-                                "name": "gpu",
-                                "claim": "DRA",
-                                "driver": "gpu.nvidia.com",
-                                "deviceClassName": "gpu.nvidia.com",
-                                "count": 1,
-                            }
-                        ],
-                    }
-                ],
-            },
-        }
-        req6 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr)),
-                resources={
-                    "replica-cluster-a-0": fnv1.Resource(resource=resource.dict_to_struct(existing_replica)),
-                },
-            ),
-        )
-        req6.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cluster_b)))
-        # The existing replica is observed - its pinned cluster-a is
-        # gone from the cluster list, so the scheduler must re-place it.
-        req6.required_resources["all-replicas"].items.append(
-            fnv1.Resource(resource=resource.dict_to_struct(existing_replica))
-        )
-
-        want6 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                ),
-                resources={
-                    "replica-cluster-b-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelReplica",
-                                "metadata": {
-                                    "name": "my-model-f0b76",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/replica": "true",
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-b",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "clusterName": "cluster-b",
-                                    "nodePoolName": "default",
-                                    "deviceRequests": _DEVICE_REQUESTS,
-                                    "workers": {
-                                        "topology": {"tensor": 1, "pipeline": 1},
-                                        "count": 1,
-                                        "template": {
-                                            "spec": {
-                                                "containers": [
-                                                    {
-                                                        "name": "engine",
-                                                        "image": "vllm/vllm-openai:latest",
-                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                    }
-                                                ],
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                    "endpoint-cluster-b-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelEndpoint",
-                                "metadata": {
-                                    "name": "my-model-f0b76",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-b",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "url": "http://10.0.0.2/ml-team/my-model-f0b76/v1",
-                                    "rewritePath": "/ml-team/my-model-f0b76/",
-                                },
-                            }
-                        ),
-                    ),
-                },
-            ),
-            conditions=[
-                fnv1.Condition(
-                    type="ReplicasScheduled",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="Scheduling",
-                ),
-                fnv1.Condition(
-                    type="ReplicasReady",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="ModelStarting",
-                    message="0 of 1 ready",
-                ),
-            ],
-            results=[
-                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Scheduled 1 replicas across 1 clusters: cluster-b"),
-            ],
-            context=structpb.Struct(),
-        )
-        want6.requirements.resources["clusters"].CopyFrom(cluster_sel)
-        want6.requirements.resources["all-replicas"].CopyFrom(replica_sel)
-
-        # Case 7: deployment sets spec.modelCacheRef — the ref is
-        # propagated onto the composed replica's spec so the backend
-        # knows which cache PVC to mount.
+        # A deployment that sets spec.modelCacheRef.
         xr_cached = v1alpha1.ModelDeployment(
             metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
             spec=v1alpha1.SpecModel(
@@ -804,137 +236,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             ),
         ).model_dump(exclude_none=True, mode="json")
 
-        req7 = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(xr_cached)),
-            ),
-        )
-        req7.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cluster_a)))
-        req7.required_resources["all-replicas"].SetInParent()
-
-        want7 = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
-                ),
-                resources={
-                    "replica-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelReplica",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/replica": "true",
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "clusterName": "cluster-a",
-                                    "nodePoolName": "default",
-                                    "deviceRequests": _DEVICE_REQUESTS,
-                                    "modelCacheRef": {"name": "qwen"},
-                                    "workers": {
-                                        "topology": {"tensor": 1, "pipeline": 1},
-                                        "count": 1,
-                                        "template": {
-                                            "spec": {
-                                                "containers": [
-                                                    {
-                                                        "name": "engine",
-                                                        "image": "vllm/vllm-openai:latest",
-                                                        "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                    }
-                                                ],
-                                            },
-                                        },
-                                    },
-                                },
-                            }
-                        ),
-                    ),
-                    "endpoint-cluster-a-0": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "modelplane.ai/v1alpha1",
-                                "kind": "ModelEndpoint",
-                                "metadata": {
-                                    "name": "my-model-5ab63",
-                                    "namespace": "ml-team",
-                                    "labels": {
-                                        "modelplane.ai/deployment": "my-model",
-                                        "modelplane.ai/cluster": "cluster-a",
-                                        "modelplane.ai/replica-index": "0",
-                                    },
-                                },
-                                "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                    "rewritePath": "/ml-team/my-model-5ab63/",
-                                },
-                            }
-                        ),
-                    ),
-                },
-            ),
-            conditions=[
-                fnv1.Condition(
-                    type="ReplicasScheduled",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="Scheduling",
-                ),
-                fnv1.Condition(
-                    type="ReplicasReady",
-                    status=fnv1.STATUS_CONDITION_FALSE,
-                    reason="ModelStarting",
-                    message="0 of 1 ready",
-                ),
-            ],
-            results=[
-                fnv1.Result(
-                    severity=fnv1.SEVERITY_NORMAL,
-                    message="Scheduled 1 replicas across 1 clusters: cluster-a",
-                ),
-            ],
-            context=structpb.Struct(),
-        )
-        want7.requirements.resources["clusters"].CopyFrom(cluster_sel)
-        want7.requirements.resources["all-replicas"].CopyFrom(replica_sel)
-
-        cases = [
-            Case(name="one ready cluster composes replica and endpoint", req=req1, want=want1),
-            Case(name="no clusters produces warning", req=req2, want=want2),
-            Case(name="insufficient capacity produces no replicas", req=req3, want=want3),
-            Case(name="existing replica is preserved with stable scheduling", req=req4, want=want4),
-            Case(name="offline pinned cluster keeps replica but drops endpoint", req=req5, want=want5),
-            Case(name="deleted pinned cluster triggers replica re-placement", req=req6, want=want6),
-            Case(name="modelCacheRef is propagated onto the composed replica", req=req7, want=want7),
-        ]
-
-        for case in cases:
-            with self.subTest(case.name):
-                got = await self.runner.RunFunction(case.req, None)
-                self.assertEqual(
-                    json_format.MessageToDict(case.want),
-                    json_format.MessageToDict(got),
-                    "-want, +got",
-                )
-
-    async def test_compose_co_located_replicas(self) -> None:
-        """Two replicas can land on one cluster as distinct desired resources.
-
-        Exercises the end-to-end fan-out for co-located replicas: a deployment
-        wanting two replicas, with only one (two-node) cluster, packs both onto
-        it. Each gets a distinct desired-resource key (replica-{cluster}-{index}),
-        a distinct opaque name, and its own replica-index label, and each
-        ModelEndpoint's name equals its ModelReplica's name (routing depends on
-        it).
-        """
-        xr = v1alpha1.ModelDeployment(
+        # A two-replica deployment (no container args) for the co-location case.
+        xr_two = v1alpha1.ModelDeployment(
             metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
             spec=v1alpha1.SpecModel(
                 replicas=2,
@@ -958,81 +261,696 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             ),
         ).model_dump(exclude_none=True, mode="json")
 
-        cluster_a = {
-            "apiVersion": "modelplane.ai/v1alpha1",
-            "kind": "InferenceCluster",
-            "metadata": {"name": "cluster-a"},
-            "spec": {"cluster": {"source": "Existing", "existing": {"secretRef": {"name": "k"}}}},
-            "status": {
-                "conditions": [
-                    {
-                        "type": "Ready",
-                        "status": "True",
-                        "reason": "Available",
-                        "lastTransitionTime": "2025-01-01T00:00:00Z",
-                    }
-                ],
-                "gateway": {"address": "10.0.0.1"},
-                "providerConfigRef": {"name": "cluster-a"},
-                "gpuPools": [
-                    {
-                        "name": "default",
-                        "nodes": 2,
-                        "devices": [
-                            {
-                                "name": "gpu",
-                                "claim": "DRA",
-                                "driver": "gpu.nvidia.com",
-                                "deviceClassName": "gpu.nvidia.com",
-                                "count": 1,
-                            }
+        cases = [
+            Case(
+                name="one ready cluster composes replica and endpoint",
+                req=_req(_XR, clusters=[_CLUSTER_A]),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/replica": "true",
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-a",
+                                                "nodePoolName": "default",
+                                                "deviceRequests": _DEVICE_REQUESTS,
+                                                "workers": {
+                                                    "topology": {"tensor": 1, "pipeline": 1},
+                                                    "count": 1,
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                                }
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        }
+                                    ),
+                                ),
+                                "endpoint-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelEndpoint",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
+                                                "rewritePath": "/ml-team/my-model-5ab63/",
+                                            },
+                                        }
+                                    ),
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="Scheduling",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
+                            ),
                         ],
-                    }
-                ],
-            },
-        }
+                        results=[
+                            fnv1.Result(
+                                severity=fnv1.SEVERITY_NORMAL,
+                                message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                name="no clusters produces warning",
+                req=_req(_XR, clusters=[]),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="NoClusters",
+                            ),
+                        ],
+                        results=[
+                            fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="No InferenceClusters found"),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                name="insufficient capacity produces no replicas",
+                req=_req(_XR, clusters=[_cluster("cluster-a", nodes=0)]),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                                ready=fnv1.READY_FALSE,
+                            ),
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="InsufficientCapacity",
+                                message="0 of 1 replicas scheduled (checked 1 clusters)",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="NoReplicasScheduled",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                name="existing replica is preserved with stable scheduling",
+                req=_req(
+                    _XR,
+                    clusters=[_CLUSTER_A],
+                    replicas=[_EXISTING_REPLICA],
+                    observed={
+                        "replica-cluster-a-0": {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "ModelReplica",
+                            "metadata": {
+                                "name": "my-model-5ab63",
+                                "namespace": "ml-team",
+                                "labels": {
+                                    "modelplane.ai/replica": "true",
+                                    "modelplane.ai/deployment": "my-model",
+                                    "modelplane.ai/cluster": "cluster-a",
+                                    "modelplane.ai/replica-index": "0",
+                                },
+                            },
+                        },
+                        "endpoint-cluster-a-0": {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "ModelEndpoint",
+                            "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
+                        },
+                    },
+                ),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/replica": "true",
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-a",
+                                                "nodePoolName": "default",
+                                                "deviceRequests": _DEVICE_REQUESTS,
+                                                "workers": {
+                                                    "topology": {"tensor": 1, "pipeline": 1},
+                                                    "count": 1,
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                                }
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        }
+                                    ),
+                                ),
+                                "endpoint-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelEndpoint",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
+                                                "rewritePath": "/ml-team/my-model-5ab63/",
+                                            },
+                                        }
+                                    ),
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_TRUE,
+                                reason="ReplicasCreated",
+                                message="Scheduled 1 of 1 replicas",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                name="offline pinned cluster keeps replica but drops endpoint",
+                req=_req(
+                    _XR,
+                    clusters=[_cluster("cluster-a", ready=False, address=None)],
+                    replicas=[_EXISTING_REPLICA],
+                    observed={"replica-cluster-a-0": _EXISTING_REPLICA},
+                ),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/replica": "true",
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-a",
+                                                "nodePoolName": "default",
+                                                "deviceRequests": _DEVICE_REQUESTS,
+                                                "workers": {
+                                                    "topology": {"tensor": 1, "pipeline": 1},
+                                                    "count": 1,
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                                }
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        }
+                                    ),
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_TRUE,
+                                reason="ReplicasCreated",
+                                message="Scheduled 1 of 1 replicas",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                name="deleted pinned cluster triggers replica re-placement",
+                req=_req(
+                    _XR,
+                    clusters=[_cluster("cluster-b", address="10.0.0.2")],
+                    replicas=[_EXISTING_REPLICA],
+                    observed={"replica-cluster-a-0": _EXISTING_REPLICA},
+                ),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-b-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-f0b76",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/replica": "true",
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-b",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-b",
+                                                "nodePoolName": "default",
+                                                "deviceRequests": _DEVICE_REQUESTS,
+                                                "workers": {
+                                                    "topology": {"tensor": 1, "pipeline": 1},
+                                                    "count": 1,
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                                }
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        }
+                                    ),
+                                ),
+                                "endpoint-cluster-b-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelEndpoint",
+                                            "metadata": {
+                                                "name": "my-model-f0b76",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-b",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "url": "http://10.0.0.2/ml-team/my-model-f0b76/v1",
+                                                "rewritePath": "/ml-team/my-model-f0b76/",
+                                            },
+                                        }
+                                    ),
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="Scheduling",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
+                            ),
+                        ],
+                        results=[
+                            fnv1.Result(
+                                severity=fnv1.SEVERITY_NORMAL,
+                                message="Scheduled 1 replicas across 1 clusters: cluster-b",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                name="modelCacheRef is propagated onto the composed replica",
+                req=_req(xr_cached, clusters=[_CLUSTER_A]),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/replica": "true",
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-a",
+                                                "nodePoolName": "default",
+                                                "deviceRequests": _DEVICE_REQUESTS,
+                                                "modelCacheRef": {"name": "qwen"},
+                                                "workers": {
+                                                    "topology": {"tensor": 1, "pipeline": 1},
+                                                    "count": 1,
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
+                                                                }
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        }
+                                    ),
+                                ),
+                                "endpoint-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelEndpoint",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
+                                                "rewritePath": "/ml-team/my-model-5ab63/",
+                                            },
+                                        }
+                                    ),
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="Scheduling",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
+                            ),
+                        ],
+                        results=[
+                            fnv1.Result(
+                                severity=fnv1.SEVERITY_NORMAL,
+                                message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                name="two replicas co-locate on one cluster as distinct resources",
+                req=_req(xr_two, clusters=[_CLUSTER_A]),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 2, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/replica": "true",
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-a",
+                                                "nodePoolName": "default",
+                                                "deviceRequests": _DEVICE_REQUESTS,
+                                                "workers": {
+                                                    "topology": {"tensor": 1, "pipeline": 1},
+                                                    "count": 1,
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                }
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        }
+                                    ),
+                                ),
+                                "replica-cluster-a-1": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-609c5",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/replica": "true",
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "1",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-a",
+                                                "nodePoolName": "default",
+                                                "deviceRequests": _DEVICE_REQUESTS,
+                                                "workers": {
+                                                    "topology": {"tensor": 1, "pipeline": 1},
+                                                    "count": 1,
+                                                    "template": {
+                                                        "spec": {
+                                                            "containers": [
+                                                                {
+                                                                    "name": "engine",
+                                                                    "image": "vllm/vllm-openai:latest",
+                                                                }
+                                                            ],
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        }
+                                    ),
+                                ),
+                                "endpoint-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelEndpoint",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
+                                                "rewritePath": "/ml-team/my-model-5ab63/",
+                                            },
+                                        }
+                                    ),
+                                ),
+                                "endpoint-cluster-a-1": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelEndpoint",
+                                            "metadata": {
+                                                "name": "my-model-609c5",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "1",
+                                                },
+                                            },
+                                            "spec": {
+                                                "url": "http://10.0.0.1/ml-team/my-model-609c5/v1",
+                                                "rewritePath": "/ml-team/my-model-609c5/",
+                                            },
+                                        }
+                                    ),
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="Scheduling",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 2 ready",
+                            ),
+                        ],
+                        results=[
+                            fnv1.Result(
+                                severity=fnv1.SEVERITY_NORMAL,
+                                message="Scheduled 2 replicas across 1 clusters: cluster-a",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+        ]
 
-        req = fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(xr))),
-        )
-        req.required_resources["clusters"].items.append(fnv1.Resource(resource=resource.dict_to_struct(cluster_a)))
-        req.required_resources["all-replicas"].SetInParent()
-
-        got = await self.runner.RunFunction(req, None)
-        resources = got.desired.resources
-
-        # Both replicas and both endpoints are composed, keyed by (cluster, index).
-        self.assertEqual(
-            {"replica-cluster-a-0", "replica-cluster-a-1", "endpoint-cluster-a-0", "endpoint-cluster-a-1"},
-            set(resources.keys()),
-        )
-
-        for index, replica_key, endpoint_key in [
-            (0, "replica-cluster-a-0", "endpoint-cluster-a-0"),
-            (1, "replica-cluster-a-1", "endpoint-cluster-a-1"),
-        ]:
-            replica = json_format.MessageToDict(resources[replica_key].resource)
-            endpoint = json_format.MessageToDict(resources[endpoint_key].resource)
-
-            # Opaque name hashed from (deployment, cluster, index): the readable
-            # prefix is the deployment name only; cluster and index live in the
-            # hash, not the name.
-            want_name = name.replica(
-                "my-model", dataclasses.make_dataclass("C", ["name", "index"])(name="cluster-a", index=index)
-            )
-            self.assertEqual(want_name, replica["metadata"]["name"])
-            self.assertEqual(str(index), replica["metadata"]["labels"]["modelplane.ai/replica-index"])
-            self.assertEqual("cluster-a", replica["spec"]["clusterName"])
-
-            # Endpoint name must equal the replica name so routing lands on it.
-            self.assertEqual(want_name, endpoint["metadata"]["name"])
-            self.assertEqual(str(index), endpoint["metadata"]["labels"]["modelplane.ai/replica-index"])
-
-        # The two replicas have distinct names (no collision on one cluster).
-        name0 = json_format.MessageToDict(resources["replica-cluster-a-0"].resource)["metadata"]["name"]
-        name1 = json_format.MessageToDict(resources["replica-cluster-a-1"].resource)["metadata"]["name"]
-        self.assertNotEqual(name0, name1)
-
-        # Status reflects two scheduled replicas.
-        composite = json_format.MessageToDict(got.desired.composite.resource)
-        self.assertEqual(2, composite["status"]["replicas"]["total"])
+        for case in cases:
+            with self.subTest(case.name):
+                got = await self.runner.RunFunction(case.req, None)
+                self.assertEqual(
+                    json_format.MessageToDict(case.want),
+                    json_format.MessageToDict(got),
+                    "-want, +got",
+                )
