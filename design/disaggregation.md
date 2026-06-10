@@ -21,6 +21,14 @@ generates the output. Modelplane expresses this with a `prefill` block on the
 deployment: the top-level `workers` is the decode (or unified) role, and adding
 a `prefill` block makes the deployment disaggregated.
 
+It pays off for large models under load with strict TTFT/ITL targets, long
+context, and a fast interconnect, where the two phases' loads are large and
+skewed enough to tune separately; for small models, short context, or low
+traffic the KV-transfer overhead outweighs the benefit and aggregated serving
+(optionally with chunked prefill) is simpler. The choice is the operator's:
+Modelplane serves unified by default and disaggregates only when a `prefill`
+block is set.
+
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
@@ -31,7 +39,7 @@ spec:
   replicas: 1
   modelCacheRef:
     name: llama-405b
-  # Top-level workers: the decode role.
+  # Top-level workers: the decode role (memory-bandwidth-bound).
   workers:
     count: 3
     topology:
@@ -44,7 +52,19 @@ spec:
           args:
           - "--model=/mnt/models"
           - '--kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_consumer"}'
-  # Prefill role. Self-contained.
+  # Decode's hardware. nodeSelector is required (a list of DRA device requests);
+  # here a high-VRAM GPU plus the InfiniBand fabric the KV transfer needs.
+  nodeSelector:
+    devices:
+    - name: gpu
+      count: 8
+      selectors:
+      - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0
+    - name: nic
+      count: 8
+      selectors:
+      - cel: device.attributes["nic.nvidia.com"].linkType == "infiniband"
+  # Prefill role. Self-contained, with its own (compute-bound, single-GPU) hardware.
   prefill:
     workers:
       count: 5
@@ -58,6 +78,16 @@ spec:
             args:
             - "--model=/mnt/models"
             - '--kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_producer"}'
+    nodeSelector:
+      devices:
+      - name: gpu
+        count: 1
+        selectors:
+        - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0
+      - name: nic
+        count: 1
+        selectors:
+        - cel: device.attributes["nic.nvidia.com"].linkType == "infiniband"
 ```
 
 ## The prefill block
@@ -122,26 +152,34 @@ mature.
   InferenceCluster. The fleet scheduler rejects the deployment if no matched
   cluster can host both roles.
 - **Interconnect.** KV transfer needs NVLink within a node or RDMA/InfiniBand
-  across nodes; over PCIe or ethernet it bottlenecks. It is required as a
-  cluster or pool capability (e.g. `networkInterNode`) and matched the same way
-  as other hardware requirements.
+  across nodes; over PCIe or ethernet it bottlenecks. The fabric is modeled as a
+  `Synthetic` device on the InferenceClass (e.g. a `nic` device with
+  `claim: Synthetic`, since no DRA driver claims it) and matched by a
+  `nodeSelector` device request, the same way as a claimable GPU — see the
+  example above.
 - **Connector and model compatibility.** Both roles run a compatible KV
   connector (`NixlConnector`, paired `kv_role`) on the same model and dtype,
   with compatible parallelism so the KV layout matches.
 - **Both roles explicit.** A disaggregated deployment sets both `workers.count`
   and `prefill.workers.count`.
 
-## When to use
-
-Disaggregation pays off for large models under load with strict TTFT and ITL
-targets, long context, and a fast interconnect, where prefill and decode load
-are large enough and skewed enough to tune separately. For small models, short
-context, or low traffic, the KV-transfer overhead outweighs the benefit;
-aggregated serving, optionally with chunked prefill, is simpler and usually
-faster. The decision is the operator's. Modelplane serves unified by default and
-disaggregates only when a `prefill` block is set.
-
 ## Alternatives considered
+
+### Two ModelDeployments (one prefill, one decode)
+
+Disaggregation could be expressed as two separate ModelDeployments — one for
+prefill, one for decode — reusing existing primitives with no new `prefill`
+block. It is close to what's proposed and appealingly minimal, but the single-MD
+form is better on two counts:
+
+- **Co-location.** With one MD the scheduler has everything it needs to place
+  prefill and decode workers on the same cluster sensibly. With two MDs the
+  author must either get crafty with `nodeSelector`s to force co-location, or we
+  add cross-MD co-scheduling hints (and the scheduler would then have to reason
+  about all MDs together).
+- **It's still a model deployment.** A disaggregated MD is conceptually one
+  thing — "a model deployment." A prefill-only MD isn't one; it's an
+  implementation half that only makes sense paired with a decode MD.
 
 ### KServe prefill section
 
@@ -161,11 +199,33 @@ disaggregated serving rather than a disaggregation-only proxy.
 
 ### A routing discriminator instead of a template
 
-The EPP could be selected by a `picker` enum. Instead it is a curated PodSpec
-subset (`routing.template`), the same shape and owner as the engine, defaulting
-to the llm-d EPP and overridable by image and args. This avoids a discriminator
-for a component that is really just a container, matching the engine convention
-and design.md's preference against gratuitous discriminators.
+The EPP could be selected by a `picker` enum:
+
+```yaml
+spec:
+  routing:
+    picker: llm-d        # enum: llm-d | ...; each value hard-codes an EPP
+```
+
+Instead it is a curated PodSpec subset, the same shape and owner as the engine —
+defaulting to the llm-d EPP, overridable by image and args:
+
+```yaml
+spec:
+  routing:
+    template:
+      spec:
+        containers:
+        - name: epp
+          image: ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0   # default
+          args: ["--config-file=/config/epp.yaml"]                # override to tune scorers
+```
+
+A discriminator would force Modelplane to enumerate and version every supported
+picker; the template treats the EPP as what it is — a container — and lets a
+user swap or tune it (different image, extra scorer args) without an API change,
+matching the engine convention and design.md's preference against gratuitous
+discriminators.
 
 ### Modelplane choosing per-role hardware
 
