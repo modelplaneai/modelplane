@@ -130,18 +130,39 @@ chunked), keeping the disaggregation overhead small.
 
 ## Routing
 
-Disaggregation needs a router that sends a request to a prefill instance, then
-to a decode instance holding the transferred KV cache. Modelplane uses the same
-routing layer as unified serving: a Gateway API Inference Extension
-`InferencePool` fronted by a swappable endpoint-picker (EPP), defaulting to the
-llm-d inference-scheduler. The EPP's prefill/decode scorer sequences the two
-phases, and its prefix-cache scorer still applies. Disaggregation runs on the
-multi-pod (llm-d) path, which already goes through this routing layer, so it
-adds no separate proxy.
+Disaggregation needs to route a request to a prefill instance, transfer the KV
+cache, then have a decode instance generate from it. Modelplane does this with a
+Gateway API Inference Extension (GAIE) `InferencePool` fronted by a swappable
+endpoint-picker (EPP), defaulting to the llm-d inference-scheduler — no bespoke
+proxy.
 
-A deployment with a `prefill` block selects the multi-pod backend even at
-`pipeline: 1`, because disaggregation needs cross-pod coordination regardless of
-the per-role topology.
+**One `InferencePool` fronts both roles.** Its selector matches a deployment's
+prefill and decode pods alike; the EPP partitions them internally by a role
+label (`llm-d.ai/role: prefill|decode`). Per request the EPP picks a decode pod,
+then a prefill pod, and passes the decode pod the chosen prefill's address (an
+`x-prefiller-host-port` header). A small routing sidecar on the decode pod
+forwards the prompt to that prefill, which runs prefill and transfers its KV
+cache over NIXL; the decode engine then generates. The EPP's prefix-cache scorer
+still applies, so cache-aware placement carries over. (An earlier sketch assumed
+a decode-only pool with the EPP pair-picking across two pools; the llm-d
+mechanism is the single-pool, role-partitioned form above.)
+
+The EPP itself is configured through `routing.template` — a curated PodSpec
+subset, defaulting to the llm-d EPP and overridable by image and args, the same
+shape and owner as the engine.
+
+A deployment with a `prefill` block selects the multi-pod (llm-d) backend even
+at `pipeline: 1`, because disaggregation needs cross-pod coordination regardless
+of the per-role topology.
+
+**Gateway.** `InferencePool` as an `HTTPRoute` backend needs a GAIE-conformant
+gateway; core Envoy Gateway — which ServingStack installs today for plain
+`HTTPRoute → Service` routing — does not serve it. Modelplane therefore runs
+**Envoy AI Gateway** on the serving clusters: it layers on the same Envoy
+Gateway data plane, so existing plain routes are unaffected. Unified serving
+keeps its plain `Service` route for now; the `InferencePool`/EPP path is used by
+disaggregated serving (and can later carry KV-/load-aware routing for unified
+serving too).
 
 ## Constraints
 
@@ -193,9 +214,9 @@ over; the resource does not.
 
 vLLM and Ray ship a small proxy that sequences prefill and decode. Running our
 own proxy would work, but the GAIE `InferencePool` plus a swappable EPP is the
-standard seam and already gives prefix- and KV-aware routing for unified
-serving. Reusing it means one routing component for both unified and
-disaggregated serving rather than a disaggregation-only proxy.
+standard seam for prefix- and KV-aware routing. Reusing it means one routing
+component we can extend to unified serving later, rather than a
+disaggregation-only proxy.
 
 ### A routing discriminator instead of a template
 
