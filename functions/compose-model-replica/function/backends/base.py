@@ -101,6 +101,13 @@ RESOURCE_CLAIM_KEY = "resource-claim"
 # accidentally routes traffic to prefill pods.
 LABEL_PD_ROLE = "modelplane.ai/pd-role"
 
+# llm-d-native labels consumed by the GAIE EPP for disaggregated replicas.
+# LABEL_LLMD_ROLE carries "decode" or "prefill" so the EPP's per-role filters
+# can select the right pod set.  LABEL_LLMD_SERVING is the shared selector that
+# tells the EPP these pods belong to an llm-d inference-serving workload.
+LABEL_LLMD_ROLE = "llm-d.ai/role"
+LABEL_LLMD_SERVING = "llm-d.ai/inference-serving"
+
 # DRA API the ResourceClaimTemplate targets. The manifest is a raw dict wrapped
 # in a provider-kubernetes Object, so no generated model is needed.
 _DRA_API_VERSION = "resource.k8s.io/v1"

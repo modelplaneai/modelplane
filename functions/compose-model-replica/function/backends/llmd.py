@@ -141,7 +141,13 @@ def _prefill_objects(
             spec["imagePullSecrets"] = p_pull_secrets
         return spec
 
-    prefill_labels = {base.LABEL_SERVING: prefill_name, base.LABEL_PD_ROLE: "prefill"}
+    prefill_labels = {
+        base.LABEL_SERVING: prefill_name,
+        base.LABEL_PD_ROLE: "prefill",
+        base.LABEL_LLMD_ROLE: "prefill",
+        base.LABEL_LLMD_SERVING: "true",
+        "app": name,
+    }
     p_leader_pod = {
         "metadata": {"labels": {**prefill_labels, _LABEL_ROLE: "leader"}},
         "spec": p_pod_spec(p_container(p_leader_cmd)),
@@ -226,7 +232,16 @@ class LLMDBackend:
             env = (env or []) + [base.nixl_side_channel_env()]
 
         decode_claim = base.claim_template_name(replica)
-        decode_extra: dict = {base.LABEL_PD_ROLE: "decode"} if disagg else {}
+        decode_extra: dict = (
+            {
+                base.LABEL_PD_ROLE: "decode",
+                base.LABEL_LLMD_ROLE: "decode",
+                base.LABEL_LLMD_SERVING: "true",
+                "app": name,
+            }
+            if disagg
+            else {}
+        )
 
         def container(command: list[str], *, serving: bool) -> dict:
             c = {

@@ -600,6 +600,90 @@ class TestDisaggregatedLLMD(unittest.TestCase):
             "VLLM_NIXL_SIDE_CHANNEL_HOST", env_names, "unified replica must not have VLLM_NIXL_SIDE_CHANNEL_HOST"
         )
 
+    # --- llm-d EPP selector labels (P2.3) ---
+
+    def _lws_pod_labels(self, out, key, template):
+        """Helper: extract pod metadata labels from an LWS manifest."""
+        lws = out[key].spec.forProvider.manifest
+        return lws["spec"]["leaderWorkerTemplate"][template]["metadata"]["labels"]
+
+    def test_decode_pods_carry_llmd_selector_labels(self):
+        """Decode LWS leader and worker pods must carry the llm-d EPP selector labels."""
+        out = self._build()
+        replica = self._disagg_replica()
+        name = replica.metadata.name  # "dr"
+
+        for template in ("leaderTemplate", "workerTemplate"):
+            with self.subTest(template=template):
+                labels = self._lws_pod_labels(out, "model-serving", template)
+                self.assertEqual(labels.get("app"), name, f"{template}: app label must equal replica name")
+                self.assertEqual(
+                    labels.get(base.LABEL_LLMD_SERVING),
+                    "true",
+                    f"{template}: llm-d.ai/inference-serving must be 'true'",
+                )
+                self.assertEqual(
+                    labels.get(base.LABEL_LLMD_ROLE),
+                    "decode",
+                    f"{template}: llm-d.ai/role must be 'decode'",
+                )
+                # Existing modelplane pd-role label must still be present.
+                self.assertEqual(
+                    labels.get(base.LABEL_PD_ROLE),
+                    "decode",
+                    f"{template}: modelplane.ai/pd-role must still be 'decode'",
+                )
+
+    def test_prefill_pods_carry_llmd_selector_labels(self):
+        """Prefill LWS leader and worker pods must carry the llm-d EPP selector labels."""
+        out = self._build()
+        replica = self._disagg_replica()
+        name = replica.metadata.name  # "dr"
+
+        for template in ("leaderTemplate", "workerTemplate"):
+            with self.subTest(template=template):
+                labels = self._lws_pod_labels(out, "prefill-serving", template)
+                self.assertEqual(labels.get("app"), name, f"{template}: app label must equal replica name (not prefill_name)")
+                self.assertEqual(
+                    labels.get(base.LABEL_LLMD_SERVING),
+                    "true",
+                    f"{template}: llm-d.ai/inference-serving must be 'true'",
+                )
+                self.assertEqual(
+                    labels.get(base.LABEL_LLMD_ROLE),
+                    "prefill",
+                    f"{template}: llm-d.ai/role must be 'prefill'",
+                )
+                # Existing modelplane pd-role label must still be present.
+                self.assertEqual(
+                    labels.get(base.LABEL_PD_ROLE),
+                    "prefill",
+                    f"{template}: modelplane.ai/pd-role must still be 'prefill'",
+                )
+
+    def test_app_label_identical_on_both_roles(self):
+        """The shared InferencePool selector requires the same 'app' value on decode and prefill pods."""
+        out = self._build()
+        decode_labels = self._lws_pod_labels(out, "model-serving", "leaderTemplate")
+        prefill_labels = self._lws_pod_labels(out, "prefill-serving", "leaderTemplate")
+        self.assertEqual(
+            decode_labels.get("app"),
+            prefill_labels.get("app"),
+            "app label must be identical on both roles so one InferencePool selects both",
+        )
+
+    def test_unified_replica_no_llmd_selector_labels(self):
+        """A unified (non-disaggregated) replica must NOT receive llm-d EPP labels."""
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        lws = out["model-serving"].spec.forProvider.manifest
+        leader_labels = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["metadata"]["labels"]
+        self.assertNotIn(base.LABEL_LLMD_ROLE, leader_labels, "unified replica must not have llm-d.ai/role")
+        self.assertNotIn(base.LABEL_LLMD_SERVING, leader_labels, "unified replica must not have llm-d.ai/inference-serving")
+        self.assertNotIn("app", leader_labels, "unified replica must not have app label")
+
 
 class TestDynamoStub(unittest.TestCase):
     def test_not_selected_in_v01(self):
