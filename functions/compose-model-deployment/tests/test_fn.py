@@ -5,7 +5,7 @@ import unittest
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
-from function import fn
+from function import fn, name
 from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format
 from google.protobuf import struct_pb2 as structpb
@@ -142,7 +142,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelReplica",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/replica": "true",
@@ -180,7 +180,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelEndpoint",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/deployment": "my-model",
@@ -189,8 +189,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-0-5ab63/v1",
-                                    "rewritePath": "/ml-team/my-model-cluster-a-0-5ab63/",
+                                    "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
+                                    "rewritePath": "/ml-team/my-model-5ab63/",
                                 },
                             }
                         ),
@@ -331,7 +331,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelReplica",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/replica": "true",
@@ -348,7 +348,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             {
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelEndpoint",
-                                "metadata": {"name": "my-model-cluster-a-0-5ab63", "namespace": "ml-team"},
+                                "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
                             }
                         ),
                     ),
@@ -363,7 +363,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         "apiVersion": "modelplane.ai/v1alpha1",
                         "kind": "ModelReplica",
                         "metadata": {
-                            "name": "my-model-cluster-a-0-5ab63",
+                            "name": "my-model-5ab63",
                             "namespace": "ml-team",
                             "labels": {
                                 "modelplane.ai/replica": "true",
@@ -406,7 +406,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelReplica",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/replica": "true",
@@ -444,7 +444,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelEndpoint",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/deployment": "my-model",
@@ -453,8 +453,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-0-5ab63/v1",
-                                    "rewritePath": "/ml-team/my-model-cluster-a-0-5ab63/",
+                                    "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
+                                    "rewritePath": "/ml-team/my-model-5ab63/",
                                 },
                             }
                         ),
@@ -521,7 +521,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "apiVersion": "modelplane.ai/v1alpha1",
             "kind": "ModelReplica",
             "metadata": {
-                "name": "my-model-cluster-a-0-5ab63",
+                "name": "my-model-5ab63",
                 "namespace": "ml-team",
                 "labels": {
                     "modelplane.ai/replica": "true",
@@ -575,7 +575,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelReplica",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/replica": "true",
@@ -694,7 +694,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelReplica",
                                 "metadata": {
-                                    "name": "my-model-cluster-b-0-f0b76",
+                                    "name": "my-model-f0b76",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/replica": "true",
@@ -732,7 +732,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelEndpoint",
                                 "metadata": {
-                                    "name": "my-model-cluster-b-0-f0b76",
+                                    "name": "my-model-f0b76",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/deployment": "my-model",
@@ -741,8 +741,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.2/ml-team/my-model-cluster-b-0-f0b76/v1",
-                                    "rewritePath": "/ml-team/my-model-cluster-b-0-f0b76/",
+                                    "url": "http://10.0.0.2/ml-team/my-model-f0b76/v1",
+                                    "rewritePath": "/ml-team/my-model-f0b76/",
                                 },
                             }
                         ),
@@ -825,7 +825,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelReplica",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/replica": "true",
@@ -864,7 +864,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "apiVersion": "modelplane.ai/v1alpha1",
                                 "kind": "ModelEndpoint",
                                 "metadata": {
-                                    "name": "my-model-cluster-a-0-5ab63",
+                                    "name": "my-model-5ab63",
                                     "namespace": "ml-team",
                                     "labels": {
                                         "modelplane.ai/deployment": "my-model",
@@ -873,8 +873,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 },
                                 "spec": {
-                                    "url": "http://10.0.0.1/ml-team/my-model-cluster-a-0-5ab63/v1",
-                                    "rewritePath": "/ml-team/my-model-cluster-a-0-5ab63/",
+                                    "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
+                                    "rewritePath": "/ml-team/my-model-5ab63/",
                                 },
                             }
                         ),
@@ -1014,8 +1014,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             replica = json_format.MessageToDict(resources[replica_key].resource)
             endpoint = json_format.MessageToDict(resources[endpoint_key].resource)
 
-            # Opaque name hashed from (deployment, cluster, index).
-            want_name = resource.child_name("my-model", "cluster-a", str(index))
+            # Opaque name hashed from (deployment, cluster, index): the readable
+            # prefix is the deployment name only; cluster and index live in the
+            # hash, not the name.
+            want_name = name.replica(
+                "my-model", dataclasses.make_dataclass("C", ["name", "index"])(name="cluster-a", index=index)
+            )
             self.assertEqual(want_name, replica["metadata"]["name"])
             self.assertEqual(str(index), replica["metadata"]["labels"]["modelplane.ai/replica-index"])
             self.assertEqual("cluster-a", replica["spec"]["clusterName"])
