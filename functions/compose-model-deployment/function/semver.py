@@ -13,39 +13,69 @@ from __future__ import annotations
 
 from celpy import celtypes
 
+# Character classes for validation. Numeric identifiers (the release numbers and
+# numeric prerelease identifiers) allow only digits; alphanumeric identifiers
+# (non-numeric prerelease and build identifiers) also allow letters and the
+# hyphen. We validate against explicit sets rather than a regex to mirror blang's
+# byte-by-byte checks exactly, including its specific error cases.
 _NUMBERS = set("0123456789")
 _ALPHANUM = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789")
 
-# A semver has exactly three dot-separated release components.
+# A semver has exactly three dot-separated release components (major.minor.patch).
 _SEMVER_PARTS = 3
 
 
 def _cmp(a, b) -> int:
+    # Three-way compare: -1, 0, or +1, like Go's cmp/blang's Compare. Python has
+    # no built-in spaceship operator; (a > b) - (a < b) evaluates the two bools
+    # to 0/1 and subtracts, yielding -1/0/+1 without branching.
     return (a > b) - (a < b)
 
 
 def _has_leading_zeroes(s: str) -> bool:
+    # A numeric identifier may not have a leading zero (semver spec: "1.01.0" is
+    # invalid). "0" itself is fine - a single zero is not a "leading" zero - so we
+    # only flag a leading '0' when there's more than one character.
     return len(s) > 1 and s[0] == "0"
 
 
 def _contains_only(s: str, allowed: set[str]) -> bool:
+    # True when s is non-empty and every character is in the allowed set. The
+    # non-empty check matters: an empty identifier (e.g. the "" between two dots
+    # in "1..0", or a trailing "-") is always invalid, never vacuously valid.
     return len(s) > 0 and all(c in allowed for c in s)
 
 
 class _PRVersion:
-    """A prerelease identifier: numeric (sorts first) or alphanumeric."""
+    """A single prerelease identifier (one dot-separated piece of the prerelease).
 
+    A prerelease like "rc.1" is a list of these: "rc" (alphanumeric) and "1"
+    (numeric). Each identifier is one of two kinds, and the kind decides ordering:
+    a purely numeric identifier sorts before an alphanumeric one, numeric
+    identifiers compare as integers, and alphanumeric identifiers compare as ASCII
+    strings (semver spec rule 11). We store the kind in is_num and keep the value
+    in whichever of num/string applies; the other is left at its zero value.
+    """
+
+    # __slots__ avoids a per-instance __dict__: a prerelease can have several
+    # identifiers and these are created on every parse, so the memory and
+    # attribute-access savings are worth the rigidity.
     __slots__ = ("is_num", "num", "string")
 
     def __init__(self, s: str):
+        # An empty identifier (e.g. from "1.0.0-" or "1.0.0-a..b") is invalid.
         if s == "":
             raise ValueError("prerelease is empty")
+        # All-digits -> numeric identifier. Checked first because "123" is both
+        # all-numeric and all-alphanumeric, and the numeric kind takes precedence.
         if _contains_only(s, _NUMBERS):
             if _has_leading_zeroes(s):
                 raise ValueError(f"numeric prerelease must not contain leading zeroes: {s!r}")
             self.num = int(s)
             self.is_num = True
             self.string = ""
+        # Otherwise it must be a valid alphanumeric identifier (letters, digits,
+        # hyphen). num is unused for this kind, so it's parked at 0.
         elif _contains_only(s, _ALPHANUM):
             self.num = 0
             self.is_num = False
@@ -60,7 +90,8 @@ class _PRVersion:
             return 1
         if self.is_num and o.is_num:
             return _cmp(self.num, o.num)
-        # Both alphanumeric: lexical (ASCII) comparison.
+        # Python's str comparison is codepoint order, which matches blang's byte
+        # comparison over the ASCII subset a valid identifier is restricted to.
         return _cmp(self.string, o.string)
 
 
@@ -73,6 +104,10 @@ class Semver:
     equal). Build metadata is ignored for ordering.
     """
 
+    # Build metadata is intentionally NOT stored: it's parsed and validated (a
+    # malformed build is a parse error) but ignored for ordering and equality, so
+    # there's nothing to keep. pre is the list of _PRVersion identifiers, empty for
+    # a release version with no prerelease.
     __slots__ = ("major", "minor", "patch", "pre")
 
     def __init__(self, major: int, minor: int, patch: int, pre: list[_PRVersion]):
@@ -82,26 +117,42 @@ class Semver:
         self.pre = pre
 
     def compare(self, o: Semver) -> int:
+        # Major, then minor, then patch; return at the first that differs.
         for a, b in ((self.major, o.major), (self.minor, o.minor), (self.patch, o.patch)):
             if a != b:
                 return _cmp(a, b)
+        # Release numbers equal - the prerelease breaks the tie. No prerelease
+        # outranks a prerelease (1.0.0 > 1.0.0-rc1).
         if not self.pre and not o.pre:
             return 0
         if not self.pre:
             return 1
         if not o.pre:
             return -1
+        # strict=False is REQUIRED, not a lazy default: the lists are expected to
+        # differ in length (the longer-list rule below), and strict=True would
+        # raise instead of stopping at the end of the shorter one.
         for pa, pb in zip(self.pre, o.pre, strict=False):
             c = pa.compare(pb)
             if c != 0:
                 return c
-        # Prefix-equal: the longer prerelease list is greater.
+        # Shared identifiers all equal, so the longer prerelease list wins
+        # (1.0.0-rc.1 < 1.0.0-rc.1.1).
         return _cmp(len(self.pre), len(o.pre))
 
+    # Equality and hashing are defined together (an object that defines __eq__
+    # without __hash__ becomes unhashable) so a Semver can be a dict key / set
+    # member, and so == agrees with precedence comparison.
     def __eq__(self, other) -> bool:
+        # Equal iff precedence-equal. Note this means build metadata doesn't
+        # affect equality, consistent with it being ignored for ordering.
         return isinstance(other, Semver) and self.compare(other) == 0
 
     def __hash__(self) -> int:
+        # Hash over the same fields compare() looks at, so equal versions hash
+        # equal. Each _PRVersion is reduced to its (is_num, num, string) triple
+        # because _PRVersion has no __hash__ of its own; the outer tuple makes the
+        # whole thing hashable.
         return hash((self.major, self.minor, self.patch, tuple((p.is_num, p.num, p.string) for p in self.pre)))
 
 
@@ -127,6 +178,15 @@ def parse(s: str) -> Semver:
     major = num(parts[0], "major")
     minor = num(parts[1], "minor")
 
+    # The third dotted component carries the patch plus the optional suffixes:
+    # patch[-prerelease][+build] (major and minor are bare numbers). Peel them off
+    # to leave a clean patch number. Build is split off BEFORE prerelease and on
+    # the FIRST delimiter, both deliberately: build metadata may itself contain
+    # '-' (e.g. 3+build-7), so removing "+build" first stops that '-' being
+    # mistaken for the prerelease delimiter; and the first '-' that remains is the
+    # prerelease delimiter, while any later '-' belongs to a prerelease identifier
+    # (e.g. 3-alpha-beta -> "alpha-beta"). Each suffix is optional, so find()
+    # returning -1 leaves the corresponding string empty.
     patch_str = parts[2]
     build = ""
     pre_str = ""
