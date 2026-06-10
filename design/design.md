@@ -445,7 +445,8 @@ derivation formula is the same regardless of which axes are active:
 
 Topology drives provisioning: it shapes how the workload is laid out into pods
 and a LeaderWorkerSet. The scheduler reads only one number from it,
-nodes-per-replica (`pipeline * data / dataLocal`), which it gates against the
+nodes-per-replica (`pipeline * (data / dataLocal) * workers.count`, i.e.
+nodes-per-worker times the workers per replica), which it gates against the
 pool's available nodes. Per-node GPU count is a `nodeSelector` concern: a GPU
 request with `count: 8` selects a pool whose GPU device has a count of at least
 8.
@@ -693,7 +694,7 @@ The fleet scheduler picks `(InferenceCluster, pool)` for each ModelReplica:
    `capacity` satisfy every selector. A pool matches the deployment when it
    satisfies every request.
 3. **Check capacity.** Does the pool have enough available nodes for one replica
-   (`pipeline * data / dataLocal` from `workers.topology`)? Available =
+   (`pipeline * (data / dataLocal) * workers.count` from `workers`)? Available =
    `maxNodeCount` minus nodes consumed by existing ModelReplicas on that
    cluster.
 
