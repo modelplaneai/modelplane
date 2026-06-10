@@ -107,6 +107,11 @@ class Candidate:
     # non-empty: a pool matches only when at least one claim: DRA device
     # resolves (see _match_pool), so every scheduled replica has a claim.
     device_requests: list[DeviceRequest] = field(default_factory=list)
+    # Prefill role placement, for disaggregated replicas. Empty for unified.
+    # Asymmetric with the decode fields above on purpose: decode is required and
+    # owns the ModelEndpoint; prefill is optional and internal.
+    prefill_pool: str = ""
+    prefill_device_requests: list[DeviceRequest] = field(default_factory=list)
 
 
 @dataclass
@@ -130,6 +135,14 @@ def topology_shape(workers) -> Shape:
     count = int(workers.count or 1)
     nodes_per_worker = int(topology.pipeline or 1)
     return Shape(nodes_per_replica=nodes_per_worker * count)
+
+
+def prefill_shape(deployment) -> Shape | None:
+    """Nodes-per-replica for the prefill role, or None when unified."""
+    prefill = getattr(deployment.spec, "prefill", None)
+    if not prefill:
+        return None
+    return topology_shape(prefill.workers)
 
 
 def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
@@ -167,8 +180,17 @@ def compile_requests(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledRe
     Raises cel.CELCompileError on a malformed expression; the caller turns that
     into an InvalidNodeSelector condition.
     """
+    return _compile_node_selector_requests(deployment.spec.nodeSelector)
+
+
+def _compile_node_selector_requests(node_selector) -> list[_CompiledRequest]:
+    """Compile device requests from an arbitrary nodeSelector object.
+
+    Used to compile the prefill role's nodeSelector without a full
+    ModelDeployment. Raises cel.CELCompileError on a malformed expression.
+    """
     requests = []
-    for req in deployment.spec.nodeSelector.devices:
+    for req in node_selector.devices:
         cel_selectors = [s.cel for s in req.selectors if s.cel]
         requests.append(
             _CompiledRequest(
@@ -382,6 +404,9 @@ def _build_ledger(
         if ours and (r.spec.clusterName, _replica_index(r)) not in retained_ids:
             continue
         charge(r.spec.clusterName, r.spec.nodePoolName or "", topology_shape(r.spec.workers).nodes_per_replica)
+        pf = getattr(r.spec, "prefill", None)
+        if pf and pf.workers:
+            charge(r.spec.clusterName, pf.nodePoolName or "", topology_shape(pf.workers).nodes_per_replica)
 
     return _Ledger(free=free)
 
@@ -391,6 +416,7 @@ def _retain(
     clusters_by_name: dict[str, icv1alpha1.InferenceCluster],
     all_replicas: list[mrv1alpha1.ModelReplica],
     requests: list[_CompiledRequest],
+    prefill_requests: list[_CompiledRequest] | None = None,
 ) -> list[Candidate]:
     """Keep existing replicas whose cluster exists and pool still matches.
 
@@ -399,6 +425,11 @@ def _retain(
     the fill phase) when its cluster is gone, or when its pinned pool no longer
     satisfies the nodeSelector - the Kubernetes "template changed, roll the
     replica" behavior. A degraded-but-present cluster is retained.
+
+    For disaggregated deployments (prefill_requests is not None) BOTH the decode
+    pool and the prefill pool are checked. A replica whose prefill pinned pool no
+    longer satisfies the prefill nodeSelector is re-placed, mirroring the same
+    rolling-replacement semantics applied to the decode pool.
     """
     retained: list[Candidate] = []
     seen: set[tuple[str, int]] = set()
@@ -412,18 +443,25 @@ def _retain(
         if identity in seen:
             continue
         cluster = clusters_by_name[cluster_name]
-        if not _pinned_pool_still_matches(r, cluster, requests):
+        if not _pinned_pool_still_matches(r, cluster, requests, prefill_requests=prefill_requests):
             continue
         seen.add(identity)
-        retained.append(
-            Candidate(
-                name=cluster_name,
-                index=identity[1],
-                gateway_address=_gateway_address(cluster),
-                pool=r.spec.nodePoolName or "",
-                device_requests=_retained_requests(r, cluster, requests),
-            )
+        candidate = Candidate(
+            name=cluster_name,
+            index=identity[1],
+            gateway_address=_gateway_address(cluster),
+            pool=r.spec.nodePoolName or "",
+            device_requests=_retained_requests(r, cluster, requests),
         )
+        # For disagg replicas, resolve and populate the retained prefill placement.
+        if prefill_requests is not None:
+            pf = getattr(r.spec, "prefill", None)
+            if pf and pf.nodePoolName:
+                pf_pool = _pool_by_name(cluster, pf.nodePoolName)
+                if pf_pool is not None:
+                    candidate.prefill_pool = pf.nodePoolName
+                    candidate.prefill_device_requests = _match_pool(pf_pool, prefill_requests) or []
+        retained.append(candidate)
     return retained
 
 
@@ -431,8 +469,9 @@ def _pinned_pool_still_matches(
     replica: mrv1alpha1.ModelReplica,
     cluster: icv1alpha1.InferenceCluster,
     requests: list[_CompiledRequest],
+    prefill_requests: list[_CompiledRequest] | None = None,
 ) -> bool:
-    """Whether a retained replica's pinned pool still satisfies the requests.
+    """Whether a retained replica's pinned pool(s) still satisfy the requests.
 
     Modelplane follows Kubernetes here. A change to the deployment's nodeSelector
     is a change to the deployment "template", so - like editing a Deployment's
@@ -443,18 +482,33 @@ def _pinned_pool_still_matches(
     IgnoredDuringExecution: node-label drift does not evict a bound Pod).
 
     Returns False (re-place) when:
-      * the replica carries no pool pin (it needs a real pool pin), or
-      * the pinned pool no longer exists on the cluster, or
-      * the pinned pool no longer satisfies the requests.
+      * the replica carries no decode pool pin (it needs a real pool pin), or
+      * the pinned decode pool no longer exists on the cluster, or
+      * the pinned decode pool no longer satisfies the decode requests.
+
+    For disaggregated deployments (prefill_requests is not None), also returns
+    False when:
+      * the replica carries no prefill pool pin, or
+      * the pinned prefill pool no longer exists on the cluster, or
+      * the pinned prefill pool no longer satisfies the prefill requests.
     """
     pool_name = replica.spec.nodePoolName
     if not pool_name:
         return False
     pool = _pool_by_name(cluster, pool_name)
     if pool is None:
-        # Pinned pool is gone from the cluster's published capacity.
+        # Pinned decode pool is gone from the cluster's published capacity.
         return False
-    return _match_pool(pool, requests) is not None
+    if _match_pool(pool, requests) is None:
+        return False
+    if prefill_requests is not None:
+        pf = getattr(replica.spec, "prefill", None)
+        if not pf or not pf.nodePoolName:
+            return False
+        pf_pool = _pool_by_name(cluster, pf.nodePoolName)
+        if pf_pool is None or _match_pool(pf_pool, prefill_requests) is None:
+            return False
+    return True
 
 
 def _retained_requests(replica, cluster, requests: list[_CompiledRequest]) -> list[DeviceRequest]:
@@ -470,29 +524,59 @@ def _retained_requests(replica, cluster, requests: list[_CompiledRequest]) -> li
     return _match_pool(pool, requests) or []
 
 
-def _eligible_pool(
+def _eligible_placement(
     cluster: icv1alpha1.InferenceCluster,
-    shape: Shape,
-    requests: list[_CompiledRequest],
+    roles: list[tuple[Shape, list[_CompiledRequest]]],
     ledger: _Ledger,
-) -> tuple[str, list[DeviceRequest]] | None:
-    """Pick the first pool on a cluster that can host one more replica.
+) -> list[tuple[str, list[DeviceRequest]]] | None:
+    """Choose a pool per role on this cluster that jointly fits the ledger.
 
-    A pool is eligible when it satisfies the nodeSelector requests AND has at
-    least nodes-per-replica free in the ledger (which already accounts for
-    replicas placed earlier in this pass). Pools are considered in published
-    order, which is deterministic. Returns (pool_name, resolved_requests) or
-    None if no pool on the cluster is eligible.
+    roles: list of (shape, requests) - one entry for unified, two for disagg
+    (decode then prefill). Picks pool assignments jointly so a shared pool's
+    capacity is never double-committed. Returns a list of (pool_name,
+    resolved_requests) aligned with roles, or None if no assignment fits.
+
+    The pool count per cluster is small, so an exhaustive search is fine. Each
+    assignment is evaluated cumulatively: two roles assigned to the same pool
+    must together fit within that pool's available nodes.
     """
-    for pool in cluster.status.gpuPools or []:
-        name = pool.name or ""
-        if ledger.available(cluster.metadata.name, name) < shape.nodes_per_replica:
-            continue
-        resolved = _match_pool(pool, requests)
-        if resolved is None:
-            continue
-        return name, resolved
-    return None
+    pools = cluster.status.gpuPools or []
+    cname = cluster.metadata.name
+
+    # For each role, collect the pools that match its selector (ignoring ledger
+    # here; the search step applies the ledger cumulatively).
+    per_role_candidates: list[list[tuple[str, list[DeviceRequest]]]] = []
+    for _shape, requests in roles:
+        role_cands: list[tuple[str, list[DeviceRequest]]] = []
+        for pool in pools:
+            resolved = _match_pool(pool, requests)
+            if resolved is not None:
+                role_cands.append((pool.name or "", resolved))
+        if not role_cands:
+            return None  # No pool satisfies this role at all.
+        per_role_candidates.append(role_cands)
+
+    def search(k: int, charged: dict[str, int]) -> list[tuple[str, list[DeviceRequest]]] | None:
+        """Recursively assign pools to roles k..len(roles)-1.
+
+        charged tracks extra nodes already committed to each pool name during
+        this replica's joint assignment (above whatever the ledger shows), so
+        two roles sharing one pool see their costs sum against its capacity.
+        """
+        if k == len(roles):
+            return []
+        shape, _ = roles[k]
+        for name, resolved in per_role_candidates[k]:
+            already_charged = charged.get(name, 0)
+            if ledger.available(cname, name) - already_charged >= shape.nodes_per_replica:
+                charged2 = dict(charged)
+                charged2[name] = already_charged + shape.nodes_per_replica
+                rest = search(k + 1, charged2)
+                if rest is not None:
+                    return [(name, resolved), *rest]
+        return None
+
+    return search(0, {})
 
 
 def _fill(
@@ -502,6 +586,8 @@ def _fill(
     ledger: _Ledger,
     requests: list[_CompiledRequest],
     n: int,
+    prefill_requests: list[_CompiledRequest] | None = None,
+    pf_shape: Shape | None = None,
 ) -> list[Candidate]:
     """Place n new replicas, spreading across clusters and packing when forced.
 
@@ -515,6 +601,10 @@ def _fill(
     lowest free index on its chosen cluster, so the next iteration sees the
     updated load. Stops early (placing fewer than n) when no cluster can host
     another replica - the caller surfaces that as InsufficientCapacity.
+
+    For disaggregated deployments, prefill_requests and pf_shape are set. The
+    decode and prefill pools are then chosen jointly (see _pick_cluster) so a
+    shared pool's capacity is never double-committed.
     """
     # Per-cluster load and used indices seeded from retained replicas, so spread
     # accounts for what's already there and new indices don't collide.
@@ -526,26 +616,40 @@ def _fill(
 
     placed: list[Candidate] = []
     for _ in range(n):
-        choice = _pick_cluster(shape, clusters, load, ledger, requests)
+        choice = _pick_cluster(
+            shape,
+            clusters,
+            load,
+            ledger,
+            requests,
+            prefill_requests=prefill_requests,
+            pf_shape=pf_shape,
+        )
         if choice is None:
             break
-        cluster, pool_name, resolved = choice
+        cluster, placement = choice
         name = cluster.metadata.name
         index = _lowest_free_index(used_indices.setdefault(name, set()))
 
-        placed.append(
-            Candidate(
-                name=name,
-                index=index,
-                gateway_address=cluster.status.gateway.address,
-                pool=pool_name,
-                device_requests=resolved,
-            )
+        decode_pool, decode_resolved = placement[0]
+        candidate = Candidate(
+            name=name,
+            index=index,
+            gateway_address=cluster.status.gateway.address,
+            pool=decode_pool,
+            device_requests=decode_resolved,
         )
+        if len(placement) > 1:
+            candidate.prefill_pool, candidate.prefill_device_requests = placement[1]
+        placed.append(candidate)
 
         load[name] = load.get(name, 0) + 1
         used_indices[name].add(index)
-        ledger.consume(name, pool_name, shape.nodes_per_replica)
+        # Consume ledger for decode pool.
+        ledger.consume(name, decode_pool, shape.nodes_per_replica)
+        # Consume ledger for prefill pool (may be the same pool as decode).
+        if len(placement) > 1 and pf_shape is not None:
+            ledger.consume(name, candidate.prefill_pool, pf_shape.nodes_per_replica)
 
     return placed
 
@@ -556,29 +660,39 @@ def _pick_cluster(
     load: dict[str, int],
     ledger: _Ledger,
     requests: list[_CompiledRequest],
-) -> tuple[icv1alpha1.InferenceCluster, str, list[DeviceRequest]] | None:
+    prefill_requests: list[_CompiledRequest] | None = None,
+    pf_shape: Shape | None = None,
+) -> tuple[icv1alpha1.InferenceCluster, list[tuple[str, list[DeviceRequest]]]] | None:
     """Pick the eligible cluster hosting the fewest of this deployment's replicas.
 
-    Eligible means Ready, with a nodeSelector-matching pool that has free
-    capacity in the ledger. The chosen key is (load on the cluster, cluster
-    name): fewest replicas first for spread, name for a deterministic tiebreak.
-    load already counts only this deployment's replicas (seeded from retained
-    plus those placed earlier in the pass). Returns (cluster, pool_name,
-    resolved_requests) or None when no cluster is eligible.
+    Eligible means Ready, with pool(s) jointly satisfying the decode (and
+    optionally prefill) roles with enough free capacity in the ledger. The
+    chosen key is (load on the cluster, cluster name): fewest replicas first
+    for spread, name for a deterministic tiebreak. load already counts only
+    this deployment's replicas (seeded from retained plus those placed earlier
+    in the pass). Returns (cluster, placement) where placement is a list of
+    (pool_name, resolved_requests) aligned with roles, or None when no cluster
+    is eligible.
+
+    For unified deployments (prefill_requests=None), behaviour is identical to
+    the old single-role _eligible_pool path: one role, one pool.
     """
-    best = None
+    roles: list[tuple[Shape, list[_CompiledRequest]]] = [(shape, requests)]
+    if prefill_requests is not None and pf_shape is not None:
+        roles.append((pf_shape, prefill_requests))
+
+    best: tuple[icv1alpha1.InferenceCluster, list[tuple[str, list[DeviceRequest]]]] | None = None
     best_key = None
     for cluster in clusters:
         if not _cluster_ready(cluster):
             continue
-        eligible = _eligible_pool(cluster, shape, requests, ledger)
-        if eligible is None:
+        placement = _eligible_placement(cluster, roles, ledger)
+        if placement is None:
             continue
-        pool_name, resolved = eligible
         key = (load.get(cluster.metadata.name, 0), cluster.metadata.name)
         if best_key is None or key < best_key:
             best_key = key
-            best = (cluster, pool_name, resolved)
+            best = (cluster, placement)
     return best
 
 
@@ -630,6 +744,12 @@ def schedule(
     shortfall by spreading new replicas across clusters (packing onto fewer only
     when capacity forces it). Returns up to deployment.spec.replicas candidates,
     fewer if not enough capacity exists.
+
+    For disaggregated deployments (spec.prefill is set), each replica requires
+    BOTH a decode pool and a prefill pool on the same cluster. The pools are
+    chosen jointly from one capacity ledger so a shared pool is never
+    double-committed. Unified deployments (spec.prefill absent) are unaffected:
+    the single-role path is identical to before.
     """
     desired = int(deployment.spec.replicas)
     shape = topology_shape(deployment.spec.workers)
@@ -640,7 +760,14 @@ def schedule(
     # expression - the caller turns that into a condition.
     requests = compile_requests(deployment)
 
-    retained = _retain(deployment, clusters_by_name, all_replicas, requests)
+    # Compile prefill nodeSelector requests when the deployment is disaggregated.
+    pf_shape = prefill_shape(deployment)
+    pf_requests: list[_CompiledRequest] | None = None
+    prefill = getattr(deployment.spec, "prefill", None)
+    if prefill is not None:
+        pf_requests = _compile_node_selector_requests(prefill.nodeSelector)
+
+    retained = _retain(deployment, clusters_by_name, all_replicas, requests, prefill_requests=pf_requests)
 
     if len(retained) > desired:
         retained = _scale_down(retained, desired)
@@ -653,7 +780,16 @@ def schedule(
 
     placed: list[Candidate] = []
     if len(retained) < desired:
-        placed = _fill(shape, clusters, retained, ledger, requests, desired - len(retained))
+        placed = _fill(
+            shape,
+            clusters,
+            retained,
+            ledger,
+            requests,
+            desired - len(retained),
+            prefill_requests=pf_requests,
+            pf_shape=pf_shape,
+        )
 
     result = retained + placed
     result.sort(key=lambda c: (c.name, c.index))

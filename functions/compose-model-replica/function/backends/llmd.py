@@ -1,7 +1,10 @@
 """llm-d multi-pod backend: LeaderWorkerSet + Service + HTTPRoute.
 
-Selected only for multi-node replicas (pipeline > 1), so this always renders a
-LeaderWorkerSet whose gang size is the per-worker node count.
+Selected for replicas that need cross-pod coordination: multi-node replicas
+(pipeline > 1) and disaggregated replicas (a prefill block, even at pipeline 1).
+Renders a LeaderWorkerSet whose gang size is the per-worker node count; a
+disaggregated replica additionally emits a separate internal prefill pod set
+(see _prefill_objects).
 
 Routing is plain Gateway API — `HTTPRoute -> Service`, exactly like native.py —
 NOT a GAIE `InferencePool`. The HTTPRoute attaches to the *workload* cluster's
@@ -70,6 +73,106 @@ def _engine_args(engine, tensor: int, pipeline: int) -> list[str]:
     return args
 
 
+def _prefill_objects(
+    replica: v1alpha1.ModelReplica,
+    prefill_spec,
+    name: str,
+    provider_config: str,
+    cache_volumes: list[dict],
+    cache_volume_mounts: list[dict],
+) -> dict[str, k8sobjv1alpha1.Object]:
+    """Build the prefill pod set + ResourceClaimTemplate for a disaggregated replica.
+
+    Returns the response entries for the internal prefill role: a LeaderWorkerSet
+    (no Service/HTTPRoute — prefill is not an API entrypoint) and a per-role
+    ResourceClaimTemplate. Pods carry pd-role:prefill, mount the model cache like
+    decode, and get the NIXL side-channel env.
+    """
+    prefill_name = f"{name}-prefill"
+    prefill_claim = base.claim_template_name_for(replica, "prefill")
+    p_engine = next(c for c in prefill_spec.workers.template.spec.containers if c.name == "engine")
+    p_tensor = int(prefill_spec.workers.topology.tensor)
+    p_pipeline = int(prefill_spec.workers.topology.pipeline or 1)
+    p_size = p_pipeline
+
+    p_user_cmd = list(p_engine.command) if p_engine.command else None
+    if p_user_cmd:
+        p_leader_cmd = p_worker_cmd = p_user_cmd
+        p_args = list(p_engine.args or [])
+    else:
+        p_args = _engine_args(p_engine, p_tensor, p_pipeline)
+        p_args = base.apply_cache_args(p_args, replica, p_engine)
+        p_leader_cmd = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *p_args]
+        p_worker_cmd = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
+
+    p_env = [e.model_dump(exclude_none=True) for e in p_engine.env] if p_engine.env else None
+    # Prefill pods also need the NIXL side-channel env (same reason as decode).
+    p_env = (p_env or []) + [base.nixl_side_channel_env()]
+    p_tmpl = prefill_spec.workers.template
+    p_pull_secrets = (
+        [s.model_dump(exclude_none=True) for s in p_tmpl.spec.imagePullSecrets]
+        if p_tmpl.spec.imagePullSecrets
+        else None
+    )
+
+    def p_container(command: list[str]) -> dict:
+        c = {
+            "name": "engine",
+            "image": p_engine.image,
+            "resources": base.engine_resources(),
+            # Mounts the model cache like decode: prefill loads the same
+            # weights to compute the KV it transfers to decode.
+            "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}, *cache_volume_mounts],
+            "command": command,
+        }
+        if p_user_cmd and p_args:
+            c["args"] = p_args
+        if p_env:
+            c["env"] = p_env
+        return c
+
+    def p_pod_spec(c: dict) -> dict:
+        spec = {
+            "containers": [c],
+            "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
+        }
+        base.place_pod_on(spec, prefill_spec.nodePoolName, prefill_claim)
+        if p_pull_secrets:
+            spec["imagePullSecrets"] = p_pull_secrets
+        return spec
+
+    prefill_labels = {base.LABEL_SERVING: prefill_name, base.LABEL_PD_ROLE: "prefill"}
+    p_leader_pod = {
+        "metadata": {"labels": {**prefill_labels, _LABEL_ROLE: "leader"}},
+        "spec": p_pod_spec(p_container(p_leader_cmd)),
+    }
+    p_worker_pod = {
+        "metadata": {"labels": prefill_labels},
+        "spec": p_pod_spec(p_container(p_worker_cmd)),
+    }
+
+    prefill_lws = {
+        "apiVersion": "leaderworkerset.x-k8s.io/v1",
+        "kind": "LeaderWorkerSet",
+        "metadata": {"name": prefill_name, "namespace": base.REMOTE_NAMESPACE},
+        "spec": {
+            "replicas": int(prefill_spec.workers.count or 1),
+            "leaderWorkerTemplate": {
+                "size": p_size,
+                "leaderTemplate": p_leader_pod,
+                "workerTemplate": p_worker_pod,
+            },
+        },
+    }
+
+    return {
+        "prefill-serving": base.wrap_object(provider_config, prefill_lws, cel_query=base.AVAILABLE_CEL),
+        "prefill-resource-claim": base.resource_claim_template_for(
+            replica, provider_config, "prefill", prefill_spec.deviceRequests
+        ),
+    }
+
+
 class LLMDBackend:
     def build(
         self,
@@ -83,8 +186,6 @@ class LLMDBackend:
         name = replica.metadata.name
 
         tensor = int(replica.spec.workers.topology.tensor)
-        # nodes_per_worker == pipeline: the LWS gang size (leader + workers).
-        size = base.nodes_per_worker(replica)
         pipeline = int(replica.spec.workers.topology.pipeline or 1)
 
         cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
@@ -104,11 +205,28 @@ class LLMDBackend:
             leader_command = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *args]
             worker_command = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
 
-        pull_secrets = None
-        tmpl = replica.spec.workers.template
-        if tmpl.spec.imagePullSecrets:
-            pull_secrets = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
+        pull_secrets = (
+            [s.model_dump(exclude_none=True) for s in replica.spec.workers.template.spec.imagePullSecrets]
+            if replica.spec.workers.template.spec.imagePullSecrets
+            else None
+        )
         env = [e.model_dump(exclude_none=True) for e in engine.env] if engine.env else None
+
+        # Disaggregated (prefill set): decode pods carry {pd-role: decode}.
+        # Unified (no prefill): no pd-role label on decode pods (backward compat).
+        prefill_spec = getattr(replica.spec, "prefill", None)
+        disagg = prefill_spec is not None
+
+        # Disaggregated pods need VLLM_NIXL_SIDE_CHANNEL_HOST set to their own
+        # pod IP so NixlConnector can open the KV side-channel. It cannot come
+        # from user args (it's pod-IP, not a static value), so the backend
+        # injects it via the Kubernetes downward API. Only disaggregated replicas
+        # get it; the unified path is left untouched.
+        if disagg:
+            env = (env or []) + [base.nixl_side_channel_env()]
+
+        decode_claim = base.claim_template_name(replica)
+        decode_extra: dict = {base.LABEL_PD_ROLE: "decode"} if disagg else {}
 
         def container(command: list[str], *, serving: bool) -> dict:
             c = {
@@ -143,7 +261,7 @@ class LLMDBackend:
             }
             # Both the leader and worker pods pin to the scheduled pool and
             # claim GPUs via DRA.
-            base.place_pod(spec, replica)
+            base.place_pod_on(spec, replica.spec.nodePoolName, decode_claim)
             if pull_secrets:
                 spec["imagePullSecrets"] = pull_secrets
             return spec
@@ -151,11 +269,11 @@ class LLMDBackend:
         # Only the leader serves the OpenAI API → it carries the role label the
         # Service selects on, plus the serving port and readiness probe.
         leader_pod = {
-            "metadata": {"labels": {base.LABEL_SERVING: name, _LABEL_ROLE: "leader"}},
+            "metadata": {"labels": {base.LABEL_SERVING: name, _LABEL_ROLE: "leader", **decode_extra}},
             "spec": pod_spec(container(leader_command, serving=True)),
         }
         worker_pod = {
-            "metadata": {"labels": {base.LABEL_SERVING: name}},
+            "metadata": {"labels": {base.LABEL_SERVING: name, **decode_extra}},
             "spec": pod_spec(container(worker_command, serving=False)),
         }
 
@@ -167,12 +285,19 @@ class LLMDBackend:
             "spec": {
                 "replicas": int(replica.spec.workers.count or 1),
                 "leaderWorkerTemplate": {
-                    "size": size,
+                    "size": base.nodes_per_worker(replica),
                     "leaderTemplate": leader_pod,
                     "workerTemplate": worker_pod,
                 },
             },
         }
+
+        # Service selector: always selects leader pods for this replica.
+        # For a disagg replica also narrow to pd-role:decode so prefill leader
+        # pods (which are not behind this Service) are never selected.
+        svc_selector: dict = {base.LABEL_SERVING: name, _LABEL_ROLE: "leader"}
+        if disagg:
+            svc_selector[base.LABEL_PD_ROLE] = "decode"
 
         # Service selects the leader pods of every gang in this replica.
         service = {
@@ -180,7 +305,7 @@ class LLMDBackend:
             "kind": "Service",
             "metadata": {"name": name, "namespace": base.REMOTE_NAMESPACE},
             "spec": {
-                "selector": {base.LABEL_SERVING: name, _LABEL_ROLE: "leader"},
+                "selector": svc_selector,
                 "ports": [{"port": 80, "targetPort": base.ENGINE_PORT}],
             },
         }
@@ -223,4 +348,10 @@ class LLMDBackend:
             "model-route": base.wrap_object(pc, http_route),
         }
         out[base.RESOURCE_CLAIM_KEY] = base.resource_claim_template(replica, pc)
+
+        # Disaggregated replica: emit the prefill pod set + its ResourceClaimTemplate.
+        # No prefill Service or HTTPRoute — prefill is internal-only.
+        if disagg:
+            out.update(_prefill_objects(replica, prefill_spec, name, pc, cache_volumes, cache_volume_mounts))
+
         return out

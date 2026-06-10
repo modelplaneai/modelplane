@@ -228,6 +228,28 @@ class Composer:
             )
             if self.xr.spec.modelCacheRef:
                 replica.spec.modelCacheRef = mrv1alpha1.ModelCacheRef(name=self.xr.spec.modelCacheRef.name)
+            if self.xr.spec.prefill and cluster_info.prefill_pool:
+                prefill_workers = mrv1alpha1.Workers.model_validate(
+                    self.xr.spec.prefill.workers.model_dump(exclude_none=True)
+                )
+                prefill_requests = [
+                    mrv1alpha1.DeviceRequest(
+                        name=r.name,
+                        deviceClassName=r.device_class_name,
+                        count=r.count,
+                        selectors=[mrv1alpha1.Selector(cel=c) for c in r.cel_selectors],
+                    )
+                    for r in cluster_info.prefill_device_requests
+                ]
+                replica.spec.prefill = mrv1alpha1.Prefill(
+                    workers=prefill_workers,
+                    nodePoolName=cluster_info.prefill_pool,
+                    deviceRequests=prefill_requests,
+                )
+            if self.xr.spec.routing:
+                replica.spec.routing = mrv1alpha1.Routing.model_validate(
+                    self.xr.spec.routing.model_dump(exclude_none=True)
+                )
             resource.update(self.rsp.desired.resources[replica_key], replica)
 
     def compose_endpoints(self, matched):

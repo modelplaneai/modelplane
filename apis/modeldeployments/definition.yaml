@@ -26,6 +26,18 @@ spec:
           spec:
             type: object
             required: [replicas, workers, nodeSelector]
+            # NOTE: this rule is currently advisory. Both `count` fields carry
+            # `default: 1`, and CEL validation runs after defaulting, so has()
+            # is always true and the rule never rejects — a disaggregated
+            # deployment that omits the counts gets a 1:1 prefill:decode ratio.
+            # Truly requiring explicit counts means dropping `default: 1` from
+            # the shared workers schema, which would make `count` mandatory for
+            # unified deployments too (and break prefill/decode codegen dedup,
+            # which relies on the prefill workers schema being byte-identical to
+            # decode). That tradeoff is left as a design decision.
+            x-kubernetes-validations:
+            - rule: "!has(self.prefill) || (has(self.workers.count) && has(self.prefill.workers.count))"
+              message: "a disaggregated deployment (prefill set) must set both workers.count and prefill.workers.count"
             properties:
               replicas:
                 type: integer
@@ -291,6 +303,267 @@ spec:
                               properties:
                                 name:
                                   type: string
+              prefill:
+                type: object
+                description: >-
+                  Prefill role for disaggregated serving. When set, the deployment
+                  is disaggregated: the top-level workers is the decode role and this
+                  is the prefill role, each self-contained with its own topology,
+                  template, and nodeSelector. Prefill and decode of a replica are
+                  co-located on one InferenceCluster. Unset means unified serving.
+                required: [workers, nodeSelector]
+                properties:
+                  workers:
+                    type: object
+                    required: [topology, template]
+                    description: >-
+                      Compute shape of one worker. Modelplane composes one
+                      worker (or workers.count workers) per ModelReplica.
+                    properties:
+                      count:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                        description: >-
+                          Number of workers per replica. Defaults to 1.
+                      topology:
+                        type: object
+                        required: [tensor]
+                        description: >-
+                          Compute topology for one worker. The axes are
+                          independent and compose multiplicatively: GPUs per
+                          node = tensor, nodes per worker = pipeline.
+                        properties:
+                          tensor:
+                            type: integer
+                            minimum: 1
+                            description: >-
+                              GPUs per node. Required.
+                          pipeline:
+                            type: integer
+                            minimum: 1
+                            default: 1
+                            description: >-
+                              Nodes per worker. Defaults to 1 (single-node).
+                              Values greater than 1 enable multi-node serving
+                              via LeaderWorkerSet.
+                      template:
+                        type: object
+                        description: >-
+                          Pod template for inference workers. A curated subset
+                          of PodTemplateSpec.
+                        properties:
+                          metadata:
+                            type: object
+                            description: >-
+                              Metadata applied to inference pods. Useful for
+                              labels and annotations that control cluster-level
+                              features like service mesh injection.
+                            properties:
+                              labels:
+                                type: object
+                                additionalProperties:
+                                  type: string
+                              annotations:
+                                type: object
+                                additionalProperties:
+                                  type: string
+                          spec:
+                            type: object
+                            required: [containers]
+                            description: >-
+                              Pod spec for inference workers.
+                            properties:
+                              containers:
+                                type: array
+                                minItems: 1
+                                maxItems: 1
+                                description: >-
+                                  Containers for the inference pod. v0.1 supports a
+                                  single container, which must be named "engine" (the
+                                  inference engine). Sidecar / multi-container support
+                                  is tracked separately.
+                                x-kubernetes-validations:
+                                - rule: "self.exists_one(c, c.name == 'engine')"
+                                  message: "the single container must be named 'engine'"
+                                items:
+                                  type: object
+                                  required: [name, image]
+                                  properties:
+                                    name:
+                                      type: string
+                                      minLength: 1
+                                      description: >-
+                                        Container name. The container named "engine"
+                                        is the inference engine.
+                                    image:
+                                      type: string
+                                      minLength: 1
+                                      description: Container image.
+                                    command:
+                                      type: array
+                                      description: >-
+                                        Container entrypoint override. When set on the
+                                        engine container of a multi-node deployment,
+                                        it bypasses the built-in vLLM/Ray bootstrap and
+                                        runs on every gang pod — the command owns
+                                        cross-node coordination against the LWS_*
+                                        environment (LWS_WORKER_INDEX,
+                                        LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for
+                                        non-vLLM engines (e.g. SGLang).
+                                      items:
+                                        type: string
+                                    args:
+                                      type: array
+                                      description: >-
+                                        Container args. For the engine container,
+                                        these are passed through to the serving
+                                        engine. Includes the model identifier
+                                        (e.g. --model=...).
+                                      items:
+                                        type: string
+                                    env:
+                                      type: array
+                                      description: >-
+                                        Environment variables. Supports
+                                        valueFrom.secretKeyRef for secrets
+                                        like HF_TOKEN.
+                                      items:
+                                        type: object
+                                        required: [name]
+                                        properties:
+                                          name:
+                                            type: string
+                                          value:
+                                            type: string
+                                          valueFrom:
+                                            type: object
+                                            properties:
+                                              secretKeyRef:
+                                                type: object
+                                                required: [name, key]
+                                                properties:
+                                                  name:
+                                                    type: string
+                                                  key:
+                                                    type: string
+                                                  optional:
+                                                    type: boolean
+                                              configMapKeyRef:
+                                                type: object
+                                                required: [name, key]
+                                                properties:
+                                                  name:
+                                                    type: string
+                                                  key:
+                                                    type: string
+                                                  optional:
+                                                    type: boolean
+                              imagePullSecrets:
+                                type: array
+                                description: >-
+                                  Image pull secrets for private registries
+                                  (NGC etc.).
+                                items:
+                                  type: object
+                                  required: [name]
+                                  properties:
+                                    name:
+                                      type: string
+                  nodeSelector:
+                    type: object
+                    description: >-
+                      Node-level matching, a list of device requests mirroring a
+                      DRA ResourceClaim. The scheduler matches each request against a
+                      candidate pool's InferenceClass devices (surfaced on
+                      InferenceCluster status.gpuPools) and pins the replica to a
+                      pool that satisfies every request. claim: DRA requests also
+                      become DeviceRequests in the ResourceClaim the serving pods
+                      bind GPUs through. Required: GPUs bind only via DRA, so a
+                      deployment must declare the devices its model needs. At least
+                      one request must resolve to a claimable (claim: DRA) device;
+                      the serving workload binds its GPUs through the resulting
+                      ResourceClaim. Synthetic devices refine placement but are never
+                      claimed, so a nodeSelector that matches only synthetic devices
+                      leaves the workload nothing to claim - the scheduler treats
+                      such a pool as ineligible and the deployment reports
+                      InsufficientCapacity.
+                    required: [devices]
+                    properties:
+                      devices:
+                        type: array
+                        description: >-
+                          Device requests. A pool matches a request when it has a
+                          device whose count covers the request and whose driver,
+                          attributes, and capacity satisfy every selector.
+                        minItems: 1
+                        maxItems: 16
+                        x-kubernetes-list-type: map
+                        x-kubernetes-list-map-keys: [name]
+                        items:
+                          type: object
+                          required: [name, selectors]
+                          properties:
+                            name:
+                              type: string
+                              description: >-
+                                Name of this request. Mirrors a DRA DeviceRequest
+                                name; carried through to the ResourceClaim.
+                              minLength: 1
+                              maxLength: 63
+                            count:
+                              type: integer
+                              description: >-
+                                How many matching devices a node must have. For a GPU
+                                request this is the per-node GPU count (matches the
+                                worker topology's GPUs per node).
+                              default: 1
+                              minimum: 1
+                              maximum: 64
+                            selectors:
+                              type: array
+                              description: >-
+                                Selectors a device must satisfy, all ANDed. Each is a
+                                one-of; today only cel is supported.
+                              minItems: 1
+                              maxItems: 8
+                              x-kubernetes-list-type: atomic
+                              items:
+                                type: object
+                                # A selector must carry at least one selector kind
+                                # (today only cel). Without this an empty {} selector
+                                # would match every device, and since nodeSelector is
+                                # the only path to a GPU that silently claims an
+                                # arbitrary one.
+                                minProperties: 1
+                                properties:
+                                  cel:
+                                    type: string
+                                    description: >-
+                                      A DRA CEL expression evaluated against one
+                                      device. Reads device.driver,
+                                      device.attributes["<driver>"].<name> (typed),
+                                      and device.capacity["<driver>"].<name> (a
+                                      Quantity), with quantity() and semver() helpers,
+                                      e.g.
+                                      device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
+                                    minLength: 1
+                                    maxLength: 10240
+              routing:
+                type: object
+                description: >-
+                  Routing layer for this deployment. Carried through unconsumed
+                  for now; the disaggregation backend uses it later to build the
+                  endpoint-picker (EPP). template is a curated PodSpec subset,
+                  same shape and owner as the engine, defaulting to the llm-d EPP
+                  image.
+                properties:
+                  template:
+                    type: object
+                    properties:
+                      spec:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
           status:
             type: object
             properties:

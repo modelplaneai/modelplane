@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
@@ -129,6 +129,31 @@ class Workers(BaseModel):
     topology: Topology
 
 
+class Prefill(BaseModel):
+    deviceRequests: list[DeviceRequest] = Field(..., max_length=16, min_length=1)
+    """
+    Resolved DRA device requests for the matched pool. The parent ModelDeployment's compose function joins the nodeSelector requests with the matched InferenceClass devices and stamps the claim: DRA devices here. This function turns each into a DeviceRequest in a DRA ResourceClaim for the serving pods. At least one request is always present: the scheduler only pins a replica to a pool that yields a claimable device, so the serving workload always has a ResourceClaim to bind through.
+    """
+    nodePoolName: str
+    """
+    The prefill pool on this replica's cluster.
+    """
+    workers: Workers
+
+
+class TemplateModel(BaseModel):
+    spec: dict[str, Any] | None = None
+
+
+class Routing(BaseModel):
+    template: TemplateModel | None = None
+
+
+class TemplateModel1(BaseModel):
+    metadata: Metadata | None = None
+    spec: Spec | None = None
+
+
 class SpecModel(BaseModel):
     clusterName: constr(min_length=1)
     """
@@ -150,6 +175,11 @@ class SpecModel(BaseModel):
     """
     Name of the node pool on the pinned InferenceCluster the scheduler selected for this replica. The scheduler pins every replica to a specific matching pool, so this is always set.
     """
+    prefill: Prefill | None = None
+    """
+    Prefill role placement for a disaggregated replica. Mirrors the top-level decode fields (workers, nodePoolName, deviceRequests), pinned to the prefill pool the scheduler chose. Absent for unified replicas. When present, all three fields are required: compose-model-deployment always populates them, and the llm-d backend reads them unconditionally.
+    """
+    routing: Routing | None = None
     workers: Workers
 
 

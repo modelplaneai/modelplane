@@ -909,5 +909,315 @@ class TestScheduleNodeSelector(unittest.TestCase):
             scheduling.schedule(deployment, [_cluster("cluster-a", pools=[_pool("frontier")])], [])
 
 
+class TestCandidate(unittest.TestCase):
+    """Tests for Candidate dataclass fields."""
+
+    def test_prefill_placement_fields_default_empty(self):
+        """A Candidate carries an optional prefill placement, empty by default."""
+        c = scheduling.Candidate(name="c1", index=0)
+        self.assertEqual(c.prefill_pool, "")
+        self.assertEqual(c.prefill_device_requests, [])
+
+
+def _dra_nic_device(*, link_type: str = "infiniband", count: int = 1) -> dict:
+    """A DRA NIC device dict for a pool, satisfying the _IB selector."""
+    return {
+        "name": "nic",
+        "claim": "DRA",
+        "driver": "nic.nvidia.com",
+        "deviceClassName": "nic.nvidia.com",
+        "count": count,
+        "attributes": {"linkType": {"string": link_type}},
+    }
+
+
+def _disagg_deployment(
+    decode_req: mdv1alpha1.Device,
+    prefill_req: mdv1alpha1.Device,
+    replicas: int = 1,
+    decode_count: int = 1,
+    prefill_count: int = 1,
+) -> mdv1alpha1.ModelDeployment:
+    """A ModelDeployment with both decode (top-level workers) and prefill roles."""
+    d = _deployment(replicas=replicas, count=decode_count, requests=[decode_req])
+    d.spec.prefill = mdv1alpha1.Prefill(
+        workers=mdv1alpha1.Workers(
+            count=prefill_count,
+            topology=mdv1alpha1.Topology(tensor=1, pipeline=1),
+            template=mdv1alpha1.Template(
+                spec=mdv1alpha1.Spec(
+                    containers=[mdv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
+                ),
+            ),
+        ),
+        nodeSelector=mdv1alpha1.NodeSelector(devices=[prefill_req]),
+    )
+    return d
+
+
+class TestScheduleDisagg(unittest.TestCase):
+    """Tests for joint decode+prefill placement in disaggregated deployments.
+
+    A disagg replica = decode placement + prefill placement, BOTH on the same
+    cluster, picked jointly from one ledger so capacity is never double-committed.
+    """
+
+    def test_decode_and_prefill_different_pools_one_cluster(self):
+        """Decode and prefill placed on different pools of the same cluster.
+
+        Cluster has two pools: 'gpu-big' (satisfies _MEM_141, decode) and
+        'gpu-nic' (satisfies _IB, prefill). The scheduler must find the pair and
+        record both on one Candidate.
+        """
+        decode_req = _request(name="gpu", cel_exprs=[_MEM_141])
+        prefill_req = _request(name="nic", cel_exprs=[_IB])
+        deployment = _disagg_deployment(decode_req, prefill_req)
+
+        # gpu-big: DRA GPU device satisfying _MEM_141 (141 GiB memory).
+        # gpu-nic: DRA NIC device satisfying _IB (infiniband link type).
+        cluster = _cluster(
+            "cluster-a",
+            pools=[
+                _pool("gpu-big", nodes=2, devices=[_gpu_device(memory="141Gi")]),
+                _pool("gpu-nic", nodes=2, devices=[_dra_nic_device(link_type="infiniband")]),
+            ],
+        )
+
+        got = scheduling.schedule(deployment, [cluster], all_replicas=[])
+
+        self.assertEqual(len(got), 1, f"want 1 candidate, got {len(got)}: {got}")
+        c = got[0]
+        self.assertEqual(c.pool, "gpu-big", "decode pool should be gpu-big")
+        self.assertEqual(c.prefill_pool, "gpu-nic", "prefill pool should be gpu-nic")
+        self.assertTrue(len(c.prefill_device_requests) > 0, "prefill_device_requests must be non-empty")
+
+    def test_shared_pool_capacity_sums(self):
+        """When decode and prefill share one pool, their node costs sum against that pool.
+
+        One cluster, one pool ('shared') with 1 node. Decode needs 1 node,
+        prefill needs 1 node → 2 total > 1 available → no Candidate.
+        With 2 nodes in the pool, one Candidate is produced with
+        pool == prefill_pool == 'shared'.
+        """
+        decode_req = _request(name="gpu", cel_exprs=[_MEM_141])
+        # Prefill selector also uses _MEM_141 so it matches the same GPU pool.
+        prefill_req = _request(name="gpu", cel_exprs=[_MEM_141])
+        deployment = _disagg_deployment(decode_req, prefill_req)
+
+        # 1-node pool: decode(1) + prefill(1) = 2 > 1, should not fit.
+        cluster_1 = _cluster(
+            "cluster-a",
+            pools=[_pool("shared", nodes=1, devices=[_gpu_device(memory="141Gi")])],
+        )
+        got = scheduling.schedule(deployment, [cluster_1], all_replicas=[])
+        self.assertEqual(len(got), 0, f"1-node pool should not fit both roles; got {got}")
+
+        # 2-node pool: decode(1) + prefill(1) = 2 == 2, should fit.
+        cluster_2 = _cluster(
+            "cluster-a",
+            pools=[_pool("shared", nodes=2, devices=[_gpu_device(memory="141Gi")])],
+        )
+        got2 = scheduling.schedule(deployment, [cluster_2], all_replicas=[])
+        self.assertEqual(len(got2), 1, f"2-node pool should fit both roles; got {got2}")
+        c = got2[0]
+        self.assertEqual(c.pool, "shared")
+        self.assertEqual(c.prefill_pool, "shared")
+
+    def test_no_feasible_pair_rejects_cluster(self):
+        """A cluster where no pool satisfies the prefill selector yields no Candidates.
+
+        Cluster has only one pool matching the decode selector. The prefill
+        selector (_IB) has no matching pool, so the whole cluster is ineligible.
+        """
+        decode_req = _request(name="gpu", cel_exprs=[_MEM_141])
+        prefill_req = _request(name="nic", cel_exprs=[_IB])
+        deployment = _disagg_deployment(decode_req, prefill_req)
+
+        # Only gpu-big: satisfies decode but NOT prefill (_IB requires NIC).
+        cluster = _cluster(
+            "cluster-a",
+            pools=[_pool("gpu-big", nodes=2, devices=[_gpu_device(memory="141Gi")])],
+        )
+
+        got = scheduling.schedule(deployment, [cluster], all_replicas=[])
+        self.assertEqual(len(got), 0, f"cluster with no prefill pool must yield 0 Candidates; got {got}")
+
+    def test_ledger_charges_existing_replica_prefill_pool(self):
+        """An existing disagg replica consumes its prefill pool's nodes too.
+
+        One cluster, two pools:
+          'gpu-big'  (decode, _MEM_141) — 2 nodes  (enough for two replicas' decodes)
+          'gpu-nic'  (prefill, _IB)     — 1 node   (only enough for ONE prefill)
+
+        An existing disagg ModelReplica already occupies 1 node of each pool.
+        A deployment asking for replicas=2 retains the existing replica but must
+        NOT place a second one — the gpu-nic prefill pool is fully consumed.
+
+        Without the fix, _build_ledger only charges gpu-big (the decode pool),
+        leaving gpu-nic with 1 free node. The fill phase then sees gpu-big free
+        (2 total - 1 used = 1) and gpu-nic free (1 total - 0 wrongly charged = 1)
+        and incorrectly places a second replica → 2 Candidates returned.
+
+        With the fix, gpu-nic is also charged (1 total - 1 used = 0 free) and
+        the fill phase correctly finds no room for a second prefill → 1 Candidate.
+        """
+        decode_req = _request(name="gpu", cel_exprs=[_MEM_141])
+        prefill_req = _request(name="nic", cel_exprs=[_IB])
+        deployment = _disagg_deployment(decode_req, prefill_req, replicas=2)
+
+        # gpu-big has 2 nodes (decode pool — enough for 2 replicas).
+        # gpu-nic has 1 node (prefill pool — only enough for 1 replica).
+        cluster = _cluster(
+            "cluster-a",
+            pools=[
+                _pool("gpu-big", nodes=2, devices=[_gpu_device(memory="141Gi")]),
+                _pool("gpu-nic", nodes=1, devices=[_dra_nic_device(link_type="infiniband")]),
+            ],
+        )
+
+        # Build an existing disagg replica that belongs to this deployment and
+        # occupies 1 node from gpu-big (decode) and 1 node from gpu-nic (prefill).
+        existing = _replica_with_pool("my-model", "cluster-a", pool="gpu-big", index=0)
+        existing.spec.prefill = mrv1alpha1.Prefill(
+            workers=mrv1alpha1.Workers(
+                count=1,
+                topology=mrv1alpha1.Topology(tensor=1, pipeline=1),
+                template=mrv1alpha1.Template(
+                    spec=mrv1alpha1.Spec(
+                        containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
+                    ),
+                ),
+            ),
+            nodePoolName="gpu-nic",
+            deviceRequests=[
+                mrv1alpha1.DeviceRequest(
+                    name="nic",
+                    deviceClassName="nic.nvidia.com",
+                    count=1,
+                    selectors=[mrv1alpha1.Selector(cel=_IB)],
+                ),
+            ],
+        )
+
+        got = scheduling.schedule(deployment, [cluster], all_replicas=[existing])
+
+        # The existing replica is retained (index 0). The second cannot be placed
+        # because gpu-nic (1 node total, 1 consumed) has 0 free nodes for prefill.
+        # Without the fix this returns 2 Candidates (prefill pool not charged).
+        self.assertEqual(
+            len(got),
+            1,
+            f"prefill pool must be charged for existing disagg replicas; got {len(got)} candidates: {got}",
+        )
+        self.assertEqual(got[0].name, "cluster-a")
+        self.assertEqual(got[0].index, 0)
+
+    def test_retain_drops_when_prefill_pool_stops_matching(self):
+        """A disagg replica is re-placed when its prefill pool no longer satisfies the selector.
+
+        Two arms:
+        1. Prefill selector still matches 'gpu-nic' → replica IS retained (1 Candidate,
+           pool='gpu-big', prefill_pool='gpu-nic').
+        2. Prefill selector changed to _MEM_200 which 'gpu-nic' (a NIC pool, no GPU memory)
+           does NOT satisfy → replica is NOT retained; with no eligible pool for the new
+           prefill selector, 0 Candidates are returned.
+
+        Before the fix, _pinned_pool_still_matches only checks the decode pool, so arm 2
+        wrongly retains the replica (returns 1 Candidate) instead of 0.
+        """
+        decode_req = _request(name="gpu", cel_exprs=[_MEM_141])
+
+        # ARM 1: prefill selector still satisfied by 'gpu-nic' → retained.
+        prefill_req_ok = _request(name="nic", cel_exprs=[_IB])
+        deployment_ok = _disagg_deployment(decode_req, prefill_req_ok)
+
+        # ARM 2: prefill selector now requires _MEM_200 — 'gpu-nic' is a NIC pool with no
+        # GPU memory attribute, so it fails the new selector → re-placed, no eligible pool.
+        prefill_req_drifted = _request(name="gpu2", cel_exprs=[_MEM_200])
+        deployment_drifted = _disagg_deployment(decode_req, prefill_req_drifted)
+
+        cluster = _cluster(
+            "cluster-a",
+            pools=[
+                _pool("gpu-big", nodes=2, devices=[_gpu_device(memory="141Gi")]),
+                _pool("gpu-nic", nodes=2, devices=[_dra_nic_device(link_type="infiniband")]),
+            ],
+        )
+
+        # Build an existing disagg replica pinned to decode='gpu-big', prefill='gpu-nic'.
+        existing = _replica_with_pool("my-model", "cluster-a", pool="gpu-big", index=0)
+        existing.spec.prefill = mrv1alpha1.Prefill(
+            workers=mrv1alpha1.Workers(
+                count=1,
+                topology=mrv1alpha1.Topology(tensor=1, pipeline=1),
+                template=mrv1alpha1.Template(
+                    spec=mrv1alpha1.Spec(
+                        containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
+                    ),
+                ),
+            ),
+            nodePoolName="gpu-nic",
+            deviceRequests=[
+                mrv1alpha1.DeviceRequest(
+                    name="nic",
+                    deviceClassName="nic.nvidia.com",
+                    count=1,
+                    selectors=[mrv1alpha1.Selector(cel=_IB)],
+                ),
+            ],
+        )
+
+        # ARM 1: prefill selector unchanged → replica must be retained.
+        got_ok = scheduling.schedule(deployment_ok, [cluster], all_replicas=[existing])
+        self.assertEqual(
+            len(got_ok),
+            1,
+            f"arm1 (prefill still matches): want 1 retained Candidate, got {len(got_ok)}: {got_ok}",
+        )
+        self.assertEqual(got_ok[0].pool, "gpu-big", "arm1: decode pool must be gpu-big")
+        self.assertEqual(got_ok[0].prefill_pool, "gpu-nic", "arm1: prefill pool must be gpu-nic")
+
+        # ARM 2: prefill selector drifted → replica must NOT be retained; no eligible
+        # pool for the new prefill selector → 0 Candidates.
+        got_drifted = scheduling.schedule(deployment_drifted, [cluster], all_replicas=[existing])
+        self.assertEqual(
+            len(got_drifted),
+            0,
+            f"arm2 (prefill pool drifted): want 0 Candidates (re-place fails), got {len(got_drifted)}: {got_drifted}",
+        )
+
+    def test_decode_only_cluster_skipped_for_one_with_both(self):
+        """The scheduler must not greedily commit to the decode-cheapest cluster.
+
+        cluster-a (alphabetically first, so it wins the (load, name) tiebreak)
+        has a decode pool but NO prefill pool. cluster-b has both. A greedy
+        per-role placement would pick cluster-a for decode then fail to find a
+        prefill pool there; the joint pair selection must skip cluster-a entirely
+        and place the whole replica on cluster-b.
+        """
+        decode_req = _request(name="gpu", cel_exprs=[_MEM_141])
+        prefill_req = _request(name="nic", cel_exprs=[_IB])
+        deployment = _disagg_deployment(decode_req, prefill_req)
+
+        cluster_a = _cluster(
+            "cluster-a",
+            pools=[_pool("gpu-only", nodes=2, devices=[_gpu_device(memory="141Gi")])],
+        )
+        cluster_b = _cluster(
+            "cluster-b",
+            pools=[
+                _pool("gpu-big", nodes=2, devices=[_gpu_device(memory="141Gi")]),
+                _pool("gpu-nic", nodes=2, devices=[_dra_nic_device(link_type="infiniband")]),
+            ],
+        )
+
+        got = scheduling.schedule(deployment, [cluster_a, cluster_b], all_replicas=[])
+
+        self.assertEqual(len(got), 1, f"want 1 candidate on cluster-b; got {got}")
+        self.assertEqual(got[0].name, "cluster-b", "must skip the decode-only cluster-a")
+        self.assertEqual(got[0].pool, "gpu-big")
+        self.assertEqual(got[0].prefill_pool, "gpu-nic")
+
+
 if __name__ == "__main__":
     unittest.main()

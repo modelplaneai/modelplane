@@ -184,6 +184,36 @@ class Workers(BaseModel):
     """
 
 
+class Prefill(BaseModel):
+    nodeSelector: NodeSelector
+    """
+    Node-level matching, a list of device requests mirroring a DRA ResourceClaim. The scheduler matches each request against a candidate pool's InferenceClass devices (surfaced on InferenceCluster status.gpuPools) and pins the replica to a pool that satisfies every request. claim: DRA requests also become DeviceRequests in the ResourceClaim the serving pods bind GPUs through. Required: GPUs bind only via DRA, so a deployment must declare the devices its model needs. At least one request must resolve to a claimable (claim: DRA) device; the serving workload binds its GPUs through the resulting ResourceClaim. Synthetic devices refine placement but are never claimed, so a nodeSelector that matches only synthetic devices leaves the workload nothing to claim - the scheduler treats such a pool as ineligible and the deployment reports InsufficientCapacity.
+    """
+    workers: Workers
+    """
+    Compute shape of one worker. Modelplane composes one worker (or workers.count workers) per ModelReplica.
+    """
+
+
+class TemplateModel(BaseModel):
+    spec: dict[str, Any] | None = None
+
+
+class Routing(BaseModel):
+    template: TemplateModel | None = None
+
+
+class TemplateModel1(BaseModel):
+    metadata: Metadata | None = None
+    """
+    Metadata applied to inference pods. Useful for labels and annotations that control cluster-level features like service mesh injection.
+    """
+    spec: Spec | None = None
+    """
+    Pod spec for inference workers.
+    """
+
+
 class SpecModel(BaseModel):
     clusterSelector: ClusterSelector | None = None
     """
@@ -201,9 +231,17 @@ class SpecModel(BaseModel):
     """
     Node-level matching, a list of device requests mirroring a DRA ResourceClaim. The scheduler matches each request against a candidate pool's InferenceClass devices (surfaced on InferenceCluster status.gpuPools) and pins the replica to a pool that satisfies every request. claim: DRA requests also become DeviceRequests in the ResourceClaim the serving pods bind GPUs through. Required: GPUs bind only via DRA, so a deployment must declare the devices its model needs. At least one request must resolve to a claimable (claim: DRA) device; the serving workload binds its GPUs through the resulting ResourceClaim. Synthetic devices refine placement but are never claimed, so a nodeSelector that matches only synthetic devices leaves the workload nothing to claim - the scheduler treats such a pool as ineligible and the deployment reports InsufficientCapacity.
     """
+    prefill: Prefill | None = None
+    """
+    Prefill role for disaggregated serving. When set, the deployment is disaggregated: the top-level workers is the decode role and this is the prefill role, each self-contained with its own topology, template, and nodeSelector. Prefill and decode of a replica are co-located on one InferenceCluster. Unset means unified serving.
+    """
     replicas: conint(ge=1, le=10)
     """
     How many ModelReplicas to fan out to. Each replica is a complete serving instance scheduled to one InferenceCluster.
+    """
+    routing: Routing | None = None
+    """
+    Routing layer for this deployment. Carried through unconsumed for now; the disaggregation backend uses it later to build the endpoint-picker (EPP). template is a curated PodSpec subset, same shape and owner as the engine, defaulting to the llm-d EPP image.
     """
     workers: Workers
     """

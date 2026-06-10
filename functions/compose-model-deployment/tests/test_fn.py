@@ -954,3 +954,133 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(got),
                     "-want, +got",
                 )
+
+    async def test_disagg_prefill_and_routing(self) -> None:
+        """Disaggregated deployment composes spec.prefill and spec.routing onto the ModelReplica."""
+
+        # A disaggregated deployment: top-level workers is the decode role;
+        # spec.prefill carries the prefill role with its own workers + nodeSelector.
+        # spec.routing is present and should be carried through verbatim.
+        xr_disagg = v1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=v1alpha1.SpecModel(
+                replicas=1,
+                nodeSelector=v1alpha1.NodeSelector(
+                    devices=[
+                        v1alpha1.Device(
+                            name="gpu",
+                            count=1,
+                            selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+                        ),
+                    ],
+                ),
+                workers=v1alpha1.Workers(
+                    topology=v1alpha1.Topology(tensor=1),
+                    template=v1alpha1.Template(
+                        spec=v1alpha1.Spec(
+                            containers=[
+                                v1alpha1.Container(
+                                    name="engine",
+                                    image="vllm/vllm-openai:latest",
+                                    args=["--model=Qwen/Qwen3-0.6B"],
+                                ),
+                            ],
+                        ),
+                    ),
+                ),
+                prefill=v1alpha1.Prefill(
+                    nodeSelector=v1alpha1.NodeSelector(
+                        devices=[
+                            v1alpha1.Device(
+                                name="gpu",
+                                count=1,
+                                selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+                            ),
+                        ],
+                    ),
+                    workers=v1alpha1.Workers(
+                        topology=v1alpha1.Topology(tensor=1),
+                        template=v1alpha1.Template(
+                            spec=v1alpha1.Spec(
+                                containers=[
+                                    v1alpha1.Container(
+                                        name="engine",
+                                        image="vllm/vllm-openai:latest",
+                                        args=["--model=Qwen/Qwen3-0.6B", "--prefill"],
+                                    ),
+                                ],
+                            ),
+                        ),
+                    ),
+                ),
+                routing=v1alpha1.Routing(),
+            ),
+        ).model_dump(exclude_none=True, mode="json")
+
+        # A cluster with TWO GPU pools so the scheduler can assign the decode
+        # role to "default" and the prefill role to "prefill-pool".
+        cluster_disagg = icv1alpha1.InferenceCluster(
+            metadata=metav1.ObjectMeta(name="cluster-a"),
+            spec=icv1alpha1.Spec(
+                cluster=icv1alpha1.Cluster(
+                    source="Existing",
+                    existing=icv1alpha1.Existing(secretRef=icv1alpha1.SecretRef(name="k")),
+                ),
+            ),
+            status=icv1alpha1.Status(
+                conditions=[
+                    icv1alpha1.Condition(
+                        type="Ready",
+                        status="True",
+                        reason="Available",
+                        lastTransitionTime="2025-01-01T00:00:00Z",
+                    )
+                ],
+                gateway=icv1alpha1.Gateway(address="10.0.0.1"),
+                providerConfigRef=icv1alpha1.ProviderConfigRef(name="cluster-a"),
+                gpuPools=[
+                    icv1alpha1.GpuPool(
+                        name="default",
+                        nodes=1,
+                        devices=[
+                            icv1alpha1.Device(
+                                name="gpu",
+                                claim="DRA",
+                                driver="gpu.nvidia.com",
+                                deviceClassName="gpu.nvidia.com",
+                                count=1,
+                            )
+                        ],
+                    ),
+                    icv1alpha1.GpuPool(
+                        name="prefill-pool",
+                        nodes=1,
+                        devices=[
+                            icv1alpha1.Device(
+                                name="gpu",
+                                claim="DRA",
+                                driver="gpu.nvidia.com",
+                                deviceClassName="gpu.nvidia.com",
+                                count=1,
+                            )
+                        ],
+                    ),
+                ],
+            ),
+        ).model_dump(exclude_none=True, mode="json")
+
+        req = _req(xr_disagg, clusters=[cluster_disagg])
+        got = await self.runner.RunFunction(req, None)
+
+        # Extract the desired ModelReplica from the response.
+        got_dict = json_format.MessageToDict(got)
+        replica_resource = got_dict["desired"]["resources"]["replica-cluster-a-0"]["resource"]
+
+        # spec.prefill must be stamped with the scheduler's prefill placement.
+        self.assertIn("prefill", replica_resource["spec"], "spec.prefill should be set for disagg deployment")
+        prefill = replica_resource["spec"]["prefill"]
+        self.assertEqual(prefill["nodePoolName"], "prefill-pool", "prefill nodePoolName should be the prefill pool")
+        self.assertGreater(len(prefill.get("deviceRequests", [])), 0, "prefill deviceRequests should be non-empty")
+
+        # spec.routing must be carried through from the XR.
+        self.assertIn("routing", replica_resource["spec"], "spec.routing should be set when XR has routing")

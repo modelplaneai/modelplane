@@ -96,6 +96,11 @@ LABEL_SERVING = "modelplane.ai/serving"
 # Response resource key for the DRA ResourceClaimTemplate.
 RESOURCE_CLAIM_KEY = "resource-claim"
 
+# Label that distinguishes prefill vs decode pods in a disaggregated replica.
+# The decode Service selector includes {LABEL_PD_ROLE: "decode"} so it never
+# accidentally routes traffic to prefill pods.
+LABEL_PD_ROLE = "modelplane.ai/pd-role"
+
 # DRA API the ResourceClaimTemplate targets. The manifest is a raw dict wrapped
 # in a provider-kubernetes Object, so no generated model is needed.
 _DRA_API_VERSION = "resource.k8s.io/v1"
@@ -171,10 +176,17 @@ def nodes_per_worker(replica: v1alpha1.ModelReplica) -> int:
 def needs_cross_pod_coordination(replica: v1alpha1.ModelReplica) -> bool:
     """True when the replica is more than one self-contained pod.
 
-    v0.1: true iff nodes_per_worker > 1. Extension points (no-ops until the
-    fields exist): a `prefill` block (disaggregated P/D) or multi-node data
-    parallelism (data > dataLocal) also make this true.
+    A replica needs cross-pod coordination when:
+    - nodes_per_worker > 1 (pipeline parallelism spanning multiple nodes), or
+    - spec.prefill is set (disaggregated P/D: the prefill and decode roles are
+      separate pods that must coordinate over NIXL regardless of per-role
+      topology, even when each role is a single node).
+
+    Extension point: multi-node data parallelism (data > dataLocal) will also
+    make this true when that field lands.
     """
+    if getattr(replica.spec, "prefill", None):
+        return True
     return nodes_per_worker(replica) > 1
 
 
@@ -190,12 +202,26 @@ def select_backend(replica: v1alpha1.ModelReplica) -> str:
 
 
 def claim_template_name(replica: v1alpha1.ModelReplica) -> str:
-    """ResourceClaimTemplate name on the remote cluster.
+    """ResourceClaimTemplate name on the remote cluster (decode / unified).
 
     Per-replica, derived from the replica's own name so concurrent replicas of
     the same deployment on one cluster don't collide.
     """
     return resource.child_name(replica.metadata.name, _POD_CLAIM_NAME)
+
+
+def claim_template_name_for(replica: v1alpha1.ModelReplica, role: str) -> str:
+    """Per-role ResourceClaimTemplate name on the remote cluster.
+
+    For the ``"decode"`` (or unified) role this returns the same value as
+    ``claim_template_name`` so the unified path is unchanged.  For the
+    ``"prefill"`` role a ``-prefill`` suffix is appended to keep the two
+    templates distinct on the workload cluster.
+    """
+    base_name = claim_template_name(replica)
+    if role == "prefill":
+        return f"{base_name}-prefill"
+    return base_name
 
 
 def engine_resources() -> dict:
@@ -232,6 +258,19 @@ _GPU_TOLERATION = {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoS
 _LABEL_POOL = "modelplane.ai/pool"
 
 
+def place_pod_on(pod_spec: dict, node_pool: str, claim_tmpl_name: str) -> None:
+    """Pin a pod spec to a specific node pool and DRA ResourceClaimTemplate.
+
+    Low-level helper used by both ``place_pod`` (unified/decode path) and the
+    prefill path which supplies a distinct pool name and claim-template name.
+    Callers are responsible for passing the correct pool and template name for
+    the role being built.
+    """
+    pod_spec["nodeSelector"] = {_LABEL_POOL: node_pool}
+    pod_spec["resourceClaims"] = [{"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_tmpl_name}]
+    pod_spec.setdefault("tolerations", []).append(_GPU_TOLERATION)
+
+
 def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica) -> None:
     """Constrain a serving pod to the placement the scheduler chose.
 
@@ -251,10 +290,11 @@ def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica) -> None:
     carries device requests (the XRD requires them), so every serving pod claims
     through DRA. A template-backed claim (not a shared ResourceClaim) gives each
     pod in a gang its own claim.
+
+    Delegates to ``place_pod_on`` with the decode/unified pool and claim-template
+    name, leaving the unified and decode paths identical to before.
     """
-    pod_spec["nodeSelector"] = {_LABEL_POOL: replica.spec.nodePoolName}
-    pod_spec["resourceClaims"] = [{"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_template_name(replica)}]
-    pod_spec.setdefault("tolerations", []).append(_GPU_TOLERATION)
+    place_pod_on(pod_spec, replica.spec.nodePoolName, claim_template_name(replica))
 
 
 def resource_claim_template(replica: v1alpha1.ModelReplica, provider_config: str) -> k8sobjv1alpha1.Object:
@@ -264,24 +304,53 @@ def resource_claim_template(replica: v1alpha1.ModelReplica, provider_config: str
     matched InferenceClass claim: DRA devices) becomes one DeviceRequest carrying
     its DeviceClass, count, and CEL selectors verbatim. Every replica carries at
     least one device request (the XRD requires them).
+
+    Delegates to ``resource_claim_template_for`` with the ``"decode"`` role and
+    the replica's own device requests so the unified path is unchanged.
     """
-    device_requests = []
-    for r in replica.spec.deviceRequests:
+    return resource_claim_template_for(replica, provider_config, "decode", replica.spec.deviceRequests)
+
+
+def resource_claim_template_for(
+    replica: v1alpha1.ModelReplica,
+    provider_config: str,
+    role: str,
+    device_reqs,
+) -> k8sobjv1alpha1.Object:
+    """Compose a DRA ResourceClaimTemplate Object for a specific role.
+
+    ``role`` is either ``"decode"`` (or unified) or ``"prefill"``; it determines
+    the template name via ``claim_template_name_for`` so the two templates on the
+    workload cluster have distinct names and don't collide.
+
+    ``device_reqs`` is the list of ``DeviceRequest`` objects for this role's pool
+    (``replica.spec.deviceRequests`` for decode/unified;
+    ``replica.spec.prefill.deviceRequests`` for prefill).
+    """
+    tmpl_name = claim_template_name_for(replica, role)
+    raw_requests = []
+    for r in device_reqs or []:
         exactly: dict = {"deviceClassName": r.deviceClassName, "count": int(r.count or 1)}
         selectors = [{"cel": {"expression": s.cel}} for s in (r.selectors or []) if s.cel]
         if selectors:
             exactly["selectors"] = selectors
-        device_requests.append({"name": r.name, "exactly": exactly})
+        raw_requests.append({"name": r.name, "exactly": exactly})
 
     return wrap_object(
         provider_config,
         {
             "apiVersion": _DRA_API_VERSION,
             "kind": "ResourceClaimTemplate",
-            "metadata": {"name": claim_template_name(replica), "namespace": REMOTE_NAMESPACE},
-            "spec": {"spec": {"devices": {"requests": device_requests}}},
+            "metadata": {"name": tmpl_name, "namespace": REMOTE_NAMESPACE},
+            "spec": {"spec": {"devices": {"requests": raw_requests}}},
         },
     )
+
+
+def nixl_side_channel_env() -> dict:
+    # vLLM NixlConnector needs the pod's own IP as the NIXL side-channel host; it
+    # can't come from user args, so disaggregated pods get it via the downward API.
+    return {"name": "VLLM_NIXL_SIDE_CHANNEL_HOST", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}
 
 
 class Backend(Protocol):

@@ -372,6 +372,234 @@ class TestBackendSelection(unittest.TestCase):
         replica.spec.workers.topology.pipeline = None
         self.assertFalse(base.needs_cross_pod_coordination(replica))
 
+    def test_prefill_forces_llmd_backend(self):
+        # A single-pod replica with spec.prefill set must route to llm-d even
+        # though pipeline=1 (disaggregation requires cross-pod coordination
+        # between the prefill and decode roles regardless of per-role topology).
+        replica = _replica(tensor=1, pipeline=1)
+        replica.spec.prefill = v1alpha1.Prefill(
+            workers=v1alpha1.Workers(
+                count=1,
+                topology=v1alpha1.Topology(tensor=1, pipeline=1),
+                template=v1alpha1.Template(
+                    spec=v1alpha1.Spec(
+                        containers=[
+                            v1alpha1.Container(
+                                name="engine",
+                                image="vllm/vllm-openai:latest",
+                                args=["--model=Qwen/Qwen3-0.6B"],
+                            )
+                        ]
+                    )
+                ),
+            ),
+            nodePoolName="p",
+            deviceRequests=[_gpu_request(1)],
+        )
+        self.assertEqual(base.select_backend(replica), base.LLMD)
+        # A single-pod replica WITHOUT prefill still picks native.
+        self.assertEqual(base.select_backend(_replica(tensor=1, pipeline=1)), base.NATIVE)
+
+
+class TestDisaggregatedLLMD(unittest.TestCase):
+    """Tests for the disaggregated prefill/decode path in LLMDBackend."""
+
+    def _disagg_replica(self):
+        """A single-pod disaggregated replica: decode on 'frontier', prefill on 'prefill-pool'."""
+        replica = _replica(name="dr", tensor=1, pipeline=1, args=["--model=Qwen/Qwen3-0.6B"])
+        replica.spec.prefill = v1alpha1.Prefill(
+            workers=v1alpha1.Workers(
+                count=1,
+                topology=v1alpha1.Topology(tensor=1, pipeline=1),
+                template=v1alpha1.Template(
+                    spec=v1alpha1.Spec(
+                        containers=[
+                            v1alpha1.Container(
+                                name="engine",
+                                image="vllm/vllm-openai:latest",
+                                args=["--model=Qwen/Qwen3-0.6B"],
+                            )
+                        ]
+                    )
+                ),
+            ),
+            nodePoolName="prefill-pool",
+            deviceRequests=[_gpu_request(1)],
+        )
+        return replica
+
+    def _build(self):
+        return llmd.LLMDBackend().build(self._disagg_replica(), _CLUSTER)
+
+    # --- key / name presence ---
+
+    def test_both_pod_sets_present(self):
+        out = self._build()
+        self.assertIn("model-serving", out)
+        self.assertIn("prefill-serving", out)
+
+    def test_distinct_metadata_names(self):
+        out = self._build()
+        decode_name = out["model-serving"].spec.forProvider.manifest["metadata"]["name"]
+        prefill_name = out["prefill-serving"].spec.forProvider.manifest["metadata"]["name"]
+        self.assertNotEqual(decode_name, prefill_name)
+        self.assertEqual(decode_name, "dr")
+        self.assertEqual(prefill_name, "dr-prefill")
+
+    def test_two_distinct_resource_claim_templates(self):
+        out = self._build()
+        self.assertIn(base.RESOURCE_CLAIM_KEY, out)  # "resource-claim"
+        self.assertIn("prefill-resource-claim", out)
+        decode_tmpl = out[base.RESOURCE_CLAIM_KEY].spec.forProvider.manifest
+        prefill_tmpl = out["prefill-resource-claim"].spec.forProvider.manifest
+        self.assertNotEqual(
+            decode_tmpl["metadata"]["name"],
+            prefill_tmpl["metadata"]["name"],
+        )
+
+    def test_prefill_pods_mount_model_cache(self):
+        """Prefill loads the same weights as decode, so it must mount the cache too."""
+        replica = self._disagg_replica()
+        replica.spec.modelCacheRef = v1alpha1.ModelCacheRef(name="qwen")
+        out = llmd.LLMDBackend().build(replica, _CLUSTER)
+        leader = out["prefill-serving"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]["leaderTemplate"][
+            "spec"
+        ]
+        self.assertIn("model-cache", {v["name"] for v in leader["volumes"]})
+        self.assertIn("model-cache", {m["name"] for m in leader["containers"][0]["volumeMounts"]})
+
+    # --- pd-role labels on pods ---
+
+    def test_decode_leader_pod_carries_pd_role_decode(self):
+        out = self._build()
+        lws = out["model-serving"].spec.forProvider.manifest
+        leader_labels = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["metadata"]["labels"]
+        self.assertEqual(leader_labels.get(base.LABEL_PD_ROLE), "decode")
+
+    def test_decode_worker_pod_carries_pd_role_decode(self):
+        out = self._build()
+        lws = out["model-serving"].spec.forProvider.manifest
+        worker_labels = lws["spec"]["leaderWorkerTemplate"]["workerTemplate"]["metadata"]["labels"]
+        self.assertEqual(worker_labels.get(base.LABEL_PD_ROLE), "decode")
+
+    def test_prefill_leader_pod_carries_pd_role_prefill(self):
+        out = self._build()
+        lws = out["prefill-serving"].spec.forProvider.manifest
+        leader_labels = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["metadata"]["labels"]
+        self.assertEqual(leader_labels.get(base.LABEL_PD_ROLE), "prefill")
+
+    def test_prefill_worker_pod_carries_pd_role_prefill(self):
+        out = self._build()
+        lws = out["prefill-serving"].spec.forProvider.manifest
+        worker_labels = lws["spec"]["leaderWorkerTemplate"]["workerTemplate"]["metadata"]["labels"]
+        self.assertEqual(worker_labels.get(base.LABEL_PD_ROLE), "prefill")
+
+    # --- Service selector excludes prefill ---
+
+    def test_decode_service_selector_includes_pd_role_decode(self):
+        out = self._build()
+        svc = out["model-service"].spec.forProvider.manifest
+        selector = svc["spec"]["selector"]
+        self.assertEqual(selector.get(base.LABEL_PD_ROLE), "decode")
+
+    def test_decode_service_selector_does_not_include_pd_role_prefill(self):
+        out = self._build()
+        svc = out["model-service"].spec.forProvider.manifest
+        selector = svc["spec"]["selector"]
+        self.assertNotEqual(selector.get(base.LABEL_PD_ROLE), "prefill")
+
+    def test_no_prefill_service_or_route(self):
+        out = self._build()
+        self.assertNotIn("prefill-service", out)
+        self.assertNotIn("prefill-route", out)
+
+    # --- node pool pinning ---
+
+    def test_decode_lws_pinned_to_decode_pool(self):
+        replica = self._disagg_replica()
+        out = llmd.LLMDBackend().build(replica, _CLUSTER)
+        lws = out["model-serving"].spec.forProvider.manifest
+        leader_ns = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["nodeSelector"]
+        self.assertEqual(leader_ns.get("modelplane.ai/pool"), replica.spec.nodePoolName)
+
+    def test_prefill_lws_pinned_to_prefill_pool(self):
+        replica = self._disagg_replica()
+        out = llmd.LLMDBackend().build(replica, _CLUSTER)
+        lws = out["prefill-serving"].spec.forProvider.manifest
+        leader_ns = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["nodeSelector"]
+        self.assertEqual(leader_ns.get("modelplane.ai/pool"), replica.spec.prefill.nodePoolName)
+
+    # --- unified replica backward-compat ---
+
+    def test_unified_replica_no_prefill_serving_key(self):
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        self.assertNotIn("prefill-serving", out)
+        self.assertNotIn("prefill-resource-claim", out)
+
+    def test_unified_replica_no_pd_role_label_on_pods(self):
+        # Unified replicas must not gain a pd-role label (no behavioral change).
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        lws = out["model-serving"].spec.forProvider.manifest
+        leader_labels = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["metadata"]["labels"]
+        self.assertNotIn(base.LABEL_PD_ROLE, leader_labels)
+
+    def test_unified_replica_service_selector_unchanged(self):
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        svc = out["model-service"].spec.forProvider.manifest
+        selector = svc["spec"]["selector"]
+        self.assertNotIn(base.LABEL_PD_ROLE, selector)
+
+    # --- readiness policies for prefill pod set ---
+
+    def test_prefill_lws_readiness_derives_from_cel(self):
+        out = self._build()
+        self.assertEqual(out["prefill-serving"].spec.readiness.policy, "DeriveFromCelQuery")
+        self.assertEqual(out["prefill-serving"].spec.readiness.celQuery, base.AVAILABLE_CEL)
+
+    def test_prefill_resource_claim_ready_on_create(self):
+        out = self._build()
+        self.assertEqual(out["prefill-resource-claim"].spec.readiness.policy, "SuccessfulCreate")
+
+    # --- NIXL side-channel env injection ---
+
+    def test_decode_and_prefill_get_nixl_side_channel_env(self):
+        """Both decode and prefill leader containers get VLLM_NIXL_SIDE_CHANNEL_HOST (disagg only)."""
+        out = self._build()
+        nixl_env = {"name": "VLLM_NIXL_SIDE_CHANNEL_HOST", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}
+
+        decode_lws = out["model-serving"].spec.forProvider.manifest
+        decode_containers = decode_lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"]
+        decode_env = decode_containers[0].get("env", [])
+        self.assertIn(nixl_env, decode_env, "decode leader container missing VLLM_NIXL_SIDE_CHANNEL_HOST")
+
+        prefill_lws = out["prefill-serving"].spec.forProvider.manifest
+        prefill_containers = prefill_lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"]
+        prefill_env = prefill_containers[0].get("env", [])
+        self.assertIn(nixl_env, prefill_env, "prefill leader container missing VLLM_NIXL_SIDE_CHANNEL_HOST")
+
+    def test_unified_replica_has_no_nixl_env(self):
+        """Unified multi-node replicas must NOT get VLLM_NIXL_SIDE_CHANNEL_HOST."""
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        lws = out["model-serving"].spec.forProvider.manifest
+        leader_containers = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"]
+        leader_env = leader_containers[0].get("env", [])
+        env_names = [e.get("name") for e in leader_env]
+        self.assertNotIn(
+            "VLLM_NIXL_SIDE_CHANNEL_HOST", env_names, "unified replica must not have VLLM_NIXL_SIDE_CHANNEL_HOST"
+        )
+
 
 class TestDynamoStub(unittest.TestCase):
     def test_not_selected_in_v01(self):
