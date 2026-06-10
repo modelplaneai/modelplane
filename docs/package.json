@@ -1,9 +1,9 @@
 {
   "dependencies": {
-    "@fullhuman/postcss-purgecss": "^5.0.0",
-    "postcss": "^8.4.24",
-    "postcss-cli": "^10.1.0",
-    "postcss-lightningcss": "^0.7.0",
-    "postcss-sort-media-queries": "^4.3.0"
+    "@fullhuman/postcss-purgecss": "^8.0.0",
+    "postcss": "^8.5.15",
+    "postcss-cli": "^11.0.1",
+    "postcss-lightningcss": "^1.1.0",
+    "postcss-sort-media-queries": "^6.6.2"
   }
 }
