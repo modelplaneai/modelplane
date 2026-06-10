@@ -167,13 +167,15 @@ at `pipeline: 1`, because disaggregation needs cross-pod coordination regardless
 of the per-role topology.
 
 **Gateway.** `InferencePool` as an `HTTPRoute` backend needs a GAIE-conformant
-gateway; core Envoy Gateway — which ServingStack installs today for plain
-`HTTPRoute → Service` routing — does not serve it. Of the conformant options
-(Envoy AI Gateway, Istio, kgateway), **Modelplane chooses Envoy AI Gateway**: it
-layers on the Envoy Gateway data plane ServingStack already runs (an additive
-controller + CRDs, not a gateway swap), so it's the lowest-friction change and
-leaves existing plain routes untouched — where Istio or kgateway would replace
-the gateway. Unified serving keeps its plain `Service` route for now; the
+gateway. ServingStack installs **Envoy AI Gateway** as the default — it's
+Envoy-based, purpose-built for LLM traffic, and serves `InferencePool` v1 — so
+disaggregation works out of the box on a Modelplane-provisioned cluster. But the
+gateway is a swappable seam, like the EPP: any GAIE-conformant gateway works
+(Istio, kgateway, GKE Gateway, …), so a customer can plug in their own — for a
+BYO cluster that already runs one, or simply a different preference. (Plain
+Envoy Gateway is not conformant on its own; `InferencePool` support comes from
+the AI Gateway layer, which is why we install that rather than bare Envoy
+Gateway.) Unified serving keeps its plain `Service` route for now; the
 `InferencePool`/EPP path is used by disaggregated serving (and can later carry
 KV-/load-aware routing for unified serving too).
 
