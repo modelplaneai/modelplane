@@ -62,6 +62,7 @@
         "compose-inference-cluster"
         "compose-inference-gateway"
         "compose-serving-stack"
+        "compose-model-cache"
         "compose-model-deployment"
         "compose-model-endpoint"
         "compose-model-replica"
