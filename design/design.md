@@ -351,6 +351,12 @@ runs on the cluster.
 
 ### ModelDeployment
 
+> **Superseded.** How a `ModelDeployment` describes its workers and serving —
+> `spec.workers`, `workers.topology`, the top-level `nodeSelector`, and
+> disaggregated prefill/decode — is revised by [Unopinionated
+> ModelDeployments](./unopinionated-deployments.md). The sections below describe
+> the original model, pending that doc being folded in here.
+
 A model deployment spec. The ML team creates one to deploy a model to the fleet.
 Modelplane creates a `ModelReplica` for each replica and schedules it to an
 `InferenceCluster`. `ModelDeployment` carries everything about what to deploy
@@ -696,7 +702,9 @@ The fleet scheduler picks `(InferenceCluster, pool)` for each ModelReplica:
 3. **Check capacity.** Does the pool have enough available nodes for one replica
    (`pipeline * (data / dataLocal) * workers.count` from `workers`)? Available =
    `maxNodeCount` minus nodes consumed by existing ModelReplicas on that
-   cluster.
+   cluster. (This capacity formula is superseded by [Unopinionated
+   ModelDeployments](./unopinionated-deployments.md), which counts nodes per
+   worker group.)
 
 Modelplane will support affinity and anti-affinity in a future version.
 
