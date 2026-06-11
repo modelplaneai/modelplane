@@ -404,8 +404,15 @@ class TestBackendSelection(unittest.TestCase):
 class TestDisaggregatedLLMD(unittest.TestCase):
     """Tests for the disaggregated prefill/decode path in LLMDBackend."""
 
+    # EPP image used in all disagg tests — comes from the routing.template epp container.
+    _EPP_IMAGE = "ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0"
+
     def _disagg_replica(self):
-        """A single-pod disaggregated replica: decode on 'frontier', prefill on 'prefill-pool'."""
+        """A single-pod disaggregated replica: decode on 'frontier', prefill on 'prefill-pool'.
+
+        Sets spec.routing with a template containing an 'epp' container so the backend
+        can extract the EPP image from it (as required by P2.6).
+        """
         replica = _replica(name="dr", tensor=1, pipeline=1, args=["--model=Qwen/Qwen3-0.6B"])
         replica.spec.prefill = v1alpha1.Prefill(
             workers=v1alpha1.Workers(
@@ -425,6 +432,16 @@ class TestDisaggregatedLLMD(unittest.TestCase):
             ),
             nodePoolName="prefill-pool",
             deviceRequests=[_gpu_request(1)],
+        )
+        # routing.template.spec is dict[str, Any] — the epp container image lives here.
+        replica.spec.routing = v1alpha1.Routing(
+            template=v1alpha1.TemplateModel(
+                spec={
+                    "containers": [
+                        {"name": "epp", "image": self._EPP_IMAGE},
+                    ]
+                }
+            )
         )
         return replica
 
@@ -585,6 +602,45 @@ class TestDisaggregatedLLMD(unittest.TestCase):
         prefill_containers = prefill_lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"]
         prefill_env = prefill_containers[0].get("env", [])
         self.assertIn(nixl_env, prefill_env, "prefill leader container missing VLLM_NIXL_SIDE_CHANNEL_HOST")
+
+    def test_decode_and_prefill_engines_enable_nixl_kv_transfer(self):
+        """Both disagg engines must run vLLM with the NixlConnector kv-transfer-config.
+
+        Without it the engines are plain servers and no prefill->decode KV handoff
+        occurs. NixlConnector does not distinguish kv_role, so both run kv_both.
+        """
+        out = self._build()
+        for key in ("model-serving", "prefill-serving"):
+            lws = out[key].spec.forProvider.manifest
+            command = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]["command"]
+            kv = [a for a in command if a.startswith("--kv-transfer-config")]
+            self.assertEqual(len(kv), 1, f"{key} engine missing --kv-transfer-config")
+            self.assertIn('"kv_connector":"NixlConnector"', kv[0])
+            self.assertIn('"kv_role":"kv_both"', kv[0])
+
+    def test_unified_replica_has_no_nixl_kv_transfer(self):
+        """Unified replicas must NOT get --kv-transfer-config (no disaggregation)."""
+        out = llmd.LLMDBackend().build(_replica(tensor=8, pipeline=2), _CLUSTER)
+        command = out["model-serving"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]["leaderTemplate"][
+            "spec"
+        ]["containers"][0]["command"]
+        self.assertFalse([a for a in command if a.startswith("--kv-transfer-config")])
+
+    def test_epp_configmap_uses_gie_apiversion(self):
+        """The EndpointPickerConfig must use the GIE group the EPP binary registers."""
+        config = self._build()["epp-config"].spec.forProvider.manifest["data"]["pd-epp-config.yaml"]
+        self.assertIn("apiVersion: inference.networking.x-k8s.io/v1alpha1", config)
+        self.assertNotIn("llm-d.ai/v1alpha1", config)
+
+    def test_default_epp_and_sidecar_images(self):
+        """Fallback EPP image and the pd-sidecar image are the published llm-d refs."""
+        replica = self._disagg_replica()
+        replica.spec.routing = v1alpha1.Routing(template=v1alpha1.TemplateModel(spec={"containers": []}))
+        out = llmd.LLMDBackend().build(replica, _CLUSTER)
+        epp_image = out["epp"].spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]["image"]
+        self.assertEqual(epp_image, "ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0")
+        sidecar = self._decode_leader_containers(out)[1]
+        self.assertEqual(sidecar["image"], "ghcr.io/llm-d/llm-d-routing-sidecar:v0.8.0")
 
     def test_unified_replica_has_no_nixl_env(self):
         """Unified multi-node replicas must NOT get VLLM_NIXL_SIDE_CHANNEL_HOST."""
@@ -814,6 +870,85 @@ class TestDisaggregatedLLMD(unittest.TestCase):
         self.assertEqual(ref["port"], 80)
         self.assertNotIn("group", ref)
         self.assertNotIn("kind", ref)
+
+    # --- EPP objects (P2.6) ---
+
+    _EPP_KEYS = (
+        "epp-serviceaccount",
+        "epp-role",
+        "epp-rolebinding",
+        "epp-clusterrole",
+        "epp-clusterrolebinding",
+        "epp-config",
+        "epp",
+        "epp-service",
+    )
+
+    def test_disagg_emits_all_epp_keys(self):
+        """A disaggregated replica emits all 8 EPP-related response keys."""
+        out = self._build()
+        for key in self._EPP_KEYS:
+            with self.subTest(key=key):
+                self.assertIn(key, out)
+
+    def test_unified_emits_no_epp_keys(self):
+        """A unified replica emits none of the epp* keys."""
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        for key in self._EPP_KEYS:
+            with self.subTest(key=key):
+                self.assertNotIn(key, out)
+
+    def test_epp_deployment_image_from_routing_template(self):
+        """The EPP Deployment's container image comes from routing.template's epp container."""
+        out = self._build()
+        dep = out["epp"].spec.forProvider.manifest
+        containers = dep["spec"]["template"]["spec"]["containers"]
+        epp_container = next(c for c in containers if c["name"] == "epp")
+        self.assertEqual(epp_container["image"], self._EPP_IMAGE)
+
+    def test_epp_deployment_args_include_pool_name(self):
+        """The EPP Deployment args include --pool-name=<name>-pool."""
+        out = self._build()
+        dep = out["epp"].spec.forProvider.manifest
+        containers = dep["spec"]["template"]["spec"]["containers"]
+        epp_container = next(c for c in containers if c["name"] == "epp")
+        args = epp_container.get("args", [])
+        name = self._disagg_replica().metadata.name  # "dr"
+        self.assertIn(f"--pool-name={name}-pool", args)
+
+    def test_epp_deployment_args_include_config_file(self):
+        """The EPP Deployment args include --config-file=/config/pd-epp-config.yaml."""
+        out = self._build()
+        dep = out["epp"].spec.forProvider.manifest
+        containers = dep["spec"]["template"]["spec"]["containers"]
+        epp_container = next(c for c in containers if c["name"] == "epp")
+        args = epp_container.get("args", [])
+        self.assertIn("--config-file=/config/pd-epp-config.yaml", args)
+
+    def test_epp_service_has_port_9002(self):
+        """The EPP Service has a port entry with port 9002."""
+        out = self._build()
+        svc = out["epp-service"].spec.forProvider.manifest
+        ports = svc["spec"]["ports"]
+        port_numbers = [p["port"] for p in ports]
+        self.assertIn(9002, port_numbers)
+
+    def test_epp_configmap_has_pd_epp_config_key(self):
+        """The EPP ConfigMap data has the key 'pd-epp-config.yaml'."""
+        out = self._build()
+        cm = out["epp-config"].spec.forProvider.manifest
+        self.assertIn("pd-epp-config.yaml", cm["data"])
+
+    def test_epp_objects_readiness_successful_create(self):
+        """All EPP objects except the Deployment use SuccessfulCreate readiness."""
+        out = self._build()
+        for key in ("epp-serviceaccount", "epp-role", "epp-rolebinding",
+                    "epp-clusterrole", "epp-clusterrolebinding", "epp-config", "epp-service"):
+            with self.subTest(key=key):
+                self.assertEqual(out[key].spec.readiness.policy, "SuccessfulCreate")
 
 
 class TestDynamoStub(unittest.TestCase):

@@ -546,11 +546,12 @@ spec:
               routing:
                 type: object
                 description: >-
-                  Routing layer for this deployment. Carried through unconsumed
-                  for now; the disaggregation backend uses it later to build the
-                  endpoint-picker (EPP). template is a curated PodSpec subset,
-                  same shape and owner as the engine, defaulting to the llm-d EPP
-                  image.
+                  Endpoint-picker (EPP) for a disaggregated deployment. The
+                  backend builds the EPP Deployment, Service, ConfigMap, and
+                  RBAC from this block; the EPP sequences each request prefill
+                  then decode. template is a curated PodSpec subset, same shape
+                  and owner as the engine: its "epp" container's image and args
+                  override the pinned llm-d EPP default.
                 properties:
                   template:
                     type: object

@@ -257,6 +257,304 @@ def _prefill_objects(
     }
 
 
+# The EndpointPickerConfig YAML content for the disaggregated profile.
+# This is the authoritative upstream config from deploy/config/pd-epp-config.yaml
+# (llm-d/llm-d-inference-scheduler), using approx-prefix-cache-producer,
+# prefix-based-pd-decider, disagg-profile-handler, prefill/decode profiles.
+_PD_EPP_CONFIG_YAML = """\
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+- type: approx-prefix-cache-producer
+  parameters:
+    maxPrefixBlocksToMatch: 256
+    lruCapacityPerServer: 31250
+- type: prefix-cache-scorer
+- type: queue-scorer
+- type: prefill-filter
+- type: decode-filter
+- type: max-score-picker
+- type: prefix-based-pd-decider
+  parameters:
+    nonCachedTokens: 16
+- type: disagg-profile-handler
+  parameters:
+    deciders:
+      prefill: prefix-based-pd-decider
+schedulingProfiles:
+- name: prefill
+  plugins:
+  - pluginRef: prefill-filter
+  - pluginRef: max-score-picker
+  - pluginRef: prefix-cache-scorer
+    weight: 2
+  - pluginRef: queue-scorer
+    weight: 1
+- name: decode
+  plugins:
+  - pluginRef: decode-filter
+  - pluginRef: max-score-picker
+  - pluginRef: prefix-cache-scorer
+    weight: 2
+  - pluginRef: queue-scorer
+    weight: 1
+"""
+
+# Default EPP image when routing.template does not supply one.
+_EPP_DEFAULT_IMAGE = "ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0"
+
+# Name suffix for the EPP Role/RoleBinding (combines pod-watch + inference CRD watch).
+_EPP_ROLE_SUFFIX = "epp-sa"
+
+# ClusterRole/ClusterRoleBinding name suffix for metrics auth reviewer.
+_EPP_AUTH_SUFFIX = "epp-auth-reviewer"
+
+
+def _route_backend_refs(name: str, *, disagg: bool) -> list[dict]:
+    """Return the HTTPRoute backendRefs for disaggregated (InferencePool) or unified (Service) paths."""
+    if disagg:
+        return [{"group": "inference.networking.k8s.io", "kind": "InferencePool", "name": f"{name}-pool"}]
+    return [{"name": name, "port": 80}]
+
+
+def _epp_container_from_routing(replica) -> dict | None:
+    """Return the "epp" container from spec.routing.template, or None.
+
+    routing.template.spec is dict[str, Any]; iterate containers to find name==epp.
+    None means routing is absent or has no epp container, so the caller falls back
+    to _EPP_DEFAULT_IMAGE and injects all args itself.
+    """
+    routing = getattr(replica.spec, "routing", None)
+    if routing is None:
+        return None
+    tmpl = getattr(routing, "template", None)
+    if tmpl is None:
+        return None
+    spec = getattr(tmpl, "spec", None) or {}
+    for c in spec.get("containers", []):
+        if c.get("name") == "epp":
+            return c
+    return None
+
+
+def _epp_objects(
+    replica,
+    name: str,
+    provider_config: str,
+) -> dict[str, k8sobjv1alpha1.Object]:
+    """Build all EPP-related Objects for a disaggregated replica.
+
+    Emits 8 provider-kubernetes Objects (keyed as epp-serviceaccount, epp-role,
+    epp-rolebinding, epp-clusterrole, epp-clusterrolebinding, epp-config, epp,
+    epp-service). All namespace-scoped objects go into base.REMOTE_NAMESPACE.
+    ClusterRole/ClusterRoleBinding are cluster-scoped (no namespace in metadata).
+
+    The EPP container image comes from replica.spec.routing.template (the epp
+    container in that list). Modelplane injects the required operational args;
+    any user-supplied args in the template are prepended before the injected set.
+    """
+    ns = base.REMOTE_NAMESPACE
+    epp_name = f"{name}-epp"
+    role_name = f"{name}-{_EPP_ROLE_SUFFIX}"
+    auth_name = f"{name}-{_EPP_AUTH_SUFFIX}"
+    # The epp container (if any) supplies both the image and any user args.
+    epp = _epp_container_from_routing(replica)
+    image = epp.get("image", _EPP_DEFAULT_IMAGE) if epp else _EPP_DEFAULT_IMAGE
+    user_epp_args = list(epp.get("args") or []) if epp else []
+
+    # Modelplane-injected args (appended after any user args).
+    injected_args = [
+        f"--pool-name={name}-pool",
+        f"--pool-namespace={ns}",
+        "--pool-group=inference.networking.k8s.io",
+        "--zap-encoder=json",
+        "--config-file=/config/pd-epp-config.yaml",
+        "--grpc-port=9002",
+    ]
+    epp_args = user_epp_args + injected_args
+
+    sa = {
+        "apiVersion": "v1",
+        "kind": "ServiceAccount",
+        "metadata": {"name": epp_name, "namespace": ns},
+    }
+
+    role = {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "Role",
+        "metadata": {"name": role_name, "namespace": ns},
+        "rules": [
+            {
+                "apiGroups": [""],
+                "resources": ["pods"],
+                "verbs": ["get", "watch", "list"],
+            },
+            {
+                "apiGroups": ["inference.networking.x-k8s.io"],
+                "resources": ["inferenceobjectives", "inferencemodelrewrites"],
+                "verbs": ["get", "watch", "list"],
+            },
+            {
+                "apiGroups": ["llm-d.ai"],
+                "resources": ["inferenceobjectives", "inferencemodelrewrites"],
+                "verbs": ["get", "watch", "list"],
+            },
+            {
+                "apiGroups": ["inference.networking.k8s.io"],
+                "resources": ["inferencepools"],
+                "verbs": ["get", "watch", "list"],
+            },
+        ],
+    }
+
+    rolebinding = {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "RoleBinding",
+        "metadata": {"name": role_name, "namespace": ns},
+        "subjects": [
+            {"kind": "ServiceAccount", "name": epp_name, "namespace": ns},
+        ],
+        "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "Role",
+            "name": role_name,
+        },
+    }
+
+    clusterrole = {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRole",
+        "metadata": {"name": auth_name},
+        "rules": [
+            {
+                "apiGroups": ["authentication.k8s.io"],
+                "resources": ["tokenreviews"],
+                "verbs": ["create"],
+            },
+            {
+                "apiGroups": ["authorization.k8s.io"],
+                "resources": ["subjectaccessreviews"],
+                "verbs": ["create"],
+            },
+        ],
+    }
+
+    clusterrolebinding = {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRoleBinding",
+        "metadata": {"name": auth_name},
+        "subjects": [
+            {"kind": "ServiceAccount", "name": epp_name, "namespace": ns},
+        ],
+        "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": auth_name,
+        },
+    }
+
+    configmap = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {"name": epp_name, "namespace": ns},
+        "data": {"pd-epp-config.yaml": _PD_EPP_CONFIG_YAML},
+    }
+
+    deployment = {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "metadata": {"name": epp_name, "namespace": ns},
+        "spec": {
+            "replicas": 1,
+            "strategy": {"type": "Recreate"},
+            "selector": {"matchLabels": {"app": epp_name}},
+            "template": {
+                "metadata": {"labels": {"app": epp_name}},
+                "spec": {
+                    "serviceAccountName": epp_name,
+                    "terminationGracePeriodSeconds": 130,
+                    "containers": [
+                        {
+                            "name": "epp",
+                            "image": image,
+                            "args": epp_args,
+                            "env": [
+                                {
+                                    "name": "NAMESPACE",
+                                    "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}},
+                                },
+                                {
+                                    "name": "POD_NAME",
+                                    "valueFrom": {"fieldRef": {"fieldPath": "metadata.name"}},
+                                },
+                            ],
+                            "ports": [
+                                {"name": "grpc", "containerPort": 9002},
+                                {"name": "grpc-health", "containerPort": 9003},
+                                {"name": "metrics", "containerPort": 9090},
+                            ],
+                            "livenessProbe": {
+                                "grpc": {"port": 9003, "service": "inference-extension"},
+                                "initialDelaySeconds": 5,
+                                "periodSeconds": 10,
+                            },
+                            "readinessProbe": {
+                                "grpc": {"port": 9003, "service": "inference-extension"},
+                                "initialDelaySeconds": 5,
+                                "periodSeconds": 10,
+                            },
+                            "volumeMounts": [
+                                {"name": "plugins-config-volume", "mountPath": "/config"},
+                            ],
+                        }
+                    ],
+                    "volumes": [
+                        {
+                            "name": "plugins-config-volume",
+                            "configMap": {"name": epp_name},
+                        }
+                    ],
+                },
+            },
+        },
+    }
+
+    service = {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": epp_name, "namespace": ns},
+        "spec": {
+            "selector": {"app": epp_name},
+            "type": "ClusterIP",
+            "ports": [
+                {
+                    "name": "grpc-ext-proc",
+                    "protocol": "TCP",
+                    "port": 9002,
+                    "targetPort": 9002,
+                    "appProtocol": "http2",
+                },
+                {
+                    "name": "http-metrics",
+                    "protocol": "TCP",
+                    "port": 9090,
+                },
+            ],
+        },
+    }
+
+    return {
+        "epp-serviceaccount": base.wrap_object(provider_config, sa),
+        "epp-role": base.wrap_object(provider_config, role),
+        "epp-rolebinding": base.wrap_object(provider_config, rolebinding),
+        "epp-clusterrole": base.wrap_object(provider_config, clusterrole),
+        "epp-clusterrolebinding": base.wrap_object(provider_config, clusterrolebinding),
+        "epp-config": base.wrap_object(provider_config, configmap),
+        "epp": base.wrap_object(provider_config, deployment),
+        "epp-service": base.wrap_object(provider_config, service),
+    }
+
+
 class LLMDBackend:
     def build(
         self,
@@ -410,20 +708,6 @@ class LLMDBackend:
             },
         }
 
-        # Disaggregated decode: the HTTPRoute points at the InferencePool so the
-        # GAIE EPP can apply KV-/prefix-aware routing. Unified replicas keep the
-        # plain Service backendRef (no EPP in the unified path).
-        if disagg:
-            route_backend_refs = [
-                {
-                    "group": "inference.networking.k8s.io",
-                    "kind": "InferencePool",
-                    "name": f"{name}-pool",
-                }
-            ]
-        else:
-            route_backend_refs = [{"name": name, "port": 80}]
-
         # HTTPRoute -> InferencePool (disagg) or Service (unified).
         # Plain Gateway API; Traefik- and Envoy-compatible.
         http_route = {
@@ -451,7 +735,7 @@ class LLMDBackend:
                                 "urlRewrite": {"path": {"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}},
                             }
                         ],
-                        "backendRefs": route_backend_refs,
+                        "backendRefs": _route_backend_refs(name, disagg=disagg),
                     }
                 ],
             },
@@ -468,8 +752,11 @@ class LLMDBackend:
         # No prefill Service or HTTPRoute — prefill is internal-only.
         # Also emit the InferencePool that the HTTPRoute now points to; it lets the
         # GAIE EPP perform KV-aware routing across the decode and prefill pods.
+        # The EPP objects (ServiceAccount, Role/RoleBinding, ClusterRole/ClusterRoleBinding,
+        # ConfigMap, Deployment, Service) are also emitted for the disaggregated path.
         if disagg:
             out["inference-pool"] = _inference_pool_object(name, pc)
             out.update(_prefill_objects(replica, prefill_spec, name, pc, cache_volumes, cache_volume_mounts))
+            out.update(_epp_objects(replica, name, pc))
 
         return out
