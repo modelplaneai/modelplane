@@ -183,7 +183,6 @@ def _replica(
             name=f"{deployment_name}-{cluster_name}-{index}",
             namespace="ml-team",
             labels={
-                "modelplane.ai/replica": "true",
                 "modelplane.ai/deployment": deployment_name,
                 "modelplane.ai/cluster": cluster_name,
                 "modelplane.ai/replica-index": str(index),

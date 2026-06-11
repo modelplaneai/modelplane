@@ -44,12 +44,6 @@ PHASE_FAILED = "Failed"
 # functions set this independently, so they are a contract — change together.
 REMOTE_NS = "default"
 
-# The cluster-presence label every InferenceCluster carries; the matcher always
-# includes it (an empty match_labels is dropped by protobuf). Mirrors
-# compose-model-deployment's cluster matching.
-LABEL_KEY_CLUSTER = "modelplane.ai/cluster"
-LABEL_VALUE_CLUSTER = "true"
-
 # Hydration container. python:3.11-slim has pip; we install huggingface_hub
 # at runtime. A Modelplane-owned image with the tool preinstalled is a
 # follow-up (#115).
@@ -163,10 +157,11 @@ class Composer:
         Crossplane re-calls the function once it's available. A resolved-but-
         empty match flows through (match_clusters() -> NoClusters condition).
         """
-        match_labels = {LABEL_KEY_CLUSTER: LABEL_VALUE_CLUSTER}
+        # require_resources with no match field matches every InferenceCluster;
+        # narrow only when the user sets a clusterSelector.
+        match_labels = None
         if self.xr.spec.clusterSelector and self.xr.spec.clusterSelector.matchLabels:
-            match_labels.update({k: str(v) for k, v in self.xr.spec.clusterSelector.matchLabels.items()})
-
+            match_labels = dict(self.xr.spec.clusterSelector.matchLabels)
         response.require_resources(
             self.rsp,
             name="clusters",

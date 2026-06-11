@@ -112,7 +112,6 @@ _EXISTING_REPLICA = mrv1alpha1.ModelReplica(
         name="my-model-5ab63",
         namespace="ml-team",
         labels={
-            "modelplane.ai/replica": "true",
             "modelplane.ai/deployment": "my-model",
             "modelplane.ai/cluster": "cluster-a",
             "modelplane.ai/replica-index": "0",
@@ -141,11 +140,10 @@ _EXISTING_REPLICA = mrv1alpha1.ModelReplica(
     ),
 ).model_dump(exclude_none=True, mode="json")
 
-# The requirements selectors every want echoes back.
+# The requirements selectors every want echoes back. Both are bare selectors
+# matching all resources of the kind.
 _CLUSTER_SEL = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster")
-_CLUSTER_SEL.match_labels.labels.update({"modelplane.ai/cluster": "true"})
 _REPLICA_SEL = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelReplica")
-_REPLICA_SEL.match_labels.labels.update({"modelplane.ai/replica": "true"})
 
 
 def _req(xr: dict, *, clusters: list[dict], replicas: list[dict] | None = None, observed: dict | None = None):
@@ -282,7 +280,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": "my-model-5ab63",
                                                 "namespace": "ml-team",
                                                 "labels": {
-                                                    "modelplane.ai/replica": "true",
                                                     "modelplane.ai/deployment": "my-model",
                                                     "modelplane.ai/cluster": "cluster-a",
                                                     "modelplane.ai/replica-index": "0",
@@ -421,7 +418,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "name": "my-model-5ab63",
                                 "namespace": "ml-team",
                                 "labels": {
-                                    "modelplane.ai/replica": "true",
                                     "modelplane.ai/deployment": "my-model",
                                     "modelplane.ai/cluster": "cluster-a",
                                     "modelplane.ai/replica-index": "0",
@@ -452,7 +448,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": "my-model-5ab63",
                                                 "namespace": "ml-team",
                                                 "labels": {
-                                                    "modelplane.ai/replica": "true",
                                                     "modelplane.ai/deployment": "my-model",
                                                     "modelplane.ai/cluster": "cluster-a",
                                                     "modelplane.ai/replica-index": "0",
@@ -547,7 +542,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": "my-model-5ab63",
                                                 "namespace": "ml-team",
                                                 "labels": {
-                                                    "modelplane.ai/replica": "true",
                                                     "modelplane.ai/deployment": "my-model",
                                                     "modelplane.ai/cluster": "cluster-a",
                                                     "modelplane.ai/replica-index": "0",
@@ -621,7 +615,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": "my-model-f0b76",
                                                 "namespace": "ml-team",
                                                 "labels": {
-                                                    "modelplane.ai/replica": "true",
                                                     "modelplane.ai/deployment": "my-model",
                                                     "modelplane.ai/cluster": "cluster-b",
                                                     "modelplane.ai/replica-index": "0",
@@ -716,7 +709,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": "my-model-5ab63",
                                                 "namespace": "ml-team",
                                                 "labels": {
-                                                    "modelplane.ai/replica": "true",
                                                     "modelplane.ai/deployment": "my-model",
                                                     "modelplane.ai/cluster": "cluster-a",
                                                     "modelplane.ai/replica-index": "0",
@@ -812,7 +804,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": "my-model-5ab63",
                                                 "namespace": "ml-team",
                                                 "labels": {
-                                                    "modelplane.ai/replica": "true",
                                                     "modelplane.ai/deployment": "my-model",
                                                     "modelplane.ai/cluster": "cluster-a",
                                                     "modelplane.ai/replica-index": "0",
@@ -849,7 +840,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": "my-model-609c5",
                                                 "namespace": "ml-team",
                                                 "labels": {
-                                                    "modelplane.ai/replica": "true",
                                                     "modelplane.ai/deployment": "my-model",
                                                     "modelplane.ai/cluster": "cluster-a",
                                                     "modelplane.ai/replica-index": "1",

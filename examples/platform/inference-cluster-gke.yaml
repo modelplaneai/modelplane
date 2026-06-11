@@ -10,15 +10,13 @@
 # referencing an InferenceClass that describes the hardware shape and
 # how to provision it - need to be declared.
 #
-# The modelplane.ai/cluster label is required for the ModelDeployment
-# scheduler to discover this cluster. Add additional labels to control
-# placement via clusterSelector.
+# Add labels to this InferenceCluster to control which deployments land on it
+# via a ModelDeployment's clusterSelector.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
   name: gke-us-central
   labels:
-    modelplane.ai/cluster: "true"
     modelplane.ai/region: us-central
 spec:
   cluster:

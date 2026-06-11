@@ -31,16 +31,14 @@ CONDITION_REASON_NO_REPLICAS_SCHEDULED = "NoReplicasScheduled"
 CONDITION_REASON_ALL_REPLICAS_READY = "AllReplicasReady"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 
-# Label keys and values. These are coordination contracts: compose-model-replica
-# and compose-model-service read labels that this function writes.
+# Label keys stamped on the ModelReplicas and ModelEndpoints this function
+# composes, identifying the deployment and cluster they belong to.
 _LABEL_CLUSTER = "modelplane.ai/cluster"
-_LABEL_REPLICA = "modelplane.ai/replica"
 _LABEL_DEPLOYMENT = "modelplane.ai/deployment"
 # Per-cluster-local index distinguishing co-located replicas of one deployment.
 # Read back by the scheduler to reconstruct a replica's (cluster, index)
 # identity from observed state. Not an ordering - just a collision breaker.
 _LABEL_INDEX = "modelplane.ai/replica-index"
-_LABEL_VALUE_TRUE = "true"
 
 
 # Scheme for gateway-facing URLs. Traffic between the control plane gateway
@@ -116,27 +114,26 @@ class Composer:
     def resolve_inputs(self):
         """Declare and fetch required resources. Returns False if critical
         inputs are missing."""
-        # InferenceClusters are matched by the modelplane.ai/cluster=true
-        # label — a workaround for the empty match_labels protobuf bug.
-        cluster_match_labels: dict[str, str] = {
-            _LABEL_CLUSTER: _LABEL_VALUE_TRUE,
-        }
+        # Match all InferenceClusters by default — require_resources with no
+        # match field matches every resource of the kind — narrowing only when
+        # the user sets a clusterSelector.
+        clusters_match_labels = None
         if self.xr.spec.clusterSelector and self.xr.spec.clusterSelector.matchLabels:
-            cluster_match_labels.update(self.xr.spec.clusterSelector.matchLabels)
-
+            clusters_match_labels = dict(self.xr.spec.clusterSelector.matchLabels)
         response.require_resources(
             self.rsp,
             name="clusters",
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceCluster",
-            match_labels=cluster_match_labels,
+            match_labels=clusters_match_labels,
         )
+        # Match all ModelReplicas (across all deployments) so the scheduler can
+        # account for capacity already consumed by other deployments.
         response.require_resources(
             self.rsp,
             name="all-replicas",
             api_version="modelplane.ai/v1alpha1",
             kind="ModelReplica",
-            match_labels={_LABEL_REPLICA: _LABEL_VALUE_TRUE},
         )
 
         cluster_dicts = request.get_required_resources(self.req, "clusters")
@@ -213,7 +210,6 @@ class Composer:
                     name=name.replica(self.xr.metadata.name, cluster_info),
                     namespace=self.xr.metadata.namespace,
                     labels={
-                        _LABEL_REPLICA: _LABEL_VALUE_TRUE,
                         _LABEL_DEPLOYMENT: self.xr.metadata.name,
                         _LABEL_CLUSTER: cluster_info.name,
                         _LABEL_INDEX: str(cluster_info.index),

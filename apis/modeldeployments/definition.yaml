@@ -42,7 +42,8 @@ spec:
                 properties:
                   matchLabels:
                     type: object
-                    x-kubernetes-preserve-unknown-fields: true
+                    additionalProperties:
+                      type: string
               nodeSelector:
                 type: object
                 description: >-

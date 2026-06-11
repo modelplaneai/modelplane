@@ -44,7 +44,8 @@ spec:
                       properties:
                         matchLabels:
                           type: object
-                          x-kubernetes-preserve-unknown-fields: true
+                          additionalProperties:
+                            type: string
           status:
             type: object
             properties:

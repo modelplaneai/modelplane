@@ -83,7 +83,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -102,7 +102,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -121,7 +121,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -140,7 +140,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -160,7 +160,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -180,7 +180,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.12.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -201,7 +201,7 @@ dependencies = [
 requires-dist = [
     { name = "cel-python", specifier = ">=0.3.0" },
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -220,7 +220,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -239,7 +239,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -258,7 +258,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
 ]
@@ -278,7 +278,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0" },
-    { name = "crossplane-function-sdk-python", specifier = ">=0.13.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -286,7 +286,7 @@ requires-dist = [
 
 [[package]]
 name = "crossplane-function-sdk-python"
-version = "0.13.0"
+version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio" },
@@ -295,9 +295,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "structlog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e6/6d/2e30bba4bc941a15642ec37317e5b45f80d3a701344994d965b8dcd71bd6/crossplane_function_sdk_python-0.13.0.tar.gz", hash = "sha256:815007769ddeb3e2ea4d2b47f5feeb7b15a4692f052d62151e80ce30138eda2b", size = 60018, upload-time = "2026-06-08T20:46:01.76Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/2c/a5758e9233600b9cb76622f2eeb2dea097629cd82007631c5e9d67ee70e1/crossplane_function_sdk_python-0.14.0.tar.gz", hash = "sha256:bb54f37e743f9a980c1f1b05026e921ebaa293abdd054a045e8e34b926d99607", size = 60076, upload-time = "2026-06-10T23:30:05.259Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/9e/4cfc6a3d45f53a5b43a777b7363a0e83f87e96a03e95afc9169512f42cdb/crossplane_function_sdk_python-0.13.0-py3-none-any.whl", hash = "sha256:89ec8d5e5a66bc0ce4551bafe96546329fcc841e3c04706e5ed5e22a37bf4aad", size = 42972, upload-time = "2026-06-08T20:46:00.76Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/01/358b0000b7ab412c85e42b192fafbd1d877d5599702fbd808fe2ae9df530/crossplane_function_sdk_python-0.14.0-py3-none-any.whl", hash = "sha256:42323b086c4e8b8fa7d3ce032b5744c29db3cdcdaeb4681997dbf188639e8552", size = 43017, upload-time = "2026-06-10T23:30:04.34Z" },
 ]
 
 [[package]]
@@ -431,7 +431,7 @@ dev = [
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "crossplane-function-sdk-python", specifier = ">=0.13.0" }]
+dev = [{ name = "crossplane-function-sdk-python", specifier = ">=0.14.0" }]
 
 [[package]]
 name = "pendulum"

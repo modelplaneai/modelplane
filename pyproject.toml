@@ -14,7 +14,7 @@ members = ["functions/*", "schemas/python"]
 
 [dependency-groups]
 dev = [
-  "crossplane-function-sdk-python>=0.13.0",
+  "crossplane-function-sdk-python>=0.14.0",
 ]
 
 [tool.ruff]

@@ -11,7 +11,6 @@ kind: InferenceCluster
 metadata:
   name: demo-us-central
   labels:
-    modelplane.ai/cluster: "true"
     modelplane.ai/region: us-central
 spec:
   cluster:
@@ -33,7 +32,6 @@ kind: InferenceCluster
 metadata:
   name: demo-us-east
   labels:
-    modelplane.ai/cluster: "true"
     modelplane.ai/region: us-east
 spec:
   cluster:
@@ -55,7 +53,6 @@ kind: InferenceCluster
 metadata:
   name: demo-us-west
   labels:
-    modelplane.ai/cluster: "true"
     modelplane.ai/region: us-west
 spec:
   cluster:

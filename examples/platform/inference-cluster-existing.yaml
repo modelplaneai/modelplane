@@ -12,7 +12,6 @@ kind: InferenceCluster
 metadata:
   name: byo-us-east
   labels:
-    modelplane.ai/cluster: "true"
     modelplane.ai/region: us-east
 spec:
   cluster:

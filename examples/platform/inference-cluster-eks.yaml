@@ -16,9 +16,6 @@
 # EFS CSI StorageClass on the cluster, then set cache.storageClassName
 # to its name (default 'modelplane-rwx-efs').
 #
-# The modelplane.ai/cluster label is required for the ModelDeployment
-# scheduler to discover this cluster.
-#
 # Delete this InferenceCluster with foreground cascading deletion for a
 # clean teardown:
 #
@@ -36,7 +33,6 @@ kind: InferenceCluster
 metadata:
   name: eks-us-west
   labels:
-    modelplane.ai/cluster: "true"
     modelplane.ai/region: us-west
 spec:
   cluster:

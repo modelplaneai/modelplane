@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, Field
 
@@ -42,7 +42,7 @@ class Crossplane(BaseModel):
 
 
 class Selector(BaseModel):
-    matchLabels: dict[str, Any]
+    matchLabels: dict[str, str]
 
 
 class Endpoint(BaseModel):

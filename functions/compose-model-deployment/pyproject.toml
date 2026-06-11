@@ -9,7 +9,7 @@ description = "Fan out a ModelDeployment to ModelReplicas and ModelEndpoints."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
-  "crossplane-function-sdk-python>=0.13.0",
+  "crossplane-function-sdk-python>=0.14.0",
   "click>=8.1.0",
   "grpcio>=1.73.1",
   "cel-python>=0.3.0",

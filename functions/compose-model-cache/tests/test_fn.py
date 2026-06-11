@@ -52,7 +52,7 @@ def _cluster_dict(name: str, pc: str, *, source: str = "GKE") -> dict:
     return {
         "apiVersion": "modelplane.ai/v1alpha1",
         "kind": "InferenceCluster",
-        "metadata": {"name": name, "labels": {"modelplane.ai/cluster": "true"}},
+        "metadata": {"name": name},
         "spec": {"cluster": {"source": source, **blocks[source]}},
         "status": {"providerConfigRef": {"name": pc}},
     }
@@ -110,13 +110,12 @@ def _req(
     return req
 
 
-# The function always requires every InferenceCluster carrying the cluster
-# label, so every response echoes this selector under requirements.
+# The function requires every InferenceCluster with a bare selector, so every
+# response echoes this selector under requirements.
 _CLUSTERS_SELECTOR = fnv1.ResourceSelector(
     api_version="modelplane.ai/v1alpha1",
     kind="InferenceCluster",
 )
-_CLUSTERS_SELECTOR.match_labels.labels.update({"modelplane.ai/cluster": "true"})
 
 # The hydration shell script the Job runs (no revision, no auth secret).
 _HYDRATE_CMD = (

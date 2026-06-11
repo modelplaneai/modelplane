@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
@@ -11,7 +11,7 @@ from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ClusterSelector(BaseModel):
-    matchLabels: dict[str, Any] | None = None
+    matchLabels: dict[str, str] | None = None
 
 
 class CompositionRef(BaseModel):
