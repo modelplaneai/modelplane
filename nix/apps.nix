@@ -147,4 +147,50 @@
         }
       );
     };
+
+  # Serve the docs site locally with live reload. Extra args pass through to
+  # hugo server, e.g.: nix run .#docs-serve -- --port 8080
+  docsServe = _: {
+    type = "app";
+    meta.description = "Serve the docs site locally with live reload";
+    program = pkgs.lib.getExe (
+      pkgs.writeShellApplication {
+        name = "modelplane-docs-serve";
+        # Hugo reads git metadata for last-modified dates (enableGitInfo).
+        runtimeInputs = [
+          pkgs.hugo
+          pkgs.git
+        ];
+        inheritPath = false;
+        text = ''
+          hugo server --source docs "$@"
+        '';
+      }
+    );
+  };
+
+  # Rebuild the docs site's JavaScript bundle. webpack writes the bundle into
+  # the geekboot theme's assets, which are committed to git; rerun this and
+  # commit the result after changing anything under docs/utils/webpack/src.
+  docsGenerate = _: {
+    type = "app";
+    meta.description = "Rebuild the docs site JavaScript bundle";
+    program = pkgs.lib.getExe (
+      pkgs.writeShellApplication {
+        name = "modelplane-docs-generate";
+        # npm run spawns scripts via sh, so bash must be on PATH alongside node.
+        runtimeInputs = [
+          pkgs.nodejs
+          pkgs.bash
+        ];
+        inheritPath = false;
+        text = ''
+          cd docs/utils/webpack
+          npm ci
+          npm run prod
+          echo "Done. Review changes with 'git diff docs/themes/geekboot/assets/js'."
+        '';
+      }
+    );
+  };
 }

@@ -20,6 +20,14 @@ nix develop
 ./nix.sh develop
 ```
 
+To install Nix itself, the [Determinate Systems
+installer](https://github.com/DeterminateSystems/nix-installer) is the easiest
+option. It enables flakes by default and supports a clean uninstall:
+
+```bash
+curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+```
+
 ## Running checks
 
 `nix flake check` runs all of the project's checks inside the Nix sandbox:
@@ -86,6 +94,44 @@ compare the resulting `RunFunctionResponse` against an expected response via
 
 Add new cases to the function's existing `test_fn.py`. Run `nix flake check`
 to verify they pass.
+
+## Working on the docs site
+
+The documentation site under `docs/` is a [Hugo](https://gohugo.io/) project.
+`nix flake check` builds it as one of its checks, so a broken site fails CI.
+
+Run the commands below from the repository root, not from `docs/`. They're flake
+apps (`nix run .#...`), so they resolve against the flake at the root regardless
+of which file you're editing.
+
+Preview it locally with live reload:
+
+```bash
+nix run .#docs-serve            # http://localhost:1313
+```
+
+`nix build .#docs` produces the production site in `result/`. The production
+build compiles the theme's SCSS and runs it through PostCSS to strip unused
+CSS, sort media queries, and minify. Those Node dependencies are pinned in
+`docs/package-lock.json` and built reproducibly; the local preview skips them.
+
+The site's JavaScript bundle is built by webpack and committed to git under the
+theme's assets. Rebuild it after changing anything under
+`docs/utils/webpack/src/` and commit the result:
+
+```bash
+nix run .#docs-generate
+```
+
+### Deployment
+
+The site deploys to [Vercel](https://vercel.com/). Vercel builds it with the
+same `nix build .#docs` derivation that `nix flake check` verifies, so what
+ships matches what CI checks. `vercel.json` points the build at
+[`docs/vercel-build.sh`](docs/vercel-build.sh), which installs Nix into
+Vercel's build image, runs the build, and writes the static site to `public/`.
+Vercel's GitHub app drives deploys as usual: preview URLs on pull requests
+(including from forks) and production on merge to `main`.
 
 ## Submitting changes
 

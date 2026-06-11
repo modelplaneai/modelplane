@@ -95,7 +95,6 @@
           "v0.1.0-dev.${builtins.toString self.lastModified}.g${self.dirtyShortRev}";
 
       forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: forSystem system f);
-      forLinuxSystems = f: nixpkgs.lib.genAttrs linuxSystems (system: forSystem system f);
       forSystem =
         system: f:
         f {
@@ -129,23 +128,34 @@
         }
       );
 
-      # Function runtime images. Build individual images with
-      # nix build .#<function>-<arch>, or all of them with nix build .#functions.
-      packages = forLinuxSystems (
-        { pkgs, ... }:
+      # Build the docs site with nix build .#docs.
+      #
+      # Function runtime images contain Linux Python interpreters, so they only
+      # build on Linux: build individual images with nix build .#<function>-<arch>,
+      # or all of them with nix build .#functions.
+      packages = forAllSystems (
+        { pkgs, system, ... }:
         let
-          functions = import ./nix/functions.nix {
-            inherit
-              pkgs
-              self
-              functionNames
-              pyproject-nix
-              uv2nix
-              pyproject-build-systems
-              ;
-          };
+          docs = import ./nix/docs.nix { inherit pkgs self; };
         in
-        functions.images // { functions = functions.all; }
+        {
+          docs = docs.site;
+        }
+        // nixpkgs.lib.optionalAttrs (builtins.elem system linuxSystems) (
+          let
+            functions = import ./nix/functions.nix {
+              inherit
+                pkgs
+                self
+                functionNames
+                pyproject-nix
+                uv2nix
+                pyproject-build-systems
+                ;
+            };
+          in
+          functions.images // { functions = functions.all; }
+        )
       );
 
       apps = forAllSystems (
@@ -167,6 +177,8 @@
             inherit crossplane version;
             dockerCredentialUp = pkgs.upbound;
           };
+          docs-serve = apps.docsServe { };
+          docs-generate = apps.docsGenerate { };
         }
       );
 
@@ -189,6 +201,8 @@
               pkgs.python3
               pkgs.ruff
               pkgs.nixfmt-rfc-style
+              pkgs.hugo
+              pkgs.nodejs
             ];
 
             shellHook = ''
@@ -204,7 +218,8 @@
               echo ""
               echo "  nix flake check               nix run .#fix"
               echo "  nix run .#generate            nix run .#build-crossplane"
-              echo "  nix run .#push-crossplane"
+              echo "  nix run .#push-crossplane     nix run .#docs-serve"
+              echo "  nix run .#docs-generate"
               echo ""
             '';
           };

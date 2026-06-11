@@ -12,6 +12,8 @@
   pyproject-build-systems,
 }:
 let
+  docs = import ./docs.nix { inherit pkgs self; };
+
   workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = self; };
   pythonSet =
     (pkgs.callPackage pyproject-nix.build.packages { python = pkgs.python312; }).overrideScope
@@ -40,6 +42,9 @@ let
     '';
 in
 {
+  # Verify the docs site builds. The build is the check.
+  docs = docs.site;
+
   python =
     pkgs.runCommand "modelplane-python-checks"
       {

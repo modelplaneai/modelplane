@@ -14,7 +14,10 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
 
 
 [build]
-  # writeStats = true
+  # Emit hugo_stats.json listing the tags, classes, and IDs the site uses.
+  # PurgeCSS reads it to strip unused CSS rules. See postcss.config.js.
+  [build.buildStats]
+    enable = true
 
 [markup]
   [markup.goldmark.renderer]
