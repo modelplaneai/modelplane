@@ -116,6 +116,40 @@ def _build_commands(
     return None, leader_cmd, worker_cmd, args
 
 
+def _inference_pool_object(
+    name: str,
+    provider_config: str,
+) -> k8sobjv1alpha1.Object:
+    """Build a GAIE InferencePool for a disaggregated decode path.
+
+    The pool selects both decode and prefill pods via the shared llm-d.ai labels
+    (both roles carry app:<name> + llm-d.ai/inference-serving:"true").  The EPP
+    partitions them by llm-d.ai/role and is referenced via endpointPickerRef.
+    The HTTPRoute for the disagg path points at this pool instead of the Service,
+    so the GAIE EPP can apply KV-aware routing.
+    """
+    manifest = {
+        "apiVersion": "inference.networking.k8s.io/v1",
+        "kind": "InferencePool",
+        "metadata": {"name": f"{name}-pool", "namespace": base.REMOTE_NAMESPACE},
+        "spec": {
+            "selector": {
+                "matchLabels": {
+                    "app": name,
+                    base.LABEL_LLMD_SERVING: "true",
+                },
+            },
+            "targetPorts": [{"number": base.ENGINE_PORT}],
+            "endpointPickerRef": {
+                "name": f"{name}-epp",
+                "port": {"number": 9002},
+            },
+            "failureMode": "FailOpen",
+        },
+    }
+    return base.wrap_object(provider_config, manifest)
+
+
 def _prefill_objects(
     replica: v1alpha1.ModelReplica,
     prefill_spec,
@@ -376,7 +410,22 @@ class LLMDBackend:
             },
         }
 
-        # HTTPRoute -> Service (plain Gateway API; Traefik- and Envoy-compatible).
+        # Disaggregated decode: the HTTPRoute points at the InferencePool so the
+        # GAIE EPP can apply KV-/prefix-aware routing. Unified replicas keep the
+        # plain Service backendRef (no EPP in the unified path).
+        if disagg:
+            route_backend_refs = [
+                {
+                    "group": "inference.networking.k8s.io",
+                    "kind": "InferencePool",
+                    "name": f"{name}-pool",
+                }
+            ]
+        else:
+            route_backend_refs = [{"name": name, "port": 80}]
+
+        # HTTPRoute -> InferencePool (disagg) or Service (unified).
+        # Plain Gateway API; Traefik- and Envoy-compatible.
         http_route = {
             "apiVersion": "gateway.networking.k8s.io/v1",
             "kind": "HTTPRoute",
@@ -402,7 +451,7 @@ class LLMDBackend:
                                 "urlRewrite": {"path": {"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}},
                             }
                         ],
-                        "backendRefs": [{"name": name, "port": 80}],
+                        "backendRefs": route_backend_refs,
                     }
                 ],
             },
@@ -417,7 +466,10 @@ class LLMDBackend:
 
         # Disaggregated replica: emit the prefill pod set + its ResourceClaimTemplate.
         # No prefill Service or HTTPRoute — prefill is internal-only.
+        # Also emit the InferencePool that the HTTPRoute now points to; it lets the
+        # GAIE EPP perform KV-aware routing across the decode and prefill pods.
         if disagg:
+            out["inference-pool"] = _inference_pool_object(name, pc)
             out.update(_prefill_objects(replica, prefill_spec, name, pc, cache_volumes, cache_volume_mounts))
 
         return out

@@ -762,6 +762,59 @@ class TestDisaggregatedLLMD(unittest.TestCase):
         self.assertEqual(len(containers), 1, f"prefill leader should have 1 container, got {names}")
         self.assertNotIn("pd-sidecar", names)
 
+    # --- InferencePool + HTTPRoute wiring (P2.5) ---
+
+    def test_emits_inference_pool(self):
+        """A disaggregated replica emits an InferencePool manifest at key 'inference-pool'."""
+        out = self._build()
+        self.assertIn("inference-pool", out)
+        manifest = out["inference-pool"].spec.forProvider.manifest
+        name = self._disagg_replica().metadata.name  # "dr"
+        self.assertEqual(manifest["kind"], "InferencePool")
+        self.assertEqual(manifest["apiVersion"], "inference.networking.k8s.io/v1")
+        self.assertEqual(manifest["metadata"]["name"], f"{name}-pool")
+        self.assertEqual(manifest["metadata"]["namespace"], base.REMOTE_NAMESPACE)
+        spec = manifest["spec"]
+        self.assertEqual(
+            spec["selector"]["matchLabels"],
+            {"app": name, "llm-d.ai/inference-serving": "true"},
+        )
+        self.assertEqual(spec["targetPorts"], [{"number": 8000}])
+        epp = spec["endpointPickerRef"]
+        self.assertEqual(epp["name"], f"{name}-epp")
+        self.assertEqual(epp["port"]["number"], 9002)
+        self.assertEqual(spec.get("failureMode"), "FailOpen")
+
+    def test_disagg_httproute_targets_inference_pool(self):
+        """For a disaggregated replica the HTTPRoute backendRefs points at the InferencePool, not the Service."""
+        out = self._build()
+        name = self._disagg_replica().metadata.name  # "dr"
+        route = out["model-route"].spec.forProvider.manifest
+        backend_refs = route["spec"]["rules"][0]["backendRefs"]
+        self.assertEqual(len(backend_refs), 1)
+        ref = backend_refs[0]
+        self.assertEqual(ref["group"], "inference.networking.k8s.io")
+        self.assertEqual(ref["kind"], "InferencePool")
+        self.assertEqual(ref["name"], f"{name}-pool")
+        # Port field must NOT be present for an InferencePool backendRef
+        self.assertNotIn("port", ref)
+
+    def test_unified_httproute_targets_service(self):
+        """A unified multi-node replica's HTTPRoute backendRef still points at the Service, no InferencePool emitted."""
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        self.assertNotIn("inference-pool", out)
+        route = out["model-route"].spec.forProvider.manifest
+        backend_refs = route["spec"]["rules"][0]["backendRefs"]
+        self.assertEqual(len(backend_refs), 1)
+        ref = backend_refs[0]
+        self.assertEqual(ref["name"], "r")
+        self.assertEqual(ref["port"], 80)
+        self.assertNotIn("group", ref)
+        self.assertNotIn("kind", ref)
+
 
 class TestDynamoStub(unittest.TestCase):
     def test_not_selected_in_v01(self):
