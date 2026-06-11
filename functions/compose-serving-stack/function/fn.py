@@ -2,10 +2,10 @@
 
 This function composes the serving substrate (the cluster-side CRDs,
 controllers, and gateway) that the native and llm-d model-serving backends
-depend on: cert-manager, Envoy Gateway, Prometheus, LeaderWorkerSet, and an
-inference Gateway. Resources are composed as Helm releases and
-provider-kubernetes Objects, all targeting the remote cluster via
-ProviderConfigs.
+depend on: cert-manager, Envoy Gateway, Envoy AI Gateway, GAIE CRDs,
+Prometheus, LeaderWorkerSet, and an inference Gateway. Resources are composed
+as Helm releases and provider-kubernetes Objects, all targeting the remote
+cluster via ProviderConfigs.
 
 Usage resources protect ProviderConfigs from premature deletion during
 teardown, ensuring Helm releases can uninstall before losing connectivity.
@@ -35,6 +35,23 @@ _SECRET_TYPE_GCP_SA_KEY = "GCPServiceAccountKey"
 
 # Identity type for GCP service account credentials.
 _IDENTITY_TYPE_GCP = "GoogleApplicationCredentials"
+
+# Envoy AI Gateway constants.
+_AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
+_AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
+_AI_GATEWAY_VERSION = "v0.7.0"
+_AI_GATEWAY_CONTROLLER_FQDN = (
+    f"ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local"
+)
+_AI_GATEWAY_CONTROLLER_PORT = 1063
+
+# GAIE (Gateway API Inference Extension) CRD chart constants.
+# No remote-manifest pattern exists in this codebase; the CRDs are installed
+# via the upstream Helm chart published by the kubernetes-sigs project.
+_GAIE_CHART = "inferencepool"
+_GAIE_REPO = "oci://ghcr.io/kubernetes-sigs/gateway-api-inference-extension/charts"
+_GAIE_VERSION = "v1.0.1"
+_GAIE_NAMESPACE = "gateway-api-inference-extension"
 
 # Prometheus constants.
 _PROMETHEUS_NAMESPACE = "monitoring"
@@ -208,6 +225,8 @@ class Composer:
         self.compose_usages()
         self.compose_cert_manager()
         self.compose_envoy_gateway()
+        self.compose_ai_gateway()
+        self.compose_gaie_crds()
         self.compose_prometheus()
         self.compose_leader_worker_set()
         self.compose_node_feature_discovery()
@@ -428,7 +447,12 @@ class Composer:
         )
 
     def compose_envoy_gateway(self):
-        """Compose Envoy Gateway. Gated on ProviderConfigs being observed."""
+        """Compose Envoy Gateway. Gated on ProviderConfigs being observed.
+
+        Values merge the base envoy-gateway-values.yaml with the inference-pool
+        addon (envoy-gateway-values-addon.yaml) so that HTTPRoute -> InferencePool
+        backendRefs are recognised by the Envoy AI Gateway extension manager.
+        """
         pc_observed = self.provider_configs_observed()
         if not (pc_observed or "envoy-gateway" in self.req.observed.resources):
             return
@@ -446,10 +470,112 @@ class Composer:
                 values={
                     "config": {
                         "envoyGateway": {
-                            "extensionApis": {"enableBackend": True},
+                            "gateway": {
+                                "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                            },
+                            "logging": {"level": {"default": "info"}},
+                            "provider": {"type": "Kubernetes"},
+                            "extensionApis": {
+                                "enableEnvoyPatchPolicy": True,
+                                "enableBackend": True,
+                            },
+                            "extensionManager": {
+                                "hooks": {
+                                    "xdsTranslator": {
+                                        "translation": {
+                                            "listener": {"includeAll": True},
+                                            "route": {"includeAll": True},
+                                            "cluster": {"includeAll": True},
+                                            "secret": {"includeAll": True},
+                                        },
+                                        "post": [
+                                            "Translation",
+                                            "Cluster",
+                                            "Route",
+                                        ],
+                                    },
+                                },
+                                "service": {
+                                    "fqdn": {
+                                        "hostname": _AI_GATEWAY_CONTROLLER_FQDN,
+                                        "port": _AI_GATEWAY_CONTROLLER_PORT,
+                                    },
+                                },
+                                "backendResources": [
+                                    {
+                                        "group": "inference.networking.k8s.io",
+                                        "kind": "InferencePool",
+                                        "version": "v1",
+                                    },
+                                ],
+                            },
                         },
                     },
                 },
+            ),
+        )
+
+    def compose_ai_gateway(self):
+        """Compose the Envoy AI Gateway CRDs and controller.
+
+        Installs two Helm releases from oci://docker.io/envoyproxy at v0.7.0:
+          - ai-gateway-crds: the AI Gateway CRD chart
+          - ai-gateway:      the AI Gateway controller chart
+
+        The AI Gateway controller provides the ext-proc extension manager that
+        Envoy Gateway delegates InferencePool backend resolution to.  Both
+        releases are gated on the Envoy Gateway ProviderConfigs being observed
+        (same gate as envoy-gateway).
+        """
+        pc_observed = self.provider_configs_observed()
+        if not (pc_observed or "ai-gateway-crds" in self.req.observed.resources):
+            return
+
+        resource.update(
+            self.rsp.desired.resources["ai-gateway-crds"],
+            _helm_release(
+                chart="ai-gateway-crds-helm",
+                repo=_AI_GATEWAY_REPO,
+                version=_AI_GATEWAY_VERSION,
+                namespace=_AI_GATEWAY_NAMESPACE,
+                provider_config=_pc_name(self.xr),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["ai-gateway"],
+            _helm_release(
+                chart="ai-gateway-helm",
+                repo=_AI_GATEWAY_REPO,
+                version=_AI_GATEWAY_VERSION,
+                namespace=_AI_GATEWAY_NAMESPACE,
+                provider_config=_pc_name(self.xr),
+            ),
+        )
+
+    def compose_gaie_crds(self):
+        """Compose the Gateway API Inference Extension (GAIE) CRDs.
+
+        The codebase has no remote-manifest pattern for provider-kubernetes
+        Objects; the GAIE CRDs are therefore installed via the upstream Helm
+        chart published by kubernetes-sigs at
+        oci://ghcr.io/kubernetes-sigs/gateway-api-inference-extension/charts.
+        This is equivalent to applying the upstream manifests.yaml from
+        https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml
+        and is the approach recommended by the project for cluster-lifecycle
+        tooling that cannot apply raw URLs.
+        """
+        pc_observed = self.provider_configs_observed()
+        if not (pc_observed or "gaie-crds" in self.req.observed.resources):
+            return
+
+        resource.update(
+            self.rsp.desired.resources["gaie-crds"],
+            _helm_release(
+                chart=_GAIE_CHART,
+                repo=_GAIE_REPO,
+                version=_GAIE_VERSION,
+                namespace=_GAIE_NAMESPACE,
+                provider_config=_pc_name(self.xr),
             ),
         )
 
@@ -645,6 +771,9 @@ class Composer:
         condition_ready = [
             "cert-manager",
             "envoy-gateway",
+            "ai-gateway-crds",
+            "ai-gateway",
+            "gaie-crds",
             "prometheus",
             "leader-worker-set",
             "node-feature-discovery",

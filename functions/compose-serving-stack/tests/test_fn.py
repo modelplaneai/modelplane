@@ -196,10 +196,105 @@ _ENVOY_GATEWAY = {
             "values": {
                 "config": {
                     "envoyGateway": {
-                        "extensionApis": {"enableBackend": True},
+                        "gateway": {
+                            "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                        },
+                        "logging": {"level": {"default": "info"}},
+                        "provider": {"type": "Kubernetes"},
+                        "extensionApis": {
+                            "enableEnvoyPatchPolicy": True,
+                            "enableBackend": True,
+                        },
+                        "extensionManager": {
+                            "hooks": {
+                                "xdsTranslator": {
+                                    "translation": {
+                                        "listener": {"includeAll": True},
+                                        "route": {"includeAll": True},
+                                        "cluster": {"includeAll": True},
+                                        "secret": {"includeAll": True},
+                                    },
+                                    "post": [
+                                        "Translation",
+                                        "Cluster",
+                                        "Route",
+                                    ],
+                                },
+                            },
+                            "service": {
+                                "fqdn": {
+                                    "hostname": "ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local",
+                                    "port": 1063.0,
+                                },
+                            },
+                            "backendResources": [
+                                {
+                                    "group": "inference.networking.k8s.io",
+                                    "kind": "InferencePool",
+                                    "version": "v1",
+                                },
+                            ],
+                        },
                     },
                 },
             },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_AI_GATEWAY_CRDS = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "ai-gateway-crds-helm",
+                "repository": "oci://docker.io/envoyproxy",
+                "version": "v0.7.0",
+            },
+            "namespace": "envoy-ai-gateway-system",
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_AI_GATEWAY = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "ai-gateway-helm",
+                "repository": "oci://docker.io/envoyproxy",
+                "version": "v0.7.0",
+            },
+            "namespace": "envoy-ai-gateway-system",
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_GAIE_CRDS = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "inferencepool",
+                "repository": "oci://ghcr.io/kubernetes-sigs/gateway-api-inference-extension/charts",
+                "version": "v1.0.1",
+            },
+            "namespace": "gateway-api-inference-extension",
         },
         "providerConfigRef": {
             "kind": "ProviderConfig",
@@ -512,11 +607,20 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     resource=resource.dict_to_struct({"status": {}}),
                 ),
                 resources={
+                    "ai-gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_AI_GATEWAY),
+                    ),
+                    "ai-gateway-crds": fnv1.Resource(
+                        resource=resource.dict_to_struct(_AI_GATEWAY_CRDS),
+                    ),
                     "cert-manager": fnv1.Resource(
                         resource=resource.dict_to_struct(_CERT_MANAGER),
                     ),
                     "envoy-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_ENVOY_GATEWAY),
+                    ),
+                    "gaie-crds": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GAIE_CRDS),
                     ),
                     "gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY),
@@ -628,12 +732,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
+                    "ai-gateway": fnv1.Resource(
+                        resource=resource.dict_to_struct(_AI_GATEWAY),
+                    ),
+                    "ai-gateway-crds": fnv1.Resource(
+                        resource=resource.dict_to_struct(_AI_GATEWAY_CRDS),
+                    ),
                     "cert-manager": fnv1.Resource(
                         resource=resource.dict_to_struct(_CERT_MANAGER),
                         ready=fnv1.READY_TRUE,
                     ),
                     "envoy-gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_ENVOY_GATEWAY),
+                    ),
+                    "gaie-crds": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GAIE_CRDS),
                     ),
                     "gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY),
@@ -691,3 +804,160 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             json_format.MessageToDict(got),
             "-want, +got",
         )
+
+
+def _second_pass_request() -> fnv1.RunFunctionRequest:
+    """Build a second-pass request (both ProviderConfigs observed)."""
+    req = _base_request()
+    req.observed.resources["provider-config-helm"].CopyFrom(
+        fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
+            ),
+        ),
+    )
+    req.observed.resources["provider-config-kubernetes"].CopyFrom(
+        fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
+            ),
+        ),
+    )
+    return req
+
+
+class TestAiGatewayReleases(unittest.IsolatedAsyncioTestCase):
+    """Tests for P2.2: Envoy AI Gateway + GAIE CRD releases."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
+
+    async def _run(self) -> fnv1.RunFunctionResponse:
+        return await self.runner.RunFunction(_second_pass_request(), None)
+
+    async def test_ai_gateway_crds_release_present(self) -> None:
+        """ai-gateway-crds Release is composed with the correct chart and version."""
+        got = await self._run()
+        resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+        self.assertIn("ai-gateway-crds", resources, "ai-gateway-crds Release missing")
+        chart = (
+            resources["ai-gateway-crds"]
+            .get("resource", {})
+            .get("spec", {})
+            .get("forProvider", {})
+            .get("chart", {})
+        )
+        self.assertEqual(chart.get("name"), "ai-gateway-crds-helm")
+        self.assertEqual(chart.get("version"), "v0.7.0")
+        self.assertEqual(
+            resources["ai-gateway-crds"]["resource"]["spec"]["forProvider"]["namespace"],
+            "envoy-ai-gateway-system",
+        )
+
+    async def test_ai_gateway_release_present(self) -> None:
+        """ai-gateway Release is composed with the correct chart and version."""
+        got = await self._run()
+        resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+        self.assertIn("ai-gateway", resources, "ai-gateway Release missing")
+        chart = (
+            resources["ai-gateway"]
+            .get("resource", {})
+            .get("spec", {})
+            .get("forProvider", {})
+            .get("chart", {})
+        )
+        self.assertEqual(chart.get("name"), "ai-gateway-helm")
+        self.assertEqual(chart.get("version"), "v0.7.0")
+        self.assertEqual(
+            resources["ai-gateway"]["resource"]["spec"]["forProvider"]["namespace"],
+            "envoy-ai-gateway-system",
+        )
+
+    async def test_gaie_crds_release_present(self) -> None:
+        """gaie-crds Release is composed (Helm-based GAIE CRD install)."""
+        got = await self._run()
+        resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+        self.assertIn("gaie-crds", resources, "gaie-crds Release missing")
+        chart = (
+            resources["gaie-crds"]
+            .get("resource", {})
+            .get("spec", {})
+            .get("forProvider", {})
+            .get("chart", {})
+        )
+        self.assertEqual(chart.get("name"), "inferencepool")
+        self.assertEqual(chart.get("version"), "v1.0.1")
+
+    async def test_envoy_gateway_values_enable_backend(self) -> None:
+        """gateway-helm Release values include extensionApis.enableBackend: true."""
+        got = await self._run()
+        resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+        values = (
+            resources.get("envoy-gateway", {})
+            .get("resource", {})
+            .get("spec", {})
+            .get("forProvider", {})
+            .get("values", {})
+        )
+        extension_apis = values.get("config", {}).get("envoyGateway", {}).get("extensionApis", {})
+        self.assertTrue(extension_apis.get("enableBackend"), "extensionApis.enableBackend must be True")
+
+    async def test_envoy_gateway_values_backend_resources_inference_pool(self) -> None:
+        """gateway-helm Release values include backendResources entry for InferencePool."""
+        got = await self._run()
+        resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+        values = (
+            resources.get("envoy-gateway", {})
+            .get("resource", {})
+            .get("spec", {})
+            .get("forProvider", {})
+            .get("values", {})
+        )
+        backend_resources = (
+            values.get("config", {})
+            .get("envoyGateway", {})
+            .get("extensionManager", {})
+            .get("backendResources", [])
+        )
+        self.assertTrue(
+            any(
+                br.get("group") == "inference.networking.k8s.io"
+                and br.get("kind") == "InferencePool"
+                and br.get("version") == "v1"
+                for br in backend_resources
+            ),
+            f"InferencePool backendResources entry not found; got: {backend_resources}",
+        )
+
+    async def test_envoy_gateway_values_extension_manager_service(self) -> None:
+        """gateway-helm Release values wire the AI Gateway controller endpoint."""
+        got = await self._run()
+        resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+        values = (
+            resources.get("envoy-gateway", {})
+            .get("resource", {})
+            .get("spec", {})
+            .get("forProvider", {})
+            .get("values", {})
+        )
+        fqdn = (
+            values.get("config", {})
+            .get("envoyGateway", {})
+            .get("extensionManager", {})
+            .get("service", {})
+            .get("fqdn", {})
+        )
+        self.assertEqual(
+            fqdn.get("hostname"),
+            "ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local",
+        )
+        self.assertEqual(fqdn.get("port"), 1063.0)
+
+    async def test_ai_gateway_releases_gated_on_first_pass(self) -> None:
+        """AI Gateway releases are absent on first pass (ProviderConfigs not yet observed)."""
+        got = await self.runner.RunFunction(_base_request(), None)
+        resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+        self.assertNotIn("ai-gateway-crds", resources)
+        self.assertNotIn("ai-gateway", resources)
+        self.assertNotIn("gaie-crds", resources)
