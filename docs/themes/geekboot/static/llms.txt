@@ -19,7 +19,7 @@ Modelplane draws a clear boundary between two teams.
 
 **ML teams** create a `ModelDeployment` carrying everything needed to serve a model: the worker template, hardware topology, and replica count. Modelplane schedules each replica to a ready cluster with matching capacity, composes a `ModelReplica` per cluster, and creates `ModelEndpoints` for routing. A `ModelService` routes traffic across endpoints through a unified Envoy Gateway endpoint on the control plane.
 
-Modelplane is the fleet-level control plane above the inference engine. It does not compete with vLLM or Dynamo — it manages them across clusters.
+Modelplane is the fleet-level control plane above the inference engine.
 
 ## Quick-start example
 

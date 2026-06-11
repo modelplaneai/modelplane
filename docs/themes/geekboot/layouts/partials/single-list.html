@@ -65,12 +65,16 @@
             <button class="mp-copy-page-btn" onclick="mpCopyPage(this)">Copy
                            Markdown</button>
           </div>
+          <template id="mp-raw-md">{{ .RawContent | htmlEscape }}</template>
           <script>
           function mpCopyPage(btn) {
-            var text = (document.querySelector('.bd-content') || {}).innerText || '';
-            navigator.clipboard.writeText(text).then(function () {
+            var tmpl = document.getElementById('mp-raw-md');
+            if (!tmpl) return;
+            var ta = document.createElement('textarea');
+            ta.innerHTML = tmpl.innerHTML;
+            navigator.clipboard.writeText(ta.value).then(function () {
               btn.textContent = 'Copied!';
-              setTimeout(function () { btn.textContent = 'Copy page'; }, 2000);
+              setTimeout(function () { btn.textContent = 'Copy Markdown'; }, 2000);
             });
           }
           </script>
