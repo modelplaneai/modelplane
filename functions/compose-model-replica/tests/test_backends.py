@@ -699,7 +699,9 @@ class TestDisaggregatedLLMD(unittest.TestCase):
         for template in ("leaderTemplate", "workerTemplate"):
             with self.subTest(template=template):
                 labels = self._lws_pod_labels(out, "prefill-serving", template)
-                self.assertEqual(labels.get("app"), name, f"{template}: app label must equal replica name (not prefill_name)")
+                self.assertEqual(
+                    labels.get("app"), name, f"{template}: app label must equal replica name (not prefill_name)"
+                )
                 self.assertEqual(
                     labels.get(base.LABEL_LLMD_SERVING),
                     "true",
@@ -737,7 +739,9 @@ class TestDisaggregatedLLMD(unittest.TestCase):
         lws = out["model-serving"].spec.forProvider.manifest
         leader_labels = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["metadata"]["labels"]
         self.assertNotIn(base.LABEL_LLMD_ROLE, leader_labels, "unified replica must not have llm-d.ai/role")
-        self.assertNotIn(base.LABEL_LLMD_SERVING, leader_labels, "unified replica must not have llm-d.ai/inference-serving")
+        self.assertNotIn(
+            base.LABEL_LLMD_SERVING, leader_labels, "unified replica must not have llm-d.ai/inference-serving"
+        )
         self.assertNotIn("app", leader_labels, "unified replica must not have app label")
 
     # --- pd-sidecar injection (P2.4) ---
@@ -945,8 +949,15 @@ class TestDisaggregatedLLMD(unittest.TestCase):
     def test_epp_objects_readiness_successful_create(self):
         """All EPP objects except the Deployment use SuccessfulCreate readiness."""
         out = self._build()
-        for key in ("epp-serviceaccount", "epp-role", "epp-rolebinding",
-                    "epp-clusterrole", "epp-clusterrolebinding", "epp-config", "epp-service"):
+        for key in (
+            "epp-serviceaccount",
+            "epp-role",
+            "epp-rolebinding",
+            "epp-clusterrole",
+            "epp-clusterrolebinding",
+            "epp-config",
+            "epp-service",
+        ):
             with self.subTest(key=key):
                 self.assertEqual(out[key].spec.readiness.policy, "SuccessfulCreate")
 

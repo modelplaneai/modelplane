@@ -40,9 +40,7 @@ _IDENTITY_TYPE_GCP = "GoogleApplicationCredentials"
 _AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
 _AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
 _AI_GATEWAY_VERSION = "v0.7.0"
-_AI_GATEWAY_CONTROLLER_FQDN = (
-    f"ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local"
-)
+_AI_GATEWAY_CONTROLLER_FQDN = f"ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local"
 _AI_GATEWAY_CONTROLLER_PORT = 1063
 
 # GAIE (Gateway API Inference Extension) CRD chart constants.

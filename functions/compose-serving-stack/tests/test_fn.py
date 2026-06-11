@@ -811,9 +811,7 @@ def _second_pass_request() -> fnv1.RunFunctionRequest:
     req = _base_request()
     req.observed.resources["provider-config-helm"].CopyFrom(
         fnv1.Resource(
-            resource=resource.dict_to_struct(
-                {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
-            ),
+            resource=resource.dict_to_struct({"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}),
         ),
     )
     req.observed.resources["provider-config-kubernetes"].CopyFrom(
@@ -841,13 +839,7 @@ class TestAiGatewayReleases(unittest.IsolatedAsyncioTestCase):
         got = await self._run()
         resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
         self.assertIn("ai-gateway-crds", resources, "ai-gateway-crds Release missing")
-        chart = (
-            resources["ai-gateway-crds"]
-            .get("resource", {})
-            .get("spec", {})
-            .get("forProvider", {})
-            .get("chart", {})
-        )
+        chart = resources["ai-gateway-crds"].get("resource", {}).get("spec", {}).get("forProvider", {}).get("chart", {})
         self.assertEqual(chart.get("name"), "ai-gateway-crds-helm")
         self.assertEqual(chart.get("version"), "v0.7.0")
         self.assertEqual(
@@ -860,13 +852,7 @@ class TestAiGatewayReleases(unittest.IsolatedAsyncioTestCase):
         got = await self._run()
         resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
         self.assertIn("ai-gateway", resources, "ai-gateway Release missing")
-        chart = (
-            resources["ai-gateway"]
-            .get("resource", {})
-            .get("spec", {})
-            .get("forProvider", {})
-            .get("chart", {})
-        )
+        chart = resources["ai-gateway"].get("resource", {}).get("spec", {}).get("forProvider", {}).get("chart", {})
         self.assertEqual(chart.get("name"), "ai-gateway-helm")
         self.assertEqual(chart.get("version"), "v0.7.0")
         self.assertEqual(
@@ -879,13 +865,7 @@ class TestAiGatewayReleases(unittest.IsolatedAsyncioTestCase):
         got = await self._run()
         resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
         self.assertIn("gaie-crds", resources, "gaie-crds Release missing")
-        chart = (
-            resources["gaie-crds"]
-            .get("resource", {})
-            .get("spec", {})
-            .get("forProvider", {})
-            .get("chart", {})
-        )
+        chart = resources["gaie-crds"].get("resource", {}).get("spec", {}).get("forProvider", {}).get("chart", {})
         self.assertEqual(chart.get("name"), "inferencepool")
         self.assertEqual(chart.get("version"), "v1.0.1")
 
@@ -915,10 +895,7 @@ class TestAiGatewayReleases(unittest.IsolatedAsyncioTestCase):
             .get("values", {})
         )
         backend_resources = (
-            values.get("config", {})
-            .get("envoyGateway", {})
-            .get("extensionManager", {})
-            .get("backendResources", [])
+            values.get("config", {}).get("envoyGateway", {}).get("extensionManager", {}).get("backendResources", [])
         )
         self.assertTrue(
             any(
