@@ -1,0 +1,81 @@
+# Modelplane Documentation
+
+> Modelplane is the open source control plane for AI model serving.
+> It extends Crossplane to manage AI inference across a fleet of GPU clusters.
+> Source: https://modelplane.ai/
+
+## Pages
+
+- Overview: https://modelplane.ai/
+- Getting Started: https://modelplane.ai/getting-started/
+- Concepts: https://modelplane.ai/concepts/
+- API Reference: https://modelplane.ai/reference/
+
+## Overview
+
+Modelplane draws a clear boundary between two teams.
+
+**Platform teams** create `InferenceClusters` describing their GPU fleet and `InferenceClasses` defining hardware recipes (GPU type, count). They set organizational metadata via labels: tier, region, provider.
+
+**ML teams** create a `ModelDeployment` carrying everything needed to serve a model: the worker template, hardware topology, and replica count. Modelplane schedules each replica to a ready cluster with matching capacity, composes a `ModelReplica` per cluster, and creates `ModelEndpoints` for routing. A `ModelService` routes traffic across endpoints through a unified Envoy Gateway endpoint on the control plane.
+
+Modelplane is the fleet-level control plane above the inference engine. It does not compete with vLLM or Dynamo — it manages them across clusters.
+
+## Quick-start example
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 2
+  workers:
+    topology:
+      tensor: 1
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.7.3
+          args:
+          - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+```
+
+This deploys two replicas of Qwen 2.5 0.5B and produces a unified, OpenAI-compatible endpoint.
+
+## API types
+
+### InferenceCluster
+Represents a GPU cluster available for scheduling. Platform teams register clusters here with capacity information and labels (tier, region, provider).
+
+### InferenceClass
+Defines a hardware recipe — GPU type, count, and configuration. Platform teams create these; ML teams reference them in ModelDeployments.
+
+### ModelDeployment
+The primary unit of model serving. Carries the worker container image, hardware topology, and replica count. Modelplane's scheduler matches it to InferenceClusters.
+
+### ModelReplica
+One instance of a model on a specific cluster. Composed by Modelplane — not created directly by users.
+
+### ModelEndpoint
+A routing endpoint for a ModelReplica on a specific cluster. Also composed by Modelplane.
+
+### ModelService
+Aggregates all ModelEndpoints for a ModelDeployment into a single, unified, OpenAI-compatible Envoy Gateway endpoint on the control plane.
+
+## Current status (v0.1)
+
+- Cluster sources: GKE (provisioned), Existing (bring-your-own kubeconfig)
+- Serving engines: vLLM
+- Scaling: `spec.replicas` on ModelDeployment
+- Routing: Unified OpenAI endpoint via ModelService + Envoy Gateway
+
+## Links
+
+- GitHub: https://github.com/modelplaneai/modelplane
+- Issues: https://github.com/modelplaneai/modelplane/issues
+- Discussions: https://github.com/modelplaneai/modelplane/discussions
+- Slack: https://crossplane.slack.com (#modelplane)
+- License: Apache 2.0

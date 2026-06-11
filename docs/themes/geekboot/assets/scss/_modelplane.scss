@@ -74,6 +74,68 @@ body::after {
   letter-spacing: -0.02em;
 }
 
+// ── For AI agents — sidebar tools (content pages) ────────────
+
+.mp-page-ai-tools {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--toc-mobile-menu-outline);
+}
+
+.mp-page-ai-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--toc-font-color);
+  margin-bottom: 0.5rem;
+}
+
+.mp-page-ai-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mp-llm-badge {
+  font-family: #{$font-family-monospace};
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #{$mp-cyan};
+  background: rgba(34,211,238,0.07);
+  border: 1px solid rgba(34,211,238,0.2);
+  border-radius: 4px;
+  padding: 2px 7px;
+  text-decoration: none;
+  transition: background 150ms;
+
+  &:hover {
+    background: rgba(34,211,238,0.14);
+    color: #{$mp-cyan};
+    text-decoration: none;
+  }
+}
+
+.mp-copy-page-btn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--toc-font-color);
+  background: none;
+  border: 1px solid var(--toc-mobile-menu-outline);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+
+  &:hover {
+    color: #{$mp-muted-hi};
+    border-color: rgba(173,123,252,0.3);
+  }
+}
+
+// ── Footer simplified ─────────────────────────────────────────
+
 // Footer simplified
 .bd-footer {
   background: #{$mp-bg} !important;
