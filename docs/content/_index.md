@@ -2,6 +2,7 @@
 title: Take off with Modelplane
 weight: -1
 description: Introduction to Modelplane
+tocHidden: true
 ---
 
 **The open source control plane for AI models.**

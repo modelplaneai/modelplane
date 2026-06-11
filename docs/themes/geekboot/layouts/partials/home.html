@@ -1,0 +1,169 @@
+{{/* Full-width home page — hero + static question sections */}}
+<div class="mp-home">
+
+  {{/* ── Hero ───────────────────────────────────────────────── */}}
+  <section class="mp-hero">
+    <div class="mp-hero-inner">
+
+      <div class="mp-hero-left">
+        <h1 class="mp-hero-h1">
+          The open source control plane<br>
+          <span class="mp-grad">for AI model serving</span>
+        </h1>
+        <p class="mp-hero-sub">
+          The <strong>open source declarative control plane</strong> for AI models.
+          Kubernetes-driven, vendor neutral, fleet-scale inference.
+        </p>
+        <div class="mp-hero-links">
+          <a href="{{ "getting-started/" | relURL }}" class="mp-link-primary">Get started →</a>
+          <a href="{{ "reference/" | relURL }}" class="mp-link-muted">API reference</a>
+        </div>
+      <p class="mp-q-body mp-q-status">
+        We're taking off fast. See <a href="https://github.com/modelplaneai/modelplane/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement" target="_blank" rel="noopener">planned enhancements</a> on GitHub.
+      </p>
+
+      </div>
+
+      <div class="mp-hero-right">
+        <div class="mp-glass mp-code-card">
+          <div class="mp-code-topbar">
+            <span class="mp-dot red"></span>
+            <span class="mp-dot amber"></span>
+            <span class="mp-dot green"></span>
+            <span class="mp-code-filename">model-deployment.yaml</span>
+            <button class="mp-copy-btn" data-copy-target="mp-hero-yaml" title="Copy YAML">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+          <pre class="mp-hero-pre"><code id="mp-hero-yaml">apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 2
+  workers:
+    topology:
+      tensor: 1
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.7.3
+          args:
+          - "--model=Qwen/Qwen2.5-0.5B-Instruct"</code></pre>
+        </div>
+        <div class="mp-serving-indicator">
+          <span class="mp-pulse-dot"></span>
+          Serving &nbsp;<code>qwen-demo.ml-team.svc</code>&nbsp; · 2/2 replicas
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  {{/* ── Static question sections — heading left, body right ── */}}
+  <section class="mp-q-section">
+    <h2 class="mp-q-heading">What is Modelplane?</h2>
+    <div class="mp-q-content">
+      <p class="mp-q-body">
+        Modelplane is the <strong>open source declarative control plane</strong> for AI models.
+      </p>
+      <p class="mp-q-body">
+        Built by Upbound and powered by Crossplane, Modelplane is the open orchestration
+        layer for inference. Open-source, vendor neutral and Kubernetes-driven,
+        Modelplane is the unified intelligent gateway to manage and scale open weight
+        AI inference fleets across clusters.
+      </p>
+      <p class="mp-q-body">
+        Modelplane extends <a href="https://crossplane.io" target="_blank" rel="noopener">Crossplane</a>,
+        the open source control plane for cloud infrastructure, meaning cluster provisioning
+        and infrastructure lifecycle is built-in and battle-tested.
+      </p>
+      <p class="mp-q-body">
+        Modelplane handles fleet scheduling, multi-cluster routing, and infrastructure
+        composition in declarative Kubernetes manifests.
+        Deploying a model based on your team's needs is a <code>kubectl apply</code> away.
+      </p>
+    </div>
+  </section>
+
+  <section class="mp-q-section">
+    <h2 class="mp-q-heading">How do I get started?</h2>
+    <div class="mp-q-content">
+      <p class="mp-q-body">
+        Follow the <a href="{{ "getting-started/" | relURL }}">getting started guide</a> to
+        deploy Modelplane on a local kind cluster and serve a model on GKE. Read
+        <a href="{{ "concepts/" | relURL }}">concepts</a> to understand the resource model,
+        and browse the <a href="{{ "reference/" | relURL }}">API reference</a> for field-level
+        documentation.
+      </p>
+    </div>
+  </section>
+
+  <section class="mp-q-section">
+    <h2 class="mp-q-heading">Who?</h2>
+    <div class="mp-q-content">
+      <p class="mp-q-body">
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+        incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+        exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+      </p>
+      <p class="mp-q-body">
+        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+        fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+        culpa qui officia deserunt mollit anim id est laborum.
+      </p>
+    </div>
+  </section>
+
+  <section class="mp-q-section">
+    <h2 class="mp-q-heading">When?</h2>
+    <div class="mp-q-content">
+      <p class="mp-q-body">
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+        incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+        exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+      </p>
+      <p class="mp-q-body">
+        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+        fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+        culpa qui officia deserunt mollit anim id est laborum.
+      </p>
+    </div>
+  </section>
+
+  <section class="mp-q-section">
+    <h2 class="mp-q-heading">Where?</h2>
+    <div class="mp-q-content">
+      <p class="mp-q-body">
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+        incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+        exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+      </p>
+      <p class="mp-q-body">
+        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+        fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident.
+      </p>
+    </div>
+  </section>
+
+  <div class="mp-home-footer-links">
+  </div>
+
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll('.mp-copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var el = document.getElementById(btn.dataset.copyTarget);
+      if (!el) return;
+      navigator.clipboard.writeText(el.innerText).then(function () {
+        btn.classList.add('mp-copied');
+        setTimeout(function () { btn.classList.remove('mp-copied'); }, 2000);
+      });
+    });
+  });
+}());
+</script>

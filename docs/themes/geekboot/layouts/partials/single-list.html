@@ -57,7 +57,25 @@
           </nav>
         {{ end }}
         {{ end }}
+
+        <div class="mp-page-ai-tools">
+          <div class="mp-page-ai-label">For AI agents</div>
+          <div class="mp-page-ai-row">
+            <a href="{{ "llm.txt" | relURL }}" class="mp-llm-badge" target="_blank" rel="noopener">llm.txt</a>
+            <button class="mp-copy-page-btn" onclick="mpCopyPage(this)">Copy page</button>
+          </div>
+        </div>
       </div>
+
+      <script>
+      function mpCopyPage(btn) {
+        var text = (document.querySelector('.bd-content') || {}).innerText || '';
+        navigator.clipboard.writeText(text).then(function () {
+          btn.textContent = 'Copied!';
+          setTimeout(function () { btn.textContent = 'Copy page'; }, 2000);
+        });
+      }
+      </script>
 
       <div class="bd-content ps-lg-2 DocSearch-content">
 
