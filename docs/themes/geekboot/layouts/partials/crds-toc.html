@@ -1,0 +1,27 @@
+{{/*
+  Right-side "On this page" navigation for product: crds pages.
+  Builds an alphabetically sorted list of CRD kind names with anchor links.
+*/}}
+
+{{ $crdFiles := $.Site.Data.apis.crds }}
+
+{{ $kinds := slice }}
+{{ range $plural, $dirContents := $crdFiles }}
+  {{ if $dirContents.definition }}
+    {{ $kinds = $kinds | append $dirContents.definition.spec.names.kind }}
+  {{ end }}
+{{ end }}
+
+{{ $sorted := sort $kinds }}
+
+<strong class="d-none d-md-block h6 my-2">On this page</strong>
+<hr class="d-none d-md-block my-2">
+<div class="collapse bd-toc-collapse show" id="tocContents">
+  <nav id="TableOfContents">
+    <ul>
+      {{ range $sorted }}
+        <li><a href="#crd-{{ . | lower }}">{{ . }}</a></li>
+      {{ end }}
+    </ul>
+  </nav>
+</div>

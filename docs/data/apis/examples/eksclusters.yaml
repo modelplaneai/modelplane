@@ -1,0 +1,23 @@
+manifest: |
+  apiVersion: infrastructure.modelplane.ai/v1alpha1
+  kind: EKSCluster
+  metadata:
+    name: inference-west
+    namespace: platform
+  spec:
+    region: us-west-2
+    kubernetesVersion: "1.31"
+    nodePools:
+      - name: system
+        role: System
+        instanceType: m6i.xlarge
+        nodeCount: 2
+      - name: gpu-a10g
+        role: GPU
+        instanceType: g6.12xlarge
+        diskSizeGb: 200
+        nodeCount: 0
+        maxNodeCount: 8
+        zones: [us-west-2a, us-west-2b]
+        gpu:
+          acceleratorType: nvidia-a10g

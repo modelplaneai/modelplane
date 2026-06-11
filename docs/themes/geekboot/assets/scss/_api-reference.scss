@@ -1,0 +1,218 @@
+// Styles for the generated API reference page (docs/content/reference.md).
+// Each .api-ref div is preceded by a markdown ## heading rendered by Hugo,
+// which gives the right-side TOC its entries.
+
+.api-ref {
+  margin-bottom: 3.5rem;
+
+  // ── Per-resource metadata row ─────────────────────────────────────────────
+
+  .api-ref__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+  }
+
+  .api-ref__crd-group { font-size: 0.8125rem; }
+
+  .api-ref__desc {
+    color: var(--crd-description-color);
+    margin-bottom: 0.75rem;
+    font-size: 0.9375rem;
+  }
+
+  // ── spec / status section headings ───────────────────────────────────────
+
+  .api-ref__section-heading {
+    font-family: var(--bs-font-monospace);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--crd-header-color);
+    text-transform: lowercase;
+    margin: 1.25rem 0 0;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--crd-row-border);
+  }
+
+  // ── Tab navigation ────────────────────────────────────────────────────────
+
+  .api-ref__tabs {
+    margin-bottom: 0 !important;
+    border-bottom: 1px solid var(--crd-row-border) !important;
+  }
+
+  .api-ref__tab-content {
+    border: 1px solid var(--crd-row-border);
+    border-top: none;
+  }
+
+  // ── Example code block ────────────────────────────────────────────────────
+
+  .api-ref__example {
+    background-color: var(--code-background);
+    border-radius: 0;
+    padding: 1.25rem 1.5rem;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    overflow-x: auto;
+    margin: 0;
+    white-space: pre;
+
+    code {
+      background: none !important;
+      color: var(--body-font-color) !important;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+    }
+  }
+
+  // ── Field list ────────────────────────────────────────────────────────────
+
+  .api-field-list--nested {
+    // The left border is the tree line for this depth level.
+    // margin-left pushes the entire container right, so each additional level
+    // of nesting stacks another margin — depth indentation compounds naturally
+    // without any depth-specific selectors.
+    border-left: 2px solid var(--tree-line-color);
+    margin-left: 1.25rem;
+    background-color: var(--nav-highlight-color);
+    border-top: 1px solid var(--crd-row-border);
+
+    // No padding-left override — fields keep their normal 1.25rem horizontal
+    // padding; the margin-left on the container handles all depth indentation.
+  }
+
+  // ── Individual field block ────────────────────────────────────────────────
+
+  .api-field {
+    border-bottom: 1px solid var(--crd-row-border);
+    padding: 0.6rem 1.25rem;
+
+    &.api-field--object {
+      padding: 0;
+
+      .api-field__body {
+        padding: 0 1.25rem 0.6rem;
+      }
+    }
+  }
+
+  // ── Field header ──────────────────────────────────────────────────────────
+
+  .api-field__header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .api-field__toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.6rem 1.25rem;
+    background: none;
+    border: none;
+    text-align: left;
+    color: var(--body-font-color);
+    cursor: pointer;
+
+    &:hover,
+    &[aria-expanded="true"] {
+      background-color: var(--nav-highlight-color);
+      color: var(--body-font-color);
+    }
+  }
+
+  .api-field__name {
+    font-family: var(--bs-font-monospace);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--body-font-color);
+    flex: 0 0 auto;
+  }
+
+  .api-field__badges {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1 1 auto;
+  }
+
+  .api-field__chevron {
+    margin-left: auto;
+    font-size: 0.6em;
+    color: var(--crd-description-color);
+    transition: transform 0.15s ease;
+    flex: 0 0 auto;
+  }
+
+  .api-field__toggle[aria-expanded="true"] .api-field__chevron {
+    transform: rotate(90deg);
+  }
+
+  // ── Field body ────────────────────────────────────────────────────────────
+
+  .api-field__body { padding-top: 0.15rem; }
+
+  .api-field__desc {
+    font-size: 0.875rem;
+    color: var(--crd-description-color);
+    margin-bottom: 0.15rem;
+  }
+
+  // ── Type badges ───────────────────────────────────────────────────────────
+
+  .dataType {
+    font-weight: 800;
+    border-radius: 4px;
+    padding: 2px 5px;
+    border: 1px solid var(--body-font-color);
+    color: var(--body-font-color);
+    font-size: 0.75rem;
+    white-space: nowrap;
+
+    &.string  { color: var(--string-color);  border-color: var(--string-color); }
+    &.integer { color: var(--integer-color); border-color: var(--integer-color); }
+    &.boolean { color: var(--boolean-color); border-color: var(--boolean-color); }
+    &.object  { color: var(--object-color);  border-color: var(--object-color); }
+  }
+
+  // ── Required / optional badges ────────────────────────────────────────────
+
+  .api-ref__badge-required {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    white-space: nowrap;
+    color: var(--required-color);
+    background-color: var(--required-background);
+  }
+
+  .api-ref__badge-optional {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    white-space: nowrap;
+    color: var(--crd-description-color);
+    border: 1px solid var(--crd-row-border);
+  }
+
+  // ── Constraint annotations ────────────────────────────────────────────────
+
+  .api-ref__constraints {
+    color: var(--crd-description-color);
+    font-size: 0.75rem;
+    margin-bottom: 0;
+  }
+}

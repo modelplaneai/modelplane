@@ -1,0 +1,19 @@
+manifest: |
+  apiVersion: modelplane.ai/v1alpha1
+  kind: InferenceClass
+  metadata:
+    name: h100-80gb-8
+  spec:
+    description: "8x H100 80GB (A3 / p5)"
+    resources:
+      gpu:
+        count: 8
+        memory: "80Gi"
+    provisioning:
+      provider: GKE
+      gke:
+        machineType: a3-highgpu-8g
+        diskSizeGb: 500
+        accelerator:
+          type: nvidia-h100-80gb
+          count: 8

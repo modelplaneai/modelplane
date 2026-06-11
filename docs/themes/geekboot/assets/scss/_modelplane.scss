@@ -1,5 +1,12 @@
 // Modelplane visual overrides
 
+// Antialiased font rendering — matches the marketing site's body rule and
+// makes text noticeably sharper on dark backgrounds.
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 // Grid-line background (matches website)
 body::after {
   content: '';
@@ -32,10 +39,11 @@ body::after {
   }
 }
 
-// Inline code uses purple-tinted bg
+// Inline code: use CSS variables so light/dark modes each get a readable colour.
+// Dark mode keeps the purple tint; light mode uses near-black on a light bg.
 .bd-content code {
-  background-color: rgba(173,123,252,0.12);
-  color: #{$mp-purple-hi};
+  background-color: var(--code-background);
+  color: var(--code-color, #{$mp-purple-hi});
   border-radius: 4px;
 }
 

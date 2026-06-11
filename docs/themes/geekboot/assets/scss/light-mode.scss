@@ -64,27 +64,36 @@
     --expand-box-background: #{$fog-100};
     --minus-svg: url("/img/minus-white.svg");
     --plus-svg: url("/img/plus-black.svg");
-    --crd-header-color: #{$fog-600};
-    --crd-row-border: #{$fog-600};
-    --crd-description-color: #{$fog-600};
+    // fog-600 (#6C7070) passes at 5.0:1 but reads light; fog-700 (#535858) gives 6.6:1
+    --crd-header-color: #{$fog-700};
+    --crd-row-border: #{$fog-400};
+    --crd-description-color: #{$fog-700};
     --link-icon-fill: #{$fog-400};
 
     --required-color: #{$fog-0};
     --required-background: #{$fog-800};
 
-    --string-color: #{$grass-700};
-    --string-border: #{$grass-700};
+    // Type badge colours — each must hit ≥4.5:1 contrast on white (WCAG AA).
+    // grass-700 (#608351) was 4.32:1 ✗ → grass-800 (#445D3B) is 7.3:1 ✓
+    --string-color: #{$grass-800};
+    --string-border: #{$grass-800};
 
+    // tangerine-700 (#996B3E) is 4.6:1 ✓ — no change needed
     --object-color: #{$tangerine-700};
     --object-border-color: #{$tangerine-700};
 
-    --boolean-color: #{$sun-600};
-    --boolean-border-color: #{$sun-600};
+    // sun-600 (#CEA733) was 2.3:1 ✗ → sun-800 (#6C5C22) is 6.6:1 ✓
+    --boolean-color: #{$sun-800};
+    --boolean-border-color: #{$sun-800};
 
-    --integer-color: #{$salmon-600};
-    --integer-border-color: #{$salmon-600};
+    // salmon-600 (#C46965) was 3.8:1 ✗ → salmon-700 (#965451) is 5.7:1 ✓
+    --integer-color: #{$salmon-700};
+    --integer-border-color: #{$salmon-700};
 
-    --enumDefault-color: #{$fog-600};
+    // Bump muted/description text from fog-600 (5.0:1) to fog-700 (6.6:1)
+    // for stronger legibility without losing the visual hierarchy.
+    --enumDefault-color: #{$fog-700};
+    --tree-line-color: rgba(44,169,152,0.55);  /* aqua-600 at 55% — subtle teal tree line */
 
     // Override Bootstrap accordion colors in the body
     .accordion {

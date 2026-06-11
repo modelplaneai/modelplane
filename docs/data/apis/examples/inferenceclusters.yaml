@@ -1,0 +1,17 @@
+manifest: |
+  apiVersion: modelplane.ai/v1alpha1
+  kind: InferenceCluster
+  metadata:
+    name: west-gke
+  spec:
+    cluster:
+      source: GKE
+      gke:
+        project: my-gcp-project
+        region: us-central1
+    nodePools:
+      - name: h100-pool
+        className: h100-80gb-8
+        nodeCount: 2
+        maxNodeCount: 10
+        zones: [us-central1-a]

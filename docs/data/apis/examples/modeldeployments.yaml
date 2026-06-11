@@ -1,0 +1,28 @@
+manifest: |
+  apiVersion: modelplane.ai/v1alpha1
+  kind: ModelDeployment
+  metadata:
+    name: qwen-72b
+    namespace: ml-team
+  spec:
+    replicas: 2
+    modelCacheRef:
+      name: qwen-72b
+    workers:
+      topology:
+        tensor: 4
+        pipeline: 2
+      template:
+        spec:
+          containers:
+            - name: engine
+              image: vllm/vllm-openai:v0.7.3
+              args:
+                - --model=/cache/model
+                - --tensor-parallel-size=4
+              env:
+                - name: HF_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: hf-token
+                      key: token

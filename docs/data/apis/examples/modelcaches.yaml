@@ -1,0 +1,14 @@
+manifest: |
+  apiVersion: modelplane.ai/v1alpha1
+  kind: ModelCache
+  metadata:
+    name: qwen-72b
+    namespace: ml-team
+  spec:
+    source: HuggingFace
+    huggingFace:
+      repo: Qwen/Qwen2.5-72B-Instruct
+      sizeGiB: 150
+      authSecret:
+        name: hf-token
+        key: HF_TOKEN

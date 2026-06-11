@@ -43,6 +43,18 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
     source = "content"
     target = "assets/content"
     includeFiles = ["**/**.png", "**/**.jpg", "**/**.jpeg", "**/**.gif"]
+  # Re-include the project's own data directory — required because defining
+  # any module mount switches Hugo to a virtual filesystem that excludes
+  # unmounted local directories.
+  [[module.mounts]]
+    source = "data"
+    target = "data"
+  # Mount the APIs directory as Hugo data so the built-in crds partial can
+  # read definition.yaml files without a separate generation step.
+  # Accessible as site.Data.apis.crds.<plural>.definition
+  [[module.mounts]]
+    source = "../apis"
+    target = "data/apis/crds"
 
 [security]
   [security.funcs]
