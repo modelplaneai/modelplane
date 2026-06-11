@@ -843,7 +843,9 @@ class TestDisaggregatedLLMD(unittest.TestCase):
         epp = spec["endpointPickerRef"]
         self.assertEqual(epp["name"], f"{name}-epp")
         self.assertEqual(epp["port"]["number"], 9002)
-        self.assertEqual(spec.get("failureMode"), "FailOpen")
+        # failureMode is a field of endpointPickerRef in the GAIE v1 schema.
+        self.assertEqual(epp.get("failureMode"), "FailOpen")
+        self.assertNotIn("failureMode", spec)
 
     def test_disagg_httproute_targets_inference_pool(self):
         """For a disaggregated replica the HTTPRoute backendRefs points at the InferencePool, not the Service."""

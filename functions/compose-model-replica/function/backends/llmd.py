@@ -6,20 +6,20 @@ Renders a LeaderWorkerSet whose gang size is the per-worker node count; a
 disaggregated replica additionally emits a separate internal prefill pod set
 (see _prefill_objects).
 
-Routing is plain Gateway API — `HTTPRoute -> Service`, exactly like native.py —
-NOT a GAIE `InferencePool`. The HTTPRoute attaches to the *workload* cluster's
-inference gateway (Envoy Gateway, named `inference-gateway`, installed by
-ServingStack) and the Service selects the LWS *leader* pods (only the leader
-serves the OpenAI API; workers just join the gang).
+Routing differs by path. UNIFIED serving uses plain Gateway API —
+`HTTPRoute -> Service`, exactly like native.py — where the Service selects the
+LWS *leader* pods (only the leader serves the OpenAI API; workers just join the
+gang). DISAGGREGATED serving (a `prefill` block) instead fronts the pods with a
+GAIE `InferencePool` + endpoint-picker (EPP) so requests are sequenced
+prefill->decode: it emits the InferencePool (`_inference_pool_object`), the EPP
+stack from `routing.template` (`_epp_objects`), a pd-sidecar on the decode pods,
+and points the HTTPRoute at the InferencePool. The InferencePool path needs a
+GAIE-conformant workload gateway — Envoy AI Gateway, installed by ServingStack.
 
-Why a Service, not a GAIE `InferencePool`: v0.1 does no KV-/load-aware endpoint
-picking, so the `InferencePool` + EPP this path originally emitted aren't needed
-yet. Reintroducing them is a *workload-gateway* concern — it needs a
-GAIE-conformant workload gateway (Envoy Gateway's `InferencePool` v1 support is
-unconfirmed; alternatively switch the workload gateway to Istio/agentgateway).
-That is independent of the control-plane gateway (Traefik, named `modelplane`),
-which never sees these resources. (Issue #8 — inference-aware routing *across
-replicas* on the control plane — is a separate problem at that layer.)
+Both attach to the workload cluster's inference gateway, independent of the
+control-plane gateway (Traefik, named `modelplane`), which never sees these
+resources. (Issue #8 — inference-aware routing *across replicas* on the control
+plane — is a separate problem at that layer.)
 
 Multi-node bootstrap: the LWS leader and worker run different commands (no
 `LWS_WORKER_INDEX` branch). The leader starts the Ray head then execs the
@@ -143,8 +143,11 @@ def _inference_pool_object(
             "endpointPickerRef": {
                 "name": f"{name}-epp",
                 "port": {"number": 9002},
+                # failureMode belongs to endpointPickerRef (EndpointPickerRef) in
+                # the GAIE v1 schema, not to the pool spec. FailOpen so a transient
+                # EPP outage doesn't black-hole decode traffic.
+                "failureMode": "FailOpen",
             },
-            "failureMode": "FailOpen",
         },
     }
     return base.wrap_object(provider_config, manifest)
