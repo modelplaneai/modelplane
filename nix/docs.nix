@@ -66,6 +66,7 @@ in
       }
       ''
         cp -r ${self}/docs src
+        cp -r ${self}/apis apis
         chmod -R u+w src
         cd src
         ln -s ${nodeModules}/node_modules node_modules
