@@ -360,6 +360,44 @@ def nixl_side_channel_env() -> dict:
     return {"name": "VLLM_NIXL_SIDE_CHANNEL_HOST", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}
 
 
+# Image for the llm-d prefill/decode sidecar that intercepts the serving port on
+# disaggregated decode pods. The sidecar reads the x-prefiller-host-port header
+# injected by the EPP, forwards the prompt to the prefill instance for KV
+# transfer, then proxies to the local vLLM (which has moved to ENGINE_PORT+1).
+PD_SIDECAR_IMAGE = "ghcr.io/llm-d/llm-d-routing-sidecar:v0.8.0"
+
+# Port vLLM moves to on disaggregated decode pods so the pd-sidecar can take the
+# external serving port (ENGINE_PORT = 8000). This is internal to the pod; the
+# Service always targets ENGINE_PORT (8000) which is the sidecar's listen port.
+_DECODE_ENGINE_PORT = ENGINE_PORT + 1  # 8001
+
+
+def pd_sidecar_container() -> dict:
+    """Return the pd-sidecar container dict for a disaggregated decode leader pod.
+
+    The sidecar takes the external serving port (ENGINE_PORT = 8000). The local
+    vLLM engine moves to _DECODE_ENGINE_PORT (8001). The sidecar's readiness
+    probe mirrors the engine's (GET /health) so the leader pod only becomes ready
+    once the sidecar is up and accepting traffic.
+
+    --secure-proxy is disabled: the routing sidecar defaults to serving HTTPS on
+    the serving port, but the whole Modelplane serving path is plain HTTP (the
+    gateway, the Service, and this readiness probe all speak HTTP), so a TLS
+    listener here fails the probe and rejects the gateway's HTTP traffic.
+    """
+    return {
+        "name": "pd-sidecar",
+        "image": PD_SIDECAR_IMAGE,
+        "ports": [{"containerPort": ENGINE_PORT}],
+        "args": ["--secure-proxy=false", "--kv-connector=nixlv2", f"--vllm-port={_DECODE_ENGINE_PORT}"],
+        "readinessProbe": {
+            "httpGet": {"path": "/health", "port": ENGINE_PORT},
+            "initialDelaySeconds": 30,
+            "periodSeconds": 10,
+        },
+    }
+
+
 class Backend(Protocol):
     """Builds the cluster-level serving resources for one ModelReplica."""
 

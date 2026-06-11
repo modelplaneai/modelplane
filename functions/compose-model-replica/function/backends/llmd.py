@@ -73,6 +73,49 @@ def _engine_args(engine, tensor: int, pipeline: int) -> list[str]:
     return args
 
 
+# vLLM NixlConnector config enabling disaggregated KV transfer. NixlConnector does
+# not distinguish kv_role (the routing sidecar drives the prefill->decode direction
+# at request time), so both roles run kv_both; see the vLLM NixlConnector usage
+# guide. Without this the engines run as plain servers and no KV handoff occurs.
+_NIXL_KV_TRANSFER_CONFIG = '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+
+
+def _with_nixl_kv_transfer(args: list[str]) -> list[str]:
+    """Append the NixlConnector --kv-transfer-config unless the user already set one."""
+    if any(a.startswith("--kv-transfer-config") for a in args):
+        return args
+    return [*args, f"--kv-transfer-config={_NIXL_KV_TRANSFER_CONFIG}"]
+
+
+def _build_commands(
+    engine,
+    tensor: int,
+    pipeline: int,
+    replica,
+    *,
+    disagg: bool,
+) -> tuple[list[str] | None, list[str], list[str], list[str]]:
+    """Compute (user_command, leader_command, worker_command, args) for the decode LWS.
+
+    user_command is None on the turnkey vLLM path (the caller uses it to decide
+    whether to emit a separate container args field); leader_command and
+    worker_command are the final commands for the two pod templates; args is the
+    vLLM arg list the caller sets on the container.
+    """
+    user_cmd = list(engine.command) if engine.command else None
+    if user_cmd:
+        return user_cmd, user_cmd, user_cmd, list(engine.args or [])
+    args = _engine_args(engine, tensor, pipeline)
+    args = base.apply_cache_args(args, replica, engine)
+    if disagg and not any(a.startswith("--port=") for a in args):
+        args = [*args, f"--port={base._DECODE_ENGINE_PORT}"]
+    if disagg:
+        args = _with_nixl_kv_transfer(args)
+    leader_cmd = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *args]
+    worker_cmd = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
+    return None, leader_cmd, worker_cmd, args
+
+
 def _prefill_objects(
     replica: v1alpha1.ModelReplica,
     prefill_spec,
@@ -102,6 +145,7 @@ def _prefill_objects(
     else:
         p_args = _engine_args(p_engine, p_tensor, p_pipeline)
         p_args = base.apply_cache_args(p_args, replica, p_engine)
+        p_args = _with_nixl_kv_transfer(p_args)
         p_leader_cmd = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *p_args]
         p_worker_cmd = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
 
@@ -196,21 +240,6 @@ class LLMDBackend:
 
         cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
 
-        # A user-supplied command owns cross-node coordination: inject neither the
-        # Ray bootstrap nor vLLM-specific parallelism flags. It runs verbatim on
-        # both templates (e.g. SGLang's symmetric launch against the LWS_* env).
-        user_command = list(engine.command) if engine.command else None
-        if user_command:
-            leader_command = worker_command = user_command
-            args = list(engine.args or [])
-        else:
-            # Args are folded into the leader command (consumed as "$@"); the
-            # worker only joins the gang.
-            args = _engine_args(engine, tensor, pipeline)
-            args = base.apply_cache_args(args, replica, engine)
-            leader_command = ["/bin/sh", "-c", _LEADER_BOOTSTRAP, "vllm", *args]
-            worker_command = ["/bin/sh", "-c", _WORKER_BOOTSTRAP]
-
         pull_secrets = (
             [s.model_dump(exclude_none=True) for s in replica.spec.workers.template.spec.imagePullSecrets]
             if replica.spec.workers.template.spec.imagePullSecrets
@@ -230,6 +259,19 @@ class LLMDBackend:
         # get it; the unified path is left untouched.
         if disagg:
             env = (env or []) + [base.nixl_side_channel_env()]
+
+        # Disaggregated decode: the pd-sidecar takes the external serving port
+        # (ENGINE_PORT = 8000); vLLM moves to _DECODE_ENGINE_PORT (8001).
+        # Unified / prefill paths stay on ENGINE_PORT.
+        engine_serving_port = base._DECODE_ENGINE_PORT if disagg else base.ENGINE_PORT
+
+        # Build leader/worker commands (and the args list for the container closure).
+        # A user-supplied command owns cross-node coordination: inject neither the
+        # Ray bootstrap nor vLLM-specific parallelism flags. It runs verbatim on
+        # both templates (e.g. SGLang's symmetric launch against the LWS_* env).
+        user_command, leader_command, worker_command, args = _build_commands(
+            engine, tensor, pipeline, replica, disagg=disagg
+        )
 
         decode_claim = base.claim_template_name(replica)
         decode_extra: dict = (
@@ -261,9 +303,11 @@ class LLMDBackend:
             if env:
                 c["env"] = env
             if serving:
-                c["ports"] = [{"containerPort": base.ENGINE_PORT}]
+                # Disaggregated decode: engine moves to _DECODE_ENGINE_PORT (8001);
+                # unified/prefill stay on ENGINE_PORT (8000).
+                c["ports"] = [{"containerPort": engine_serving_port}]
                 c["readinessProbe"] = {
-                    "httpGet": {"path": "/health", "port": base.ENGINE_PORT},
+                    "httpGet": {"path": "/health", "port": engine_serving_port},
                     "initialDelaySeconds": 30,
                     "periodSeconds": 10,
                 }
@@ -283,9 +327,16 @@ class LLMDBackend:
 
         # Only the leader serves the OpenAI API → it carries the role label the
         # Service selects on, plus the serving port and readiness probe.
+        leader_spec = pod_spec(container(leader_command, serving=True))
+        # Disaggregated decode: append the pd-sidecar to the leader pod. The
+        # sidecar takes ENGINE_PORT (8000) so the Service targetPort is unchanged;
+        # the engine has already moved to _DECODE_ENGINE_PORT (8001) above.
+        # Workers don't serve the API, so they get no sidecar.
+        if disagg:
+            leader_spec["containers"].append(base.pd_sidecar_container())
         leader_pod = {
             "metadata": {"labels": {base.LABEL_SERVING: name, _LABEL_ROLE: "leader", **decode_extra}},
-            "spec": pod_spec(container(leader_command, serving=True)),
+            "spec": leader_spec,
         }
         worker_pod = {
             "metadata": {"labels": {base.LABEL_SERVING: name, **decode_extra}},

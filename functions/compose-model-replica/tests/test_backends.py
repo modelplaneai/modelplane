@@ -684,6 +684,84 @@ class TestDisaggregatedLLMD(unittest.TestCase):
         self.assertNotIn(base.LABEL_LLMD_SERVING, leader_labels, "unified replica must not have llm-d.ai/inference-serving")
         self.assertNotIn("app", leader_labels, "unified replica must not have app label")
 
+    # --- pd-sidecar injection (P2.4) ---
+
+    def _decode_leader_containers(self, out):
+        """Helper: return the containers list from the decode LWS leader pod."""
+        lws = out["model-serving"].spec.forProvider.manifest
+        return lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"]
+
+    def _prefill_leader_containers(self, out):
+        """Helper: return the containers list from the prefill LWS leader pod."""
+        lws = out["prefill-serving"].spec.forProvider.manifest
+        return lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"]
+
+    def test_decode_has_pd_sidecar(self):
+        """Disaggregated decode leader pod has two containers; one named pd-sidecar with correct image, port, and args."""
+        out = self._build()
+        containers = self._decode_leader_containers(out)
+        names = [c["name"] for c in containers]
+        self.assertEqual(len(containers), 2, f"expected 2 containers on decode leader, got {names}")
+        sidecar = next(c for c in containers if c["name"] == "pd-sidecar")
+        self.assertEqual(sidecar["image"], base.PD_SIDECAR_IMAGE)
+        ports = sidecar.get("ports", [])
+        self.assertEqual(len(ports), 1)
+        self.assertEqual(ports[0]["containerPort"], 8000)
+        args = sidecar.get("args", [])
+        self.assertIn("--secure-proxy=false", args)
+        self.assertIn("--kv-connector=nixlv2", args)
+        self.assertIn("--vllm-port=8001", args)
+
+    def test_decode_engine_moves_to_8001(self):
+        """Disaggregated decode engine container uses port 8001 for both containerPort and readinessProbe; turnkey args include --port=8001."""
+        out = self._build()
+        containers = self._decode_leader_containers(out)
+        engine = next(c for c in containers if c["name"] == "engine")
+        # containerPort
+        ports = engine.get("ports", [])
+        self.assertEqual(len(ports), 1)
+        self.assertEqual(ports[0]["containerPort"], 8001)
+        # readinessProbe
+        probe = engine.get("readinessProbe", {})
+        self.assertEqual(probe["httpGet"]["port"], 8001)
+        # turnkey vLLM path: --port=8001 must appear in the args/command
+        cmd = engine.get("command", [])
+        all_args = cmd + engine.get("args", [])
+        self.assertTrue(
+            any("--port=8001" in a for a in all_args),
+            f"--port=8001 not found in engine command/args: {all_args}",
+        )
+
+    def test_decode_service_targets_sidecar_8000(self):
+        """The decode Service targetPort stays 8000 (the sidecar is the serving entry)."""
+        out = self._build()
+        svc = out["model-service"].spec.forProvider.manifest
+        target = svc["spec"]["ports"][0]["targetPort"]
+        self.assertEqual(target, 8000)
+
+    def test_unified_replica_has_no_sidecar(self):
+        """A unified multi-node replica (pipeline=2, no prefill) has a single engine container on 8000."""
+        out = llmd.LLMDBackend().build(
+            _replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
+            _CLUSTER,
+        )
+        lws = out["model-serving"].spec.forProvider.manifest
+        containers = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"]
+        names = [c["name"] for c in containers]
+        self.assertEqual(len(containers), 1, f"unified replica should have 1 container, got {names}")
+        self.assertNotIn("pd-sidecar", names)
+        # engine still on 8000
+        engine = containers[0]
+        self.assertEqual(engine["ports"][0]["containerPort"], 8000)
+
+    def test_prefill_has_no_sidecar(self):
+        """Prefill LWS leader pod has a single engine container, no pd-sidecar."""
+        out = self._build()
+        containers = self._prefill_leader_containers(out)
+        names = [c["name"] for c in containers]
+        self.assertEqual(len(containers), 1, f"prefill leader should have 1 container, got {names}")
+        self.assertNotIn("pd-sidecar", names)
+
 
 class TestDynamoStub(unittest.TestCase):
     def test_not_selected_in_v01(self):
