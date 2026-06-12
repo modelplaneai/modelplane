@@ -5,10 +5,7 @@ serving resources. Backends return provider-kubernetes Objects and/or
 provider-helm Releases; the dispatcher (fn.py) applies them to the response.
 """
 
-from typing import Protocol
-
 from crossplane.function import resource
-from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
@@ -21,6 +18,11 @@ ComposedResource = k8sobjv1alpha1.Object | helmv1beta1.Release
 NATIVE = "native"
 LLMD = "llmd"
 DYNAMO = "dynamo"
+
+# Member roles.
+ROLE_STANDALONE = "Standalone"
+ROLE_LEADER = "Leader"
+ROLE_WORKER = "Worker"
 
 # Mount path the cache PVC is exposed at inside every engine pod. Intrinsic
 # to the cache contract; the deployment points the engine here.
@@ -43,7 +45,8 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
     """Return (volumes, volumeMounts) for the replica's cache, or ([], []).
 
     modelCacheRef carries only a name; the ModelCache is in the replica's own
-    namespace, so the PVC name is qualified by replica.metadata.namespace.
+    namespace, so the PVC name is qualified by replica.metadata.namespace. The
+    cache is shared across every group and member of the replica.
     """
     ref = replica.spec.modelCacheRef
     if not ref:
@@ -89,12 +92,70 @@ REMOTE_NAMESPACE = "default"
 # the ModelEndpoint URLs, so it must not diverge between backends.
 ENGINE_PORT = 8000
 
-# Pod label carrying the ModelService name, used to wire a Service's selector to
-# its serving pods. Both backends label pods and select on it.
+# Pod label carrying the serving identity (the replica name). The replica's one
+# shared Service selects on it, so every group's serving pods - a Standalone pod
+# or an LWS gang leader - carry it. A multi-node gang's worker followers do NOT
+# (they don't serve the OpenAI API), so the Service never routes to them.
 LABEL_SERVING = "modelplane.ai/serving"
 
-# Response resource key for the DRA ResourceClaimTemplate.
-RESOURCE_CLAIM_KEY = "resource-claim"
+# Pod label scoping a workload's own pods, used as a Deployment's selector. It's
+# per-group (the workload name) so two Standalone groups of one replica - which
+# share the serving label for the Service - don't end up with overlapping
+# Deployment selectors fighting over each other's pods.
+LABEL_WORKLOAD = "modelplane.ai/workload"
+
+# Backend-neutral env var carrying the gang leader's address, injected into
+# every engine container of a multi-node group. A member's command finds its
+# peers through this without hard-coding the underlying orchestrator's variable.
+# For the LWS backend it aliases LWS_LEADER_ADDRESS; another gang scheduler would
+# alias its own. $(VAR) is Kubernetes downward env expansion - the container
+# sees MODELPLANE_LEADER_ADDRESS resolved to the leader's address.
+LEADER_ADDRESS_ENV = "MODELPLANE_LEADER_ADDRESS"
+_LWS_LEADER_ADDRESS_ENV = "LWS_LEADER_ADDRESS"
+
+
+def leader_address_env() -> dict:
+    """The MODELPLANE_LEADER_ADDRESS env entry for the LWS backend.
+
+    Aliases LWS_LEADER_ADDRESS (injected by LeaderWorkerSet into every gang pod)
+    via dependent env expansion. Place it ahead of the user's env entries so
+    they can reference $(MODELPLANE_LEADER_ADDRESS) - expansion is
+    left-to-right. (In the running pod it isn't literally first: LWS prepends
+    its own LWS_* vars ahead of the container's env, which is also what makes
+    the $(LWS_LEADER_ADDRESS) reference here resolve.)
+    """
+    return {"name": LEADER_ADDRESS_ENV, "value": f"$({_LWS_LEADER_ADDRESS_ENV})"}
+
+
+# Response resource keys. A replica's shared Service and HTTPRoute keep stable
+# keys; each group's workload and each member's claim get a group/member-scoped
+# key (the group name, and the member role for claims) so a multi-group replica's
+# resources don't collide in the response map.
+SERVICE_KEY = "model-service"
+ROUTE_KEY = "model-route"
+_WORKLOAD_KEY = "model-serving"
+_CLAIM_KEY = "resource-claim"
+
+
+def workload_key(group) -> str:
+    """Response key for a group's workload (Deployment or LeaderWorkerSet)."""
+    return f"{_WORKLOAD_KEY}-{group.name}"
+
+
+def claim_key(group, member) -> str:
+    """Response key for one member's ResourceClaimTemplate."""
+    role = (member.role or ROLE_STANDALONE).lower()
+    return f"{_CLAIM_KEY}-{group.name}-{role}"
+
+
+def workload_keys(replica: v1alpha1.ModelReplica) -> list[str]:
+    """Response keys of every group's workload, in group order.
+
+    fn.py tracks replica readiness across all of these: a replica is serving
+    only when every group's workload is ready.
+    """
+    return [workload_key(g) for g in replica.spec.workers]
+
 
 # DRA API the ResourceClaimTemplate targets. The manifest is a raw dict wrapped
 # in a provider-kubernetes Object, so no generated model is needed.
@@ -147,55 +208,128 @@ def wrap_object(
     )
 
 
-def engine_container(replica: v1alpha1.ModelReplica):
-    """Return the container named 'engine'. The XRD's CEL validation
-    guarantees exactly one exists, so this always succeeds.
+def serving_resources(replica: v1alpha1.ModelReplica, provider_config: str) -> dict[str, k8sobjv1alpha1.Object]:
+    """Compose the Service and HTTPRoute that front a replica's serving pods.
+
+    One Service spans every group's serving pods (Standalone pods and LWS
+    leaders) via the shared serving label; one HTTPRoute exposes that Service at
+    the replica's per-placement path. Built once per replica, independent of how
+    many groups it has - the unified serving surface the design's Unified mode
+    describes.
+
+    Named after the replica (unique per placement) so co-located replicas on one
+    cluster don't collide. The replica name is reserved for these serving
+    resources; workloads are named per group (see group_name) so a
+    LeaderWorkerSet never shares this Service's name and its controller can
+    create the headless gang-DNS Service it needs. The route attaches to the
+    workload cluster's inference gateway; the control plane rewrites the public
+    /<ns>/<service>/ prefix to this replica's /<ns>/<replica>/, which the route
+    strips to /.
+    """
+    name = replica.metadata.name
+    service = {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": name, "namespace": REMOTE_NAMESPACE},
+        "spec": {"selector": {LABEL_SERVING: name}, "ports": [{"port": 80, "targetPort": ENGINE_PORT}]},
+    }
+    http_route = {
+        "apiVersion": "gateway.networking.k8s.io/v1",
+        "kind": "HTTPRoute",
+        "metadata": {"name": name, "namespace": REMOTE_NAMESPACE},
+        "spec": {
+            "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
+            "rules": [
+                {
+                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],
+                    "filters": [
+                        {
+                            "type": "URLRewrite",
+                            "urlRewrite": {"path": {"type": "ReplacePrefixMatch", "replacePrefixMatch": "/"}},
+                        }
+                    ],
+                    "backendRefs": [{"name": name, "port": 80}],
+                }
+            ],
+        },
+    }
+    return {
+        SERVICE_KEY: wrap_object(provider_config, service),
+        ROUTE_KEY: wrap_object(provider_config, http_route),
+    }
+
+
+def serving_label(replica: v1alpha1.ModelReplica) -> str:
+    """The serving label value a replica's serving pods share.
+
+    The replica name, so the shared Service selects every group's leader and
+    Standalone pods.
+    """
+    return replica.metadata.name
+
+
+def engine_container(member):
+    """Return a member's container named 'engine'. The XRD's CEL validation
+    guarantees exactly one exists per member, so this always succeeds.
 
     v0.1 constrains the template to a single container (the engine) via the
     XRD (containers maxItems: 1), so there is nothing to drop. Sidecar /
     multi-container support is tracked in #108 — it needs design for the LWS
     gang (which containers run on the leader vs the workers).
     """
-    return next(c for c in replica.spec.workers.template.spec.containers if c.name == "engine")
+    return next(c for c in member.template.spec.containers if c.name == "engine")
 
 
-def nodes_per_worker(replica: v1alpha1.ModelReplica) -> int:
-    """Nodes spanned by one worker.
+def group_member(group, role: str):
+    """The group's member with this role, or None.
 
-    v0.1 topology implements only tensor + pipeline, so this is `pipeline`.
-    When data/dataLocal land, this becomes pipeline * (data / dataLocal).
+    A group has at most one member of each role (a single Standalone, or one
+    Leader and one Worker), so the first match is the only match.
     """
-    return int(replica.spec.workers.topology.pipeline or 1)
+    return next((m for m in group.members if (m.role or ROLE_STANDALONE) == role), None)
 
 
-def needs_cross_pod_coordination(replica: v1alpha1.ModelReplica) -> bool:
-    """True when the replica is more than one self-contained pod.
+def select_backend(group) -> str:
+    """Pick the serving path for a group from its member roles.
 
-    v0.1: true iff nodes_per_worker > 1. Extension points (no-ops until the
-    fields exist): a `prefill` block (disaggregated P/D) or multi-node data
-    parallelism (data > dataLocal) also make this true.
+    A single Standalone member is a self-contained pod, served natively as a
+    Deployment. A Leader plus Worker gang coordinates across nodes, served by
+    llm-d as a LeaderWorkerSet. Dynamo is dormant in v0.1.
     """
-    return nodes_per_worker(replica) > 1
-
-
-def select_backend(replica: v1alpha1.ModelReplica) -> str:
-    """Pick the lightest serving path. No user-facing backend field.
-
-    Dynamo is dormant in v0.1: no Dynamo-only capability is wired, so a
-    multi-pod replica always selects llm-d.
-    """
-    if not needs_cross_pod_coordination(replica):
+    if group_member(group, ROLE_STANDALONE) is not None:
         return NATIVE
     return LLMD
 
 
-def claim_template_name(replica: v1alpha1.ModelReplica) -> str:
-    """ResourceClaimTemplate name on the remote cluster.
+def group_name(replica: v1alpha1.ModelReplica, group) -> str:
+    """The base name for a group's composed workload and claim resources.
 
-    Per-replica, derived from the replica's own name so concurrent replicas of
-    the same deployment on one cluster don't collide.
+    Every group's resources are qualified by the group name: per-replica so
+    co-located replicas of one deployment don't collide on the remote cluster,
+    and per-group so a multi-group replica's workloads don't collide with each
+    other.
+
+    Crucially this name always differs from the replica name, which the shared
+    serving Service and HTTPRoute use. A LeaderWorkerSet's controller creates a
+    headless Service named after the LWS for gang pod DNS (the leader address
+    the followers join) - but only if no Service of that name exists. If the
+    LWS shared the serving Service's name, that headless Service would never be
+    created, gang DNS would never resolve, and the gang could never form.
     """
-    return resource.child_name(replica.metadata.name, _POD_CLAIM_NAME)
+    return resource.child_name(replica.metadata.name, group.name)
+
+
+def claim_template_name(replica: v1alpha1.ModelReplica, group, member) -> str:
+    """ResourceClaimTemplate name for one member of a group.
+
+    Per-replica, per-group, per-member: derived from the same parts as
+    group_name plus the member role (flat, not nested through group_name's
+    already-hashed result, so the name reads replica-group-role-devices-hash) so
+    a gang's Leader and Worker claims don't collide, and concurrent replicas of
+    the same deployment on one cluster stay distinct.
+    """
+    role = (member.role or ROLE_STANDALONE).lower()
+    return resource.child_name(replica.metadata.name, group.name, role, _POD_CLAIM_NAME)
 
 
 def engine_resources() -> dict:
@@ -232,41 +366,46 @@ _GPU_TOLERATION = {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoS
 _LABEL_POOL = "modelplane.ai/pool"
 
 
-def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica) -> None:
-    """Constrain a serving pod to the placement the scheduler chose.
+def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica, group, member) -> None:
+    """Constrain a member's serving pod to the placement the scheduler chose.
 
-    Pins the pod to its scheduled node pool, wires it to claim its GPUs via DRA,
-    and tolerates the GPU node taint. Every pod that shares this spec - a native
-    Deployment pod, or an llm-d LWS leader and worker - is placed identically.
+    Pins the pod to its group's scheduled node pool, wires it to claim its GPUs
+    via DRA through the member's claim, and tolerates the GPU node taint. Every
+    pod of one member shares this - a native Deployment pod, or an llm-d LWS
+    leader or worker.
 
     The pool nodeSelector is what makes the scheduler's pool choice real: the
-    control-plane scheduler matched a pool and stamped spec.nodePoolName, but DRA
-    would otherwise place the pod on any pool whose devices satisfy the claim.
-    Without the pin the control plane's per-pool capacity accounting drifts from
-    where pods actually run, and a claim: Synthetic device (matched for placement
-    but never claimed) isn't enforced at all, since pool selection is its only
-    enforcement. nodePoolName is XRD-required, so it's always set.
+    control-plane scheduler matched a pool and stamped the group's nodePoolName,
+    but DRA would otherwise place the pod on any pool whose devices satisfy the
+    claim. Without the pin the control plane's per-pool capacity accounting
+    drifts from where pods actually run, and a claim: Synthetic device (matched
+    for placement but never claimed) isn't enforced at all, since pool selection
+    is its only enforcement. nodePoolName is XRD-required, so it's always set.
 
-    The DRA claim references the per-replica ResourceClaimTemplate; every replica
+    The DRA claim references the member's ResourceClaimTemplate; every member
     carries device requests (the XRD requires them), so every serving pod claims
     through DRA. A template-backed claim (not a shared ResourceClaim) gives each
-    pod in a gang its own claim.
+    pod its own claim.
     """
-    pod_spec["nodeSelector"] = {_LABEL_POOL: replica.spec.nodePoolName}
-    pod_spec["resourceClaims"] = [{"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_template_name(replica)}]
+    pod_spec["nodeSelector"] = {_LABEL_POOL: group.nodePoolName}
+    pod_spec["resourceClaims"] = [
+        {"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_template_name(replica, group, member)}
+    ]
     pod_spec.setdefault("tolerations", []).append(_GPU_TOLERATION)
 
 
-def resource_claim_template(replica: v1alpha1.ModelReplica, provider_config: str) -> k8sobjv1alpha1.Object:
-    """Compose a DRA ResourceClaimTemplate Object for the replica.
+def resource_claim_template(
+    replica: v1alpha1.ModelReplica, group, member, provider_config: str
+) -> k8sobjv1alpha1.Object:
+    """Compose a DRA ResourceClaimTemplate Object for one member of a group.
 
     Each resolved device request (stamped by compose-model-deployment from the
     matched InferenceClass claim: DRA devices) becomes one DeviceRequest carrying
-    its DeviceClass, count, and CEL selectors verbatim. Every replica carries at
+    its DeviceClass, count, and CEL selectors verbatim. Every member carries at
     least one device request (the XRD requires them).
     """
     device_requests = []
-    for r in replica.spec.deviceRequests:
+    for r in member.deviceRequests:
         exactly: dict = {"deviceClassName": r.deviceClassName, "count": int(r.count or 1)}
         selectors = [{"cel": {"expression": s.cel}} for s in (r.selectors or []) if s.cel]
         if selectors:
@@ -278,26 +417,7 @@ def resource_claim_template(replica: v1alpha1.ModelReplica, provider_config: str
         {
             "apiVersion": _DRA_API_VERSION,
             "kind": "ResourceClaimTemplate",
-            "metadata": {"name": claim_template_name(replica), "namespace": REMOTE_NAMESPACE},
+            "metadata": {"name": claim_template_name(replica, group, member), "namespace": REMOTE_NAMESPACE},
             "spec": {"spec": {"devices": {"requests": device_requests}}},
         },
     )
-
-
-class Backend(Protocol):
-    """Builds the cluster-level serving resources for one ModelReplica."""
-
-    def build(
-        self,
-        replica: v1alpha1.ModelReplica,
-        cluster: icv1alpha1.InferenceCluster,
-    ) -> dict[str, ComposedResource]:
-        """Return a mapping of response resource-key -> composed resource.
-
-        The caller (fn.py) must pass a cluster whose
-        ``status.providerConfigRef.name`` is populated; backends read it to
-        target the remote cluster and do not re-default it. Composed resources
-        are named after ``replica.metadata.name`` (unique per placement) so
-        co-located replicas don't collide.
-        """
-        ...

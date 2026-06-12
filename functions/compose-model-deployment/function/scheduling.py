@@ -15,15 +15,23 @@ garbage-collects it, and the fill phase mints a fresh replica elsewhere to
 refill the deployment's replica count. Moving is always delete-plus-create,
 mirroring how Kubernetes treats a Pod whose node is gone.
 
+A replica is a set of worker groups co-scheduled onto one cluster. Each group
+is placed on its own pool of that cluster (groups may share a pool or land on
+disjoint ones), and a group's members may carry different nodeSelectors - a
+Leader and its Workers can ask for different hardware. The scheduler therefore
+asks, for each candidate cluster, whether every group can be assigned a pool
+with enough free nodes, all on that one cluster.
+
 Scheduling runs in two phases:
 
 1. Retain. For each existing replica, keep its (cluster, index) if the cluster
-   still exists and its pinned pool still satisfies the (possibly edited)
-   nodeSelector. Retention is otherwise unconditional: a healthy replica is
-   never moved or dropped to improve the global picture. A degraded cluster
-   (not Ready, or no gateway address) is still retained - transient outages
-   surface via the deployment's conditions, not re-placement. This is what
-   makes the scheduler stable: existing placements are inputs, not decisions.
+   still exists and every group's pinned pool still satisfies the (possibly
+   edited) nodeSelectors. Retention is otherwise unconditional: a healthy
+   replica is never moved or dropped to improve the global picture. A degraded
+   cluster (not Ready, or no gateway address) is still retained - transient
+   outages surface via the deployment's conditions, not re-placement. This is
+   what makes the scheduler stable: existing placements are inputs, not
+   decisions.
 
 2. Fill. If the deployment wants more replicas than were retained, place the
    shortfall one at a time. Each new replica goes to the eligible cluster
@@ -34,8 +42,8 @@ Scheduling runs in two phases:
    clusters we packed onto last.
 
 Capacity is gated on nodes, not on individual DRA devices. The per-node device
-count is a device request's count; the only number the scheduler reads from
-topology is nodes-per-replica, which it gates against a pool's available nodes.
+count is a device request's count; the only number the scheduler reads from a
+group is its node cost, which it gates against a pool's available nodes.
 Device-count contention BETWEEN deployments is left to DRA admission on the
 workload cluster, which is authoritative: it rejects a Pod whose ResourceClaim
 can't be satisfied, and the next reconcile sees the updated observed state. The
@@ -60,6 +68,9 @@ _LABEL_INDEX = "modelplane.ai/replica-index"
 # claim discriminator values on an InferenceClass device.
 _CLAIM_DRA = "DRA"
 
+# Member roles.
+_ROLE_WORKER = "Worker"
+
 
 @dataclass
 class DeviceRequest:
@@ -76,6 +87,33 @@ class DeviceRequest:
     device_class_name: str
     count: int
     cel_selectors: list[str]
+
+
+@dataclass
+class MemberPlacement:
+    """The resolved DRA requests for one member of a placed group.
+
+    A member runs its own pods (a Standalone, a Leader, or a Worker's
+    followers); each pod binds GPUs through a ResourceClaim built from these
+    requests. Always non-empty: a pool matches a member only when at least one
+    of its requests resolves to a claim: DRA device.
+    """
+
+    device_requests: list[DeviceRequest] = field(default_factory=list)
+
+
+@dataclass
+class GroupPlacement:
+    """A worker group's placement within a replica: its pool and resolved requests.
+
+    name and the per-member device requests are stamped onto the ModelReplica's
+    matching group; pool becomes the group's spec.nodePoolName. members is in
+    the deployment's member order, so it lines up with the group's members.
+    """
+
+    name: str
+    pool: str = ""
+    members: list[MemberPlacement] = field(default_factory=list)
 
 
 @dataclass
@@ -98,51 +136,10 @@ class Candidate:
     # Callers should not compose a ModelEndpoint when this is empty -
     # there is nothing to route traffic to.
     gateway_address: str = ""
-    # The node pool the scheduler matched on this cluster, propagated to the
-    # ModelReplica as spec.nodePoolName. Always set: a candidate exists only
-    # because a named pool matched (the pool name is XRD-required).
-    pool: str = ""
-    # Resolved claim: DRA device requests for the matched pool, in nodeSelector
-    # order. Stamped onto the ModelReplica as spec.deviceRequests. Always
-    # non-empty: a pool matches only when at least one claim: DRA device
-    # resolves (see _match_pool), so every scheduled replica has a claim.
-    device_requests: list[DeviceRequest] = field(default_factory=list)
-
-
-@dataclass
-class Shape:
-    """Physical shape derived from workers.topology and workers.count.
-
-    Only nodes_per_replica is a scheduling input (the available-node gate).
-    Topology otherwise drives provisioning, not pool selection.
-    """
-
-    nodes_per_replica: int  # Total nodes consumed by one ModelReplica.
-
-
-def topology_shape(workers) -> Shape:
-    """Derive nodes-per-replica from workers.
-
-    Nodes per worker is pipeline (the only multi-node axis in v0.1); a replica
-    has workers.count workers, so nodes-per-replica is pipeline * count.
-    """
-    topology = workers.topology
-    count = int(workers.count or 1)
-    nodes_per_worker = int(topology.pipeline or 1)
-    return Shape(nodes_per_replica=nodes_per_worker * count)
-
-
-def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
-    """Check that the cluster is Ready and has a gateway address.
-
-    A cluster without a Ready=True condition hasn't finished provisioning
-    or has become unavailable. A cluster without a gateway address can't
-    receive routed traffic. Both must be true for the cluster to be
-    schedulable for new placements.
-    """
-    if not cluster.status.gateway or not cluster.status.gateway.address:
-        return False
-    return any(c.type == "Ready" and c.status == "True" for c in cluster.status.conditions or [])
+    # Per-group placement: the pool each of the replica's groups was assigned
+    # and that group's resolved device requests. One entry per group in
+    # deployment order. Always populated for a scheduled replica.
+    groups: list[GroupPlacement] = field(default_factory=list)
 
 
 @dataclass
@@ -159,16 +156,56 @@ class _CompiledRequest:
     programs: list[cel.Program]
 
 
-def compile_requests(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledRequest]:
-    """Compile every nodeSelector device request's selectors once.
+@dataclass
+class _CompiledMember:
+    """A group member with its nodeSelector requests compiled."""
 
-    nodeSelector is required (the XRD enforces at least one device request), so
-    GPUs always bind through a DRA ResourceClaim derived from these requests.
+    requests: list[_CompiledRequest]
+
+
+@dataclass
+class _CompiledGroup:
+    """A worker group reduced to what the scheduler needs.
+
+    name identifies the group; nodes is its total node cost (pods x replicas);
+    members carries each member's compiled nodeSelector requests, used to match
+    a pool. A group lands on one pool that satisfies every member.
+    """
+
+    name: str
+    nodes: int
+    members: list[_CompiledMember]
+
+
+def _member_pods(member) -> int:
+    """Pods a single member contributes: a Worker's follower count, else 1.
+
+    A Standalone or a Leader is always exactly one pod; only a Worker fans out
+    to count follower pods (one per node).
+    """
+    if (member.role or "Standalone") == _ROLE_WORKER:
+        return int(member.count or 1)
+    return 1
+
+
+def _group_nodes(group) -> int:
+    """Total nodes one worker group consumes.
+
+    A group is pods x replicas nodes, where pods is the sum of its members'
+    pod counts: 1 for a Standalone, or 1 (Leader) + the Worker's count.
+    """
+    pods = sum(_member_pods(m) for m in group.members)
+    return pods * int(group.replicas or 1)
+
+
+def _compile_member(member) -> _CompiledMember:
+    """Compile one member's nodeSelector device requests.
+
     Raises cel.CELCompileError on a malformed expression; the caller turns that
     into an InvalidNodeSelector condition.
     """
     requests = []
-    for req in deployment.spec.nodeSelector.devices:
+    for req in member.nodeSelector.devices:
         cel_selectors = [s.cel for s in req.selectors if s.cel]
         requests.append(
             _CompiledRequest(
@@ -178,7 +215,39 @@ def compile_requests(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledRe
                 programs=[cel.Program(c) for c in cel_selectors],
             )
         )
-    return requests
+    return _CompiledMember(requests=requests)
+
+
+def compile_groups(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledGroup]:
+    """Compile every group's members' nodeSelector selectors once.
+
+    Each member's nodeSelector is required (the XRD enforces at least one device
+    request), so GPUs always bind through a DRA ResourceClaim derived from these
+    requests. Raises cel.CELCompileError on a malformed expression.
+    """
+    groups = []
+    for group in deployment.spec.workers:
+        groups.append(
+            _CompiledGroup(
+                name=group.name,
+                nodes=_group_nodes(group),
+                members=[_compile_member(m) for m in group.members],
+            )
+        )
+    return groups
+
+
+def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
+    """Check that the cluster is Ready and has a gateway address.
+
+    A cluster without a Ready=True condition hasn't finished provisioning
+    or has become unavailable. A cluster without a gateway address can't
+    receive routed traffic. Both must be true for the cluster to be
+    schedulable for new placements.
+    """
+    if not cluster.status.gateway or not cluster.status.gateway.address:
+        return False
+    return any(c.type == "Ready" and c.status == "True" for c in cluster.status.conditions or [])
 
 
 def _device_satisfies(device, programs: list[cel.Program]) -> bool:
@@ -190,58 +259,28 @@ def _device_satisfies(device, programs: list[cel.Program]) -> bool:
     return all(p.matches(raw) for p in programs)
 
 
-def _match_pool(pool, requests: list[_CompiledRequest]) -> list[DeviceRequest] | None:
-    """Match a pool against the device requests.
+def _match_member(remaining: list[int], devices: list, member: _CompiledMember) -> list[DeviceRequest] | None:
+    """Match one member's requests against a pool's remaining device counts.
 
     Returns the resolved claim: DRA DeviceRequests when the pool satisfies every
-    request AND at least one matched device is claim: DRA, or None when the pool
-    fails any request or matches only synthetic devices.
+    request AND at least one matched device is claim: DRA, or None when the
+    member fails any request or matches only synthetic devices. Decrements
+    `remaining` in place as requests consume device count.
 
-    A request matches a pool device when the device has enough UNCONSUMED count
-    to cover the request and every selector evaluates true against that device.
-    Each resolved DRA request becomes a distinct DeviceRequest in one
-    ResourceClaim, and DRA allocates distinct devices per request, so a device's
-    count is consumed as requests claim it: two requests cannot both be satisfied
-    by the same single-count device, and N requests against one device must fit
-    within that device's count. This accounting keeps us from accepting a pool
-    DRA can't actually satisfy.
+    A member's pods run on their own nodes, so a member's requests are matched
+    against the pool's per-node devices independently of other members. Within a
+    member, assignment is greedy in request order: each request takes the first
+    device that satisfies it and has count left, with no backtracking. (See the
+    module docstring on why greedy is exact for the request shapes that occur in
+    practice, and fails safe otherwise.)
 
-    A replica's serving workload binds its GPUs through this ResourceClaim, so a
-    pool that matches only synthetic devices (claim: Synthetic, matched for fleet
-    scheduling but never claimed) yields nothing to claim and is not a viable
-    host. Synthetic devices are co-selectors that refine placement alongside a
-    claimable device; a selector that resolves to synthetic devices alone leaves
-    the workload with no claim, so we reject the pool. The deployment then finds
-    no eligible pool and surfaces InsufficientCapacity. The ModelDeployment XRD
-    documents that a nodeSelector must match at least one claimable device.
-
-    Assignment is GREEDY in request order: each request takes the first device
-    that satisfies it and has count left, with no backtracking. Greedy is exact
-    when no device satisfies two different requests, and that holds for both
-    patterns that occur in practice. First, a workload asking for N of one device
-    is a single request, so nothing contends. Second, a workload asking for
-    different device DOMAINS (e.g. a GPU and a NIC) writes selectors that read
-    different attribute domains, so again no device satisfies two requests and
-    order can't starve either.
-
-    Greedy can falsely reject only when two requests' match sets OVERLAP on a
-    shared device kind - e.g. a broad request (memory >= 80Gi, matches an H100
-    and an H200) and a narrow one (an H200 specifically) against a pool holding
-    one of each. If the broad request takes the H200 first, the narrow one finds
-    nothing and we reject the pool, though broad->H100, narrow->H200 would have
-    fit. This needs one deployment to ask for multiple GPUs of deliberately
-    different specificity from one mixed-GPU pool, written as overlapping rather
-    than disjoint selectors - a shape no real workload writes (you'd name both
-    GPUs, or use one request with a count). It also fails SAFE: a false reject
-    surfaces as InsufficientCapacity, never an overcommit or a bad placement, and
-    the user can resolve it by making the selectors disjoint.
+    A member that resolves only synthetic devices (claim: Synthetic, matched for
+    fleet scheduling but never claimed) has nothing to claim, so we reject the
+    pool for that member: its pods would have no ResourceClaim to bind GPUs
+    through.
     """
-    devices = pool.devices or []
-    # Track remaining count per device by its index in the pool, so capacity
-    # consumed by an earlier request isn't offered again to a later one.
-    remaining = [int(d.count or 1) for d in devices]
     resolved: list[DeviceRequest] = []
-    for req in requests:
+    for req in member.requests:
         match = None
         for i, device in enumerate(devices):
             if remaining[i] < req.count:
@@ -262,12 +301,30 @@ def _match_pool(pool, requests: list[_CompiledRequest]) -> list[DeviceRequest] |
                     cel_selectors=req.cel_selectors,
                 )
             )
-    # Every request matched, but if none resolved to a claim: DRA device the
-    # replica would have no ResourceClaim to bind its GPUs through. Reject the
-    # pool rather than place a claimless workload.
     if not resolved:
         return None
     return resolved
+
+
+def _match_group(pool, group: _CompiledGroup) -> list[MemberPlacement] | None:
+    """Match a whole group against a pool.
+
+    Returns one MemberPlacement per member (in member order) when every member's
+    requests resolve against the pool, or None when any member fails. Each
+    member's pods occupy their own nodes, so members don't contend for one
+    node's devices: every member is matched against a fresh per-pool device
+    budget. (Two members CAN both ask for the pool's GPUs - they run on
+    different nodes of the same pool.)
+    """
+    devices = pool.devices or []
+    placements: list[MemberPlacement] = []
+    for member in group.members:
+        remaining = [int(d.count or 1) for d in devices]
+        resolved = _match_member(remaining, devices, member)
+        if resolved is None:
+            return None
+        placements.append(MemberPlacement(device_requests=resolved))
+    return placements
 
 
 def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str):
@@ -303,8 +360,8 @@ class _Ledger:
 
     Built by _build_ledger from published capacity minus the replicas already
     committed to each pool (see there for exactly which replicas count). The
-    fill phase then decrements it via consume() as it places each new replica,
-    which is what stops a single scheduling pass overcommitting one cluster.
+    fill phase then decrements it via consume() as it places each new replica's
+    groups, which is what stops a single scheduling pass overcommitting a pool.
     """
 
     free: dict[tuple[str, str], int]
@@ -331,23 +388,18 @@ def _build_ledger(
       * one of THIS deployment's RETAINED replicas - a placement we're keeping.
 
     It deliberately does NOT subtract this deployment's observed replicas that
-    were dropped from the retained set (cluster gone, or pinned pool no longer
-    matches the nodeSelector). Those are being deleted, so their nodes are
+    were dropped from the retained set (cluster gone, or a pinned pool no longer
+    matches the nodeSelectors). Those are being deleted, so their nodes are
     freeing up and must be available to the fill phase that re-places them -
     otherwise re-placement (delete-old + create-new) could never converge.
 
-    Every counted replica is charged at its OWN observed node cost (derived from
-    its spec.workers), not the deployment's current shape. A replica still
-    physically consumes whatever it was created with until it's rolled, and
-    editing workers without editing the nodeSelector doesn't re-roll it.
-
-    A replica pinned to a known pool is subtracted from that pool. One with no
-    pool pin (or naming a pool no longer published) can't be attributed to a
-    specific pool, so it's charged to EVERY pool on its cluster. That's
-    deliberately conservative: it can only make the gate decline to pack where
-    it technically could, never overcommit. In practice every replica this
-    function creates records its pool, so unattributed consumption is limited to
-    legacy replicas predating the pool pin.
+    Every counted replica is charged per group at its OWN observed node cost
+    (derived from its spec.workers), to the pool that group is pinned to. A
+    group pinned to a known pool is subtracted from that pool. One with no pool
+    pin (or naming a pool no longer published) can't be attributed to a specific
+    pool, so it's charged to EVERY pool on its cluster - deliberately
+    conservative: it can only make the gate decline to pack where it technically
+    could, never overcommit.
     """
     free: dict[tuple[str, str], int] = {}
     pools_by_cluster: dict[str, list[str]] = {}
@@ -362,7 +414,7 @@ def _build_ledger(
         # A real pool pin is charged to that pool; anything else (no pin, or a
         # pool no longer published) is unattributable and charged to every pool
         # on the cluster (conservative). Keying on pool_name's truthiness, not on
-        # dict membership, keeps an unpinned replica from ever colliding with a
+        # dict membership, keeps an unpinned group from ever colliding with a
         # published pool.
         if pool_name and (cluster_name, pool_name) in free:
             free[(cluster_name, pool_name)] -= nodes
@@ -381,7 +433,8 @@ def _build_ledger(
         # ones are freeing their nodes, and scaled-down ones are going away.
         if ours and (r.spec.clusterName, _replica_index(r)) not in retained_ids:
             continue
-        charge(r.spec.clusterName, r.spec.nodePoolName or "", topology_shape(r.spec.workers).nodes_per_replica)
+        for group in r.spec.workers:
+            charge(r.spec.clusterName, group.nodePoolName or "", _group_nodes(group))
 
     return _Ledger(free=free)
 
@@ -390,15 +443,17 @@ def _retain(
     deployment: mdv1alpha1.ModelDeployment,
     clusters_by_name: dict[str, icv1alpha1.InferenceCluster],
     all_replicas: list[mrv1alpha1.ModelReplica],
-    requests: list[_CompiledRequest],
+    groups: list[_CompiledGroup],
 ) -> list[Candidate]:
-    """Keep existing replicas whose cluster exists and pool still matches.
+    """Keep existing replicas whose cluster exists and pools still match.
 
     Returns one Candidate per retained replica, carrying its (cluster, index)
-    identity. A replica is dropped from the retained set (and so re-placed by
-    the fill phase) when its cluster is gone, or when its pinned pool no longer
-    satisfies the nodeSelector - the Kubernetes "template changed, roll the
-    replica" behavior. A degraded-but-present cluster is retained.
+    identity and the per-group placement re-resolved against the current
+    nodeSelectors. A replica is dropped from the retained set (and so re-placed
+    by the fill phase) when its cluster is gone, or when any group's pinned pool
+    no longer satisfies that group's nodeSelectors - the Kubernetes "template
+    changed, roll the replica" behavior. A degraded-but-present cluster is
+    retained.
     """
     retained: list[Candidate] = []
     seen: set[tuple[str, int]] = set()
@@ -412,7 +467,8 @@ def _retain(
         if identity in seen:
             continue
         cluster = clusters_by_name[cluster_name]
-        if not _pinned_pool_still_matches(r, cluster, requests):
+        placements = _retained_placements(r, cluster, groups)
+        if placements is None:
             continue
         seen.add(identity)
         retained.append(
@@ -420,101 +476,128 @@ def _retain(
                 name=cluster_name,
                 index=identity[1],
                 gateway_address=_gateway_address(cluster),
-                pool=r.spec.nodePoolName or "",
-                device_requests=_retained_requests(r, cluster, requests),
+                groups=placements,
             )
         )
     return retained
 
 
-def _pinned_pool_still_matches(
+def _retained_placements(
     replica: mrv1alpha1.ModelReplica,
     cluster: icv1alpha1.InferenceCluster,
-    requests: list[_CompiledRequest],
-) -> bool:
-    """Whether a retained replica's pinned pool still satisfies the requests.
+    groups: list[_CompiledGroup],
+) -> list[GroupPlacement] | None:
+    """Re-resolve a retained replica's groups against their pinned pools.
 
-    Modelplane follows Kubernetes here. A change to the deployment's nodeSelector
-    is a change to the deployment "template", so - like editing a Deployment's
-    Pod template - replicas that no longer match are re-placed (Kubernetes does a
-    rolling replacement; we drop the pin and let the fill phase pick a matching
-    pool). This is distinct from a pool's own device attributes drifting under a
+    Modelplane follows Kubernetes here. A change to the deployment's
+    nodeSelectors is a change to the deployment "template", so - like editing a
+    Deployment's Pod template - a replica whose pinned pool no longer matches is
+    re-placed (we drop the pin and let the fill phase pick a matching pool). This
+    is distinct from a pool's own device attributes drifting under a
     still-matching replica, which we leave pinned (Kubernetes'
     IgnoredDuringExecution: node-label drift does not evict a bound Pod).
 
-    Returns False (re-place) when:
-      * the replica carries no pool pin (it needs a real pool pin), or
-      * the pinned pool no longer exists on the cluster, or
-      * the pinned pool no longer satisfies the requests.
+    Each group is re-matched against the pool it's currently pinned to, using
+    the deployment's current group definition (matched by group name). Returns
+    one GroupPlacement per group when every group's pinned pool still matches,
+    or None (re-place the whole replica) when:
+      * a group carries no pool pin, or
+      * its pinned pool no longer exists on the cluster, or
+      * its pinned pool no longer satisfies the group's nodeSelectors, or
+      * the deployment no longer defines a group of that name.
+
+    A retained replica keeps its EXISTING groups' pins; the deployment's group
+    set is matched by name so an edit that adds, removes, or renames a group
+    re-places the replica (its observed groups no longer line up).
     """
-    pool_name = replica.spec.nodePoolName
-    if not pool_name:
-        return False
-    pool = _pool_by_name(cluster, pool_name)
-    if pool is None:
-        # Pinned pool is gone from the cluster's published capacity.
-        return False
-    return _match_pool(pool, requests) is not None
+    groups_by_name = {g.name: g for g in groups}
+    if len(replica.spec.workers) != len(groups):
+        return None
+    placements: list[GroupPlacement] = []
+    for observed in replica.spec.workers:
+        group = groups_by_name.get(observed.name)
+        if group is None:
+            return None
+        pool_name = observed.nodePoolName
+        if not pool_name:
+            return None
+        pool = _pool_by_name(cluster, pool_name)
+        if pool is None:
+            return None
+        members = _match_group(pool, group)
+        if members is None:
+            return None
+        placements.append(GroupPlacement(name=group.name, pool=pool_name, members=members))
+    return placements
 
 
-def _retained_requests(replica, cluster, requests: list[_CompiledRequest]) -> list[DeviceRequest]:
-    """Resolve the claim: DRA requests for a retained replica's pinned pool.
-
-    Only called for a replica _pinned_pool_still_matches already accepted, so the
-    pinned pool exists and yields at least one DRA request: _match_pool returns a
-    non-empty list here, never None. If that contract were ever broken the empty
-    result would surface as an XRD validation error in compose_replicas (which
-    requires deviceRequests), not as a silently claimless replica.
-    """
-    pool = _pool_by_name(cluster, replica.spec.nodePoolName)
-    return _match_pool(pool, requests) or []
-
-
-def _eligible_pool(
+def _place_groups(
     cluster: icv1alpha1.InferenceCluster,
-    shape: Shape,
-    requests: list[_CompiledRequest],
+    groups: list[_CompiledGroup],
     ledger: _Ledger,
-) -> tuple[str, list[DeviceRequest]] | None:
-    """Pick the first pool on a cluster that can host one more replica.
+) -> list[GroupPlacement] | None:
+    """Assign every group of one replica to a pool on this cluster.
 
-    A pool is eligible when it satisfies the nodeSelector requests AND has at
-    least nodes-per-replica free in the ledger (which already accounts for
-    replicas placed earlier in this pass). Pools are considered in published
-    order, which is deterministic. Returns (pool_name, resolved_requests) or
-    None if no pool on the cluster is eligible.
+    Each group is placed on the first pool that satisfies all its members and
+    has enough free nodes, against a TRIAL copy of this cluster's free capacity
+    so two groups of the same replica don't double-book one pool. Returns one
+    GroupPlacement per group (in deployment order) when every group fits, or
+    None when any group has no eligible pool - the replica can't be co-scheduled
+    here.
+
+    Groups are placed in deployment order, each greedily taking the first
+    eligible pool. Like device matching within a pool, this is greedy without
+    backtracking; in practice a replica's groups either share one large pool or
+    target disjoint pools (different hardware), so order doesn't starve a later
+    group. It fails safe: a false reject surfaces as InsufficientCapacity, never
+    an overcommit.
     """
-    for pool in cluster.status.gpuPools or []:
-        name = pool.name or ""
-        if ledger.available(cluster.metadata.name, name) < shape.nodes_per_replica:
-            continue
-        resolved = _match_pool(pool, requests)
-        if resolved is None:
-            continue
-        return name, resolved
-    return None
+    cluster_name = cluster.metadata.name
+    # Trial free counts for this cluster's pools, decremented as we place each
+    # group so a later group sees capacity an earlier one took.
+    trial = {
+        (cluster_name, pool.name or ""): ledger.available(cluster_name, pool.name or "")
+        for pool in cluster.status.gpuPools or []
+    }
+    placements: list[GroupPlacement] = []
+    for group in groups:
+        placed = None
+        for pool in cluster.status.gpuPools or []:
+            pool_name = pool.name or ""
+            if trial[(cluster_name, pool_name)] < group.nodes:
+                continue
+            members = _match_group(pool, group)
+            if members is None:
+                continue
+            trial[(cluster_name, pool_name)] -= group.nodes
+            placed = GroupPlacement(name=group.name, pool=pool_name, members=members)
+            break
+        if placed is None:
+            return None
+        placements.append(placed)
+    return placements
 
 
 def _fill(
-    shape: Shape,
+    groups: list[_CompiledGroup],
     clusters: list[icv1alpha1.InferenceCluster],
     retained: list[Candidate],
     ledger: _Ledger,
-    requests: list[_CompiledRequest],
     n: int,
 ) -> list[Candidate]:
     """Place n new replicas, spreading across clusters and packing when forced.
 
     Places one replica at a time. For each, the eligible clusters are those that
-    are Ready, have a nodeSelector-matching pool, and have free capacity in the
-    ledger. Among them we pick the cluster hosting the fewest of this
-    deployment's replicas so far (spread), breaking ties by cluster name for
-    determinism. A second replica lands on a cluster only once every other
-    eligible cluster already has its share; when capacity forces it, replicas
-    pack onto fewer clusters. Each placement decrements the ledger and takes the
-    lowest free index on its chosen cluster, so the next iteration sees the
-    updated load. Stops early (placing fewer than n) when no cluster can host
-    another replica - the caller surfaces that as InsufficientCapacity.
+    are Ready and can co-schedule every group on their pools given the ledger.
+    Among them we pick the cluster hosting the fewest of this deployment's
+    replicas so far (spread), breaking ties by cluster name for determinism. A
+    second replica lands on a cluster only once every other eligible cluster
+    already has its share; when capacity forces it, replicas pack onto fewer
+    clusters. Each placement decrements the ledger (per group, on the pools that
+    group took) and takes the lowest free index on its chosen cluster, so the
+    next iteration sees the updated load. Stops early (placing fewer than n)
+    when no cluster can host another replica - the caller surfaces that as
+    InsufficientCapacity.
     """
     # Per-cluster load and used indices seeded from retained replicas, so spread
     # accounts for what's already there and new indices don't collide.
@@ -526,10 +609,10 @@ def _fill(
 
     placed: list[Candidate] = []
     for _ in range(n):
-        choice = _pick_cluster(shape, clusters, load, ledger, requests)
+        choice = _pick_cluster(groups, clusters, load, ledger)
         if choice is None:
             break
-        cluster, pool_name, resolved = choice
+        cluster, placements = choice
         name = cluster.metadata.name
         index = _lowest_free_index(used_indices.setdefault(name, set()))
 
@@ -538,47 +621,50 @@ def _fill(
                 name=name,
                 index=index,
                 gateway_address=cluster.status.gateway.address,
-                pool=pool_name,
-                device_requests=resolved,
+                groups=placements,
             )
         )
 
         load[name] = load.get(name, 0) + 1
         used_indices[name].add(index)
-        ledger.consume(name, pool_name, shape.nodes_per_replica)
+        for gp in placements:
+            ledger.consume(name, gp.pool, _group_by_name(groups, gp.name).nodes)
 
     return placed
 
 
+def _group_by_name(groups: list[_CompiledGroup], name: str) -> _CompiledGroup:
+    """The compiled group with this name. Always present for a placement we built."""
+    return next(g for g in groups if g.name == name)
+
+
 def _pick_cluster(
-    shape: Shape,
+    groups: list[_CompiledGroup],
     clusters: list[icv1alpha1.InferenceCluster],
     load: dict[str, int],
     ledger: _Ledger,
-    requests: list[_CompiledRequest],
-) -> tuple[icv1alpha1.InferenceCluster, str, list[DeviceRequest]] | None:
+) -> tuple[icv1alpha1.InferenceCluster, list[GroupPlacement]] | None:
     """Pick the eligible cluster hosting the fewest of this deployment's replicas.
 
-    Eligible means Ready, with a nodeSelector-matching pool that has free
-    capacity in the ledger. The chosen key is (load on the cluster, cluster
-    name): fewest replicas first for spread, name for a deterministic tiebreak.
-    load already counts only this deployment's replicas (seeded from retained
-    plus those placed earlier in the pass). Returns (cluster, pool_name,
-    resolved_requests) or None when no cluster is eligible.
+    Eligible means Ready and able to co-schedule every group on its pools given
+    the ledger. The chosen key is (load on the cluster, cluster name): fewest
+    replicas first for spread, name for a deterministic tiebreak. load already
+    counts only this deployment's replicas (seeded from retained plus those
+    placed earlier in the pass). Returns (cluster, group placements) or None
+    when no cluster is eligible.
     """
     best = None
     best_key = None
     for cluster in clusters:
         if not _cluster_ready(cluster):
             continue
-        eligible = _eligible_pool(cluster, shape, requests, ledger)
-        if eligible is None:
+        placements = _place_groups(cluster, groups, ledger)
+        if placements is None:
             continue
-        pool_name, resolved = eligible
         key = (load.get(cluster.metadata.name, 0), cluster.metadata.name)
         if best_key is None or key < best_key:
             best_key = key
-            best = (cluster, pool_name, resolved)
+            best = (cluster, placements)
     return best
 
 
@@ -632,15 +718,14 @@ def schedule(
     fewer if not enough capacity exists.
     """
     desired = int(deployment.spec.replicas)
-    shape = topology_shape(deployment.spec.workers)
     clusters_by_name = {c.metadata.name: c for c in clusters}
 
-    # Compile every nodeSelector request's selectors once and reuse them across
-    # every pool of every cluster. Raises CELCompileError on a malformed
+    # Compile every group member's nodeSelector selectors once and reuse them
+    # across every pool of every cluster. Raises CELCompileError on a malformed
     # expression - the caller turns that into a condition.
-    requests = compile_requests(deployment)
+    groups = compile_groups(deployment)
 
-    retained = _retain(deployment, clusters_by_name, all_replicas, requests)
+    retained = _retain(deployment, clusters_by_name, all_replicas, groups)
 
     if len(retained) > desired:
         retained = _scale_down(retained, desired)
@@ -653,7 +738,7 @@ def schedule(
 
     placed: list[Candidate] = []
     if len(retained) < desired:
-        placed = _fill(shape, clusters, retained, ledger, requests, desired - len(retained))
+        placed = _fill(groups, clusters, retained, ledger, desired - len(retained))
 
     result = retained + placed
     result.sort(key=lambda c: (c.name, c.index))

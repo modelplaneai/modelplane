@@ -14,34 +14,31 @@ from models.ai.modelplane.modeldeployment import v1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# The resolved DRA device requests the scheduler stamps onto each ModelReplica,
-# derived from the deployment's nodeSelector matched against the cluster's GPU
-# device (deviceClassName gpu.nvidia.com).
+# The selector used on the deployment's single GPU request, echoed verbatim
+# into each resolved device request.
+_GPU_CEL = 'device.driver == "gpu.nvidia.com"'
+
+# The resolved DRA device requests the scheduler stamps onto each ModelReplica
+# member, derived from the deployment's nodeSelector matched against the
+# cluster's GPU device (deviceClassName gpu.nvidia.com).
 _DEVICE_REQUESTS = [
     {
         "name": "gpu",
         "deviceClassName": "gpu.nvidia.com",
         "count": 1,
-        "selectors": [{"cel": 'device.driver == "gpu.nvidia.com"'}],
+        "selectors": [{"cel": _GPU_CEL}],
     }
 ]
 
-# A one-replica deployment requesting a single GPU. Reused across most cases.
-_XR = v1alpha1.ModelDeployment(
-    metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-    spec=v1alpha1.SpecModel(
-        replicas=1,
-        nodeSelector=v1alpha1.NodeSelector(
-            devices=[
-                v1alpha1.Device(
-                    name="gpu",
-                    count=1,
-                    selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
-                ),
-            ],
-        ),
-        workers=v1alpha1.Workers(
-            topology=v1alpha1.Topology(tensor=1),
+# The single Standalone-member worker group every fixture deployment uses.
+_GROUP = v1alpha1.Worker(
+    name="main",
+    members=[
+        v1alpha1.Member(
+            role="Standalone",
+            nodeSelector=v1alpha1.NodeSelector(
+                devices=[v1alpha1.Device(name="gpu", count=1, selectors=[v1alpha1.Selector(cel=_GPU_CEL)])],
+            ),
             template=v1alpha1.Template(
                 spec=v1alpha1.Spec(
                     containers=[
@@ -54,7 +51,64 @@ _XR = v1alpha1.ModelDeployment(
                 ),
             ),
         ),
-    ),
+    ],
+)
+
+# A Standalone group with no container args, for the co-location case.
+_GROUP_NO_ARGS = v1alpha1.Worker(
+    name="main",
+    members=[
+        v1alpha1.Member(
+            role="Standalone",
+            nodeSelector=v1alpha1.NodeSelector(
+                devices=[v1alpha1.Device(name="gpu", count=1, selectors=[v1alpha1.Selector(cel=_GPU_CEL)])],
+            ),
+            template=v1alpha1.Template(
+                spec=v1alpha1.Spec(containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]),
+            ),
+        ),
+    ],
+)
+
+
+def _replica_workers(*, args: bool = True) -> list:
+    """The composed ModelReplica's spec.workers: one group on the matched pool
+    with the Standalone member's resolved device requests.
+
+    args toggles the engine container's --model arg, matching the fixture
+    deployment a want is built from.
+    """
+    container = {"name": "engine", "image": "vllm/vllm-openai:latest"}
+    if args:
+        container["args"] = ["--model=Qwen/Qwen3-0.6B"]
+    return [
+        {
+            "name": "main",
+            "replicas": 1,
+            "nodePoolName": "default",
+            "members": [
+                {
+                    # No count: it's only set on Worker members, and the XRD
+                    # deliberately has no schema default (defaults apply before
+                    # CEL validation, which forbids count on a Standalone).
+                    "role": "Standalone",
+                    "deviceRequests": _DEVICE_REQUESTS,
+                    "template": {"spec": {"containers": [container]}},
+                }
+            ],
+        }
+    ]
+
+
+# The composed spec.workers for the args-bearing fixture deployment, shared by
+# most wants below.
+_REPLICA_WORKERS = _replica_workers()
+_REPLICA_WORKERS_NO_ARGS = _replica_workers(args=False)
+
+# A one-replica deployment requesting a single GPU. Reused across most cases.
+_XR = v1alpha1.ModelDeployment(
+    metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+    spec=v1alpha1.SpecModel(replicas=1, workers=[_GROUP]),
 ).model_dump(exclude_none=True, mode="json")
 
 
@@ -119,24 +173,31 @@ _EXISTING_REPLICA = mrv1alpha1.ModelReplica(
     ),
     spec=mrv1alpha1.SpecModel(
         clusterName="cluster-a",
-        nodePoolName="default",
-        deviceRequests=[
-            mrv1alpha1.DeviceRequest(
-                name="gpu",
-                deviceClassName="gpu.nvidia.com",
-                count=1,
-                selectors=[mrv1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
+        workers=[
+            mrv1alpha1.Worker(
+                name="main",
+                replicas=1,
+                nodePoolName="default",
+                members=[
+                    mrv1alpha1.Member(
+                        role="Standalone",
+                        deviceRequests=[
+                            mrv1alpha1.DeviceRequest(
+                                name="gpu",
+                                deviceClassName="gpu.nvidia.com",
+                                count=1,
+                                selectors=[mrv1alpha1.Selector(cel=_GPU_CEL)],
+                            ),
+                        ],
+                        template=mrv1alpha1.Template(
+                            spec=mrv1alpha1.Spec(
+                                containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
+                            ),
+                        ),
+                    ),
+                ],
             ),
         ],
-        workers=mrv1alpha1.Workers(
-            count=1,
-            topology=mrv1alpha1.Topology(tensor=1, pipeline=1),
-            template=mrv1alpha1.Template(
-                spec=mrv1alpha1.Spec(
-                    containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
-                ),
-            ),
-        ),
     ),
 ).model_dump(exclude_none=True, mode="json")
 
@@ -208,55 +269,14 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             spec=v1alpha1.SpecModel(
                 replicas=1,
                 modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
-                nodeSelector=v1alpha1.NodeSelector(
-                    devices=[
-                        v1alpha1.Device(
-                            name="gpu",
-                            count=1,
-                            selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
-                        ),
-                    ],
-                ),
-                workers=v1alpha1.Workers(
-                    topology=v1alpha1.Topology(tensor=1),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(
-                            containers=[
-                                v1alpha1.Container(
-                                    name="engine",
-                                    image="vllm/vllm-openai:latest",
-                                    args=["--model=Qwen/Qwen3-0.6B"],
-                                ),
-                            ],
-                        ),
-                    ),
-                ),
+                workers=[_GROUP],
             ),
         ).model_dump(exclude_none=True, mode="json")
 
         # A two-replica deployment (no container args) for the co-location case.
         xr_two = v1alpha1.ModelDeployment(
             metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
-            spec=v1alpha1.SpecModel(
-                replicas=2,
-                nodeSelector=v1alpha1.NodeSelector(
-                    devices=[
-                        v1alpha1.Device(
-                            name="gpu",
-                            count=1,
-                            selectors=[v1alpha1.Selector(cel='device.driver == "gpu.nvidia.com"')],
-                        ),
-                    ],
-                ),
-                workers=v1alpha1.Workers(
-                    topology=v1alpha1.Topology(tensor=1),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(
-                            containers=[v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
-                        ),
-                    ),
-                ),
-            ),
+            spec=v1alpha1.SpecModel(replicas=2, workers=[_GROUP_NO_ARGS]),
         ).model_dump(exclude_none=True, mode="json")
 
         cases = [
@@ -287,23 +307,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "spec": {
                                                 "clusterName": "cluster-a",
-                                                "nodePoolName": "default",
-                                                "deviceRequests": _DEVICE_REQUESTS,
-                                                "workers": {
-                                                    "topology": {"tensor": 1, "pipeline": 1},
-                                                    "count": 1,
-                                                    "template": {
-                                                        "spec": {
-                                                            "containers": [
-                                                                {
-                                                                    "name": "engine",
-                                                                    "image": "vllm/vllm-openai:latest",
-                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                                }
-                                                            ],
-                                                        },
-                                                    },
-                                                },
+                                                "workers": _REPLICA_WORKERS,
                                             },
                                         }
                                     ),
@@ -455,23 +459,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "spec": {
                                                 "clusterName": "cluster-a",
-                                                "nodePoolName": "default",
-                                                "deviceRequests": _DEVICE_REQUESTS,
-                                                "workers": {
-                                                    "topology": {"tensor": 1, "pipeline": 1},
-                                                    "count": 1,
-                                                    "template": {
-                                                        "spec": {
-                                                            "containers": [
-                                                                {
-                                                                    "name": "engine",
-                                                                    "image": "vllm/vllm-openai:latest",
-                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                                }
-                                                            ],
-                                                        },
-                                                    },
-                                                },
+                                                "workers": _REPLICA_WORKERS,
                                             },
                                         }
                                     ),
@@ -549,23 +537,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "spec": {
                                                 "clusterName": "cluster-a",
-                                                "nodePoolName": "default",
-                                                "deviceRequests": _DEVICE_REQUESTS,
-                                                "workers": {
-                                                    "topology": {"tensor": 1, "pipeline": 1},
-                                                    "count": 1,
-                                                    "template": {
-                                                        "spec": {
-                                                            "containers": [
-                                                                {
-                                                                    "name": "engine",
-                                                                    "image": "vllm/vllm-openai:latest",
-                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                                }
-                                                            ],
-                                                        },
-                                                    },
-                                                },
+                                                "workers": _REPLICA_WORKERS,
                                             },
                                         }
                                     ),
@@ -622,23 +594,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "spec": {
                                                 "clusterName": "cluster-b",
-                                                "nodePoolName": "default",
-                                                "deviceRequests": _DEVICE_REQUESTS,
-                                                "workers": {
-                                                    "topology": {"tensor": 1, "pipeline": 1},
-                                                    "count": 1,
-                                                    "template": {
-                                                        "spec": {
-                                                            "containers": [
-                                                                {
-                                                                    "name": "engine",
-                                                                    "image": "vllm/vllm-openai:latest",
-                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                                }
-                                                            ],
-                                                        },
-                                                    },
-                                                },
+                                                "workers": _REPLICA_WORKERS,
                                             },
                                         }
                                     ),
@@ -716,24 +672,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "spec": {
                                                 "clusterName": "cluster-a",
-                                                "nodePoolName": "default",
-                                                "deviceRequests": _DEVICE_REQUESTS,
                                                 "modelCacheRef": {"name": "qwen"},
-                                                "workers": {
-                                                    "topology": {"tensor": 1, "pipeline": 1},
-                                                    "count": 1,
-                                                    "template": {
-                                                        "spec": {
-                                                            "containers": [
-                                                                {
-                                                                    "name": "engine",
-                                                                    "image": "vllm/vllm-openai:latest",
-                                                                    "args": ["--model=Qwen/Qwen3-0.6B"],
-                                                                }
-                                                            ],
-                                                        },
-                                                    },
-                                                },
+                                                "workers": _REPLICA_WORKERS,
                                             },
                                         }
                                     ),
@@ -811,22 +751,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "spec": {
                                                 "clusterName": "cluster-a",
-                                                "nodePoolName": "default",
-                                                "deviceRequests": _DEVICE_REQUESTS,
-                                                "workers": {
-                                                    "topology": {"tensor": 1, "pipeline": 1},
-                                                    "count": 1,
-                                                    "template": {
-                                                        "spec": {
-                                                            "containers": [
-                                                                {
-                                                                    "name": "engine",
-                                                                    "image": "vllm/vllm-openai:latest",
-                                                                }
-                                                            ],
-                                                        },
-                                                    },
-                                                },
+                                                "workers": _REPLICA_WORKERS_NO_ARGS,
                                             },
                                         }
                                     ),
@@ -847,22 +772,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                             "spec": {
                                                 "clusterName": "cluster-a",
-                                                "nodePoolName": "default",
-                                                "deviceRequests": _DEVICE_REQUESTS,
-                                                "workers": {
-                                                    "topology": {"tensor": 1, "pipeline": 1},
-                                                    "count": 1,
-                                                    "template": {
-                                                        "spec": {
-                                                            "containers": [
-                                                                {
-                                                                    "name": "engine",
-                                                                    "image": "vllm/vllm-openai:latest",
-                                                                }
-                                                            ],
-                                                        },
-                                                    },
-                                                },
+                                                "workers": _REPLICA_WORKERS_NO_ARGS,
                                             },
                                         }
                                     ),

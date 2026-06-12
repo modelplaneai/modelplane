@@ -23,20 +23,28 @@ metadata:
 spec:
   replicas: 2
   workers:
-    topology:
-      tensor: 1
-    template:
-      spec:
-        containers:
-        - name: engine
-          image: vllm/vllm-openai:v0.7.3
-          args:
-          - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.7.3
+            args:
+            - "--model=Qwen/Qwen2.5-0.5B-Instruct"
 ```
 
 This deploys two replicas of Qwen 2.5 0.5B and produces a unified,
 OpenAI-compatible endpoint. The scheduler picks which clusters the replicas run
-on based on GPU capacity and the deployment's topology.
+on based on GPU capacity and each worker group's device requests.
 
 ## How it works
 
@@ -47,7 +55,8 @@ Modelplane draws a clear boundary between two teams.
 organizational metadata via labels on clusters: tier, region, provider.
 
 **ML teams** create a `ModelDeployment` carrying everything needed to serve a
-model: the worker template, hardware topology, and replica count. Modelplane
+model: the worker groups (their members' engine templates and device requests)
+and replica count. Modelplane
 schedules each replica to a ready cluster with matching capacity, composes a
 `ModelReplica` per cluster, and creates `ModelEndpoints` for routing. A
 `ModelService` routes traffic across endpoints through a unified [Envoy Gateway]

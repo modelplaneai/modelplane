@@ -50,29 +50,37 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             ),
             spec=v1alpha1.SpecModel(
                 clusterName="cluster-a",
-                nodePoolName="frontier",
-                deviceRequests=[
-                    v1alpha1.DeviceRequest(
-                        name="gpu",
-                        deviceClassName="gpu.nvidia.com",
-                        count=1,
-                        selectors=[v1alpha1.Selector(cel=_GPU_CEL)],
+                workers=[
+                    v1alpha1.Worker(
+                        name="main",
+                        replicas=1,
+                        nodePoolName="frontier",
+                        members=[
+                            v1alpha1.Member(
+                                role="Standalone",
+                                deviceRequests=[
+                                    v1alpha1.DeviceRequest(
+                                        name="gpu",
+                                        deviceClassName="gpu.nvidia.com",
+                                        count=1,
+                                        selectors=[v1alpha1.Selector(cel=_GPU_CEL)],
+                                    ),
+                                ],
+                                template=v1alpha1.Template(
+                                    spec=v1alpha1.Spec(
+                                        containers=[
+                                            v1alpha1.Container(
+                                                name="engine",
+                                                image="vllm/vllm-openai:latest",
+                                                args=["--model=Qwen/Qwen3-0.6B"],
+                                            ),
+                                        ],
+                                    ),
+                                ),
+                            ),
+                        ],
                     ),
                 ],
-                workers=v1alpha1.Workers(
-                    topology=v1alpha1.Topology(tensor=1),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(
-                            containers=[
-                                v1alpha1.Container(
-                                    name="engine",
-                                    image="vllm/vllm-openai:latest",
-                                    args=["--model=Qwen/Qwen3-0.6B"],
-                                ),
-                            ],
-                        ),
-                    ),
-                ),
             ),
         ).model_dump(exclude_none=True, mode="json")
 
@@ -114,7 +122,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "model-serving": fnv1.Resource(
+                    "model-serving-main": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
@@ -137,20 +145,25 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "apiVersion": "apps/v1",
                                             "kind": "Deployment",
                                             "metadata": {
-                                                "name": "test-replica",
+                                                "name": resource.child_name("test-replica", "main"),
                                                 "namespace": "default",
                                             },
                                             "spec": {
                                                 "replicas": 1,
                                                 "selector": {
                                                     "matchLabels": {
-                                                        "modelplane.ai/serving": "test-replica",
+                                                        "modelplane.ai/workload": resource.child_name(
+                                                            "test-replica", "main"
+                                                        ),
                                                     },
                                                 },
                                                 "template": {
                                                     "metadata": {
                                                         "labels": {
                                                             "modelplane.ai/serving": "test-replica",
+                                                            "modelplane.ai/workload": resource.child_name(
+                                                                "test-replica", "main"
+                                                            ),
                                                         },
                                                     },
                                                     "spec": {
@@ -179,7 +192,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                             {
                                                                 "name": "devices",
                                                                 "resourceClaimTemplateName": resource.child_name(
-                                                                    "test-replica", "devices"
+                                                                    "test-replica", "main", "standalone", "devices"
                                                                 ),
                                                             },
                                                         ],
@@ -287,7 +300,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             }
                         ),
                     ),
-                    "resource-claim": fnv1.Resource(
+                    "resource-claim-main-standalone": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
                                 "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
@@ -303,7 +316,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "apiVersion": "resource.k8s.io/v1",
                                             "kind": "ResourceClaimTemplate",
                                             "metadata": {
-                                                "name": resource.child_name("test-replica", "devices"),
+                                                "name": resource.child_name(
+                                                    "test-replica", "main", "standalone", "devices"
+                                                ),
                                                 "namespace": "default",
                                             },
                                             "spec": {
@@ -443,7 +458,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         req4.CopyFrom(req1)
         # The workload Object as provider-kubernetes observes it back: applied
         # (atProvider.manifest populated) and Available (its derived Ready=True).
-        req4.observed.resources["model-serving"].CopyFrom(
+        req4.observed.resources["model-serving-main"].CopyFrom(
             fnv1.Resource(
                 resource=resource.dict_to_struct(
                     {
@@ -467,12 +482,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
         # The other three are observed simply by being present; their content
         # doesn't matter, only that the function can see them.
-        for key in ("model-service", "model-route", "resource-claim"):
+        for key in ("model-service", "model-route", "resource-claim-main-standalone"):
             req4.observed.resources[key].CopyFrom(fnv1.Resource(resource=structpb.Struct()))
 
         want4 = fnv1.RunFunctionResponse()
         want4.CopyFrom(want1)
-        for key in ("model-serving", "model-service", "model-route", "resource-claim"):
+        for key in ("model-serving-main", "model-service", "model-route", "resource-claim-main-standalone"):
             want4.desired.resources[key].ready = fnv1.READY_TRUE
         del want4.conditions[:]
         want4.conditions.extend(

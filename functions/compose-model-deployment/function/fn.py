@@ -177,33 +177,18 @@ class Composer:
     def compose_replicas(self, matched):
         """Compose a ModelReplica per matched cluster.
 
-        Each replica inherits the deployment's workers block verbatim
-        and is pinned to a specific cluster via spec.clusterName. Once
-        composed, the pin is stable - the scheduler retains the
-        assignment across reconciles. See scheduling.schedule for the
-        retain-then-place logic.
+        Each replica mirrors the deployment's worker groups with the scheduler's
+        per-group placement resolved onto them, and is pinned to a specific
+        cluster via spec.clusterName. Once composed, the pin is stable - the
+        scheduler retains the assignment across reconciles. See
+        scheduling.schedule for the retain-then-place logic.
         """
-        # Convert via model_dump because the MD and MR Workers types
-        # are different Pydantic classes (generated from different XRDs
-        # with the same schema).
-        workers = mrv1alpha1.Workers.model_validate(self.xr.spec.workers.model_dump(exclude_none=True))
+        # Index the deployment's groups by name so each placement (keyed by
+        # group name) can be joined with its template and member shape.
+        groups_by_name = {g.name: g for g in self.xr.spec.workers}
 
         for cluster_info in matched:
             replica_key = name.replica_key(cluster_info)
-
-            # Stamp the resolved claim: DRA device requests so the replica
-            # function can form a DRA ResourceClaim. The scheduler only places a
-            # replica on a pool that yields at least one claimable device, so
-            # this is always non-empty.
-            device_requests = [
-                mrv1alpha1.DeviceRequest(
-                    name=r.name,
-                    deviceClassName=r.device_class_name,
-                    count=r.count,
-                    selectors=[mrv1alpha1.Selector(cel=c) for c in r.cel_selectors],
-                )
-                for r in cluster_info.device_requests
-            ]
 
             replica = mrv1alpha1.ModelReplica(
                 metadata=metav1.ObjectMeta(
@@ -217,14 +202,51 @@ class Composer:
                 ),
                 spec=mrv1alpha1.SpecModel(
                     clusterName=cluster_info.name,
-                    nodePoolName=cluster_info.pool,
-                    deviceRequests=device_requests,
-                    workers=workers,
+                    workers=[self._replica_group(groups_by_name[gp.name], gp) for gp in cluster_info.groups],
                 ),
             )
             if self.xr.spec.modelCacheRef:
                 replica.spec.modelCacheRef = mrv1alpha1.ModelCacheRef(name=self.xr.spec.modelCacheRef.name)
             resource.update(self.rsp.desired.resources[replica_key], replica)
+
+    def _replica_group(self, group, placement):
+        """Build a ModelReplica worker group from a deployment group + placement.
+
+        The group keeps its name, replicas, and member templates verbatim; the
+        scheduler supplies the pool (nodePoolName) and each member's resolved
+        claim: DRA device requests. The placement's members line up with the
+        group's members in order. Every member yields at least one device
+        request (the scheduler only places a group on a pool that resolves a
+        claimable device per member), so deviceRequests is always non-empty.
+        """
+        members = []
+        for member, member_placement in zip(group.members, placement.members, strict=True):
+            device_requests = [
+                mrv1alpha1.DeviceRequest(
+                    name=r.name,
+                    deviceClassName=r.device_class_name,
+                    count=r.count,
+                    selectors=[mrv1alpha1.Selector(cel=c) for c in r.cel_selectors],
+                )
+                for r in member_placement.device_requests
+            ]
+            replica_member = mrv1alpha1.Member(
+                role=member.role,
+                deviceRequests=device_requests,
+                template=mrv1alpha1.Template.model_validate(member.template.model_dump(exclude_none=True)),
+            )
+            # Only a Worker carries count, and only when the user set one.
+            # Setting count=None explicitly would serialize a literal null into
+            # the composed manifest rather than omitting the field.
+            if member.count is not None:
+                replica_member.count = member.count
+            members.append(replica_member)
+        return mrv1alpha1.Worker(
+            name=group.name,
+            replicas=group.replicas,
+            nodePoolName=placement.pool,
+            members=members,
+        )
 
     def compose_endpoints(self, matched):
         """Compose one ModelEndpoint per matched replica.

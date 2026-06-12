@@ -41,6 +41,10 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
+class ModelCacheRef(BaseModel):
+    name: constr(min_length=1)
+
+
 class Selector(BaseModel):
     cel: constr(min_length=1, max_length=10240) | None = None
 
@@ -62,10 +66,6 @@ class DeviceRequest(BaseModel):
     """
     DRA CEL selectors copied verbatim from the nodeSelector request, ANDed in the DeviceRequest.
     """
-
-
-class ModelCacheRef(BaseModel):
-    name: constr(min_length=1)
 
 
 class Metadata(BaseModel):
@@ -118,15 +118,24 @@ class Template(BaseModel):
     spec: Spec | None = None
 
 
-class Topology(BaseModel):
-    pipeline: conint(ge=1) | None = 1
-    tensor: conint(ge=1)
-
-
-class Workers(BaseModel):
-    count: conint(ge=1) | None = 1
+class Member(BaseModel):
+    count: conint(ge=1, le=63) | None = None
+    deviceRequests: list[DeviceRequest] = Field(..., max_length=16, min_length=1)
+    """
+    Resolved DRA device requests for the group's matched pool. The parent ModelDeployment's compose function joins the member's nodeSelector requests with the matched InferenceClass devices and stamps the claim: DRA devices here. This function turns each into a DeviceRequest in a DRA ResourceClaim for the member's pods. At least one request is always present: the scheduler only pins a group to a pool that yields a claimable device, so every member's pods have a ResourceClaim to bind through.
+    """
+    role: Literal['Standalone', 'Leader', 'Worker'] | None = 'Standalone'
     template: Template
-    topology: Topology
+
+
+class Worker(BaseModel):
+    members: list[Member] = Field(..., max_length=2, min_length=1)
+    name: constr(min_length=1, max_length=63)
+    nodePoolName: constr(min_length=1)
+    """
+    Name of the node pool on the pinned InferenceCluster the scheduler selected for this group. The scheduler pins every group to a specific matching pool, so this is always set.
+    """
+    replicas: conint(ge=1, le=64) | None = 1
 
 
 class SpecModel(BaseModel):
@@ -138,19 +147,14 @@ class SpecModel(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    deviceRequests: list[DeviceRequest] = Field(..., max_length=16, min_length=1)
-    """
-    Resolved DRA device requests for the matched pool. The parent ModelDeployment's compose function joins the nodeSelector requests with the matched InferenceClass devices and stamps the claim: DRA devices here. This function turns each into a DeviceRequest in a DRA ResourceClaim for the serving pods. At least one request is always present: the scheduler only pins a replica to a pool that yields a claimable device, so the serving workload always has a ResourceClaim to bind through.
-    """
     modelCacheRef: ModelCacheRef | None = None
     """
-    Optional reference to a ModelCache mounted into the engine pod. Inherited verbatim from the parent ModelDeployment.
+    Optional reference to a ModelCache mounted into the engine pods. Inherited verbatim from the parent ModelDeployment.
     """
-    nodePoolName: constr(min_length=1)
+    workers: list[Worker] = Field(..., max_length=8, min_length=1)
     """
-    Name of the node pool on the pinned InferenceCluster the scheduler selected for this replica. The scheduler pins every replica to a specific matching pool, so this is always set.
+    The replica's worker groups, mirroring the parent ModelDeployment's workers with the scheduler's placement resolved onto each group. Each group carries the pool the scheduler pinned it to (nodePoolName) and, on each member, the DRA device requests resolved from that pool's InferenceClass devices (deviceRequests). The groups of one replica are co-scheduled onto a single cluster, but may land on different pools.
     """
-    workers: Workers
 
 
 class Condition(BaseModel):

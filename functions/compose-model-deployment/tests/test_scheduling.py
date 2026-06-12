@@ -13,7 +13,6 @@ import dataclasses
 import unittest
 
 from function import cel, scheduling
-from function.scheduling import Candidate, DeviceRequest
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
@@ -24,6 +23,9 @@ _MEM_141 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")
 _MEM_200 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("200Gi")) >= 0'
 _IB = 'device.attributes["nic.nvidia.com"].linkType == "infiniband"'
 
+# Default group name used by the single-group helpers below.
+_GROUP = "main"
+
 
 @dataclasses.dataclass
 class Case:
@@ -33,7 +35,7 @@ class Case:
     deployment: mdv1alpha1.ModelDeployment
     clusters: list[icv1alpha1.InferenceCluster]
     all_replicas: list[mrv1alpha1.ModelReplica]
-    want: list[Candidate]
+    want: list[scheduling.Candidate]
 
 
 def _request(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = None) -> mdv1alpha1.Device:
@@ -45,34 +47,63 @@ def _request(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = No
     )
 
 
+def _template():
+    return mdv1alpha1.Template(
+        spec=mdv1alpha1.Spec(
+            containers=[mdv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
+        ),
+    )
+
+
+def _node_selector(requests: list[mdv1alpha1.Device] | None) -> mdv1alpha1.NodeSelector:
+    return mdv1alpha1.NodeSelector(devices=requests if requests is not None else [_request()])
+
+
+def _group(
+    name: str = _GROUP,
+    *,
+    replicas: int = 1,
+    pipeline: int = 1,
+    requests: list[mdv1alpha1.Device] | None = None,
+) -> mdv1alpha1.Worker:
+    """A worker group.
+
+    pipeline == 1 is a single Standalone member; pipeline > 1 is a Leader plus a
+    Worker with (pipeline - 1) followers, so the group spans `pipeline` nodes.
+    Group replicas multiply that, matching the old node cost of pipeline * count.
+    """
+    if pipeline == 1:
+        members = [mdv1alpha1.Member(role="Standalone", nodeSelector=_node_selector(requests), template=_template())]
+    else:
+        members = [
+            mdv1alpha1.Member(role="Leader", nodeSelector=_node_selector(requests), template=_template()),
+            mdv1alpha1.Member(
+                role="Worker", count=pipeline - 1, nodeSelector=_node_selector(requests), template=_template()
+            ),
+        ]
+    return mdv1alpha1.Worker(name=name, replicas=replicas, members=members)
+
+
 def _deployment(
     name: str = "my-model",
     replicas: int = 1,
-    tensor: int = 1,
     pipeline: int = 1,
     count: int = 1,
     requests: list[mdv1alpha1.Device] | None = None,
+    groups: list[mdv1alpha1.Worker] | None = None,
 ):
-    """Construct a ModelDeployment with the given topology and device requests.
+    """Construct a ModelDeployment.
 
-    nodeSelector is required, so callers that don't care about pool matching get
-    a single default GPU request that any test pool's GPU device satisfies.
+    The single-group helpers map a node shape onto one group: pipeline sets the
+    group's node span (a Standalone, or a Leader plus a Worker) and count sets
+    the group's replicas, so node cost is pipeline * count. Multi-group cases
+    pass `groups` directly.
     """
+    if groups is None:
+        groups = [_group(replicas=count, pipeline=pipeline, requests=requests)]
     return mdv1alpha1.ModelDeployment(
         metadata=metav1.ObjectMeta(name=name, namespace="ml-team"),
-        spec=mdv1alpha1.SpecModel(
-            replicas=replicas,
-            nodeSelector=mdv1alpha1.NodeSelector(devices=requests if requests is not None else [_request()]),
-            workers=mdv1alpha1.Workers(
-                count=count,
-                topology=mdv1alpha1.Topology(tensor=tensor, pipeline=pipeline),
-                template=mdv1alpha1.Template(
-                    spec=mdv1alpha1.Spec(
-                        containers=[mdv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
-                    ),
-                ),
-            ),
-        ),
+        spec=mdv1alpha1.SpecModel(replicas=replicas, workers=groups),
     )
 
 
@@ -162,22 +193,59 @@ def _cluster(
     )
 
 
+def _replica_device_requests() -> list[mrv1alpha1.DeviceRequest]:
+    return [
+        mrv1alpha1.DeviceRequest(
+            name="gpu",
+            deviceClassName="gpu.nvidia.com",
+            count=1,
+            selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+        ),
+    ]
+
+
+def _replica_group(
+    name: str = _GROUP,
+    *,
+    pool: str = "default",
+    replicas: int = 1,
+    pipeline: int = 1,
+) -> mrv1alpha1.Worker:
+    """One group of an observed ModelReplica, with its pool pin and resolved requests."""
+    template = mrv1alpha1.Template(
+        spec=mrv1alpha1.Spec(containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]),
+    )
+    if pipeline == 1:
+        members = [
+            mrv1alpha1.Member(role="Standalone", deviceRequests=_replica_device_requests(), template=template),
+        ]
+    else:
+        members = [
+            mrv1alpha1.Member(role="Leader", deviceRequests=_replica_device_requests(), template=template),
+            mrv1alpha1.Member(
+                role="Worker", count=pipeline - 1, deviceRequests=_replica_device_requests(), template=template
+            ),
+        ]
+    return mrv1alpha1.Worker(name=name, replicas=replicas, nodePoolName=pool, members=members)
+
+
 def _replica(
     deployment_name: str,
     cluster_name: str,
     *,
     pool: str = "default",
     index: int = 0,
-    tensor: int = 1,
     pipeline: int = 1,
     count: int = 1,
+    groups: list[mrv1alpha1.Worker] | None = None,
 ) -> mrv1alpha1.ModelReplica:
     """Construct an observed ModelReplica pinned to a (cluster, index).
 
-    nodePoolName and deviceRequests are XRD-required, so every observed replica
-    carries them; the pool defaults to "default" for cases where the specific
-    pool isn't material.
+    Mirrors _deployment's single-group mapping: pipeline sets the group's node
+    span and count its replicas, so node cost is pipeline * count.
     """
+    if groups is None:
+        groups = [_replica_group(pool=pool, replicas=count, pipeline=pipeline)]
     return mrv1alpha1.ModelReplica(
         metadata=metav1.ObjectMeta(
             name=f"{deployment_name}-{cluster_name}-{index}",
@@ -188,27 +256,7 @@ def _replica(
                 "modelplane.ai/replica-index": str(index),
             },
         ),
-        spec=mrv1alpha1.SpecModel(
-            clusterName=cluster_name,
-            nodePoolName=pool,
-            deviceRequests=[
-                mrv1alpha1.DeviceRequest(
-                    name="gpu",
-                    deviceClassName="gpu.nvidia.com",
-                    count=1,
-                    selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
-                ),
-            ],
-            workers=mrv1alpha1.Workers(
-                count=count,
-                topology=mrv1alpha1.Topology(tensor=tensor, pipeline=pipeline),
-                template=mrv1alpha1.Template(
-                    spec=mrv1alpha1.Spec(
-                        containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
-                    ),
-                ),
-            ),
-        ),
+        spec=mrv1alpha1.SpecModel(clusterName=cluster_name, workers=groups),
     )
 
 
@@ -218,20 +266,17 @@ def _replica_with_pool(
     *,
     pool: str,
     index: int = 0,
-    tensor: int = 1,
     pipeline: int = 1,
     count: int = 1,
 ) -> mrv1alpha1.ModelReplica:
     """An observed ModelReplica pinned to a cluster AND a specific node pool."""
-    return _replica(
-        deployment_name, cluster_name, pool=pool, index=index, tensor=tensor, pipeline=pipeline, count=count
-    )
+    return _replica(deployment_name, cluster_name, pool=pool, index=index, pipeline=pipeline, count=count)
 
 
 # Convenience: the resolved DeviceRequest for a default GPU request matching a
 # default pool, used in expected candidates for nodeSelector cases.
-def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = None) -> DeviceRequest:
-    return DeviceRequest(
+def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = None) -> scheduling.DeviceRequest:
+    return scheduling.DeviceRequest(
         name=name,
         device_class_name="gpu.nvidia.com",
         count=count,
@@ -239,14 +284,37 @@ def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = N
     )
 
 
+def _placement(
+    *,
+    name: str = _GROUP,
+    pool: str = "default",
+    pipeline: int = 1,
+    members: list[scheduling.MemberPlacement] | None = None,
+    device_requests: list[scheduling.DeviceRequest] | None = None,
+) -> scheduling.GroupPlacement:
+    """An expected GroupPlacement.
+
+    For a single-member group, pass device_requests (or rely on the default
+    single-GPU request); pipeline > 1 expects a Leader plus Worker, each with
+    that request. Multi-member groups can also pass members directly.
+    """
+    if members is None:
+        member = scheduling.MemberPlacement(device_requests=device_requests or [_resolved()])
+        members = [member] if pipeline == 1 else [member, scheduling.MemberPlacement(device_requests=[_resolved()])]
+    return scheduling.GroupPlacement(name=name, pool=pool, members=members)
+
+
 # Convenience: build an expected Candidate defaulting to index 0, so the many
-# single-replica-per-cluster cases stay terse. Since nodeSelector is required,
-# a placed or retained replica resolves to the default pool's GPU request;
-# degraded/unplaced cases pass pool="" and device_requests=[] explicitly.
-def _cand(name: str, *, index: int = 0, **kwargs) -> Candidate:
-    kwargs.setdefault("pool", "default")
-    kwargs.setdefault("device_requests", [_resolved()])
-    return Candidate(name=name, index=index, **kwargs)
+# single-replica-per-cluster cases stay terse. A placed or retained replica
+# resolves to one group on the default pool with the default GPU request; a
+# degraded/unplaced cluster carries no gateway. Cases that need a specific pool,
+# request, or group layout pass `groups` explicitly.
+def _cand(
+    name: str, *, index: int = 0, pool: str = "default", device_requests=None, groups=None, **kwargs
+) -> scheduling.Candidate:
+    if groups is None:
+        groups = [_placement(pool=pool, device_requests=device_requests)]
+    return scheduling.Candidate(name=name, index=index, groups=groups, **kwargs)
 
 
 class TestSchedule(unittest.TestCase):
@@ -291,7 +359,7 @@ class TestSchedule(unittest.TestCase):
             ),
             Case(
                 name="multi-node deployment needs enough nodes",
-                deployment=_deployment(tensor=1, pipeline=4),
+                deployment=_deployment(pipeline=4),
                 clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=2)])],
                 all_replicas=[],
                 want=[],
@@ -460,9 +528,12 @@ class TestSchedule(unittest.TestCase):
                 deployment=_deployment(replicas=2, pipeline=4),
                 clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=6)])],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default", pipeline=2)],
+                # Both placed replicas carry the deployment's current pipeline=4
+                # group (Leader + Worker); the retained one is re-stamped to the
+                # new shape but still charged its observed 2 nodes in the ledger.
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", groups=[_placement(pipeline=4)]),
+                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", groups=[_placement(pipeline=4)]),
                 ],
             ),
             Case(

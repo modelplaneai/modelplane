@@ -17,14 +17,22 @@ metadata:
 spec:
   replicas: 2
   workers:
-    topology:
-      tensor: 1
-    template:
-      spec:
-        containers:
-        - name: engine
-          image: vllm/vllm-openai:v0.7.3
-          args:
-          - "--model=Qwen/Qwen2.5-0.5B-Instruct"
-          - "--served-model-name=qwen"
-          - "--max-model-len=2048"
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.7.3
+            args:
+            - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+            - "--served-model-name=qwen"
+            - "--max-model-len=2048"
