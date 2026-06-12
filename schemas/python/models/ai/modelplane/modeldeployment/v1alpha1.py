@@ -45,13 +45,6 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
-class ModelCacheRef(BaseModel):
-    name: constr(min_length=1)
-    """
-    ModelCache resource name in the same namespace.
-    """
-
-
 class Selector(BaseModel):
     cel: constr(min_length=1, max_length=10240) | None = None
     """
@@ -62,7 +55,7 @@ class Selector(BaseModel):
 class Device(BaseModel):
     count: conint(ge=1, le=64) | None = 1
     """
-    How many matching devices a node must have. For a GPU request this is the per-node GPU count (matches the worker topology's GPUs per node).
+    How many matching devices a node must have. For a GPU request this is the per-node GPU count.
     """
     name: constr(min_length=1, max_length=63)
     """
@@ -112,11 +105,11 @@ class EnvItem(BaseModel):
 class Container(BaseModel):
     args: list[str] | None = None
     """
-    Container args. For the engine container, these are passed through to the serving engine. Includes the model identifier (e.g. --model=...).
+    Container args, passed through to the serving engine. Includes the model identifier (e.g. --model=...) and any parallelism flags.
     """
     command: list[str] | None = None
     """
-    Container entrypoint override. When set on the engine container of a multi-node deployment, it bypasses the built-in vLLM/Ray bootstrap and runs on every gang pod — the command owns cross-node coordination against the LWS_* environment (LWS_WORKER_INDEX, LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for non-vLLM engines (e.g. SGLang).
+    Container entrypoint override, passed through verbatim. For a Leader or Worker, the command owns cross-node coordination and addresses the leader through $(MODELPLANE_LEADER_ADDRESS), which Modelplane injects into every engine container.
     """
     env: list[EnvItem] | None = None
     """
@@ -139,7 +132,7 @@ class ImagePullSecret(BaseModel):
 class Spec(BaseModel):
     containers: list[Container] = Field(..., max_length=1, min_length=1)
     """
-    Containers for the inference pod. v0.1 supports a single container, which must be named "engine" (the inference engine). Sidecar / multi-container support is tracked separately.
+    Containers for the engine pod. v0.1 supports a single container, which must be named "engine" (the inference engine). Sidecar / multi-container support is tracked separately.
     """
     imagePullSecrets: list[ImagePullSecret] | None = None
     """
@@ -150,37 +143,59 @@ class Spec(BaseModel):
 class Template(BaseModel):
     metadata: Metadata | None = None
     """
-    Metadata applied to inference pods. Useful for labels and annotations that control cluster-level features like service mesh injection.
+    Metadata applied to the member's pods. Useful for labels and annotations that control cluster-level features like service mesh injection.
     """
     spec: Spec | None = None
     """
-    Pod spec for inference workers.
+    Pod spec for this member's engine pods.
     """
 
 
-class Topology(BaseModel):
-    pipeline: conint(ge=1) | None = 1
+class Worker(BaseModel):
+    nodes: conint(ge=1, le=63)
     """
-    Nodes per worker. Defaults to 1 (single-node). Values greater than 1 enable multi-node serving via LeaderWorkerSet.
-    """
-    tensor: conint(ge=1)
-    """
-    GPUs per node. Required.
+    How many nodes this member spans - how big the engine is. Each node runs one follower pod, so the engine's gang spans 1 (the Leader) plus this many nodes. Defaults to 1.
     """
 
 
-class Workers(BaseModel):
-    count: conint(ge=1) | None = 1
+class Member(BaseModel):
+    nodeSelector: NodeSelector | None = None
     """
-    Number of workers per replica. Defaults to 1.
+    The per-node device request for this member's pods: what devices each pod needs from its node. The scheduler matches it against a candidate pool's InferenceClass devices (surfaced on InferenceCluster status.gpuPools) and places the member on a pool that satisfies it, preferring one pool for the whole engine and splitting members across pools only when no pool satisfies them all. claim: DRA requests also become DeviceRequests in the ResourceClaim the member's pods bind GPUs through. A GPU request's count is the GPUs per node. Omitted, the member claims no devices and schedules onto its engine's pool - a coordinator-only leader. At least one member per engine must carry a nodeSelector, and at least one member's requests must resolve to a claimable (claim: DRA) device; an engine that matches only synthetic devices leaves its pods nothing to claim, so the scheduler treats such a pool as ineligible and the deployment reports InsufficientCapacity.
+    """
+    role: Literal['Standalone', 'Leader', 'Worker'] | None = 'Standalone'
+    """
+    The member's role in the engine. Standalone is a lone pod; a Leader coordinates and serves while its Workers join it. Defaults to Standalone.
     """
     template: Template
     """
-    Pod template for inference workers. A curated subset of PodTemplateSpec.
+    Pod template for this member's engine pods. A curated subset of PodTemplateSpec.
     """
-    topology: Topology
+    worker: Worker | None = None
     """
-    Compute topology for one worker. The axes are independent and compose multiplicatively: GPUs per node = tensor, nodes per worker = pipeline.
+    Settings for a Worker member only. No schema default - the apiserver applies defaults before CEL validation, so defaulting this object would inject it onto Standalone and Leader members and trip the rule that forbids it.
+    """
+
+
+class Engine(BaseModel):
+    copies: conint(ge=1, le=64) | None = 1
+    """
+    How many identical copies of this engine to run per ModelReplica. A fixed number, sized once per deployment; scaling happens by adding ModelReplicas (spec.replicas), never by varying copies. Maps to the composed Deployment's or LeaderWorkerSet's replica count. Defaults to 1.
+    """
+    members: list[Member] = Field(..., max_length=2, min_length=1)
+    """
+    The engine's pods. Either a single Standalone member, or one Leader and one or more Workers.
+    """
+    name: constr(min_length=1, max_length=63)
+    """
+    Identifies the engine within the deployment. Becomes part of the composed workload names, so it must be a DNS label.
+    """
+
+
+class ModelCacheRef(BaseModel):
+    name: constr(min_length=1)
+    """
+    ModelCache resource name in the same namespace.
     """
 
 
@@ -193,21 +208,17 @@ class SpecModel(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
+    engines: list[Engine] = Field(..., max_length=8, min_length=1)
+    """
+    A ModelReplica's inference engines. An engine is one serving unit: a single Standalone pod, or a gang of a Leader and one or more Workers coordinating across nodes. Modelplane composes the whole array once per ModelReplica; an engine composes to a Deployment (Standalone) or a LeaderWorkerSet (Leader/Worker), but the workload kind is an implementation detail. Modelplane is unopinionated about the engine itself: parallelism, quantization, and KV transfer all live in the members' engine flags, written by the user, never injected by Modelplane.
+    """
     modelCacheRef: ModelCacheRef | None = None
     """
-    Reference to a ModelCache in the same namespace. Optional for single-node deployments; required for multi-node (workers.topology.pipeline > 1).
-    """
-    nodeSelector: NodeSelector
-    """
-    Node-level matching, a list of device requests mirroring a DRA ResourceClaim. The scheduler matches each request against a candidate pool's InferenceClass devices (surfaced on InferenceCluster status.gpuPools) and pins the replica to a pool that satisfies every request. claim: DRA requests also become DeviceRequests in the ResourceClaim the serving pods bind GPUs through. Required: GPUs bind only via DRA, so a deployment must declare the devices its model needs. At least one request must resolve to a claimable (claim: DRA) device; the serving workload binds its GPUs through the resulting ResourceClaim. Synthetic devices refine placement but are never claimed, so a nodeSelector that matches only synthetic devices leaves the workload nothing to claim - the scheduler treats such a pool as ineligible and the deployment reports InsufficientCapacity.
+    Reference to a ModelCache in the same namespace. Optional for single-node engines; required for any engine that spans multiple nodes (a Leader with one or more Workers), since every pod in the gang mounts it.
     """
     replicas: conint(ge=1, le=10)
     """
     How many ModelReplicas to fan out to. Each replica is a complete serving instance scheduled to one InferenceCluster.
-    """
-    workers: Workers
-    """
-    Compute shape of one worker. Modelplane composes one worker (or workers.count workers) per ModelReplica.
     """
 
 

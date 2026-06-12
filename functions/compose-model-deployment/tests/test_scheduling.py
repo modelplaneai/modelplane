@@ -13,7 +13,6 @@ import dataclasses
 import unittest
 
 from function import cel, scheduling
-from function.scheduling import Candidate, DeviceRequest
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
@@ -22,7 +21,11 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 # A GPU memory selector reused across cases.
 _MEM_141 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0'
 _MEM_200 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("200Gi")) >= 0'
+_MEM_LT_200 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("200Gi")) < 0'
 _IB = 'device.attributes["nic.nvidia.com"].linkType == "infiniband"'
+
+# Default engine name used by the single-engine helpers below.
+_ENGINE = "main"
 
 
 @dataclasses.dataclass
@@ -33,7 +36,7 @@ class Case:
     deployment: mdv1alpha1.ModelDeployment
     clusters: list[icv1alpha1.InferenceCluster]
     all_replicas: list[mrv1alpha1.ModelReplica]
-    want: list[Candidate]
+    want: list[scheduling.Candidate]
 
 
 def _request(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = None) -> mdv1alpha1.Device:
@@ -45,34 +48,68 @@ def _request(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = No
     )
 
 
+def _template():
+    return mdv1alpha1.Template(
+        spec=mdv1alpha1.Spec(
+            containers=[mdv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
+        ),
+    )
+
+
+def _node_selector(requests: list[mdv1alpha1.Device] | None) -> mdv1alpha1.NodeSelector:
+    return mdv1alpha1.NodeSelector(devices=requests if requests is not None else [_request()])
+
+
+def _engine(
+    name: str = _ENGINE,
+    *,
+    copies: int = 1,
+    pipeline: int = 1,
+    requests: list[mdv1alpha1.Device] | None = None,
+) -> mdv1alpha1.Engine:
+    """An engine of homogeneous members.
+
+    pipeline == 1 is a single Standalone member; pipeline > 1 is a Leader plus a
+    Worker spanning (pipeline - 1) nodes, so the engine spans `pipeline` nodes.
+    Engine copies multiply that, so node cost is pipeline * copies. Every member
+    carries the same nodeSelector; heterogeneous-member cases build their
+    members directly.
+    """
+    if pipeline == 1:
+        members = [mdv1alpha1.Member(role="Standalone", nodeSelector=_node_selector(requests), template=_template())]
+    else:
+        members = [
+            mdv1alpha1.Member(role="Leader", nodeSelector=_node_selector(requests), template=_template()),
+            mdv1alpha1.Member(
+                role="Worker",
+                worker=mdv1alpha1.Worker(nodes=pipeline - 1),
+                nodeSelector=_node_selector(requests),
+                template=_template(),
+            ),
+        ]
+    return mdv1alpha1.Engine(name=name, copies=copies, members=members)
+
+
 def _deployment(
     name: str = "my-model",
     replicas: int = 1,
-    tensor: int = 1,
     pipeline: int = 1,
     count: int = 1,
     requests: list[mdv1alpha1.Device] | None = None,
+    engines: list[mdv1alpha1.Engine] | None = None,
 ):
-    """Construct a ModelDeployment with the given topology and device requests.
+    """Construct a ModelDeployment.
 
-    nodeSelector is required, so callers that don't care about pool matching get
-    a single default GPU request that any test pool's GPU device satisfies.
+    The single-engine helpers map a node shape onto one engine: pipeline sets the
+    engine's node span (a Standalone, or a Leader plus a Worker) and count sets
+    the engine's copies, so node cost is pipeline * count. Multi-engine cases
+    pass `engines` directly.
     """
+    if engines is None:
+        engines = [_engine(copies=count, pipeline=pipeline, requests=requests)]
     return mdv1alpha1.ModelDeployment(
         metadata=metav1.ObjectMeta(name=name, namespace="ml-team"),
-        spec=mdv1alpha1.SpecModel(
-            replicas=replicas,
-            nodeSelector=mdv1alpha1.NodeSelector(devices=requests if requests is not None else [_request()]),
-            workers=mdv1alpha1.Workers(
-                count=count,
-                topology=mdv1alpha1.Topology(tensor=tensor, pipeline=pipeline),
-                template=mdv1alpha1.Template(
-                    spec=mdv1alpha1.Spec(
-                        containers=[mdv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
-                    ),
-                ),
-            ),
-        ),
+        spec=mdv1alpha1.SpecModel(replicas=replicas, engines=engines),
     )
 
 
@@ -162,22 +199,67 @@ def _cluster(
     )
 
 
+def _replica_device_requests() -> list[mrv1alpha1.DeviceRequest]:
+    return [
+        mrv1alpha1.DeviceRequest(
+            name="gpu",
+            deviceClassName="gpu.nvidia.com",
+            count=1,
+            selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
+        ),
+    ]
+
+
+def _replica_engine(
+    name: str = _ENGINE,
+    *,
+    pool: str = "default",
+    copies: int = 1,
+    pipeline: int = 1,
+) -> mrv1alpha1.Engine:
+    """One engine of an observed ModelReplica, with per-member pool pins and resolved requests."""
+    template = mrv1alpha1.Template(
+        spec=mrv1alpha1.Spec(containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")]),
+    )
+    if pipeline == 1:
+        members = [
+            mrv1alpha1.Member(
+                role="Standalone", nodePoolName=pool, deviceRequests=_replica_device_requests(), template=template
+            )
+        ]
+    else:
+        members = [
+            mrv1alpha1.Member(
+                role="Leader", nodePoolName=pool, deviceRequests=_replica_device_requests(), template=template
+            ),
+            mrv1alpha1.Member(
+                role="Worker",
+                worker=mrv1alpha1.Worker(nodes=pipeline - 1),
+                nodePoolName=pool,
+                deviceRequests=_replica_device_requests(),
+                template=template,
+            ),
+        ]
+    return mrv1alpha1.Engine(name=name, copies=copies, members=members)
+
+
 def _replica(
     deployment_name: str,
     cluster_name: str,
     *,
     pool: str = "default",
     index: int = 0,
-    tensor: int = 1,
     pipeline: int = 1,
     count: int = 1,
+    engines: list[mrv1alpha1.Engine] | None = None,
 ) -> mrv1alpha1.ModelReplica:
     """Construct an observed ModelReplica pinned to a (cluster, index).
 
-    nodePoolName and deviceRequests are XRD-required, so every observed replica
-    carries them; the pool defaults to "default" for cases where the specific
-    pool isn't material.
+    Mirrors _deployment's single-engine mapping: pipeline sets the engine's node
+    span and count its copies, so node cost is pipeline * count.
     """
+    if engines is None:
+        engines = [_replica_engine(pool=pool, copies=count, pipeline=pipeline)]
     return mrv1alpha1.ModelReplica(
         metadata=metav1.ObjectMeta(
             name=f"{deployment_name}-{cluster_name}-{index}",
@@ -188,27 +270,7 @@ def _replica(
                 "modelplane.ai/replica-index": str(index),
             },
         ),
-        spec=mrv1alpha1.SpecModel(
-            clusterName=cluster_name,
-            nodePoolName=pool,
-            deviceRequests=[
-                mrv1alpha1.DeviceRequest(
-                    name="gpu",
-                    deviceClassName="gpu.nvidia.com",
-                    count=1,
-                    selectors=[mrv1alpha1.Selector(cel=_MEM_141)],
-                ),
-            ],
-            workers=mrv1alpha1.Workers(
-                count=count,
-                topology=mrv1alpha1.Topology(tensor=tensor, pipeline=pipeline),
-                template=mrv1alpha1.Template(
-                    spec=mrv1alpha1.Spec(
-                        containers=[mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
-                    ),
-                ),
-            ),
-        ),
+        spec=mrv1alpha1.SpecModel(clusterName=cluster_name, engines=engines),
     )
 
 
@@ -218,20 +280,35 @@ def _replica_with_pool(
     *,
     pool: str,
     index: int = 0,
-    tensor: int = 1,
     pipeline: int = 1,
     count: int = 1,
 ) -> mrv1alpha1.ModelReplica:
     """An observed ModelReplica pinned to a cluster AND a specific node pool."""
-    return _replica(
-        deployment_name, cluster_name, pool=pool, index=index, tensor=tensor, pipeline=pipeline, count=count
-    )
+    return _replica(deployment_name, cluster_name, pool=pool, index=index, pipeline=pipeline, count=count)
+
+
+def _collision_replica(
+    object_name: str,
+    cluster_name: str,
+    *,
+    pool: str,
+    index: int = 0,
+) -> mrv1alpha1.ModelReplica:
+    """A my-model replica with an explicit object name, to force an identity clash.
+
+    Carries the my-model deployment label and a chosen (cluster, index) so it
+    collides with a normal my-model replica, while its distinct metadata.name is
+    the tiebreak the scheduler sorts on.
+    """
+    r = _replica_with_pool("my-model", cluster_name, pool=pool, index=index)
+    r.metadata.name = object_name
+    return r
 
 
 # Convenience: the resolved DeviceRequest for a default GPU request matching a
 # default pool, used in expected candidates for nodeSelector cases.
-def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = None) -> DeviceRequest:
-    return DeviceRequest(
+def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = None) -> scheduling.DeviceRequest:
+    return scheduling.DeviceRequest(
         name=name,
         device_class_name="gpu.nvidia.com",
         count=count,
@@ -239,14 +316,41 @@ def _resolved(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = N
     )
 
 
+def _placement(
+    *,
+    name: str = _ENGINE,
+    pool: str = "default",
+    device_requests: list[scheduling.DeviceRequest] | None = None,
+    pipeline: int = 1,
+) -> scheduling.EnginePlacement:
+    """An expected EnginePlacement: one member placement per member.
+
+    Mirrors _engine's member shape: pipeline == 1 is a single Standalone,
+    pipeline > 1 a Leader plus a Worker, all on the same pool with the same
+    resolved requests.
+    """
+    dr = device_requests if device_requests is not None else [_resolved()]
+    if pipeline == 1:
+        members = [scheduling.MemberPlacement(role="Standalone", pool=pool, device_requests=dr)]
+    else:
+        members = [
+            scheduling.MemberPlacement(role="Leader", pool=pool, device_requests=dr),
+            scheduling.MemberPlacement(role="Worker", pool=pool, device_requests=dr),
+        ]
+    return scheduling.EnginePlacement(name=name, members=members)
+
+
 # Convenience: build an expected Candidate defaulting to index 0, so the many
-# single-replica-per-cluster cases stay terse. Since nodeSelector is required,
-# a placed or retained replica resolves to the default pool's GPU request;
-# degraded/unplaced cases pass pool="" and device_requests=[] explicitly.
-def _cand(name: str, *, index: int = 0, **kwargs) -> Candidate:
-    kwargs.setdefault("pool", "default")
-    kwargs.setdefault("device_requests", [_resolved()])
-    return Candidate(name=name, index=index, **kwargs)
+# single-replica-per-cluster cases stay terse. A placed or retained replica
+# resolves to one engine on the default pool with the default GPU request; a
+# degraded/unplaced cluster carries no gateway. Cases that need a specific pool,
+# request, or engine layout pass `engines` explicitly.
+def _cand(
+    name: str, *, index: int = 0, pool: str = "default", device_requests=None, pipeline: int = 1, engines=None, **kwargs
+) -> scheduling.Candidate:
+    if engines is None:
+        engines = [_placement(pool=pool, device_requests=device_requests, pipeline=pipeline)]
+    return scheduling.Candidate(name=name, index=index, engines=engines, **kwargs)
 
 
 class TestSchedule(unittest.TestCase):
@@ -291,7 +395,7 @@ class TestSchedule(unittest.TestCase):
             ),
             Case(
                 name="multi-node deployment needs enough nodes",
-                deployment=_deployment(tensor=1, pipeline=4),
+                deployment=_deployment(pipeline=4),
                 clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=2)])],
                 all_replicas=[],
                 want=[],
@@ -460,9 +564,12 @@ class TestSchedule(unittest.TestCase):
                 deployment=_deployment(replicas=2, pipeline=4),
                 clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=6)])],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default", pipeline=2)],
+                # The retained replica is re-stamped to the deployment's current
+                # pipeline=4 shape but still charged its observed 2 nodes in the
+                # ledger.
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pipeline=4),
+                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pipeline=4),
                 ],
             ),
             Case(
@@ -549,6 +656,57 @@ class TestSchedule(unittest.TestCase):
                 all_replicas=[_replica("my-model", "cluster-a")],
                 want=[_cand(name="cluster-b", gateway_address="10.0.0.2", pool="default")],
             ),
+            Case(
+                name="another deployment pinned to a deleted pool consumes no capacity",
+                # other-model is pinned to pool "gone", which the cluster no
+                # longer publishes. Its pods are pinned to a node label no node
+                # carries, so they're unschedulable and occupy nothing. The one
+                # published node on "frontier" is therefore free for our replica.
+                # Charging the unattributable replica would wrongly report the
+                # cluster full.
+                deployment=_deployment(requests=[_request(name="gpu", cel_exprs=[_MEM_141])]),
+                clusters=[_cluster("cluster-a", pools=[_pool("frontier", nodes=1)])],
+                all_replicas=[_replica_with_pool("other-model", "cluster-a", pool="gone")],
+                want=[
+                    _cand(
+                        name="cluster-a",
+                        gateway_address="10.0.0.1",
+                        pool="frontier",
+                        device_requests=[_resolved()],
+                    )
+                ],
+            ),
+            Case(
+                name="colliding (cluster, index) retains deterministically by replica name",
+                # Two of our replicas collide on (cluster-a, index 0) with
+                # different pinned pools. Retain keeps the first by replica name
+                # (my-model-cluster-a-0 on "a" sorts before the "-dup" replica on
+                # "b"), independent of input order, so the schedule is a function
+                # of state not of delivery order. Both pools match, so either
+                # would be a valid placement - only determinism is under test.
+                deployment=_deployment(requests=[_request(name="gpu", cel_exprs=[_MEM_141])]),
+                clusters=[
+                    _cluster(
+                        "cluster-a",
+                        pools=[
+                            _pool("a", devices=[_gpu_device()]),
+                            _pool("b", devices=[_gpu_device()]),
+                        ],
+                    )
+                ],
+                all_replicas=[
+                    _collision_replica("my-model-cluster-a-0-dup", "cluster-a", pool="b", index=0),
+                    _replica_with_pool("my-model", "cluster-a", pool="a", index=0),
+                ],
+                want=[
+                    _cand(
+                        name="cluster-a",
+                        gateway_address="10.0.0.1",
+                        pool="a",
+                        device_requests=[_resolved()],
+                    )
+                ],
+            ),
         ]
 
         for case in cases:
@@ -588,6 +746,27 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 # Request 8 GPUs, pool device has only 4.
                 deployment=_deployment(requests=[_request(count=8, cel_exprs=[_MEM_141])]),
                 clusters=[_cluster("cluster-a", pools=[_pool("frontier", devices=[_gpu_device(count=4)])])],
+                all_replicas=[],
+                want=[],
+            ),
+            Case(
+                name="published device count of zero satisfies no request",
+                # A pool device published with count 0 must read as "none
+                # available", not default to 1. Regression: `d.count or 1`
+                # treated 0 as 1 and placed a replica whose ResourceClaim no
+                # device could satisfy. The status schema permits 0 even though
+                # an InferenceClass device count is floored at 1.
+                deployment=_deployment(requests=[_request(count=1, cel_exprs=[_MEM_141])]),
+                clusters=[_cluster("cluster-a", pools=[_pool("frontier", devices=[_gpu_device(count=0)])])],
+                all_replicas=[],
+                want=[],
+            ),
+            Case(
+                name="published pool node count of zero hosts nothing",
+                # An autoscaled-to-zero pool has a matching GPU device but no
+                # nodes, so it can host no replica.
+                deployment=_deployment(requests=[_request(count=1, cel_exprs=[_MEM_141])]),
+                clusters=[_cluster("cluster-a", pools=[_pool("frontier", nodes=0)])],
                 all_replicas=[],
                 want=[],
             ),
@@ -906,6 +1085,407 @@ class TestScheduleNodeSelector(unittest.TestCase):
         deployment = _deployment(requests=[_request(cel_exprs=["this is ) not valid ("])])
         with self.assertRaises(cel.CELCompileError):
             scheduling.schedule(deployment, [_cluster("cluster-a", pools=[_pool("frontier")])], [])
+
+
+def _gang(
+    leader_requests: list[mdv1alpha1.Device] | None,
+    worker_requests: list[mdv1alpha1.Device] | None,
+    *,
+    worker_nodes: int = 1,
+) -> mdv1alpha1.Engine:
+    """A Leader/Worker engine with per-member (possibly heterogeneous) selectors.
+
+    Either member's requests may be None, meaning that member carries no
+    nodeSelector and claims nothing.
+    """
+    leader = mdv1alpha1.Member(role="Leader", template=_template())
+    if leader_requests is not None:
+        leader.nodeSelector = _node_selector(leader_requests)
+    worker = mdv1alpha1.Member(role="Worker", worker=mdv1alpha1.Worker(nodes=worker_nodes), template=_template())
+    if worker_requests is not None:
+        worker.nodeSelector = _node_selector(worker_requests)
+    return mdv1alpha1.Engine(name=_ENGINE, members=[leader, worker])
+
+
+class TestScheduleMembers(unittest.TestCase):
+    """Tests for per-member placement: same-pool preference, splits, and
+    claimless members."""
+
+    def test_members(self) -> None:
+        cases = [
+            Case(
+                name="one pool satisfying every member is preferred over a split",
+                # The leader's request matches both pools; the worker's only
+                # matches big. Placing the leader greedily (pool order) would
+                # put it on small and split the gang; the whole-engine pass
+                # must put both members on big.
+                deployment=_deployment(
+                    engines=[
+                        _gang(
+                            [_request(cel_exprs=[_MEM_141])],
+                            [_request(cel_exprs=[_MEM_200])],
+                        )
+                    ]
+                ),
+                clusters=[
+                    _cluster(
+                        "cluster-a",
+                        pools=[
+                            _pool("small", devices=[_gpu_device(memory="141Gi")]),
+                            _pool("big", devices=[_gpu_device(memory="200Gi")]),
+                        ],
+                    )
+                ],
+                all_replicas=[],
+                want=[
+                    scheduling.Candidate(
+                        name="cluster-a",
+                        index=0,
+                        gateway_address="10.0.0.1",
+                        engines=[
+                            scheduling.EnginePlacement(
+                                name=_ENGINE,
+                                members=[
+                                    scheduling.MemberPlacement(
+                                        role="Leader", pool="big", device_requests=[_resolved()]
+                                    ),
+                                    scheduling.MemberPlacement(
+                                        role="Worker",
+                                        pool="big",
+                                        device_requests=[_resolved(cel_exprs=[_MEM_200])],
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            ),
+            Case(
+                name="members with disjoint requirements split across pools",
+                # The leader only fits big (>= 200Gi); the worker only fits
+                # small (< 200Gi). No single pool satisfies both, so the gang
+                # splits.
+                deployment=_deployment(
+                    engines=[
+                        _gang(
+                            [_request(cel_exprs=[_MEM_200])],
+                            [_request(cel_exprs=[_MEM_LT_200])],
+                        )
+                    ]
+                ),
+                clusters=[
+                    _cluster(
+                        "cluster-a",
+                        pools=[
+                            _pool("small", devices=[_gpu_device(memory="141Gi")]),
+                            _pool("big", devices=[_gpu_device(memory="200Gi")]),
+                        ],
+                    )
+                ],
+                all_replicas=[],
+                want=[
+                    scheduling.Candidate(
+                        name="cluster-a",
+                        index=0,
+                        gateway_address="10.0.0.1",
+                        engines=[
+                            scheduling.EnginePlacement(
+                                name=_ENGINE,
+                                members=[
+                                    scheduling.MemberPlacement(
+                                        role="Leader",
+                                        pool="big",
+                                        device_requests=[_resolved(cel_exprs=[_MEM_200])],
+                                    ),
+                                    scheduling.MemberPlacement(
+                                        role="Worker",
+                                        pool="small",
+                                        device_requests=[_resolved(cel_exprs=[_MEM_LT_200])],
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            ),
+            Case(
+                name="a member claimable elsewhere is not stranded on a synthetic match",
+                # On pool-a the leader's request matches only a Synthetic
+                # device (nothing to claim) while the worker claims, so the
+                # whole engine *could* land there - but pool-b satisfies the
+                # leader claimably. The engine must go to pool-b; placing on
+                # pool-a would run the leader without the GPU it asked for.
+                deployment=_deployment(
+                    engines=[
+                        _gang(
+                            [_request(cel_exprs=[_MEM_200])],
+                            [_request(cel_exprs=[_MEM_141])],
+                        )
+                    ]
+                ),
+                clusters=[
+                    _cluster(
+                        "cluster-a",
+                        pools=[
+                            _pool(
+                                "a",
+                                devices=[
+                                    _gpu_device(memory="141Gi"),
+                                    _gpu_device(name="syn", claim="Synthetic", memory="200Gi"),
+                                ],
+                            ),
+                            _pool("b", devices=[_gpu_device(memory="200Gi")]),
+                        ],
+                    )
+                ],
+                all_replicas=[],
+                want=[
+                    scheduling.Candidate(
+                        name="cluster-a",
+                        index=0,
+                        gateway_address="10.0.0.1",
+                        engines=[
+                            scheduling.EnginePlacement(
+                                name=_ENGINE,
+                                members=[
+                                    scheduling.MemberPlacement(
+                                        role="Leader",
+                                        pool="b",
+                                        device_requests=[_resolved(cel_exprs=[_MEM_200])],
+                                    ),
+                                    scheduling.MemberPlacement(
+                                        role="Worker",
+                                        pool="b",
+                                        device_requests=[_resolved(cel_exprs=[_MEM_141])],
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            ),
+            Case(
+                name="a member synthetic-only everywhere places claimless with its gang",
+                # The leader's request matches only the pool's synthetic NIC on
+                # every pool - deliberate (a selector that pins without
+                # claiming). It places claimless alongside the claiming worker.
+                deployment=_deployment(
+                    engines=[
+                        _gang(
+                            [_request(name="nic", cel_exprs=[_IB])],
+                            [_request(cel_exprs=[_MEM_141])],
+                        )
+                    ]
+                ),
+                clusters=[
+                    _cluster(
+                        "cluster-a",
+                        pools=[_pool("frontier", devices=[_gpu_device(), _nic_device()])],
+                    )
+                ],
+                all_replicas=[],
+                want=[
+                    scheduling.Candidate(
+                        name="cluster-a",
+                        index=0,
+                        gateway_address="10.0.0.1",
+                        engines=[
+                            scheduling.EnginePlacement(
+                                name=_ENGINE,
+                                members=[
+                                    scheduling.MemberPlacement(role="Leader", pool="frontier", device_requests=[]),
+                                    scheduling.MemberPlacement(
+                                        role="Worker", pool="frontier", device_requests=[_resolved()]
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            ),
+            Case(
+                name="a member that matches nowhere fails the whole replica",
+                deployment=_deployment(
+                    engines=[
+                        _gang(
+                            [_request(cel_exprs=[_MEM_141])],
+                            [_request(cel_exprs=[_MEM_200])],
+                        )
+                    ]
+                ),
+                clusters=[_cluster("cluster-a", pools=[_pool("default", devices=[_gpu_device(memory="141Gi")])])],
+                all_replicas=[],
+                want=[],
+            ),
+            Case(
+                name="a claimless leader rides along on its gang's pool at zero cost",
+                # The leader carries no nodeSelector: it claims nothing, follows
+                # the worker's pool, and costs no nodes - the 1-node pool fits
+                # the whole gang because only the worker occupies a node.
+                deployment=_deployment(engines=[_gang(None, [_request(cel_exprs=[_MEM_141])])]),
+                clusters=[_cluster("cluster-a", pools=[_pool("frontier", nodes=1)])],
+                all_replicas=[],
+                want=[
+                    scheduling.Candidate(
+                        name="cluster-a",
+                        index=0,
+                        gateway_address="10.0.0.1",
+                        engines=[
+                            scheduling.EnginePlacement(
+                                name=_ENGINE,
+                                members=[
+                                    scheduling.MemberPlacement(role="Leader", pool="frontier", device_requests=[]),
+                                    scheduling.MemberPlacement(
+                                        role="Worker", pool="frontier", device_requests=[_resolved()]
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            ),
+            Case(
+                name="a retained replica's claimless member keeps its pin",
+                deployment=_deployment(engines=[_gang(None, [_request(cel_exprs=[_MEM_141])])]),
+                clusters=[_cluster("cluster-a", pools=[_pool("frontier", nodes=1)])],
+                all_replicas=[
+                    _replica(
+                        "my-model",
+                        "cluster-a",
+                        engines=[
+                            mrv1alpha1.Engine(
+                                name=_ENGINE,
+                                members=[
+                                    mrv1alpha1.Member(
+                                        role="Leader",
+                                        nodePoolName="frontier",
+                                        template=mrv1alpha1.Template(
+                                            spec=mrv1alpha1.Spec(
+                                                containers=[
+                                                    mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")
+                                                ]
+                                            )
+                                        ),
+                                    ),
+                                    mrv1alpha1.Member(
+                                        role="Worker",
+                                        worker=mrv1alpha1.Worker(nodes=1),
+                                        nodePoolName="frontier",
+                                        deviceRequests=_replica_device_requests(),
+                                        template=mrv1alpha1.Template(
+                                            spec=mrv1alpha1.Spec(
+                                                containers=[
+                                                    mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")
+                                                ]
+                                            )
+                                        ),
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+                want=[
+                    scheduling.Candidate(
+                        name="cluster-a",
+                        index=0,
+                        gateway_address="10.0.0.1",
+                        engines=[
+                            scheduling.EnginePlacement(
+                                name=_ENGINE,
+                                members=[
+                                    scheduling.MemberPlacement(role="Leader", pool="frontier", device_requests=[]),
+                                    scheduling.MemberPlacement(
+                                        role="Worker", pool="frontier", device_requests=[_resolved()]
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            ),
+            Case(
+                name="another deployment's claimless member consumes no capacity",
+                # other-model's gang occupies only its worker's node: its
+                # claimless leader shares that node. The 2-node pool has 1 node
+                # free, so our 1-node deployment fits. Charging the claimless
+                # leader a node would wrongly report insufficient capacity.
+                deployment=_deployment(),
+                clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=2)])],
+                all_replicas=[
+                    _replica(
+                        "other-model",
+                        "cluster-a",
+                        engines=[
+                            mrv1alpha1.Engine(
+                                name="main",
+                                members=[
+                                    mrv1alpha1.Member(
+                                        role="Leader",
+                                        nodePoolName="default",
+                                        template=mrv1alpha1.Template(
+                                            spec=mrv1alpha1.Spec(
+                                                containers=[
+                                                    mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")
+                                                ]
+                                            )
+                                        ),
+                                    ),
+                                    mrv1alpha1.Member(
+                                        role="Worker",
+                                        worker=mrv1alpha1.Worker(nodes=1),
+                                        nodePoolName="default",
+                                        deviceRequests=_replica_device_requests(),
+                                        template=mrv1alpha1.Template(
+                                            spec=mrv1alpha1.Spec(
+                                                containers=[
+                                                    mrv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")
+                                                ]
+                                            )
+                                        ),
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+            ),
+            Case(
+                name="a member shape change re-places the replica",
+                # The deployment grew a Worker (Standalone -> Leader+Worker).
+                # The observed single-member replica no longer lines up, so it
+                # is re-placed with the new shape.
+                deployment=_deployment(engines=[_gang([_request()], [_request()])]),
+                clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=4)])],
+                all_replicas=[_replica("my-model", "cluster-a")],
+                want=[
+                    scheduling.Candidate(
+                        name="cluster-a",
+                        index=0,
+                        gateway_address="10.0.0.1",
+                        engines=[
+                            scheduling.EnginePlacement(
+                                name=_ENGINE,
+                                members=[
+                                    scheduling.MemberPlacement(
+                                        role="Leader", pool="default", device_requests=[_resolved()]
+                                    ),
+                                    scheduling.MemberPlacement(
+                                        role="Worker", pool="default", device_requests=[_resolved()]
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            ),
+        ]
+
+        for case in cases:
+            with self.subTest(case.name):
+                got = scheduling.schedule(case.deployment, case.clusters, case.all_replicas)
+                self.assertEqual(case.want, got, f"{case.name}: -want, +got")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
 """Tests for compose-model-replica backends.
 
-Backend manifests are asserted with a `Case` table (matching the convention in
-test_fn.py): each case builds a backend from a ModelReplica and compares the
-composed manifests to a full `want`. Backend selection and the Dynamo stub are
-dispatch/behaviour tests, not manifest comparisons, so they stay as focused
-methods below the table.
+A backend builds the workload (Deployment or LeaderWorkerSet) and the
+ResourceClaimTemplates for one worker engine; the shared Service and HTTPRoute
+that front a replica's engines are built by base.serving_resources. Manifests are
+asserted with a `Case` table: each case builds an engine's backend and compares
+the composed manifests to a full `want`. Backend selection, serving, and the
+Dynamo stub are dispatch/behaviour tests below the table.
 """
 
 import dataclasses
@@ -17,8 +18,9 @@ from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 _SERVING = "modelplane.ai/serving"
+_WORKLOAD = "modelplane.ai/workload"
 _ROLE = "modelplane.ai/lws-role"
-
+_LEADER_ENV = {"name": "MODELPLANE_LEADER_ADDRESS", "value": "$(LWS_LEADER_ADDRESS)"}
 
 # A GPU device request (claim: DRA), as compose-model-deployment stamps it.
 _GPU_CEL = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
@@ -33,7 +35,15 @@ def _gpu_request(count):
     )
 
 
-def _replica(name="r", *, tensor=1, pipeline=1, args=None, command=None, namespace="ml-team", device_requests=None):
+def _standalone_engine(
+    name="main",
+    *,
+    copies=1,
+    args=None,
+    command=None,
+    device_requests=None,
+):
+    """A single Standalone-member engine."""
     container = v1alpha1.Container(
         name="engine",
         image="vllm/vllm-openai:latest",
@@ -41,28 +51,89 @@ def _replica(name="r", *, tensor=1, pipeline=1, args=None, command=None, namespa
     )
     if command is not None:
         container.command = command
-    # nodePoolName and deviceRequests are XRD-required: compose-model-deployment
-    # only composes a replica it has pinned to a matching pool with a claimable
-    # device, so a replica always carries both.
-    spec = v1alpha1.SpecModel(
-        clusterName="cluster-a",
-        nodePoolName="frontier",
-        deviceRequests=device_requests if device_requests is not None else [_gpu_request(1)],
-        workers=v1alpha1.Workers(
-            count=1,
-            topology=v1alpha1.Topology(tensor=tensor, pipeline=pipeline),
-            template=v1alpha1.Template(spec=v1alpha1.Spec(containers=[container])),
-        ),
+    return v1alpha1.Engine(
+        name=name,
+        copies=copies,
+        members=[
+            v1alpha1.Member(
+                role="Standalone",
+                nodePoolName="frontier",
+                deviceRequests=device_requests if device_requests is not None else [_gpu_request(1)],
+                template=v1alpha1.Template(spec=v1alpha1.Spec(containers=[container])),
+            ),
+        ],
     )
-    return v1alpha1.ModelReplica(metadata=metav1.ObjectMeta(name=name, namespace=namespace), spec=spec)
 
 
-def _claim_template(name, count):
-    """The ResourceClaimTemplate manifest a replica's device requests produce."""
+def _gang_engine(
+    name="main",
+    *,
+    copies=1,
+    nodes=1,
+    leader_args=None,
+    leader_command=None,
+    worker_args=None,
+    worker_command=None,
+    leader_device_requests=None,
+    leader_pool="frontier",
+):
+    """A Leader + Worker engine.
+
+    The members carry their own pool pins and device requests, defaulting to a
+    homogeneous gang on one pool. leader_device_requests=[] makes the leader
+    claimless (a coordinator-only leader); leader_pool moves it to another
+    pool.
+    """
+
+    def member(role, nodes, args, command, device_requests, pool):
+        container = v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")
+        if args is not None:
+            container.args = args
+        if command is not None:
+            container.command = command
+        kwargs = {
+            "role": role,
+            "nodePoolName": pool,
+            "template": v1alpha1.Template(spec=v1alpha1.Spec(containers=[container])),
+        }
+        if device_requests:
+            kwargs["deviceRequests"] = device_requests
+        if nodes is not None:
+            kwargs["worker"] = v1alpha1.Worker(nodes=nodes)
+        return v1alpha1.Member(**kwargs)
+
+    leader_requests = leader_device_requests if leader_device_requests is not None else [_gpu_request(8)]
+    return v1alpha1.Engine(
+        name=name,
+        copies=copies,
+        members=[
+            member("Leader", None, leader_args, leader_command, leader_requests, leader_pool),
+            member("Worker", nodes, worker_args, worker_command, [_gpu_request(8)], "frontier"),
+        ],
+    )
+
+
+def _replica(name="r", *, namespace="ml-team", engines=None):
+    if engines is None:
+        engines = [_standalone_engine()]
+    return v1alpha1.ModelReplica(
+        metadata=metav1.ObjectMeta(name=name, namespace=namespace),
+        spec=v1alpha1.SpecModel(clusterName="cluster-a", engines=engines),
+    )
+
+
+# The composed workload name for the default replica "r" / engine "main".
+# Always engine-qualified, and so always distinct from the replica name the
+# serving Service uses - see base.engine_name on why that matters for LWS.
+_WORKLOAD_NAME = resource.child_name("r", "main")
+
+
+def _claim_template(count, *, replica="r", engine="main", role="standalone"):
+    """The ResourceClaimTemplate manifest a member's device requests produce."""
     return {
         "apiVersion": "resource.k8s.io/v1",
         "kind": "ResourceClaimTemplate",
-        "metadata": {"name": resource.child_name(name, "devices"), "namespace": "default"},
+        "metadata": {"name": resource.child_name(replica, engine, role, "devices"), "namespace": "default"},
         "spec": {
             "spec": {
                 "devices": {
@@ -92,9 +163,11 @@ _CLUSTER = icv1alpha1.InferenceCluster(
     status=icv1alpha1.Status(providerConfigRef=icv1alpha1.ProviderConfigRef(name="cluster-a-pc")),
 )
 
+_PC = "cluster-a-pc"
+
 
 def _route(name):
-    """The HTTPRoute is identical across backends — replica-named, prefix-stripped."""
+    """The replica's HTTPRoute — replica-named, prefix-stripped."""
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "HTTPRoute",
@@ -117,16 +190,25 @@ def _route(name):
     }
 
 
+def _service(name):
+    return {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": name, "namespace": "default"},
+        "spec": {"selector": {_SERVING: name}, "ports": [{"port": 80, "targetPort": 8000}]},
+    }
+
+
 _NATIVE_WANT = {
-    "model-serving": {
+    "model-serving-main": {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
-        "metadata": {"name": "r", "namespace": "default"},
+        "metadata": {"name": _WORKLOAD_NAME, "namespace": "default"},
         "spec": {
             "replicas": 1,
-            "selector": {"matchLabels": {_SERVING: "r"}},
+            "selector": {"matchLabels": {_WORKLOAD: _WORKLOAD_NAME}},
             "template": {
-                "metadata": {"labels": {_SERVING: "r"}},
+                "metadata": {"labels": {_SERVING: "r", _WORKLOAD: _WORKLOAD_NAME}},
                 "spec": {
                     "containers": [
                         {
@@ -146,32 +228,38 @@ _NATIVE_WANT = {
                     "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
                     "nodeSelector": {"modelplane.ai/pool": "frontier"},
                     "resourceClaims": [
-                        {"name": "devices", "resourceClaimTemplateName": resource.child_name("r", "devices")}
+                        {
+                            "name": "devices",
+                            "resourceClaimTemplateName": resource.child_name("r", "main", "standalone", "devices"),
+                        }
                     ],
                     "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
                 },
             },
         },
     },
-    "model-service": {
-        "apiVersion": "v1",
-        "kind": "Service",
-        "metadata": {"name": "r", "namespace": "default"},
-        "spec": {"selector": {_SERVING: "r"}, "ports": [{"port": 80, "targetPort": 8000}]},
-    },
-    "model-route": _route("r"),
-    "resource-claim": _claim_template("r", 1),
+    "resource-claim-main-standalone": _claim_template(1),
 }
+
+
+def _claims(role):
+    """The pod-level claim referencing a member's ResourceClaimTemplate."""
+    return [
+        {
+            "name": "devices",
+            "resourceClaimTemplateName": resource.child_name("r", "main", role, "devices"),
+        }
+    ]
 
 
 def _lws(leader_container, worker_container):
     node_selector = {"modelplane.ai/pool": "frontier"}
-    claims = [{"name": "devices", "resourceClaimTemplateName": resource.child_name("r", "devices")}]
+
     tolerations = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
     return {
         "apiVersion": "leaderworkerset.x-k8s.io/v1",
         "kind": "LeaderWorkerSet",
-        "metadata": {"name": "r", "namespace": "default"},
+        "metadata": {"name": _WORKLOAD_NAME, "namespace": "default"},
         "spec": {
             "replicas": 1,
             "leaderWorkerTemplate": {
@@ -182,17 +270,16 @@ def _lws(leader_container, worker_container):
                         "containers": [leader_container],
                         "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
                         "nodeSelector": node_selector,
-                        "resourceClaims": claims,
+                        "resourceClaims": _claims("leader"),
                         "tolerations": tolerations,
                     },
                 },
                 "workerTemplate": {
-                    "metadata": {"labels": {_SERVING: "r"}},
                     "spec": {
                         "containers": [worker_container],
                         "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
                         "nodeSelector": node_selector,
-                        "resourceClaims": claims,
+                        "resourceClaims": _claims("worker"),
                         "tolerations": tolerations,
                     },
                 },
@@ -201,16 +288,18 @@ def _lws(leader_container, worker_container):
     }
 
 
-def _engine(command, *, serving, args=None):
+def _engine(*, serving, args=None, command=None, env=None):
     c = {
         "name": "engine",
         "image": "vllm/vllm-openai:latest",
         "resources": {"claims": [{"name": "devices"}]},
         "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
-        "command": command,
     }
+    if command is not None:
+        c["command"] = command
     if args is not None:
         c["args"] = args
+    c["env"] = env if env is not None else [_LEADER_ENV]
     if serving:
         c["ports"] = [{"containerPort": 8000}]
         c["readinessProbe"] = {
@@ -221,44 +310,23 @@ def _engine(command, *, serving, args=None):
     return c
 
 
-# vLLM bootstrap: args folded into the leader command (consumed as "$@"); worker
-# just joins the Ray cluster.
-_LLMD_VLLM_LEADER_CMD = [
+# A multi-node engine with verbatim leader/worker commands - no flag injection,
+# no bootstrap. The follower addresses the leader through
+# $(MODELPLANE_LEADER_ADDRESS).
+_LEADER_CMD = [
     "/bin/sh",
     "-c",
-    llmd._LEADER_BOOTSTRAP,
-    "vllm",
-    "--model=meta-llama/Llama-3.1-405B",
-    "--tensor-parallel-size=8",
-    "--pipeline-parallel-size=2",
+    "ray start --head --port=6379; exec vllm serve --model=meta-llama/Llama-3.1-405B "
+    "--tensor-parallel-size=8 --pipeline-parallel-size=2 --port=8000",
 ]
-_LLMD_VLLM_WANT = {
-    "model-serving": _lws(
-        _engine(_LLMD_VLLM_LEADER_CMD, serving=True),
-        _engine(["/bin/sh", "-c", llmd._WORKER_BOOTSTRAP], serving=False),
+_WORKER_CMD = ["/bin/sh", "-c", "exec ray start --address=$(MODELPLANE_LEADER_ADDRESS):6379 --block"]
+_LLMD_WANT = {
+    "model-serving-main": _lws(
+        _engine(serving=True, command=_LEADER_CMD),
+        _engine(serving=False, command=_WORKER_CMD),
     ),
-    "model-service": {
-        "apiVersion": "v1",
-        "kind": "Service",
-        "metadata": {"name": "r", "namespace": "default"},
-        "spec": {"selector": {_SERVING: "r", _ROLE: "leader"}, "ports": [{"port": 80, "targetPort": 8000}]},
-    },
-    "model-route": _route("r"),
-    "resource-claim": _claim_template("r", 1),
-}
-
-# Escape hatch: the user command runs verbatim on both templates; no Ray
-# bootstrap and no vLLM parallelism flags injected.
-_SGLANG_CMD = ["python3", "-m", "sglang.launch_server"]
-_SGLANG_ARGS = ["--nnodes", "2"]
-_LLMD_ESCAPE_WANT = {
-    "model-serving": _lws(
-        _engine(_SGLANG_CMD, serving=True, args=_SGLANG_ARGS),
-        _engine(_SGLANG_CMD, serving=False, args=_SGLANG_ARGS),
-    ),
-    "model-service": _LLMD_VLLM_WANT["model-service"],
-    "model-route": _route("r"),
-    "resource-claim": _claim_template("r", 1),
+    "resource-claim-main-leader": _claim_template(8, role="leader"),
+    "resource-claim-main-worker": _claim_template(8, role="worker"),
 }
 
 
@@ -266,28 +334,22 @@ _LLMD_ESCAPE_WANT = {
 class Case:
     name: str
     backend: object
-    replica: v1alpha1.ModelReplica
+    engine: v1alpha1.Worker
     want: dict
 
 
 _CASES = [
     Case(
-        name="native single-pod Deployment+Service+Route",
+        name="native Standalone engine composes a Deployment",
         backend=native.NativeBackend(),
-        replica=_replica(tensor=2),
+        engine=_standalone_engine(),
         want=_NATIVE_WANT,
     ),
     Case(
-        name="llm-d multi-node injects vLLM/Ray bootstrap",
+        name="llm-d Leader/Worker engine composes a LeaderWorkerSet, commands verbatim",
         backend=llmd.LLMDBackend(),
-        replica=_replica(tensor=8, pipeline=2, args=["--model=meta-llama/Llama-3.1-405B"]),
-        want=_LLMD_VLLM_WANT,
-    ),
-    Case(
-        name="llm-d user command bypasses bootstrap (non-vLLM escape hatch)",
-        backend=llmd.LLMDBackend(),
-        replica=_replica(tensor=8, pipeline=2, command=_SGLANG_CMD, args=_SGLANG_ARGS),
-        want=_LLMD_ESCAPE_WANT,
+        engine=_gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD),
+        want=_LLMD_WANT,
     ),
 ]
 
@@ -296,114 +358,200 @@ class TestBackendManifests(unittest.TestCase):
     def test_manifests(self):
         for case in _CASES:
             with self.subTest(case.name):
-                out = case.backend.build(case.replica, _CLUSTER)
+                replica = _replica(engines=[case.engine])
+                out = case.backend.build(replica, case.engine, _PC, base.serving_label(replica))
                 got = {key: obj.spec.forProvider.manifest for key, obj in out.items()}
                 self.assertEqual(case.want, got, "-want, +got")
+
+    def test_serving_resources(self):
+        # The shared Service + HTTPRoute front a replica regardless of how many
+        # engines it has, named after the replica.
+        replica = _replica()
+        out = base.serving_resources(replica, _PC)
+        got = {key: obj.spec.forProvider.manifest for key, obj in out.items()}
+        self.assertEqual({"model-service": _service("r"), "model-route": _route("r")}, got)
+
+    def test_leader_address_injected_into_gang_engines(self):
+        # Every engine container in a multi-node gang gets
+        # MODELPLANE_LEADER_ADDRESS, aliasing LWS_LEADER_ADDRESS, ahead of the
+        # user's own env so commands can reference $(MODELPLANE_LEADER_ADDRESS).
+        engine = _gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD)
+        replica = _replica(engines=[engine])
+        out = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
+        tmpl = out["model-serving-main"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]
+        for role in ("leaderTemplate", "workerTemplate"):
+            env = tmpl[role]["spec"]["containers"][0]["env"]
+            self.assertEqual(env[0], _LEADER_ENV)
+
+    def test_user_env_preserved_after_leader_address(self):
+        engine = _gang_engine(
+            leader_command=_LEADER_CMD,
+            worker_command=_WORKER_CMD,
+        )
+        engine.members[0].template.spec.containers[0].env = [v1alpha1.EnvItem(name="HF_TOKEN", value="x")]
+        replica = _replica(engines=[engine])
+        out = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
+        leader = out["model-serving-main"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]["leaderTemplate"]
+        env = leader["spec"]["containers"][0]["env"]
+        self.assertEqual(env, [_LEADER_ENV, {"name": "HF_TOKEN", "value": "x"}])
 
     @staticmethod
     def _names(out):
         return {o.spec.forProvider.manifest["metadata"]["name"] for o in out.values()}
 
-    def test_resources_named_after_replica_avoid_collision(self):
-        # Two replicas of one deployment on the same IC must produce distinct
-        # resource names (Nic's collision concern). The workload, Service, and
-        # HTTPRoute share the replica name; the ResourceClaimTemplate is named
-        # after it too (with a -devices suffix) so it can't collide either.
-        a = native.NativeBackend().build(_replica("dep-clusterA"), _CLUSTER)
-        b = native.NativeBackend().build(_replica("dep-clusterB"), _CLUSTER)
-        self.assertEqual(self._names(a), {"dep-clusterA", resource.child_name("dep-clusterA", "devices")})
-        self.assertEqual(self._names(b), {"dep-clusterB", resource.child_name("dep-clusterB", "devices")})
+    def test_co_located_replicas_get_distinct_names(self):
+        # Two replicas of one deployment on the same cluster must produce
+        # distinct resource names on the remote cluster.
+        a = _replica("dep-clusterA")
+        b = _replica("dep-clusterB")
+        out_a = native.NativeBackend().build(a, a.spec.engines[0], _PC, base.serving_label(a))
+        out_b = native.NativeBackend().build(b, b.spec.engines[0], _PC, base.serving_label(b))
+        self.assertEqual(self._names(out_a) & self._names(out_b), set())
+
+    def test_lws_name_differs_from_serving_service_name(self):
+        # Regression: LWS's controller creates a headless Service named after
+        # the LWS for gang pod DNS - but only if no Service of that name
+        # exists. When the LWS shared the serving Service's name (the replica
+        # name), that headless Service was never created, the followers could
+        # never resolve the leader, and the gang deadlocked. The workload name
+        # must differ from the Service's.
+        engine = _gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD)
+        replica = _replica(engines=[engine])
+        workload = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
+        serving = base.serving_resources(replica, _PC)
+        lws_name = workload["model-serving-main"].spec.forProvider.manifest["metadata"]["name"]
+        service_name = serving["model-service"].spec.forProvider.manifest["metadata"]["name"]
+        self.assertNotEqual(lws_name, service_name)
+
+    def test_multi_engine_qualifies_workload_names(self):
+        # A replica with two engines names each engine's workload distinctly so
+        # they don't collide on the remote cluster.
+        engines = [_standalone_engine("prefill"), _standalone_engine("decode")]
+        replica = _replica(engines=engines)
+        names = set()
+        for g in engines:
+            out = native.NativeBackend().build(replica, g, _PC, base.serving_label(replica))
+            names |= self._names(out)
+        self.assertEqual(len(names), 4)  # 2 deployments + 2 claim templates
 
     def test_workload_readiness_policies(self):
-        # The serving workload (Deployment or LWS) reports readiness from its
-        # Available condition via a CEL query: provider-kubernetes'
-        # DeriveFromObject only checks a Ready condition, which neither kind
-        # publishes, so it would never report ready. The Service and HTTPRoute
-        # have no runtime readiness worth waiting on, so they're ready on create.
-        for name, backend, replica in (
-            ("native", native.NativeBackend(), _replica(tensor=2)),
-            ("llm-d", llmd.LLMDBackend(), _replica(tensor=8, pipeline=2, args=["--model=m"])),
+        # The workload reports readiness from its Available condition via a CEL
+        # query; the claim templates are ready on create.
+        for name, backend, engine in (
+            ("native", native.NativeBackend(), _standalone_engine()),
+            ("llm-d", llmd.LLMDBackend(), _gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD)),
         ):
             with self.subTest(name):
-                out = backend.build(replica, _CLUSTER)
-                serving = out["model-serving"].spec.readiness
+                replica = _replica(engines=[engine])
+                out = backend.build(replica, engine, _PC, base.serving_label(replica))
+                serving = out["model-serving-main"].spec.readiness
                 self.assertEqual(serving.policy, "DeriveFromCelQuery")
                 self.assertEqual(serving.celQuery, base.AVAILABLE_CEL)
-                self.assertEqual(out["model-service"].spec.readiness.policy, "SuccessfulCreate")
-                self.assertEqual(out["model-route"].spec.readiness.policy, "SuccessfulCreate")
+                for key, obj in out.items():
+                    if key.startswith("resource-claim"):
+                        self.assertEqual(obj.spec.readiness.policy, "SuccessfulCreate")
+
+    def test_serving_readiness_policies(self):
+        replica = _replica()
+        out = base.serving_resources(replica, _PC)
+        self.assertEqual(out["model-service"].spec.readiness.policy, "SuccessfulCreate")
+        self.assertEqual(out["model-route"].spec.readiness.policy, "SuccessfulCreate")
 
     def test_multiple_device_requests_single_container_claim(self):
         # resources.claims is a list-map keyed on name alone, so N device
-        # requests must NOT produce N container claims all named "devices"
-        # (a duplicate-key violation the apiserver rejects). The container
-        # references the whole pod claim once; the template carries all requests.
-        replica = _replica(
-            tensor=8,
+        # requests must NOT produce N container claims all named "devices". The
+        # container references the whole pod claim once; the template carries all
+        # requests.
+        engine = _standalone_engine(
             device_requests=[
                 v1alpha1.DeviceRequest(name="gpu", deviceClassName="gpu.nvidia.com", count=8),
                 v1alpha1.DeviceRequest(name="nic", deviceClassName="nic.nvidia.com", count=8),
             ],
         )
-        out = native.NativeBackend().build(replica, _CLUSTER)
-        pod = out["model-serving"].spec.forProvider.manifest["spec"]["template"]["spec"]
+        replica = _replica(engines=[engine])
+        out = native.NativeBackend().build(replica, engine, _PC, base.serving_label(replica))
+        pod = out["model-serving-main"].spec.forProvider.manifest["spec"]["template"]["spec"]
         claims = pod["containers"][0]["resources"]["claims"]
         self.assertEqual(claims, [{"name": "devices"}])
         self.assertEqual(pod["resourceClaims"][0]["name"], "devices")
-        template_requests = out["resource-claim"].spec.forProvider.manifest["spec"]["spec"]["devices"]["requests"]
+        template = out["resource-claim-main-standalone"].spec.forProvider.manifest
+        template_requests = template["spec"]["spec"]["devices"]["requests"]
         self.assertEqual([r["name"] for r in template_requests], ["gpu", "nic"])
-        # A ResourceClaimTemplate has no runtime status, so its Object is ready on
-        # create rather than deriving readiness from a (never-written) status.
-        self.assertEqual(out["resource-claim"].spec.readiness.policy, "SuccessfulCreate")
+        self.assertEqual(out["resource-claim-main-standalone"].spec.readiness.policy, "SuccessfulCreate")
+
+    def test_claimless_leader_gets_no_claim(self):
+        # A coordinator-only leader (e.g. a vLLM DP head running
+        # --data-parallel-size-local=0) carries no deviceRequests. Its pod must
+        # get no resourceClaims, its container no resources.claims, and no
+        # leader ResourceClaimTemplate must be composed - only the worker's.
+        # It still pins to its pool and tolerates the GPU taint.
+        engine = _gang_engine(
+            leader_command=_LEADER_CMD,
+            worker_command=_WORKER_CMD,
+            leader_device_requests=[],
+        )
+        replica = _replica(engines=[engine])
+        out = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
+
+        self.assertNotIn("resource-claim-main-leader", out)
+        self.assertIn("resource-claim-main-worker", out)
+
+        tmpl = out["model-serving-main"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]
+        leader = tmpl["leaderTemplate"]["spec"]
+        self.assertNotIn("resourceClaims", leader)
+        self.assertNotIn("resources", leader["containers"][0])
+        self.assertEqual(leader["nodeSelector"], {"modelplane.ai/pool": "frontier"})
+        self.assertEqual(
+            leader["tolerations"], [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
+        )
+
+        worker = tmpl["workerTemplate"]["spec"]
+        self.assertEqual(worker["resourceClaims"], _claims("worker"))
+        self.assertEqual(worker["containers"][0]["resources"], {"claims": [{"name": "devices"}]})
+
+    def test_members_pin_to_their_own_pools(self):
+        # The scheduler may split a gang across pools when no single pool
+        # satisfies every member. Each member's pods must pin to that member's
+        # pool, not a shared engine-wide one.
+        engine = _gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD, leader_pool="head")
+        replica = _replica(engines=[engine])
+        out = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
+        tmpl = out["model-serving-main"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]
+        self.assertEqual(tmpl["leaderTemplate"]["spec"]["nodeSelector"], {"modelplane.ai/pool": "head"})
+        self.assertEqual(tmpl["workerTemplate"]["spec"]["nodeSelector"], {"modelplane.ai/pool": "frontier"})
 
 
 class TestBackendSelection(unittest.TestCase):
-    def test_single_pod_is_native(self):
-        self.assertEqual(base.select_backend(_replica(tensor=8, pipeline=1)), base.NATIVE)
+    def test_standalone_engine_is_native(self):
+        self.assertEqual(base.select_backend(_standalone_engine()), base.NATIVE)
 
-    def test_multi_node_is_llmd(self):
-        self.assertEqual(base.select_backend(_replica(tensor=8, pipeline=2)), base.LLMD)
-
-    def test_needs_coordination_only_when_multi_node(self):
-        self.assertFalse(base.needs_cross_pod_coordination(_replica(tensor=4, pipeline=1)))
-        self.assertTrue(base.needs_cross_pod_coordination(_replica(tensor=4, pipeline=3)))
-
-    def test_pipeline_none_defaults_to_single_pod(self):
-        replica = _replica(tensor=4, pipeline=1)
-        replica.spec.workers.topology.pipeline = None
-        self.assertFalse(base.needs_cross_pod_coordination(replica))
+    def test_leader_worker_engine_is_llmd(self):
+        self.assertEqual(base.select_backend(_gang_engine()), base.LLMD)
 
 
 class TestDynamoStub(unittest.TestCase):
     def test_not_selected_in_v01(self):
-        self.assertNotEqual(base.select_backend(_replica(tensor=8, pipeline=2)), base.DYNAMO)
+        self.assertNotEqual(base.select_backend(_gang_engine()), base.DYNAMO)
 
     def test_build_raises(self):
+        engine = _gang_engine()
+        replica = _replica(engines=[engine])
         with self.assertRaises(NotImplementedError):
-            dynamo.DynamoBackend().build(_replica(tensor=8, pipeline=2), _CLUSTER)
+            dynamo.DynamoBackend().build(replica, engine, _PC, base.serving_label(replica))
 
 
 class TestCacheMounts(unittest.TestCase):
     def _replica(self, *, cache=None, args=None, command=None):
-        spec = v1alpha1.SpecModel(
-            clusterName="c",
-            nodePoolName="frontier",
-            deviceRequests=[_gpu_request(1)],
-            workers=v1alpha1.Workers(
-                topology=v1alpha1.Topology(tensor=1, pipeline=1),
-                template=v1alpha1.Template(
-                    spec=v1alpha1.Spec(
-                        containers=[v1alpha1.Container(name="engine", image="img", args=args or [], command=command)]
-                    )
-                ),
-            ),
+        engine = _standalone_engine(args=args or [], command=command)
+        modelcache = v1alpha1.ModelCacheRef(name=cache) if cache else None
+        return v1alpha1.ModelReplica(
+            metadata=metav1.ObjectMeta(namespace="ml-team"),
+            spec=v1alpha1.SpecModel(clusterName="c", modelCacheRef=modelcache, engines=[engine]),
         )
-        if cache:
-            spec.modelCacheRef = v1alpha1.ModelCacheRef(name=cache)
-        return v1alpha1.ModelReplica(metadata=metav1.ObjectMeta(namespace="ml-team"), spec=spec)
 
     @staticmethod
     def _engine(replica):
-        return replica.spec.workers.template.spec.containers[0]
+        return replica.spec.engines[0].members[0].template.spec.containers[0]
 
     def test_no_cache_no_mounts(self):
         volumes, mounts = base.cache_mounts(self._replica())
@@ -443,25 +591,20 @@ class TestCacheMounts(unittest.TestCase):
 
 class TestNativeBackendCache(unittest.TestCase):
     def _replica(self):
+        engine = _standalone_engine(args=[])
         return v1alpha1.ModelReplica(
             metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
             spec=v1alpha1.SpecModel(
                 clusterName="cluster-a",
-                nodePoolName="frontier",
-                deviceRequests=[_gpu_request(1)],
                 modelCacheRef=v1alpha1.ModelCacheRef(name="qwen"),
-                workers=v1alpha1.Workers(
-                    topology=v1alpha1.Topology(tensor=1, pipeline=1),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(containers=[v1alpha1.Container(name="engine", image="img", args=[])])
-                    ),
-                ),
+                engines=[engine],
             ),
         )
 
     def test_mounts_pvc_and_injects_model(self):
-        out = native.NativeBackend().build(self._replica(), _CLUSTER)
-        dep = out["model-serving"].spec.forProvider.manifest
+        replica = self._replica()
+        out = native.NativeBackend().build(replica, replica.spec.engines[0], _PC, base.serving_label(replica))
+        dep = out["model-serving-main"].spec.forProvider.manifest
         pod = dep["spec"]["template"]["spec"]
         vol_names = {v["name"] for v in pod["volumes"]}
         self.assertIn("model-cache", vol_names)
@@ -471,30 +614,29 @@ class TestNativeBackendCache(unittest.TestCase):
 
 
 class TestLLMDBackendCache(unittest.TestCase):
-    def _replica(self, *, command=None, args=None):
+    def _replica(self, *, leader_command=None, worker_command=None, leader_args=None, worker_args=None):
+        engine = _gang_engine(
+            leader_command=leader_command,
+            worker_command=worker_command,
+            leader_args=leader_args,
+            worker_args=worker_args,
+        )
         return v1alpha1.ModelReplica(
             metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
             spec=v1alpha1.SpecModel(
                 clusterName="cluster-a",
-                nodePoolName="frontier",
-                deviceRequests=[_gpu_request(8)],
                 modelCacheRef=v1alpha1.ModelCacheRef(name="kimi"),
-                workers=v1alpha1.Workers(
-                    count=1,
-                    topology=v1alpha1.Topology(tensor=8, pipeline=2),
-                    template=v1alpha1.Template(
-                        spec=v1alpha1.Spec(
-                            containers=[
-                                v1alpha1.Container(name="engine", image="img", args=args or [], command=command)
-                            ]
-                        )
-                    ),
-                ),
+                engines=[engine],
             ),
         )
 
     def test_both_lws_templates_mount_cache(self):
-        lws = llmd.LLMDBackend().build(self._replica(), _CLUSTER)["model-serving"].spec.forProvider.manifest
+        replica = self._replica(leader_args=[], worker_command=["/bin/sh", "-c", "join"])
+        lws = (
+            llmd.LLMDBackend()
+            .build(replica, replica.spec.engines[0], _PC, base.serving_label(replica))["model-serving-main"]
+            .spec.forProvider.manifest
+        )
         tmpl = lws["spec"]["leaderWorkerTemplate"]
         for role in ("leaderTemplate", "workerTemplate"):
             pod = tmpl[role]["spec"]
@@ -504,33 +646,39 @@ class TestLLMDBackendCache(unittest.TestCase):
                 pod["containers"][0]["volumeMounts"],
             )
 
-    def test_injects_model_into_leader_command_for_vllm(self):
-        lws = llmd.LLMDBackend().build(self._replica(), _CLUSTER)["model-serving"].spec.forProvider.manifest
-        leader_cmd = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]["command"]
-        self.assertIn("--model=/mnt/models", leader_cmd)
+    def test_injects_model_into_leader_args_for_vllm(self):
+        # The leader has no command and no --model arg, so the cache --model is
+        # injected into its args.
+        replica = self._replica(leader_args=[], worker_command=["/bin/sh", "-c", "join"])
+        lws = (
+            llmd.LLMDBackend()
+            .build(replica, replica.spec.engines[0], _PC, base.serving_label(replica))["model-serving-main"]
+            .spec.forProvider.manifest
+        )
+        leader_args = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]["args"]
+        self.assertIn("--model=/mnt/models", leader_args)
 
-    def test_sglang_command_engine_mounts_cache_without_injecting_model(self):
-        # SGLang multi-node: symmetric bring-your-own command using LWS_* env,
-        # --model-path (not --model). Both gang templates still mount the cache,
-        # but we must not inject --model.
-        sglang_cmd = [
+    def test_command_engine_mounts_cache_without_injecting_model(self):
+        # A member with its own command keeps it verbatim and gets no injected
+        # --model (it points at the cache with its own flag).
+        leader_cmd = [
             "/bin/sh",
             "-c",
-            "python3 -m sglang.launch_server --model-path /mnt/models "
-            "--tp 16 --nnodes $LWS_GROUP_SIZE --node-rank $LWS_WORKER_INDEX "
-            "--dist-init-addr $LWS_LEADER_ADDRESS:20000 --host 0.0.0.0 --port 8000",
+            "python3 -m sglang.launch_server --model-path /mnt/models --tp 16",
         ]
-        r = self._replica(command=sglang_cmd)
-        lws = llmd.LLMDBackend().build(r, _CLUSTER)["model-serving"].spec.forProvider.manifest
-        tmpl = lws["spec"]["leaderWorkerTemplate"]
-        for role in ("leaderTemplate", "workerTemplate"):
-            pod = tmpl[role]["spec"]
-            # Cache mounted on every node of the gang.
-            self.assertIn(
-                {"name": "model-cache", "mountPath": "/mnt/models"},
-                pod["containers"][0]["volumeMounts"],
-            )
-            # Verbatim user command; no injected --model anywhere.
-            container = pod["containers"][0]
-            self.assertEqual(container["command"], sglang_cmd)
-            self.assertNotIn("--model=/mnt/models", container.get("args", []))
+        replica = self._replica(leader_command=leader_cmd, worker_command=["/bin/sh", "-c", "join"])
+        lws = (
+            llmd.LLMDBackend()
+            .build(replica, replica.spec.engines[0], _PC, base.serving_label(replica))["model-serving-main"]
+            .spec.forProvider.manifest
+        )
+        leader = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]
+        self.assertIn(
+            {"name": "model-cache", "mountPath": "/mnt/models"},
+            leader["volumeMounts"],
+        )
+        self.assertEqual(leader["command"], leader_cmd)
+
+
+if __name__ == "__main__":
+    unittest.main()

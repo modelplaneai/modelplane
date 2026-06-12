@@ -15,15 +15,28 @@ garbage-collects it, and the fill phase mints a fresh replica elsewhere to
 refill the deployment's replica count. Moving is always delete-plus-create,
 mirroring how Kubernetes treats a Pod whose node is gone.
 
+A replica is a set of engines co-scheduled onto one cluster. The unit of pool
+placement is the engine member: each member carries its own nodeSelector, so
+each is placed on a pool of that cluster that satisfies it. A gang's members
+usually want the same hardware, and they talk over the pool's fabric, so the
+scheduler prefers one pool that satisfies every member of an engine; only when
+no single pool does are the members split across pools. A member with no
+nodeSelector claims no devices - it's pinned to the pool of its engine's first
+claiming member at zero node cost, packed onto the gang's nodes by the
+cluster's scheduler. The scheduler therefore asks, for each candidate cluster,
+whether every member of every engine can be assigned a pool with enough free
+nodes, all on that one cluster.
+
 Scheduling runs in two phases:
 
 1. Retain. For each existing replica, keep its (cluster, index) if the cluster
-   still exists and its pinned pool still satisfies the (possibly edited)
-   nodeSelector. Retention is otherwise unconditional: a healthy replica is
-   never moved or dropped to improve the global picture. A degraded cluster
-   (not Ready, or no gateway address) is still retained - transient outages
-   surface via the deployment's conditions, not re-placement. This is what
-   makes the scheduler stable: existing placements are inputs, not decisions.
+   still exists and every member's pinned pool still satisfies the (possibly
+   edited) nodeSelectors. Retention is otherwise unconditional: a healthy
+   replica is never moved or dropped to improve the global picture. A degraded
+   cluster (not Ready, or no gateway address) is still retained - transient
+   outages surface via the deployment's conditions, not re-placement. This is
+   what makes the scheduler stable: existing placements are inputs, not
+   decisions.
 
 2. Fill. If the deployment wants more replicas than were retained, place the
    shortfall one at a time. Each new replica goes to the eligible cluster
@@ -34,13 +47,16 @@ Scheduling runs in two phases:
    clusters we packed onto last.
 
 Capacity is gated on nodes, not on individual DRA devices. The per-node device
-count is a device request's count; the only number the scheduler reads from
-topology is nodes-per-replica, which it gates against a pool's available nodes.
-Device-count contention BETWEEN deployments is left to DRA admission on the
-workload cluster, which is authoritative: it rejects a Pod whose ResourceClaim
-can't be satisfied, and the next reconcile sees the updated observed state. The
-control-plane scheduler stays deliberately coarse - "could this cluster
-plausibly host this replica" - rather than duplicating the real DRA scheduler.
+count is a device request's count; the only number the scheduler reads from a
+member is its node cost, which it gates against a pool's available nodes. A
+member's pods occupy nodes only when they claim devices, so a member that
+resolves no claim: DRA device - it carried no nodeSelector, or matched only
+synthetic devices - costs zero nodes. Device-count contention BETWEEN
+deployments is left to DRA admission on the workload cluster, which is
+authoritative: it rejects a Pod whose ResourceClaim can't be satisfied, and the
+next reconcile sees the updated observed state. The control-plane scheduler
+stays deliberately coarse - "could this cluster plausibly host this replica" -
+rather than duplicating the real DRA scheduler.
 """
 
 from dataclasses import dataclass, field
@@ -51,6 +67,12 @@ from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 
 from function import cel
 
+# A deployment Member and a replica Member are distinct generated classes with
+# the same shape (a deployment fans out to identically-shaped replicas).
+# _member_pods reads the fields common to both - role and worker.nodes - off
+# whichever it's handed, so it accepts either.
+_Member = mdv1alpha1.Member | mrv1alpha1.Member
+
 # Labels written by compose-model-deployment, read back here to reconstruct a
 # replica's (cluster, index) identity from observed state.
 _LABEL_DEPLOYMENT = "modelplane.ai/deployment"
@@ -59,6 +81,28 @@ _LABEL_INDEX = "modelplane.ai/replica-index"
 
 # claim discriminator values on an InferenceClass device.
 _CLAIM_DRA = "DRA"
+
+# Member roles.
+_ROLE_STANDALONE = "Standalone"
+_ROLE_WORKER = "Worker"
+
+
+def _published_count(value: int | None) -> int:
+    """A cluster-published device/node count, floored at zero.
+
+    Cluster status counts (a pool's node count, a device's per-node count) are
+    unconstrained on the wire: the InferenceCluster XRD puts no minimum on
+    status.gpuPools[].nodes or [].devices[].count, so a published value can be 0
+    (an autoscaled-to-zero pool's node count), None, or - in a malformed status -
+    negative. All must read as "none available". The load-bearing case is a
+    device count of 0: it differs from a deployment-side count, which the XRD
+    floors at 1, so `x or 1` is a safe default-for-None there but would wrongly
+    turn a published 0 into 1 here. Flooring None and negatives to 0 is defensive
+    hygiene - both already fail the capacity gate as a non-positive count.
+    """
+    if value is None or value < 0:
+        return 0
+    return value
 
 
 @dataclass
@@ -76,6 +120,37 @@ class DeviceRequest:
     device_class_name: str
     count: int
     cel_selectors: list[str]
+
+
+@dataclass
+class MemberPlacement:
+    """A member's placement within a replica: its pool and resolved requests.
+
+    pool becomes the member's spec.nodePoolName on the ModelReplica; the
+    resolved device requests become its deviceRequests, from which every one of
+    the member's pods builds its ResourceClaim. device_requests is empty for a
+    member that claims nothing - it carried no nodeSelector, or its requests
+    resolved only synthetic devices - in which case only the pool pin places
+    its pods. At least one member of an engine always resolves a claimable
+    device: the scheduler rejects placements where none does.
+    """
+
+    role: str
+    pool: str = ""
+    device_requests: list[DeviceRequest] = field(default_factory=list)
+
+
+@dataclass
+class EnginePlacement:
+    """An engine's placement within a replica: one placement per member.
+
+    members is in the deployment's member order. The members usually share one
+    pool (the scheduler prefers that) but may be split across pools when no
+    single pool satisfies them all.
+    """
+
+    name: str
+    members: list[MemberPlacement] = field(default_factory=list)
 
 
 @dataclass
@@ -98,51 +173,10 @@ class Candidate:
     # Callers should not compose a ModelEndpoint when this is empty -
     # there is nothing to route traffic to.
     gateway_address: str = ""
-    # The node pool the scheduler matched on this cluster, propagated to the
-    # ModelReplica as spec.nodePoolName. Always set: a candidate exists only
-    # because a named pool matched (the pool name is XRD-required).
-    pool: str = ""
-    # Resolved claim: DRA device requests for the matched pool, in nodeSelector
-    # order. Stamped onto the ModelReplica as spec.deviceRequests. Always
-    # non-empty: a pool matches only when at least one claim: DRA device
-    # resolves (see _match_pool), so every scheduled replica has a claim.
-    device_requests: list[DeviceRequest] = field(default_factory=list)
-
-
-@dataclass
-class Shape:
-    """Physical shape derived from workers.topology and workers.count.
-
-    Only nodes_per_replica is a scheduling input (the available-node gate).
-    Topology otherwise drives provisioning, not pool selection.
-    """
-
-    nodes_per_replica: int  # Total nodes consumed by one ModelReplica.
-
-
-def topology_shape(workers) -> Shape:
-    """Derive nodes-per-replica from workers.
-
-    Nodes per worker is pipeline (the only multi-node axis in v0.1); a replica
-    has workers.count workers, so nodes-per-replica is pipeline * count.
-    """
-    topology = workers.topology
-    count = int(workers.count or 1)
-    nodes_per_worker = int(topology.pipeline or 1)
-    return Shape(nodes_per_replica=nodes_per_worker * count)
-
-
-def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
-    """Check that the cluster is Ready and has a gateway address.
-
-    A cluster without a Ready=True condition hasn't finished provisioning
-    or has become unavailable. A cluster without a gateway address can't
-    receive routed traffic. Both must be true for the cluster to be
-    schedulable for new placements.
-    """
-    if not cluster.status.gateway or not cluster.status.gateway.address:
-        return False
-    return any(c.type == "Ready" and c.status == "True" for c in cluster.status.conditions or [])
+    # Per-engine placement: the pool each member of the replica's engines was
+    # assigned and that member's resolved device requests. One entry per engine
+    # in deployment order. Always populated for a scheduled replica.
+    engines: list[EnginePlacement] = field(default_factory=list)
 
 
 @dataclass
@@ -159,16 +193,54 @@ class _CompiledRequest:
     programs: list[cel.Program]
 
 
-def compile_requests(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledRequest]:
-    """Compile every nodeSelector device request's selectors once.
+@dataclass
+class _CompiledMember:
+    """A member reduced to what the scheduler needs.
 
-    nodeSelector is required (the XRD enforces at least one device request), so
-    GPUs always bind through a DRA ResourceClaim derived from these requests.
+    nodes is the member's total node cost across the engine's copies (its pod
+    count x copies), charged only when the member resolves a claimable device.
+    requests carries the member's compiled nodeSelector requests, used to match
+    a pool; empty when the member carries no nodeSelector and so matches every
+    pool.
+    """
+
+    role: str
+    nodes: int
+    requests: list[_CompiledRequest]
+
+
+@dataclass
+class _CompiledEngine:
+    """An engine reduced to what the scheduler needs.
+
+    name identifies the engine; members are its compiled members in deployment
+    order. Each member is placed on its own pool, preferring one pool for the
+    whole engine.
+    """
+
+    name: str
+    members: list[_CompiledMember]
+
+
+def _member_pods(member: _Member) -> int:
+    """Pods a single member contributes: a Worker's node span, else 1.
+
+    A Standalone or a Leader is always exactly one pod; only a Worker fans out
+    to worker.nodes follower pods (one per node).
+    """
+    if (member.role or _ROLE_STANDALONE) == _ROLE_WORKER and member.worker:
+        return int(member.worker.nodes)
+    return 1
+
+
+def _compile_requests(node_selector: mdv1alpha1.NodeSelector) -> list[_CompiledRequest]:
+    """Compile a member's nodeSelector device requests.
+
     Raises cel.CELCompileError on a malformed expression; the caller turns that
     into an InvalidNodeSelector condition.
     """
     requests = []
-    for req in deployment.spec.nodeSelector.devices:
+    for req in node_selector.devices:
         cel_selectors = [s.cel for s in req.selectors if s.cel]
         requests.append(
             _CompiledRequest(
@@ -181,7 +253,43 @@ def compile_requests(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledRe
     return requests
 
 
-def _device_satisfies(device, programs: list[cel.Program]) -> bool:
+def compile_engines(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledEngine]:
+    """Compile every member's nodeSelector selectors once.
+
+    A member's nodeSelector is optional - a member without one claims no
+    devices and compiles to no requests - but at least one member per engine
+    carries one (the XRD enforces it). Raises cel.CELCompileError on a
+    malformed expression.
+    """
+    engines = []
+    for engine in deployment.spec.engines:
+        copies = int(engine.copies or 1)
+        members = [
+            _CompiledMember(
+                role=member.role or _ROLE_STANDALONE,
+                nodes=_member_pods(member) * copies,
+                requests=_compile_requests(member.nodeSelector) if member.nodeSelector else [],
+            )
+            for member in engine.members
+        ]
+        engines.append(_CompiledEngine(name=engine.name, members=members))
+    return engines
+
+
+def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
+    """Check that the cluster is Ready and has a gateway address.
+
+    A cluster without a Ready=True condition hasn't finished provisioning
+    or has become unavailable. A cluster without a gateway address can't
+    receive routed traffic. Both must be true for the cluster to be
+    schedulable for new placements.
+    """
+    if not cluster.status.gateway or not cluster.status.gateway.address:
+        return False
+    return any(c.type == "Ready" and c.status == "True" for c in cluster.status.conditions or [])
+
+
+def _device_satisfies(device: icv1alpha1.Device, programs: list[cel.Program]) -> bool:
     """Whether a pool device satisfies every selector (all ANDed)."""
     # by_alias keeps the DRA wire names (bool/int, not the generated bool_/int_
     # Python attribute names) so the CEL activation sees device.attributes the
@@ -190,58 +298,31 @@ def _device_satisfies(device, programs: list[cel.Program]) -> bool:
     return all(p.matches(raw) for p in programs)
 
 
-def _match_pool(pool, requests: list[_CompiledRequest]) -> list[DeviceRequest] | None:
-    """Match a pool against the device requests.
+def _match_member(pool: icv1alpha1.GpuPool, member: _CompiledMember) -> list[DeviceRequest] | None:
+    """Match a member's requests against a pool.
 
-    Returns the resolved claim: DRA DeviceRequests when the pool satisfies every
-    request AND at least one matched device is claim: DRA, or None when the pool
-    fails any request or matches only synthetic devices.
+    Returns the resolved claim: DRA DeviceRequests when the pool satisfies
+    every request, or None when the member fails any request. The requests
+    describe what ONE of the member's pods needs from its node; every pod of
+    the member runs on its own node of the matched pool and claims the same
+    devices. A member with no requests matches every pool, resolving nothing.
+    The resolved list may also be empty when every matched device is
+    claim: Synthetic (matched for fleet scheduling but never claimed); the
+    caller rejects an engine NONE of whose members resolve a claimable device,
+    since its pods would have no ResourceClaim to bind GPUs through.
 
-    A request matches a pool device when the device has enough UNCONSUMED count
-    to cover the request and every selector evaluates true against that device.
-    Each resolved DRA request becomes a distinct DeviceRequest in one
-    ResourceClaim, and DRA allocates distinct devices per request, so a device's
-    count is consumed as requests claim it: two requests cannot both be satisfied
-    by the same single-count device, and N requests against one device must fit
-    within that device's count. This accounting keeps us from accepting a pool
-    DRA can't actually satisfy.
-
-    A replica's serving workload binds its GPUs through this ResourceClaim, so a
-    pool that matches only synthetic devices (claim: Synthetic, matched for fleet
-    scheduling but never claimed) yields nothing to claim and is not a viable
-    host. Synthetic devices are co-selectors that refine placement alongside a
-    claimable device; a selector that resolves to synthetic devices alone leaves
-    the workload with no claim, so we reject the pool. The deployment then finds
-    no eligible pool and surfaces InsufficientCapacity. The ModelDeployment XRD
-    documents that a nodeSelector must match at least one claimable device.
-
-    Assignment is GREEDY in request order: each request takes the first device
+    Assignment is greedy in request order: each request takes the first device
     that satisfies it and has count left, with no backtracking. Greedy is exact
-    when no device satisfies two different requests, and that holds for both
-    patterns that occur in practice. First, a workload asking for N of one device
-    is a single request, so nothing contends. Second, a workload asking for
-    different device DOMAINS (e.g. a GPU and a NIC) writes selectors that read
-    different attribute domains, so again no device satisfies two requests and
-    order can't starve either.
-
-    Greedy can falsely reject only when two requests' match sets OVERLAP on a
-    shared device kind - e.g. a broad request (memory >= 80Gi, matches an H100
-    and an H200) and a narrow one (an H200 specifically) against a pool holding
-    one of each. If the broad request takes the H200 first, the narrow one finds
-    nothing and we reject the pool, though broad->H100, narrow->H200 would have
-    fit. This needs one deployment to ask for multiple GPUs of deliberately
-    different specificity from one mixed-GPU pool, written as overlapping rather
-    than disjoint selectors - a shape no real workload writes (you'd name both
-    GPUs, or use one request with a count). It also fails SAFE: a false reject
-    surfaces as InsufficientCapacity, never an overcommit or a bad placement, and
-    the user can resolve it by making the selectors disjoint.
+    when requests don't overlap on a device (the practical shape: one GPU
+    request, maybe a NIC request); when they do overlap it can only
+    false-reject, never overcommit, so it fails safe. Members are matched
+    independently of each other - their pods run on different nodes, so two
+    members' requests never contend for one node's devices.
     """
     devices = pool.devices or []
-    # Track remaining count per device by its index in the pool, so capacity
-    # consumed by an earlier request isn't offered again to a later one.
-    remaining = [int(d.count or 1) for d in devices]
+    remaining = [_published_count(d.count) for d in devices]
     resolved: list[DeviceRequest] = []
-    for req in requests:
+    for req in member.requests:
         match = None
         for i, device in enumerate(devices):
             if remaining[i] < req.count:
@@ -262,15 +343,34 @@ def _match_pool(pool, requests: list[_CompiledRequest]) -> list[DeviceRequest] |
                     cel_selectors=req.cel_selectors,
                 )
             )
-    # Every request matched, but if none resolved to a claim: DRA device the
-    # replica would have no ResourceClaim to bind its GPUs through. Reject the
-    # pool rather than place a claimless workload.
-    if not resolved:
-        return None
     return resolved
 
 
-def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str):
+def _member_cost(member: _CompiledMember, resolved: list[DeviceRequest]) -> int:
+    """The nodes a member consumes on its pool, given its resolved requests.
+
+    A member that claims devices occupies its nodes exclusively (the coarse
+    pod-per-node model). One that claims nothing - no nodeSelector, or only
+    synthetic devices matched - shares the pool's nodes with the pods that do
+    claim, so it costs zero NODES. The same rule charges observed replicas in
+    the ledger (keyed on their stamped deviceRequests), so fill-time and
+    rebuild-time accounting agree.
+
+    "Zero nodes" is the fleet scheduler's whole-node accounting, not zero
+    resources: a claimless member (e.g. a gang's coordinator-only leader) is
+    still pinned to its gang's GPU pool and its pod still consumes CPU and memory
+    on whatever GPU node the cluster's scheduler packs it onto. We model only
+    nodes here and leave that to the cluster scheduler, on the assumption a GPU
+    node has slack to host a coordinator beside its worker pods. If it doesn't
+    the pod stays Pending - real-resource contention the fleet scheduler doesn't
+    see. Pinning to the gang's pool is deliberate even so: a coordinator on
+    another pool could be in a different zone or interconnect fabric from the
+    workers it coordinates.
+    """
+    return member.nodes if resolved else 0
+
+
+def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str) -> icv1alpha1.GpuPool | None:
     """The cluster's published pool with this name, or None."""
     for pool in cluster.status.gpuPools or []:
         if (pool.name or "") == pool_name:
@@ -303,8 +403,8 @@ class _Ledger:
 
     Built by _build_ledger from published capacity minus the replicas already
     committed to each pool (see there for exactly which replicas count). The
-    fill phase then decrements it via consume() as it places each new replica,
-    which is what stops a single scheduling pass overcommitting one cluster.
+    fill phase then decrements it via consume() as it places each new replica's
+    members, which is what stops a single scheduling pass overcommitting a pool.
     """
 
     free: dict[tuple[str, str], int]
@@ -314,6 +414,27 @@ class _Ledger:
 
     def consume(self, cluster: str, pool: str, nodes: int) -> None:
         self.free[(cluster, pool)] = self.available(cluster, pool) - nodes
+
+
+def _observed_member_cost(engine: mrv1alpha1.Engine, member: mrv1alpha1.Member) -> int:
+    """An observed replica member's node cost, from its stamped deviceRequests.
+
+    Mirrors _member_cost: a member that claims devices occupies its nodes; one
+    with no deviceRequests shares its gang's nodes and costs nothing.
+
+    This reads the cost the member was STAMPED with, not what it would resolve
+    to now. For a retained member whose pinned pool drifted across the
+    claimless/claimable boundary (e.g. a synthetic-only match that now resolves a
+    claim: DRA device, or vice versa) the stamped cost and the re-resolved cost
+    disagree for one reconcile: the ledger charges the stamped cost here while
+    the composed ModelReplica carries the re-resolved one. It reconverges on the
+    next reconcile once the new spec is observed, and never durably overcommits
+    (DRA admission on the workload cluster is the backstop), so we accept the
+    one-pass skew rather than couple ledger accounting to retain re-resolution.
+    """
+    if not member.deviceRequests:
+        return 0
+    return _member_pods(member) * int(engine.copies or 1)
 
 
 def _build_ledger(
@@ -331,57 +452,50 @@ def _build_ledger(
       * one of THIS deployment's RETAINED replicas - a placement we're keeping.
 
     It deliberately does NOT subtract this deployment's observed replicas that
-    were dropped from the retained set (cluster gone, or pinned pool no longer
-    matches the nodeSelector). Those are being deleted, so their nodes are
+    were dropped from the retained set (cluster gone, or a pinned pool no longer
+    matches the nodeSelectors). Those are being deleted, so their nodes are
     freeing up and must be available to the fill phase that re-places them -
     otherwise re-placement (delete-old + create-new) could never converge.
 
-    Every counted replica is charged at its OWN observed node cost (derived from
-    its spec.workers), not the deployment's current shape. A replica still
-    physically consumes whatever it was created with until it's rolled, and
-    editing workers without editing the nodeSelector doesn't re-roll it.
-
-    A replica pinned to a known pool is subtracted from that pool. One with no
-    pool pin (or naming a pool no longer published) can't be attributed to a
-    specific pool, so it's charged to EVERY pool on its cluster. That's
-    deliberately conservative: it can only make the gate decline to pack where
-    it technically could, never overcommit. In practice every replica this
-    function creates records its pool, so unattributed consumption is limited to
-    legacy replicas predating the pool pin.
+    Every counted replica is charged per member at its OWN observed node cost
+    (derived from its spec.engines), to the pool that member is pinned to. A
+    member pinned to a pool the cluster still publishes is subtracted from that
+    pool. One pinned to a pool that's since been deleted is charged nothing - its
+    pods are unschedulable (Pending) and occupy no node (see `charge`).
     """
     free: dict[tuple[str, str], int] = {}
-    pools_by_cluster: dict[str, list[str]] = {}
     for cluster in clusters:
         name = cluster.metadata.name
-        pools_by_cluster[name] = []
         for pool in cluster.status.gpuPools or []:
-            free[(name, pool.name or "")] = int(pool.nodes or 0)
-            pools_by_cluster[name].append(pool.name or "")
+            free[(name, pool.name or "")] = _published_count(pool.nodes)
 
     def charge(cluster_name: str, pool_name: str, nodes: int) -> None:
-        # A real pool pin is charged to that pool; anything else (no pin, or a
-        # pool no longer published) is unattributable and charged to every pool
-        # on the cluster (conservative). Keying on pool_name's truthiness, not on
-        # dict membership, keeps an unpinned replica from ever colliding with a
-        # published pool.
-        if pool_name and (cluster_name, pool_name) in free:
+        # Charge the member's nodes to the pool it's pinned to. A member whose
+        # pool isn't among the cluster's published pools is charged nothing: its
+        # pods are hard-pinned (modelplane.ai/pool nodeSelector) to a node label
+        # no node carries, so they're unschedulable and occupy no node. (A
+        # member's nodePoolName is XRD-required and always names a pool that was
+        # published when the replica was placed, so this is the deleted-pool
+        # case, not a missing pin.)
+        if (cluster_name, pool_name) in free:
             free[(cluster_name, pool_name)] -= nodes
-            return
-        for p in pools_by_cluster.get(cluster_name, []):
-            free[(cluster_name, p)] -= nodes
 
     # Identities (cluster, index) of the replicas we're keeping.
     retained_ids = {(c.name, c.index) for c in retained}
 
     for r in all_replicas:
-        if not r.spec.workers:
+        if not r.spec.engines:
             continue
         ours = _is_ours(r, deployment)
         # Skip our own replicas that aren't being retained: dropped (re-placed)
         # ones are freeing their nodes, and scaled-down ones are going away.
         if ours and (r.spec.clusterName, _replica_index(r)) not in retained_ids:
             continue
-        charge(r.spec.clusterName, r.spec.nodePoolName or "", topology_shape(r.spec.workers).nodes_per_replica)
+        for engine in r.spec.engines:
+            for member in engine.members or []:
+                nodes = _observed_member_cost(engine, member)
+                if nodes:
+                    charge(r.spec.clusterName, member.nodePoolName or "", nodes)
 
     return _Ledger(free=free)
 
@@ -390,15 +504,17 @@ def _retain(
     deployment: mdv1alpha1.ModelDeployment,
     clusters_by_name: dict[str, icv1alpha1.InferenceCluster],
     all_replicas: list[mrv1alpha1.ModelReplica],
-    requests: list[_CompiledRequest],
+    engines: list[_CompiledEngine],
 ) -> list[Candidate]:
-    """Keep existing replicas whose cluster exists and pool still matches.
+    """Keep existing replicas whose cluster exists and pools still match.
 
     Returns one Candidate per retained replica, carrying its (cluster, index)
-    identity. A replica is dropped from the retained set (and so re-placed by
-    the fill phase) when its cluster is gone, or when its pinned pool no longer
-    satisfies the nodeSelector - the Kubernetes "template changed, roll the
-    replica" behavior. A degraded-but-present cluster is retained.
+    identity and the per-member placement re-resolved against the current
+    nodeSelectors. A replica is dropped from the retained set (and so re-placed
+    by the fill phase) when its cluster is gone, or when any member's pinned pool
+    no longer satisfies that member's nodeSelector - the Kubernetes "template
+    changed, roll the replica" behavior. A degraded-but-present cluster is
+    retained.
     """
     retained: list[Candidate] = []
     seen: set[tuple[str, int]] = set()
@@ -412,7 +528,8 @@ def _retain(
         if identity in seen:
             continue
         cluster = clusters_by_name[cluster_name]
-        if not _pinned_pool_still_matches(r, cluster, requests):
+        placements = _retained_placements(r, cluster, engines)
+        if placements is None:
             continue
         seen.add(identity)
         retained.append(
@@ -420,101 +537,328 @@ def _retain(
                 name=cluster_name,
                 index=identity[1],
                 gateway_address=_gateway_address(cluster),
-                pool=r.spec.nodePoolName or "",
-                device_requests=_retained_requests(r, cluster, requests),
+                engines=placements,
             )
         )
     return retained
 
 
-def _pinned_pool_still_matches(
+def _retained_placements(
     replica: mrv1alpha1.ModelReplica,
     cluster: icv1alpha1.InferenceCluster,
-    requests: list[_CompiledRequest],
-) -> bool:
-    """Whether a retained replica's pinned pool still satisfies the requests.
+    engines: list[_CompiledEngine],
+) -> list[EnginePlacement] | None:
+    """Re-resolve a retained replica's members against their pinned pools.
 
-    Modelplane follows Kubernetes here. A change to the deployment's nodeSelector
-    is a change to the deployment "template", so - like editing a Deployment's
-    Pod template - replicas that no longer match are re-placed (Kubernetes does a
-    rolling replacement; we drop the pin and let the fill phase pick a matching
-    pool). This is distinct from a pool's own device attributes drifting under a
+    Modelplane follows Kubernetes here. A change to the deployment's
+    nodeSelectors is a change to the deployment "template", so - like editing a
+    Deployment's Pod template - a replica whose pinned pool no longer matches is
+    re-placed (we drop the pin and let the fill phase pick a matching pool). This
+    is distinct from a pool's own device attributes drifting under a
     still-matching replica, which we leave pinned (Kubernetes'
     IgnoredDuringExecution: node-label drift does not evict a bound Pod).
 
-    Returns False (re-place) when:
-      * the replica carries no pool pin (it needs a real pool pin), or
-      * the pinned pool no longer exists on the cluster, or
-      * the pinned pool no longer satisfies the requests.
+    Each member is re-matched against the pool it's currently pinned to, using
+    the deployment's current member definition (engines matched by name, members
+    by position and role). Returns one EnginePlacement per engine when every
+    member's pinned pool still matches, or None (re-place the whole replica)
+    when:
+      * a member carries no pool pin, or
+      * its pinned pool no longer exists on the cluster, or
+      * its pinned pool no longer satisfies the member's nodeSelector, or
+      * no member of an engine resolves a claimable device, or
+      * the deployment no longer defines an engine of that name, or its member
+        shape (count or roles) changed.
+
+    A retained replica keeps its EXISTING members' pins; the deployment's engine
+    set is matched by name so an edit that adds, removes, or renames an engine
+    re-places the replica (its observed engines no longer line up).
     """
-    pool_name = replica.spec.nodePoolName
+    engines_by_name = {g.name: g for g in engines}
+    if len(replica.spec.engines) != len(engines):
+        return None
+    placements: list[EnginePlacement] = []
+    for observed in replica.spec.engines:
+        engine = engines_by_name.get(observed.name)
+        if engine is None:
+            return None
+        members = _retained_members(observed, cluster, engine)
+        if members is None:
+            return None
+        placements.append(EnginePlacement(name=engine.name, members=members))
+    return placements
+
+
+def _retained_members(
+    observed: mrv1alpha1.Engine,
+    cluster: icv1alpha1.InferenceCluster,
+    engine: _CompiledEngine,
+) -> list[MemberPlacement] | None:
+    """Re-resolve one observed engine's members against their pinned pools.
+
+    Returns one MemberPlacement per member when every pinned pool still exists
+    and matches, and at least one member resolves a claimable device, or None
+    to re-place the replica.
+    """
+    observed_members = observed.members or []
+    if len(observed_members) != len(engine.members):
+        return None
+    members: list[MemberPlacement] = []
+    for got, member in zip(observed_members, engine.members, strict=True):
+        placement = _retained_member(got, cluster, member)
+        if placement is None:
+            return None
+        members.append(placement)
+    if not any(m.device_requests for m in members):
+        return None
+    return members
+
+
+def _retained_member(
+    observed: mrv1alpha1.Member,
+    cluster: icv1alpha1.InferenceCluster,
+    member: _CompiledMember,
+) -> MemberPlacement | None:
+    """Re-resolve one observed member against its pinned pool.
+
+    Returns its placement when its role still lines up with the deployment's
+    member and its pinned pool still exists and satisfies the member's
+    nodeSelector, or None to re-place the replica.
+    """
+    if (observed.role or _ROLE_STANDALONE) != member.role:
+        return None
+    pool_name = observed.nodePoolName
     if not pool_name:
-        return False
+        return None
     pool = _pool_by_name(cluster, pool_name)
     if pool is None:
-        # Pinned pool is gone from the cluster's published capacity.
-        return False
-    return _match_pool(pool, requests) is not None
+        return None
+    resolved = _match_member(pool, member)
+    if resolved is None:
+        return None
+    return MemberPlacement(role=member.role, pool=pool_name, device_requests=resolved)
 
 
-def _retained_requests(replica, cluster, requests: list[_CompiledRequest]) -> list[DeviceRequest]:
-    """Resolve the claim: DRA requests for a retained replica's pinned pool.
-
-    Only called for a replica _pinned_pool_still_matches already accepted, so the
-    pinned pool exists and yields at least one DRA request: _match_pool returns a
-    non-empty list here, never None. If that contract were ever broken the empty
-    result would surface as an XRD validation error in compose_replicas (which
-    requires deviceRequests), not as a silently claimless replica.
-    """
-    pool = _pool_by_name(cluster, replica.spec.nodePoolName)
-    return _match_pool(pool, requests) or []
-
-
-def _eligible_pool(
+def _place_engines(
     cluster: icv1alpha1.InferenceCluster,
-    shape: Shape,
-    requests: list[_CompiledRequest],
+    engines: list[_CompiledEngine],
     ledger: _Ledger,
-) -> tuple[str, list[DeviceRequest]] | None:
-    """Pick the first pool on a cluster that can host one more replica.
+) -> list[EnginePlacement] | None:
+    """Assign every member of one replica's engines to a pool on this cluster.
 
-    A pool is eligible when it satisfies the nodeSelector requests AND has at
-    least nodes-per-replica free in the ledger (which already accounts for
-    replicas placed earlier in this pass). Pools are considered in published
-    order, which is deterministic. Returns (pool_name, resolved_requests) or
-    None if no pool on the cluster is eligible.
+    Members are placed against a TRIAL copy of this cluster's free capacity so
+    two members of the same replica don't double-book one pool. Returns one
+    EnginePlacement per engine (in deployment order) when every member fits, or
+    None when any member has no eligible pool - the replica can't be
+    co-scheduled here.
+
+    Engines are placed in deployment order, each greedily taking the first
+    eligible pool(s). Like device matching within a pool, this is greedy without
+    backtracking, so it is not complete: when an earlier engine's selector
+    overlaps a pool a later engine also needs and capacity is tight, greedy can
+    consume that pool early and fail to place the later engine even though a
+    different assignment would have fit them both. It stays greedy because the
+    failure is safe - a false reject surfaces as InsufficientCapacity, never an
+    overcommit - and the common shapes don't hit it: a gang's members repeat one
+    nodeSelector (one pool), and disaggregated phases target disjoint hardware
+    (disjoint pools). Overlapping selectors across engines of one replica are the
+    case that can false-reject.
     """
-    for pool in cluster.status.gpuPools or []:
-        name = pool.name or ""
-        if ledger.available(cluster.metadata.name, name) < shape.nodes_per_replica:
+    cluster_name = cluster.metadata.name
+    # Trial free counts for this cluster's pools, decremented as we place each
+    # member so a later member sees capacity an earlier one took. Discarded
+    # wholesale when any member fails to place, so partial placement never
+    # leaks into the real ledger.
+    trial = {
+        (pool.name or ""): ledger.available(cluster_name, pool.name or "") for pool in cluster.status.gpuPools or []
+    }
+    placements: list[EnginePlacement] = []
+    for engine in engines:
+        members = _place_engine(cluster, engine, trial)
+        if members is None:
+            return None
+        placements.append(EnginePlacement(name=engine.name, members=members))
+    return placements
+
+
+def _place_engine(
+    cluster: icv1alpha1.InferenceCluster,
+    engine: _CompiledEngine,
+    trial: dict[str, int],
+) -> list[MemberPlacement] | None:
+    """Assign one engine's members to pools, preferring one pool for them all.
+
+    A gang's members talk over their pool's fabric (NVLink and InfiniBand
+    domains are per pool), so splitting a gang across pools can silently
+    degrade interconnect. The first pass therefore looks for a single pool that
+    satisfies every member with enough free nodes for all of them, taking the
+    first such pool in published order. Only when no pool can host the whole
+    engine does the second pass place each member on its own pool.
+
+    Either way the placement must leave the engine something to claim: at least
+    one member must resolve a claim: DRA device, or its pods would have no
+    ResourceClaim to bind GPUs through and the placement is rejected. This gate
+    is per engine, so an engine (and so a replica) that resolves only synthetic
+    devices everywhere is never scheduled; an individual claimless member is only
+    allowed alongside a claiming sibling. And a member whose requests resolve a
+    claimable device on SOME pool must never be placed on a pool where they
+    resolve only synthetic devices - greedy pool order must not strand a member
+    without the GPUs its selector asked for. A member that resolves only
+    synthetic devices everywhere is deliberate (a selector that pins a pool
+    without claiming), so it may place claimless - as long as its engine has
+    another member that claims.
+
+    Decrements trial as it places; on failure the caller discards the whole
+    trial, so partial decrements don't leak.
+    """
+    pools = cluster.status.gpuPools or []
+    # Whether each member's requests resolve a claimable device on any pool of
+    # this cluster, ignoring capacity. Both passes use this to refuse a
+    # placement that would strand the member claimless.
+    claimable = [any(_match_member(pool, member) for pool in pools) for member in engine.members]
+    # No member can claim anywhere on this cluster, so any placement would
+    # leave the engine's pods with no ResourceClaim to bind GPUs through.
+    if not any(claimable):
+        return None
+    placed = _place_engine_one_pool(pools, engine, claimable, trial)
+    if placed is not None:
+        return placed
+    return _place_engine_split(pools, engine, claimable, trial)
+
+
+def _place_engine_one_pool(
+    pools: list[icv1alpha1.GpuPool],
+    engine: _CompiledEngine,
+    claimable: list[bool],
+    trial: dict[str, int],
+) -> list[MemberPlacement] | None:
+    """Place a whole engine on the first single pool that satisfies it.
+
+    A pool hosts the engine when every member matches it, no member that could
+    claim elsewhere is stranded claimless, and the pool has free nodes for the
+    engine's whole cost. Returns None when no pool can.
+    """
+    for pool in pools:
+        pool_name = pool.name or ""
+        members = _match_members(pool, engine, claimable)
+        if members is None:
             continue
-        resolved = _match_pool(pool, requests)
-        if resolved is None:
+        cost = sum(_member_cost(m, p.device_requests) for m, p in zip(engine.members, members, strict=True))
+        if trial[pool_name] < cost:
             continue
-        return name, resolved
+        trial[pool_name] -= cost
+        return members
+    return None
+
+
+def _match_members(
+    pool: icv1alpha1.GpuPool, engine: _CompiledEngine, claimable: list[bool]
+) -> list[MemberPlacement] | None:
+    """Match every member of an engine against one pool.
+
+    Returns one MemberPlacement per member when the pool satisfies every
+    member's requests without stranding a member that could claim elsewhere
+    claimless, or None.
+    """
+    members: list[MemberPlacement] = []
+    for member, can_claim in zip(engine.members, claimable, strict=True):
+        resolved = _match_member(pool, member)
+        if resolved is None or (can_claim and not resolved):
+            return None
+        members.append(MemberPlacement(role=member.role, pool=pool.name or "", device_requests=resolved))
+    return members
+
+
+def _place_engine_split(
+    pools: list[icv1alpha1.GpuPool],
+    engine: _CompiledEngine,
+    claimable: list[bool],
+    trial: dict[str, int],
+) -> list[MemberPlacement] | None:
+    """Split an engine's members across pools when no one pool fits them all.
+
+    Reached only as _place_engine's fallback: no single pool satisfies every
+    member, so each member is placed on its own pool. Members fall into two
+    groups, placed in two passes.
+
+    Members WITH a nodeSelector are placed first. Each takes the first pool (in
+    published order) that both matches its requests and has free nodes for it. A
+    member that can claim a real device somewhere on this cluster (can_claim,
+    precomputed by _place_engine) is only placed on a pool where it actually
+    resolves one: a pool where it matches only synthetic devices is skipped even
+    if it has capacity, because free nodes there don't give the member the GPUs
+    its selector asked for. If such a member finds no pool, the whole split fails
+    and returns None; the caller surfaces that as InsufficientCapacity, which is
+    a safe false-reject (never a placement that can't claim). A member that
+    resolves only synthetic devices everywhere (can_claim is False) is allowed to
+    place on a synthetic-only pool - that's a deliberate scheduling-only pin.
+
+    Members WITHOUT a nodeSelector are placed second. They claim nothing, so they
+    have no pool of their own; each is pinned to gang_pool - the pool of the
+    engine's first member that did claim a device - and rides along there at zero
+    node cost, next to the workers it coordinates. If no member claimed anything,
+    the engine has nothing to bind GPUs through, so the split is rejected.
+    """
+    placed: list[MemberPlacement | None] = [None] * len(engine.members)
+    for i, (member, can_claim) in enumerate(zip(engine.members, claimable, strict=True)):
+        if not member.requests:
+            continue
+        placement = _place_member(pools, member, trial, can_claim=can_claim)
+        if placement is None:
+            return None
+        trial[placement.pool] -= _member_cost(member, placement.device_requests)
+        placed[i] = placement
+
+    gang_pool = next((p.pool for p in placed if p is not None and p.device_requests), None)
+    if gang_pool is None:
+        return None
+    for i, member in enumerate(engine.members):
+        if placed[i] is None:
+            placed[i] = MemberPlacement(role=member.role, pool=gang_pool, device_requests=[])
+    return placed
+
+
+def _place_member(
+    pools: list[icv1alpha1.GpuPool], member: _CompiledMember, trial: dict[str, int], *, can_claim: bool
+) -> MemberPlacement | None:
+    """Place one member on the first matching pool with capacity.
+
+    can_claim says whether the member resolves a claimable device on some pool;
+    when it does, pools where it resolves none are skipped so the member is
+    never stranded claimless. Doesn't decrement trial - the caller does, so it
+    can account the chosen placement.
+    """
+    for pool in pools:
+        pool_name = pool.name or ""
+        resolved = _match_member(pool, member)
+        if resolved is None or (can_claim and not resolved):
+            continue
+        if trial[pool_name] < _member_cost(member, resolved):
+            continue
+        return MemberPlacement(role=member.role, pool=pool_name, device_requests=resolved)
     return None
 
 
 def _fill(
-    shape: Shape,
+    engines: list[_CompiledEngine],
     clusters: list[icv1alpha1.InferenceCluster],
     retained: list[Candidate],
     ledger: _Ledger,
-    requests: list[_CompiledRequest],
     n: int,
 ) -> list[Candidate]:
     """Place n new replicas, spreading across clusters and packing when forced.
 
     Places one replica at a time. For each, the eligible clusters are those that
-    are Ready, have a nodeSelector-matching pool, and have free capacity in the
-    ledger. Among them we pick the cluster hosting the fewest of this
-    deployment's replicas so far (spread), breaking ties by cluster name for
-    determinism. A second replica lands on a cluster only once every other
-    eligible cluster already has its share; when capacity forces it, replicas
-    pack onto fewer clusters. Each placement decrements the ledger and takes the
-    lowest free index on its chosen cluster, so the next iteration sees the
-    updated load. Stops early (placing fewer than n) when no cluster can host
-    another replica - the caller surfaces that as InsufficientCapacity.
+    are Ready and can co-schedule every member on their pools given the ledger.
+    Among them we pick the cluster hosting the fewest of this deployment's
+    replicas so far (spread), breaking ties by cluster name for determinism. A
+    second replica lands on a cluster only once every other eligible cluster
+    already has its share; when capacity forces it, replicas pack onto fewer
+    clusters. Each placement decrements the ledger (per member, on the pools the
+    members took) and takes the lowest free index on its chosen cluster, so the
+    next iteration sees the updated load. Stops early (placing fewer than n)
+    when no cluster can host another replica - the caller surfaces that as
+    InsufficientCapacity.
     """
     # Per-cluster load and used indices seeded from retained replicas, so spread
     # accounts for what's already there and new indices don't collide.
@@ -526,10 +870,10 @@ def _fill(
 
     placed: list[Candidate] = []
     for _ in range(n):
-        choice = _pick_cluster(shape, clusters, load, ledger, requests)
+        choice = _pick_cluster(engines, clusters, load, ledger)
         if choice is None:
             break
-        cluster, pool_name, resolved = choice
+        cluster, placements = choice
         name = cluster.metadata.name
         index = _lowest_free_index(used_indices.setdefault(name, set()))
 
@@ -538,47 +882,52 @@ def _fill(
                 name=name,
                 index=index,
                 gateway_address=cluster.status.gateway.address,
-                pool=pool_name,
-                device_requests=resolved,
+                engines=placements,
             )
         )
 
         load[name] = load.get(name, 0) + 1
         used_indices[name].add(index)
-        ledger.consume(name, pool_name, shape.nodes_per_replica)
+        for ep in placements:
+            engine = _engine_by_name(engines, ep.name)
+            for member, mp in zip(engine.members, ep.members, strict=True):
+                ledger.consume(name, mp.pool, _member_cost(member, mp.device_requests))
 
     return placed
 
 
+def _engine_by_name(engines: list[_CompiledEngine], name: str) -> _CompiledEngine:
+    """The compiled engine with this name. Always present for a placement we built."""
+    return next(g for g in engines if g.name == name)
+
+
 def _pick_cluster(
-    shape: Shape,
+    engines: list[_CompiledEngine],
     clusters: list[icv1alpha1.InferenceCluster],
     load: dict[str, int],
     ledger: _Ledger,
-    requests: list[_CompiledRequest],
-) -> tuple[icv1alpha1.InferenceCluster, str, list[DeviceRequest]] | None:
+) -> tuple[icv1alpha1.InferenceCluster, list[EnginePlacement]] | None:
     """Pick the eligible cluster hosting the fewest of this deployment's replicas.
 
-    Eligible means Ready, with a nodeSelector-matching pool that has free
-    capacity in the ledger. The chosen key is (load on the cluster, cluster
-    name): fewest replicas first for spread, name for a deterministic tiebreak.
-    load already counts only this deployment's replicas (seeded from retained
-    plus those placed earlier in the pass). Returns (cluster, pool_name,
-    resolved_requests) or None when no cluster is eligible.
+    Eligible means Ready and able to co-schedule every member on its pools given
+    the ledger. The chosen key is (load on the cluster, cluster name): fewest
+    replicas first for spread, name for a deterministic tiebreak. load already
+    counts only this deployment's replicas (seeded from retained plus those
+    placed earlier in the pass). Returns (cluster, engine placements) or None
+    when no cluster is eligible.
     """
     best = None
     best_key = None
     for cluster in clusters:
         if not _cluster_ready(cluster):
             continue
-        eligible = _eligible_pool(cluster, shape, requests, ledger)
-        if eligible is None:
+        placements = _place_engines(cluster, engines, ledger)
+        if placements is None:
             continue
-        pool_name, resolved = eligible
         key = (load.get(cluster.metadata.name, 0), cluster.metadata.name)
         if best_key is None or key < best_key:
             best_key = key
-            best = (cluster, pool_name, resolved)
+            best = (cluster, placements)
     return best
 
 
@@ -632,15 +981,22 @@ def schedule(
     fewer if not enough capacity exists.
     """
     desired = int(deployment.spec.replicas)
-    shape = topology_shape(deployment.spec.workers)
     clusters_by_name = {c.metadata.name: c for c in clusters}
 
-    # Compile every nodeSelector request's selectors once and reuse them across
-    # every pool of every cluster. Raises CELCompileError on a malformed
-    # expression - the caller turns that into a condition.
-    requests = compile_requests(deployment)
+    # Sort observed replicas by name (unique per object) so the schedule is a
+    # deterministic function of state, not of the order Crossplane happened to
+    # deliver required resources in. Both consumers below are order-sensitive:
+    # _retain keeps the first replica seen for a colliding (cluster, index), and
+    # _build_ledger charges replicas in iteration order. An unsorted input could
+    # otherwise place two equal states differently across reconciles.
+    all_replicas = sorted(all_replicas, key=lambda r: r.metadata.name or "")
 
-    retained = _retain(deployment, clusters_by_name, all_replicas, requests)
+    # Compile every member's nodeSelector selectors once and reuse them
+    # across every pool of every cluster. Raises CELCompileError on a malformed
+    # expression - the caller turns that into a condition.
+    engines = compile_engines(deployment)
+
+    retained = _retain(deployment, clusters_by_name, all_replicas, engines)
 
     if len(retained) > desired:
         retained = _scale_down(retained, desired)
@@ -653,7 +1009,7 @@ def schedule(
 
     placed: list[Candidate] = []
     if len(retained) < desired:
-        placed = _fill(shape, clusters, retained, ledger, requests, desired - len(retained))
+        placed = _fill(engines, clusters, retained, ledger, desired - len(retained))
 
     result = retained + placed
     result.sort(key=lambda c: (c.name, c.index))

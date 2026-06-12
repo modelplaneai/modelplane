@@ -25,7 +25,7 @@ spec:
         properties:
           spec:
             type: object
-            required: [replicas, workers, nodeSelector]
+            required: [replicas, engines]
             properties:
               replicas:
                 type: integer
@@ -44,254 +44,343 @@ spec:
                     type: object
                     additionalProperties:
                       type: string
-              nodeSelector:
-                type: object
-                description: >-
-                  Node-level matching, a list of device requests mirroring a
-                  DRA ResourceClaim. The scheduler matches each request against a
-                  candidate pool's InferenceClass devices (surfaced on
-                  InferenceCluster status.gpuPools) and pins the replica to a
-                  pool that satisfies every request. claim: DRA requests also
-                  become DeviceRequests in the ResourceClaim the serving pods
-                  bind GPUs through. Required: GPUs bind only via DRA, so a
-                  deployment must declare the devices its model needs. At least
-                  one request must resolve to a claimable (claim: DRA) device;
-                  the serving workload binds its GPUs through the resulting
-                  ResourceClaim. Synthetic devices refine placement but are never
-                  claimed, so a nodeSelector that matches only synthetic devices
-                  leaves the workload nothing to claim - the scheduler treats
-                  such a pool as ineligible and the deployment reports
-                  InsufficientCapacity.
-                required: [devices]
-                properties:
-                  devices:
-                    type: array
-                    description: >-
-                      Device requests. A pool matches a request when it has a
-                      device whose count covers the request and whose driver,
-                      attributes, and capacity satisfy every selector.
-                    minItems: 1
-                    maxItems: 16
-                    x-kubernetes-list-type: map
-                    x-kubernetes-list-map-keys: [name]
-                    items:
-                      type: object
-                      required: [name, selectors]
-                      properties:
-                        name:
-                          type: string
-                          description: >-
-                            Name of this request. Mirrors a DRA DeviceRequest
-                            name; carried through to the ResourceClaim.
-                          minLength: 1
-                          maxLength: 63
-                        count:
-                          type: integer
-                          description: >-
-                            How many matching devices a node must have. For a GPU
-                            request this is the per-node GPU count (matches the
-                            worker topology's GPUs per node).
-                          default: 1
-                          minimum: 1
-                          maximum: 64
-                        selectors:
-                          type: array
-                          description: >-
-                            Selectors a device must satisfy, all ANDed. Each is a
-                            one-of; today only cel is supported.
-                          minItems: 1
-                          maxItems: 8
-                          x-kubernetes-list-type: atomic
-                          items:
-                            type: object
-                            # A selector must carry at least one selector kind
-                            # (today only cel). Without this an empty {} selector
-                            # would match every device, and since nodeSelector is
-                            # the only path to a GPU that silently claims an
-                            # arbitrary one.
-                            minProperties: 1
-                            properties:
-                              cel:
-                                type: string
-                                description: >-
-                                  A DRA CEL expression evaluated against one
-                                  device. Reads device.driver,
-                                  device.attributes["<driver>"].<name> (typed),
-                                  and device.capacity["<driver>"].<name> (a
-                                  Quantity), with quantity() and semver() helpers,
-                                  e.g.
-                                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
-                                minLength: 1
-                                maxLength: 10240
               modelCacheRef:
                 type: object
                 required: [name]
                 description: >-
                   Reference to a ModelCache in the same namespace.
-                  Optional for single-node deployments; required for
-                  multi-node (workers.topology.pipeline > 1).
+                  Optional for single-node engines; required for any engine
+                  that spans multiple nodes (a Leader with one or more
+                  Workers), since every pod in the gang mounts it.
                 properties:
                   name:
                     type: string
                     description: ModelCache resource name in the same namespace.
                     minLength: 1
-              workers:
-                type: object
-                required: [topology, template]
+              engines:
+                type: array
                 description: >-
-                  Compute shape of one worker. Modelplane composes one
-                  worker (or workers.count workers) per ModelReplica.
-                properties:
-                  count:
-                    type: integer
-                    minimum: 1
-                    default: 1
-                    description: >-
-                      Number of workers per replica. Defaults to 1.
-                  topology:
-                    type: object
-                    required: [tensor]
-                    description: >-
-                      Compute topology for one worker. The axes are
-                      independent and compose multiplicatively: GPUs per
-                      node = tensor, nodes per worker = pipeline.
-                    properties:
-                      tensor:
-                        type: integer
-                        minimum: 1
-                        description: >-
-                          GPUs per node. Required.
-                      pipeline:
-                        type: integer
-                        minimum: 1
-                        default: 1
-                        description: >-
-                          Nodes per worker. Defaults to 1 (single-node).
-                          Values greater than 1 enable multi-node serving
-                          via LeaderWorkerSet.
-                  template:
-                    type: object
-                    description: >-
-                      Pod template for inference workers. A curated subset
-                      of PodTemplateSpec.
-                    properties:
-                      metadata:
+                  A ModelReplica's inference engines. An engine is one serving
+                  unit: a single Standalone pod, or a gang of a Leader and one
+                  or more Workers coordinating across nodes. Modelplane
+                  composes the whole array once per ModelReplica; an engine
+                  composes to a Deployment (Standalone) or a LeaderWorkerSet
+                  (Leader/Worker), but the workload kind is an implementation
+                  detail. Modelplane is unopinionated about the engine itself:
+                  parallelism, quantization, and KV transfer all live in the
+                  members' engine flags, written by the user, never injected by
+                  Modelplane.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
+                items:
+                  type: object
+                  required: [name, members]
+                  # An engine is exactly one Standalone member, or one Leader
+                  # and one or more Workers. No other combination of roles
+                  # forms a valid serving unit.
+                  x-kubernetes-validations:
+                  - rule: >-
+                      (self.members.size() == 1 && self.members[0].role == 'Standalone')
+                      || (self.members.exists_one(m, m.role == 'Leader')
+                          && self.members.exists(m, m.role == 'Worker')
+                          && !self.members.exists(m, m.role == 'Standalone'))
+                    message: >-
+                      an engine must be either a single Standalone member or one
+                      Leader and one or more Workers
+                  # nodeSelector is the only path to a GPU, so an engine where
+                  # no member carries one would deploy with no devices at all -
+                  # a mistake, not a deployment. A member may omit its own
+                  # selector (a coordinator-only leader claims nothing), but
+                  # some member must claim.
+                  - rule: "self.members.exists(m, has(m.nodeSelector))"
+                    message: >-
+                      at least one member of an engine must carry a nodeSelector
+                      requesting devices
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Identifies the engine within the deployment. Becomes
+                        part of the composed workload names, so it must be a
+                        DNS label.
+                      minLength: 1
+                      maxLength: 63
+                    copies:
+                      type: integer
+                      description: >-
+                        How many identical copies of this engine to run per
+                        ModelReplica. A fixed number, sized once per deployment;
+                        scaling happens by adding ModelReplicas
+                        (spec.replicas), never by varying copies. Maps to the
+                        composed Deployment's or LeaderWorkerSet's replica
+                        count. Defaults to 1.
+                      default: 1
+                      minimum: 1
+                      maximum: 64
+                    members:
+                      type: array
+                      description: >-
+                        The engine's pods. Either a single Standalone member,
+                        or one Leader and one or more Workers.
+                      minItems: 1
+                      maxItems: 2
+                      x-kubernetes-list-type: atomic
+                      items:
                         type: object
-                        description: >-
-                          Metadata applied to inference pods. Useful for
-                          labels and annotations that control cluster-level
-                          features like service mesh injection.
+                        required: [template]
+                        # worker is meaningful only for a Worker member: a
+                        # Standalone and a Leader are always exactly one pod on
+                        # one node.
+                        x-kubernetes-validations:
+                        - rule: "!has(self.worker) || self.role == 'Worker'"
+                          message: "worker may only be set on a Worker member"
                         properties:
-                          labels:
-                            type: object
-                            additionalProperties:
-                              type: string
-                          annotations:
-                            type: object
-                            additionalProperties:
-                              type: string
-                      spec:
-                        type: object
-                        required: [containers]
-                        description: >-
-                          Pod spec for inference workers.
-                        properties:
-                          containers:
-                            type: array
-                            minItems: 1
-                            maxItems: 1
+                          role:
+                            type: string
                             description: >-
-                              Containers for the inference pod. v0.1 supports a
-                              single container, which must be named "engine" (the
-                              inference engine). Sidecar / multi-container support
-                              is tracked separately.
-                            x-kubernetes-validations:
-                            - rule: "self.exists_one(c, c.name == 'engine')"
-                              message: "the single container must be named 'engine'"
-                            items:
-                              type: object
-                              required: [name, image]
-                              properties:
-                                name:
-                                  type: string
-                                  minLength: 1
-                                  description: >-
-                                    Container name. The container named "engine"
-                                    is the inference engine.
-                                image:
-                                  type: string
-                                  minLength: 1
-                                  description: Container image.
-                                command:
-                                  type: array
-                                  description: >-
-                                    Container entrypoint override. When set on the
-                                    engine container of a multi-node deployment,
-                                    it bypasses the built-in vLLM/Ray bootstrap and
-                                    runs on every gang pod — the command owns
-                                    cross-node coordination against the LWS_*
-                                    environment (LWS_WORKER_INDEX,
-                                    LWS_LEADER_ADDRESS, LWS_GROUP_SIZE). Use for
-                                    non-vLLM engines (e.g. SGLang).
-                                  items:
-                                    type: string
-                                args:
-                                  type: array
-                                  description: >-
-                                    Container args. For the engine container,
-                                    these are passed through to the serving
-                                    engine. Includes the model identifier
-                                    (e.g. --model=...).
-                                  items:
-                                    type: string
-                                env:
-                                  type: array
-                                  description: >-
-                                    Environment variables. Supports
-                                    valueFrom.secretKeyRef for secrets
-                                    like HF_TOKEN.
-                                  items:
-                                    type: object
-                                    required: [name]
-                                    properties:
-                                      name:
-                                        type: string
-                                      value:
-                                        type: string
-                                      valueFrom:
+                              The member's role in the engine. Standalone is a
+                              lone pod; a Leader coordinates and serves while its
+                              Workers join it. Defaults to Standalone.
+                            enum: [Standalone, Leader, Worker]
+                            default: Standalone
+                          nodeSelector:
+                            type: object
+                            description: >-
+                              The per-node device request for this member's
+                              pods: what devices each pod needs from its node.
+                              The scheduler matches it against a candidate
+                              pool's InferenceClass devices (surfaced on
+                              InferenceCluster status.gpuPools) and places the
+                              member on a pool that satisfies it, preferring
+                              one pool for the whole engine and splitting
+                              members across pools only when no pool satisfies
+                              them all. claim: DRA requests also become
+                              DeviceRequests in the ResourceClaim the member's
+                              pods bind GPUs through. A GPU request's count is
+                              the GPUs per node. Omitted, the member claims no
+                              devices and schedules onto its engine's pool - a
+                              coordinator-only leader. At least one member per
+                              engine must carry a nodeSelector, and at least
+                              one member's requests must resolve to a claimable
+                              (claim: DRA) device; an engine that
+                              matches only synthetic devices leaves its pods
+                              nothing to claim, so the scheduler treats such a
+                              pool as ineligible and the deployment reports
+                              InsufficientCapacity.
+                            required: [devices]
+                            properties:
+                              devices:
+                                type: array
+                                description: >-
+                                  Device requests. A pool matches a request when
+                                  it has a device whose count covers the request
+                                  and whose driver, attributes, and capacity
+                                  satisfy every selector.
+                                minItems: 1
+                                maxItems: 16
+                                x-kubernetes-list-type: map
+                                x-kubernetes-list-map-keys: [name]
+                                items:
+                                  type: object
+                                  required: [name, selectors]
+                                  properties:
+                                    name:
+                                      type: string
+                                      description: >-
+                                        Name of this request. Mirrors a DRA
+                                        DeviceRequest name; carried through to
+                                        the ResourceClaim.
+                                      minLength: 1
+                                      maxLength: 63
+                                    count:
+                                      type: integer
+                                      description: >-
+                                        How many matching devices a node must
+                                        have. For a GPU request this is the
+                                        per-node GPU count.
+                                      default: 1
+                                      minimum: 1
+                                      maximum: 64
+                                    selectors:
+                                      type: array
+                                      description: >-
+                                        Selectors a device must satisfy, all
+                                        ANDed. Each is a one-of; today only cel
+                                        is supported.
+                                      minItems: 1
+                                      maxItems: 8
+                                      x-kubernetes-list-type: atomic
+                                      items:
                                         type: object
+                                        # A selector must carry at least one
+                                        # selector kind (today only cel). Without
+                                        # this an empty {} selector would match
+                                        # every device, and since nodeSelector is
+                                        # the only path to a GPU that silently
+                                        # claims an arbitrary one.
+                                        minProperties: 1
                                         properties:
-                                          secretKeyRef:
-                                            type: object
-                                            required: [name, key]
-                                            properties:
-                                              name:
-                                                type: string
-                                              key:
-                                                type: string
-                                              optional:
-                                                type: boolean
-                                          configMapKeyRef:
-                                            type: object
-                                            required: [name, key]
-                                            properties:
-                                              name:
-                                                type: string
-                                              key:
-                                                type: string
-                                              optional:
-                                                type: boolean
-                          imagePullSecrets:
-                            type: array
+                                          cel:
+                                            type: string
+                                            description: >-
+                                              A DRA CEL expression evaluated
+                                              against one device. Reads
+                                              device.driver,
+                                              device.attributes["<driver>"].<name>
+                                              (typed), and
+                                              device.capacity["<driver>"].<name>
+                                              (a Quantity), with quantity() and
+                                              semver() helpers, e.g.
+                                              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
+                                            minLength: 1
+                                            maxLength: 10240
+                          # This object has no schema default on purpose: the
+                          # apiserver applies defaults before CEL validation, so
+                          # defaulting it would inject it onto Standalone and
+                          # Leader members and trip the rule that forbids it
+                          # there.
+                          worker:
+                            type: object
                             description: >-
-                              Image pull secrets for private registries
-                              (NGC etc.).
-                            items:
-                              type: object
-                              required: [name]
-                              properties:
-                                name:
-                                  type: string
+                              Settings for a Worker member. Valid only on a
+                              member whose role is Worker.
+                            required: [nodes]
+                            properties:
+                              nodes:
+                                type: integer
+                                description: >-
+                                  How many nodes this member spans - how big the
+                                  engine is. Each node runs one worker pod, so
+                                  the engine's gang spans 1 (the Leader) plus
+                                  this many worker pods. Defaults to 1.
+                                minimum: 1
+                                maximum: 63
+                          template:
+                            type: object
+                            description: >-
+                              Pod template for this member's engine pods. A
+                              curated subset of PodTemplateSpec.
+                            properties:
+                              metadata:
+                                type: object
+                                description: >-
+                                  Metadata applied to the member's pods. Useful
+                                  for labels and annotations that control
+                                  cluster-level features like service mesh
+                                  injection.
+                                properties:
+                                  labels:
+                                    type: object
+                                    additionalProperties:
+                                      type: string
+                                  annotations:
+                                    type: object
+                                    additionalProperties:
+                                      type: string
+                              spec:
+                                type: object
+                                required: [containers]
+                                description: >-
+                                  Pod spec for this member's engine pods.
+                                properties:
+                                  containers:
+                                    type: array
+                                    minItems: 1
+                                    maxItems: 1
+                                    description: >-
+                                      Containers for the engine pod. v0.1 supports
+                                      a single container, which must be named
+                                      "engine" (the inference engine). Sidecar /
+                                      multi-container support is tracked
+                                      separately.
+                                    x-kubernetes-validations:
+                                    - rule: "self.exists_one(c, c.name == 'engine')"
+                                      message: "the single container must be named 'engine'"
+                                    items:
+                                      type: object
+                                      required: [name, image]
+                                      properties:
+                                        name:
+                                          type: string
+                                          minLength: 1
+                                          description: >-
+                                            Container name. The container named
+                                            "engine" is the inference engine.
+                                        image:
+                                          type: string
+                                          minLength: 1
+                                          description: Container image.
+                                        command:
+                                          type: array
+                                          description: >-
+                                            Container entrypoint override, passed
+                                            through verbatim. For a Leader or
+                                            Worker, the command owns cross-node
+                                            coordination and addresses the leader
+                                            through $(MODELPLANE_LEADER_ADDRESS),
+                                            which Modelplane injects into every
+                                            engine container.
+                                          items:
+                                            type: string
+                                        args:
+                                          type: array
+                                          description: >-
+                                            Container args, passed through to the
+                                            serving engine. Includes the model
+                                            identifier (e.g. --model=...) and any
+                                            parallelism flags.
+                                          items:
+                                            type: string
+                                        env:
+                                          type: array
+                                          description: >-
+                                            Environment variables. Supports
+                                            valueFrom.secretKeyRef for secrets
+                                            like HF_TOKEN.
+                                          items:
+                                            type: object
+                                            required: [name]
+                                            properties:
+                                              name:
+                                                type: string
+                                              value:
+                                                type: string
+                                              valueFrom:
+                                                type: object
+                                                properties:
+                                                  secretKeyRef:
+                                                    type: object
+                                                    required: [name, key]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      key:
+                                                        type: string
+                                                      optional:
+                                                        type: boolean
+                                                  configMapKeyRef:
+                                                    type: object
+                                                    required: [name, key]
+                                                    properties:
+                                                      name:
+                                                        type: string
+                                                      key:
+                                                        type: string
+                                                      optional:
+                                                        type: boolean
+                                  imagePullSecrets:
+                                    type: array
+                                    description: >-
+                                      Image pull secrets for private registries
+                                      (NGC etc.).
+                                    items:
+                                      type: object
+                                      required: [name]
+                                      properties:
+                                        name:
+                                          type: string
           status:
             type: object
             properties:

@@ -73,8 +73,8 @@ An InferenceClass is a tested recipe for a GPU node pool. It bundles:
 - **Devices**: the node's hardware as a list of DRA-style devices, each with a
   driver, count, typed attributes, and capacity. A `claim: DRA` device (a GPU) is
   bound to pods through a DRA `ResourceClaim`; a `claim: Synthetic` device (an
-  InfiniBand NIC, say) is described for scheduling only. The scheduler matches a
-  `ModelDeployment.nodeSelector` against these devices.
+  InfiniBand NIC, say) is described for scheduling only. The scheduler matches
+  a member's `nodeSelector` against these devices.
 - **Provisioning** (optional): how to create a node pool of this class on a
   specific cloud. Classes without provisioning are for existing clusters where
   the pool already exists.
@@ -103,60 +103,63 @@ clusters, which Modelplane assumes are solely for its use.
 ## ModelDeployment
 
 A ModelDeployment is the ML team's interface. It carries everything needed to
-deploy a model to the fleet: the worker template, hardware topology, replica
-count, and an optional [ModelCache](#modelcache) reference for staged weights.
+deploy a model to the fleet: the inference engines, replica count, and an
+optional [ModelCache](#modelcache) reference for staged weights.
+
+`spec.engines` is an array of inference engines. An engine is one serving unit:
+a single `Standalone` member, or a gang of one `Leader` and one or more `Worker`
+members (per `worker.nodes`) coordinating across nodes. Each member carries its
+`nodeSelector` (the devices each of its pods needs from its node) and its
+`template` (the engine container). A gang's members are usually homogeneous,
+repeating the same `nodeSelector`, and the scheduler prefers to place them on
+one node pool; a member may omit its `nodeSelector` entirely to claim no devices
+(a coordinator-only leader), riding along on its gang's pool. An engine may set
+`copies` to run several identical copies - a fixed number, not a scaling knob.
+Modelplane is unopinionated about the engine itself: parallelism, quantization,
+and KV transfer all live in the members' engine flags, written by you, never
+injected by Modelplane.
 
 When you create a ModelDeployment, the scheduler:
 
 1. Discovers all ready InferenceClusters (filtered by `clusterSelector` labels
    if set).
-2. Derives the physical shape from `workers.topology`: GPUs per node (tensor)
-   and nodes per worker (pipeline, default 1).
-3. Matches each `nodeSelector` device request against a candidate pool's
-   InferenceClass devices, gated on the pool having enough available nodes, and
-   pins the replica to a pool that satisfies every request.
-4. Creates a `ModelReplica` for each selected cluster, carrying the resolved
-   `claim: DRA` requests so the replica forms a DRA `ResourceClaim`.
+2. Derives each member's node cost: a Standalone or Leader is one pod,
+   Workers are `worker.nodes` worker pods, times the engine's `copies`. A
+   member that claims no devices costs no nodes.
+3. Matches each member's `nodeSelector` device requests against a candidate
+   pool's InferenceClass devices, gated on the pool having enough available
+   nodes, and co-schedules every member of a replica onto one cluster -
+   preferring one pool per engine, splitting members across pools only when no
+   pool satisfies them all.
+4. Creates a `ModelReplica` for each selected cluster, carrying each member's
+   pool and the resolved `claim: DRA` requests so the member's pods form DRA
+   `ResourceClaims`.
 5. Creates a `ModelEndpoint` for each replica, carrying the URL and rewrite path
    for routing.
 
-The worker template is a curated subset of `PodTemplateSpec`. It carries a
+A member's `template` is a curated subset of `PodTemplateSpec`. It carries a
 single container named `engine`, the inference engine (e.g. vLLM).
 
 ### Scaling
 
-Replicas are the only scaling axis. Each `ModelReplica` is a complete,
-fixed-topology serving instance. Scaling `spec.replicas` adds or removes whole
-instances. There's no in-cluster pod autoscaling.
+ModelDeployment replicas are the top scaling axis. Each `ModelReplica` is a
+complete, fixed-shape serving instance. Scaling `spec.replicas` adds or removes
+whole instances. There's no in-cluster pod autoscaling.
 
 ## Multi-node Inference
 
-When a model is too large to fit on one node's GPUs, set
-`workers.topology.pipeline` greater than 1. Modelplane composes a
-LeaderWorkerSet gang of pods that serve the model together: pipeline
-parallelism splits the model across nodes, tensor parallelism splits it
-across GPUs within a node.
+When a model is too large to fit on one node's GPUs, make an engine a gang:
+give it a `Leader` member and a `Worker` member, whose `worker.nodes` expands
+to that many worker pods, one per node. Modelplane composes a LeaderWorkerSet
+of pods that serve the model together. The leader runs the engine's
+coordination head and serves; the workers join it, addressing the leader
+through the `MODELPLANE_LEADER_ADDRESS` env var
+Modelplane injects. How the model is split across the gang (tensor, pipeline,
+data, or expert parallelism) is up to the engine flags you write on each
+member.
 
-Multi-node deployments require a [ModelCache](#modelcache) referenced via
-`spec.modelCacheRef.name`.
-
-## Disaggregated Serving
-
-Prefill (processing the whole prompt) and decode (generating tokens one at a
-time) have opposite hardware profiles. Prefill is compute-bound and sets
-time-to-first-token; decode is memory-bandwidth-bound and sets inter-token
-latency. On shared pods a prefill burst stalls in-flight decodes, and neither
-phase can be tuned on its own.
-
-Set a `prefill` block on the ModelDeployment to split them. The top-level
-`workers` becomes the decode role and `prefill` is its own self-contained role,
-with its own `workers.count`, `topology`, `template`, and `nodeSelector`, so
-each phase can land on a different GPU class through the usual capability
-matching. The prefill engine transfers its KV cache to a decode engine over
-NIXL, configured through the engine's `--kv-transfer-config`. Like multi-node
-serving, a disaggregated deployment requires a [ModelCache](#modelcache); both
-roles mount the same PVC and stay co-located on one cluster, since KV transfer
-needs a fast interconnect (NVLink within a node, RDMA across nodes).
+Multi-node engines require a [ModelCache](#modelcache) referenced via
+`spec.modelCacheRef.name`, since every pod in the gang mounts it.
 
 Disaggregation runs on the multi-node (llm-d) path. A request is routed to a
 prefill instance and then to the decode instance holding its KV cache by the
@@ -176,7 +179,7 @@ cluster and hydrates it once with a Job that fetches the artifact from the
 configured source. ModelDeployments reference a cache via
 `spec.modelCacheRef.name`; the cache's PVC is mounted at `/mnt/models`
 read-write into every serving pod automatically, shared across the LWS gang of
-a multi-node worker. The engine reads weights locally from the mount instead of
+a multi-node engine. The engine reads weights locally from the mount instead of
 fetching them at boot.
 
 Without a cache, the engine fetches the model at pod startup, so the
@@ -225,11 +228,11 @@ The ModelDeployment's composition function creates ModelReplicas. Don't create
 them directly.
 
 Each replica represents a model deployed to a specific cluster. It reads the
-worker template and topology, finds the engine container, and composes the
-serving workload by topology: a native Kubernetes Deployment + Service +
-HTTPRoute for a single self-contained pod (pipeline = 1), or an llm-d
-LeaderWorkerSet with Gateway API Inference Extension routing (InferencePool +
-endpoint picker) for multi-pod deployments (pipeline > 1).
+replica's engines and composes a workload per engine from its member roles: a
+native Kubernetes Deployment for a Standalone engine, or an llm-d
+LeaderWorkerSet for a Leader/Worker gang. One Service and HTTPRoute, spanning
+every engine's serving pods, front the replica as a unified OpenAI-compatible
+endpoint.
 
 ## ModelEndpoint
 

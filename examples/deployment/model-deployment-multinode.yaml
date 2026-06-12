@@ -1,48 +1,109 @@
-# A ModelDeployment using multi-node tensor + pipeline parallelism.
+# A ModelDeployment serving one model across two nodes.
 #
-# pipeline > 1 runs the model across multiple nodes, each with `tensor`
-# GPUs. The scheduler picks a cluster with a pool that has at least
-# `tensor` GPUs per node and at least `pipeline` available nodes.
-# Modelplane composes a LeaderWorkerSet-backed llm-d serving instance on
-# the remote cluster.
+# An engine with a Leader and one or more Workers spans multiple nodes. A gang
+# is the Leader plus worker.nodes workers. The scheduler picks a cluster with a
+# pool that has enough GPUs per node and enough nodes for the whole gang, and
+# Modelplane composes a LeaderWorkerSet-backed serving instance on it.
+#
+# This example runs Qwen2.5-7B pipeline-parallel across two single-GPU nodes
+# (validated on 2x NVIDIA L4). Parallelism is the engine's concern: Modelplane
+# injects no flags. The leader starts the engine's coordination head and
+# serves; the follower joins it, addressing the leader through
+# $(MODELPLANE_LEADER_ADDRESS), which Modelplane injects into every engine
+# container of the gang.
+#
+# The launch commands use vLLM's bundled multi-node-serving.sh helper rather
+# than raw `ray start`. Its `leader` subcommand starts the Ray head and blocks
+# until the whole gang has joined (--ray_cluster_size) before `vllm serve`
+# runs, and its `worker` subcommand retries the join - removing the race where
+# the leader's engine starts before the follower joins. The helper appends
+# Ray's default port itself, so the worker passes the bare leader address.
+#
+# Multi-node engines require a ModelCache: every pod in the gang mounts it at
+# /mnt/models. When a member brings its own `command`, Modelplane does not
+# inject --model, so the leader points `vllm serve` at the mount explicitly.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
-  name: llama-405b
+  name: qwen-7b
   namespace: ml-team
 spec:
   replicas: 1
 
-  clusterSelector:
-    matchLabels:
-      modelplane.ai/tier: production
+  modelCacheRef:
+    name: qwen-7b
 
-  # Request 8 GPUs per node with enough memory for a 405B model. count matches
-  # the tensor topology (GPUs per node); the scheduler pins the replica to a
-  # pool whose devices satisfy this, and the request becomes a DRA DeviceRequest
-  # the serving pods claim GPUs through. 70Gi selects an 80GB-class GPU (an H100
-  # reports ~79Gi of its nominal 80GB): the threshold has to sit below the
-  # device's real reported memory, since DRA evaluates this CEL against the
-  # GPU's actual ResourceSlice at admission, not its marketing capacity.
-  nodeSelector:
-    devices:
-    - name: gpu
-      count: 8
-      selectors:
-      - cel: |
-          device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("70Gi")) >= 0
-
-  workers:
-    topology:
-      tensor: 8        # 8 GPUs per node.
-      pipeline: 2      # 2 nodes per worker.
-    template:
-      spec:
-        containers:
-        - name: engine
-          image: vllm/vllm-openai:v0.9.1
-          args:
-          - "--model=meta-llama/Llama-3.1-405B-Instruct"
-          - "--tensor-parallel-size=8"
-          - "--pipeline-parallel-size=2"
-          - "--max-model-len=131072"
+  engines:
+  - name: qwen-7b
+    members:
+    # The Leader runs the Ray head and serves the OpenAI API on port 8000
+    # (Modelplane's serving contract: port 8000, /health readiness).
+    #
+    # Both members ask for one L4-class GPU per node: this gang is
+    # homogeneous, so they repeat the same nodeSelector and the scheduler
+    # prefers to place them on one pool. The threshold has to sit below the
+    # device's real reported memory (an L4 reports ~22.5Gi of its nominal
+    # 24GB), since the scheduler and DRA match against what the driver
+    # actually reports.
+    - role: Leader
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            command:
+            - /bin/sh
+            - -c
+            - >-
+              bash /vllm-workspace/examples/online_serving/multi-node-serving.sh
+              leader --ray_cluster_size=$(LWS_GROUP_SIZE);
+              exec vllm serve /mnt/models
+              --served-model-name=qwen-7b
+              --tensor-parallel-size=1
+              --pipeline-parallel-size=2
+              --distributed-executor-backend=ray
+              --max-model-len=4096
+              --gpu-memory-utilization=0.90
+              --port=8000
+    # One Worker (per worker.nodes): the gang spans 1 (leader) + 1 2 nodes.
+    - role: Worker
+      worker:
+        nodes: 1
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            command:
+            - /bin/sh
+            - -c
+            - >-
+              bash /vllm-workspace/examples/online_serving/multi-node-serving.sh
+              worker --ray_address=$(MODELPLANE_LEADER_ADDRESS)
+---
+# The shared, read-write-many cache the gang serves from. Hydrated once per
+# matched cluster; every gang pod mounts it at /mnt/models.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen-7b
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen2.5-7B-Instruct  # Public repo; no authSecret needed.
+    sizeGiB: 40

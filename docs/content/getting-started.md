@@ -279,11 +279,11 @@ kubectl apply -f examples/deployment/model-deployment.yaml
 kubectl apply -f examples/deployment/model-service.yaml
 ```
 
-The deployment's `nodeSelector` declares the GPU its model needs as a DRA
-device request (here, a GPU with at least 24Gi of memory). The scheduler matches
-that request against each cluster's GPU pools, pins the ModelReplica to a pool
-that satisfies it, and the same request becomes the DRA ResourceClaim the
-serving pod binds its GPU through. Wait for the deployment to become ready:
+The member's `nodeSelector` declares the GPU its model needs as a DRA device
+request (here, a GPU with at least 24Gi of memory). The scheduler matches that
+request against each cluster's GPU pools, pins the member to a pool that
+satisfies it, and the same request becomes the DRA ResourceClaim the serving
+pod binds its GPU through. Wait for the deployment to become ready:
 
 ```bash
 kubectl get md -n ml-team --watch

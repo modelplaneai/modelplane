@@ -1,7 +1,7 @@
 """Fan out a ModelDeployment to ModelReplicas and ModelEndpoints.
 
 This function discovers InferenceClusters, matches the deployment's
-topology against available capacity, creates a ModelReplica per
+engines against available capacity, creates a ModelReplica per
 selected cluster, and creates one ModelEndpoint per replica for
 ModelService to route to.
 """
@@ -157,7 +157,7 @@ class Composer:
         return True
 
     def schedule(self):
-        """Match the deployment's topology against available clusters."""
+        """Match the deployment's engines against available clusters."""
         matched = scheduling.schedule(self.xr, self.clusters, self.all_replicas)
 
         # Transition: emit which clusters were matched (first time only). A
@@ -177,33 +177,18 @@ class Composer:
     def compose_replicas(self, matched):
         """Compose a ModelReplica per matched cluster.
 
-        Each replica inherits the deployment's workers block verbatim
-        and is pinned to a specific cluster via spec.clusterName. Once
-        composed, the pin is stable - the scheduler retains the
-        assignment across reconciles. See scheduling.schedule for the
-        retain-then-place logic.
+        Each replica mirrors the deployment's engines with the scheduler's
+        per-engine placement resolved onto them, and is pinned to a specific
+        cluster via spec.clusterName. Once composed, the pin is stable - the
+        scheduler retains the assignment across reconciles. See
+        scheduling.schedule for the retain-then-place logic.
         """
-        # Convert via model_dump because the MD and MR Workers types
-        # are different Pydantic classes (generated from different XRDs
-        # with the same schema).
-        workers = mrv1alpha1.Workers.model_validate(self.xr.spec.workers.model_dump(exclude_none=True))
+        # Index the deployment's engines by name so each placement (keyed by
+        # engine name) can be joined with its template and member shape.
+        engines_by_name = {e.name: e for e in self.xr.spec.engines}
 
         for cluster_info in matched:
             replica_key = name.replica_key(cluster_info)
-
-            # Stamp the resolved claim: DRA device requests so the replica
-            # function can form a DRA ResourceClaim. The scheduler only places a
-            # replica on a pool that yields at least one claimable device, so
-            # this is always non-empty.
-            device_requests = [
-                mrv1alpha1.DeviceRequest(
-                    name=r.name,
-                    deviceClassName=r.device_class_name,
-                    count=r.count,
-                    selectors=[mrv1alpha1.Selector(cel=c) for c in r.cel_selectors],
-                )
-                for r in cluster_info.device_requests
-            ]
 
             replica = mrv1alpha1.ModelReplica(
                 metadata=metav1.ObjectMeta(
@@ -217,14 +202,54 @@ class Composer:
                 ),
                 spec=mrv1alpha1.SpecModel(
                     clusterName=cluster_info.name,
-                    nodePoolName=cluster_info.pool,
-                    deviceRequests=device_requests,
-                    workers=workers,
+                    engines=[self._replica_engine(engines_by_name[ep.name], ep) for ep in cluster_info.engines],
                 ),
             )
             if self.xr.spec.modelCacheRef:
                 replica.spec.modelCacheRef = mrv1alpha1.ModelCacheRef(name=self.xr.spec.modelCacheRef.name)
             resource.update(self.rsp.desired.resources[replica_key], replica)
+
+    def _replica_engine(self, engine, placement):
+        """Build a ModelReplica engine from a deployment engine + placement.
+
+        The engine keeps its name, copies, and member templates verbatim; the
+        scheduler supplies each member's pool (nodePoolName) and resolved
+        claim: DRA device requests. A member that claims nothing - no
+        nodeSelector, or only synthetic devices matched - carries only its pool
+        pin; the scheduler guarantees at least one member of every engine
+        carries requests.
+        """
+        members = []
+        for member, mp in zip(engine.members, placement.members, strict=True):
+            replica_member = mrv1alpha1.Member(
+                role=member.role,
+                nodePoolName=mp.pool,
+                template=mrv1alpha1.Template.model_validate(member.template.model_dump(exclude_unset=True)),
+            )
+            # A claimless member omits deviceRequests rather than carrying an
+            # empty list; setting [] would serialize a literal empty array into
+            # the composed manifest.
+            if mp.device_requests:
+                replica_member.deviceRequests = [
+                    mrv1alpha1.DeviceRequest(
+                        name=r.name,
+                        deviceClassName=r.device_class_name,
+                        count=r.count,
+                        selectors=[mrv1alpha1.Selector(cel=c) for c in r.cel_selectors],
+                    )
+                    for r in mp.device_requests
+                ]
+            # Only a Worker carries the worker block, and only when the user
+            # set one. Setting worker=None explicitly would serialize a literal
+            # null into the composed manifest rather than omitting the field.
+            if member.worker is not None:
+                replica_member.worker = mrv1alpha1.Worker(nodes=member.worker.nodes)
+            members.append(replica_member)
+        return mrv1alpha1.Engine(
+            name=engine.name,
+            copies=engine.copies,
+            members=members,
+        )
 
     def compose_endpoints(self, matched):
         """Compose one ModelEndpoint per matched replica.
