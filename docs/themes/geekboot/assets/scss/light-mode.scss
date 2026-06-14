@@ -59,11 +59,11 @@
     --result-path: var(--body-background);
 
     // API Page
-    --sort-up: url("/img/sort-up-light.svg");
-    --sort-down: url("/img/sort-down-light.svg");
+    --sort-up: url("../img/sort-up-light.svg");
+    --sort-down: url("../img/sort-down-light.svg");
     --expand-box-background: #{$fog-100};
-    --minus-svg: url("/img/minus-white.svg");
-    --plus-svg: url("/img/plus-black.svg");
+    --minus-svg: url("../img/minus-white.svg");
+    --plus-svg: url("../img/plus-black.svg");
     // fog-600 (#6C7070) passes at 5.0:1 but reads light; fog-700 (#535858) gives 6.6:1
     --crd-header-color: #{$fog-700};
     --crd-row-border: #{$fog-400};

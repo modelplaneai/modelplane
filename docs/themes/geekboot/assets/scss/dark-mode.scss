@@ -52,11 +52,11 @@
     --result-path: var(--body-background);
 
     // API Page
-    --sort-up: url("/img/sort-up-light.svg");
-    --sort-down: url("/img/sort-down-light.svg");
+    --sort-up: url("../img/sort-up-light.svg");
+    --sort-down: url("../img/sort-down-light.svg");
     --expand-box-background: #{$mp-bg-card};
-    --minus-svg: url("/img/minus-white.svg");
-    --plus-svg: url("/img/plus-150.svg");
+    --minus-svg: url("../img/minus-white.svg");
+    --plus-svg: url("../img/plus-150.svg");
     // Bump description / header text to muted-hi (#b0afcc) for legibility.
     // $mp-muted (#8b8aae) passes WCAG AA but reads as washed-out body text.
     --crd-header-color: #{$mp-muted-hi};

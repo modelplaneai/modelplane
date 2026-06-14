@@ -49,6 +49,13 @@ in
   #   HUGO_ENABLEGITINFO=false   no .git in the sandbox; git metadata is
   #                              cosmetic (last-modified dates).
   #   HUGO_ENVIRONMENT=production   selects the PostCSS+PurgeCSS CSS pipeline.
+  #   HUGO_BASEURL=…/docs/   the site is served under the /docs path of
+  #                              modelplane.ai (the marketing site proxies
+  #                              /docs/* here), so every Permalink, canonical
+  #                              tag, asset, and sitemap URL must carry the
+  #                              /docs prefix. Only the production artifact is
+  #                              served there; `hugo server` (docs-serve) keeps
+  #                              the baseURL = "/" from hugo.toml for local dev.
   #
   # PostCSS resolves plugins from node_modules via NODE_PATH, and Hugo finds
   # the postcss CLI through the node_modules/.bin on PATH.
@@ -62,6 +69,7 @@ in
         env = {
           HUGO_ENABLEGITINFO = "false";
           HUGO_ENVIRONMENT = "production";
+          HUGO_BASEURL = "https://modelplane.ai/docs/";
         };
       }
       ''
