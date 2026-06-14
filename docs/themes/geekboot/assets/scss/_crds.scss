@@ -284,7 +284,7 @@
   }
 
   .yaml-svg{
-    background-image: url("/img/download.svg");
+    background-image: url("../img/download.svg");
     background-repeat: no-repeat;
     background-position: center;
     border-radius: 4px;
@@ -307,7 +307,7 @@
     .up-button {
       color: var(--body-font-color);
       background-color: #{$aqua-600} !important;
-      background-image: url("/img/arrow-up-white.svg");
+      background-image: url("../img/arrow-up-white.svg");
       background-repeat: no-repeat;
       background-position: center;
       border-radius: 4px;
