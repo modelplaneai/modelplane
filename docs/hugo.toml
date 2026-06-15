@@ -58,7 +58,7 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
   # Mount the manifests directory as assets so the manifests shortcode can read
   # raw YAML (preserving comments) via resources.Get "manifests/<path>.yaml".
   [[module.mounts]]
-    source = "../manifests"
+    source = "manifests"
     target = "assets/manifests"
 
 [security]

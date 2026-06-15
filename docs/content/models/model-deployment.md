@@ -3,12 +3,12 @@ title: Deploy a Model
 weight: 10
 description: Deploy a model to the fleet with replica count and engine configuration.
 ---
+**API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "reference.md" >}}#crd-modeldeployment)
 <!-- vale write-good.Passive = NO -->
 A `ModelDeployment` is the ML team's primary interface. It carries everything
 needed to deploy a model to the fleet: the inference engines, replica count, and
 an optional [ModelCache]({{< ref "model-cache.md" >}}) reference for staged weights.
 
-**API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "reference.md" >}}#crd-modeldeployment)
 
 `spec.engines` is an array of inference engines. An engine is one serving unit:
 a single `Standalone` member, or a gang of one `Leader` and one or more `Worker`
@@ -74,7 +74,14 @@ and long context. For small models or low traffic the KV-transfer overhead
 outweighs the benefit, so aggregated serving (optionally with chunked prefill) is
 the default.
 
-## Example
+## Examples
 
+{{< tabs >}}
+{{< tab "Single-node" >}}
 {{< manifests "deployment/model-deployment.yaml" >}}
+{{< /tab >}}
+{{< tab "Multi-node" >}}
+{{< manifests "deployment/model-deployment-multinode.yaml" >}}
+{{< /tab >}}
+{{< /tabs >}}
 <!-- vale write-good.Passive = YES -->

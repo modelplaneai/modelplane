@@ -3,12 +3,12 @@ title: Expose a Model
 weight: 20
 description: Expose model endpoints via a unified OpenAI-compatible URL.
 ---
+**API:** [`modelplane.ai/v1alpha1` · ModelService]({{< ref "reference.md" >}}#crd-modelservice)
 <!-- vale write-good.Passive = NO -->
 A `ModelService` exposes one or more `ModelEndpoints` via a unified,
 OpenAI-compatible endpoint. It selects endpoints by label and composes a Gateway
 API `HTTPRoute` that load-balances across them.
 
-**API:** [`modelplane.ai/v1alpha1` · ModelService]({{< ref "reference.md" >}}#crd-modelservice)
 
 Each backendRef in the HTTPRoute carries its own `URLRewrite` filter derived from
 the endpoint's `spec.rewritePath`, so endpoints from different deployments or

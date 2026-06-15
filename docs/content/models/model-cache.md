@@ -4,6 +4,8 @@ weight: 30
 description: Stage model weights on cluster storage before serving.
 ---
 <!-- vale write-good.Passive = NO -->
+**API:** [`modelplane.ai/v1alpha1` · ModelCache]({{< ref "reference.md" >}}#crd-modelcache)
+
 A `ModelCache` stages a model artifact on workload-cluster storage as a
 first-class resource. Modelplane composes a ReadWriteMany PVC on each matched
 cluster and hydrates it once with a Job that fetches the artifact from the
@@ -13,7 +15,6 @@ read-write into every serving pod automatically, shared across the LWS gang of a
 multi-node engine. The engine reads weights locally from the mount instead of
 fetching them at boot.
 
-**API:** [`modelplane.ai/v1alpha1` · ModelCache]({{< ref "reference.md" >}}#crd-modelcache)
 
 Without a cache, the engine fetches the model at pod startup, so the
 `ModelDeployment` must supply any required credentials (`HF_TOKEN` via the engine

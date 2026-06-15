@@ -123,6 +123,35 @@ theme's assets. Rebuild it after changing anything under
 nix run .#docs-generate
 ```
 
+### Manifest shortcodes
+
+Annotated YAML manifests live under `docs/manifests/`. Two shortcodes render
+them in content pages.
+
+**`manifests`** — renders the file inline with syntax highlighting, followed by
+a `kubectl apply -f <url>` block pointing to the published file:
+
+```markdown
+{{</* manifests "platform/inference-gateway.yaml" */>}}
+```
+
+Optional named args:
+
+| Arg | Default | Effect |
+|---|---|---|
+| `apply="false"` | — | omit the kubectl block |
+| `command="kubectl delete -f"` | `kubectl apply -f` | override the verb |
+
+**`manifest-url`** — emits just the absolute URL of the file, for use inside
+an existing code fence:
+
+```markdown
+kubectl delete -f {{</* manifest-url "platform/inference-gateway.yaml" */>}}
+```
+
+Both shortcodes take a path relative to `docs/manifests/` and fail the build
+with a clear error if the file doesn't exist.
+
 ### Linting and link checking
 
 Docs prose is linted with [Vale](https://vale.sh). Lint docs content:

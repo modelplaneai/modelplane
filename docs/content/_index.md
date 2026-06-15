@@ -111,7 +111,7 @@ Modelplane is under the [Apache 2.0 license][license].
 [Envoy Gateway]: https://gateway.envoyproxy.io
 [KServe]: https://kserve.github.io/website/
 [CONTRIBUTING.md]: https://github.com/modelplaneai/modelplane/blob/main/CONTRIBUTING.md
-[manifests]: https://github.com/modelplaneai/modelplane/tree/main/manifests
+[manifests]: https://github.com/modelplaneai/modelplane/docs/manifests
 [license]: https://github.com/modelplaneai/modelplane/blob/main/LICENSE
 [Nix]: https://nixos.org
 [issues]: https://github.com/modelplaneai/modelplane/issues

@@ -1,9 +1,16 @@
+.bd-sidebar {
+  @include media-breakpoint-up(lg) {
+    align-self: start;
+    position: sticky;
+    top: 4.5rem;
+  }
+}
+
 .bd-sidebar-container {
   background-color: var(--body-background) !important;
-  top: 0;
 
   @include media-breakpoint-up(lg) {
-    position: sticky;
+    position: static;
   }
 
   .offcanvas-title{

@@ -1,0 +1,21 @@
+{{- /*
+  manifest-url shortcode
+
+  Emits the absolute URL of a manifest file. Use inside code fences where
+  the full manifests shortcode would render too much.
+
+  Usage (inside a shell code fence):
+    kubectl delete -f {{< manifest-url "platform/inference-gateway.yaml" >}}
+*/ -}}
+
+{{- $path := .Get 0 -}}
+{{- if not $path -}}
+  {{- errorf "manifest-url shortcode requires a path argument at %s" .Position -}}
+{{- end -}}
+
+{{- $resource := resources.Get (printf "manifests/%s" $path) -}}
+{{- if not $resource -}}
+  {{- errorf "manifest-url shortcode: manifests/%s not found (called from %s)" $path .Position -}}
+{{- end -}}
+
+{{- ($resource | resources.Copy (printf "manifests/%s" $path)).Permalink -}}

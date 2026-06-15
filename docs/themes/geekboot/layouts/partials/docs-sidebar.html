@@ -2,7 +2,7 @@
 
 <nav class="bd-links-nav w-100" aria-label="Docs navigation">
   {{ $root := .Site.Home }}
-  {{ $allItems := ($root.RegularPages | append $root.Sections).ByWeight }}
+  {{ $allItems := (slice $root | append $root.RegularPages | append $root.Sections).ByWeight }}
 
   {{ range $allItems }}
     {{ $id := substr (sha1 .Permalink) 0 8 }}

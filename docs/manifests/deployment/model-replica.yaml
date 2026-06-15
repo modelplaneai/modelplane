@@ -1,0 +1,23 @@
+# ModelReplicas are composed automatically by ModelDeployment.
+# Do not create them directly.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelReplica
+metadata:
+  name: qwen-72b-west-0
+  namespace: ml-team
+spec:
+  clusterName: west-gke
+  modelCacheRef:
+    name: qwen-72b
+  workers:
+    topology:
+      tensor: 4
+      pipeline: 2
+    template:
+      spec:
+        containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.7.3
+            args:
+              - --model=/cache/model
+              - --tensor-parallel-size=4
