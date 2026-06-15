@@ -145,7 +145,7 @@ ModelDeployment replicas are the top scaling axis. Each `ModelReplica` is a
 complete, fixed-shape serving instance. Scaling `spec.replicas` adds or removes
 whole instances. There's no in-cluster pod autoscaling.
 
-## Multi-node Inference
+## Multi-node inference
 
 When a model is too large to fit on one node's GPUs, make an engine a gang:
 give it a `Leader` member and a `Worker` member, whose `worker.nodes` expands

@@ -148,11 +148,11 @@ informational. Two common ones need judgment:
   <!-- vale write-good.Passive = YES -->
   ```
 
-- **Acronyms.** Vale flags acronyms it considers unfamiliar. Either spell the
-  term out on first use (`Dynamic Resource Allocation (DRA)`), or — if the
-  acronym is standard for the Modelplane audience — add it to
-  `docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` so Vale
-  stops flagging it everywhere.
+- **Unknown words.** Vale flags brand names, acronyms, API types, and
+  technical terms it doesn't recognise. Add them to
+  `docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` — that is
+  the single place for all Vale exceptions. Entries are case-sensitive regular
+  expressions, one per line.
 
 Internal links are checked with [htmltest](https://github.com/wjdp/htmltest)
 against the built Hugo site. Build the site and check links:

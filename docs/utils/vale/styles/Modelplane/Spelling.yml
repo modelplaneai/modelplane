@@ -3,12 +3,6 @@ extends: spelling
 message: 'Spelling check: "%s"?'
 level: error
 custom: true
-ignore:
-  - Modelplane/spelling-exceptions.txt
-  - Modelplane/brands.txt
-  - Modelplane/modelplane-words.txt
-  - Modelplane/provider-words.txt
-  - Modelplane/allowed-jargon.txt
 filters:
   - v\d
   - v\d\.[x\d]\d?
