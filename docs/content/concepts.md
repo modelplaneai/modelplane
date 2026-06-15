@@ -270,8 +270,8 @@ admin). When the default doesn't fit, like a different cost profile, an RWX back
 the org already runs, etc. Platform teams point Modelplane at a different
 StorageClass via `cluster.<source>.cache.storageClassName`. On GKE the admin
 must first create the StorageClass on the workload cluster (any backend
-supporting ReadWriteMany dynamic provisioning like WekaIO, NetApp Trident, FSx
-for NetApp, and similar). On Existing clusters the field points at whatever
+supporting ReadWriteMany dynamic provisioning like WekaIO, NetApp Trident,
+`FSx` for NetApp, and similar). On Existing clusters the field points at whatever
 name the admin chose. The ML team's ModelCache and ModelDeployment specs are
 unchanged regardless.
 <!-- vale Google.Acronyms = YES -->
