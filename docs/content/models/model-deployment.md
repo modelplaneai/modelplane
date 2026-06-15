@@ -3,7 +3,7 @@ title: Deploy a Model
 weight: 10
 description: Deploy a model to the fleet with replica count and engine configuration.
 ---
-**API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "reference.md" >}}#crd-modeldeployment)
+**API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "reference#crd-modeldeployment" >}})
 <!-- vale write-good.Passive = NO -->
 A `ModelDeployment` is the ML team's primary interface. It carries everything
 needed to deploy a model to the fleet: the inference engines, replica count, and
@@ -18,7 +18,7 @@ members (per `worker.nodes`) coordinating across nodes. Each member carries its
 repeating the same `nodeSelector`, and the scheduler prefers to place them on
 one node pool; a member may omit its `nodeSelector` entirely to claim no devices
 (a coordinator-only leader), riding along on its gang's pool. An engine may set
-`copies` to run several identical copies — a fixed number, not a scaling knob.
+`copies` to run several identical copies. Uses a fixed number, not a scaling knob.
 Modelplane isn't opinionated about the engine itself: parallelism, quantization,
 and KV transfer all live in the members' engine flags, written by you, never
 injected by Modelplane.
@@ -32,8 +32,8 @@ When you create a `ModelDeployment`, the scheduler:
    claims no devices costs no nodes.
 3. Matches each member's `nodeSelector` device requests against a candidate
    pool's `InferenceClass` devices, gated on the pool having enough available
-   nodes, and co-schedules every member of a replica onto one cluster —
-   preferring one pool per engine, splitting members across pools only when no
+   nodes, and co-schedules every member of a replica onto one cluster.
+   Prefers one pool per engine and splits members across pools only when no
    pool satisfies them all.
 4. Creates a `ModelReplica` for each selected cluster, carrying each member's
    pool and the resolved `claim: DRA` requests so the member's pods form DRA

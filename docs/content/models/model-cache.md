@@ -4,7 +4,7 @@ weight: 30
 description: Stage model weights on cluster storage before serving.
 ---
 <!-- vale write-good.Passive = NO -->
-**API:** [`modelplane.ai/v1alpha1` · ModelCache]({{< ref "reference.md" >}}#crd-modelcache)
+**API:** [`modelplane.ai/v1alpha1` · ModelCache]({{< ref "reference#crd-modelcache" >}})
 
 A `ModelCache` stages a model artifact on workload-cluster storage as a
 first-class resource. Modelplane composes a ReadWriteMany PVC on each matched
@@ -63,8 +63,8 @@ What the platform admin must set up depends on the cloud:
 <!-- vale Google.Acronyms = NO -->
 Modelplane provisions Filestore Enterprise on `GKE` clusters and expects a
 StorageClass named `modelplane-rwx` on `Existing` clusters. When the default
-doesn't fit — a different cost profile, an RWX backend the org already runs,
-etc. — platform teams point Modelplane at a different StorageClass via
+doesn't fit (a different cost profile, an RWX backend the org already runs,
+etc.). Platform teams point Modelplane at a different StorageClass via
 `cluster.<source>.cache.storageClassName` on the
 [InferenceCluster]({{< ref "platform/inference-cluster.md" >}}). On GKE the
 admin must first create the StorageClass on the workload cluster (any backend

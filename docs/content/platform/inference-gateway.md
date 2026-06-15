@@ -3,7 +3,7 @@ title: Set Up the Gateway
 weight: 10
 description: Unified OpenAI-compatible endpoint on the control plane cluster.
 ---
-**API:** [`modelplane.ai/v1alpha1` · InferenceGateway]({{< ref "reference.md" >}}#crd-inferencegateway)
+**API:** [`modelplane.ai/v1alpha1` · InferenceGateway]({{< ref "reference#crd-inferencegateway" >}})
 <!-- vale write-good.Passive = NO -->
 The `InferenceGateway` creates a unified, OpenAI-compatible endpoint on the
 control plane cluster. It installs [Traefik Proxy](https://traefik.io) and

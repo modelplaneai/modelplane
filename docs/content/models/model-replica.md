@@ -3,7 +3,7 @@ title: Understand Replicas
 weight: 50
 description: One instance of a ModelDeployment placed on a specific cluster. Created automatically by Modelplane.
 ---
-**API:** [`modelplane.ai/v1alpha1` · ModelReplica]({{< ref "reference.md" >}}#crd-modelreplica)
+**API:** [`modelplane.ai/v1alpha1` · ModelReplica]({{< ref "reference#crd-modelreplica" >}})
 <!-- vale write-good.Passive = NO -->
 The `ModelDeployment` composition function creates `ModelReplicas`. Don't create
 them directly.
