@@ -57,7 +57,7 @@ _AI_GATEWAY_CONTROLLER_PORT = 1063
 # Gateway API Inference Extension (GAIE) constants. Provides the InferencePool
 # CRD that disaggregated replicas front their decode endpoints with.
 _GAIE_CHART = "inferencepool"
-_GAIE_REPO = "oci://ghcr.io/kubernetes-sigs/gateway-api-inference-extension/charts"
+_GAIE_REPO = "oci://registry.k8s.io/gateway-api-inference-extension/charts"
 _GAIE_VERSION = "v1.0.1"
 _GAIE_NAMESPACE = "gateway-api-inference-extension"
 

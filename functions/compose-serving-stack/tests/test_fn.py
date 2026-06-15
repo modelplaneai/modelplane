@@ -279,7 +279,7 @@ _GAIE_CRDS = {
         "forProvider": {
             "chart": {
                 "name": "inferencepool",
-                "repository": "oci://ghcr.io/kubernetes-sigs/gateway-api-inference-extension/charts",
+                "repository": "oci://registry.k8s.io/gateway-api-inference-extension/charts",
                 "version": "v1.0.1",
             },
             "namespace": "gateway-api-inference-extension",
