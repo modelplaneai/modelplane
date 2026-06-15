@@ -12,9 +12,11 @@
     # tracking the latest uv_build releases.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # Pinned to crossplane/cli main: it carries the merged-but-unreleased
+    # Pinned to crossplane/cli main for two merged-but-unreleased fixes: the
     # datamodel-code-generator bump (crossplane/cli#24, #64) that fixes Python
-    # model generation for fields named int/bool. Repin to a tag once released.
+    # model generation for fields named int/bool, and crossplane/cli#119, which
+    # stops the scale subresource on an XRD from clobbering the generated model
+    # with the autoscaling Scale type. Repin to a tag once released.
     crossplane-cli.url = "github:crossplane/cli";
 
     # uv2nix reads a uv workspace's uv.lock and generates Nix derivations
