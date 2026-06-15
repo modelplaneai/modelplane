@@ -55,6 +55,11 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
   [[module.mounts]]
     source = "../apis"
     target = "data/apis/crds"
+  # Mount the examples directory as assets so the example shortcode can read
+  # raw YAML (preserving comments) via resources.Get "examples/<path>.yaml".
+  [[module.mounts]]
+    source = "../examples"
+    target = "assets/examples"
 
 [security]
   [security.funcs]

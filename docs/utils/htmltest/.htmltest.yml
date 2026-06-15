@@ -1,0 +1,10 @@
+DirectoryPath: "docs/public"
+IgnoreInternalEmptyHash: true
+CheckExternal: false
+IgnoreURLs:
+  - "/site.webmanifest"
+  - "/safari-pinned-tab.svg"
+  - "github.com/modelplaneai/modelplane/issues/new.*"
+  - "github.com/modelplaneai/modelplane/issues\\?.*"
+  - "crossplane.slack.com"
+  - "twitter.com/.*"

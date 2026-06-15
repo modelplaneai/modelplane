@@ -1,0 +1,98 @@
+# Adapted from https://github.com/dmpop/technically/blob/main/CorporateSpeak.yml
+# Extended with AI slop patterns.
+extends: existence
+message: "'%s' is corporate speak or AI slop."
+ignorecase: true
+level: error
+tokens:
+  # Corporate speak
+  - sunsetting
+  - stakeholder
+  - ballpark
+  - blue sky thinking
+  - north star
+  - digital transformation
+  - buy(?:in|-in)
+  - level up
+  - data-driven
+  - right to win
+  - hit the ground running
+  - get the ball rolling
+  - think outside the box
+  - touch base
+  - it's on my radar
+  - have the bandwidth
+  - synerg(?:y|ies)
+  - move the goal post
+  - win-win
+  - circle back
+  - all hands on deck
+  - take this offline
+  - move the needle
+  - customer-centric
+  - customer obsession
+  - thought leader(?:s|hip)
+  - best-in-class
+  - cross-functional
+  - growth mindset
+  - going forward
+  - leverage
+  - utilize
+  - ecosystem
+  - seamless
+  - best of breed
+  - low-hanging fruit
+  - pain point
+  - value add
+  - actionable
+  - deep dive
+  - socialize
+  - learnings
+
+  # AI tells — the single biggest signals
+  - delve
+  - dive into
+  - unpack
+
+  # Hollow sentence starters
+  - it's worth noting
+  - it's important to note
+  - it should be noted
+  - it is worth noting
+  - it is important to note
+  - note that
+  - notably
+  - importantly
+
+  # Filler transitions
+  - furthermore
+  - moreover
+  - additionally
+  - in conclusion
+  - in summary
+  - to summarize
+  - as mentioned (?:above|earlier|previously)
+  - as noted (?:above|earlier|previously)
+  - as discussed (?:above|earlier|previously)
+
+  # Hollow qualifiers
+  - essentially
+  - basically
+  - simply put
+  - in other words
+  - that is to say
+
+  # Padded sentence endings
+  - this ensures that
+  - this allows (?:you|us|the)
+  - this enables (?:you|us|the)
+  - this means that
+  - this helps (?:you|us|the)
+
+  # Vague intensifiers used as filler
+  - robust
+  - powerful
+  - comprehensive
+  - cutting.edge
+  - state.of.the.art
+  - next.generation

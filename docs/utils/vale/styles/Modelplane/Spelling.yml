@@ -1,0 +1,20 @@
+# Adapted from https://gitlab.com/gitlab-org/gitlab/-/blob/master/doc/.vale/gitlab/Spelling.yml
+extends: spelling
+message: 'Spelling check: "%s"?'
+level: error
+custom: true
+ignore:
+  - Modelplane/spelling-exceptions.txt
+  - Modelplane/brands.txt
+  - Modelplane/modelplane-words.txt
+  - Modelplane/provider-words.txt
+  - Modelplane/allowed-jargon.txt
+filters:
+  - v\d
+  - v\d\.[x\d]\d?
+  - v\dalpha\d
+  - v\dbeta\d
+  - \/.*
+  - '#\w+'
+  - \d+\.\d+[BbMmKkTt]
+  - \w+'s

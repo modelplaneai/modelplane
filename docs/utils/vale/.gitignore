@@ -1,0 +1,7 @@
+# Vale packages downloaded by vale sync. Committed styles live under
+# styles/Modelplane/ only.
+styles/Google/
+styles/Microsoft/
+styles/alex/
+styles/proselint/
+styles/write-good/

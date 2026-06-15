@@ -1,0 +1,58 @@
+# Modelplane resource kinds
+InferenceClass
+InferenceCluster
+InferenceGateway
+ModelCache
+ModelDeployment
+ModelEndpoint
+ModelReplica
+ModelService
+GKECluster
+EKSCluster
+ServingStack
+
+# Tooling and platforms
+Crossplane
+Kubernetes
+kubectl
+kubeconfig
+vLLM
+HuggingFace
+NVIDIA
+Modelplane
+Envoy
+Traefik
+MetalLB
+Prometheus
+cert-manager
+GCP
+GKE
+AWS
+EKS
+
+# Technical terms
+GPU
+GPUs
+DRA
+LWS
+NIC
+NIM
+PVC
+IRSA
+EFS
+NFS
+IAM
+RBAC
+VPC
+KV
+
+# Allowed rule breakers
+several
+above
+below
+the cloud
+disabled
+disable
+[Bb]ackend
+admin
+usually

@@ -193,4 +193,46 @@
       }
     );
   };
+
+  # Lint docs prose with Vale. Downloads configured style packages on first run
+  # (requires network). Run from the repo root.
+  docsVale = _: {
+    type = "app";
+    meta.description = "Lint docs prose with Vale";
+    program = pkgs.lib.getExe (
+      pkgs.writeShellApplication {
+        name = "modelplane-docs-vale";
+        runtimeInputs = [ pkgs.vale pkgs.findutils ];
+        inheritPath = false;
+        text = ''
+          vale sync --config="$PWD/docs/utils/vale/.vale.ini"
+          find "$PWD/docs/content" -name '*.md' -print0 | \
+            xargs -0 vale --config="$PWD/docs/utils/vale/.vale.ini" "$@"
+        '';
+      }
+    );
+  };
+
+  # Check internal links by building the Hugo site and running htmltest.
+  docsHtmltest = _: {
+    type = "app";
+    meta.description = "Check docs internal links with htmltest";
+    program = pkgs.lib.getExe (
+      pkgs.writeShellApplication {
+        name = "modelplane-docs-htmltest";
+        runtimeInputs = [
+          pkgs.hugo
+          pkgs.htmltest
+          pkgs.git
+          pkgs.nodejs
+        ];
+        inheritPath = false;
+        text = ''
+          npm --prefix docs ci --silent
+          hugo --source docs --minify
+          htmltest --conf docs/utils/htmltest/.htmltest.yml "$@"
+        '';
+      }
+    );
+  };
 }

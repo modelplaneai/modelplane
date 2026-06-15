@@ -1,10 +1,9 @@
 ---
 title: Concepts 
-weight: 20
+weight: 50
 description: Learn about Modelplane concepts.
 ---
-
-
+<!-- vale write-good.Passive = NO -->
 Modelplane manages AI model inference across a fleet of GPU clusters. It draws a
 boundary between two teams: platform teams who provision infrastructure and
 define hardware classes, and ML teams who deploy models and get unified
@@ -70,10 +69,10 @@ kubectl get ig default
 
 An InferenceClass is a tested recipe for a GPU node pool. It bundles:
 
-- **Devices**: the node's hardware as a list of DRA-style devices, each with a
+- **Devices**: the node's hardware as a list of Dynamic Resource Allocation (DRA) style devices, each with a
   driver, count, typed attributes, and capacity. A `claim: DRA` device (a GPU) is
   bound to pods through a DRA `ResourceClaim`; a `claim: Synthetic` device (an
-  InfiniBand NIC, say) is described for scheduling only. The scheduler matches
+  InfiniBand NIC, for example) is described for scheduling only. The scheduler matches
   a member's `nodeSelector` against these devices.
 - **Provisioning** (optional): how to create a node pool of this class on a
   specific cloud. Classes without provisioning are for existing clusters where
@@ -96,7 +95,7 @@ Each cluster has:
 - **Labels** for organizational metadata: tier, region, provider. These are the
   matching surface for `ModelDeployment.clusterSelector`.
 
-Modelplane installs an inference stack (e.g. LeaderWorkerSet, llm-d, Dynamo,
+Modelplane installs an inference stack (like LeaderWorkerSet, llm-d, Dynamo,
 Envoy Gateway, etc) on every cluster it manages. This includes existing
 clusters, which Modelplane assumes are solely for its use.
 
@@ -115,7 +114,7 @@ repeating the same `nodeSelector`, and the scheduler prefers to place them on
 one node pool; a member may omit its `nodeSelector` entirely to claim no devices
 (a coordinator-only leader), riding along on its gang's pool. An engine may set
 `copies` to run several identical copies - a fixed number, not a scaling knob.
-Modelplane is unopinionated about the engine itself: parallelism, quantization,
+Modelplane isn't opinionated about the engine itself: parallelism, quantization,
 and KV transfer all live in the members' engine flags, written by you, never
 injected by Modelplane.
 
@@ -138,7 +137,7 @@ When you create a ModelDeployment, the scheduler:
    for routing.
 
 A member's `template` is a curated subset of `PodTemplateSpec`. It carries a
-single container named `engine`, the inference engine (e.g. vLLM).
+single container named `engine`, the inference engine (like vLLM).
 
 ### Scaling
 
@@ -183,13 +182,13 @@ a multi-node engine. The engine reads weights locally from the mount instead of
 fetching them at boot.
 
 Without a cache, the engine fetches the model at pod startup, so the
-ModelDeployment must supply any required credentials (e.g. `HF_TOKEN` via the
-engine container's `env`).
+ModelDeployment must supply any required credentials (`HF_TOKEN` via the
+engine container's `env`, for example).
 
 Each cache has:
 
 - A **source**: a required `source` enum naming the kind, with the matching
-  source object set alongside it (e.g. `source: HuggingFace` selects
+  source object set alongside it (`source: HuggingFace`, for example, selects
   `spec.huggingFace`, which carries `repo` and `sizeGiB`). `HuggingFace` is the
   only value today; future sources add an enum value and a sibling object
   (`Dragonfly` for P2P distribution, `OCI` for NIM-style bundled artifacts).
@@ -198,15 +197,17 @@ Each cache has:
   `matchLabels` restricts it to clusters carrying those labels.
 
 The cache mounts at `/mnt/models` on every consuming pod; engine container
-args should reference this path (e.g. `--model=/mnt/models` for vLLM).
+args should reference this path (`--model=/mnt/models` for vLLM).
 
 ModelCache is required for multi-node deployments and optional for single-node
 cold-start optimization.
 
 ### Storage prerequisites
 
-The cache PVC needs an RWX StorageClass on the workload cluster. What the
+<!-- vale Google.Acronyms = NO -->
+The cache PVC needs a `ReadWriteMany` (RWX) StorageClass on the workload cluster. What the
 platform admin must set up depends on the cloud:
+<!-- vale Google.Acronyms = YES -->
 
 - **GKE:** auto-provisioned. Modelplane composes the `modelplane-rwx` Filestore
   StorageClass and enables `file.googleapis.com`. Nothing for the admin to do.
@@ -218,7 +219,7 @@ platform admin must set up depends on the cloud:
   with `provisioner: efs.csi.aws.com`, `provisioningMode: efs-ap`, and
   `fileSystemId: <fs-id>`. Set `eks.cache.storageClassName` if the admin's
   class has a different name. EFS is elastic, so the cache's `sizeGiB` is
-  informational on EKS — the PVC API still requires a size, but EFS ignores it.
+  informational on EKS. The PVC API still requires a size, but EFS ignores it.
   Auto-provisioning EFS is tracked in
   [#114](https://github.com/modelplaneai/modelplane/issues/114).
 
@@ -260,19 +261,24 @@ Read the service's public address from `status.address`:
 kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}'
 ```
 
-## Custom Cache Backends
+## Custom cache backends
 
+<!-- vale Google.Acronyms = NO -->
 Modelplane provisions Filestore Enterprise on `GKE` clusters and expects a
 StorageClass named `modelplane-rwx` on `Existing` clusters (created by the
-admin). When the default doesn't fit — different cost profile, an RWX backend
-the org already runs, etc. — platform teams point Modelplane at a different
+admin). When the default doesn't fit, like a different cost profile, an RWX backend
+the org already runs, etc. Platform teams point Modelplane at a different
 StorageClass via `cluster.<source>.cache.storageClassName`. On GKE the admin
 must first create the StorageClass on the workload cluster (any backend
-supporting ReadWriteMany dynamic provisioning — WekaIO, NetApp Trident, FSx
+supporting ReadWriteMany dynamic provisioning like WekaIO, NetApp Trident, FSx
 for NetApp, and similar). On Existing clusters the field points at whatever
 name the admin chose. The ML team's ModelCache and ModelDeployment specs are
 unchanged regardless.
+<!-- vale Google.Acronyms = YES -->
 
-Backends that don't fit dynamic-PVC provisioning (e.g. Dragonfly's P2P
-distribution to per-node local caches) will be added natively as new types
+Backends that don't fit dynamic-PVC provisioning (Dragonfly's P2P
+distribution to per-node local caches, for example) will be added natively as new types
 under `ModelCache.spec.source` rather than through this override.
+
+
+<!-- vale write-good.Passive = YES -->

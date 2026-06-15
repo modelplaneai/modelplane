@@ -42,7 +42,7 @@ spec:
             - "--model=Qwen/Qwen2.5-0.5B-Instruct"
 ```
 
-This deploys two replicas of Qwen 2.5 0.5B and produces a unified,
+This deploys two replicas of `Qwen 2.5 0.5B` and produces a unified,
 OpenAI-compatible endpoint. The scheduler picks which clusters the replicas run
 on based on GPU capacity and each member's device requests.
 
@@ -80,11 +80,11 @@ See [issues labeled `enhancement`][enhancements] for what's planned.
 
 ## Getting started
 
-Follow the [getting started guide](docs/getting-started.md) to deploy Modelplane
+Follow the [getting started guide]({{< ref "getting-started.md" >}}) to deploy Modelplane
 on a local kind cluster and serve a model on GKE. The [concepts
-page](docs/concepts.md) explains the key resources and how they relate.
+page]({{< ref "concepts.md" >}}) explains the key resources and how they relate.
 
-The [`examples/`](examples/) directory has annotated manifests covering the full
+The [`examples/`][examples] directory has annotated manifests covering the full
 workflow: gateway setup, cluster provisioning, and model deployments.
 
 ## Development
@@ -99,18 +99,20 @@ Contributions, bug reports, and feature requests are welcome.
 
 - **Issues:** [GitHub Issues][issues]
 - **Discussions:** [GitHub Discussions][discussions]
-- **Slack:** [#modelplane][slack] in the Crossplane workspace
+- **Slack:** [`#modelplane`][slack] in the Crossplane workspace
 
 ## License
 
-Modelplane is under the [Apache 2.0 license](LICENSE).
+Modelplane is under the [Apache 2.0 license][license].
 
 <!-- Named links -->
 [Crossplane]: https://crossplane.io
 [Configuration]: https://modelplane.ai/docs/latest/concepts/packages/#configuration-packages
 [Envoy Gateway]: https://gateway.envoyproxy.io
 [KServe]: https://kserve.github.io/website/
-[CONTRIBUTING.md]: CONTRIBUTING.md
+[CONTRIBUTING.md]: https://github.com/modelplaneai/modelplane/blob/main/CONTRIBUTING.md
+[examples]: https://github.com/modelplaneai/modelplane/tree/main/examples
+[license]: https://github.com/modelplaneai/modelplane/blob/main/LICENSE
 [Nix]: https://nixos.org
 [issues]: https://github.com/modelplaneai/modelplane/issues
 [enhancements]: https://github.com/modelplaneai/modelplane/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement

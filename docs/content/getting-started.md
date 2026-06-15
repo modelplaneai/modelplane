@@ -3,11 +3,10 @@ title: Your first voyage
 weight: 10
 description: Get started with Modelplane
 ---
-
-
+<!-- vale write-good.Passive = NO -->
 This guide walks through deploying Modelplane on a local kind cluster and using
 it to serve a model on GKE. By the end you'll have a working OpenAI-compatible
-endpoint serving Qwen 2.5 0.5B.
+endpoint serving `Qwen 2.5 0.5B`.
 
 The whole process takes about 45 minutes. Most of that time is GKE provisioning
 the GPU cluster and installing the inference stack. The GKE cluster with an L4
@@ -263,11 +262,11 @@ kubectl get ic --watch
 ## Deploy a model
 
 When a ModelDeployment does **not** reference a ModelCache, the inference engine
-fetches model weights directly from the source (e.g. Hugging Face) at pod
+fetches model weights directly from the source (Hugging Face) at pod
 startup. The deployment must supply any required credentials via the engine
-container's `env` (e.g. `HF_TOKEN`), and the engine image must support fetching
+container's `env` (`HF_TOKEN`), and the engine image must support fetching
 from that source. For large models or frequent restarts, a
-[ModelCache](#modelcache) avoids repeated downloads; see `examples/cache/` for
+[ModelCache]({{< ref "concepts.md#modelcache" >}}) avoids repeated downloads; see `examples/cache/` for
 cached single-pod and multi-node deployments.
 
 Create the `ml-team` namespace, deploy the model, and create a ModelService to
@@ -343,3 +342,5 @@ kubectl get ic --watch
 
 kind delete cluster --name modelplane
 ```
+<!-- vale write-good.Passive = YES -->
+
