@@ -1,6 +1,6 @@
 baseURL = "/"
 languageCode = "en-us"
-title = "Modelplane.ai"
+title = "Modelplane Docs"
 theme = "geekboot"
 enableRobotsTXT = true
 enableGitInfo = true
