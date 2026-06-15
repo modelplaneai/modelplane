@@ -28,6 +28,7 @@ from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from models.io.crossplane.protection.clusterusage import v1beta1 as clusterusagev1beta1
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
@@ -50,6 +51,15 @@ CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "serving-stack"
+
+# Composed resource key for the ClusterUsage that blocks the InferenceCluster's
+# deletion while ModelReplicas are scheduled to it.
+_REPLICA_GUARD_RESOURCE_KEY = "usage-replicas"
+
+# Label stamped on ModelReplicas by compose-model-deployment, carrying the name
+# of the InferenceCluster the replica is scheduled to. Kept in sync with that
+# function's _LABEL_CLUSTER.
+_LABEL_CLUSTER = "modelplane.ai/cluster"
 
 # Secret types that couple compose-gke-cluster (writer) to this function
 # (reader) and compose-serving-stack (reader).
@@ -92,6 +102,14 @@ class Composer:
         self.classes: dict[str, iclv1alpha1.InferenceClass] = {}
 
     def compose(self):
+        # The replica guard runs first, before any early return. It only
+        # depends on which ModelReplicas reference this cluster, not on the
+        # cluster's source or whether its classes resolve. Gating it behind
+        # those would drop the guard on a reconcile where classes are
+        # transiently unresolved, deleting the ClusterUsage and letting the
+        # cluster be deleted while replicas still use it.
+        self.compose_replica_guard()
+
         cluster = self.xr.spec.cluster
         if not cluster:
             response.warning(self.rsp, "spec.cluster is required")
@@ -109,6 +127,56 @@ class Composer:
             self.compose_existing(cluster.existing)
         else:
             response.warning(self.rsp, f"unsupported cluster source: {source}")
+
+    def compose_replica_guard(self):
+        """Block deletion of the InferenceCluster while ModelReplicas use it.
+
+        Deleting an InferenceCluster out from under running ModelReplicas
+        strands them: their workloads' provider-kubernetes Objects lose the
+        ClusterProviderConfig (and the cluster) they need to finalize, and they
+        wedge until their finalizers are removed by hand.
+
+        ModelReplicas are namespaced and the InferenceCluster is cluster scoped,
+        so a Usage can't reference the cluster from a replica: a namespaced
+        Usage's `by` can't reach a namespaced replica from the cluster's scope,
+        and a ClusterUsage's `by` can't reach a namespaced replica at all. So
+        instead of protecting the cluster *by* the replicas, this protects it
+        with a ClusterUsage that has no `by` at all. A reason-only Usage blocks
+        deletion of its `of` resource until the Usage itself is gone.
+
+        The guard is gated on observing ModelReplicas labelled for this cluster,
+        across all namespaces. While any exist the ClusterUsage is composed and
+        the cluster can't be deleted. When the last replica goes the function
+        stops composing it; if a delete was already attempted, replayDeletion
+        re-issues it once the ClusterUsage is gone.
+        """
+        response.require_resources(
+            self.rsp,
+            name="model-replicas",
+            api_version="modelplane.ai/v1alpha1",
+            kind="ModelReplica",
+            match_labels={_LABEL_CLUSTER: self.xr.metadata.name},
+        )
+
+        replicas = request.get_required_resources(self.req, "model-replicas")
+        if not replicas:
+            return
+
+        resource.update(
+            self.rsp.desired.resources[_REPLICA_GUARD_RESOURCE_KEY],
+            clusterusagev1beta1.ClusterUsage(
+                spec=clusterusagev1beta1.Spec(
+                    of=clusterusagev1beta1.Of(
+                        apiVersion="modelplane.ai/v1alpha1",
+                        kind="InferenceCluster",
+                        resourceRef=clusterusagev1beta1.ResourceRef(name=self.xr.metadata.name),
+                    ),
+                    reason="ModelReplicas are scheduled to this InferenceCluster",
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources[_REPLICA_GUARD_RESOURCE_KEY].ready = fnv1.READY_TRUE
 
     def resolve_classes(self) -> bool:
         """Declare and fetch every InferenceClass referenced by

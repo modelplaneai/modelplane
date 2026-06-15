@@ -26,6 +26,139 @@ def setUpModule() -> None:
     logging.configure(level=logging.Level.DISABLED)
 
 
+def _replicas_selector(cluster_name: str) -> fnv1.ResourceSelector:
+    """The ModelReplica guard requirement: replicas scheduled to a cluster,
+    across all namespaces."""
+    sel = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelReplica")
+    sel.match_labels.labels.update({"modelplane.ai/cluster": cluster_name})
+    return sel
+
+
+def _replica_item(name: str, namespace: str) -> fnv1.Resource:
+    """An observed ModelReplica labelled for test-cluster."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "ModelReplica",
+                "metadata": {
+                    "name": name,
+                    "namespace": namespace,
+                    "labels": {"modelplane.ai/cluster": "test-cluster"},
+                },
+            }
+        )
+    )
+
+
+def _guard_clusterusage() -> fnv1.Resource:
+    """The reason-only ClusterUsage the guard composes for test-cluster."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "protection.crossplane.io/v1beta1",
+                "kind": "ClusterUsage",
+                "spec": {
+                    "of": {
+                        "apiVersion": "modelplane.ai/v1alpha1",
+                        "kind": "InferenceCluster",
+                        "resourceRef": {"name": "test-cluster"},
+                    },
+                    "reason": "ModelReplicas are scheduled to this InferenceCluster",
+                    "replayDeletion": True,
+                },
+            }
+        ),
+        ready=fnv1.READY_TRUE,
+    )
+
+
+def _replica_guard_case(
+    base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
+) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
+    """Build the replica-guard case from a base request and response.
+
+    Observes two ModelReplicas in different namespaces, both labelled for the
+    cluster, so the function composes a single reason-only ClusterUsage blocking
+    the InferenceCluster's deletion regardless of replica count or namespace.
+    """
+    req = fnv1.RunFunctionRequest()
+    req.CopyFrom(base_req)
+    req.required_resources["model-replicas"].items.append(_replica_item("deploy-test-cluster-0", "team-a"))
+    req.required_resources["model-replicas"].items.append(_replica_item("deploy-test-cluster-0", "team-b"))
+
+    want = fnv1.RunFunctionResponse()
+    want.CopyFrom(base_want)
+    want.desired.resources["usage-replicas"].CopyFrom(_guard_clusterusage())
+    return req, want
+
+
+def _empty_replicas_case(
+    base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
+) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
+    """The guard requirement resolved to zero replicas: no ClusterUsage.
+
+    This is the teardown transition - the last replica is gone, so the function
+    stops composing the guard and the cluster becomes deletable. base_want must
+    not contain usage-replicas.
+    """
+    req = fnv1.RunFunctionRequest()
+    req.CopyFrom(base_req)
+    # An empty-but-present requirement, as Crossplane returns when the selector
+    # matched nothing.
+    req.required_resources["model-replicas"].ClearField("items")
+    return req, base_want
+
+
+def _early_return_guard_case() -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
+    """The guard is composed even when compose() returns early.
+
+    resolve_classes() returns False whenever a referenced InferenceClass isn't
+    observed yet - a routine transient. The function returns before composing
+    the cluster, but the guard runs first, so a referencing replica still blocks
+    deletion. This is the case that regresses if the guard is gated behind class
+    resolution or cluster source.
+    """
+    xr = v1alpha1.InferenceCluster(
+        metadata=metav1.ObjectMeta(name="test-cluster", namespace="modelplane-system"),
+        spec=v1alpha1.Spec(
+            cluster=v1alpha1.Cluster(
+                source="Existing",
+                existing=v1alpha1.Existing(secretRef=v1alpha1.SecretRef(name="my-kubeconfig")),
+            ),
+            nodePools=[v1alpha1.NodePool(name="l4-pool", className="gpu-l4", nodeCount=2, maxNodeCount=4)],
+        ),
+    )
+    # The class requirement is declared but not fulfilled, so resolve_classes
+    # gates and compose() returns early.
+    req = fnv1.RunFunctionRequest(
+        observed=fnv1.State(
+            composite=fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json")))
+        ),
+    )
+    req.required_resources["model-replicas"].items.append(_replica_item("deploy-test-cluster-0", "team-a"))
+
+    want = fnv1.RunFunctionResponse(
+        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+        desired=fnv1.State(resources={"usage-replicas": _guard_clusterusage()}),
+        context=structpb.Struct(),
+    )
+    want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+    want.requirements.resources["class-gpu-l4"].CopyFrom(
+        fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l4")
+    )
+    want.conditions.append(
+        fnv1.Condition(
+            type="ClusterReady",
+            status=fnv1.STATUS_CONDITION_FALSE,
+            reason="WaitingForClasses",
+            message="Waiting for InferenceClasses: gpu-l4",
+        )
+    )
+    want.results.append(fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for InferenceClasses: gpu-l4"))
+    return req, want
+
+
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
     """Tests for FunctionRunner.RunFunction."""
 
@@ -1048,6 +1181,19 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+        # Every compose path emits the ModelReplica guard requirement.
+        for want in (want1, want2, want3, want4, want5, want6, want7):
+            want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+
+        # The guard cases (8-10) reuse case 1's request and response.
+        guard_cases = [
+            Case(
+                "ModelReplicas scheduled to the cluster compose the deletion guard", *_replica_guard_case(req1, want1)
+            ),
+            Case("no ModelReplicas leaves the cluster deletable", *_empty_replicas_case(req1, want1)),
+            Case("guard is composed even when compose returns early", *_early_return_guard_case()),
+        ]
+
         cases = [
             Case(name="existing cluster with secrets composes backend and CPC", req=req1, want=want1),
             Case(name="GKE cluster first pass composes GKECluster XR only", req=req2, want=want2),
@@ -1056,6 +1202,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             Case(name="EKS cluster not ready re-emits existing CPC unchanged", req=req5, want=want5),
             Case(name="GKE cluster ready composes CPC, backend, usage, and RWX StorageClass", req=req6, want=want6),
             Case(name="EKS cluster ready composes ServingStack and Usage", req=req7, want=want7),
+            *guard_cases,
         ]
 
         for case in cases:
