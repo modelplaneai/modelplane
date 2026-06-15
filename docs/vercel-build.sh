@@ -44,7 +44,19 @@ export PATH="/nix/var/nix/profiles/default/bin:$PATH"
 
 # Build the site. result is a symlink into the read-only store; dereference it
 # into a plain, writable directory Vercel can serve.
-nix build .#docs --print-build-logs
+#
+# Production keeps the canonical https://modelplane.ai/docs/ baseURL baked into
+# nix/docs.nix: a pure, cached build identical to what CI verifies. PR previews
+# are served standalone at the deployment's own root (not under /docs), so we
+# rebuild with the preview URL as the baseURL, making links and assets resolve
+# against the preview itself instead of production. --impure lets the
+# derivation read HUGO_BASEURL from the environment (getEnv is "" in pure eval).
+if [ "${VERCEL_ENV:-}" = "production" ]; then
+	nix build .#docs --print-build-logs
+else
+	export HUGO_BASEURL="https://${VERCEL_URL}/"
+	nix build .#docs --impure --print-build-logs
+fi
 rm -rf public
 cp -rL --no-preserve=mode result public
 rm -f result

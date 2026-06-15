@@ -56,6 +56,14 @@ in
   #                              /docs prefix. Only the production artifact is
   #                              served there; `hugo server` (docs-serve) keeps
   #                              the baseURL = "/" from hugo.toml for local dev.
+  #                              Vercel PR previews override HUGO_BASEURL with
+  #                              the preview's own URL so the deployment is
+  #                              self-contained and reviewable (it is served at
+  #                              the deployment root, not under /docs). Pure
+  #                              flake eval returns "" for getEnv, so CI and
+  #                              production builds keep the canonical URL and
+  #                              stay reproducible/cached; previews pass
+  #                              --impure (see docs/vercel-build.sh).
   #
   # PostCSS resolves plugins from node_modules via NODE_PATH, and Hugo finds
   # the postcss CLI through the node_modules/.bin on PATH.
@@ -69,7 +77,11 @@ in
         env = {
           HUGO_ENABLEGITINFO = "false";
           HUGO_ENVIRONMENT = "production";
-          HUGO_BASEURL = "https://modelplane.ai/docs/";
+          HUGO_BASEURL =
+            let
+              envBaseURL = builtins.getEnv "HUGO_BASEURL";
+            in
+            if envBaseURL != "" then envBaseURL else "https://modelplane.ai/docs/";
         };
       }
       ''
