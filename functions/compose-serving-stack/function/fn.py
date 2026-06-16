@@ -13,7 +13,10 @@ Usage resources protect ProviderConfigs from premature deletion during
 teardown, ensuring Helm releases can uninstall before losing connectivity.
 """
 
+import pathlib
+
 import grpc
+import yaml
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
@@ -54,12 +57,21 @@ _AI_GATEWAY_VERSION = "v0.7.0"
 _AI_GATEWAY_CONTROLLER_FQDN = f"ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local"
 _AI_GATEWAY_CONTROLLER_PORT = 1063
 
-# Gateway API Inference Extension (GAIE) constants. Provides the InferencePool
-# CRD that disaggregated replicas front their decode endpoints with.
-_GAIE_CHART = "inferencepool"
-_GAIE_REPO = "oci://ghcr.io/kubernetes-sigs/gateway-api-inference-extension/charts"
-_GAIE_VERSION = "v1.0.1"
-_GAIE_NAMESPACE = "gateway-api-inference-extension"
+
+# Gateway API Inference Extension (GAIE) CRDs, providing the InferencePool that
+# disaggregated replicas front their decode endpoints with. Vendored from the
+# upstream release's manifests.yaml.
+_HERE = pathlib.Path(__file__).parent
+_GAIE_CRDS = [
+    doc
+    for doc in yaml.safe_load_all((_HERE / "gaie_crds.yaml").read_text())
+    if doc and doc.get("kind") == "CustomResourceDefinition"
+]
+
+
+def _gaie_crd_key(doc: dict) -> str:
+    """Stable composed-resource key for a GAIE CRD."""
+    return f"gaie-crd-{doc['metadata']['name']}"
 
 
 def _helm_release(
@@ -539,29 +551,21 @@ class Composer:
         )
 
     def compose_gaie_crds(self):
-        """Compose the Gateway API Inference Extension (GAIE) CRDs. Gated on the
-        same ProviderConfigs as Envoy Gateway.
-
-        Installs the InferencePool CRD that disaggregated replicas front their
-        decode endpoints with. The codebase has no remote-manifest pattern for
-        provider-kubernetes Objects, so the CRDs come from the upstream Helm
-        chart published by kubernetes-sigs - equivalent to applying that
-        release's manifests.yaml.
+        """Compose the Gateway API Inference Extension (GAIE) CRDs as
+        provider-kubernetes Objects on the remote cluster. Gated on the same
+        ProviderConfigs as Envoy Gateway.
         """
         pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "gaie-crds" in self.req.observed.resources):
-            return
-
-        resource.update(
-            self.rsp.desired.resources["gaie-crds"],
-            _helm_release(
-                chart=_GAIE_CHART,
-                repo=_GAIE_REPO,
-                version=_GAIE_VERSION,
-                namespace=_GAIE_NAMESPACE,
-                provider_config=_pc_name(self.xr),
-            ),
-        )
+        for doc in _GAIE_CRDS:
+            key = _gaie_crd_key(doc)
+            if not (pc_observed or key in self.req.observed.resources):
+                continue
+            resource.update(
+                self.rsp.desired.resources[key],
+                _k8s_object(_pc_name(self.xr), doc),
+            )
+            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
+                self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
     def compose_prometheus(self):
         """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
@@ -755,6 +759,8 @@ class Composer:
         condition_ready = [
             "cert-manager",
             "envoy-gateway",
+            "ai-gateway-crds",
+            "ai-gateway",
             "prometheus",
             "leader-worker-set",
             "node-feature-discovery",
