@@ -33,6 +33,19 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 # Label key for composed resources that need deletion ordering via Usages.
 _LABEL_RESOURCE = "modelplane.ai/resource"
 
+# CEL readiness query for the Envoy Gateway Object. The Gateway's LoadBalancer
+# address is assigned asynchronously by the controller after the Object is
+# applied. With the default SuccessfulCreate policy the Object is Ready the
+# instant it's created, so provider-kubernetes' poll-interval hook re-observes
+# it only on the slow (10m) drift poll - leaving status.atProvider.manifest
+# frozen at a pre-address snapshot, and the downstream scheduler with no gateway
+# address, for up to ~10m. Gating readiness on status.addresses keeps the Object
+# un-Ready until the address is observed, which drops the poll to ~30s so the
+# address propagates promptly. `object` is the observed Gateway manifest; the
+# has() guard keeps the query false (not erroring) before the controller first
+# writes status.addresses.
+_GATEWAY_READY_CEL = "has(object.status.addresses) && object.status.addresses.size() > 0"
+
 # Secret types that couple compose-gke-cluster (writer) to this function
 # (reader) via the InferenceCluster status.
 _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
@@ -123,8 +136,18 @@ def _k8s_object(
     manifest: dict,
     metadata: metav1.ObjectMeta | None = None,
     management_policies: list | None = None,
+    *,
+    cel_query: str | None = None,
 ) -> k8sobjv1alpha1.Object:
-    """Build a provider-kubernetes Object wrapping an arbitrary manifest."""
+    """Build a provider-kubernetes Object wrapping an arbitrary manifest.
+
+    Readiness defaults to SuccessfulCreate (the Object is Ready once applied),
+    which suits resources with no meaningful runtime readiness. Pass cel_query
+    for an Object whose readiness must reflect a controller-populated field of
+    the observed manifest - it selects the DeriveFromCelQuery policy with that
+    query (see _GATEWAY_READY_CEL), which also keeps provider-kubernetes
+    re-observing on its fast poll until the query passes.
+    """
     obj = k8sobjv1alpha1.Object(
         # Only set metadata when present. Under exclude_unset serialization,
         # passing metadata=None would emit a null metadata into the composed
@@ -142,6 +165,11 @@ def _k8s_object(
     )
     if management_policies:
         obj.spec.managementPolicies = management_policies
+    if cel_query is not None:
+        obj.spec.readiness = k8sobjv1alpha1.Readiness(
+            policy="DeriveFromCelQuery",
+            celQuery=cel_query,
+        )
     return obj
 
 
@@ -713,6 +741,7 @@ class Composer:
                         },
                     },
                     metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "gateway"}),
+                    cel_query=_GATEWAY_READY_CEL,
                 ),
             )
 
