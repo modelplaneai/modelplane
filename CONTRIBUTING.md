@@ -135,24 +135,11 @@ nix flake check
 
 Custom Modelplane rules live in `docs/utils/vale/styles/Modelplane/`.
 
-**Handling suggestions.** The check only fails on warnings and errors.
-Suggestions are informational. Two common ones need judgment:
-
-- **Passive voice.** If passive voice is genuinely the clearest way to express
-  something (the subject is unknown, irrelevant, or awkward to name), keep it
-  and suppress the suggestion with a Vale ignore comment:
-
-  ```markdown
-  <!-- vale write-good.Passive = NO -->
-  The request is forwarded to the next available replica.
-  <!-- vale write-good.Passive = YES -->
-  ```
-
-- **Unknown words.** Vale flags brand names, acronyms, API types, and
-  technical terms it doesn't recognise. Add them to
-  `docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` — that is
-  the single place for all Vale exceptions. Entries are case-sensitive regular
-  expressions, one per line.
+Vale flags brand names, acronyms, API types, and technical terms it doesn't
+recognise. Add them to
+`docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` — that is
+the single place for all Vale exceptions. Entries are case-sensitive regular
+expressions, one per line.
 
 Both run automatically on every pull request as part of `nix flake check` (see
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).

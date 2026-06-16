@@ -118,7 +118,8 @@ let
         # file, so copy it here for vale to sync into $PWD/styles.
         cp ${self}/docs/utils/vale/.vale.ini .vale.ini
         vale sync --config="$PWD/.vale.ini"
-        cp -r styles $out
+        mkdir -p $out
+        cp -r styles/* $out/
       '';
 in
 {
@@ -134,8 +135,7 @@ in
 
   # Lint docs prose with Vale. Merges the network-synced style packages with the
   # repo's local Modelplane style and vocabulary into one StylesPath, then lints
-  # offline. --minAlertLevel matches the old CI app: warnings and errors fail,
-  # suggestions (e.g. passive voice) don't.
+  # offline.
   vale =
     pkgs.runCommand "modelplane-docs-vale"
       {
@@ -155,7 +155,7 @@ in
         cp -r ${self}/docs/utils/vale/styles/* styles/
         find ${self}/docs/content -name '*.md' -print0 | \
           xargs -0 --no-run-if-empty \
-            vale --config="$PWD/.vale.ini" --minAlertLevel=warning
+            vale --config="$PWD/.vale.ini"
         mkdir -p $out
         touch $out/.vale-passed
       '';
