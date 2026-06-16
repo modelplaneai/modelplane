@@ -339,6 +339,10 @@ _GATEWAY = {
             "kind": "ProviderConfig",
             "name": _PC_NAME,
         },
+        "readiness": {
+            "policy": "DeriveFromCelQuery",
+            "celQuery": fn._GATEWAY_READY_CEL,
+        },
     },
 }
 
@@ -679,8 +683,89 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "-want, +got",
         )
 
+    async def test_gateway_gated_on_address(self) -> None:
+        """The Gateway Object carries the DeriveFromCelQuery readiness, and is
+        only marked ready once provider-kubernetes reports Ready=True (which it
+        derives from the address-gating CEL query). This keeps the Object on the
+        fast re-observe poll until the LoadBalancer address is observed, instead
+        of freezing at a pre-address snapshot on the slow drift poll (#121)."""
+        req = _base_request()
+        req.observed.resources["provider-config-helm"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+        req.observed.resources["provider-config-kubernetes"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+
+        # Before the address is observed there's no Ready condition: the desired
+        # Gateway Object must not be marked ready, and no address is surfaced.
+        req.observed.resources["gateway"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object"}
+                ),
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+        self.assertEqual(
+            got.desired.resources["gateway"].ready,
+            fnv1.READY_UNSPECIFIED,
+            "gateway must not be ready before its address is observed",
+        )
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.resources["gateway"].resource)["spec"]["readiness"],
+            {"policy": "DeriveFromCelQuery", "celQuery": fn._GATEWAY_READY_CEL},
+            "gateway Object must gate readiness on its address via CEL",
+        )
+        self.assertNotIn(
+            "gateway",
+            resource.struct_to_dict(got.desired.composite.resource).get("status", {}),
+            "no gateway address should be surfaced before it's observed",
+        )
+
+        # Once provider-kubernetes derives Ready=True from the CEL query (the
+        # address is now in the observed manifest), the Object is marked ready
+        # and the address propagates to the XR status.
+        req.observed.resources["gateway"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "status": {
+                            "conditions": [{"type": "Ready", "status": "True"}],
+                            "atProvider": {
+                                "manifest": {"status": {"addresses": [{"value": "172.18.255.200"}]}},
+                            },
+                        },
+                    }
+                ),
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+        self.assertEqual(
+            got.desired.resources["gateway"].ready,
+            fnv1.READY_TRUE,
+            "gateway must be ready once provider-kubernetes observes the address",
+        )
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.composite.resource)["status"]["gateway"]["address"],
+            "172.18.255.200",
+            "gateway address must surface to the XR status once observed",
+        )
+
     async def test_third_pass(self) -> None:
-        """Steady state: observed readiness propagates and the gateway address is surfaced."""
+        """Steady state: composed releases report Ready, and the gateway address is
+        surfaced from the observed Object's manifest. The observed gateway Object
+        carries no Ready condition here, so the gateway Object itself stays unready."""
         req = _base_request()
         req.observed.resources["provider-config-helm"].CopyFrom(
             fnv1.Resource(
@@ -751,6 +836,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ready=fnv1.READY_TRUE,
                     ),
                     **_gaie_crd_desired(ready=True),
+                    # The Gateway Object's observed manifest carries the
+                    # address, so write_status surfaces it - but the observed
+                    # Object has no Ready condition here, so it stays unready.
                     "gateway": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY),
                     ),
