@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,62 +32,62 @@ class DefaultNetworkAclIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class DefaultNetworkAclIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class Egres(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     The action to take.
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The CIDR block to match. This must be a valid network mask.
     """
-    fromPort: Optional[float] = None
+    fromPort: float | None = None
     """
     The from port to match.
     """
-    icmpCode: Optional[float] = None
+    icmpCode: float | None = None
     """
     The ICMP type code to be used. Default 0.
     """
-    icmpType: Optional[float] = None
+    icmpType: float | None = None
     """
     The ICMP type to be used. Default 0.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     The IPv6 CIDR block.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The protocol to match. If using the -1 'all' protocol, you must specify a from and to port of 0.
     """
-    ruleNo: Optional[float] = None
+    ruleNo: float | None = None
     """
     The rule number. Used for ordering.
     """
-    toPort: Optional[float] = None
+    toPort: float | None = None
     """
     The to port to match.
     """
@@ -99,70 +98,70 @@ class CidrBlockRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class CidrBlockSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class Ingres(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     The action to take.
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The CIDR block to match. This must be a valid network mask.
     """
-    cidrBlockRef: Optional[CidrBlockRef] = None
+    cidrBlockRef: CidrBlockRef | None = None
     """
     Reference to a DefaultVPC in ec2 to populate cidrBlock.
     """
-    cidrBlockSelector: Optional[CidrBlockSelector] = None
+    cidrBlockSelector: CidrBlockSelector | None = None
     """
     Selector for a DefaultVPC in ec2 to populate cidrBlock.
     """
-    fromPort: Optional[float] = None
+    fromPort: float | None = None
     """
     The from port to match.
     """
-    icmpCode: Optional[float] = None
+    icmpCode: float | None = None
     """
     The ICMP type code to be used. Default 0.
     """
-    icmpType: Optional[float] = None
+    icmpType: float | None = None
     """
     The ICMP type to be used. Default 0.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     The IPv6 CIDR block.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The protocol to match. If using the -1 'all' protocol, you must specify a from and to port of 0.
     """
-    ruleNo: Optional[float] = None
+    ruleNo: float | None = None
     """
     The rule number. Used for ordering.
     """
-    toPort: Optional[float] = None
+    toPort: float | None = None
     """
     The to port to match.
     """
@@ -173,46 +172,46 @@ class SubnetIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    defaultNetworkAclId: Optional[str] = None
+    defaultNetworkAclId: str | None = None
     """
     Network ACL ID to manage. This attribute is exported from aws_vpc, or manually found via the AWS Console.
     """
-    defaultNetworkAclIdRef: Optional[DefaultNetworkAclIdRef] = None
+    defaultNetworkAclIdRef: DefaultNetworkAclIdRef | None = None
     """
     Reference to a VPC in ec2 to populate defaultNetworkAclId.
     """
-    defaultNetworkAclIdSelector: Optional[DefaultNetworkAclIdSelector] = None
+    defaultNetworkAclIdSelector: DefaultNetworkAclIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate defaultNetworkAclId.
     """
-    egress: Optional[List[Egres]] = None
+    egress: list[Egres] | None = None
     """
     Configuration block for an egress rule. Detailed below.
     """
-    ingress: Optional[List[Ingres]] = None
+    ingress: list[Ingres] | None = None
     """
     Configuration block for an ingress rule. Detailed below.
     """
@@ -221,58 +220,58 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    subnetIdRefs: Optional[List[SubnetIdRef]] = None
+    subnetIdRefs: list[SubnetIdRef] | None = None
     """
     References to Subnet in ec2 to populate subnetIds.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a list of Subnet in ec2 to populate subnetIds.
     """
-    subnetIds: Optional[List[str]] = None
+    subnetIds: list[str] | None = None
     """
     List of Subnet IDs to apply the ACL to. See the notes above on Managing Subnets in the Default Network ACL
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    defaultNetworkAclId: Optional[str] = None
+    defaultNetworkAclId: str | None = None
     """
     Network ACL ID to manage. This attribute is exported from aws_vpc, or manually found via the AWS Console.
     """
-    defaultNetworkAclIdRef: Optional[DefaultNetworkAclIdRef] = None
+    defaultNetworkAclIdRef: DefaultNetworkAclIdRef | None = None
     """
     Reference to a VPC in ec2 to populate defaultNetworkAclId.
     """
-    defaultNetworkAclIdSelector: Optional[DefaultNetworkAclIdSelector] = None
+    defaultNetworkAclIdSelector: DefaultNetworkAclIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate defaultNetworkAclId.
     """
-    egress: Optional[List[Egres]] = None
+    egress: list[Egres] | None = None
     """
     Configuration block for an egress rule. Detailed below.
     """
-    ingress: Optional[List[Ingres]] = None
+    ingress: list[Ingres] | None = None
     """
     Configuration block for an ingress rule. Detailed below.
     """
-    subnetIdRefs: Optional[List[SubnetIdRef]] = None
+    subnetIdRefs: list[SubnetIdRef] | None = None
     """
     References to Subnet in ec2 to populate subnetIds.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a list of Subnet in ec2 to populate subnetIds.
     """
-    subnetIds: Optional[List[str]] = None
+    subnetIds: list[str] | None = None
     """
     List of Subnet IDs to apply the ACL to. See the notes above on Managing Subnets in the Default Network ACL
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -283,7 +282,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -301,7 +300,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -312,7 +311,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -325,9 +324,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -340,15 +340,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -358,104 +358,104 @@ class Spec(BaseModel):
 
 
 class IngresModel(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     The action to take.
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The CIDR block to match. This must be a valid network mask.
     """
-    fromPort: Optional[float] = None
+    fromPort: float | None = None
     """
     The from port to match.
     """
-    icmpCode: Optional[float] = None
+    icmpCode: float | None = None
     """
     The ICMP type code to be used. Default 0.
     """
-    icmpType: Optional[float] = None
+    icmpType: float | None = None
     """
     The ICMP type to be used. Default 0.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     The IPv6 CIDR block.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The protocol to match. If using the -1 'all' protocol, you must specify a from and to port of 0.
     """
-    ruleNo: Optional[float] = None
+    ruleNo: float | None = None
     """
     The rule number. Used for ordering.
     """
-    toPort: Optional[float] = None
+    toPort: float | None = None
     """
     The to port to match.
     """
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Default Network ACL
     """
-    defaultNetworkAclId: Optional[str] = None
+    defaultNetworkAclId: str | None = None
     """
     Network ACL ID to manage. This attribute is exported from aws_vpc, or manually found via the AWS Console.
     """
-    egress: Optional[List[Egres]] = None
+    egress: list[Egres] | None = None
     """
     Configuration block for an egress rule. Detailed below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Default Network ACL
     """
-    ingress: Optional[List[IngresModel]] = None
+    ingress: list[IngresModel] | None = None
     """
     Configuration block for an ingress rule. Detailed below.
     """
-    ownerId: Optional[str] = None
+    ownerId: str | None = None
     """
     ID of the AWS account that owns the Default Network ACL
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    subnetIds: Optional[List[str]] = None
+    subnetIds: list[str] | None = None
     """
     List of Subnet IDs to apply the ACL to. See the notes above on Managing Subnets in the Default Network ACL
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     ID of the associated VPC
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -477,12 +477,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -491,17 +491,17 @@ class Status(BaseModel):
 
 
 class DefaultNetworkACL(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta1'] | None = (
         'ec2.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['DefaultNetworkACL']] = 'DefaultNetworkACL'
+    kind: Literal['DefaultNetworkACL'] | None = 'DefaultNetworkACL'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -509,26 +509,26 @@ class DefaultNetworkACL(BaseModel):
     """
     DefaultNetworkACLSpec defines the desired state of DefaultNetworkACL
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     DefaultNetworkACLStatus defines the observed state of DefaultNetworkACL.
     """
 
 
 class DefaultNetworkACLList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[DefaultNetworkACL]
+    items: list[DefaultNetworkACL]
     """
     List of defaultnetworkacls. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

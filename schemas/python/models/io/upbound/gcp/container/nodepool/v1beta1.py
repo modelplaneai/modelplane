@@ -3,37 +3,36 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class AutoscalingItem(BaseModel):
-    locationPolicy: Optional[str] = None
+    locationPolicy: str | None = None
     """
     Location policy specifies the algorithm used when
     scaling-up the node pool. Location policy is supported only in 1.24.1+ clusters.
     """
-    maxNodeCount: Optional[float] = None
+    maxNodeCount: float | None = None
     """
     Maximum number of nodes per zone in the NodePool.
     Must be >= min_node_count. Cannot be used with total limits.
     """
-    minNodeCount: Optional[float] = None
+    minNodeCount: float | None = None
     """
     Minimum number of nodes per zone in the NodePool.
     Must be >=0 and <= max_node_count. Cannot be used with total limits.
     """
-    totalMaxNodeCount: Optional[float] = None
+    totalMaxNodeCount: float | None = None
     """
     Total maximum number of nodes in the NodePool.
     Must be >= total_min_node_count. Cannot be used with per zone limits.
     Total size limits are supported only in 1.24.1+ clusters.
     """
-    totalMinNodeCount: Optional[float] = None
+    totalMinNodeCount: float | None = None
     """
     Total minimum number of nodes in the NodePool.
     Must be >=0 and <= total_max_node_count. Cannot be used with per zone limits.
@@ -42,14 +41,14 @@ class AutoscalingItem(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -63,52 +62,52 @@ class ClusterRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ClusterSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ManagementItem(BaseModel):
-    autoRepair: Optional[bool] = None
+    autoRepair: bool | None = None
     """
     Whether the nodes will be automatically repaired. Enabled by default.
     """
-    autoUpgrade: Optional[bool] = None
+    autoUpgrade: bool | None = None
     """
     Whether the nodes will be automatically upgraded. Enabled by default.
     """
 
 
 class AdditionalNodeNetworkConfig(BaseModel):
-    network: Optional[str] = None
+    network: str | None = None
     """
     Name of the VPC where the additional interface belongs.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The subnetwork path for the node pool. Format: projects/{project}/regions/{region}/subnetworks/{subnetwork}. If the cluster is associated with multiple subnetworks, the subnetwork for the node pool is picked based on the IP utilization during node pool creation and is immutable
     """
 
 
 class AdditionalPodNetworkConfig(BaseModel):
-    maxPodsPerNode: Optional[float] = None
+    maxPodsPerNode: float | None = None
     """
     The maximum number of pods per node in this node pool.
     Note that this does not work on node pools which are "route-based" - that is, node
@@ -116,118 +115,118 @@ class AdditionalPodNetworkConfig(BaseModel):
     See the official documentation
     for more information.
     """
-    secondaryPodRange: Optional[str] = None
+    secondaryPodRange: str | None = None
     """
     The name of the secondary range on the subnet which provides IP address for this pod range.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The subnetwork path for the node pool. Format: projects/{project}/regions/{region}/subnetworks/{subnetwork}. If the cluster is associated with multiple subnetworks, the subnetwork for the node pool is picked based on the IP utilization during node pool creation and is immutable
     """
 
 
 class NetworkPerformanceConfigItem(BaseModel):
-    totalEgressBandwidthTier: Optional[str] = None
+    totalEgressBandwidthTier: str | None = None
     """
     Specifies the total network bandwidth tier for the NodePool. Valid values include: "TIER_1" and "TIER_UNSPECIFIED".
     """
 
 
 class PodCidrOverprovisionConfigItem(BaseModel):
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
 
 
 class NetworkConfigItem(BaseModel):
-    additionalNodeNetworkConfigs: Optional[List[AdditionalNodeNetworkConfig]] = None
+    additionalNodeNetworkConfigs: list[AdditionalNodeNetworkConfig] | None = None
     """
     We specify the additional node networks for this node pool using this list. Each node network corresponds to an additional interface.
     Structure is documented below
     """
-    additionalPodNetworkConfigs: Optional[List[AdditionalPodNetworkConfig]] = None
+    additionalPodNetworkConfigs: list[AdditionalPodNetworkConfig] | None = None
     """
     We specify the additional pod networks for this node pool using this list. Each pod network corresponds to an additional alias IP range for the node.
     Structure is documented below
     """
-    createPodRange: Optional[bool] = None
+    createPodRange: bool | None = None
     """
     Whether to create a new range for pod IPs in this node pool. Defaults are provided for pod_range and pod_ipv4_cidr_block if they are not specified.
     """
-    enablePrivateNodes: Optional[bool] = None
+    enablePrivateNodes: bool | None = None
     """
     Whether nodes have internal IP addresses only.
     """
-    networkPerformanceConfig: Optional[List[NetworkPerformanceConfigItem]] = None
-    podCidrOverprovisionConfig: Optional[List[PodCidrOverprovisionConfigItem]] = None
-    podIpv4CidrBlock: Optional[str] = None
+    networkPerformanceConfig: list[NetworkPerformanceConfigItem] | None = None
+    podCidrOverprovisionConfig: list[PodCidrOverprovisionConfigItem] | None = None
+    podIpv4CidrBlock: str | None = None
     """
     The IP address range for pod IPs in this node pool. Only applicable if createPodRange is true. Set to blank to have a range chosen with the default size. Set to /netmask (e.g. /14) to have a range chosen with a specific netmask. Set to a CIDR notation (e.g. 10.96.0.0/14) to pick a specific range to use.
     """
-    podRange: Optional[str] = None
+    podRange: str | None = None
     """
     The ID of the secondary range for pod IPs. If create_pod_range is true, this ID is used for the new range. If create_pod_range is false, uses an existing secondary range with this ID.
     """
 
 
 class AdvancedMachineFeature(BaseModel):
-    enableNestedVirtualization: Optional[bool] = None
-    performanceMonitoringUnit: Optional[str] = None
-    threadsPerCore: Optional[float] = None
+    enableNestedVirtualization: bool | None = None
+    performanceMonitoringUnit: str | None = None
+    threadsPerCore: float | None = None
 
 
 class ConfidentialNode(BaseModel):
-    confidentialInstanceType: Optional[str] = None
-    enabled: Optional[bool] = None
+    confidentialInstanceType: str | None = None
+    enabled: bool | None = None
     """
     Makes nodes obtainable through the ProvisioningRequest API exclusively.
     """
 
 
 class GcpSecretManagerCertificateConfigItem(BaseModel):
-    secretUri: Optional[str] = None
+    secretUri: str | None = None
 
 
 class CertificateAuthorityDomainConfigItem(BaseModel):
-    fqdns: Optional[List[str]] = None
-    gcpSecretManagerCertificateConfig: Optional[
-        List[GcpSecretManagerCertificateConfigItem]
-    ] = None
+    fqdns: list[str] | None = None
+    gcpSecretManagerCertificateConfig: (
+        list[GcpSecretManagerCertificateConfigItem] | None
+    ) = None
 
 
 class PrivateRegistryAccessConfigItem(BaseModel):
-    certificateAuthorityDomainConfig: Optional[
-        List[CertificateAuthorityDomainConfigItem]
-    ] = None
-    enabled: Optional[bool] = None
+    certificateAuthorityDomainConfig: (
+        list[CertificateAuthorityDomainConfigItem] | None
+    ) = None
+    enabled: bool | None = None
     """
     Makes nodes obtainable through the ProvisioningRequest API exclusively.
     """
 
 
 class ContainerdConfigItem(BaseModel):
-    privateRegistryAccessConfig: Optional[List[PrivateRegistryAccessConfigItem]] = None
+    privateRegistryAccessConfig: list[PrivateRegistryAccessConfigItem] | None = None
 
 
 class EphemeralStorageLocalSsdConfigItem(BaseModel):
-    dataCacheCount: Optional[float] = None
-    localSsdCount: Optional[float] = None
+    dataCacheCount: float | None = None
+    localSsdCount: float | None = None
 
 
 class FastSocketItem(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Makes nodes obtainable through the ProvisioningRequest API exclusively.
     """
 
 
 class GcfsConfigItem(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Makes nodes obtainable through the ProvisioningRequest API exclusively.
     """
 
 
 class GpuDriverInstallationConfigItem(BaseModel):
-    gpuDriverVersion: Optional[str] = None
+    gpuDriverVersion: str | None = None
     """
     The Kubernetes version for the nodes in this pool. Note that if this field
     and auto_upgrade are both specified, they will fight each other for what the node version should
@@ -236,16 +235,16 @@ class GpuDriverInstallationConfigItem(BaseModel):
 
 
 class GpuSharingConfigItem(BaseModel):
-    gpuSharingStrategy: Optional[str] = None
-    maxSharedClientsPerGpu: Optional[float] = None
+    gpuSharingStrategy: str | None = None
+    maxSharedClientsPerGpu: float | None = None
 
 
 class GuestAcceleratorItem(BaseModel):
-    count: Optional[float] = None
-    gpuDriverInstallationConfig: Optional[List[GpuDriverInstallationConfigItem]] = None
-    gpuPartitionSize: Optional[str] = None
-    gpuSharingConfig: Optional[List[GpuSharingConfigItem]] = None
-    type: Optional[str] = None
+    count: float | None = None
+    gpuDriverInstallationConfig: list[GpuDriverInstallationConfigItem] | None = None
+    gpuPartitionSize: str | None = None
+    gpuSharingConfig: list[GpuSharingConfigItem] | None = None
+    type: str | None = None
     """
     The type of the policy. Supports a single value: COMPACT.
     Specifying COMPACT placement policy type places node pool's nodes in a closer
@@ -254,55 +253,66 @@ class GuestAcceleratorItem(BaseModel):
 
 
 class GvnicItem(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Makes nodes obtainable through the ProvisioningRequest API exclusively.
     """
 
 
 class HostMaintenancePolicyItem(BaseModel):
-    maintenanceInterval: Optional[str] = None
+    maintenanceInterval: str | None = None
+
+
+class MemoryManagerItem(BaseModel):
+    policy: str | None = None
+
+
+class TopologyManagerItem(BaseModel):
+    policy: str | None = None
+    scope: str | None = None
 
 
 class KubeletConfigItem(BaseModel):
-    allowedUnsafeSysctls: Optional[List[str]] = None
-    containerLogMaxFiles: Optional[float] = None
-    containerLogMaxSize: Optional[str] = None
-    cpuCfsQuota: Optional[bool] = None
-    cpuCfsQuotaPeriod: Optional[str] = None
-    cpuManagerPolicy: Optional[str] = None
-    imageGcHighThresholdPercent: Optional[float] = None
-    imageGcLowThresholdPercent: Optional[float] = None
-    imageMaximumGcAge: Optional[str] = None
-    imageMinimumGcAge: Optional[str] = None
-    insecureKubeletReadonlyPortEnabled: Optional[str] = None
-    podPidsLimit: Optional[float] = None
+    allowedUnsafeSysctls: list[str] | None = None
+    containerLogMaxFiles: float | None = None
+    containerLogMaxSize: str | None = None
+    cpuCfsQuota: bool | None = None
+    cpuCfsQuotaPeriod: str | None = None
+    cpuManagerPolicy: str | None = None
+    imageGcHighThresholdPercent: float | None = None
+    imageGcLowThresholdPercent: float | None = None
+    imageMaximumGcAge: str | None = None
+    imageMinimumGcAge: str | None = None
+    insecureKubeletReadonlyPortEnabled: str | None = None
+    memoryManager: list[MemoryManagerItem] | None = None
+    podPidsLimit: float | None = None
+    topologyManager: list[TopologyManagerItem] | None = None
 
 
 class HugepagesConfigItem(BaseModel):
-    hugepageSize1G: Optional[float] = None
-    hugepageSize2M: Optional[float] = None
+    hugepageSize1G: float | None = None
+    hugepageSize2M: float | None = None
 
 
 class LinuxNodeConfigItem(BaseModel):
-    cgroupMode: Optional[str] = None
-    hugepagesConfig: Optional[List[HugepagesConfigItem]] = None
-    sysctls: Optional[Dict[str, str]] = None
+    cgroupMode: str | None = None
+    hugepagesConfig: list[HugepagesConfigItem] | None = None
+    sysctls: dict[str, str] | None = None
 
 
 class LocalNvmeSsdBlockConfigItem(BaseModel):
-    localSsdCount: Optional[float] = None
+    localSsdCount: float | None = None
 
 
 class ReservationAffinityItem(BaseModel):
-    consumeReservationType: Optional[str] = None
-    key: Optional[str] = None
-    values: Optional[List[str]] = None
+    consumeReservationType: str | None = None
+    key: str | None = None
+    values: list[str] | None = None
 
 
 class SecondaryBootDisk(BaseModel):
-    diskImage: Optional[str] = None
-    mode: Optional[str] = None
+    diskImage: str | None = None
+    mode: str | None = None
 
 
 class ServiceAccountRef(BaseModel):
@@ -310,51 +320,51 @@ class ServiceAccountRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ServiceAccountSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ShieldedInstanceConfigItem(BaseModel):
-    enableIntegrityMonitoring: Optional[bool] = None
-    enableSecureBoot: Optional[bool] = None
+    enableIntegrityMonitoring: bool | None = None
+    enableSecureBoot: bool | None = None
 
 
 class NodeAffinityItem(BaseModel):
-    key: Optional[str] = None
-    operator: Optional[str] = None
-    values: Optional[List[str]] = None
+    key: str | None = None
+    operator: str | None = None
+    values: list[str] | None = None
 
 
 class SoleTenantConfigItem(BaseModel):
-    nodeAffinity: Optional[List[NodeAffinityItem]] = None
+    nodeAffinity: list[NodeAffinityItem] | None = None
 
 
 class TaintItem(BaseModel):
-    effect: Optional[str] = None
-    key: Optional[str] = None
-    value: Optional[str] = None
+    effect: str | None = None
+    key: str | None = None
+    value: str | None = None
 
 
 class WindowsNodeConfigItem(BaseModel):
-    osversion: Optional[str] = None
+    osversion: str | None = None
     """
     The Kubernetes version for the nodes in this pool. Note that if this field
     and auto_upgrade are both specified, they will fight each other for what the node version should
@@ -363,95 +373,95 @@ class WindowsNodeConfigItem(BaseModel):
 
 
 class WorkloadMetadataConfigItem(BaseModel):
-    mode: Optional[str] = None
+    mode: str | None = None
 
 
 class NodeConfigItem(BaseModel):
-    advancedMachineFeatures: Optional[List[AdvancedMachineFeature]] = None
-    bootDiskKmsKey: Optional[str] = None
-    confidentialNodes: Optional[List[ConfidentialNode]] = None
+    advancedMachineFeatures: list[AdvancedMachineFeature] | None = None
+    bootDiskKmsKey: str | None = None
+    confidentialNodes: list[ConfidentialNode] | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below.
     """
-    containerdConfig: Optional[List[ContainerdConfigItem]] = None
-    diskSizeGb: Optional[float] = None
-    diskType: Optional[str] = None
-    enableConfidentialStorage: Optional[bool] = None
-    ephemeralStorageLocalSsdConfig: Optional[
-        List[EphemeralStorageLocalSsdConfigItem]
-    ] = None
-    fastSocket: Optional[List[FastSocketItem]] = None
-    flexStart: Optional[bool] = None
-    gcfsConfig: Optional[List[GcfsConfigItem]] = None
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
-    gvnic: Optional[List[GvnicItem]] = None
-    hostMaintenancePolicy: Optional[List[HostMaintenancePolicyItem]] = None
-    imageType: Optional[str] = None
-    index: Optional[str] = '0'
+    containerdConfig: list[ContainerdConfigItem] | None = None
+    diskSizeGb: float | None = None
+    diskType: str | None = None
+    enableConfidentialStorage: bool | None = None
+    ephemeralStorageLocalSsdConfig: list[EphemeralStorageLocalSsdConfigItem] | None = (
+        None
+    )
+    fastSocket: list[FastSocketItem] | None = None
+    flexStart: bool | None = None
+    gcfsConfig: list[GcfsConfigItem] | None = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
+    gvnic: list[GvnicItem] | None = None
+    hostMaintenancePolicy: list[HostMaintenancePolicyItem] | None = None
+    imageType: str | None = None
+    index: str | None = '0'
     """
     This is an injected field with a default value for being able to merge items of the parent object list.
     """
-    kubeletConfig: Optional[List[KubeletConfigItem]] = None
-    labels: Optional[Dict[str, str]] = None
-    linuxNodeConfig: Optional[List[LinuxNodeConfigItem]] = None
+    kubeletConfig: list[KubeletConfigItem] | None = None
+    labels: dict[str, str] | None = None
+    linuxNodeConfig: list[LinuxNodeConfigItem] | None = None
     """
     Parameters used in creating the node pool. See
     google_container_cluster for schema.
     """
-    localNvmeSsdBlockConfig: Optional[List[LocalNvmeSsdBlockConfigItem]] = None
-    localSsdCount: Optional[float] = None
-    localSsdEncryptionMode: Optional[str] = None
+    localNvmeSsdBlockConfig: list[LocalNvmeSsdBlockConfigItem] | None = None
+    localSsdCount: float | None = None
+    localSsdEncryptionMode: str | None = None
     """
     Possible Local SSD encryption modes:
     Accepted values are:
     """
-    loggingVariant: Optional[str] = None
-    machineType: Optional[str] = None
-    maxRunDuration: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
-    minCpuPlatform: Optional[str] = None
-    nodeGroup: Optional[str] = None
-    oauthScopes: Optional[List[str]] = None
-    preemptible: Optional[bool] = None
-    reservationAffinity: Optional[List[ReservationAffinityItem]] = None
-    resourceLabels: Optional[Dict[str, str]] = None
-    resourceManagerTags: Optional[Dict[str, str]] = None
-    secondaryBootDisks: Optional[List[SecondaryBootDisk]] = None
-    serviceAccount: Optional[str] = None
-    serviceAccountRef: Optional[ServiceAccountRef] = None
+    loggingVariant: str | None = None
+    machineType: str | None = None
+    maxRunDuration: str | None = None
+    metadata: dict[str, str] | None = None
+    minCpuPlatform: str | None = None
+    nodeGroup: str | None = None
+    oauthScopes: list[str] | None = None
+    preemptible: bool | None = None
+    reservationAffinity: list[ReservationAffinityItem] | None = None
+    resourceLabels: dict[str, str] | None = None
+    resourceManagerTags: dict[str, str] | None = None
+    secondaryBootDisks: list[SecondaryBootDisk] | None = None
+    serviceAccount: str | None = None
+    serviceAccountRef: ServiceAccountRef | None = None
     """
     Reference to a ServiceAccount in cloudplatform to populate serviceAccount.
     """
-    serviceAccountSelector: Optional[ServiceAccountSelector] = None
+    serviceAccountSelector: ServiceAccountSelector | None = None
     """
     Selector for a ServiceAccount in cloudplatform to populate serviceAccount.
     """
-    shieldedInstanceConfig: Optional[List[ShieldedInstanceConfigItem]] = None
-    soleTenantConfig: Optional[List[SoleTenantConfigItem]] = None
-    spot: Optional[bool] = None
-    storagePools: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
-    taint: Optional[List[TaintItem]] = None
-    windowsNodeConfig: Optional[List[WindowsNodeConfigItem]] = None
+    shieldedInstanceConfig: list[ShieldedInstanceConfigItem] | None = None
+    soleTenantConfig: list[SoleTenantConfigItem] | None = None
+    spot: bool | None = None
+    storagePools: list[str] | None = None
+    tags: list[str] | None = None
+    taint: list[TaintItem] | None = None
+    windowsNodeConfig: list[WindowsNodeConfigItem] | None = None
     """
     Parameters used in creating the node pool. See
     google_container_cluster for schema.
     """
-    workloadMetadataConfig: Optional[List[WorkloadMetadataConfigItem]] = None
+    workloadMetadataConfig: list[WorkloadMetadataConfigItem] | None = None
 
 
 class PlacementPolicyItem(BaseModel):
-    policyName: Optional[str] = None
+    policyName: str | None = None
     """
     If set, refers to the name of a custom resource policy supplied by the user.
     The resource policy must be in the same project and region as the node pool.
     If not found, InvalidArgument error is returned.
     """
-    tpuTopology: Optional[str] = None
+    tpuTopology: str | None = None
     """
     The TPU placement topology for pod slice node pool.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of the policy. Supports a single value: COMPACT.
     Specifying COMPACT placement policy type places node pool's nodes in a closer
@@ -460,82 +470,82 @@ class PlacementPolicyItem(BaseModel):
 
 
 class QueuedProvisioningItem(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Makes nodes obtainable through the ProvisioningRequest API exclusively.
     """
 
 
 class StandardRolloutPolicyItem(BaseModel):
-    batchNodeCount: Optional[float] = None
+    batchNodeCount: float | None = None
     """
     Number of blue nodes to drain in a batch.
     """
-    batchPercentage: Optional[float] = None
+    batchPercentage: float | None = None
     """
     Percentage of the blue pool nodes to drain in a batch.
     """
-    batchSoakDuration: Optional[str] = None
+    batchSoakDuration: str | None = None
     """
     (Optionial) Soak time after each batch gets drained.
     """
 
 
 class BlueGreenSetting(BaseModel):
-    nodePoolSoakDuration: Optional[str] = None
+    nodePoolSoakDuration: str | None = None
     """
     Time needed after draining the entire blue pool.
     After this period, the blue pool will be cleaned up.
     """
-    standardRolloutPolicy: Optional[List[StandardRolloutPolicyItem]] = None
+    standardRolloutPolicy: list[StandardRolloutPolicyItem] | None = None
     """
     Specifies the standard policy settings for blue-green upgrades.
     """
 
 
 class UpgradeSetting(BaseModel):
-    blueGreenSettings: Optional[List[BlueGreenSetting]] = None
+    blueGreenSettings: list[BlueGreenSetting] | None = None
     """
     The settings to adjust blue green upgrades.
     Structure is documented below
     """
-    maxSurge: Optional[float] = None
+    maxSurge: float | None = None
     """
     The number of additional nodes that can be added to the node pool during
     an upgrade. Increasing max_surge raises the number of nodes that can be upgraded simultaneously.
     Can be set to 0 or greater.
     """
-    maxUnavailable: Optional[float] = None
+    maxUnavailable: float | None = None
     """
     The number of nodes that can be simultaneously unavailable during
     an upgrade. Increasing max_unavailable raises the number of nodes that can be upgraded in
     parallel. Can be set to 0 or greater.
     """
-    strategy: Optional[str] = None
+    strategy: str | None = None
     """
     (Default SURGE) The upgrade stragey to be used for upgrading the nodes.
     """
 
 
 class ForProvider(BaseModel):
-    autoscaling: Optional[List[AutoscalingItem]] = None
+    autoscaling: list[AutoscalingItem] | None = None
     """
     Configuration required by cluster autoscaler to adjust
     the size of the node pool to the current cluster usage. Structure is documented below.
     """
-    cluster: Optional[str] = None
+    cluster: str | None = None
     """
     The cluster to create the node pool for. Cluster must be present in location provided for clusters. May be specified in the format projects/{{project}}/locations/{{location}}/clusters/{{cluster}} or as just the name of the cluster.
     """
-    clusterRef: Optional[ClusterRef] = None
+    clusterRef: ClusterRef | None = None
     """
     Reference to a Cluster in container to populate cluster.
     """
-    clusterSelector: Optional[ClusterSelector] = None
+    clusterSelector: ClusterSelector | None = None
     """
     Selector for a Cluster in container to populate cluster.
     """
-    initialNodeCount: Optional[float] = None
+    initialNodeCount: float | None = None
     """
     The initial number of nodes for the pool. In
     regional or multi-zonal clusters, this is the number of nodes per zone. Changing
@@ -543,16 +553,16 @@ class ForProvider(BaseModel):
     need this value, don't set it.  If you do need it, you can use a lifecycle block to
     ignore subsequent changes to this field.
     """
-    location: Optional[str] = None
+    location: str | None = None
     """
     The location (region or zone) of the cluster.
     """
-    management: Optional[List[ManagementItem]] = None
+    management: list[ManagementItem] | None = None
     """
     Node management configuration, wherein auto-repair and
     auto-upgrade is configured. Structure is documented below.
     """
-    maxPodsPerNode: Optional[float] = None
+    maxPodsPerNode: float | None = None
     """
     The maximum number of pods per node in this node pool.
     Note that this does not work on node pools which are "route-based" - that is, node
@@ -560,50 +570,50 @@ class ForProvider(BaseModel):
     See the official documentation
     for more information.
     """
-    networkConfig: Optional[List[NetworkConfigItem]] = None
+    networkConfig: list[NetworkConfigItem] | None = None
     """
     The network configuration of the pool. Such as
     configuration for Adding Pod IP address ranges) to the node pool. Or enabling private nodes. Structure is
     documented below
     """
-    nodeConfig: Optional[List[NodeConfigItem]] = None
+    nodeConfig: list[NodeConfigItem] | None = None
     """
     Parameters used in creating the node pool. See
     google_container_cluster for schema.
     """
-    nodeCount: Optional[float] = None
+    nodeCount: float | None = None
     """
     The number of nodes per instance group. This field can be used to
     update the number of nodes per instance group but should not be used alongside autoscaling.
     """
-    nodeLocations: Optional[List[str]] = None
+    nodeLocations: list[str] | None = None
     """
     The list of zones in which the node pool's nodes should be located. Nodes must
     be in the region of their regional cluster or in the same region as their
     cluster's zone for zonal clusters. If unspecified, the cluster-level
     node_locations will be used.
     """
-    placementPolicy: Optional[List[PlacementPolicyItem]] = None
+    placementPolicy: list[PlacementPolicyItem] | None = None
     """
     Specifies a custom placement policy for the
     nodes.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which to create the node pool. If blank,
     the provider-configured project will be used.
     """
-    queuedProvisioning: Optional[List[QueuedProvisioningItem]] = None
+    queuedProvisioning: list[QueuedProvisioningItem] | None = None
     """
     Specifies node pool-level settings of queued provisioning.
     Structure is documented below.
     """
-    upgradeSettings: Optional[List[UpgradeSetting]] = None
+    upgradeSettings: list[UpgradeSetting] | None = None
     """
     Specify node upgrade settings to change how GKE upgrades nodes.
     The maximum number of nodes upgraded simultaneously is limited to 20. Structure is documented below.
     """
-    version: Optional[str] = None
+    version: str | None = None
     """
     The Kubernetes version for the nodes in this pool. Note that if this field
     and auto_upgrade are both specified, they will fight each other for what the node version should
@@ -612,12 +622,12 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    autoscaling: Optional[List[AutoscalingItem]] = None
+    autoscaling: list[AutoscalingItem] | None = None
     """
     Configuration required by cluster autoscaler to adjust
     the size of the node pool to the current cluster usage. Structure is documented below.
     """
-    initialNodeCount: Optional[float] = None
+    initialNodeCount: float | None = None
     """
     The initial number of nodes for the pool. In
     regional or multi-zonal clusters, this is the number of nodes per zone. Changing
@@ -625,12 +635,12 @@ class InitProvider(BaseModel):
     need this value, don't set it.  If you do need it, you can use a lifecycle block to
     ignore subsequent changes to this field.
     """
-    management: Optional[List[ManagementItem]] = None
+    management: list[ManagementItem] | None = None
     """
     Node management configuration, wherein auto-repair and
     auto-upgrade is configured. Structure is documented below.
     """
-    maxPodsPerNode: Optional[float] = None
+    maxPodsPerNode: float | None = None
     """
     The maximum number of pods per node in this node pool.
     Note that this does not work on node pools which are "route-based" - that is, node
@@ -638,50 +648,50 @@ class InitProvider(BaseModel):
     See the official documentation
     for more information.
     """
-    networkConfig: Optional[List[NetworkConfigItem]] = None
+    networkConfig: list[NetworkConfigItem] | None = None
     """
     The network configuration of the pool. Such as
     configuration for Adding Pod IP address ranges) to the node pool. Or enabling private nodes. Structure is
     documented below
     """
-    nodeConfig: Optional[List[NodeConfigItem]] = None
+    nodeConfig: list[NodeConfigItem] | None = None
     """
     Parameters used in creating the node pool. See
     google_container_cluster for schema.
     """
-    nodeCount: Optional[float] = None
+    nodeCount: float | None = None
     """
     The number of nodes per instance group. This field can be used to
     update the number of nodes per instance group but should not be used alongside autoscaling.
     """
-    nodeLocations: Optional[List[str]] = None
+    nodeLocations: list[str] | None = None
     """
     The list of zones in which the node pool's nodes should be located. Nodes must
     be in the region of their regional cluster or in the same region as their
     cluster's zone for zonal clusters. If unspecified, the cluster-level
     node_locations will be used.
     """
-    placementPolicy: Optional[List[PlacementPolicyItem]] = None
+    placementPolicy: list[PlacementPolicyItem] | None = None
     """
     Specifies a custom placement policy for the
     nodes.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which to create the node pool. If blank,
     the provider-configured project will be used.
     """
-    queuedProvisioning: Optional[List[QueuedProvisioningItem]] = None
+    queuedProvisioning: list[QueuedProvisioningItem] | None = None
     """
     Specifies node pool-level settings of queued provisioning.
     Structure is documented below.
     """
-    upgradeSettings: Optional[List[UpgradeSetting]] = None
+    upgradeSettings: list[UpgradeSetting] | None = None
     """
     Specify node upgrade settings to change how GKE upgrades nodes.
     The maximum number of nodes upgraded simultaneously is limited to 20. Structure is documented below.
     """
-    version: Optional[str] = None
+    version: str | None = None
     """
     The Kubernetes version for the nodes in this pool. Note that if this field
     and auto_upgrade are both specified, they will fight each other for what the node version should
@@ -694,7 +704,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -712,7 +722,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -723,7 +733,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -736,9 +746,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -751,15 +762,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -769,128 +780,128 @@ class Spec(BaseModel):
 
 
 class NetworkConfigItemModel(BaseModel):
-    additionalNodeNetworkConfigs: Optional[List[AdditionalNodeNetworkConfig]] = None
+    additionalNodeNetworkConfigs: list[AdditionalNodeNetworkConfig] | None = None
     """
     We specify the additional node networks for this node pool using this list. Each node network corresponds to an additional interface.
     Structure is documented below
     """
-    additionalPodNetworkConfigs: Optional[List[AdditionalPodNetworkConfig]] = None
+    additionalPodNetworkConfigs: list[AdditionalPodNetworkConfig] | None = None
     """
     We specify the additional pod networks for this node pool using this list. Each pod network corresponds to an additional alias IP range for the node.
     Structure is documented below
     """
-    createPodRange: Optional[bool] = None
+    createPodRange: bool | None = None
     """
     Whether to create a new range for pod IPs in this node pool. Defaults are provided for pod_range and pod_ipv4_cidr_block if they are not specified.
     """
-    enablePrivateNodes: Optional[bool] = None
+    enablePrivateNodes: bool | None = None
     """
     Whether nodes have internal IP addresses only.
     """
-    networkPerformanceConfig: Optional[List[NetworkPerformanceConfigItem]] = None
-    podCidrOverprovisionConfig: Optional[List[PodCidrOverprovisionConfigItem]] = None
-    podIpv4CidrBlock: Optional[str] = None
+    networkPerformanceConfig: list[NetworkPerformanceConfigItem] | None = None
+    podCidrOverprovisionConfig: list[PodCidrOverprovisionConfigItem] | None = None
+    podIpv4CidrBlock: str | None = None
     """
     The IP address range for pod IPs in this node pool. Only applicable if createPodRange is true. Set to blank to have a range chosen with the default size. Set to /netmask (e.g. /14) to have a range chosen with a specific netmask. Set to a CIDR notation (e.g. 10.96.0.0/14) to pick a specific range to use.
     """
-    podRange: Optional[str] = None
+    podRange: str | None = None
     """
     The ID of the secondary range for pod IPs. If create_pod_range is true, this ID is used for the new range. If create_pod_range is false, uses an existing secondary range with this ID.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The subnetwork path for the node pool. Format: projects/{project}/regions/{region}/subnetworks/{subnetwork}. If the cluster is associated with multiple subnetworks, the subnetwork for the node pool is picked based on the IP utilization during node pool creation and is immutable
     """
 
 
 class EffectiveTaint(BaseModel):
-    effect: Optional[str] = None
-    key: Optional[str] = None
-    value: Optional[str] = None
+    effect: str | None = None
+    key: str | None = None
+    value: str | None = None
 
 
 class NodeConfigItemModel(BaseModel):
-    advancedMachineFeatures: Optional[List[AdvancedMachineFeature]] = None
-    bootDiskKmsKey: Optional[str] = None
-    confidentialNodes: Optional[List[ConfidentialNode]] = None
+    advancedMachineFeatures: list[AdvancedMachineFeature] | None = None
+    bootDiskKmsKey: str | None = None
+    confidentialNodes: list[ConfidentialNode] | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below.
     """
-    containerdConfig: Optional[List[ContainerdConfigItem]] = None
-    diskSizeGb: Optional[float] = None
-    diskType: Optional[str] = None
-    effectiveTaints: Optional[List[EffectiveTaint]] = None
-    enableConfidentialStorage: Optional[bool] = None
-    ephemeralStorageLocalSsdConfig: Optional[
-        List[EphemeralStorageLocalSsdConfigItem]
-    ] = None
-    fastSocket: Optional[List[FastSocketItem]] = None
-    flexStart: Optional[bool] = None
-    gcfsConfig: Optional[List[GcfsConfigItem]] = None
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
-    gvnic: Optional[List[GvnicItem]] = None
-    hostMaintenancePolicy: Optional[List[HostMaintenancePolicyItem]] = None
-    imageType: Optional[str] = None
-    index: Optional[str] = '0'
+    containerdConfig: list[ContainerdConfigItem] | None = None
+    diskSizeGb: float | None = None
+    diskType: str | None = None
+    effectiveTaints: list[EffectiveTaint] | None = None
+    enableConfidentialStorage: bool | None = None
+    ephemeralStorageLocalSsdConfig: list[EphemeralStorageLocalSsdConfigItem] | None = (
+        None
+    )
+    fastSocket: list[FastSocketItem] | None = None
+    flexStart: bool | None = None
+    gcfsConfig: list[GcfsConfigItem] | None = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
+    gvnic: list[GvnicItem] | None = None
+    hostMaintenancePolicy: list[HostMaintenancePolicyItem] | None = None
+    imageType: str | None = None
+    index: str | None = '0'
     """
     This is an injected field with a default value for being able to merge items of the parent object list.
     """
-    kubeletConfig: Optional[List[KubeletConfigItem]] = None
-    labels: Optional[Dict[str, str]] = None
-    linuxNodeConfig: Optional[List[LinuxNodeConfigItem]] = None
+    kubeletConfig: list[KubeletConfigItem] | None = None
+    labels: dict[str, str] | None = None
+    linuxNodeConfig: list[LinuxNodeConfigItem] | None = None
     """
     Parameters used in creating the node pool. See
     google_container_cluster for schema.
     """
-    localNvmeSsdBlockConfig: Optional[List[LocalNvmeSsdBlockConfigItem]] = None
-    localSsdCount: Optional[float] = None
-    localSsdEncryptionMode: Optional[str] = None
+    localNvmeSsdBlockConfig: list[LocalNvmeSsdBlockConfigItem] | None = None
+    localSsdCount: float | None = None
+    localSsdEncryptionMode: str | None = None
     """
     Possible Local SSD encryption modes:
     Accepted values are:
     """
-    loggingVariant: Optional[str] = None
-    machineType: Optional[str] = None
-    maxRunDuration: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
-    minCpuPlatform: Optional[str] = None
-    nodeGroup: Optional[str] = None
-    oauthScopes: Optional[List[str]] = None
-    preemptible: Optional[bool] = None
-    reservationAffinity: Optional[List[ReservationAffinityItem]] = None
-    resourceLabels: Optional[Dict[str, str]] = None
-    resourceManagerTags: Optional[Dict[str, str]] = None
-    secondaryBootDisks: Optional[List[SecondaryBootDisk]] = None
-    serviceAccount: Optional[str] = None
-    shieldedInstanceConfig: Optional[List[ShieldedInstanceConfigItem]] = None
-    soleTenantConfig: Optional[List[SoleTenantConfigItem]] = None
-    spot: Optional[bool] = None
-    storagePools: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
-    taint: Optional[List[TaintItem]] = None
-    windowsNodeConfig: Optional[List[WindowsNodeConfigItem]] = None
+    loggingVariant: str | None = None
+    machineType: str | None = None
+    maxRunDuration: str | None = None
+    metadata: dict[str, str] | None = None
+    minCpuPlatform: str | None = None
+    nodeGroup: str | None = None
+    oauthScopes: list[str] | None = None
+    preemptible: bool | None = None
+    reservationAffinity: list[ReservationAffinityItem] | None = None
+    resourceLabels: dict[str, str] | None = None
+    resourceManagerTags: dict[str, str] | None = None
+    secondaryBootDisks: list[SecondaryBootDisk] | None = None
+    serviceAccount: str | None = None
+    shieldedInstanceConfig: list[ShieldedInstanceConfigItem] | None = None
+    soleTenantConfig: list[SoleTenantConfigItem] | None = None
+    spot: bool | None = None
+    storagePools: list[str] | None = None
+    tags: list[str] | None = None
+    taint: list[TaintItem] | None = None
+    windowsNodeConfig: list[WindowsNodeConfigItem] | None = None
     """
     Parameters used in creating the node pool. See
     google_container_cluster for schema.
     """
-    workloadMetadataConfig: Optional[List[WorkloadMetadataConfigItem]] = None
+    workloadMetadataConfig: list[WorkloadMetadataConfigItem] | None = None
 
 
 class AtProvider(BaseModel):
-    autoscaling: Optional[List[AutoscalingItem]] = None
+    autoscaling: list[AutoscalingItem] | None = None
     """
     Configuration required by cluster autoscaler to adjust
     the size of the node pool to the current cluster usage. Structure is documented below.
     """
-    cluster: Optional[str] = None
+    cluster: str | None = None
     """
     The cluster to create the node pool for. Cluster must be present in location provided for clusters. May be specified in the format projects/{{project}}/locations/{{location}}/clusters/{{cluster}} or as just the name of the cluster.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format {{project}}/{{location}}/{{cluster}}/{{name}}
     """
-    initialNodeCount: Optional[float] = None
+    initialNodeCount: float | None = None
     """
     The initial number of nodes for the pool. In
     regional or multi-zonal clusters, this is the number of nodes per zone. Changing
@@ -898,24 +909,24 @@ class AtProvider(BaseModel):
     need this value, don't set it.  If you do need it, you can use a lifecycle block to
     ignore subsequent changes to this field.
     """
-    instanceGroupUrls: Optional[List[str]] = None
+    instanceGroupUrls: list[str] | None = None
     """
     The resource URLs of the managed instance groups associated with this node pool.
     """
-    location: Optional[str] = None
+    location: str | None = None
     """
     The location (region or zone) of the cluster.
     """
-    managedInstanceGroupUrls: Optional[List[str]] = None
+    managedInstanceGroupUrls: list[str] | None = None
     """
     List of instance group URLs which have been assigned to this node pool.
     """
-    management: Optional[List[ManagementItem]] = None
+    management: list[ManagementItem] | None = None
     """
     Node management configuration, wherein auto-repair and
     auto-upgrade is configured. Structure is documented below.
     """
-    maxPodsPerNode: Optional[float] = None
+    maxPodsPerNode: float | None = None
     """
     The maximum number of pods per node in this node pool.
     Note that this does not work on node pools which are "route-based" - that is, node
@@ -923,51 +934,51 @@ class AtProvider(BaseModel):
     See the official documentation
     for more information.
     """
-    networkConfig: Optional[List[NetworkConfigItemModel]] = None
+    networkConfig: list[NetworkConfigItemModel] | None = None
     """
     The network configuration of the pool. Such as
     configuration for Adding Pod IP address ranges) to the node pool. Or enabling private nodes. Structure is
     documented below
     """
-    nodeConfig: Optional[List[NodeConfigItemModel]] = None
+    nodeConfig: list[NodeConfigItemModel] | None = None
     """
     Parameters used in creating the node pool. See
     google_container_cluster for schema.
     """
-    nodeCount: Optional[float] = None
+    nodeCount: float | None = None
     """
     The number of nodes per instance group. This field can be used to
     update the number of nodes per instance group but should not be used alongside autoscaling.
     """
-    nodeLocations: Optional[List[str]] = None
+    nodeLocations: list[str] | None = None
     """
     The list of zones in which the node pool's nodes should be located. Nodes must
     be in the region of their regional cluster or in the same region as their
     cluster's zone for zonal clusters. If unspecified, the cluster-level
     node_locations will be used.
     """
-    operation: Optional[str] = None
-    placementPolicy: Optional[List[PlacementPolicyItem]] = None
+    operation: str | None = None
+    placementPolicy: list[PlacementPolicyItem] | None = None
     """
     Specifies a custom placement policy for the
     nodes.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which to create the node pool. If blank,
     the provider-configured project will be used.
     """
-    queuedProvisioning: Optional[List[QueuedProvisioningItem]] = None
+    queuedProvisioning: list[QueuedProvisioningItem] | None = None
     """
     Specifies node pool-level settings of queued provisioning.
     Structure is documented below.
     """
-    upgradeSettings: Optional[List[UpgradeSetting]] = None
+    upgradeSettings: list[UpgradeSetting] | None = None
     """
     Specify node upgrade settings to change how GKE upgrades nodes.
     The maximum number of nodes upgraded simultaneously is limited to 20. Structure is documented below.
     """
-    version: Optional[str] = None
+    version: str | None = None
     """
     The Kubernetes version for the nodes in this pool. Note that if this field
     and auto_upgrade are both specified, they will fight each other for what the node version should
@@ -976,17 +987,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -1008,12 +1019,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -1022,17 +1033,17 @@ class Status(BaseModel):
 
 
 class NodePool(BaseModel):
-    apiVersion: Optional[Literal['container.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['container.gcp.upbound.io/v1beta1'] | None = (
         'container.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['NodePool']] = 'NodePool'
+    kind: Literal['NodePool'] | None = 'NodePool'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -1040,26 +1051,26 @@ class NodePool(BaseModel):
     """
     NodePoolSpec defines the desired state of NodePool
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     NodePoolStatus defines the observed state of NodePool.
     """
 
 
 class NodePoolList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[NodePool]
+    items: list[NodePool]
     """
     List of nodepools. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

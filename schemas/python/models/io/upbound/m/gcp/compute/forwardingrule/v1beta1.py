@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class BackendServiceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class BackendServiceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,31 +67,31 @@ class IpAddressRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class IpAddressSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -103,42 +102,42 @@ class NetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ServiceDirectoryRegistrations(BaseModel):
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Service Directory namespace to register the forwarding rule under.
     """
-    service: Optional[str] = None
+    service: str | None = None
     """
     Service Directory service to register the forwarding rule under.
     """
@@ -149,31 +148,31 @@ class SubnetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -184,45 +183,45 @@ class TargetRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class TargetSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    allPorts: Optional[bool] = None
+    allPorts: bool | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The allPorts field has the following limitations:
     """
-    allowGlobalAccess: Optional[bool] = None
+    allowGlobalAccess: bool | None = None
     """
     This field is used along with the backend_service field for
     internal load balancing or with the target field for internal
@@ -232,30 +231,30 @@ class ForProvider(BaseModel):
     Otherwise only allows access from clients in the same region as the
     internal load balancer.
     """
-    allowPscGlobalAccess: Optional[bool] = None
+    allowPscGlobalAccess: bool | None = None
     """
     This is used in PSC consumer ForwardingRule to control whether the PSC endpoint can be accessed from another region.
     """
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     Identifies the backend service to which the forwarding rule sends traffic.
     Required for Internal TCP/UDP Load Balancing and Network Load Balancing;
     must be omitted for all other load balancer types.
     """
-    backendServiceRef: Optional[BackendServiceRef] = None
+    backendServiceRef: BackendServiceRef | None = None
     """
     Reference to a RegionBackendService in compute to populate backendService.
     """
-    backendServiceSelector: Optional[BackendServiceSelector] = None
+    backendServiceSelector: BackendServiceSelector | None = None
     """
     Selector for a RegionBackendService in compute to populate backendService.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    ipAddress: Optional[str] = None
+    ipAddress: str | None = None
     """
     IP address for which this forwarding rule accepts traffic. When a client
     sends traffic to this IP address, the forwarding rule directs the traffic
@@ -263,15 +262,15 @@ class ForProvider(BaseModel):
     While creating a forwarding rule, specifying an IPAddress is
     required under the following circumstances:
     """
-    ipAddressRef: Optional[IpAddressRef] = None
+    ipAddressRef: IpAddressRef | None = None
     """
     Reference to a Address in compute to populate ipAddress.
     """
-    ipAddressSelector: Optional[IpAddressSelector] = None
+    ipAddressSelector: IpAddressSelector | None = None
     """
     Selector for a Address in compute to populate ipAddress.
     """
-    ipCollection: Optional[str] = None
+    ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
     in EXTERNAL_IPV6_FORWARDING_RULE_CREATION mode.
@@ -279,7 +278,7 @@ class ForProvider(BaseModel):
     IPv6 NetLB forwarding rule using BYOIP:
     Full resource URL, as in:
     """
-    ipProtocol: Optional[str] = None
+    ipProtocol: str | None = None
     """
     The IP protocol to which this rule applies.
     For protocol forwarding, valid
@@ -294,14 +293,14 @@ class ForProvider(BaseModel):
     A forwarding rule with "L3_DEFAULT" IPProtocal cannot be attached to a backend service with TCP or UDP.
     Possible values are: TCP, UDP, ESP, AH, SCTP, ICMP, L3_DEFAULT.
     """
-    ipVersion: Optional[str] = None
+    ipVersion: str | None = None
     """
     The IP address version that will be used by this forwarding rule.
     Valid options are IPV4 and IPV6.
     If not set, the IPv4 address will be used by default.
     Possible values are: IPV4, IPV6.
     """
-    isMirroringCollector: Optional[bool] = None
+    isMirroringCollector: bool | None = None
     """
     Indicates whether or not this load balancer can be used as a collector for
     packet mirroring. To prevent mirroring loops, instances behind this
@@ -310,11 +309,11 @@ class ForProvider(BaseModel):
     This can only be set to true for load balancers that have their
     loadBalancingScheme set to INTERNAL.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this forwarding rule.  A list of key->value pairs.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     Specifies the forwarding rule type.
     Note that an empty string value ("") is also supported for some use
@@ -325,7 +324,7 @@ class ForProvider(BaseModel):
     Default value is EXTERNAL.
     Possible values are: EXTERNAL, EXTERNAL_MANAGED, INTERNAL, INTERNAL_MANAGED.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     This field is not used for external load balancing.
     For Internal TCP/UDP Load Balancing, this field identifies the network that
@@ -336,15 +335,15 @@ class ForProvider(BaseModel):
     For Private Service Connect forwarding rules that forward traffic to Google
     APIs, a network must be provided.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    networkTier: Optional[str] = None
+    networkTier: str | None = None
     """
     This signifies the networking tier used for configuring
     this load balancer and can only take the following values:
@@ -357,30 +356,30 @@ class ForProvider(BaseModel):
     networkTier of the Address.
     Possible values are: PREMIUM, STANDARD.
     """
-    noAutomateDnsZone: Optional[bool] = None
+    noAutomateDnsZone: bool | None = None
     """
     This is used in PSC consumer ForwardingRule to control whether it should try to auto-generate a DNS zone or not. Non-PSC forwarding rules do not use this field.
     """
-    portRange: Optional[str] = None
+    portRange: str | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The portRange field has the following limitations:
     """
-    ports: Optional[List[str]] = None
+    ports: list[str] | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The ports field has the following limitations:
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    recreateClosedPsc: Optional[bool] = None
+    recreateClosedPsc: bool | None = None
     """
     this is used in psc consumer forwardingrule to make provider recreate the forwardingrule when the status is closed
     """
@@ -389,13 +388,13 @@ class ForProvider(BaseModel):
     A reference to the region where the regional forwarding rule resides.
     This field is not applicable to global forwarding rules.
     """
-    serviceDirectoryRegistrations: Optional[ServiceDirectoryRegistrations] = None
+    serviceDirectoryRegistrations: ServiceDirectoryRegistrations | None = None
     """
     Service Directory resources to register this forwarding rule with.
     Currently, only supports a single Service Directory resource.
     Structure is documented below.
     """
-    serviceLabel: Optional[str] = None
+    serviceLabel: str | None = None
     """
     An optional prefix to the service name for this Forwarding Rule.
     If specified, will be the first label of the fully qualified service
@@ -408,11 +407,11 @@ class ForProvider(BaseModel):
     character, which cannot be a dash.
     This field is only used for INTERNAL load balancing.
     """
-    sourceIpRanges: Optional[List[str]] = None
+    sourceIpRanges: list[str] | None = None
     """
     If not empty, this Forwarding Rule will only forward the traffic when the source IP address matches one of the IP addresses or CIDR ranges set here. Note that a Forwarding Rule can only have up to 64 source IP ranges, and this field can only be used with a regional Forwarding Rule whose scheme is EXTERNAL. Each sourceIpRange entry should be either an IP address (for example, 1.2.3.4) or a CIDR range (for example, 1.2.3.0/24).
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     This field identifies the subnetwork that the load balanced IP should
     belong to for this Forwarding Rule, used in internal load balancing and
@@ -421,39 +420,39 @@ class ForProvider(BaseModel):
     However, a subnetwork must be specified if the network is in custom subnet
     mode or when creating external forwarding rule with IPv6.
     """
-    subnetworkRef: Optional[SubnetworkRef] = None
+    subnetworkRef: SubnetworkRef | None = None
     """
     Reference to a Subnetwork in compute to populate subnetwork.
     """
-    subnetworkSelector: Optional[SubnetworkSelector] = None
+    subnetworkSelector: SubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate subnetwork.
     """
-    target: Optional[str] = None
+    target: str | None = None
     """
     is set to targetGrpcProxy and
     validateForProxyless is set to true, the
     IPAddress should be set to 0.0.0.0.
     """
-    targetRef: Optional[TargetRef] = None
+    targetRef: TargetRef | None = None
     """
     Reference to a RegionTargetHTTPProxy in compute to populate target.
     """
-    targetSelector: Optional[TargetSelector] = None
+    targetSelector: TargetSelector | None = None
     """
     Selector for a RegionTargetHTTPProxy in compute to populate target.
     """
 
 
 class InitProvider(BaseModel):
-    allPorts: Optional[bool] = None
+    allPorts: bool | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The allPorts field has the following limitations:
     """
-    allowGlobalAccess: Optional[bool] = None
+    allowGlobalAccess: bool | None = None
     """
     This field is used along with the backend_service field for
     internal load balancing or with the target field for internal
@@ -463,30 +462,30 @@ class InitProvider(BaseModel):
     Otherwise only allows access from clients in the same region as the
     internal load balancer.
     """
-    allowPscGlobalAccess: Optional[bool] = None
+    allowPscGlobalAccess: bool | None = None
     """
     This is used in PSC consumer ForwardingRule to control whether the PSC endpoint can be accessed from another region.
     """
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     Identifies the backend service to which the forwarding rule sends traffic.
     Required for Internal TCP/UDP Load Balancing and Network Load Balancing;
     must be omitted for all other load balancer types.
     """
-    backendServiceRef: Optional[BackendServiceRef] = None
+    backendServiceRef: BackendServiceRef | None = None
     """
     Reference to a RegionBackendService in compute to populate backendService.
     """
-    backendServiceSelector: Optional[BackendServiceSelector] = None
+    backendServiceSelector: BackendServiceSelector | None = None
     """
     Selector for a RegionBackendService in compute to populate backendService.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    ipAddress: Optional[str] = None
+    ipAddress: str | None = None
     """
     IP address for which this forwarding rule accepts traffic. When a client
     sends traffic to this IP address, the forwarding rule directs the traffic
@@ -494,15 +493,15 @@ class InitProvider(BaseModel):
     While creating a forwarding rule, specifying an IPAddress is
     required under the following circumstances:
     """
-    ipAddressRef: Optional[IpAddressRef] = None
+    ipAddressRef: IpAddressRef | None = None
     """
     Reference to a Address in compute to populate ipAddress.
     """
-    ipAddressSelector: Optional[IpAddressSelector] = None
+    ipAddressSelector: IpAddressSelector | None = None
     """
     Selector for a Address in compute to populate ipAddress.
     """
-    ipCollection: Optional[str] = None
+    ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
     in EXTERNAL_IPV6_FORWARDING_RULE_CREATION mode.
@@ -510,7 +509,7 @@ class InitProvider(BaseModel):
     IPv6 NetLB forwarding rule using BYOIP:
     Full resource URL, as in:
     """
-    ipProtocol: Optional[str] = None
+    ipProtocol: str | None = None
     """
     The IP protocol to which this rule applies.
     For protocol forwarding, valid
@@ -525,14 +524,14 @@ class InitProvider(BaseModel):
     A forwarding rule with "L3_DEFAULT" IPProtocal cannot be attached to a backend service with TCP or UDP.
     Possible values are: TCP, UDP, ESP, AH, SCTP, ICMP, L3_DEFAULT.
     """
-    ipVersion: Optional[str] = None
+    ipVersion: str | None = None
     """
     The IP address version that will be used by this forwarding rule.
     Valid options are IPV4 and IPV6.
     If not set, the IPv4 address will be used by default.
     Possible values are: IPV4, IPV6.
     """
-    isMirroringCollector: Optional[bool] = None
+    isMirroringCollector: bool | None = None
     """
     Indicates whether or not this load balancer can be used as a collector for
     packet mirroring. To prevent mirroring loops, instances behind this
@@ -541,11 +540,11 @@ class InitProvider(BaseModel):
     This can only be set to true for load balancers that have their
     loadBalancingScheme set to INTERNAL.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this forwarding rule.  A list of key->value pairs.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     Specifies the forwarding rule type.
     Note that an empty string value ("") is also supported for some use
@@ -556,7 +555,7 @@ class InitProvider(BaseModel):
     Default value is EXTERNAL.
     Possible values are: EXTERNAL, EXTERNAL_MANAGED, INTERNAL, INTERNAL_MANAGED.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     This field is not used for external load balancing.
     For Internal TCP/UDP Load Balancing, this field identifies the network that
@@ -567,15 +566,15 @@ class InitProvider(BaseModel):
     For Private Service Connect forwarding rules that forward traffic to Google
     APIs, a network must be provided.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    networkTier: Optional[str] = None
+    networkTier: str | None = None
     """
     This signifies the networking tier used for configuring
     this load balancer and can only take the following values:
@@ -588,40 +587,40 @@ class InitProvider(BaseModel):
     networkTier of the Address.
     Possible values are: PREMIUM, STANDARD.
     """
-    noAutomateDnsZone: Optional[bool] = None
+    noAutomateDnsZone: bool | None = None
     """
     This is used in PSC consumer ForwardingRule to control whether it should try to auto-generate a DNS zone or not. Non-PSC forwarding rules do not use this field.
     """
-    portRange: Optional[str] = None
+    portRange: str | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The portRange field has the following limitations:
     """
-    ports: Optional[List[str]] = None
+    ports: list[str] | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The ports field has the following limitations:
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    recreateClosedPsc: Optional[bool] = None
+    recreateClosedPsc: bool | None = None
     """
     this is used in psc consumer forwardingrule to make provider recreate the forwardingrule when the status is closed
     """
-    serviceDirectoryRegistrations: Optional[ServiceDirectoryRegistrations] = None
+    serviceDirectoryRegistrations: ServiceDirectoryRegistrations | None = None
     """
     Service Directory resources to register this forwarding rule with.
     Currently, only supports a single Service Directory resource.
     Structure is documented below.
     """
-    serviceLabel: Optional[str] = None
+    serviceLabel: str | None = None
     """
     An optional prefix to the service name for this Forwarding Rule.
     If specified, will be the first label of the fully qualified service
@@ -634,11 +633,11 @@ class InitProvider(BaseModel):
     character, which cannot be a dash.
     This field is only used for INTERNAL load balancing.
     """
-    sourceIpRanges: Optional[List[str]] = None
+    sourceIpRanges: list[str] | None = None
     """
     If not empty, this Forwarding Rule will only forward the traffic when the source IP address matches one of the IP addresses or CIDR ranges set here. Note that a Forwarding Rule can only have up to 64 source IP ranges, and this field can only be used with a regional Forwarding Rule whose scheme is EXTERNAL. Each sourceIpRange entry should be either an IP address (for example, 1.2.3.4) or a CIDR range (for example, 1.2.3.0/24).
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     This field identifies the subnetwork that the load balanced IP should
     belong to for this Forwarding Rule, used in internal load balancing and
@@ -647,25 +646,25 @@ class InitProvider(BaseModel):
     However, a subnetwork must be specified if the network is in custom subnet
     mode or when creating external forwarding rule with IPv6.
     """
-    subnetworkRef: Optional[SubnetworkRef] = None
+    subnetworkRef: SubnetworkRef | None = None
     """
     Reference to a Subnetwork in compute to populate subnetwork.
     """
-    subnetworkSelector: Optional[SubnetworkSelector] = None
+    subnetworkSelector: SubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate subnetwork.
     """
-    target: Optional[str] = None
+    target: str | None = None
     """
     is set to targetGrpcProxy and
     validateForProxyless is set to true, the
     IPAddress should be set to 0.0.0.0.
     """
-    targetRef: Optional[TargetRef] = None
+    targetRef: TargetRef | None = None
     """
     Reference to a RegionTargetHTTPProxy in compute to populate target.
     """
-    targetSelector: Optional[TargetSelector] = None
+    targetSelector: TargetSelector | None = None
     """
     Selector for a RegionTargetHTTPProxy in compute to populate target.
     """
@@ -691,7 +690,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -704,9 +703,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -715,17 +715,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -735,14 +733,14 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    allPorts: Optional[bool] = None
+    allPorts: bool | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The allPorts field has the following limitations:
     """
-    allowGlobalAccess: Optional[bool] = None
+    allowGlobalAccess: bool | None = None
     """
     This field is used along with the backend_service field for
     internal load balancing or with the target field for internal
@@ -752,42 +750,42 @@ class AtProvider(BaseModel):
     Otherwise only allows access from clients in the same region as the
     internal load balancer.
     """
-    allowPscGlobalAccess: Optional[bool] = None
+    allowPscGlobalAccess: bool | None = None
     """
     This is used in PSC consumer ForwardingRule to control whether the PSC endpoint can be accessed from another region.
     """
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     Identifies the backend service to which the forwarding rule sends traffic.
     Required for Internal TCP/UDP Load Balancing and Network Load Balancing;
     must be omitted for all other load balancer types.
     """
-    baseForwardingRule: Optional[str] = None
+    baseForwardingRule: str | None = None
     """
     [Output Only] The URL for the corresponding base Forwarding Rule. By base Forwarding Rule, we mean the Forwarding Rule that has the same IP address, protocol, and port settings with the current Forwarding Rule, but without sourceIPRanges specified. Always empty if the current Forwarding Rule does not have sourceIPRanges specified.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
+    effectiveLabels: dict[str, str] | None = None
     """
     for all of the labels present on the resource.
     """
-    forwardingRuleId: Optional[float] = None
+    forwardingRuleId: float | None = None
     """
     The unique identifier number for the resource. This identifier is defined by the server.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/forwardingRules/{{name}}
     """
-    ipAddress: Optional[str] = None
+    ipAddress: str | None = None
     """
     IP address for which this forwarding rule accepts traffic. When a client
     sends traffic to this IP address, the forwarding rule directs the traffic
@@ -795,7 +793,7 @@ class AtProvider(BaseModel):
     While creating a forwarding rule, specifying an IPAddress is
     required under the following circumstances:
     """
-    ipCollection: Optional[str] = None
+    ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
     in EXTERNAL_IPV6_FORWARDING_RULE_CREATION mode.
@@ -803,7 +801,7 @@ class AtProvider(BaseModel):
     IPv6 NetLB forwarding rule using BYOIP:
     Full resource URL, as in:
     """
-    ipProtocol: Optional[str] = None
+    ipProtocol: str | None = None
     """
     The IP protocol to which this rule applies.
     For protocol forwarding, valid
@@ -818,14 +816,14 @@ class AtProvider(BaseModel):
     A forwarding rule with "L3_DEFAULT" IPProtocal cannot be attached to a backend service with TCP or UDP.
     Possible values are: TCP, UDP, ESP, AH, SCTP, ICMP, L3_DEFAULT.
     """
-    ipVersion: Optional[str] = None
+    ipVersion: str | None = None
     """
     The IP address version that will be used by this forwarding rule.
     Valid options are IPV4 and IPV6.
     If not set, the IPv4 address will be used by default.
     Possible values are: IPV4, IPV6.
     """
-    isMirroringCollector: Optional[bool] = None
+    isMirroringCollector: bool | None = None
     """
     Indicates whether or not this load balancer can be used as a collector for
     packet mirroring. To prevent mirroring loops, instances behind this
@@ -834,16 +832,16 @@ class AtProvider(BaseModel):
     This can only be set to true for load balancers that have their
     loadBalancingScheme set to INTERNAL.
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     The fingerprint used for optimistic locking of this resource.  Used
     internally during updates.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this forwarding rule.  A list of key->value pairs.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     Specifies the forwarding rule type.
     Note that an empty string value ("") is also supported for some use
@@ -854,7 +852,7 @@ class AtProvider(BaseModel):
     Default value is EXTERNAL.
     Possible values are: EXTERNAL, EXTERNAL_MANAGED, INTERNAL, INTERNAL_MANAGED.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     This field is not used for external load balancing.
     For Internal TCP/UDP Load Balancing, this field identifies the network that
@@ -865,7 +863,7 @@ class AtProvider(BaseModel):
     For Private Service Connect forwarding rules that forward traffic to Google
     APIs, a network must be provided.
     """
-    networkTier: Optional[str] = None
+    networkTier: str | None = None
     """
     This signifies the networking tier used for configuring
     this load balancer and can only take the following values:
@@ -878,57 +876,57 @@ class AtProvider(BaseModel):
     networkTier of the Address.
     Possible values are: PREMIUM, STANDARD.
     """
-    noAutomateDnsZone: Optional[bool] = None
+    noAutomateDnsZone: bool | None = None
     """
     This is used in PSC consumer ForwardingRule to control whether it should try to auto-generate a DNS zone or not. Non-PSC forwarding rules do not use this field.
     """
-    portRange: Optional[str] = None
+    portRange: str | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The portRange field has the following limitations:
     """
-    ports: Optional[List[str]] = None
+    ports: list[str] | None = None
     """
     The ports, portRange, and allPorts fields are mutually exclusive.
     Only packets addressed to ports in the specified range will be forwarded
     to the backends configured with this forwarding rule.
     The ports field has the following limitations:
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    pscConnectionId: Optional[str] = None
+    pscConnectionId: str | None = None
     """
     The PSC connection id of the PSC Forwarding Rule.
     """
-    pscConnectionStatus: Optional[str] = None
+    pscConnectionStatus: str | None = None
     """
     The PSC connection status of the PSC Forwarding Rule. Possible values: STATUS_UNSPECIFIED, PENDING, ACCEPTED, REJECTED, CLOSED
     """
-    recreateClosedPsc: Optional[bool] = None
+    recreateClosedPsc: bool | None = None
     """
     this is used in psc consumer forwardingrule to make provider recreate the forwardingrule when the status is closed
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     A reference to the region where the regional forwarding rule resides.
     This field is not applicable to global forwarding rules.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    serviceDirectoryRegistrations: Optional[ServiceDirectoryRegistrations] = None
+    serviceDirectoryRegistrations: ServiceDirectoryRegistrations | None = None
     """
     Service Directory resources to register this forwarding rule with.
     Currently, only supports a single Service Directory resource.
     Structure is documented below.
     """
-    serviceLabel: Optional[str] = None
+    serviceLabel: str | None = None
     """
     An optional prefix to the service name for this Forwarding Rule.
     If specified, will be the first label of the fully qualified service
@@ -941,16 +939,16 @@ class AtProvider(BaseModel):
     character, which cannot be a dash.
     This field is only used for INTERNAL load balancing.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The internal fully qualified service name for this Forwarding Rule.
     This field is only used for INTERNAL load balancing.
     """
-    sourceIpRanges: Optional[List[str]] = None
+    sourceIpRanges: list[str] | None = None
     """
     If not empty, this Forwarding Rule will only forward the traffic when the source IP address matches one of the IP addresses or CIDR ranges set here. Note that a Forwarding Rule can only have up to 64 source IP ranges, and this field can only be used with a regional Forwarding Rule whose scheme is EXTERNAL. Each sourceIpRange entry should be either an IP address (for example, 1.2.3.4) or a CIDR range (for example, 1.2.3.0/24).
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     This field identifies the subnetwork that the load balanced IP should
     belong to for this Forwarding Rule, used in internal load balancing and
@@ -959,13 +957,13 @@ class AtProvider(BaseModel):
     However, a subnetwork must be specified if the network is in custom subnet
     mode or when creating external forwarding rule with IPv6.
     """
-    target: Optional[str] = None
+    target: str | None = None
     """
     is set to targetGrpcProxy and
     validateForProxyless is set to true, the
     IPAddress should be set to 0.0.0.0.
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource
     and default labels configured on the provider.
@@ -973,17 +971,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -1005,12 +1003,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -1019,17 +1017,17 @@ class Status(BaseModel):
 
 
 class ForwardingRule(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ForwardingRule']] = 'ForwardingRule'
+    kind: Literal['ForwardingRule'] | None = 'ForwardingRule'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -1037,26 +1035,26 @@ class ForwardingRule(BaseModel):
     """
     ForwardingRuleSpec defines the desired state of ForwardingRule
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ForwardingRuleStatus defines the observed state of ForwardingRule.
     """
 
 
 class ForwardingRuleList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ForwardingRule]
+    items: list[ForwardingRule]
     """
     List of forwardingrules. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

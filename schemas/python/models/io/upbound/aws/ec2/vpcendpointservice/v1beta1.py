@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,23 +32,23 @@ class GatewayLoadBalancerArnsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class GatewayLoadBalancerArnsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -60,58 +59,58 @@ class NetworkLoadBalancerArnsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkLoadBalancerArnsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    acceptanceRequired: Optional[bool] = None
+    acceptanceRequired: bool | None = None
     """
     Whether or not VPC endpoint connection requests to the service must be accepted by the service owner - true or false.
     """
-    gatewayLoadBalancerArns: Optional[List[str]] = None
+    gatewayLoadBalancerArns: list[str] | None = None
     """
     Amazon Resource Names (ARNs) of one or more Gateway Load Balancers for the endpoint service.
     """
-    gatewayLoadBalancerArnsRefs: Optional[List[GatewayLoadBalancerArnsRef]] = None
+    gatewayLoadBalancerArnsRefs: list[GatewayLoadBalancerArnsRef] | None = None
     """
     References to LB in elbv2 to populate gatewayLoadBalancerArns.
     """
-    gatewayLoadBalancerArnsSelector: Optional[GatewayLoadBalancerArnsSelector] = None
+    gatewayLoadBalancerArnsSelector: GatewayLoadBalancerArnsSelector | None = None
     """
     Selector for a list of LB in elbv2 to populate gatewayLoadBalancerArns.
     """
-    networkLoadBalancerArns: Optional[List[str]] = None
+    networkLoadBalancerArns: list[str] | None = None
     """
     Amazon Resource Names (ARNs) of one or more Network Load Balancers for the endpoint service.
     """
-    networkLoadBalancerArnsRefs: Optional[List[NetworkLoadBalancerArnsRef]] = None
+    networkLoadBalancerArnsRefs: list[NetworkLoadBalancerArnsRef] | None = None
     """
     References to LB in elbv2 to populate networkLoadBalancerArns.
     """
-    networkLoadBalancerArnsSelector: Optional[NetworkLoadBalancerArnsSelector] = None
+    networkLoadBalancerArnsSelector: NetworkLoadBalancerArnsSelector | None = None
     """
     Selector for a list of LB in elbv2 to populate networkLoadBalancerArns.
     """
-    privateDnsName: Optional[str] = None
+    privateDnsName: str | None = None
     """
     The private DNS name for the service.
     """
@@ -120,62 +119,62 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    supportedIpAddressTypes: Optional[List[str]] = None
+    supportedIpAddressTypes: list[str] | None = None
     """
     The supported IP address types. The possible values are ipv4 and ipv6.
     """
-    supportedRegions: Optional[List[str]] = None
+    supportedRegions: list[str] | None = None
     """
     The set of regions from which service consumers can access the service.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    acceptanceRequired: Optional[bool] = None
+    acceptanceRequired: bool | None = None
     """
     Whether or not VPC endpoint connection requests to the service must be accepted by the service owner - true or false.
     """
-    gatewayLoadBalancerArns: Optional[List[str]] = None
+    gatewayLoadBalancerArns: list[str] | None = None
     """
     Amazon Resource Names (ARNs) of one or more Gateway Load Balancers for the endpoint service.
     """
-    gatewayLoadBalancerArnsRefs: Optional[List[GatewayLoadBalancerArnsRef]] = None
+    gatewayLoadBalancerArnsRefs: list[GatewayLoadBalancerArnsRef] | None = None
     """
     References to LB in elbv2 to populate gatewayLoadBalancerArns.
     """
-    gatewayLoadBalancerArnsSelector: Optional[GatewayLoadBalancerArnsSelector] = None
+    gatewayLoadBalancerArnsSelector: GatewayLoadBalancerArnsSelector | None = None
     """
     Selector for a list of LB in elbv2 to populate gatewayLoadBalancerArns.
     """
-    networkLoadBalancerArns: Optional[List[str]] = None
+    networkLoadBalancerArns: list[str] | None = None
     """
     Amazon Resource Names (ARNs) of one or more Network Load Balancers for the endpoint service.
     """
-    networkLoadBalancerArnsRefs: Optional[List[NetworkLoadBalancerArnsRef]] = None
+    networkLoadBalancerArnsRefs: list[NetworkLoadBalancerArnsRef] | None = None
     """
     References to LB in elbv2 to populate networkLoadBalancerArns.
     """
-    networkLoadBalancerArnsSelector: Optional[NetworkLoadBalancerArnsSelector] = None
+    networkLoadBalancerArnsSelector: NetworkLoadBalancerArnsSelector | None = None
     """
     Selector for a list of LB in elbv2 to populate networkLoadBalancerArns.
     """
-    privateDnsName: Optional[str] = None
+    privateDnsName: str | None = None
     """
     The private DNS name for the service.
     """
-    supportedIpAddressTypes: Optional[List[str]] = None
+    supportedIpAddressTypes: list[str] | None = None
     """
     The supported IP address types. The possible values are ipv4 and ipv6.
     """
-    supportedRegions: Optional[List[str]] = None
+    supportedRegions: list[str] | None = None
     """
     The set of regions from which service consumers can access the service.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -186,7 +185,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -204,7 +203,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -215,7 +214,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -228,9 +227,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -243,15 +243,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -261,116 +261,116 @@ class Spec(BaseModel):
 
 
 class PrivateDnsNameConfigurationItem(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the record subdomain the service provider needs to create.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
     The state of the VPC endpoint service.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     Endpoint service verification type, for example TXT.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Value the service provider adds to the private DNS name domain record before verification.
     """
 
 
 class AtProvider(BaseModel):
-    acceptanceRequired: Optional[bool] = None
+    acceptanceRequired: bool | None = None
     """
     Whether or not VPC endpoint connection requests to the service must be accepted by the service owner - true or false.
     """
-    allowedPrincipals: Optional[List[str]] = None
+    allowedPrincipals: list[str] | None = None
     """
     The ARNs of one or more principals allowed to discover the endpoint service.
     """
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     The Amazon Resource Name (ARN) of the VPC endpoint service.
     """
-    availabilityZones: Optional[List[str]] = None
+    availabilityZones: list[str] | None = None
     """
     A set of Availability Zones in which the service is available.
     """
-    baseEndpointDnsNames: Optional[List[str]] = None
+    baseEndpointDnsNames: list[str] | None = None
     """
     A set of DNS names for the service.
     """
-    gatewayLoadBalancerArns: Optional[List[str]] = None
+    gatewayLoadBalancerArns: list[str] | None = None
     """
     Amazon Resource Names (ARNs) of one or more Gateway Load Balancers for the endpoint service.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the VPC endpoint service.
     """
-    managesVpcEndpoints: Optional[bool] = None
+    managesVpcEndpoints: bool | None = None
     """
     Whether or not the service manages its VPC endpoints - true or false.
     """
-    networkLoadBalancerArns: Optional[List[str]] = None
+    networkLoadBalancerArns: list[str] | None = None
     """
     Amazon Resource Names (ARNs) of one or more Network Load Balancers for the endpoint service.
     """
-    privateDnsName: Optional[str] = None
+    privateDnsName: str | None = None
     """
     The private DNS name for the service.
     """
-    privateDnsNameConfiguration: Optional[List[PrivateDnsNameConfigurationItem]] = None
+    privateDnsNameConfiguration: list[PrivateDnsNameConfigurationItem] | None = None
     """
     List of objects containing information about the endpoint service private DNS name configuration.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The service name.
     """
-    serviceType: Optional[str] = None
+    serviceType: str | None = None
     """
     The service type, Gateway or Interface.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
     The state of the VPC endpoint service.
     """
-    supportedIpAddressTypes: Optional[List[str]] = None
+    supportedIpAddressTypes: list[str] | None = None
     """
     The supported IP address types. The possible values are ipv4 and ipv6.
     """
-    supportedRegions: Optional[List[str]] = None
+    supportedRegions: list[str] | None = None
     """
     The set of regions from which service consumers can access the service.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -392,12 +392,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -406,17 +406,17 @@ class Status(BaseModel):
 
 
 class VPCEndpointService(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta1'] | None = (
         'ec2.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['VPCEndpointService']] = 'VPCEndpointService'
+    kind: Literal['VPCEndpointService'] | None = 'VPCEndpointService'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -424,26 +424,26 @@ class VPCEndpointService(BaseModel):
     """
     VPCEndpointServiceSpec defines the desired state of VPCEndpointService
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     VPCEndpointServiceStatus defines the observed state of VPCEndpointService.
     """
 
 
 class VPCEndpointServiceList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[VPCEndpointService]
+    items: list[VPCEndpointService]
     """
     List of vpcendpointservices. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

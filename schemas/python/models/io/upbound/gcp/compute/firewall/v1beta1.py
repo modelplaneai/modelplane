@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class AllowItem(BaseModel):
-    ports: Optional[List[str]] = None
+    ports: list[str] | None = None
     """
     An optional list of ports to which this rule applies. This field
     is only applicable for UDP or TCP protocol. Each entry must be
@@ -21,7 +20,7 @@ class AllowItem(BaseModel):
     Example inputs include: ["22"], ["80","443"], and
     ["12345-12349"].
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The IP protocol to which this rule applies. The protocol type is
     required when creating a firewall rule. This value can either be
@@ -31,7 +30,7 @@ class AllowItem(BaseModel):
 
 
 class DenyItem(BaseModel):
-    ports: Optional[List[str]] = None
+    ports: list[str] | None = None
     """
     An optional list of ports to which this rule applies. This field
     is only applicable for UDP or TCP protocol. Each entry must be
@@ -40,7 +39,7 @@ class DenyItem(BaseModel):
     Example inputs include: ["22"], ["80","443"], and
     ["12345-12349"].
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The IP protocol to which this rule applies. The protocol type is
     required when creating a firewall rule. This value can either be
@@ -50,7 +49,7 @@ class DenyItem(BaseModel):
 
 
 class LogConfigItem(BaseModel):
-    metadata: Optional[str] = None
+    metadata: str | None = None
     """
     This field denotes whether to include or exclude metadata for firewall logs.
     Possible values are: EXCLUDE_ALL_METADATA, INCLUDE_ALL_METADATA.
@@ -58,14 +57,14 @@ class LogConfigItem(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -79,30 +78,30 @@ class NetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class Param(BaseModel):
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     Resource manager tags to be bound to the firewall. Tag keys and values have the
     same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
@@ -114,73 +113,73 @@ class Param(BaseModel):
 
 
 class ForProvider(BaseModel):
-    allow: Optional[List[AllowItem]] = None
+    allow: list[AllowItem] | None = None
     """
     The list of ALLOW rules specified by this firewall. Each rule
     specifies a protocol and port-range tuple that describes a permitted
     connection.
     Structure is documented below.
     """
-    deny: Optional[List[DenyItem]] = None
+    deny: list[DenyItem] | None = None
     """
     The list of DENY rules specified by this firewall. Each rule specifies
     a protocol and port-range tuple that describes a denied connection.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    destinationRanges: Optional[List[str]] = None
+    destinationRanges: list[str] | None = None
     """
     If destination ranges are specified, the firewall will apply only to
     traffic that has destination IP address in these ranges. These ranges
     must be expressed in CIDR format. IPv4 or IPv6 ranges are supported.
     """
-    direction: Optional[str] = None
+    direction: str | None = None
     """
     Direction of traffic to which this firewall applies; default is
     INGRESS. Note: For INGRESS traffic, one of source_ranges,
     source_tags or source_service_accounts is required.
     Possible values are: INGRESS, EGRESS.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     Denotes whether the firewall rule is disabled, i.e not applied to the
     network it is associated with. When set to true, the firewall rule is
     not enforced and the network behaves as if it did not exist. If this
     is unspecified, the firewall rule will be enabled.
     """
-    enableLogging: Optional[bool] = None
+    enableLogging: bool | None = None
     """
     This field denotes whether to enable logging for a particular firewall rule.
     If logging is enabled, logs will be exported to Stackdriver. Deprecated in favor of log_config
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    logConfig: list[LogConfigItem] | None = None
     """
     This field denotes the logging options for a particular firewall rule.
     If defined, logging is enabled, and logs will be exported to Cloud Logging.
     Structure is documented below.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the network to attach this firewall to.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     Priority for this rule. This is an integer between 0 and 65535, both
     inclusive. When not specified, the value assumed is 1000. Relative
@@ -189,12 +188,12 @@ class ForProvider(BaseModel):
     higher precedence than a rule with priority 1). DENY rules take
     precedence over ALLOW rules having equal priority.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    sourceRanges: Optional[List[str]] = None
+    sourceRanges: list[str] | None = None
     """
     If source ranges are specified, the firewall will apply only to
     traffic that has source IP address in these ranges. These ranges must
@@ -206,7 +205,7 @@ class ForProvider(BaseModel):
     apply. IPv4 or IPv6 ranges are supported. For INGRESS traffic, one of
     source_ranges, source_tags or source_service_accounts is required.
     """
-    sourceServiceAccounts: Optional[List[str]] = None
+    sourceServiceAccounts: list[str] | None = None
     """
     If source service accounts are specified, the firewall will apply only
     to traffic originating from an instance with a service account in this
@@ -221,7 +220,7 @@ class ForProvider(BaseModel):
     used at the same time as sourceTags or targetTags. For INGRESS traffic,
     one of source_ranges, source_tags or source_service_accounts is required.
     """
-    sourceTags: Optional[List[str]] = None
+    sourceTags: list[str] | None = None
     """
     If source tags are specified, the firewall will apply only to traffic
     with source IP that belongs to a tag listed in source tags. Source
@@ -234,7 +233,7 @@ class ForProvider(BaseModel):
     to match both properties for the firewall to apply. For INGRESS traffic,
     one of source_ranges, source_tags or source_service_accounts is required.
     """
-    targetServiceAccounts: Optional[List[str]] = None
+    targetServiceAccounts: list[str] | None = None
     """
     A list of service accounts indicating sets of instances located in the
     network that may make network connections as specified in allowed[].
@@ -243,7 +242,7 @@ class ForProvider(BaseModel):
     specified, the firewall rule applies to all instances on the specified
     network.
     """
-    targetTags: Optional[List[str]] = None
+    targetTags: list[str] | None = None
     """
     A list of instance tags indicating sets of instances located in the
     network that may make network connections as specified in allowed[].
@@ -253,73 +252,73 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    allow: Optional[List[AllowItem]] = None
+    allow: list[AllowItem] | None = None
     """
     The list of ALLOW rules specified by this firewall. Each rule
     specifies a protocol and port-range tuple that describes a permitted
     connection.
     Structure is documented below.
     """
-    deny: Optional[List[DenyItem]] = None
+    deny: list[DenyItem] | None = None
     """
     The list of DENY rules specified by this firewall. Each rule specifies
     a protocol and port-range tuple that describes a denied connection.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    destinationRanges: Optional[List[str]] = None
+    destinationRanges: list[str] | None = None
     """
     If destination ranges are specified, the firewall will apply only to
     traffic that has destination IP address in these ranges. These ranges
     must be expressed in CIDR format. IPv4 or IPv6 ranges are supported.
     """
-    direction: Optional[str] = None
+    direction: str | None = None
     """
     Direction of traffic to which this firewall applies; default is
     INGRESS. Note: For INGRESS traffic, one of source_ranges,
     source_tags or source_service_accounts is required.
     Possible values are: INGRESS, EGRESS.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     Denotes whether the firewall rule is disabled, i.e not applied to the
     network it is associated with. When set to true, the firewall rule is
     not enforced and the network behaves as if it did not exist. If this
     is unspecified, the firewall rule will be enabled.
     """
-    enableLogging: Optional[bool] = None
+    enableLogging: bool | None = None
     """
     This field denotes whether to enable logging for a particular firewall rule.
     If logging is enabled, logs will be exported to Stackdriver. Deprecated in favor of log_config
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    logConfig: list[LogConfigItem] | None = None
     """
     This field denotes the logging options for a particular firewall rule.
     If defined, logging is enabled, and logs will be exported to Cloud Logging.
     Structure is documented below.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the network to attach this firewall to.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     Priority for this rule. This is an integer between 0 and 65535, both
     inclusive. When not specified, the value assumed is 1000. Relative
@@ -328,12 +327,12 @@ class InitProvider(BaseModel):
     higher precedence than a rule with priority 1). DENY rules take
     precedence over ALLOW rules having equal priority.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    sourceRanges: Optional[List[str]] = None
+    sourceRanges: list[str] | None = None
     """
     If source ranges are specified, the firewall will apply only to
     traffic that has source IP address in these ranges. These ranges must
@@ -345,7 +344,7 @@ class InitProvider(BaseModel):
     apply. IPv4 or IPv6 ranges are supported. For INGRESS traffic, one of
     source_ranges, source_tags or source_service_accounts is required.
     """
-    sourceServiceAccounts: Optional[List[str]] = None
+    sourceServiceAccounts: list[str] | None = None
     """
     If source service accounts are specified, the firewall will apply only
     to traffic originating from an instance with a service account in this
@@ -360,7 +359,7 @@ class InitProvider(BaseModel):
     used at the same time as sourceTags or targetTags. For INGRESS traffic,
     one of source_ranges, source_tags or source_service_accounts is required.
     """
-    sourceTags: Optional[List[str]] = None
+    sourceTags: list[str] | None = None
     """
     If source tags are specified, the firewall will apply only to traffic
     with source IP that belongs to a tag listed in source tags. Source
@@ -373,7 +372,7 @@ class InitProvider(BaseModel):
     to match both properties for the firewall to apply. For INGRESS traffic,
     one of source_ranges, source_tags or source_service_accounts is required.
     """
-    targetServiceAccounts: Optional[List[str]] = None
+    targetServiceAccounts: list[str] | None = None
     """
     A list of service accounts indicating sets of instances located in the
     network that may make network connections as specified in allowed[].
@@ -382,7 +381,7 @@ class InitProvider(BaseModel):
     specified, the firewall rule applies to all instances on the specified
     network.
     """
-    targetTags: Optional[List[str]] = None
+    targetTags: list[str] | None = None
     """
     A list of instance tags indicating sets of instances located in the
     network that may make network connections as specified in allowed[].
@@ -396,7 +395,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -414,7 +413,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -425,7 +424,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -438,9 +437,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -453,15 +453,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -471,73 +471,73 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    allow: Optional[List[AllowItem]] = None
+    allow: list[AllowItem] | None = None
     """
     The list of ALLOW rules specified by this firewall. Each rule
     specifies a protocol and port-range tuple that describes a permitted
     connection.
     Structure is documented below.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    deny: Optional[List[DenyItem]] = None
+    deny: list[DenyItem] | None = None
     """
     The list of DENY rules specified by this firewall. Each rule specifies
     a protocol and port-range tuple that describes a denied connection.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    destinationRanges: Optional[List[str]] = None
+    destinationRanges: list[str] | None = None
     """
     If destination ranges are specified, the firewall will apply only to
     traffic that has destination IP address in these ranges. These ranges
     must be expressed in CIDR format. IPv4 or IPv6 ranges are supported.
     """
-    direction: Optional[str] = None
+    direction: str | None = None
     """
     Direction of traffic to which this firewall applies; default is
     INGRESS. Note: For INGRESS traffic, one of source_ranges,
     source_tags or source_service_accounts is required.
     Possible values are: INGRESS, EGRESS.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     Denotes whether the firewall rule is disabled, i.e not applied to the
     network it is associated with. When set to true, the firewall rule is
     not enforced and the network behaves as if it did not exist. If this
     is unspecified, the firewall rule will be enabled.
     """
-    enableLogging: Optional[bool] = None
+    enableLogging: bool | None = None
     """
     This field denotes whether to enable logging for a particular firewall rule.
     If logging is enabled, logs will be exported to Stackdriver. Deprecated in favor of log_config
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/firewalls/{{name}}
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    logConfig: list[LogConfigItem] | None = None
     """
     This field denotes the logging options for a particular firewall rule.
     If defined, logging is enabled, and logs will be exported to Cloud Logging.
     Structure is documented below.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the network to attach this firewall to.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     Priority for this rule. This is an integer between 0 and 65535, both
     inclusive. When not specified, the value assumed is 1000. Relative
@@ -546,16 +546,16 @@ class AtProvider(BaseModel):
     higher precedence than a rule with priority 1). DENY rules take
     precedence over ALLOW rules having equal priority.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    sourceRanges: Optional[List[str]] = None
+    sourceRanges: list[str] | None = None
     """
     If source ranges are specified, the firewall will apply only to
     traffic that has source IP address in these ranges. These ranges must
@@ -567,7 +567,7 @@ class AtProvider(BaseModel):
     apply. IPv4 or IPv6 ranges are supported. For INGRESS traffic, one of
     source_ranges, source_tags or source_service_accounts is required.
     """
-    sourceServiceAccounts: Optional[List[str]] = None
+    sourceServiceAccounts: list[str] | None = None
     """
     If source service accounts are specified, the firewall will apply only
     to traffic originating from an instance with a service account in this
@@ -582,7 +582,7 @@ class AtProvider(BaseModel):
     used at the same time as sourceTags or targetTags. For INGRESS traffic,
     one of source_ranges, source_tags or source_service_accounts is required.
     """
-    sourceTags: Optional[List[str]] = None
+    sourceTags: list[str] | None = None
     """
     If source tags are specified, the firewall will apply only to traffic
     with source IP that belongs to a tag listed in source tags. Source
@@ -595,7 +595,7 @@ class AtProvider(BaseModel):
     to match both properties for the firewall to apply. For INGRESS traffic,
     one of source_ranges, source_tags or source_service_accounts is required.
     """
-    targetServiceAccounts: Optional[List[str]] = None
+    targetServiceAccounts: list[str] | None = None
     """
     A list of service accounts indicating sets of instances located in the
     network that may make network connections as specified in allowed[].
@@ -604,7 +604,7 @@ class AtProvider(BaseModel):
     specified, the firewall rule applies to all instances on the specified
     network.
     """
-    targetTags: Optional[List[str]] = None
+    targetTags: list[str] | None = None
     """
     A list of instance tags indicating sets of instances located in the
     network that may make network connections as specified in allowed[].
@@ -614,17 +614,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -646,12 +646,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -660,17 +660,17 @@ class Status(BaseModel):
 
 
 class Firewall(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Firewall']] = 'Firewall'
+    kind: Literal['Firewall'] | None = 'Firewall'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -678,26 +678,26 @@ class Firewall(BaseModel):
     """
     FirewallSpec defines the desired state of Firewall
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     FirewallStatus defines the observed state of Firewall.
     """
 
 
 class FirewallList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Firewall]
+    items: list[Firewall]
     """
     List of firewalls. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

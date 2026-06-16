@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Spec(BaseModel):
-    activate: List[str] = Field(..., min_length=1)
+    activate: list[str] = Field(..., min_length=1)
     """
     Activations is an array of MRD names to activate. Supports wildcard
     prefixes (like `*.aws.crossplane.io`) but not full regular expressions.
@@ -20,17 +19,17 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -52,57 +51,57 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    activated: Optional[List[str]] = None
+    activated: list[str] | None = None
     """
     Activated names the ManagedResourceDefinitions this policy has activated.
     """
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
 
 
 class ManagedResourceActivationPolicy(BaseModel):
-    apiVersion: Optional[Literal['apiextensions.crossplane.io/v1alpha1']] = (
+    apiVersion: Literal['apiextensions.crossplane.io/v1alpha1'] | None = (
         'apiextensions.crossplane.io/v1alpha1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ManagedResourceActivationPolicy']] = (
+    kind: Literal['ManagedResourceActivationPolicy'] | None = (
         'ManagedResourceActivationPolicy'
     )
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[Spec] = None
+    spec: Spec | None = None
     """
     ManagedResourceActivationPolicySpec specifies the desired activation state of ManagedResourceDefinitions.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ManagedResourceActivationPolicyStatus shows the observed state of the policy.
     """
 
 
 class ManagedResourceActivationPolicyList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ManagedResourceActivationPolicy]
+    items: list[ManagedResourceActivationPolicy]
     """
     List of managedresourceactivationpolicies. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

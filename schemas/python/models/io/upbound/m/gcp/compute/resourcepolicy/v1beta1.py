@@ -3,28 +3,27 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class DiskConsistencyGroupPolicy(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enable disk consistency on the resource policy.
     """
 
 
 class GroupPlacementPolicy(BaseModel):
-    availabilityDomainCount: Optional[float] = None
+    availabilityDomainCount: float | None = None
     """
     The number of availability domains instances will be spread across. If two instances are in different
     availability domain, they will not be put in the same low latency network
     """
-    collocation: Optional[str] = None
+    collocation: str | None = None
     """
     Collocation specifies whether to place VMs inside the same availability domain on the same low-latency network.
     Specify COLLOCATED to enable collocation. Can only be specified with vm_count. If compute instances are created
@@ -32,11 +31,11 @@ class GroupPlacementPolicy(BaseModel):
     attached.
     Possible values are: COLLOCATED.
     """
-    gpuTopology: Optional[str] = None
+    gpuTopology: str | None = None
     """
     Specifies the shape of the GPU slice, in slice based GPU families eg. A4X.
     """
-    vmCount: Optional[float] = None
+    vmCount: float | None = None
     """
     Number of VMs in this placement group. Google does not recommend that you use this field
     unless you use a compact policy and you want your policy to work only if it contains this
@@ -45,39 +44,39 @@ class GroupPlacementPolicy(BaseModel):
 
 
 class VmStartSchedule(BaseModel):
-    schedule: Optional[str] = None
+    schedule: str | None = None
     """
     Specifies the frequency for the operation, using the unix-cron format.
     """
 
 
 class VmStopSchedule(BaseModel):
-    schedule: Optional[str] = None
+    schedule: str | None = None
     """
     Specifies the frequency for the operation, using the unix-cron format.
     """
 
 
 class InstanceSchedulePolicy(BaseModel):
-    expirationTime: Optional[str] = None
+    expirationTime: str | None = None
     """
     The expiration time of the schedule. The timestamp is an RFC3339 string.
     """
-    startTime: Optional[str] = None
+    startTime: str | None = None
     """
     The start time of the schedule. The timestamp is an RFC3339 string.
     """
-    timeZone: Optional[str] = None
+    timeZone: str | None = None
     """
     Specifies the time zone to be used in interpreting the schedule. The value of this field must be a time zone name
     from the tz database: http://en.wikipedia.org/wiki/Tz_database.
     """
-    vmStartSchedule: Optional[VmStartSchedule] = None
+    vmStartSchedule: VmStartSchedule | None = None
     """
     Specifies the schedule for starting instances.
     Structure is documented below.
     """
-    vmStopSchedule: Optional[VmStopSchedule] = None
+    vmStopSchedule: VmStopSchedule | None = None
     """
     Specifies the schedule for stopping instances.
     Structure is documented below.
@@ -85,11 +84,11 @@ class InstanceSchedulePolicy(BaseModel):
 
 
 class RetentionPolicy(BaseModel):
-    maxRetentionDays: Optional[float] = None
+    maxRetentionDays: float | None = None
     """
     Maximum age of the snapshot that is allowed to be kept.
     """
-    onSourceDiskDelete: Optional[str] = None
+    onSourceDiskDelete: str | None = None
     """
     Specifies the behavior to apply to scheduled snapshots when
     the source disk is deleted.
@@ -99,11 +98,11 @@ class RetentionPolicy(BaseModel):
 
 
 class DailySchedule(BaseModel):
-    daysInCycle: Optional[float] = None
+    daysInCycle: float | None = None
     """
     Defines a schedule with units measured in days. The value determines how many days pass between the start of each cycle. Days in cycle for snapshot schedule policy must be 1.
     """
-    startTime: Optional[str] = None
+    startTime: str | None = None
     """
     Time within the window to start the operations.
     It must be in format "HH:MM", where HH : [00-23] and MM : [00-00] GMT.
@@ -111,11 +110,11 @@ class DailySchedule(BaseModel):
 
 
 class HourlySchedule(BaseModel):
-    hoursInCycle: Optional[float] = None
+    hoursInCycle: float | None = None
     """
     The number of hours between snapshots.
     """
-    startTime: Optional[str] = None
+    startTime: str | None = None
     """
     Time within the window to start the operations.
     It must be in format "HH:MM", where HH : [00-23] and MM : [00-00] GMT.
@@ -123,12 +122,12 @@ class HourlySchedule(BaseModel):
 
 
 class DayOfWeek(BaseModel):
-    day: Optional[str] = None
+    day: str | None = None
     """
     The day of the week to create the snapshot. e.g. MONDAY
     Possible values are: MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY.
     """
-    startTime: Optional[str] = None
+    startTime: str | None = None
     """
     Time within the window to start the operations.
     It must be in format "HH:MM", where HH : [00-23] and MM : [00-00] GMT.
@@ -136,7 +135,7 @@ class DayOfWeek(BaseModel):
 
 
 class WeeklySchedule(BaseModel):
-    dayOfWeeks: Optional[List[DayOfWeek]] = None
+    dayOfWeeks: list[DayOfWeek] | None = None
     """
     May contain up to seven (one for each day of the week) snapshot times.
     Structure is documented below.
@@ -144,17 +143,17 @@ class WeeklySchedule(BaseModel):
 
 
 class Schedule(BaseModel):
-    dailySchedule: Optional[DailySchedule] = None
+    dailySchedule: DailySchedule | None = None
     """
     The policy will execute every nth day at the specified time.
     Structure is documented below.
     """
-    hourlySchedule: Optional[HourlySchedule] = None
+    hourlySchedule: HourlySchedule | None = None
     """
     The policy will execute every nth hour starting at the specified time.
     Structure is documented below.
     """
-    weeklySchedule: Optional[WeeklySchedule] = None
+    weeklySchedule: WeeklySchedule | None = None
     """
     Allows specifying a snapshot time for each day of the week.
     Structure is documented below.
@@ -162,21 +161,21 @@ class Schedule(BaseModel):
 
 
 class SnapshotProperties(BaseModel):
-    chainName: Optional[str] = None
+    chainName: str | None = None
     """
     Creates the new snapshot in the snapshot chain labeled with the
     specified name. The chain name must be 1-63 characters long and comply
     with RFC1035.
     """
-    guestFlush: Optional[bool] = None
+    guestFlush: bool | None = None
     """
     Whether to perform a 'guest aware' snapshot.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     A set of key-value pairs.
     """
-    storageLocations: Optional[List[str]] = None
+    storageLocations: list[str] | None = None
     """
     Cloud Storage bucket location to store the auto snapshot
     (regional or multi-regional)
@@ -184,17 +183,17 @@ class SnapshotProperties(BaseModel):
 
 
 class SnapshotSchedulePolicy(BaseModel):
-    retentionPolicy: Optional[RetentionPolicy] = None
+    retentionPolicy: RetentionPolicy | None = None
     """
     Retention policy applied to snapshots created by this resource policy.
     Structure is documented below.
     """
-    schedule: Optional[Schedule] = None
+    schedule: Schedule | None = None
     """
     Contains one of an hourlySchedule, dailySchedule, or weeklySchedule.
     Structure is documented below.
     """
-    snapshotProperties: Optional[SnapshotProperties] = None
+    snapshotProperties: SnapshotProperties | None = None
     """
     Properties with which the snapshots are created, such as labels.
     Structure is documented below.
@@ -202,18 +201,18 @@ class SnapshotSchedulePolicy(BaseModel):
 
 
 class WorkloadPolicy(BaseModel):
-    acceleratorTopology: Optional[str] = None
+    acceleratorTopology: str | None = None
     """
     The accelerator topology. This field can be set only when the workload policy type is HIGH_THROUGHPUT
     and cannot be set if max topology distance is set.
     """
-    maxTopologyDistance: Optional[str] = None
+    maxTopologyDistance: str | None = None
     """
     The maximum topology distance. This field can be set only when the workload policy type is HIGH_THROUGHPUT
     and cannot be set if accelerator topology is set.
     Possible values are: BLOCK, CLUSTER, SUBBLOCK.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of workload policy.
     Possible values are: HIGH_AVAILABILITY, HIGH_THROUGHPUT.
@@ -221,26 +220,26 @@ class WorkloadPolicy(BaseModel):
 
 
 class ForProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
-    diskConsistencyGroupPolicy: Optional[DiskConsistencyGroupPolicy] = None
+    diskConsistencyGroupPolicy: DiskConsistencyGroupPolicy | None = None
     """
     Replication consistency group for asynchronous disk replication.
     Structure is documented below.
     """
-    groupPlacementPolicy: Optional[GroupPlacementPolicy] = None
+    groupPlacementPolicy: GroupPlacementPolicy | None = None
     """
     Resource policy for instances used for placement configuration.
     Structure is documented below.
     """
-    instanceSchedulePolicy: Optional[InstanceSchedulePolicy] = None
+    instanceSchedulePolicy: InstanceSchedulePolicy | None = None
     """
     Resource policy for scheduling instance operations.
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -249,12 +248,12 @@ class ForProvider(BaseModel):
     """
     Region where resource policy resides.
     """
-    snapshotSchedulePolicy: Optional[SnapshotSchedulePolicy] = None
+    snapshotSchedulePolicy: SnapshotSchedulePolicy | None = None
     """
     Policy for creating snapshots of persistent disks.
     Structure is documented below.
     """
-    workloadPolicy: Optional[WorkloadPolicy] = None
+    workloadPolicy: WorkloadPolicy | None = None
     """
     Represents the workload policy.
     Structure is documented below.
@@ -262,36 +261,36 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
-    diskConsistencyGroupPolicy: Optional[DiskConsistencyGroupPolicy] = None
+    diskConsistencyGroupPolicy: DiskConsistencyGroupPolicy | None = None
     """
     Replication consistency group for asynchronous disk replication.
     Structure is documented below.
     """
-    groupPlacementPolicy: Optional[GroupPlacementPolicy] = None
+    groupPlacementPolicy: GroupPlacementPolicy | None = None
     """
     Resource policy for instances used for placement configuration.
     Structure is documented below.
     """
-    instanceSchedulePolicy: Optional[InstanceSchedulePolicy] = None
+    instanceSchedulePolicy: InstanceSchedulePolicy | None = None
     """
     Resource policy for scheduling instance operations.
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    snapshotSchedulePolicy: Optional[SnapshotSchedulePolicy] = None
+    snapshotSchedulePolicy: SnapshotSchedulePolicy | None = None
     """
     Policy for creating snapshots of persistent disks.
     Structure is documented below.
     """
-    workloadPolicy: Optional[WorkloadPolicy] = None
+    workloadPolicy: WorkloadPolicy | None = None
     """
     Represents the workload policy.
     Structure is documented below.
@@ -318,7 +317,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -331,9 +330,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -342,17 +342,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -362,48 +360,48 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
-    diskConsistencyGroupPolicy: Optional[DiskConsistencyGroupPolicy] = None
+    diskConsistencyGroupPolicy: DiskConsistencyGroupPolicy | None = None
     """
     Replication consistency group for asynchronous disk replication.
     Structure is documented below.
     """
-    groupPlacementPolicy: Optional[GroupPlacementPolicy] = None
+    groupPlacementPolicy: GroupPlacementPolicy | None = None
     """
     Resource policy for instances used for placement configuration.
     Structure is documented below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/resourcePolicies/{{name}}
     """
-    instanceSchedulePolicy: Optional[InstanceSchedulePolicy] = None
+    instanceSchedulePolicy: InstanceSchedulePolicy | None = None
     """
     Resource policy for scheduling instance operations.
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where resource policy resides.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    snapshotSchedulePolicy: Optional[SnapshotSchedulePolicy] = None
+    snapshotSchedulePolicy: SnapshotSchedulePolicy | None = None
     """
     Policy for creating snapshots of persistent disks.
     Structure is documented below.
     """
-    workloadPolicy: Optional[WorkloadPolicy] = None
+    workloadPolicy: WorkloadPolicy | None = None
     """
     Represents the workload policy.
     Structure is documented below.
@@ -411,17 +409,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -443,12 +441,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -457,17 +455,17 @@ class Status(BaseModel):
 
 
 class ResourcePolicy(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ResourcePolicy']] = 'ResourcePolicy'
+    kind: Literal['ResourcePolicy'] | None = 'ResourcePolicy'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -475,26 +473,26 @@ class ResourcePolicy(BaseModel):
     """
     ResourcePolicySpec defines the desired state of ResourcePolicy
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ResourcePolicyStatus defines the observed state of ResourcePolicy.
     """
 
 
 class ResourcePolicyList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ResourcePolicy]
+    items: list[ResourcePolicy]
     """
     List of resourcepolicies. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,95 +32,95 @@ class SnapshotIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SnapshotIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class EbsBlockDeviceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Boolean controlling whether the EBS volumes created to
     support each created instance will be deleted once that instance is terminated.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     Path at which the device is exposed to created instances.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Boolean controlling whether the created EBS volumes will be encrypted. Can't be used with snapshot_id.
     """
-    iops: Optional[float] = None
+    iops: float | None = None
     """
     Number of I/O operations per second the
     created volumes will support.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     ARN of the Outpost on which the snapshot is stored.
     """
-    snapshotId: Optional[str] = None
+    snapshotId: str | None = None
     """
     ID of an EBS snapshot that will be used to initialize the created
     EBS volumes. If set, the volume_size attribute must be at least as large as the referenced
     snapshot.
     """
-    snapshotIdRef: Optional[SnapshotIdRef] = None
+    snapshotIdRef: SnapshotIdRef | None = None
     """
     Reference to a EBSSnapshot in ec2 to populate snapshotId.
     """
-    snapshotIdSelector: Optional[SnapshotIdSelector] = None
+    snapshotIdSelector: SnapshotIdSelector | None = None
     """
     Selector for a EBSSnapshot in ec2 to populate snapshotId.
     """
-    throughput: Optional[float] = None
+    throughput: float | None = None
     """
     Throughput that the EBS volume supports, in MiB/s. Only valid for volume_type of gp3.
     """
-    volumeSize: Optional[float] = None
+    volumeSize: float | None = None
     """
     Size of created volumes in GiB.
     If snapshot_id is set and volume_size is omitted then the volume will have the same size
     as the selected snapshot.
     """
-    volumeType: Optional[str] = None
+    volumeType: str | None = None
     """
     Type of EBS volume to create. Can be standard, gp2, gp3, io1, io2, sc1 or st1 (Default: standard).
     """
 
 
 class EphemeralBlockDeviceItem(BaseModel):
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     Path at which the device is exposed to created instances.
     """
-    virtualName: Optional[str] = None
+    virtualName: str | None = None
     """
     Name for the ephemeral device, of the form "ephemeralN" where
     N is a volume number starting from zero.
@@ -129,55 +128,55 @@ class EphemeralBlockDeviceItem(BaseModel):
 
 
 class ForProvider(BaseModel):
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     Machine architecture for created instances. Defaults to x86_64.
     """
-    bootMode: Optional[str] = None
+    bootMode: str | None = None
     """
     Boot mode of the AMI. For more information, see Boot modes in the Amazon Elastic Compute Cloud User Guide.
     """
-    deprecationTime: Optional[str] = None
+    deprecationTime: str | None = None
     """
     Date and time to deprecate the AMI. If you specified a value for seconds, Amazon EC2 rounds the seconds to the nearest minute. Valid values: RFC3339 time string (YYYY-MM-DDTHH:MM:SSZ)
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     Longer, human-readable description for the AMI.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
     """
     Nested block describing an EBS block device that should be
     attached to created instances. The structure of this block is described below.
     """
-    enaSupport: Optional[bool] = None
+    enaSupport: bool | None = None
     """
     Whether enhanced networking with ENA is enabled. Defaults to false.
     """
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
     """
     Nested block describing an ephemeral block device that
     should be attached to created instances. The structure of this block is described below.
     """
-    imageLocation: Optional[str] = None
+    imageLocation: str | None = None
     """
     Path to an S3 object containing an image manifest, e.g., created
     by the ec2-upload-bundle command in the EC2 command line tools.
     """
-    imdsSupport: Optional[str] = None
+    imdsSupport: str | None = None
     """
     If EC2 instances started from this image should require the use of the Instance Metadata Service V2 (IMDSv2), set this argument to v2.0. For more information, see Configure instance metadata options for new instances.
     """
-    kernelId: Optional[str] = None
+    kernelId: str | None = None
     """
     ID of the kernel image (AKI) that will be used as the paravirtual
     kernel in created instances.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Region-unique name for the AMI.
     """
-    ramdiskId: Optional[str] = None
+    ramdiskId: str | None = None
     """
     ID of an initrd image (ARI) that will be used when booting the
     created instances.
@@ -187,28 +186,28 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    rootDeviceName: Optional[str] = None
+    rootDeviceName: str | None = None
     """
     Name of the root device (for example, /dev/sda1, or /dev/xvda).
     """
-    sriovNetSupport: Optional[str] = None
+    sriovNetSupport: str | None = None
     """
     When set to "simple" (the default), enables enhanced networking
     for created instances. No other value is supported at this time.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tpmSupport: Optional[str] = None
+    tpmSupport: str | None = None
     """
     If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the Amazon Elastic Compute Cloud User Guide.
     """
-    uefiData: Optional[str] = None
+    uefiData: str | None = None
     """
     Base64 representation of the non-volatile UEFI variable store.
     """
-    virtualizationType: Optional[str] = None
+    virtualizationType: str | None = None
     """
     Keyword to choose what virtualization mode created instances
     will use. Can be either "paravirtual" (the default) or "hvm". The choice of virtualization type
@@ -217,81 +216,81 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     Machine architecture for created instances. Defaults to x86_64.
     """
-    bootMode: Optional[str] = None
+    bootMode: str | None = None
     """
     Boot mode of the AMI. For more information, see Boot modes in the Amazon Elastic Compute Cloud User Guide.
     """
-    deprecationTime: Optional[str] = None
+    deprecationTime: str | None = None
     """
     Date and time to deprecate the AMI. If you specified a value for seconds, Amazon EC2 rounds the seconds to the nearest minute. Valid values: RFC3339 time string (YYYY-MM-DDTHH:MM:SSZ)
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     Longer, human-readable description for the AMI.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
     """
     Nested block describing an EBS block device that should be
     attached to created instances. The structure of this block is described below.
     """
-    enaSupport: Optional[bool] = None
+    enaSupport: bool | None = None
     """
     Whether enhanced networking with ENA is enabled. Defaults to false.
     """
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
     """
     Nested block describing an ephemeral block device that
     should be attached to created instances. The structure of this block is described below.
     """
-    imageLocation: Optional[str] = None
+    imageLocation: str | None = None
     """
     Path to an S3 object containing an image manifest, e.g., created
     by the ec2-upload-bundle command in the EC2 command line tools.
     """
-    imdsSupport: Optional[str] = None
+    imdsSupport: str | None = None
     """
     If EC2 instances started from this image should require the use of the Instance Metadata Service V2 (IMDSv2), set this argument to v2.0. For more information, see Configure instance metadata options for new instances.
     """
-    kernelId: Optional[str] = None
+    kernelId: str | None = None
     """
     ID of the kernel image (AKI) that will be used as the paravirtual
     kernel in created instances.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Region-unique name for the AMI.
     """
-    ramdiskId: Optional[str] = None
+    ramdiskId: str | None = None
     """
     ID of an initrd image (ARI) that will be used when booting the
     created instances.
     """
-    rootDeviceName: Optional[str] = None
+    rootDeviceName: str | None = None
     """
     Name of the root device (for example, /dev/sda1, or /dev/xvda).
     """
-    sriovNetSupport: Optional[str] = None
+    sriovNetSupport: str | None = None
     """
     When set to "simple" (the default), enables enhanced networking
     for created instances. No other value is supported at this time.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tpmSupport: Optional[str] = None
+    tpmSupport: str | None = None
     """
     If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the Amazon Elastic Compute Cloud User Guide.
     """
-    uefiData: Optional[str] = None
+    uefiData: str | None = None
     """
     Base64 representation of the non-volatile UEFI variable store.
     """
-    virtualizationType: Optional[str] = None
+    virtualizationType: str | None = None
     """
     Keyword to choose what virtualization mode created instances
     will use. Can be either "paravirtual" (the default) or "hvm". The choice of virtualization type
@@ -319,7 +318,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -332,9 +331,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -343,17 +343,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -363,184 +361,184 @@ class Spec(BaseModel):
 
 
 class EbsBlockDeviceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Boolean controlling whether the EBS volumes created to
     support each created instance will be deleted once that instance is terminated.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     Path at which the device is exposed to created instances.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Boolean controlling whether the created EBS volumes will be encrypted. Can't be used with snapshot_id.
     """
-    iops: Optional[float] = None
+    iops: float | None = None
     """
     Number of I/O operations per second the
     created volumes will support.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     ARN of the Outpost on which the snapshot is stored.
     """
-    snapshotId: Optional[str] = None
+    snapshotId: str | None = None
     """
     ID of an EBS snapshot that will be used to initialize the created
     EBS volumes. If set, the volume_size attribute must be at least as large as the referenced
     snapshot.
     """
-    throughput: Optional[float] = None
+    throughput: float | None = None
     """
     Throughput that the EBS volume supports, in MiB/s. Only valid for volume_type of gp3.
     """
-    volumeSize: Optional[float] = None
+    volumeSize: float | None = None
     """
     Size of created volumes in GiB.
     If snapshot_id is set and volume_size is omitted then the volume will have the same size
     as the selected snapshot.
     """
-    volumeType: Optional[str] = None
+    volumeType: str | None = None
     """
     Type of EBS volume to create. Can be standard, gp2, gp3, io1, io2, sc1 or st1 (Default: standard).
     """
 
 
 class AtProvider(BaseModel):
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     Machine architecture for created instances. Defaults to x86_64.
     """
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the AMI.
     """
-    bootMode: Optional[str] = None
+    bootMode: str | None = None
     """
     Boot mode of the AMI. For more information, see Boot modes in the Amazon Elastic Compute Cloud User Guide.
     """
-    deprecationTime: Optional[str] = None
+    deprecationTime: str | None = None
     """
     Date and time to deprecate the AMI. If you specified a value for seconds, Amazon EC2 rounds the seconds to the nearest minute. Valid values: RFC3339 time string (YYYY-MM-DDTHH:MM:SSZ)
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     Longer, human-readable description for the AMI.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItemModel]] = None
+    ebsBlockDevice: list[EbsBlockDeviceItemModel] | None = None
     """
     Nested block describing an EBS block device that should be
     attached to created instances. The structure of this block is described below.
     """
-    enaSupport: Optional[bool] = None
+    enaSupport: bool | None = None
     """
     Whether enhanced networking with ENA is enabled. Defaults to false.
     """
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
     """
     Nested block describing an ephemeral block device that
     should be attached to created instances. The structure of this block is described below.
     """
-    hypervisor: Optional[str] = None
+    hypervisor: str | None = None
     """
     Hypervisor type of the image.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the created AMI.
     """
-    imageLocation: Optional[str] = None
+    imageLocation: str | None = None
     """
     Path to an S3 object containing an image manifest, e.g., created
     by the ec2-upload-bundle command in the EC2 command line tools.
     """
-    imageOwnerAlias: Optional[str] = None
+    imageOwnerAlias: str | None = None
     """
     AWS account alias (for example, amazon, self) or the AWS account ID of the AMI owner.
     """
-    imageType: Optional[str] = None
+    imageType: str | None = None
     """
     Type of image.
     """
-    imdsSupport: Optional[str] = None
+    imdsSupport: str | None = None
     """
     If EC2 instances started from this image should require the use of the Instance Metadata Service V2 (IMDSv2), set this argument to v2.0. For more information, see Configure instance metadata options for new instances.
     """
-    kernelId: Optional[str] = None
+    kernelId: str | None = None
     """
     ID of the kernel image (AKI) that will be used as the paravirtual
     kernel in created instances.
     """
-    lastLaunchedTime: Optional[str] = None
+    lastLaunchedTime: str | None = None
     """
     (Computed) Date and time, in ISO 8601 date-time format , when the AMI was last used to launch an EC2 instance. When the AMI is used to launch an instance, there is a 24-hour delay before that usage is reported. For more information, see the following AWS document.
     """
-    manageEbsSnapshots: Optional[bool] = None
-    name: Optional[str] = None
+    manageEbsSnapshots: bool | None = None
+    name: str | None = None
     """
     Region-unique name for the AMI.
     """
-    ownerId: Optional[str] = None
+    ownerId: str | None = None
     """
     AWS account ID of the image owner.
     """
-    platform: Optional[str] = None
+    platform: str | None = None
     """
     This value is set to windows for Windows AMIs; otherwise, it is blank.
     """
-    platformDetails: Optional[str] = None
+    platformDetails: str | None = None
     """
     Platform details associated with the billing code of the AMI.
     """
-    public: Optional[bool] = None
+    public: bool | None = None
     """
     Whether the image has public launch permissions.
     """
-    ramdiskId: Optional[str] = None
+    ramdiskId: str | None = None
     """
     ID of an initrd image (ARI) that will be used when booting the
     created instances.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    rootDeviceName: Optional[str] = None
+    rootDeviceName: str | None = None
     """
     Name of the root device (for example, /dev/sda1, or /dev/xvda).
     """
-    rootSnapshotId: Optional[str] = None
+    rootSnapshotId: str | None = None
     """
     Snapshot ID for the root volume (for EBS-backed AMIs)
     """
-    sriovNetSupport: Optional[str] = None
+    sriovNetSupport: str | None = None
     """
     When set to "simple" (the default), enables enhanced networking
     for created instances. No other value is supported at this time.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    tpmSupport: Optional[str] = None
+    tpmSupport: str | None = None
     """
     If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the Amazon Elastic Compute Cloud User Guide.
     """
-    uefiData: Optional[str] = None
+    uefiData: str | None = None
     """
     Base64 representation of the non-volatile UEFI variable store.
     """
-    usageOperation: Optional[str] = None
+    usageOperation: str | None = None
     """
     Operation of the Amazon EC2 instance and the billing code that is associated with the AMI.
     """
-    virtualizationType: Optional[str] = None
+    virtualizationType: str | None = None
     """
     Keyword to choose what virtualization mode created instances
     will use. Can be either "paravirtual" (the default) or "hvm". The choice of virtualization type
@@ -549,17 +547,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -581,12 +579,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -595,17 +593,17 @@ class Status(BaseModel):
 
 
 class AMI(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.m.upbound.io/v1beta1'] | None = (
         'ec2.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['AMI']] = 'AMI'
+    kind: Literal['AMI'] | None = 'AMI'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -613,26 +611,26 @@ class AMI(BaseModel):
     """
     AMISpec defines the desired state of AMI
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     AMIStatus defines the observed state of AMI.
     """
 
 
 class AMIList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[AMI]
+    items: list[AMI]
     """
     List of amis. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

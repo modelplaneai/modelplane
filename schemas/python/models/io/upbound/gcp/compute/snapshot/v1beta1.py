@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
@@ -42,22 +41,22 @@ class RsaEncryptedKeySecretRef(BaseModel):
 
 
 class SnapshotEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The name of the encryption key that is stored in Google Cloud KMS.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an encryption key stored in Google Cloud KMS, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
@@ -66,7 +65,7 @@ class SnapshotEncryptionKeyItem(BaseModel):
 
 
 class SourceDiskEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -74,19 +73,19 @@ class SourceDiskEncryptionKeyItem(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
     account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit
     customer-supplied encryption key to either encrypt or decrypt
@@ -96,14 +95,14 @@ class SourceDiskEncryptionKeyItem(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -117,30 +116,30 @@ class SourceDiskRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceDiskSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    chainName: Optional[str] = None
+    chainName: str | None = None
     """
     Creates the new snapshot in the snapshot chain labeled with the
     specified name. The chain name must be 1-63 characters long and
@@ -149,22 +148,22 @@ class ForProvider(BaseModel):
     example, for chargeback tracking.  When you describe your snapshot
     resource, this field is visible only if it has a non-empty value.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this Snapshot.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    snapshotEncryptionKey: Optional[List[SnapshotEncryptionKeyItem]] = None
+    snapshotEncryptionKey: list[SnapshotEncryptionKeyItem] | None = None
     """
     Encrypts the snapshot using a customer-supplied encryption key.
     After you encrypt a snapshot using a customer-supplied key, you must
@@ -178,37 +177,37 @@ class ForProvider(BaseModel):
     key and you do not need to provide a key to use the snapshot later.
     Structure is documented below.
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     A reference to the disk used to create this snapshot.
     """
-    sourceDiskEncryptionKey: Optional[List[SourceDiskEncryptionKeyItem]] = None
+    sourceDiskEncryptionKey: list[SourceDiskEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required
     if the source snapshot is protected by a customer-supplied encryption
     key.
     Structure is documented below.
     """
-    sourceDiskRef: Optional[SourceDiskRef] = None
+    sourceDiskRef: SourceDiskRef | None = None
     """
     Reference to a Disk in compute to populate sourceDisk.
     """
-    sourceDiskSelector: Optional[SourceDiskSelector] = None
+    sourceDiskSelector: SourceDiskSelector | None = None
     """
     Selector for a Disk in compute to populate sourceDisk.
     """
-    storageLocations: Optional[List[str]] = None
+    storageLocations: list[str] | None = None
     """
     Cloud Storage bucket storage location of the snapshot (regional or multi-regional).
     """
-    zone: Optional[str] = None
+    zone: str | None = None
     """
     A reference to the zone where the disk is hosted.
     """
 
 
 class InitProvider(BaseModel):
-    chainName: Optional[str] = None
+    chainName: str | None = None
     """
     Creates the new snapshot in the snapshot chain labeled with the
     specified name. The chain name must be 1-63 characters long and
@@ -217,22 +216,22 @@ class InitProvider(BaseModel):
     example, for chargeback tracking.  When you describe your snapshot
     resource, this field is visible only if it has a non-empty value.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this Snapshot.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    snapshotEncryptionKey: Optional[List[SnapshotEncryptionKeyItem]] = None
+    snapshotEncryptionKey: list[SnapshotEncryptionKeyItem] | None = None
     """
     Encrypts the snapshot using a customer-supplied encryption key.
     After you encrypt a snapshot using a customer-supplied key, you must
@@ -246,30 +245,30 @@ class InitProvider(BaseModel):
     key and you do not need to provide a key to use the snapshot later.
     Structure is documented below.
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     A reference to the disk used to create this snapshot.
     """
-    sourceDiskEncryptionKey: Optional[List[SourceDiskEncryptionKeyItem]] = None
+    sourceDiskEncryptionKey: list[SourceDiskEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required
     if the source snapshot is protected by a customer-supplied encryption
     key.
     Structure is documented below.
     """
-    sourceDiskRef: Optional[SourceDiskRef] = None
+    sourceDiskRef: SourceDiskRef | None = None
     """
     Reference to a Disk in compute to populate sourceDisk.
     """
-    sourceDiskSelector: Optional[SourceDiskSelector] = None
+    sourceDiskSelector: SourceDiskSelector | None = None
     """
     Selector for a Disk in compute to populate sourceDisk.
     """
-    storageLocations: Optional[List[str]] = None
+    storageLocations: list[str] | None = None
     """
     Cloud Storage bucket storage location of the snapshot (regional or multi-regional).
     """
-    zone: Optional[str] = None
+    zone: str | None = None
     """
     A reference to the zone where the disk is hosted.
     """
@@ -280,7 +279,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -298,7 +297,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -309,7 +308,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -322,9 +321,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -337,15 +337,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -355,16 +355,16 @@ class Spec(BaseModel):
 
 
 class SnapshotEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The name of the encryption key that is stored in Google Cloud KMS.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    sha256: Optional[str] = None
+    sha256: str | None = None
     """
     (Output)
     The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
@@ -373,7 +373,7 @@ class SnapshotEncryptionKeyItemModel(BaseModel):
 
 
 class SourceDiskEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -381,7 +381,7 @@ class SourceDiskEncryptionKeyItemModel(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
@@ -390,7 +390,7 @@ class SourceDiskEncryptionKeyItemModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    chainName: Optional[str] = None
+    chainName: str | None = None
     """
     Creates the new snapshot in the snapshot chain labeled with the
     specified name. The chain name must be 1-63 characters long and
@@ -399,51 +399,51 @@ class AtProvider(BaseModel):
     example, for chargeback tracking.  When you describe your snapshot
     resource, this field is visible only if it has a non-empty value.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     Size of the snapshot, specified in GB.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
-    id: Optional[str] = None
+    effectiveLabels: dict[str, str] | None = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/snapshots/{{name}}
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     The fingerprint used for optimistic locking of this resource. Used
     internally during updates.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this Snapshot.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    licenses: Optional[List[str]] = None
+    licenses: list[str] | None = None
     """
     A list of public visible licenses that apply to this snapshot. This
     can be because the original image had licenses attached (such as a
     Windows image).  snapshotEncryptionKey nested object Encrypts the
     snapshot using a customer-supplied encryption key.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    snapshotEncryptionKey: Optional[List[SnapshotEncryptionKeyItemModel]] = None
+    snapshotEncryptionKey: list[SnapshotEncryptionKeyItemModel] | None = None
     """
     Encrypts the snapshot using a customer-supplied encryption key.
     After you encrypt a snapshot using a customer-supplied key, you must
@@ -457,54 +457,54 @@ class AtProvider(BaseModel):
     key and you do not need to provide a key to use the snapshot later.
     Structure is documented below.
     """
-    snapshotId: Optional[float] = None
+    snapshotId: float | None = None
     """
     The unique identifier for the resource.
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     A reference to the disk used to create this snapshot.
     """
-    sourceDiskEncryptionKey: Optional[List[SourceDiskEncryptionKeyItemModel]] = None
+    sourceDiskEncryptionKey: list[SourceDiskEncryptionKeyItemModel] | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required
     if the source snapshot is protected by a customer-supplied encryption
     key.
     Structure is documented below.
     """
-    storageBytes: Optional[float] = None
+    storageBytes: float | None = None
     """
     A size of the storage used by the snapshot. As snapshots share
     storage, this number is expected to change with snapshot
     creation/deletion.
     """
-    storageLocations: Optional[List[str]] = None
+    storageLocations: list[str] | None = None
     """
     Cloud Storage bucket storage location of the snapshot (regional or multi-regional).
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource
     and default labels configured on the provider.
     """
-    zone: Optional[str] = None
+    zone: str | None = None
     """
     A reference to the zone where the disk is hosted.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -526,12 +526,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -540,17 +540,17 @@ class Status(BaseModel):
 
 
 class Snapshot(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Snapshot']] = 'Snapshot'
+    kind: Literal['Snapshot'] | None = 'Snapshot'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -558,26 +558,26 @@ class Snapshot(BaseModel):
     """
     SnapshotSpec defines the desired state of Snapshot
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     SnapshotStatus defines the observed state of Snapshot.
     """
 
 
 class SnapshotList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Snapshot]
+    items: list[Snapshot]
     """
     List of snapshots. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

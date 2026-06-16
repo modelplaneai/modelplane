@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class InstanceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class InstanceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,86 +67,86 @@ class NetworkInterfaceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkInterfaceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    address: Optional[str] = None
+    address: str | None = None
     """
     IP address from an EC2 BYOIP pool. This option is only available for VPC EIPs.
     """
-    associateWithPrivateIp: Optional[str] = None
+    associateWithPrivateIp: str | None = None
     """
     User-specified primary or secondary private IP address to associate with the Elastic IP address. If no private IP address is specified, the Elastic IP address is associated with the primary private IP address.
     """
-    customerOwnedIpv4Pool: Optional[str] = None
+    customerOwnedIpv4Pool: str | None = None
     """
     ID  of a customer-owned address pool. For more on customer owned IP addressed check out Customer-owned IP addresses guide.
     """
-    domain: Optional[str] = None
+    domain: str | None = None
     """
     Indicates if this EIP is for use in VPC (vpc).
     """
-    instance: Optional[str] = None
+    instance: str | None = None
     """
     EC2 instance ID.
     """
-    instanceRef: Optional[InstanceRef] = None
+    instanceRef: InstanceRef | None = None
     """
     Reference to a Instance in ec2 to populate instance.
     """
-    instanceSelector: Optional[InstanceSelector] = None
+    instanceSelector: InstanceSelector | None = None
     """
     Selector for a Instance in ec2 to populate instance.
     """
-    ipamPoolId: Optional[str] = None
+    ipamPoolId: str | None = None
     """
     The ID of an IPAM pool which has an Amazon-provided or BYOIP public IPv4 CIDR provisioned to it.
     """
-    networkBorderGroup: Optional[str] = None
+    networkBorderGroup: str | None = None
     """
     Location from which the IP address is advertised. Use this parameter to limit the address to this location.
     """
-    networkInterface: Optional[str] = None
+    networkInterface: str | None = None
     """
     Network interface ID to associate with.
     """
-    networkInterfaceRef: Optional[NetworkInterfaceRef] = None
+    networkInterfaceRef: NetworkInterfaceRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate networkInterface.
     """
-    networkInterfaceSelector: Optional[NetworkInterfaceSelector] = None
+    networkInterfaceSelector: NetworkInterfaceSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate networkInterface.
     """
-    publicIpv4Pool: Optional[str] = None
+    publicIpv4Pool: str | None = None
     """
     EC2 IPv4 address pool identifier or amazon.
     This option is only available for VPC EIPs.
@@ -157,67 +156,67 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    address: Optional[str] = None
+    address: str | None = None
     """
     IP address from an EC2 BYOIP pool. This option is only available for VPC EIPs.
     """
-    associateWithPrivateIp: Optional[str] = None
+    associateWithPrivateIp: str | None = None
     """
     User-specified primary or secondary private IP address to associate with the Elastic IP address. If no private IP address is specified, the Elastic IP address is associated with the primary private IP address.
     """
-    customerOwnedIpv4Pool: Optional[str] = None
+    customerOwnedIpv4Pool: str | None = None
     """
     ID  of a customer-owned address pool. For more on customer owned IP addressed check out Customer-owned IP addresses guide.
     """
-    domain: Optional[str] = None
+    domain: str | None = None
     """
     Indicates if this EIP is for use in VPC (vpc).
     """
-    instance: Optional[str] = None
+    instance: str | None = None
     """
     EC2 instance ID.
     """
-    instanceRef: Optional[InstanceRef] = None
+    instanceRef: InstanceRef | None = None
     """
     Reference to a Instance in ec2 to populate instance.
     """
-    instanceSelector: Optional[InstanceSelector] = None
+    instanceSelector: InstanceSelector | None = None
     """
     Selector for a Instance in ec2 to populate instance.
     """
-    ipamPoolId: Optional[str] = None
+    ipamPoolId: str | None = None
     """
     The ID of an IPAM pool which has an Amazon-provided or BYOIP public IPv4 CIDR provisioned to it.
     """
-    networkBorderGroup: Optional[str] = None
+    networkBorderGroup: str | None = None
     """
     Location from which the IP address is advertised. Use this parameter to limit the address to this location.
     """
-    networkInterface: Optional[str] = None
+    networkInterface: str | None = None
     """
     Network interface ID to associate with.
     """
-    networkInterfaceRef: Optional[NetworkInterfaceRef] = None
+    networkInterfaceRef: NetworkInterfaceRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate networkInterface.
     """
-    networkInterfaceSelector: Optional[NetworkInterfaceSelector] = None
+    networkInterfaceSelector: NetworkInterfaceSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate networkInterface.
     """
-    publicIpv4Pool: Optional[str] = None
+    publicIpv4Pool: str | None = None
     """
     EC2 IPv4 address pool identifier or amazon.
     This option is only available for VPC EIPs.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -243,7 +242,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -256,9 +255,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -267,17 +267,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -287,111 +285,111 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    address: Optional[str] = None
+    address: str | None = None
     """
     IP address from an EC2 BYOIP pool. This option is only available for VPC EIPs.
     """
-    allocationId: Optional[str] = None
+    allocationId: str | None = None
     """
     ID that AWS assigns to represent the allocation of the Elastic IP address for use with instances in a VPC.
     """
-    arn: Optional[str] = None
-    associateWithPrivateIp: Optional[str] = None
+    arn: str | None = None
+    associateWithPrivateIp: str | None = None
     """
     User-specified primary or secondary private IP address to associate with the Elastic IP address. If no private IP address is specified, the Elastic IP address is associated with the primary private IP address.
     """
-    associationId: Optional[str] = None
+    associationId: str | None = None
     """
     ID representing the association of the address with an instance in a VPC.
     """
-    carrierIp: Optional[str] = None
+    carrierIp: str | None = None
     """
     Carrier IP address.
     """
-    customerOwnedIp: Optional[str] = None
+    customerOwnedIp: str | None = None
     """
     Customer owned IP.
     """
-    customerOwnedIpv4Pool: Optional[str] = None
+    customerOwnedIpv4Pool: str | None = None
     """
     ID  of a customer-owned address pool. For more on customer owned IP addressed check out Customer-owned IP addresses guide.
     """
-    domain: Optional[str] = None
+    domain: str | None = None
     """
     Indicates if this EIP is for use in VPC (vpc).
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     Contains the EIP allocation ID.
     """
-    instance: Optional[str] = None
+    instance: str | None = None
     """
     EC2 instance ID.
     """
-    ipamPoolId: Optional[str] = None
+    ipamPoolId: str | None = None
     """
     The ID of an IPAM pool which has an Amazon-provided or BYOIP public IPv4 CIDR provisioned to it.
     """
-    networkBorderGroup: Optional[str] = None
+    networkBorderGroup: str | None = None
     """
     Location from which the IP address is advertised. Use this parameter to limit the address to this location.
     """
-    networkInterface: Optional[str] = None
+    networkInterface: str | None = None
     """
     Network interface ID to associate with.
     """
-    privateDns: Optional[str] = None
+    privateDns: str | None = None
     """
     The Private DNS associated with the Elastic IP address (if in VPC).
     """
-    privateIp: Optional[str] = None
+    privateIp: str | None = None
     """
     Contains the private IP address (if in VPC).
     """
-    ptrRecord: Optional[str] = None
+    ptrRecord: str | None = None
     """
     The DNS pointer (PTR) record for the IP address.
     """
-    publicDns: Optional[str] = None
+    publicDns: str | None = None
     """
     Public DNS associated with the Elastic IP address.
     """
-    publicIp: Optional[str] = None
+    publicIp: str | None = None
     """
     Contains the public IP address.
     """
-    publicIpv4Pool: Optional[str] = None
+    publicIpv4Pool: str | None = None
     """
     EC2 IPv4 address pool identifier or amazon.
     This option is only available for VPC EIPs.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -413,12 +411,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -427,17 +425,17 @@ class Status(BaseModel):
 
 
 class EIP(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.m.upbound.io/v1beta1'] | None = (
         'ec2.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['EIP']] = 'EIP'
+    kind: Literal['EIP'] | None = 'EIP'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -445,26 +443,26 @@ class EIP(BaseModel):
     """
     EIPSpec defines the desired state of EIP
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     EIPStatus defines the observed state of EIP.
     """
 
 
 class EIPList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[EIP]
+    items: list[EIP]
     """
     List of eips. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

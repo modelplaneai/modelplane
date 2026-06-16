@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
@@ -27,7 +26,7 @@ class Credential(BaseModel):
     """
     Name of this set of credentials.
     """
-    secretRef: Optional[SecretRef] = None
+    secretRef: SecretRef | None = None
     """
     A SecretRef is a reference to a secret containing credentials that should
     be supplied to the function.
@@ -54,17 +53,17 @@ class RequiredResource(BaseModel):
     """
     Kind of resources to select.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels matches resources by label selector. Only one of Name or
     MatchLabels may be specified.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name matches a single resource by name. Only one of Name or
     MatchLabels may be specified.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace to search for resources. Optional for cluster-scoped resources.
     """
@@ -92,12 +91,12 @@ class RequiredSchema(BaseModel):
 
 
 class Requirements(BaseModel):
-    requiredResources: Optional[List[RequiredResource]] = None
+    requiredResources: list[RequiredResource] | None = None
     """
     RequiredResources that will be fetched before this pipeline step
     is called for the first time.
     """
-    requiredSchemas: Optional[List[RequiredSchema]] = None
+    requiredSchemas: list[RequiredSchema] | None = None
     """
     RequiredSchemas that will be fetched before this pipeline step
     is called for the first time.
@@ -105,7 +104,7 @@ class Requirements(BaseModel):
 
 
 class PipelineItem(BaseModel):
-    credentials: Optional[List[Credential]] = None
+    credentials: list[Credential] | None = None
     """
     Credentials are optional credentials that the operation function needs.
     """
@@ -114,13 +113,13 @@ class PipelineItem(BaseModel):
     FunctionRef is a reference to the function this step should
     execute.
     """
-    input: Optional[Dict[str, Any]] = None
+    input: dict[str, Any] | None = None
     """
     Input is an optional, arbitrary Kubernetes resource (i.e. a resource
     with an apiVersion and kind) that will be passed to the unction as
     the 'input' of its RunFunctionRequest.
     """
-    requirements: Optional[Requirements] = None
+    requirements: Requirements | None = None
     """
     Requirements are resource requirements that will be satisfied before
     this pipeline step is called for the first time. This allows
@@ -141,12 +140,12 @@ class Spec(BaseModel):
     "Pipeline" indicates that an Operation specifies a pipeline of
     functions, each of which is responsible for implementing its logic.
     """
-    pipeline: List[PipelineItem] = Field(..., max_length=99, min_length=1)
+    pipeline: list[PipelineItem] = Field(..., max_length=99, min_length=1)
     """
     Pipeline is a list of operation function steps that will be used when
     this operation runs.
     """
-    retryLimit: Optional[int] = None
+    retryLimit: int | None = None
     """
     RetryLimit configures how many times the operation may fail. When the
     failure limit is exceeded, the operation will not be retried.
@@ -154,7 +153,7 @@ class Spec(BaseModel):
 
 
 class OperationTemplate(BaseModel):
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
     """
     Standard object metadata.
     """
@@ -173,12 +172,12 @@ class Watch(BaseModel):
     """
     Kind of the resource to watch.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels selects resources by label. If empty, all resources of the
     specified kind are watched.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace selects resources in a specific namespace. If empty, all
     namespaces are watched. Only applicable for namespaced resources.
@@ -186,12 +185,12 @@ class Watch(BaseModel):
 
 
 class SpecModel(BaseModel):
-    concurrencyPolicy: Optional[Literal['Allow', 'Forbid', 'Replace']] = 'Allow'
+    concurrencyPolicy: Literal['Allow', 'Forbid', 'Replace'] | None = 'Allow'
     """
     ConcurrencyPolicy specifies how to treat concurrent executions of an
     operation.
     """
-    failedHistoryLimit: Optional[int] = 1
+    failedHistoryLimit: int | None = 1
     """
     FailedHistoryLimit is the number of failed Operations to retain.
     """
@@ -199,7 +198,7 @@ class SpecModel(BaseModel):
     """
     OperationTemplate is the template for the Operation to be created.
     """
-    successfulHistoryLimit: Optional[int] = 3
+    successfulHistoryLimit: int | None = 3
     """
     SuccessfulHistoryLimit is the number of successful Operations to retain.
     """
@@ -210,17 +209,17 @@ class SpecModel(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -249,25 +248,25 @@ class RunningOperationRef(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    lastScheduleTime: Optional[datetime] = None
+    lastScheduleTime: AwareDatetime | None = None
     """
     LastScheduleTime is the last time the WatchOperation created an
     Operation.
     """
-    lastSuccessfulTime: Optional[datetime] = None
+    lastSuccessfulTime: AwareDatetime | None = None
     """
     LastSuccessfulTime is the last time the WatchOperation successfully
     completed an Operation.
     """
-    runningOperationRefs: Optional[List[RunningOperationRef]] = None
+    runningOperationRefs: list[RunningOperationRef] | None = None
     """
     RunningOperationRefs is a list of currently running Operations.
     """
-    watchingResources: Optional[int] = None
+    watchingResources: int | None = None
     """
     WatchingResources is the number of resources this WatchOperation is
     currently watching.
@@ -275,44 +274,44 @@ class Status(BaseModel):
 
 
 class WatchOperation(BaseModel):
-    apiVersion: Optional[Literal['ops.crossplane.io/v1alpha1']] = (
+    apiVersion: Literal['ops.crossplane.io/v1alpha1'] | None = (
         'ops.crossplane.io/v1alpha1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['WatchOperation']] = 'WatchOperation'
+    kind: Literal['WatchOperation'] | None = 'WatchOperation'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[SpecModel] = None
+    spec: SpecModel | None = None
     """
     WatchOperationSpec specifies the desired state of a WatchOperation.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     WatchOperationStatus represents the observed state of a WatchOperation.
     """
 
 
 class WatchOperationList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[WatchOperation]
+    items: list[WatchOperation]
     """
     List of watchoperations. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

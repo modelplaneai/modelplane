@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,38 +32,38 @@ class DiskRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class DiskSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class AsyncPrimaryDiskItem(BaseModel):
-    disk: Optional[str] = None
+    disk: str | None = None
     """
     Primary disk for asynchronous disk replication.
     """
-    diskRef: Optional[DiskRef] = None
+    diskRef: DiskRef | None = None
     """
     Reference to a Disk in compute to populate disk.
     """
-    diskSelector: Optional[DiskSelector] = None
+    diskSelector: DiskSelector | None = None
     """
     Selector for a Disk in compute to populate disk.
     """
@@ -101,7 +100,7 @@ class RsaEncryptedKeySecretRef(BaseModel):
 
 
 class DiskEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -109,18 +108,18 @@ class DiskEncryptionKeyItem(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit
     customer-supplied encryption key to either encrypt or decrypt
@@ -130,7 +129,7 @@ class DiskEncryptionKeyItem(BaseModel):
 
 
 class GuestOsFeature(BaseModel):
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of supported feature. Read Enabling guest operating system features to see a list of available options.
     Possible values are: MULTI_IP_SUBNET, SECURE_BOOT, SEV_CAPABLE, UEFI_COMPATIBLE, VIRTIO_SCSI_MULTIQUEUE, WINDOWS, GVNIC, SEV_LIVE_MIGRATABLE, SEV_SNP_CAPABLE, SUSPEND_RESUME_COMPATIBLE, TDX_CAPABLE.
@@ -138,7 +137,7 @@ class GuestOsFeature(BaseModel):
 
 
 class Param(BaseModel):
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     Resource manager tags to be bound to the disk. Tag keys and values have the
     same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
@@ -147,7 +146,7 @@ class Param(BaseModel):
 
 
 class SourceImageEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -155,12 +154,12 @@ class SourceImageEncryptionKeyItem(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKey: Optional[str] = None
+    rawKey: str | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
@@ -168,7 +167,7 @@ class SourceImageEncryptionKeyItem(BaseModel):
 
 
 class SourceSnapshotEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -176,12 +175,12 @@ class SourceSnapshotEncryptionKeyItem(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKey: Optional[str] = None
+    rawKey: str | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
@@ -189,36 +188,36 @@ class SourceSnapshotEncryptionKeyItem(BaseModel):
 
 
 class ForProvider(BaseModel):
-    accessMode: Optional[str] = None
+    accessMode: str | None = None
     """
     The access mode of the disk.
     For example:
     """
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     The architecture of the disk. Values include X86_64, ARM64.
     """
-    asyncPrimaryDisk: Optional[List[AsyncPrimaryDiskItem]] = None
+    asyncPrimaryDisk: list[AsyncPrimaryDiskItem] | None = None
     """
     A nested object resource.
     Structure is documented below.
     """
-    createSnapshotBeforeDestroy: Optional[bool] = None
+    createSnapshotBeforeDestroy: bool | None = None
     """
     If set to true, a snapshot of the disk will be created before it is destroyed.
     If your disk is encrypted with customer managed encryption keys these will be reused for the snapshot creation.
     The name of the snapshot by default will be {{disk-name}}-YYYYMMDD-HHmm
     """
-    createSnapshotBeforeDestroyPrefix: Optional[str] = None
+    createSnapshotBeforeDestroyPrefix: str | None = None
     """
     This will set a custom name prefix for the snapshot that's created when the disk is deleted.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    diskEncryptionKey: Optional[List[DiskEncryptionKeyItem]] = None
+    diskEncryptionKey: list[DiskEncryptionKeyItem] | None = None
     """
     Encrypts the disk using a customer-supplied encryption key.
     After you encrypt a disk with a customer-supplied key, you must
@@ -231,18 +230,18 @@ class ForProvider(BaseModel):
     you do not need to provide a key to use the disk later.
     Structure is documented below.
     """
-    enableConfidentialCompute: Optional[bool] = None
+    enableConfidentialCompute: bool | None = None
     """
     Whether this disk is using confidential compute mode.
     Note: Only supported on hyperdisk skus, disk_encryption_key is required when setting to true
     """
-    guestOsFeatures: Optional[List[GuestOsFeature]] = None
+    guestOsFeatures: list[GuestOsFeature] | None = None
     """
     A list of features to enable on the guest operating system.
     Applicable only for bootable disks.
     Structure is documented below.
     """
-    image: Optional[str] = None
+    image: str | None = None
     """
     The image from which to initialize this disk. This can be
     one of: the image's self_link, projects/{project}/global/images/{image},
@@ -254,20 +253,20 @@ class ForProvider(BaseModel):
     For instance, the image centos-6-v20180104 includes its family name centos-6.
     These images can be referred by family name here.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this disk.  A list of key->value pairs.
     """
-    licenses: Optional[List[str]] = None
+    licenses: list[str] | None = None
     """
     Any applicable license URI.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    physicalBlockSizeBytes: Optional[float] = None
+    physicalBlockSizeBytes: float | None = None
     """
     Physical block size of the persistent disk, in bytes. If not present
     in a request, a default value is used. Currently supported sizes
@@ -275,24 +274,24 @@ class ForProvider(BaseModel):
     If an unsupported value is requested, the error message will list
     the supported values for the caller's project.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    provisionedIops: Optional[float] = None
+    provisionedIops: float | None = None
     """
     Indicates how many IOPS must be provisioned for the disk.
     Note: Updating currently is only supported by hyperdisk skus without the need to delete and recreate the disk, hyperdisk
     allows for an update of IOPS every 4 hours. To update your hyperdisk more frequently, you'll need to manually delete and recreate it
     """
-    provisionedThroughput: Optional[float] = None
+    provisionedThroughput: float | None = None
     """
     Indicates how much Throughput must be provisioned for the disk.
     Note: Updating currently is only supported by hyperdisk skus without the need to delete and recreate the disk, hyperdisk
     allows for an update of Throughput every 4 hours. To update your hyperdisk more frequently, you'll need to manually delete and recreate it
     """
-    size: Optional[float] = None
+    size: float | None = None
     """
     Size of the persistent disk, specified in GB. You can specify this
     field when creating a persistent disk using the image or
@@ -304,37 +303,37 @@ class ForProvider(BaseModel):
     You can add lifecycle.prevent_destroy in the config to prevent destroying
     and recreating.
     """
-    snapshot: Optional[str] = None
+    snapshot: str | None = None
     """
     The source snapshot used to create this disk. You can provide this as
     a partial or full URL to the resource. If the snapshot is in another
     project than this disk, you must supply a full URL. For example, the
     following are valid values:
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     The source disk used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
     """
-    sourceImageEncryptionKey: Optional[List[SourceImageEncryptionKeyItem]] = None
+    sourceImageEncryptionKey: list[SourceImageEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source image. Required if
     the source image is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceInstantSnapshot: Optional[str] = None
+    sourceInstantSnapshot: str | None = None
     """
     The source instant snapshot used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
     """
-    sourceSnapshotEncryptionKey: Optional[List[SourceSnapshotEncryptionKeyItem]] = None
+    sourceSnapshotEncryptionKey: list[SourceSnapshotEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required
     if the source snapshot is protected by a customer-supplied encryption
     key.
     Structure is documented below.
     """
-    sourceStorageObject: Optional[str] = None
+    sourceStorageObject: str | None = None
     """
     The full Google Cloud Storage URI where the disk image is stored.
     This file must be a gzip-compressed tarball whose name ends in .tar.gz or virtual machine disk whose name ends in vmdk.
@@ -342,12 +341,12 @@ class ForProvider(BaseModel):
     This flag is not optimized for creating multiple disks from a source storage object.
     To create many disks from a source storage object, use gcloud compute images import instead.
     """
-    storagePool: Optional[str] = None
+    storagePool: str | None = None
     """
     The URL or the name of the storage pool in which the new disk is created.
     For example:
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     URL of the disk type resource describing which disk type to use to
     create the disk. Provide this when creating the disk.
@@ -359,36 +358,36 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    accessMode: Optional[str] = None
+    accessMode: str | None = None
     """
     The access mode of the disk.
     For example:
     """
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     The architecture of the disk. Values include X86_64, ARM64.
     """
-    asyncPrimaryDisk: Optional[List[AsyncPrimaryDiskItem]] = None
+    asyncPrimaryDisk: list[AsyncPrimaryDiskItem] | None = None
     """
     A nested object resource.
     Structure is documented below.
     """
-    createSnapshotBeforeDestroy: Optional[bool] = None
+    createSnapshotBeforeDestroy: bool | None = None
     """
     If set to true, a snapshot of the disk will be created before it is destroyed.
     If your disk is encrypted with customer managed encryption keys these will be reused for the snapshot creation.
     The name of the snapshot by default will be {{disk-name}}-YYYYMMDD-HHmm
     """
-    createSnapshotBeforeDestroyPrefix: Optional[str] = None
+    createSnapshotBeforeDestroyPrefix: str | None = None
     """
     This will set a custom name prefix for the snapshot that's created when the disk is deleted.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    diskEncryptionKey: Optional[List[DiskEncryptionKeyItem]] = None
+    diskEncryptionKey: list[DiskEncryptionKeyItem] | None = None
     """
     Encrypts the disk using a customer-supplied encryption key.
     After you encrypt a disk with a customer-supplied key, you must
@@ -401,18 +400,18 @@ class InitProvider(BaseModel):
     you do not need to provide a key to use the disk later.
     Structure is documented below.
     """
-    enableConfidentialCompute: Optional[bool] = None
+    enableConfidentialCompute: bool | None = None
     """
     Whether this disk is using confidential compute mode.
     Note: Only supported on hyperdisk skus, disk_encryption_key is required when setting to true
     """
-    guestOsFeatures: Optional[List[GuestOsFeature]] = None
+    guestOsFeatures: list[GuestOsFeature] | None = None
     """
     A list of features to enable on the guest operating system.
     Applicable only for bootable disks.
     Structure is documented below.
     """
-    image: Optional[str] = None
+    image: str | None = None
     """
     The image from which to initialize this disk. This can be
     one of: the image's self_link, projects/{project}/global/images/{image},
@@ -424,20 +423,20 @@ class InitProvider(BaseModel):
     For instance, the image centos-6-v20180104 includes its family name centos-6.
     These images can be referred by family name here.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this disk.  A list of key->value pairs.
     """
-    licenses: Optional[List[str]] = None
+    licenses: list[str] | None = None
     """
     Any applicable license URI.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    physicalBlockSizeBytes: Optional[float] = None
+    physicalBlockSizeBytes: float | None = None
     """
     Physical block size of the persistent disk, in bytes. If not present
     in a request, a default value is used. Currently supported sizes
@@ -445,24 +444,24 @@ class InitProvider(BaseModel):
     If an unsupported value is requested, the error message will list
     the supported values for the caller's project.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    provisionedIops: Optional[float] = None
+    provisionedIops: float | None = None
     """
     Indicates how many IOPS must be provisioned for the disk.
     Note: Updating currently is only supported by hyperdisk skus without the need to delete and recreate the disk, hyperdisk
     allows for an update of IOPS every 4 hours. To update your hyperdisk more frequently, you'll need to manually delete and recreate it
     """
-    provisionedThroughput: Optional[float] = None
+    provisionedThroughput: float | None = None
     """
     Indicates how much Throughput must be provisioned for the disk.
     Note: Updating currently is only supported by hyperdisk skus without the need to delete and recreate the disk, hyperdisk
     allows for an update of Throughput every 4 hours. To update your hyperdisk more frequently, you'll need to manually delete and recreate it
     """
-    size: Optional[float] = None
+    size: float | None = None
     """
     Size of the persistent disk, specified in GB. You can specify this
     field when creating a persistent disk using the image or
@@ -474,37 +473,37 @@ class InitProvider(BaseModel):
     You can add lifecycle.prevent_destroy in the config to prevent destroying
     and recreating.
     """
-    snapshot: Optional[str] = None
+    snapshot: str | None = None
     """
     The source snapshot used to create this disk. You can provide this as
     a partial or full URL to the resource. If the snapshot is in another
     project than this disk, you must supply a full URL. For example, the
     following are valid values:
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     The source disk used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
     """
-    sourceImageEncryptionKey: Optional[List[SourceImageEncryptionKeyItem]] = None
+    sourceImageEncryptionKey: list[SourceImageEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source image. Required if
     the source image is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceInstantSnapshot: Optional[str] = None
+    sourceInstantSnapshot: str | None = None
     """
     The source instant snapshot used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
     """
-    sourceSnapshotEncryptionKey: Optional[List[SourceSnapshotEncryptionKeyItem]] = None
+    sourceSnapshotEncryptionKey: list[SourceSnapshotEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required
     if the source snapshot is protected by a customer-supplied encryption
     key.
     Structure is documented below.
     """
-    sourceStorageObject: Optional[str] = None
+    sourceStorageObject: str | None = None
     """
     The full Google Cloud Storage URI where the disk image is stored.
     This file must be a gzip-compressed tarball whose name ends in .tar.gz or virtual machine disk whose name ends in vmdk.
@@ -512,12 +511,12 @@ class InitProvider(BaseModel):
     This flag is not optimized for creating multiple disks from a source storage object.
     To create many disks from a source storage object, use gcloud compute images import instead.
     """
-    storagePool: Optional[str] = None
+    storagePool: str | None = None
     """
     The URL or the name of the storage pool in which the new disk is created.
     For example:
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     URL of the disk type resource describing which disk type to use to
     create the disk. Provide this when creating the disk.
@@ -529,7 +528,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -547,7 +546,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -558,7 +557,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -571,9 +570,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -586,15 +586,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -604,14 +604,14 @@ class Spec(BaseModel):
 
 
 class AsyncPrimaryDiskItemModel(BaseModel):
-    disk: Optional[str] = None
+    disk: str | None = None
     """
     Primary disk for asynchronous disk replication.
     """
 
 
 class DiskEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -619,12 +619,12 @@ class DiskEncryptionKeyItemModel(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    sha256: Optional[str] = None
+    sha256: str | None = None
     """
     (Output)
     The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
@@ -633,7 +633,7 @@ class DiskEncryptionKeyItemModel(BaseModel):
 
 
 class SourceImageEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -641,17 +641,17 @@ class SourceImageEncryptionKeyItemModel(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKey: Optional[str] = None
+    rawKey: str | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     """
-    sha256: Optional[str] = None
+    sha256: str | None = None
     """
     (Output)
     The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
@@ -660,7 +660,7 @@ class SourceImageEncryptionKeyItemModel(BaseModel):
 
 
 class SourceSnapshotEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -668,17 +668,17 @@ class SourceSnapshotEncryptionKeyItemModel(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account used for the encryption request for the given KMS key.
     If absent, the Compute Engine Service Agent service account is used.
     """
-    rawKey: Optional[str] = None
+    rawKey: str | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     """
-    sha256: Optional[str] = None
+    sha256: str | None = None
     """
     (Output)
     The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
@@ -687,40 +687,40 @@ class SourceSnapshotEncryptionKeyItemModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    accessMode: Optional[str] = None
+    accessMode: str | None = None
     """
     The access mode of the disk.
     For example:
     """
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     The architecture of the disk. Values include X86_64, ARM64.
     """
-    asyncPrimaryDisk: Optional[List[AsyncPrimaryDiskItemModel]] = None
+    asyncPrimaryDisk: list[AsyncPrimaryDiskItemModel] | None = None
     """
     A nested object resource.
     Structure is documented below.
     """
-    createSnapshotBeforeDestroy: Optional[bool] = None
+    createSnapshotBeforeDestroy: bool | None = None
     """
     If set to true, a snapshot of the disk will be created before it is destroyed.
     If your disk is encrypted with customer managed encryption keys these will be reused for the snapshot creation.
     The name of the snapshot by default will be {{disk-name}}-YYYYMMDD-HHmm
     """
-    createSnapshotBeforeDestroyPrefix: Optional[str] = None
+    createSnapshotBeforeDestroyPrefix: str | None = None
     """
     This will set a custom name prefix for the snapshot that's created when the disk is deleted.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    diskEncryptionKey: Optional[List[DiskEncryptionKeyItemModel]] = None
+    diskEncryptionKey: list[DiskEncryptionKeyItemModel] | None = None
     """
     Encrypts the disk using a customer-supplied encryption key.
     After you encrypt a disk with a customer-supplied key, you must
@@ -733,30 +733,30 @@ class AtProvider(BaseModel):
     you do not need to provide a key to use the disk later.
     Structure is documented below.
     """
-    diskId: Optional[str] = None
+    diskId: str | None = None
     """
     The unique identifier for the resource. This identifier is defined by the server.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
+    effectiveLabels: dict[str, str] | None = None
     """
     for all of the labels present on the resource.
     """
-    enableConfidentialCompute: Optional[bool] = None
+    enableConfidentialCompute: bool | None = None
     """
     Whether this disk is using confidential compute mode.
     Note: Only supported on hyperdisk skus, disk_encryption_key is required when setting to true
     """
-    guestOsFeatures: Optional[List[GuestOsFeature]] = None
+    guestOsFeatures: list[GuestOsFeature] | None = None
     """
     A list of features to enable on the guest operating system.
     Applicable only for bootable disks.
     Structure is documented below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/zones/{{zone}}/disks/{{name}}
     """
-    image: Optional[str] = None
+    image: str | None = None
     """
     The image from which to initialize this disk. This can be
     one of: the image's self_link, projects/{project}/global/images/{image},
@@ -768,33 +768,33 @@ class AtProvider(BaseModel):
     For instance, the image centos-6-v20180104 includes its family name centos-6.
     These images can be referred by family name here.
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     The fingerprint used for optimistic locking of this resource.  Used
     internally during updates.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this disk.  A list of key->value pairs.
     """
-    lastAttachTimestamp: Optional[str] = None
+    lastAttachTimestamp: str | None = None
     """
     Last attach timestamp in RFC3339 text format.
     """
-    lastDetachTimestamp: Optional[str] = None
+    lastDetachTimestamp: str | None = None
     """
     Last detach timestamp in RFC3339 text format.
     """
-    licenses: Optional[List[str]] = None
+    licenses: list[str] | None = None
     """
     Any applicable license URI.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    physicalBlockSizeBytes: Optional[float] = None
+    physicalBlockSizeBytes: float | None = None
     """
     Physical block size of the persistent disk, in bytes. If not present
     in a request, a default value is used. Currently supported sizes
@@ -802,28 +802,28 @@ class AtProvider(BaseModel):
     If an unsupported value is requested, the error message will list
     the supported values for the caller's project.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    provisionedIops: Optional[float] = None
+    provisionedIops: float | None = None
     """
     Indicates how many IOPS must be provisioned for the disk.
     Note: Updating currently is only supported by hyperdisk skus without the need to delete and recreate the disk, hyperdisk
     allows for an update of IOPS every 4 hours. To update your hyperdisk more frequently, you'll need to manually delete and recreate it
     """
-    provisionedThroughput: Optional[float] = None
+    provisionedThroughput: float | None = None
     """
     Indicates how much Throughput must be provisioned for the disk.
     Note: Updating currently is only supported by hyperdisk skus without the need to delete and recreate the disk, hyperdisk
     allows for an update of Throughput every 4 hours. To update your hyperdisk more frequently, you'll need to manually delete and recreate it
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    size: Optional[float] = None
+    size: float | None = None
     """
     Size of the persistent disk, specified in GB. You can specify this
     field when creating a persistent disk using the image or
@@ -835,31 +835,31 @@ class AtProvider(BaseModel):
     You can add lifecycle.prevent_destroy in the config to prevent destroying
     and recreating.
     """
-    snapshot: Optional[str] = None
+    snapshot: str | None = None
     """
     The source snapshot used to create this disk. You can provide this as
     a partial or full URL to the resource. If the snapshot is in another
     project than this disk, you must supply a full URL. For example, the
     following are valid values:
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     The source disk used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
     """
-    sourceDiskId: Optional[str] = None
+    sourceDiskId: str | None = None
     """
     The ID value of the disk used to create this image. This value may
     be used to determine whether the image was taken from the current
     or a previous instance of a given disk name.
     """
-    sourceImageEncryptionKey: Optional[List[SourceImageEncryptionKeyItemModel]] = None
+    sourceImageEncryptionKey: list[SourceImageEncryptionKeyItemModel] | None = None
     """
     The customer-supplied encryption key of the source image. Required if
     the source image is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceImageId: Optional[str] = None
+    sourceImageId: str | None = None
     """
     The ID value of the image used to create this disk. This value
     identifies the exact image that was used to create this persistent
@@ -867,12 +867,12 @@ class AtProvider(BaseModel):
     that was later deleted and recreated under the same name, the source
     image ID would identify the exact version of the image that was used.
     """
-    sourceInstantSnapshot: Optional[str] = None
+    sourceInstantSnapshot: str | None = None
     """
     The source instant snapshot used to create this disk. You can provide this as a partial or full URL to the resource.
     For example, the following are valid values:
     """
-    sourceInstantSnapshotId: Optional[str] = None
+    sourceInstantSnapshotId: str | None = None
     """
     The unique ID of the instant snapshot used to create this disk. This value identifies
     the exact instant snapshot that was used to create this persistent disk.
@@ -880,16 +880,16 @@ class AtProvider(BaseModel):
     deleted and recreated under the same name, the source instant snapshot ID would identify
     the exact version of the instant snapshot that was used.
     """
-    sourceSnapshotEncryptionKey: Optional[
-        List[SourceSnapshotEncryptionKeyItemModel]
-    ] = None
+    sourceSnapshotEncryptionKey: list[SourceSnapshotEncryptionKeyItemModel] | None = (
+        None
+    )
     """
     The customer-supplied encryption key of the source snapshot. Required
     if the source snapshot is protected by a customer-supplied encryption
     key.
     Structure is documented below.
     """
-    sourceSnapshotId: Optional[str] = None
+    sourceSnapshotId: str | None = None
     """
     The unique ID of the snapshot used to create this disk. This value
     identifies the exact snapshot that was used to create this persistent
@@ -898,7 +898,7 @@ class AtProvider(BaseModel):
     snapshot ID would identify the exact version of the snapshot that was
     used.
     """
-    sourceStorageObject: Optional[str] = None
+    sourceStorageObject: str | None = None
     """
     The full Google Cloud Storage URI where the disk image is stored.
     This file must be a gzip-compressed tarball whose name ends in .tar.gz or virtual machine disk whose name ends in vmdk.
@@ -906,44 +906,44 @@ class AtProvider(BaseModel):
     This flag is not optimized for creating multiple disks from a source storage object.
     To create many disks from a source storage object, use gcloud compute images import instead.
     """
-    storagePool: Optional[str] = None
+    storagePool: str | None = None
     """
     The URL or the name of the storage pool in which the new disk is created.
     For example:
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource
     and default labels configured on the provider.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     URL of the disk type resource describing which disk type to use to
     create the disk. Provide this when creating the disk.
     """
-    users: Optional[List[str]] = None
+    users: list[str] | None = None
     """
     Links to the users of the disk (attached instances) in form:
     project/zones/zone/instances/instance
     """
-    zone: Optional[str] = None
+    zone: str | None = None
     """
     A reference to the zone where the disk resides.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -965,12 +965,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -979,17 +979,17 @@ class Status(BaseModel):
 
 
 class Disk(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Disk']] = 'Disk'
+    kind: Literal['Disk'] | None = 'Disk'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -997,26 +997,26 @@ class Disk(BaseModel):
     """
     DiskSpec defines the desired state of Disk
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     DiskStatus defines the observed state of Disk.
     """
 
 
 class DiskList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Disk]
+    items: list[Disk]
     """
     List of disks. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

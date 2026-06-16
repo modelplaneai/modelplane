@@ -3,92 +3,91 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class TrafficGranularityConfig(BaseModel):
-    enableEachUniqueValue: Optional[bool] = None
+    enableEachUniqueValue: bool | None = None
     """
     If enabled, traffic matching each unique value for the specified type constitutes a separate traffic unit. It can only be set to true if value is empty.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy. This field can be set only at resource creation time.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Requests that match this value constitute a granular traffic unit.
     """
 
 
 class ThresholdConfig(BaseModel):
-    autoDeployConfidenceThreshold: Optional[float] = None
+    autoDeployConfidenceThreshold: float | None = None
     """
     Confidence threshold above which Adaptive Protection's auto-deploy takes actions.
     """
-    autoDeployExpirationSec: Optional[float] = None
+    autoDeployExpirationSec: float | None = None
     """
     Duration over which Adaptive Protection's auto-deployed actions last.
     """
-    autoDeployImpactedBaselineThreshold: Optional[float] = None
+    autoDeployImpactedBaselineThreshold: float | None = None
     """
     Impacted baseline threshold below which Adaptive Protection's auto-deploy takes actions.
     """
-    autoDeployLoadThreshold: Optional[float] = None
+    autoDeployLoadThreshold: float | None = None
     """
     Load threshold above which Adaptive Protection automatically deploy threshold based on the backend load threshold and detect a new rule during an alerted attack.
     """
-    detectionAbsoluteQps: Optional[float] = None
+    detectionAbsoluteQps: float | None = None
     """
     Detection threshold based on absolute QPS.
     """
-    detectionLoadThreshold: Optional[float] = None
+    detectionLoadThreshold: float | None = None
     """
     Detection threshold based on the backend service's load.
     """
-    detectionRelativeToBaselineQps: Optional[float] = None
+    detectionRelativeToBaselineQps: float | None = None
     """
     Detection threshold based on QPS relative to the average of baseline traffic.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of config. The name must be 1-63 characters long, and comply with RFC1035. The name must be unique within the security policy.
     """
-    trafficGranularityConfigs: Optional[List[TrafficGranularityConfig]] = None
+    trafficGranularityConfigs: list[TrafficGranularityConfig] | None = None
     """
     Configuration options for enabling Adaptive Protection to work on the specified service granularity. Structure is documented below.
     """
 
 
 class Layer7DdosDefenseConfigItem(BaseModel):
-    enable: Optional[bool] = None
+    enable: bool | None = None
     """
     If set to true, enables CAAP for L7 DDoS detection.
     """
-    ruleVisibility: Optional[str] = None
+    ruleVisibility: str | None = None
     """
     Rule visibility can be one of the following:
     """
-    thresholdConfigs: Optional[List[ThresholdConfig]] = None
+    thresholdConfigs: list[ThresholdConfig] | None = None
     """
     Configuration options for layer7 adaptive protection for various customizable thresholds. Structure is documented below.
     """
 
 
 class AdaptiveProtectionConfigItem(BaseModel):
-    layer7DdosDefenseConfig: Optional[List[Layer7DdosDefenseConfigItem]] = None
+    layer7DdosDefenseConfig: list[Layer7DdosDefenseConfigItem] | None = None
     """
     Configuration for Google Cloud Armor Adaptive Protection Layer 7 DDoS Defense. Structure is documented below.
     """
 
 
 class JsonCustomConfigItem(BaseModel):
-    contentTypes: Optional[List[str]] = None
+    contentTypes: list[str] | None = None
     """
     A list of custom Content-Type header values to apply the JSON parsing. The
     format of the Content-Type header values is defined in
@@ -98,52 +97,52 @@ class JsonCustomConfigItem(BaseModel):
 
 
 class AdvancedOptionsConfigItem(BaseModel):
-    jsonCustomConfig: Optional[List[JsonCustomConfigItem]] = None
+    jsonCustomConfig: list[JsonCustomConfigItem] | None = None
     """
     Custom configuration to apply the JSON parsing. Only applicable when
     json_parsing is set to STANDARD. Structure is documented below.
     """
-    jsonParsing: Optional[str] = None
+    jsonParsing: str | None = None
     """
     Whether or not to JSON parse the payload body. Defaults to DISABLED.
     """
-    logLevel: Optional[str] = None
+    logLevel: str | None = None
     """
     Log level to use. Defaults to NORMAL.
     """
-    userIpRequestHeaders: Optional[List[str]] = None
+    userIpRequestHeaders: list[str] | None = None
     """
     An optional list of case-insensitive request header names to use for resolving the callers client IP address.
     """
 
 
 class RecaptchaOptionsConfigItem(BaseModel):
-    redirectSiteKey: Optional[str] = None
+    redirectSiteKey: str | None = None
     """
     A field to supply a reCAPTCHA site key to be used for all the rules using the redirect action with the type of GOOGLE_RECAPTCHA under the security policy. The specified site key needs to be created from the reCAPTCHA API. The user is responsible for the validity of the specified site key. If not specified, a Google-managed site key is used.
     """
 
 
 class RequestHeadersToAdd(BaseModel):
-    headerName: Optional[str] = None
+    headerName: str | None = None
     """
     The name of the header to set.
     """
-    headerValue: Optional[str] = None
+    headerValue: str | None = None
     """
     The value to set the named header to.
     """
 
 
 class HeaderActionItem(BaseModel):
-    requestHeadersToAdds: Optional[List[RequestHeadersToAdd]] = None
+    requestHeadersToAdds: list[RequestHeadersToAdd] | None = None
     """
     The list of request headers to add or overwrite if they're already present. Structure is documented below.
     """
 
 
 class ConfigItem(BaseModel):
-    srcIpRanges: Optional[List[str]] = None
+    srcIpRanges: list[str] | None = None
     """
     Set of IP addresses or ranges (IPV4 or IPV6) in CIDR notation
     to match against inbound traffic. There is a limit of 10 IP ranges per rule. A value of * matches all IPs
@@ -152,7 +151,7 @@ class ConfigItem(BaseModel):
 
 
 class ExprItem(BaseModel):
-    expression: Optional[str] = None
+    expression: str | None = None
     """
     Textual representation of an expression in Common Expression Language syntax.
     The application context of the containing message determines which well-known feature set of CEL is supported.
@@ -160,18 +159,18 @@ class ExprItem(BaseModel):
 
 
 class RecaptchaOption(BaseModel):
-    actionTokenSiteKeys: Optional[List[str]] = None
+    actionTokenSiteKeys: list[str] | None = None
     """
     A list of site keys to be used during the validation of reCAPTCHA action-tokens. The provided site keys need to be created from reCAPTCHA API under the same project where the security policy is created.
     """
-    sessionTokenSiteKeys: Optional[List[str]] = None
+    sessionTokenSiteKeys: list[str] | None = None
     """
     A list of site keys to be used during the validation of reCAPTCHA session-tokens. The provided site keys need to be created from reCAPTCHA API under the same project where the security policy is created.
     """
 
 
 class ExprOption(BaseModel):
-    recaptchaOptions: Optional[List[RecaptchaOption]] = None
+    recaptchaOptions: list[RecaptchaOption] | None = None
     """
     reCAPTCHA configuration options to be applied for the rule. If the rule does not evaluate reCAPTCHA tokens, this field has no effect.
     Structure is documented below.
@@ -179,24 +178,24 @@ class ExprOption(BaseModel):
 
 
 class MatchItem(BaseModel):
-    config: Optional[List[ConfigItem]] = None
+    config: list[ConfigItem] | None = None
     """
     The configuration options available when specifying versioned_expr.
     This field must be specified if versioned_expr is specified and cannot be specified if versioned_expr is not specified.
     Structure is documented below.
     """
-    expr: Optional[List[ExprItem]] = None
+    expr: list[ExprItem] | None = None
     """
     User defined CEVAL expression. A CEVAL expression is used to specify match criteria
     such as origin.ip, source.region_code and contents in the request header.
     Structure is documented below.
     """
-    exprOptions: Optional[List[ExprOption]] = None
+    exprOptions: list[ExprOption] | None = None
     """
     The configuration options available when specifying a user defined CEVAL expression (i.e., 'expr').
     Structure is documented below.
     """
-    versionedExpr: Optional[str] = None
+    versionedExpr: str | None = None
     """
     Predefined rule expression. If this field is specified, config must also be specified.
     Available options:
@@ -204,302 +203,302 @@ class MatchItem(BaseModel):
 
 
 class RequestCookieItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Requests that match this value constitute a granular traffic unit.
     """
 
 
 class RequestHeaderItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Requests that match this value constitute a granular traffic unit.
     """
 
 
 class RequestQueryParamItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Requests that match this value constitute a granular traffic unit.
     """
 
 
 class RequestUriItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Requests that match this value constitute a granular traffic unit.
     """
 
 
 class ExclusionItem(BaseModel):
-    requestCookie: Optional[List[RequestCookieItem]] = None
+    requestCookie: list[RequestCookieItem] | None = None
     """
     Request cookie whose value will be excluded from inspection during preconfigured WAF evaluation. Structure is documented below.
     """
-    requestHeader: Optional[List[RequestHeaderItem]] = None
+    requestHeader: list[RequestHeaderItem] | None = None
     """
     Request header whose value will be excluded from inspection during preconfigured WAF evaluation. Structure is documented below.
     """
-    requestQueryParam: Optional[List[RequestQueryParamItem]] = None
+    requestQueryParam: list[RequestQueryParamItem] | None = None
     """
     Request query parameter whose value will be excluded from inspection during preconfigured WAF evaluation. Note that the parameter can be in the query string or in the POST body. Structure is documented below.
     """
-    requestUri: Optional[List[RequestUriItem]] = None
+    requestUri: list[RequestUriItem] | None = None
     """
     Request URI from the request line to be excluded from inspection during preconfigured WAF evaluation. When specifying this field, the query or fragment part should be excluded. Structure is documented below.
     """
-    targetRuleIds: Optional[List[str]] = None
+    targetRuleIds: list[str] | None = None
     """
     A list of target rule IDs under the WAF rule set to apply the preconfigured WAF exclusion. If omitted, it refers to all the rule IDs under the WAF rule set.
     """
-    targetRuleSet: Optional[str] = None
+    targetRuleSet: str | None = None
     """
     Target WAF rule set to apply the preconfigured WAF exclusion.
     """
 
 
 class PreconfiguredWafConfigItem(BaseModel):
-    exclusion: Optional[List[ExclusionItem]] = None
+    exclusion: list[ExclusionItem] | None = None
     """
     An exclusion to apply during preconfigured WAF evaluation. Structure is documented below.
     """
 
 
 class BanThresholdItem(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     Number of HTTP(S) requests for calculating the threshold.
     """
-    intervalSec: Optional[float] = None
+    intervalSec: float | None = None
     """
     Interval over which the threshold is computed.
     """
 
 
 class EnforceOnKeyConfig(BaseModel):
-    enforceOnKeyName: Optional[str] = None
+    enforceOnKeyName: str | None = None
     """
     Rate limit key name applicable only for the following key types:
     """
-    enforceOnKeyType: Optional[str] = None
+    enforceOnKeyType: str | None = None
     """
     Determines the key to enforce the rate_limit_threshold on. If not specified, defaults to ALL.
     """
 
 
 class ExceedRedirectOption(BaseModel):
-    target: Optional[str] = None
+    target: str | None = None
     """
     External redirection target when EXTERNAL_302 is set in type.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy. This field can be set only at resource creation time.
     """
 
 
 class RateLimitThresholdItem(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     Number of HTTP(S) requests for calculating the threshold.
     """
-    intervalSec: Optional[float] = None
+    intervalSec: float | None = None
     """
     Interval over which the threshold is computed.
     """
 
 
 class RateLimitOption(BaseModel):
-    banDurationSec: Optional[float] = None
+    banDurationSec: float | None = None
     """
     Can only be specified if the action for the rule is rate_based_ban.
     If specified, determines the time (in seconds) the traffic will continue to be banned by the rate limit after the rate falls below the threshold.
     """
-    banThreshold: Optional[List[BanThresholdItem]] = None
+    banThreshold: list[BanThresholdItem] | None = None
     """
     Can only be specified if the action for the rule is rate_based_ban.
     If specified, the key will be banned for the configured ban_duration_sec when the number of requests that exceed the rate_limit_threshold also
     exceed this ban_threshold. Structure is documented below.
     """
-    conformAction: Optional[str] = None
+    conformAction: str | None = None
     """
     Action to take for requests that are under the configured rate limit threshold. Valid option is allow only.
     """
-    enforceOnKey: Optional[str] = None
+    enforceOnKey: str | None = None
     """
     Determines the key to enforce the rate_limit_threshold on. If not specified, defaults to ALL.
     """
-    enforceOnKeyConfigs: Optional[List[EnforceOnKeyConfig]] = None
+    enforceOnKeyConfigs: list[EnforceOnKeyConfig] | None = None
     """
     If specified, any combination of values of enforce_on_key_type/enforce_on_key_name is treated as the key on which rate limit threshold/action is enforced. You can specify up to 3 enforce_on_key_configs. If enforce_on_key_configs is specified, enforce_on_key must be set to an empty string. Structure is documented below.
     """
-    enforceOnKeyName: Optional[str] = None
+    enforceOnKeyName: str | None = None
     """
     Rate limit key name applicable only for the following key types:
     """
-    exceedAction: Optional[str] = None
+    exceedAction: str | None = None
     """
     When a request is denied, returns the HTTP response code specified.
     Valid options are deny() where valid values for status are 403, 404, 429, and 502.
     """
-    exceedRedirectOptions: Optional[List[ExceedRedirectOption]] = None
+    exceedRedirectOptions: list[ExceedRedirectOption] | None = None
     """
     Parameters defining the redirect action that is used as the exceed action. Cannot be specified if the exceed action is not redirect. Structure is documented below.
     """
-    rateLimitThreshold: Optional[List[RateLimitThresholdItem]] = None
+    rateLimitThreshold: list[RateLimitThresholdItem] | None = None
     """
     Threshold at which to begin ratelimiting. Structure is documented below.
     """
 
 
 class RedirectOption(BaseModel):
-    target: Optional[str] = None
+    target: str | None = None
     """
     External redirection target when EXTERNAL_302 is set in type.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy. This field can be set only at resource creation time.
     """
 
 
 class RuleItem(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     Action to take when match matches the request. Valid values:
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this rule. Max size is 64.
     """
-    headerAction: Optional[List[HeaderActionItem]] = None
+    headerAction: list[HeaderActionItem] | None = None
     """
     Additional actions that are performed on headers. Structure is documented below.
     """
-    match: Optional[List[MatchItem]] = None
+    match: list[MatchItem] | None = None
     """
     A match condition that incoming traffic is evaluated against.
     If it evaluates to true, the corresponding action is enforced. Structure is documented below.
     """
-    preconfiguredWafConfig: Optional[List[PreconfiguredWafConfigItem]] = None
+    preconfiguredWafConfig: list[PreconfiguredWafConfigItem] | None = None
     """
     Preconfigured WAF configuration to be applied for the rule. If the rule does not evaluate preconfigured WAF rules, i.e., if evaluatePreconfiguredWaf() is not used, this field will have no effect. Structure is documented below.
     """
-    preview: Optional[bool] = None
+    preview: bool | None = None
     """
     When set to true, the action specified above is not enforced.
     Stackdriver logs for requests that trigger a preview action are annotated as such.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     An unique positive integer indicating the priority of evaluation for a rule.
     Rules are evaluated from highest priority (lowest numerically) to lowest priority (highest numerically) in order.
     """
-    rateLimitOptions: Optional[List[RateLimitOption]] = None
+    rateLimitOptions: list[RateLimitOption] | None = None
     """
     Must be specified if the action is rate_based_ban or throttle. Cannot be specified for other actions. Structure is documented below.
     """
-    redirectOptions: Optional[List[RedirectOption]] = None
+    redirectOptions: list[RedirectOption] | None = None
     """
     Can be specified if the action is redirect. Cannot be specified for other actions. Structure is documented below.
     """
 
 
 class ForProvider(BaseModel):
-    adaptiveProtectionConfig: Optional[List[AdaptiveProtectionConfigItem]] = None
+    adaptiveProtectionConfig: list[AdaptiveProtectionConfigItem] | None = None
     """
     Configuration for Google Cloud Armor Adaptive Protection. Structure is documented below.
     """
-    advancedOptionsConfig: Optional[List[AdvancedOptionsConfigItem]] = None
+    advancedOptionsConfig: list[AdvancedOptionsConfigItem] | None = None
     """
     Advanced Configuration Options.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this security policy. Max size is 2048.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    recaptchaOptionsConfig: Optional[List[RecaptchaOptionsConfigItem]] = None
+    recaptchaOptionsConfig: list[RecaptchaOptionsConfigItem] | None = None
     """
     reCAPTCHA Configuration Options. Structure is documented below.
     """
-    rule: Optional[List[RuleItem]] = None
+    rule: list[RuleItem] | None = None
     """
     The set of rules that belong to this policy. There must always be a default
     rule (rule with priority 2147483647 and match "*"). If no rules are provided when creating a
     security policy, a default rule with action "allow" will be added. Structure is documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy. This field can be set only at resource creation time.
     """
 
 
 class InitProvider(BaseModel):
-    adaptiveProtectionConfig: Optional[List[AdaptiveProtectionConfigItem]] = None
+    adaptiveProtectionConfig: list[AdaptiveProtectionConfigItem] | None = None
     """
     Configuration for Google Cloud Armor Adaptive Protection. Structure is documented below.
     """
-    advancedOptionsConfig: Optional[List[AdvancedOptionsConfigItem]] = None
+    advancedOptionsConfig: list[AdvancedOptionsConfigItem] | None = None
     """
     Advanced Configuration Options.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this security policy. Max size is 2048.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    recaptchaOptionsConfig: Optional[List[RecaptchaOptionsConfigItem]] = None
+    recaptchaOptionsConfig: list[RecaptchaOptionsConfigItem] | None = None
     """
     reCAPTCHA Configuration Options. Structure is documented below.
     """
-    rule: Optional[List[RuleItem]] = None
+    rule: list[RuleItem] | None = None
     """
     The set of rules that belong to this policy. There must always be a default
     rule (rule with priority 2147483647 and match "*"). If no rules are provided when creating a
     security policy, a default rule with action "allow" will be added. Structure is documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy. This field can be set only at resource creation time.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -513,7 +512,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -531,7 +530,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -542,7 +541,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -555,9 +554,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -570,15 +570,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -588,64 +588,64 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    adaptiveProtectionConfig: Optional[List[AdaptiveProtectionConfigItem]] = None
+    adaptiveProtectionConfig: list[AdaptiveProtectionConfigItem] | None = None
     """
     Configuration for Google Cloud Armor Adaptive Protection. Structure is documented below.
     """
-    advancedOptionsConfig: Optional[List[AdvancedOptionsConfigItem]] = None
+    advancedOptionsConfig: list[AdvancedOptionsConfigItem] | None = None
     """
     Advanced Configuration Options.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this security policy. Max size is 2048.
     """
-    fingerprint: Optional[str] = None
+    fingerprint: str | None = None
     """
     Fingerprint of this resource.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/securityPolicies/{{name}}
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    recaptchaOptionsConfig: Optional[List[RecaptchaOptionsConfigItem]] = None
+    recaptchaOptionsConfig: list[RecaptchaOptionsConfigItem] | None = None
     """
     reCAPTCHA Configuration Options. Structure is documented below.
     """
-    rule: Optional[List[RuleItem]] = None
+    rule: list[RuleItem] | None = None
     """
     The set of rules that belong to this policy. There must always be a default
     rule (rule with priority 2147483647 and match "*"). If no rules are provided when creating a
     security policy, a default rule with action "allow" will be added. Structure is documented below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy. This field can be set only at resource creation time.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -667,12 +667,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -681,17 +681,17 @@ class Status(BaseModel):
 
 
 class SecurityPolicy(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['SecurityPolicy']] = 'SecurityPolicy'
+    kind: Literal['SecurityPolicy'] | None = 'SecurityPolicy'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -699,26 +699,26 @@ class SecurityPolicy(BaseModel):
     """
     SecurityPolicySpec defines the desired state of SecurityPolicy
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     SecurityPolicyStatus defines the observed state of SecurityPolicy.
     """
 
 
 class SecurityPolicyList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[SecurityPolicy]
+    items: list[SecurityPolicy]
     """
     List of securitypolicies. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

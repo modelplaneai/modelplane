@@ -3,20 +3,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ConnectionDetail(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     API version of the referent.
     """
-    fieldPath: Optional[str] = None
+    fieldPath: str | None = None
     """
     If referring to a piece of an object instead of an entire object, this string
     should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
@@ -26,32 +25,32 @@ class ConnectionDetail(BaseModel):
     index 2 in this pod). This syntax is chosen only to have some well-defined way of
     referencing a part of an object.
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind of the referent.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the referent.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referent.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
     """
-    resourceVersion: Optional[str] = None
+    resourceVersion: str | None = None
     """
     Specific resourceVersion to which this reference is made, if any.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
     """
-    skipPartOfReleaseCheck: Optional[bool] = None
+    skipPartOfReleaseCheck: bool | None = None
     """
     SkipPartOfReleaseCheck skips check for meta.helm.sh/release-name annotation.
     """
-    toConnectionSecretKey: Optional[str] = None
-    uid: Optional[str] = None
+    toConnectionSecretKey: str | None = None
+    uid: str | None = None
     """
     UID of the referent.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
@@ -70,61 +69,61 @@ class PullSecretRef(BaseModel):
 
 
 class Chart(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of Helm chart, required if ChartSpec.URL not set
     """
-    pullSecretRef: Optional[PullSecretRef] = None
+    pullSecretRef: PullSecretRef | None = None
     """
     PullSecretRef is reference to the secret containing credentials to helm repository.
     The secret must contain 'username' and 'password' keys. Optional - if not provided,
     the default credential chain is used (AWS IRSA, Azure/GCP Workload Identity, etc.).
     """
-    repository: Optional[str] = None
+    repository: str | None = None
     """
     Repository: Helm repository URL, required if ChartSpec.URL not set
     """
-    url: Optional[str] = None
+    url: str | None = None
     """
     URL to chart package (typically .tgz), optional and overrides others fields in the spec
     """
-    version: Optional[str] = None
+    version: str | None = None
     """
     Version of Helm chart, late initialized with latest version if not set
     """
 
 
 class ConfigMapKeyRef(BaseModel):
-    key: Optional[str] = None
+    key: str | None = None
     name: str
     namespace: str
-    optional: Optional[bool] = None
+    optional: bool | None = None
 
 
 class SecretKeyRef(BaseModel):
-    key: Optional[str] = None
+    key: str | None = None
     name: str
     namespace: str
-    optional: Optional[bool] = None
+    optional: bool | None = None
 
 
 class PatchesFromItem(BaseModel):
-    configMapKeyRef: Optional[ConfigMapKeyRef] = None
+    configMapKeyRef: ConfigMapKeyRef | None = None
     """
     DataKeySelector defines required spec to access a key of a configmap or secret
     """
-    secretKeyRef: Optional[SecretKeyRef] = None
+    secretKeyRef: SecretKeyRef | None = None
     """
     DataKeySelector defines required spec to access a key of a configmap or secret
     """
 
 
 class ValueFrom(BaseModel):
-    configMapKeyRef: Optional[ConfigMapKeyRef] = None
+    configMapKeyRef: ConfigMapKeyRef | None = None
     """
     DataKeySelector defines required spec to access a key of a configmap or secret
     """
-    secretKeyRef: Optional[SecretKeyRef] = None
+    secretKeyRef: SecretKeyRef | None = None
     """
     DataKeySelector defines required spec to access a key of a configmap or secret
     """
@@ -132,19 +131,19 @@ class ValueFrom(BaseModel):
 
 class SetItem(BaseModel):
     name: str
-    value: Optional[str] = None
-    valueFrom: Optional[ValueFrom] = None
+    value: str | None = None
+    valueFrom: ValueFrom | None = None
     """
     ValueFromSource represents source of a value
     """
 
 
 class ValuesFromItem(BaseModel):
-    configMapKeyRef: Optional[ConfigMapKeyRef] = None
+    configMapKeyRef: ConfigMapKeyRef | None = None
     """
     DataKeySelector defines required spec to access a key of a configmap or secret
     """
-    secretKeyRef: Optional[SecretKeyRef] = None
+    secretKeyRef: SecretKeyRef | None = None
     """
     DataKeySelector defines required spec to access a key of a configmap or secret
     """
@@ -155,7 +154,7 @@ class ForProvider(BaseModel):
     """
     A ChartSpec defines the chart spec for a Release
     """
-    insecureSkipTLSVerify: Optional[bool] = None
+    insecureSkipTLSVerify: bool | None = None
     """
     InsecureSkipTLSVerify skips tls certificate checks for the chart download
     """
@@ -163,30 +162,30 @@ class ForProvider(BaseModel):
     """
     Namespace to install the release into.
     """
-    patchesFrom: Optional[List[PatchesFromItem]] = None
+    patchesFrom: list[PatchesFromItem] | None = None
     """
     PatchesFrom describe patches to be applied to the rendered manifests.
     """
-    plainHTTP: Optional[bool] = None
+    plainHTTP: bool | None = None
     """
     PlainHTTP uses insecure HTTP connections for the chart download
     """
-    set: Optional[List[SetItem]] = None
-    skipCRDs: Optional[bool] = None
+    set: list[SetItem] | None = None
+    skipCRDs: bool | None = None
     """
     SkipCRDs skips installation of CRDs for the release.
     """
-    skipCreateNamespace: Optional[bool] = None
+    skipCreateNamespace: bool | None = None
     """
     SkipCreateNamespace won't create the namespace for the release. This requires the namespace to already exist.
     """
-    values: Optional[Dict[str, Any]] = None
-    valuesFrom: Optional[List[ValuesFromItem]] = None
-    wait: Optional[bool] = None
+    values: dict[str, Any] | None = None
+    valuesFrom: list[ValuesFromItem] | None = None
+    wait: bool | None = None
     """
     Wait for the release to become ready.
     """
-    waitTimeout: Optional[str] = None
+    waitTimeout: str | None = None
     """
     WaitTimeout is the duration Helm will wait for the release to become
     ready. Only applies if wait is also set. Defaults to 5m.
@@ -194,14 +193,14 @@ class ForProvider(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -215,7 +214,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -233,8 +232,8 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    connectionDetails: Optional[List[ConnectionDetail]] = None
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    connectionDetails: list[ConnectionDetail] | None = None
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -248,9 +247,10 @@ class Spec(BaseModel):
     """
     ReleaseParameters are the configurable fields of a Release.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -263,19 +263,19 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    rollbackLimit: Optional[int] = None
+    rollbackLimit: int | None = None
     """
     RollbackRetriesLimit is max number of attempts to retry Helm deployment by rolling back the release.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -285,26 +285,26 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    releaseDescription: Optional[str] = None
-    revision: Optional[int] = None
-    state: Optional[str] = None
+    releaseDescription: str | None = None
+    revision: int | None = None
+    state: str | None = None
     """
     Status is the status of a release
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -326,37 +326,37 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
+    atProvider: AtProvider | None = None
     """
     ReleaseObservation are the observable fields of a Release.
     """
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    failed: Optional[int] = None
-    observedGeneration: Optional[int] = None
+    failed: int | None = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
     it can not recover from without human intervention.
     """
-    patchesSha: Optional[str] = None
-    synced: Optional[bool] = None
+    patchesSha: str | None = None
+    synced: bool | None = None
 
 
 class Release(BaseModel):
-    apiVersion: Optional[Literal['helm.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['helm.crossplane.io/v1beta1'] | None = (
         'helm.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Release']] = 'Release'
+    kind: Literal['Release'] | None = 'Release'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -364,26 +364,26 @@ class Release(BaseModel):
     """
     A ReleaseSpec defines the desired state of a Release.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     A ReleaseStatus represents the observed state of a Release.
     """
 
 
 class ReleaseList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Release]
+    items: list[Release]
     """
     List of releases. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

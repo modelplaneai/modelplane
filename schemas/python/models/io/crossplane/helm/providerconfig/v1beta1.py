@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
@@ -41,17 +40,17 @@ class SecretRef(BaseModel):
 
 
 class Credentials(BaseModel):
-    env: Optional[Env] = None
+    env: Env | None = None
     """
     Env is a reference to an environment variable that contains credentials
     that must be used to connect to the provider.
     """
-    fs: Optional[Fs] = None
+    fs: Fs | None = None
     """
     Fs is a reference to a filesystem location that contains credentials that
     must be used to connect to the provider.
     """
-    secretRef: Optional[SecretRef] = None
+    secretRef: SecretRef | None = None
     """
     A SecretRef is a reference to a secret key that contains the credentials
     that must be used to connect to the provider.
@@ -63,17 +62,17 @@ class Credentials(BaseModel):
 
 
 class Identity(BaseModel):
-    env: Optional[Env] = None
+    env: Env | None = None
     """
     Env is a reference to an environment variable that contains credentials
     that must be used to connect to the provider.
     """
-    fs: Optional[Fs] = None
+    fs: Fs | None = None
     """
     Fs is a reference to a filesystem location that contains credentials that
     must be used to connect to the provider.
     """
-    secretRef: Optional[SecretRef] = None
+    secretRef: SecretRef | None = None
     """
     A SecretRef is a reference to a secret key that contains the credentials
     that must be used to connect to the provider.
@@ -100,7 +99,7 @@ class Spec(BaseModel):
     Credentials used to connect to the Kubernetes API. Typically a
     kubeconfig file. Use InjectedIdentity for in-cluster config.
     """
-    identity: Optional[Identity] = None
+    identity: Identity | None = None
     """
     Identity used to authenticate to the Kubernetes API. The identity
     credentials can be used to supplement kubeconfig 'credentials', for
@@ -109,17 +108,17 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -141,28 +140,28 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    users: Optional[int] = None
+    users: int | None = None
     """
     Users of this provider configuration.
     """
 
 
 class ProviderConfig(BaseModel):
-    apiVersion: Optional[Literal['helm.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['helm.crossplane.io/v1beta1'] | None = (
         'helm.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ProviderConfig']] = 'ProviderConfig'
+    kind: Literal['ProviderConfig'] | None = 'ProviderConfig'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -170,26 +169,26 @@ class ProviderConfig(BaseModel):
     """
     A ProviderConfigSpec defines the desired state of a ProviderConfig.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     A ProviderConfigStatus defines the status of a Provider.
     """
 
 
 class ProviderConfigList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ProviderConfig]
+    items: list[ProviderConfig]
     """
     List of providerconfigs. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, Base64Str, BaseModel, Field
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
@@ -33,11 +32,11 @@ class Service(BaseModel):
     namespace is the namespace of the service.
     Required
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     path is an optional URL path at which the webhook will be contacted.
     """
-    port: Optional[int] = None
+    port: int | None = None
     """
     port is an optional service port at which the webhook will be contacted.
     `port` should be a valid port number (1-65535, inclusive).
@@ -46,19 +45,19 @@ class Service(BaseModel):
 
 
 class ClientConfig(BaseModel):
-    caBundle: Optional[str] = None
+    caBundle: Base64Str | None = None
     """
     caBundle is a PEM encoded CA bundle which will be used to validate the webhook's server certificate.
     If unspecified, system trust roots on the apiserver are used.
     """
-    service: Optional[Service] = None
+    service: Service | None = None
     """
     service is a reference to the service for this webhook. Either
     service or url must be specified.
 
     If the webhook is running within the cluster, then you should use `service`.
     """
-    url: Optional[str] = None
+    url: str | None = None
     """
     url gives the location of the webhook, in standard URL form
     (`scheme://host:port/path`). Exactly one of `url` or `service`
@@ -89,11 +88,11 @@ class ClientConfig(BaseModel):
 
 
 class Webhook(BaseModel):
-    clientConfig: Optional[ClientConfig] = None
+    clientConfig: ClientConfig | None = None
     """
     clientConfig is the instructions for how to call the webhook if strategy is `Webhook`.
     """
-    conversionReviewVersions: List[str]
+    conversionReviewVersions: list[str]
     """
     conversionReviewVersions is an ordered list of preferred `ConversionReview`
     versions the Webhook expects. The API server will use the first version in
@@ -112,14 +111,14 @@ class Conversion(BaseModel):
     - `"Webhook"`: API Server will call to an external webhook to do the conversion. Additional information
       is needed for this option. This requires spec.preserveUnknownFields to be false, and spec.conversion.webhook to be set.
     """
-    webhook: Optional[Webhook] = None
+    webhook: Webhook | None = None
     """
     webhook describes how to call the conversion webhook. Required when `strategy` is set to `"Webhook"`.
     """
 
 
 class Names(BaseModel):
-    categories: Optional[List[str]] = None
+    categories: list[str] | None = None
     """
     categories is a list of grouped resources this custom resource belongs to (e.g. 'all').
     This is published in API discovery documents, and used by clients to support invocations like
@@ -130,7 +129,7 @@ class Names(BaseModel):
     kind is the serialized kind of the resource. It is normally CamelCase and singular.
     Custom resource instances will use this value as the `kind` attribute in API calls.
     """
-    listKind: Optional[str] = None
+    listKind: str | None = None
     """
     listKind is the serialized kind of the list for this resource. Defaults to "`kind`List".
     """
@@ -141,24 +140,24 @@ class Names(BaseModel):
     Must match the name of the CustomResourceDefinition (in the form `<names.plural>.<group>`).
     Must be all lowercase.
     """
-    shortNames: Optional[List[str]] = None
+    shortNames: list[str] | None = None
     """
     shortNames are short names for the resource, exposed in API discovery documents,
     and used by clients to support invocations like `kubectl get <shortname>`.
     It must be all lowercase.
     """
-    singular: Optional[str] = None
+    singular: str | None = None
     """
     singular is the singular name of the resource. It must be all lowercase. Defaults to lowercased `kind`.
     """
 
 
 class AdditionalPrinterColumn(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     description is a human readable description of this column.
     """
-    format: Optional[str] = None
+    format: str | None = None
     """
     format is an optional OpenAPI type definition for this column. The 'name' format is applied
     to the primary identifier column to assist in clients identifying column is the resource name.
@@ -173,7 +172,7 @@ class AdditionalPrinterColumn(BaseModel):
     """
     name is a human readable name for the column.
     """
-    priority: Optional[int] = None
+    priority: int | None = None
     """
     priority is an integer defining the relative importance of this column compared to others. Lower
     numbers are considered higher priority. Columns that may be omitted in limited space scenarios
@@ -187,7 +186,7 @@ class AdditionalPrinterColumn(BaseModel):
 
 
 class Schema(BaseModel):
-    openAPIV3Schema: Optional[Dict[str, Any]] = None
+    openAPIV3Schema: dict[str, Any] | None = None
     """
     OpenAPIV3Schema is the OpenAPI v3 schema to use for validation and
     pruning.
@@ -209,7 +208,7 @@ class SelectableField(BaseModel):
 
 
 class Scale(BaseModel):
-    labelSelectorPath: Optional[str] = None
+    labelSelectorPath: str | None = None
     """
     labelSelectorPath defines the JSON path inside of a custom resource that corresponds to Scale `status.selector`.
     Only JSON paths without the array notation are allowed.
@@ -239,11 +238,11 @@ class Scale(BaseModel):
 
 
 class Subresources(BaseModel):
-    scale: Optional[Scale] = None
+    scale: Scale | None = None
     """
     scale indicates the custom resource should serve a `/scale` subresource that returns an `autoscaling/v1` Scale object.
     """
-    status: Optional[Dict[str, Any]] = None
+    status: dict[str, Any] | None = None
     """
     status indicates the custom resource should serve a `/status` subresource.
     When enabled:
@@ -253,19 +252,19 @@ class Subresources(BaseModel):
 
 
 class Version(BaseModel):
-    additionalPrinterColumns: Optional[List[AdditionalPrinterColumn]] = None
+    additionalPrinterColumns: list[AdditionalPrinterColumn] | None = None
     """
     AdditionalPrinterColumns specifies additional columns returned in Table output.
     See https://kubernetes.io/docs/reference/using-api/api-concepts/#receiving-resources-as-tables for details.
     If no columns are specified, a single column displaying the age of the custom resource is used.
     """
-    deprecated: Optional[bool] = None
+    deprecated: bool | None = None
     """
     Deprecated indicates this version of the custom resource API is deprecated.
     When set to true, API requests to this version receive a warning header in the server response.
     Defaults to false.
     """
-    deprecationWarning: Optional[str] = None
+    deprecationWarning: str | None = None
     """
     DeprecationWarning overrides the default warning returned to API clients.
     May only be set when `deprecated` is true.
@@ -277,11 +276,11 @@ class Version(BaseModel):
     Name is the version name, e.g. “v1”, “v2beta1”, etc.
     The custom resources are served under this version at `/apis/<group>/<version>/...` if `served` is true.
     """
-    schema_: Optional[Schema] = Field(None, alias='schema')
+    schema_: Schema | None = Field(None, alias='schema')
     """
     Schema describes the schema used for validation, pruning, and defaulting of this version of the custom resource.
     """
-    selectableFields: Optional[List[SelectableField]] = None
+    selectableFields: list[SelectableField] | None = None
     """
     SelectableFields specifies paths to fields that may be used as field selectors.
     A maximum of 8 selectable fields are allowed.
@@ -296,18 +295,18 @@ class Version(BaseModel):
     Storage indicates this version should be used when persisting custom resources to storage.
     There must be exactly one version with storage=true.
     """
-    subresources: Optional[Subresources] = None
+    subresources: Subresources | None = None
     """
     Subresources specify what subresources this version of the defined custom resource have.
     """
 
 
 class Spec(BaseModel):
-    connectionDetails: Optional[List[ConnectionDetail]] = None
+    connectionDetails: list[ConnectionDetail] | None = None
     """
     ConnectionDetails is an array of connection detail keys and descriptions.
     """
-    conversion: Optional[Conversion] = None
+    conversion: Conversion | None = None
     """
     Conversion defines conversion settings for the CRD.
     """
@@ -321,7 +320,7 @@ class Spec(BaseModel):
     """
     Names specify the resource and kind names for the custom resource.
     """
-    preserveUnknownFields: Optional[bool] = None
+    preserveUnknownFields: bool | None = None
     """
     PreserveUnknownFields indicates that object fields which are not specified
     in the OpenAPI schema should be preserved when persisting to storage.
@@ -334,11 +333,11 @@ class Spec(BaseModel):
     Scope indicates whether the defined custom resource is cluster- or namespace-scoped.
     Allowed values are `Cluster` and `Namespaced`.
     """
-    state: Optional[Literal['Active', 'Inactive']] = 'Inactive'
+    state: Literal['Active', 'Inactive'] | None = 'Inactive'
     """
     State toggles whether the underlying CRD is created or not.
     """
-    versions: List[Version]
+    versions: list[Version]
     """
     Versions is the list of all API versions of the defined custom resource.
     Version names are used to compute the order in which served versions are listed in API discovery.
@@ -352,17 +351,17 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -384,51 +383,51 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
 
 
 class ManagedResourceDefinition(BaseModel):
-    apiVersion: Optional[Literal['apiextensions.crossplane.io/v1alpha1']] = (
+    apiVersion: Literal['apiextensions.crossplane.io/v1alpha1'] | None = (
         'apiextensions.crossplane.io/v1alpha1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ManagedResourceDefinition']] = 'ManagedResourceDefinition'
+    kind: Literal['ManagedResourceDefinition'] | None = 'ManagedResourceDefinition'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[Spec] = None
+    spec: Spec | None = None
     """
     ManagedResourceDefinitionSpec specifies the desired state of the resource definition.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ManagedResourceDefinitionStatus shows the observed state of the resource definition.
     """
 
 
 class ManagedResourceDefinitionList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ManagedResourceDefinition]
+    items: list[ManagedResourceDefinition]
     """
     List of managedresourcedefinitions. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

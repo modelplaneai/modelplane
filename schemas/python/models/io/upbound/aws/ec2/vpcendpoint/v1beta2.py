@@ -3,42 +3,41 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class DnsOptions(BaseModel):
-    dnsRecordIpType: Optional[str] = None
+    dnsRecordIpType: str | None = None
     """
     The DNS records created for the endpoint. Valid values are ipv4, dualstack, service-defined, and ipv6.
     """
-    privateDnsOnlyForInboundResolverEndpoint: Optional[bool] = None
+    privateDnsOnlyForInboundResolverEndpoint: bool | None = None
     """
     Boolean indicating whether to enable private DNS only for inbound endpoints. This option is available only for interface endpoints of services that support both gateway and interface endpoints. A gateway endpoint for the same service must be created before an interface endpoint is created. Traffic originating from the VPC is routed to the gateway endpoint, while traffic originating from on-premises is routed to the interface endpoint. Defaults to false. This argument can be specified only if private_dns_enabled is true.
     """
-    privateDnsPreference: Optional[str] = None
+    privateDnsPreference: str | None = None
     """
     Preference for which private domains have a private hosted zone created for and associated with the specified VPC. Valid values are ALL_DOMAINS, VERIFIED_DOMAINS_ONLY, VERIFIED_DOMAINS_AND_SPECIFIED_DOMAINS, and SPECIFIED_DOMAINS_ONLY. Only supported when private_dns_enabled is true and when the vpc_endpoint_type is ServiceNetwork or Resource.
     """
-    privateDnsSpecifiedDomains: Optional[List[str]] = None
+    privateDnsSpecifiedDomains: list[str] | None = None
     """
     List of private domains to create private hosted zones for and associate with the specified VPC. Must be specified when private_dns_enabled is true and private_dns_preference is set to either VERIFIED_DOMAINS_AND_SPECIFIED_DOMAINS or SPECIFIED_DOMAINS_ONLY. In all other cases, this argument must not be specified.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -52,23 +51,23 @@ class ResourceConfigurationArnRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ResourceConfigurationArnSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -79,23 +78,23 @@ class ServiceNameRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ServiceNameSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -106,23 +105,23 @@ class ServiceNetworkArnRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ServiceNetworkArnSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -133,46 +132,46 @@ class SubnetIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class SubnetConfigurationItem(BaseModel):
-    ipv4: Optional[str] = None
+    ipv4: str | None = None
     """
     The IPv4 address to assign to the endpoint network interface in the subnet. You must provide an IPv4 address if the VPC endpoint supports IPv4.
     """
-    ipv6: Optional[str] = None
+    ipv6: str | None = None
     """
     The IPv6 address to assign to the endpoint network interface in the subnet. You must provide an IPv6 address if the VPC endpoint supports IPv6.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The ID of the subnet. Must have a corresponding subnet in the subnet_ids argument.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
@@ -183,46 +182,46 @@ class VpcIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class VpcIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    autoAccept: Optional[bool] = None
+    autoAccept: bool | None = None
     """
     Accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
     """
-    dnsOptions: Optional[DnsOptions] = None
+    dnsOptions: DnsOptions | None = None
     """
     The DNS options for the endpoint. See dns_options below.
     """
-    ipAddressType: Optional[str] = None
+    ipAddressType: str | None = None
     """
     The IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
     """
-    policy: Optional[str] = None
+    policy: str | None = None
     """
     A policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
     """
-    privateDnsEnabled: Optional[bool] = None
+    privateDnsEnabled: bool | None = None
     """
     Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
     Defaults to false.
@@ -232,155 +231,155 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    resourceConfigurationArn: Optional[str] = None
+    resourceConfigurationArn: str | None = None
     """
     The ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    resourceConfigurationArnRef: Optional[ResourceConfigurationArnRef] = None
+    resourceConfigurationArnRef: ResourceConfigurationArnRef | None = None
     """
     Reference to a ResourceConfiguration in vpclattice to populate resourceConfigurationArn.
     """
-    resourceConfigurationArnSelector: Optional[ResourceConfigurationArnSelector] = None
+    resourceConfigurationArnSelector: ResourceConfigurationArnSelector | None = None
     """
     Selector for a ResourceConfiguration in vpclattice to populate resourceConfigurationArn.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    serviceNameRef: Optional[ServiceNameRef] = None
+    serviceNameRef: ServiceNameRef | None = None
     """
     Reference to a VPCEndpointService in ec2 to populate serviceName.
     """
-    serviceNameSelector: Optional[ServiceNameSelector] = None
+    serviceNameSelector: ServiceNameSelector | None = None
     """
     Selector for a VPCEndpointService in ec2 to populate serviceName.
     """
-    serviceNetworkArn: Optional[str] = None
+    serviceNetworkArn: str | None = None
     """
     The ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    serviceNetworkArnRef: Optional[ServiceNetworkArnRef] = None
+    serviceNetworkArnRef: ServiceNetworkArnRef | None = None
     """
     Reference to a ServiceNetwork in vpclattice to populate serviceNetworkArn.
     """
-    serviceNetworkArnSelector: Optional[ServiceNetworkArnSelector] = None
+    serviceNetworkArnSelector: ServiceNetworkArnSelector | None = None
     """
     Selector for a ServiceNetwork in vpclattice to populate serviceNetworkArn.
     """
-    serviceRegion: Optional[str] = None
+    serviceRegion: str | None = None
     """
     - The AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
     """
-    subnetConfiguration: Optional[List[SubnetConfigurationItem]] = None
+    subnetConfiguration: list[SubnetConfigurationItem] | None = None
     """
     Subnet configuration for the endpoint, used to select specific IPv4 and/or IPv6 addresses to the endpoint. See subnet_configuration below.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcEndpointType: Optional[str] = None
+    vpcEndpointType: str | None = None
     """
     The VPC endpoint type, Gateway, GatewayLoadBalancer,Interface, Resource or ServiceNetwork. Defaults to Gateway.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     The ID of the VPC in which the endpoint will be used.
     """
-    vpcIdRef: Optional[VpcIdRef] = None
+    vpcIdRef: VpcIdRef | None = None
     """
     Reference to a VPC in ec2 to populate vpcId.
     """
-    vpcIdSelector: Optional[VpcIdSelector] = None
+    vpcIdSelector: VpcIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate vpcId.
     """
 
 
 class InitProvider(BaseModel):
-    autoAccept: Optional[bool] = None
+    autoAccept: bool | None = None
     """
     Accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
     """
-    dnsOptions: Optional[DnsOptions] = None
+    dnsOptions: DnsOptions | None = None
     """
     The DNS options for the endpoint. See dns_options below.
     """
-    ipAddressType: Optional[str] = None
+    ipAddressType: str | None = None
     """
     The IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
     """
-    policy: Optional[str] = None
+    policy: str | None = None
     """
     A policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
     """
-    privateDnsEnabled: Optional[bool] = None
+    privateDnsEnabled: bool | None = None
     """
     Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
     Defaults to false.
     """
-    resourceConfigurationArn: Optional[str] = None
+    resourceConfigurationArn: str | None = None
     """
     The ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    resourceConfigurationArnRef: Optional[ResourceConfigurationArnRef] = None
+    resourceConfigurationArnRef: ResourceConfigurationArnRef | None = None
     """
     Reference to a ResourceConfiguration in vpclattice to populate resourceConfigurationArn.
     """
-    resourceConfigurationArnSelector: Optional[ResourceConfigurationArnSelector] = None
+    resourceConfigurationArnSelector: ResourceConfigurationArnSelector | None = None
     """
     Selector for a ResourceConfiguration in vpclattice to populate resourceConfigurationArn.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    serviceNameRef: Optional[ServiceNameRef] = None
+    serviceNameRef: ServiceNameRef | None = None
     """
     Reference to a VPCEndpointService in ec2 to populate serviceName.
     """
-    serviceNameSelector: Optional[ServiceNameSelector] = None
+    serviceNameSelector: ServiceNameSelector | None = None
     """
     Selector for a VPCEndpointService in ec2 to populate serviceName.
     """
-    serviceNetworkArn: Optional[str] = None
+    serviceNetworkArn: str | None = None
     """
     The ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    serviceNetworkArnRef: Optional[ServiceNetworkArnRef] = None
+    serviceNetworkArnRef: ServiceNetworkArnRef | None = None
     """
     Reference to a ServiceNetwork in vpclattice to populate serviceNetworkArn.
     """
-    serviceNetworkArnSelector: Optional[ServiceNetworkArnSelector] = None
+    serviceNetworkArnSelector: ServiceNetworkArnSelector | None = None
     """
     Selector for a ServiceNetwork in vpclattice to populate serviceNetworkArn.
     """
-    serviceRegion: Optional[str] = None
+    serviceRegion: str | None = None
     """
     - The AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
     """
-    subnetConfiguration: Optional[List[SubnetConfigurationItem]] = None
+    subnetConfiguration: list[SubnetConfigurationItem] | None = None
     """
     Subnet configuration for the endpoint, used to select specific IPv4 and/or IPv6 addresses to the endpoint. See subnet_configuration below.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcEndpointType: Optional[str] = None
+    vpcEndpointType: str | None = None
     """
     The VPC endpoint type, Gateway, GatewayLoadBalancer,Interface, Resource or ServiceNetwork. Defaults to Gateway.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     The ID of the VPC in which the endpoint will be used.
     """
-    vpcIdRef: Optional[VpcIdRef] = None
+    vpcIdRef: VpcIdRef | None = None
     """
     Reference to a VPC in ec2 to populate vpcId.
     """
-    vpcIdSelector: Optional[VpcIdSelector] = None
+    vpcIdSelector: VpcIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate vpcId.
     """
@@ -391,7 +390,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -409,7 +408,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -420,7 +419,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -433,9 +432,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -448,15 +448,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -466,157 +466,157 @@ class Spec(BaseModel):
 
 
 class DnsEntryItem(BaseModel):
-    dnsName: Optional[str] = None
+    dnsName: str | None = None
     """
     The DNS name.
     """
-    hostedZoneId: Optional[str] = None
+    hostedZoneId: str | None = None
     """
     The ID of the private hosted zone.
     """
 
 
 class SubnetConfigurationItemModel(BaseModel):
-    ipv4: Optional[str] = None
+    ipv4: str | None = None
     """
     The IPv4 address to assign to the endpoint network interface in the subnet. You must provide an IPv4 address if the VPC endpoint supports IPv4.
     """
-    ipv6: Optional[str] = None
+    ipv6: str | None = None
     """
     The IPv6 address to assign to the endpoint network interface in the subnet. You must provide an IPv6 address if the VPC endpoint supports IPv6.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The ID of the subnet. Must have a corresponding subnet in the subnet_ids argument.
     """
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     The Amazon Resource Name (ARN) of the VPC endpoint.
     """
-    autoAccept: Optional[bool] = None
+    autoAccept: bool | None = None
     """
     Accept the VPC endpoint (the VPC endpoint and service need to be in the same AWS account).
     """
-    cidrBlocks: Optional[List[str]] = None
+    cidrBlocks: list[str] | None = None
     """
     The list of CIDR blocks for the exposed AWS service. Applicable for endpoints of type Gateway.
     """
-    dnsEntry: Optional[List[DnsEntryItem]] = None
+    dnsEntry: list[DnsEntryItem] | None = None
     """
     The DNS entries for the VPC Endpoint. Applicable for endpoints of type Interface. DNS blocks are documented below.
     """
-    dnsOptions: Optional[DnsOptions] = None
+    dnsOptions: DnsOptions | None = None
     """
     The DNS options for the endpoint. See dns_options below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the VPC endpoint.
     """
-    ipAddressType: Optional[str] = None
+    ipAddressType: str | None = None
     """
     The IP address type for the endpoint. Valid values are ipv4, dualstack, and ipv6.
     """
-    networkInterfaceIds: Optional[List[str]] = None
+    networkInterfaceIds: list[str] | None = None
     """
     One or more network interfaces for the VPC Endpoint. Applicable for endpoints of type Interface.
     """
-    ownerId: Optional[str] = None
+    ownerId: str | None = None
     """
     The ID of the AWS account that owns the VPC endpoint.
     """
-    policy: Optional[str] = None
+    policy: str | None = None
     """
     A policy to attach to the endpoint that controls access to the service. This is a JSON formatted string. Defaults to full access. All Gateway and some Interface endpoints support policies - see the relevant AWS documentation for more details.
     """
-    prefixListId: Optional[str] = None
+    prefixListId: str | None = None
     """
     The prefix list ID of the exposed AWS service. Applicable for endpoints of type Gateway.
     """
-    privateDnsEnabled: Optional[bool] = None
+    privateDnsEnabled: bool | None = None
     """
     Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
     Defaults to false.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    requesterManaged: Optional[bool] = None
+    requesterManaged: bool | None = None
     """
     Whether or not the VPC Endpoint is being managed by its service - true or false.
     """
-    resourceConfigurationArn: Optional[str] = None
+    resourceConfigurationArn: str | None = None
     """
     The ARN of a Resource Configuration to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    routeTableIds: Optional[List[str]] = None
+    routeTableIds: list[str] | None = None
     """
     One or more route table IDs. Applicable for endpoints of type Gateway.
     """
-    securityGroupIds: Optional[List[str]] = None
+    securityGroupIds: list[str] | None = None
     """
     The ID of one or more security groups to associate with the network interface. Applicable for endpoints of type Interface.
     If no security groups are specified, the VPC's default security group is associated with the endpoint.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The service name. For AWS services the service name is usually in the form com.amazonaws.<region>.<service> (the SageMaker AI Notebook service is an exception to this rule, the service name is in the form aws.sagemaker.<region>.notebook). Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    serviceNetworkArn: Optional[str] = None
+    serviceNetworkArn: str | None = None
     """
     The ARN of a Service Network to connect this VPC Endpoint to. Exactly one of resource_configuration_arn, service_name or service_network_arn is required.
     """
-    serviceRegion: Optional[str] = None
+    serviceRegion: str | None = None
     """
     - The AWS region of the VPC Endpoint Service. If specified, the VPC endpoint will connect to the service in the provided region. Applicable for endpoints of type Interface.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
     The state of the VPC endpoint.
     """
-    subnetConfiguration: Optional[List[SubnetConfigurationItemModel]] = None
+    subnetConfiguration: list[SubnetConfigurationItemModel] | None = None
     """
     Subnet configuration for the endpoint, used to select specific IPv4 and/or IPv6 addresses to the endpoint. See subnet_configuration below.
     """
-    subnetIds: Optional[List[str]] = None
+    subnetIds: list[str] | None = None
     """
     The ID of one or more subnets in which to create a network interface for the endpoint. Applicable for endpoints of type GatewayLoadBalancer and Interface. Interface type endpoints cannot function without being assigned to a subnet.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    vpcEndpointType: Optional[str] = None
+    vpcEndpointType: str | None = None
     """
     The VPC endpoint type, Gateway, GatewayLoadBalancer,Interface, Resource or ServiceNetwork. Defaults to Gateway.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     The ID of the VPC in which the endpoint will be used.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -638,12 +638,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -652,17 +652,17 @@ class Status(BaseModel):
 
 
 class VPCEndpoint(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta2']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta2'] | None = (
         'ec2.aws.upbound.io/v1beta2'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['VPCEndpoint']] = 'VPCEndpoint'
+    kind: Literal['VPCEndpoint'] | None = 'VPCEndpoint'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -670,26 +670,26 @@ class VPCEndpoint(BaseModel):
     """
     VPCEndpointSpec defines the desired state of VPCEndpoint
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     VPCEndpointStatus defines the observed state of VPCEndpoint.
     """
 
 
 class VPCEndpointList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[VPCEndpoint]
+    items: list[VPCEndpoint]
     """
     List of vpcendpoints. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

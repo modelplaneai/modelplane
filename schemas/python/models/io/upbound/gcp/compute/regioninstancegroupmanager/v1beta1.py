@@ -3,34 +3,33 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class AllInstancesConfigItem(BaseModel):
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     , The label key-value pairs that you want to patch onto the instance.
     """
-    metadata: Optional[Dict[str, str]] = None
+    metadata: dict[str, str] | None = None
     """
     , The metadata key-value pairs that you want to patch onto the instance. For more information, see Project and instance metadata.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -44,42 +43,42 @@ class HealthCheckRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class HealthCheckSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class AutoHealingPolicy(BaseModel):
-    healthCheck: Optional[str] = None
+    healthCheck: str | None = None
     """
     The health check resource that signals autohealing.
     """
-    healthCheckRef: Optional[HealthCheckRef] = None
+    healthCheckRef: HealthCheckRef | None = None
     """
     Reference to a HealthCheck in compute to populate healthCheck.
     """
-    healthCheckSelector: Optional[HealthCheckSelector] = None
+    healthCheckSelector: HealthCheckSelector | None = None
     """
     Selector for a HealthCheck in compute to populate healthCheck.
     """
-    initialDelaySec: Optional[float] = None
+    initialDelaySec: float | None = None
     """
     The number of seconds that the managed instance group waits before
     it applies autohealing policies to new instances or recently recreated instances. Between 0 and 3600.
@@ -87,77 +86,88 @@ class AutoHealingPolicy(BaseModel):
 
 
 class InstanceSelection(BaseModel):
-    machineTypes: Optional[List[str]] = None
+    machineTypes: list[str] | None = None
     """
     , A list of full machine-type names, e.g. "n1-standard-16".
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     , Name of the instance selection, e.g. instance_selection_with_n1_machines_types. Instance selection names must be unique within the flexibility policy.
     """
-    rank: Optional[float] = None
+    rank: float | None = None
     """
     , Preference of this instance selection. Lower number means higher preference. Managed instance group will first try to create a VM based on the machine-type with lowest rank and fallback to next rank based on availability. Machine types and instance selections with the same rank have the same preference.
     """
 
 
 class InstanceFlexibilityPolicyItem(BaseModel):
-    instanceSelections: Optional[List[InstanceSelection]] = None
+    instanceSelections: list[InstanceSelection] | None = None
     """
     , Named instance selections configuring properties that the group will use when creating new VMs. One can specify multiple instance selection to allow managed instance group to create VMs from multiple types of machines, based on preference and availability. Structure is documented below.
     """
 
 
 class InstanceLifecyclePolicyItem(BaseModel):
-    defaultActionOnFailure: Optional[str] = None
+    defaultActionOnFailure: str | None = None
     """
     , Default behavior for all instance or health check failures. Valid options are: REPAIR, DO_NOTHING. If DO_NOTHING then instances will not be repaired. If REPAIR (default), then failed instances will be repaired.
     """
-    forceUpdateOnRepair: Optional[str] = None
+    forceUpdateOnRepair: str | None = None
     """
     ), Specifies whether to apply the group's latest configuration when repairing a VM. Valid options are: YES, NO. If YES and you updated the group's instance template or per-instance configurations after the VM was created, then these changes are applied when VM is repaired. If NO (default), then updates are applied in accordance with the group's update policy type.
     """
 
 
 class NamedPortItem(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the port.
     """
-    port: Optional[float] = None
+    port: float | None = None
     """
     The port number.
     """
 
 
+class StandbyPolicyItem(BaseModel):
+    initialDelaySec: float | None = None
+    """
+    - Specifies the number of seconds that the MIG should wait to suspend or stop a VM after that VM was created. The initial delay gives the initialization script the time to prepare your VM for a quick scale out. The value of initial delay must be between 0 and 3600 seconds. The default value is 0.
+    """
+    mode: str | None = None
+    """
+    - Defines how a MIG resumes or starts VMs from a standby pool when the group scales out. Valid options are: MANUAL, SCALE_OUT_POOL. If MANUAL(default), you have full control over which VMs are stopped and suspended in the MIG. If SCALE_OUT_POOL, the MIG uses the VMs from the standby pools to accelerate the scale out by resuming or starting them and then automatically replenishes the standby pool with new VMs to maintain the target sizes.
+    """
+
+
 class StatefulDiskItem(BaseModel):
-    deleteRule: Optional[str] = None
+    deleteRule: str | None = None
     """
     , A value that prescribes what should happen to the stateful disk when the VM instance is deleted. The available options are NEVER and ON_PERMANENT_INSTANCE_DELETION. NEVER - detach the disk when the VM is deleted, but do not delete the disk. ON_PERMANENT_INSTANCE_DELETION will delete the stateful disk when the VM is permanently deleted from the instance group. The default is NEVER.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     , The device name of the disk to be attached.
     """
 
 
 class StatefulExternalIpItem(BaseModel):
-    deleteRule: Optional[str] = None
+    deleteRule: str | None = None
     """
     , A value that prescribes what should happen to the external ip when the VM instance is deleted. The available options are NEVER and ON_PERMANENT_INSTANCE_DELETION. NEVER - detach the ip when the VM is deleted, but do not delete the ip. ON_PERMANENT_INSTANCE_DELETION will delete the external ip when the VM is permanently deleted from the instance group.
     """
-    interfaceName: Optional[str] = None
+    interfaceName: str | None = None
     """
     , The network interface name of the external Ip. Possible value: nic0.
     """
 
 
 class StatefulInternalIpItem(BaseModel):
-    deleteRule: Optional[str] = None
+    deleteRule: str | None = None
     """
     , A value that prescribes what should happen to the internal ip when the VM instance is deleted. The available options are NEVER and ON_PERMANENT_INSTANCE_DELETION. NEVER - detach the ip when the VM is deleted, but do not delete the ip. ON_PERMANENT_INSTANCE_DELETION will delete the internal ip when the VM is permanently deleted from the instance group.
     """
-    interfaceName: Optional[str] = None
+    interfaceName: str | None = None
     """
     , The network interface name of the internal Ip. Possible value: nic0.
     """
@@ -168,62 +178,62 @@ class TargetPoolsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class TargetPoolsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class UpdatePolicyItem(BaseModel):
-    instanceRedistributionType: Optional[str] = None
+    instanceRedistributionType: str | None = None
     """
     - The instance redistribution policy for regional managed instance groups. Valid values are: "PROACTIVE", "NONE". If PROACTIVE (default), the group attempts to maintain an even distribution of VM instances across zones in the region. If NONE, proactive redistribution is disabled.
     """
-    maxSurgeFixed: Optional[float] = None
+    maxSurgeFixed: float | None = None
     """
     , The maximum number of instances that can be created above the specified targetSize during the update process. Conflicts with max_surge_percent. It has to be either 0 or at least equal to the number of zones.  If fixed values are used, at least one of max_unavailable_fixed or max_surge_fixed must be greater than 0.
     """
-    maxSurgePercent: Optional[float] = None
+    maxSurgePercent: float | None = None
     """
     , The maximum number of instances(calculated as percentage) that can be created above the specified targetSize during the update process. Conflicts with max_surge_fixed. Percent value is only allowed for regional managed instance groups with size at least 10.
     """
-    maxUnavailableFixed: Optional[float] = None
+    maxUnavailableFixed: float | None = None
     """
     , The maximum number of instances that can be unavailable during the update process. Conflicts with max_unavailable_percent. It has to be either 0 or at least equal to the number of zones. If fixed values are used, at least one of max_unavailable_fixed or max_surge_fixed must be greater than 0.
     """
-    maxUnavailablePercent: Optional[float] = None
+    maxUnavailablePercent: float | None = None
     """
     , The maximum number of instances(calculated as percentage) that can be unavailable during the update process. Conflicts with max_unavailable_fixed. Percent value is only allowed for regional managed instance groups with size at least 10.
     """
-    minimalAction: Optional[str] = None
+    minimalAction: str | None = None
     """
     - Minimal action to be taken on an instance. You can specify either REFRESH to update without stopping instances, RESTART to restart existing instances or REPLACE to delete and create new instances from the target template. If you specify a REFRESH, the Updater will attempt to perform that action only. However, if the Updater determines that the minimal action you specify is not enough to perform the update, it might perform a more disruptive action.
     """
-    mostDisruptiveAllowedAction: Optional[str] = None
+    mostDisruptiveAllowedAction: str | None = None
     """
     - Most disruptive action that is allowed to be taken on an instance. You can specify either NONE to forbid any actions, REFRESH to allow actions that do not need instance restart, RESTART to allow actions that can be applied without instance replacing or REPLACE to allow all possible actions. If the Updater determines that the minimal update action needed is more disruptive than most disruptive allowed action you specify it will not perform the update at all.
     """
-    replacementMethod: Optional[str] = None
+    replacementMethod: str | None = None
     """
     , The instance replacement method for managed instance groups. Valid values are: "RECREATE", "SUBSTITUTE". If SUBSTITUTE (default), the group replaces VM instances with new instances that have randomly generated names. If RECREATE, instance names are preserved.  You must also set max_unavailable_fixed or max_unavailable_percent to be greater than 0.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     - The type of update process. You can specify either PROACTIVE so that the instance group manager proactively executes actions in order to bring instances to their target versions or OPPORTUNISTIC so that no action is proactively executed but the update will be performed as part of other actions (for example, resizes or recreateInstances calls).
     """
@@ -234,34 +244,34 @@ class InstanceTemplateRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class InstanceTemplateSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class TargetSizeItem(BaseModel):
-    fixed: Optional[float] = None
+    fixed: float | None = None
     """
     , The number of instances which are managed for this version. Conflicts with percent.
     """
-    percent: Optional[float] = None
+    percent: float | None = None
     """
     , The number of instances (calculated as percentage) which are managed for this version. Conflicts with fixed.
     Note that when using percent, rounding will be in favor of explicitly set target_size values; a managed instance group with 2 instances and 2 versions,
@@ -270,41 +280,41 @@ class TargetSizeItem(BaseModel):
 
 
 class VersionItem(BaseModel):
-    instanceTemplate: Optional[str] = None
+    instanceTemplate: str | None = None
     """
     - The full URL to an instance template from which all new instances of this version will be created.
     """
-    instanceTemplateRef: Optional[InstanceTemplateRef] = None
+    instanceTemplateRef: InstanceTemplateRef | None = None
     """
     Reference to a InstanceTemplate in compute to populate instanceTemplate.
     """
-    instanceTemplateSelector: Optional[InstanceTemplateSelector] = None
+    instanceTemplateSelector: InstanceTemplateSelector | None = None
     """
     Selector for a InstanceTemplate in compute to populate instanceTemplate.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     - Version name.
     """
-    targetSize: Optional[List[TargetSizeItem]] = None
+    targetSize: list[TargetSizeItem] | None = None
     """
     - The number of instances calculated as a fixed number or a percentage depending on the settings. Structure is documented below.
     """
 
 
 class ForProvider(BaseModel):
-    allInstancesConfig: Optional[List[AllInstancesConfigItem]] = None
+    allInstancesConfig: list[AllInstancesConfigItem] | None = None
     """
     Properties to set on all instances in the group. After setting
     allInstancesConfig on the group, you must update the group's instances to
     apply the configuration.
     """
-    autoHealingPolicies: Optional[List[AutoHealingPolicy]] = None
+    autoHealingPolicies: list[AutoHealingPolicy] | None = None
     """
     The autohealing policies for this managed instance
     group. You can specify only one value. Structure is documented below. For more information, see the official documentation.
     """
-    baseInstanceName: Optional[str] = None
+    baseInstanceName: str | None = None
     """
     The base instance name to use for
     instances in this group. The value must be a valid
@@ -313,26 +323,26 @@ class ForProvider(BaseModel):
     appending a hyphen and a random four-character string to the base instance
     name.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the instance
     group manager.
     """
-    distributionPolicyTargetShape: Optional[str] = None
+    distributionPolicyTargetShape: str | None = None
     """
     The shape to which the group converges either proactively or on resize events (depending on the value set in update_policy.0.instance_redistribution_type). For more information see the official documentation.
     """
-    distributionPolicyZones: Optional[List[str]] = None
+    distributionPolicyZones: list[str] | None = None
     """
     The distribution policy for this managed instance
     group. You can specify one or more values. For more information, see the official documentation.
     """
-    instanceFlexibilityPolicy: Optional[List[InstanceFlexibilityPolicyItem]] = None
+    instanceFlexibilityPolicy: list[InstanceFlexibilityPolicyItem] | None = None
     """
     The flexibility policy for managed instance group. Instance flexibility allows managed instance group to create VMs from multiple types of machines. Instance flexibility configuration on managed instance group overrides instance template configuration. Structure is documented below.
     """
-    instanceLifecyclePolicy: Optional[List[InstanceLifecyclePolicyItem]] = None
-    listManagedInstancesResults: Optional[str] = None
+    instanceLifecyclePolicy: list[InstanceLifecyclePolicyItem] | None = None
+    listManagedInstancesResults: str | None = None
     """
     Pagination behavior of the listManagedInstances API
     method for this managed instance group. Valid values are: PAGELESS, PAGINATED.
@@ -341,84 +351,88 @@ class ForProvider(BaseModel):
     response. If PAGINATED, pagination is enabled, maxResults and pageToken query parameters are
     respected.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the instance group manager. Must be 1-63
     characters long and comply with
     RFC1035. Supported characters
     include lowercase letters, numbers, and hyphens.
     """
-    namedPort: Optional[List[NamedPortItem]] = None
+    namedPort: list[NamedPortItem] | None = None
     """
     The named port configuration. See the section below
     for details on configuration.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     The region where the managed instance group resides. If not provided, the provider region is used.
     """
-    statefulDisk: Optional[List[StatefulDiskItem]] = None
+    standbyPolicy: list[StandbyPolicyItem] | None = None
+    """
+    The standby policy for stopped and suspended instances. Structure is documented below. For more information, see the official documentation.
+    """
+    statefulDisk: list[StatefulDiskItem] | None = None
     """
     Disks created on the instances that will be preserved on instance delete, update, etc. Structure is documented below. For more information see the official documentation. Proactive cross zone instance redistribution must be disabled before you can update stateful disks on existing instance group managers. This can be controlled via the update_policy.
     """
-    statefulExternalIp: Optional[List[StatefulExternalIpItem]] = None
+    statefulExternalIp: list[StatefulExternalIpItem] | None = None
     """
     External network IPs assigned to the instances that will be preserved on instance delete, update, etc. This map is keyed with the network interface name. Structure is documented below.
     """
-    statefulInternalIp: Optional[List[StatefulInternalIpItem]] = None
+    statefulInternalIp: list[StatefulInternalIpItem] | None = None
     """
     Internal network IPs assigned to the instances that will be preserved on instance delete, update, etc. This map is keyed with the network interface name. Structure is documented below.
     """
-    targetPools: Optional[List[str]] = None
+    targetPools: list[str] | None = None
     """
     The full URL of all target pools to which new
     instances in the group are added. Updating the target pools attribute does
     not affect existing instances.
     """
-    targetPoolsRefs: Optional[List[TargetPoolsRef]] = None
+    targetPoolsRefs: list[TargetPoolsRef] | None = None
     """
     References to TargetPool in compute to populate targetPools.
     """
-    targetPoolsSelector: Optional[TargetPoolsSelector] = None
+    targetPoolsSelector: TargetPoolsSelector | None = None
     """
     Selector for a list of TargetPool in compute to populate targetPools.
     """
-    targetSize: Optional[float] = None
+    targetSize: float | None = None
     """
     The target number of running instances for this managed
     instance group. This value will fight with autoscaler settings when set, and generally shouldn't be set
     when using one. If a value is required, such as to specify a creation-time target size for the MIG,
     lifecycle. Defaults to 0.
     """
-    targetStoppedSize: Optional[float] = None
+    targetStoppedSize: float | None = None
     """
     The target number of stopped instances for this managed instance group.
     """
-    targetSuspendedSize: Optional[float] = None
+    targetSuspendedSize: float | None = None
     """
     The target number of suspended instances for this managed instance group.
     """
-    updatePolicy: Optional[List[UpdatePolicyItem]] = None
+    updatePolicy: list[UpdatePolicyItem] | None = None
     """
     The update policy for this managed instance group. Structure is documented below. For more information, see the official documentation and API
     """
-    version: Optional[List[VersionItem]] = None
+    version: list[VersionItem] | None = None
     """
     Application versions managed by this instance group. Each
     version deals with a specific instance template, allowing canary release scenarios.
     Structure is documented below.
     """
-    waitForInstances: Optional[bool] = None
+    waitForInstances: bool | None = None
     """
     Whether to wait for all instances to be created/updated before
     returning.
     """
-    waitForInstancesStatus: Optional[str] = None
+    waitForInstancesStatus: str | None = None
     """
     When used with wait_for_instances it specifies the status to wait for.
     When STABLE is specified this resource will wait until the instances are stable before returning. When UPDATED is
@@ -427,30 +441,19 @@ class ForProvider(BaseModel):
     """
 
 
-class StandbyPolicyItem(BaseModel):
-    initialDelaySec: Optional[float] = None
-    """
-    - Specifies the number of seconds that the MIG should wait to suspend or stop a VM after that VM was created. The initial delay gives the initialization script the time to prepare your VM for a quick scale out. The value of initial delay must be between 0 and 3600 seconds. The default value is 0.
-    """
-    mode: Optional[str] = None
-    """
-    - Defines how a MIG resumes or starts VMs from a standby pool when the group scales out. Valid options are: MANUAL, SCALE_OUT_POOL. If MANUAL(default), you have full control over which VMs are stopped and suspended in the MIG. If SCALE_OUT_POOL, the MIG uses the VMs from the standby pools to accelerate the scale out by resuming or starting them and then automatically replenishes the standby pool with new VMs to maintain the target sizes.
-    """
-
-
 class InitProvider(BaseModel):
-    allInstancesConfig: Optional[List[AllInstancesConfigItem]] = None
+    allInstancesConfig: list[AllInstancesConfigItem] | None = None
     """
     Properties to set on all instances in the group. After setting
     allInstancesConfig on the group, you must update the group's instances to
     apply the configuration.
     """
-    autoHealingPolicies: Optional[List[AutoHealingPolicy]] = None
+    autoHealingPolicies: list[AutoHealingPolicy] | None = None
     """
     The autohealing policies for this managed instance
     group. You can specify only one value. Structure is documented below. For more information, see the official documentation.
     """
-    baseInstanceName: Optional[str] = None
+    baseInstanceName: str | None = None
     """
     The base instance name to use for
     instances in this group. The value must be a valid
@@ -459,26 +462,26 @@ class InitProvider(BaseModel):
     appending a hyphen and a random four-character string to the base instance
     name.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the instance
     group manager.
     """
-    distributionPolicyTargetShape: Optional[str] = None
+    distributionPolicyTargetShape: str | None = None
     """
     The shape to which the group converges either proactively or on resize events (depending on the value set in update_policy.0.instance_redistribution_type). For more information see the official documentation.
     """
-    distributionPolicyZones: Optional[List[str]] = None
+    distributionPolicyZones: list[str] | None = None
     """
     The distribution policy for this managed instance
     group. You can specify one or more values. For more information, see the official documentation.
     """
-    instanceFlexibilityPolicy: Optional[List[InstanceFlexibilityPolicyItem]] = None
+    instanceFlexibilityPolicy: list[InstanceFlexibilityPolicyItem] | None = None
     """
     The flexibility policy for managed instance group. Instance flexibility allows managed instance group to create VMs from multiple types of machines. Instance flexibility configuration on managed instance group overrides instance template configuration. Structure is documented below.
     """
-    instanceLifecyclePolicy: Optional[List[InstanceLifecyclePolicyItem]] = None
-    listManagedInstancesResults: Optional[str] = None
+    instanceLifecyclePolicy: list[InstanceLifecyclePolicyItem] | None = None
+    listManagedInstancesResults: str | None = None
     """
     Pagination behavior of the listManagedInstances API
     method for this managed instance group. Valid values are: PAGELESS, PAGINATED.
@@ -487,88 +490,88 @@ class InitProvider(BaseModel):
     response. If PAGINATED, pagination is enabled, maxResults and pageToken query parameters are
     respected.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the instance group manager. Must be 1-63
     characters long and comply with
     RFC1035. Supported characters
     include lowercase letters, numbers, and hyphens.
     """
-    namedPort: Optional[List[NamedPortItem]] = None
+    namedPort: list[NamedPortItem] | None = None
     """
     The named port configuration. See the section below
     for details on configuration.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     The region where the managed instance group resides. If not provided, the provider region is used.
     """
-    standbyPolicy: Optional[List[StandbyPolicyItem]] = None
+    standbyPolicy: list[StandbyPolicyItem] | None = None
     """
     The standby policy for stopped and suspended instances. Structure is documented below. For more information, see the official documentation.
     """
-    statefulDisk: Optional[List[StatefulDiskItem]] = None
+    statefulDisk: list[StatefulDiskItem] | None = None
     """
     Disks created on the instances that will be preserved on instance delete, update, etc. Structure is documented below. For more information see the official documentation. Proactive cross zone instance redistribution must be disabled before you can update stateful disks on existing instance group managers. This can be controlled via the update_policy.
     """
-    statefulExternalIp: Optional[List[StatefulExternalIpItem]] = None
+    statefulExternalIp: list[StatefulExternalIpItem] | None = None
     """
     External network IPs assigned to the instances that will be preserved on instance delete, update, etc. This map is keyed with the network interface name. Structure is documented below.
     """
-    statefulInternalIp: Optional[List[StatefulInternalIpItem]] = None
+    statefulInternalIp: list[StatefulInternalIpItem] | None = None
     """
     Internal network IPs assigned to the instances that will be preserved on instance delete, update, etc. This map is keyed with the network interface name. Structure is documented below.
     """
-    targetPools: Optional[List[str]] = None
+    targetPools: list[str] | None = None
     """
     The full URL of all target pools to which new
     instances in the group are added. Updating the target pools attribute does
     not affect existing instances.
     """
-    targetPoolsRefs: Optional[List[TargetPoolsRef]] = None
+    targetPoolsRefs: list[TargetPoolsRef] | None = None
     """
     References to TargetPool in compute to populate targetPools.
     """
-    targetPoolsSelector: Optional[TargetPoolsSelector] = None
+    targetPoolsSelector: TargetPoolsSelector | None = None
     """
     Selector for a list of TargetPool in compute to populate targetPools.
     """
-    targetSize: Optional[float] = None
+    targetSize: float | None = None
     """
     The target number of running instances for this managed
     instance group. This value will fight with autoscaler settings when set, and generally shouldn't be set
     when using one. If a value is required, such as to specify a creation-time target size for the MIG,
     lifecycle. Defaults to 0.
     """
-    targetStoppedSize: Optional[float] = None
+    targetStoppedSize: float | None = None
     """
     The target number of stopped instances for this managed instance group.
     """
-    targetSuspendedSize: Optional[float] = None
+    targetSuspendedSize: float | None = None
     """
     The target number of suspended instances for this managed instance group.
     """
-    updatePolicy: Optional[List[UpdatePolicyItem]] = None
+    updatePolicy: list[UpdatePolicyItem] | None = None
     """
     The update policy for this managed instance group. Structure is documented below. For more information, see the official documentation and API
     """
-    version: Optional[List[VersionItem]] = None
+    version: list[VersionItem] | None = None
     """
     Application versions managed by this instance group. Each
     version deals with a specific instance template, allowing canary release scenarios.
     Structure is documented below.
     """
-    waitForInstances: Optional[bool] = None
+    waitForInstances: bool | None = None
     """
     Whether to wait for all instances to be created/updated before
     returning.
     """
-    waitForInstancesStatus: Optional[str] = None
+    waitForInstancesStatus: str | None = None
     """
     When used with wait_for_instances it specifies the status to wait for.
     When STABLE is specified this resource will wait until the instances are stable before returning. When UPDATED is
@@ -582,7 +585,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -600,7 +603,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -611,7 +614,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -624,9 +627,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -639,15 +643,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -657,11 +661,11 @@ class Spec(BaseModel):
 
 
 class AutoHealingPolicyModel(BaseModel):
-    healthCheck: Optional[str] = None
+    healthCheck: str | None = None
     """
     The health check resource that signals autohealing.
     """
-    initialDelaySec: Optional[float] = None
+    initialDelaySec: float | None = None
     """
     The number of seconds that the managed instance group waits before
     it applies autohealing policies to new instances or recently recreated instances. Between 0 and 3600.
@@ -669,84 +673,84 @@ class AutoHealingPolicyModel(BaseModel):
 
 
 class AllInstancesConfigItemModel(BaseModel):
-    currentRevision: Optional[str] = None
+    currentRevision: str | None = None
     """
     Current all-instances configuration revision. This value is in RFC3339 text format.
     """
-    effective: Optional[bool] = None
+    effective: bool | None = None
 
 
 class PerInstanceConfig(BaseModel):
-    allEffective: Optional[bool] = None
+    allEffective: bool | None = None
     """
     A bit indicating if all of the group's per-instance configs (listed in the output of a listPerInstanceConfigs API call) have status EFFECTIVE or there are no per-instance-configs.
     """
 
 
 class StatefulItem(BaseModel):
-    hasStatefulConfig: Optional[bool] = None
+    hasStatefulConfig: bool | None = None
     """
     A bit indicating whether the managed instance group has stateful configuration, that is, if you have configured any items in a stateful policy or in per-instance configs. The group might report that it has no stateful config even when there is still some preserved state on a managed instance, for example, if you have deleted all PICs but not yet applied those deletions.
     """
-    perInstanceConfigs: Optional[List[PerInstanceConfig]] = None
+    perInstanceConfigs: list[PerInstanceConfig] | None = None
     """
     Status of per-instance configs on the instance.
     """
 
 
 class VersionTargetItem(BaseModel):
-    isReached: Optional[bool] = None
+    isReached: bool | None = None
 
 
 class StatusItem(BaseModel):
-    allInstancesConfig: Optional[List[AllInstancesConfigItemModel]] = None
+    allInstancesConfig: list[AllInstancesConfigItemModel] | None = None
     """
     Properties to set on all instances in the group. After setting
     allInstancesConfig on the group, you must update the group's instances to
     apply the configuration.
     """
-    isStable: Optional[bool] = None
+    isStable: bool | None = None
     """
     A bit indicating whether the managed instance group is in a stable state. A stable state means that: none of the instances in the managed instance group is currently undergoing any type of change (for example, creation, restart, or deletion); no future changes are scheduled for instances in the managed instance group; and the managed instance group itself is not being modified.
     """
-    stateful: Optional[List[StatefulItem]] = None
+    stateful: list[StatefulItem] | None = None
     """
     Stateful status of the given Instance Group Manager.
     """
-    versionTarget: Optional[List[VersionTargetItem]] = None
+    versionTarget: list[VersionTargetItem] | None = None
     """
     A status of consistency of Instances' versions with their target version specified by version field on Instance Group Manager.
     """
 
 
 class VersionItemModel(BaseModel):
-    instanceTemplate: Optional[str] = None
+    instanceTemplate: str | None = None
     """
     - The full URL to an instance template from which all new instances of this version will be created.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     - Version name.
     """
-    targetSize: Optional[List[TargetSizeItem]] = None
+    targetSize: list[TargetSizeItem] | None = None
     """
     - The number of instances calculated as a fixed number or a percentage depending on the settings. Structure is documented below.
     """
 
 
 class AtProvider(BaseModel):
-    allInstancesConfig: Optional[List[AllInstancesConfigItem]] = None
+    allInstancesConfig: list[AllInstancesConfigItem] | None = None
     """
     Properties to set on all instances in the group. After setting
     allInstancesConfig on the group, you must update the group's instances to
     apply the configuration.
     """
-    autoHealingPolicies: Optional[List[AutoHealingPolicyModel]] = None
+    autoHealingPolicies: list[AutoHealingPolicyModel] | None = None
     """
     The autohealing policies for this managed instance
     group. You can specify only one value. Structure is documented below. For more information, see the official documentation.
     """
-    baseInstanceName: Optional[str] = None
+    baseInstanceName: str | None = None
     """
     The base instance name to use for
     instances in this group. The value must be a valid
@@ -755,43 +759,43 @@ class AtProvider(BaseModel):
     appending a hyphen and a random four-character string to the base instance
     name.
     """
-    creationTimestamp: Optional[str] = None
-    description: Optional[str] = None
+    creationTimestamp: str | None = None
+    description: str | None = None
     """
     An optional textual description of the instance
     group manager.
     """
-    distributionPolicyTargetShape: Optional[str] = None
+    distributionPolicyTargetShape: str | None = None
     """
     The shape to which the group converges either proactively or on resize events (depending on the value set in update_policy.0.instance_redistribution_type). For more information see the official documentation.
     """
-    distributionPolicyZones: Optional[List[str]] = None
+    distributionPolicyZones: list[str] | None = None
     """
     The distribution policy for this managed instance
     group. You can specify one or more values. For more information, see the official documentation.
     """
-    fingerprint: Optional[str] = None
+    fingerprint: str | None = None
     """
     The fingerprint of the instance group manager.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/instanceGroupManagers/{{name}}
     """
-    instanceFlexibilityPolicy: Optional[List[InstanceFlexibilityPolicyItem]] = None
+    instanceFlexibilityPolicy: list[InstanceFlexibilityPolicyItem] | None = None
     """
     The flexibility policy for managed instance group. Instance flexibility allows managed instance group to create VMs from multiple types of machines. Instance flexibility configuration on managed instance group overrides instance template configuration. Structure is documented below.
     """
-    instanceGroup: Optional[str] = None
+    instanceGroup: str | None = None
     """
     The full URL of the instance group created by the manager.
     """
-    instanceGroupManagerId: Optional[float] = None
+    instanceGroupManagerId: float | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/instanceGroupManagers/{{name}}
     """
-    instanceLifecyclePolicy: Optional[List[InstanceLifecyclePolicyItem]] = None
-    listManagedInstancesResults: Optional[str] = None
+    instanceLifecyclePolicy: list[InstanceLifecyclePolicyItem] | None = None
+    listManagedInstancesResults: str | None = None
     """
     Pagination behavior of the listManagedInstances API
     method for this managed instance group. Valid values are: PAGELESS, PAGINATED.
@@ -800,85 +804,85 @@ class AtProvider(BaseModel):
     response. If PAGINATED, pagination is enabled, maxResults and pageToken query parameters are
     respected.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the instance group manager. Must be 1-63
     characters long and comply with
     RFC1035. Supported characters
     include lowercase letters, numbers, and hyphens.
     """
-    namedPort: Optional[List[NamedPortItem]] = None
+    namedPort: list[NamedPortItem] | None = None
     """
     The named port configuration. See the section below
     for details on configuration.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     The region where the managed instance group resides. If not provided, the provider region is used.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URL of the created resource.
     """
-    standbyPolicy: Optional[List[StandbyPolicyItem]] = None
+    standbyPolicy: list[StandbyPolicyItem] | None = None
     """
     The standby policy for stopped and suspended instances. Structure is documented below. For more information, see the official documentation.
     """
-    statefulDisk: Optional[List[StatefulDiskItem]] = None
+    statefulDisk: list[StatefulDiskItem] | None = None
     """
     Disks created on the instances that will be preserved on instance delete, update, etc. Structure is documented below. For more information see the official documentation. Proactive cross zone instance redistribution must be disabled before you can update stateful disks on existing instance group managers. This can be controlled via the update_policy.
     """
-    statefulExternalIp: Optional[List[StatefulExternalIpItem]] = None
+    statefulExternalIp: list[StatefulExternalIpItem] | None = None
     """
     External network IPs assigned to the instances that will be preserved on instance delete, update, etc. This map is keyed with the network interface name. Structure is documented below.
     """
-    statefulInternalIp: Optional[List[StatefulInternalIpItem]] = None
+    statefulInternalIp: list[StatefulInternalIpItem] | None = None
     """
     Internal network IPs assigned to the instances that will be preserved on instance delete, update, etc. This map is keyed with the network interface name. Structure is documented below.
     """
-    status: Optional[List[StatusItem]] = None
-    targetPools: Optional[List[str]] = None
+    status: list[StatusItem] | None = None
+    targetPools: list[str] | None = None
     """
     The full URL of all target pools to which new
     instances in the group are added. Updating the target pools attribute does
     not affect existing instances.
     """
-    targetSize: Optional[float] = None
+    targetSize: float | None = None
     """
     The target number of running instances for this managed
     instance group. This value will fight with autoscaler settings when set, and generally shouldn't be set
     when using one. If a value is required, such as to specify a creation-time target size for the MIG,
     lifecycle. Defaults to 0.
     """
-    targetStoppedSize: Optional[float] = None
+    targetStoppedSize: float | None = None
     """
     The target number of stopped instances for this managed instance group.
     """
-    targetSuspendedSize: Optional[float] = None
+    targetSuspendedSize: float | None = None
     """
     The target number of suspended instances for this managed instance group.
     """
-    updatePolicy: Optional[List[UpdatePolicyItem]] = None
+    updatePolicy: list[UpdatePolicyItem] | None = None
     """
     The update policy for this managed instance group. Structure is documented below. For more information, see the official documentation and API
     """
-    version: Optional[List[VersionItemModel]] = None
+    version: list[VersionItemModel] | None = None
     """
     Application versions managed by this instance group. Each
     version deals with a specific instance template, allowing canary release scenarios.
     Structure is documented below.
     """
-    waitForInstances: Optional[bool] = None
+    waitForInstances: bool | None = None
     """
     Whether to wait for all instances to be created/updated before
     returning.
     """
-    waitForInstancesStatus: Optional[str] = None
+    waitForInstancesStatus: str | None = None
     """
     When used with wait_for_instances it specifies the status to wait for.
     When STABLE is specified this resource will wait until the instances are stable before returning. When UPDATED is
@@ -888,17 +892,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -920,12 +924,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -934,17 +938,17 @@ class Status(BaseModel):
 
 
 class RegionInstanceGroupManager(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['RegionInstanceGroupManager']] = 'RegionInstanceGroupManager'
+    kind: Literal['RegionInstanceGroupManager'] | None = 'RegionInstanceGroupManager'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -952,26 +956,26 @@ class RegionInstanceGroupManager(BaseModel):
     """
     RegionInstanceGroupManagerSpec defines the desired state of RegionInstanceGroupManager
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     RegionInstanceGroupManagerStatus defines the observed state of RegionInstanceGroupManager.
     """
 
 
 class RegionInstanceGroupManagerList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[RegionInstanceGroupManager]
+    items: list[RegionInstanceGroupManager]
     """
     List of regioninstancegroupmanagers. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

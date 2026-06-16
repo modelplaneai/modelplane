@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class ClusterNameRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ClusterNameSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,42 +67,42 @@ class PodExecutionRoleArnRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class PodExecutionRoleArnSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class SelectorItem(BaseModel):
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Key-value map of Kubernetes labels for selection.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Kubernetes namespace for selection.
     """
@@ -114,58 +113,58 @@ class SubnetIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    clusterName: Optional[str] = None
+    clusterName: str | None = None
     """
     Name of the EKS Cluster.
     """
-    clusterNameRef: Optional[ClusterNameRef] = None
+    clusterNameRef: ClusterNameRef | None = None
     """
     Reference to a Cluster in eks to populate clusterName.
     """
-    clusterNameSelector: Optional[ClusterNameSelector] = None
+    clusterNameSelector: ClusterNameSelector | None = None
     """
     Selector for a Cluster in eks to populate clusterName.
     """
-    podExecutionRoleArn: Optional[str] = None
+    podExecutionRoleArn: str | None = None
     """
     Amazon Resource Name (ARN) of the IAM Role that provides permissions for the EKS Fargate Profile.
     """
-    podExecutionRoleArnRef: Optional[PodExecutionRoleArnRef] = None
+    podExecutionRoleArnRef: PodExecutionRoleArnRef | None = None
     """
     Reference to a Role in iam to populate podExecutionRoleArn.
     """
-    podExecutionRoleArnSelector: Optional[PodExecutionRoleArnSelector] = None
+    podExecutionRoleArnSelector: PodExecutionRoleArnSelector | None = None
     """
     Selector for a Role in iam to populate podExecutionRoleArn.
     """
@@ -174,70 +173,70 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    selector: Optional[List[SelectorItem]] = None
+    selector: list[SelectorItem] | None = None
     """
     Configuration block(s) for selecting Kubernetes Pods to execute with this EKS Fargate Profile. Detailed below.
     """
-    subnetIdRefs: Optional[List[SubnetIdRef]] = None
+    subnetIdRefs: list[SubnetIdRef] | None = None
     """
     References to Subnet in ec2 to populate subnetIds.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a list of Subnet in ec2 to populate subnetIds.
     """
-    subnetIds: Optional[List[str]] = None
+    subnetIds: list[str] | None = None
     """
     Identifiers of private EC2 Subnets to associate with the EKS Fargate Profile. These subnets must have the following resource tag: kubernetes.io/cluster/CLUSTER_NAME (where CLUSTER_NAME is replaced with the name of the EKS Cluster).
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    clusterName: Optional[str] = None
+    clusterName: str | None = None
     """
     Name of the EKS Cluster.
     """
-    clusterNameRef: Optional[ClusterNameRef] = None
+    clusterNameRef: ClusterNameRef | None = None
     """
     Reference to a Cluster in eks to populate clusterName.
     """
-    clusterNameSelector: Optional[ClusterNameSelector] = None
+    clusterNameSelector: ClusterNameSelector | None = None
     """
     Selector for a Cluster in eks to populate clusterName.
     """
-    podExecutionRoleArn: Optional[str] = None
+    podExecutionRoleArn: str | None = None
     """
     Amazon Resource Name (ARN) of the IAM Role that provides permissions for the EKS Fargate Profile.
     """
-    podExecutionRoleArnRef: Optional[PodExecutionRoleArnRef] = None
+    podExecutionRoleArnRef: PodExecutionRoleArnRef | None = None
     """
     Reference to a Role in iam to populate podExecutionRoleArn.
     """
-    podExecutionRoleArnSelector: Optional[PodExecutionRoleArnSelector] = None
+    podExecutionRoleArnSelector: PodExecutionRoleArnSelector | None = None
     """
     Selector for a Role in iam to populate podExecutionRoleArn.
     """
-    selector: Optional[List[SelectorItem]] = None
+    selector: list[SelectorItem] | None = None
     """
     Configuration block(s) for selecting Kubernetes Pods to execute with this EKS Fargate Profile. Detailed below.
     """
-    subnetIdRefs: Optional[List[SubnetIdRef]] = None
+    subnetIdRefs: list[SubnetIdRef] | None = None
     """
     References to Subnet in ec2 to populate subnetIds.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a list of Subnet in ec2 to populate subnetIds.
     """
-    subnetIds: Optional[List[str]] = None
+    subnetIds: list[str] | None = None
     """
     Identifiers of private EC2 Subnets to associate with the EKS Fargate Profile. These subnets must have the following resource tag: kubernetes.io/cluster/CLUSTER_NAME (where CLUSTER_NAME is replaced with the name of the EKS Cluster).
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -263,7 +262,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -276,9 +275,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -287,17 +287,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -307,61 +305,61 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     Amazon Resource Name (ARN) of the EKS Fargate Profile.
     """
-    clusterName: Optional[str] = None
+    clusterName: str | None = None
     """
     Name of the EKS Cluster.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     EKS Cluster name and EKS Fargate Profile name separated by a colon (:).
     """
-    podExecutionRoleArn: Optional[str] = None
+    podExecutionRoleArn: str | None = None
     """
     Amazon Resource Name (ARN) of the IAM Role that provides permissions for the EKS Fargate Profile.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    selector: Optional[List[SelectorItem]] = None
+    selector: list[SelectorItem] | None = None
     """
     Configuration block(s) for selecting Kubernetes Pods to execute with this EKS Fargate Profile. Detailed below.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     Status of the EKS Fargate Profile.
     """
-    subnetIds: Optional[List[str]] = None
+    subnetIds: list[str] | None = None
     """
     Identifiers of private EC2 Subnets to associate with the EKS Fargate Profile. These subnets must have the following resource tag: kubernetes.io/cluster/CLUSTER_NAME (where CLUSTER_NAME is replaced with the name of the EKS Cluster).
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -383,12 +381,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -397,17 +395,17 @@ class Status(BaseModel):
 
 
 class FargateProfile(BaseModel):
-    apiVersion: Optional[Literal['eks.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['eks.aws.m.upbound.io/v1beta1'] | None = (
         'eks.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['FargateProfile']] = 'FargateProfile'
+    kind: Literal['FargateProfile'] | None = 'FargateProfile'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -415,26 +413,26 @@ class FargateProfile(BaseModel):
     """
     FargateProfileSpec defines the desired state of FargateProfile
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     FargateProfileStatus defines the observed state of FargateProfile.
     """
 
 
 class FargateProfileList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[FargateProfile]
+    items: list[FargateProfile]
     """
     List of fargateprofiles. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

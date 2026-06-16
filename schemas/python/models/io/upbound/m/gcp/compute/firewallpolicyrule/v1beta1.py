@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class FirewallPolicyRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class FirewallPolicySelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,43 +67,43 @@ class DestAddressGroupsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class DestAddressGroupsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class Layer4Config(BaseModel):
-    ipProtocol: Optional[str] = None
+    ipProtocol: str | None = None
     """
     The IP protocol to which this rule applies. The protocol type is required when creating a firewall rule.
     This value can either be one of the following well known protocol strings (tcp, udp, icmp, esp, ah, ipip, sctp), or the IP protocol number.
     """
-    ports: Optional[List[str]] = None
+    ports: list[str] | None = None
     """
     An optional list of ports to which this rule applies. This field is only applicable for UDP or TCP protocol. Each entry must be either an integer or a range. If not specified, this rule applies to connections through any port.
     """
@@ -115,201 +114,201 @@ class NameRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NameSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class SrcSecureTag(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the secure tag, created with TagManager's TagValue API.
     """
-    nameRef: Optional[NameRef] = None
+    nameRef: NameRef | None = None
     """
     Reference to a TagValue in tags to populate name.
     """
-    nameSelector: Optional[NameSelector] = None
+    nameSelector: NameSelector | None = None
     """
     Selector for a TagValue in tags to populate name.
     """
 
 
 class Match(BaseModel):
-    destAddressGroups: Optional[List[str]] = None
+    destAddressGroups: list[str] | None = None
     """
     Address groups which should be matched against the traffic destination. Maximum number of destination address groups is 10.
     """
-    destAddressGroupsRefs: Optional[List[DestAddressGroupsRef]] = None
+    destAddressGroupsRefs: list[DestAddressGroupsRef] | None = None
     """
     References to AddressGroup in networksecurity to populate destAddressGroups.
     """
-    destAddressGroupsSelector: Optional[DestAddressGroupsSelector] = None
+    destAddressGroupsSelector: DestAddressGroupsSelector | None = None
     """
     Selector for a list of AddressGroup in networksecurity to populate destAddressGroups.
     """
-    destFqdns: Optional[List[str]] = None
+    destFqdns: list[str] | None = None
     """
     Fully Qualified Domain Name (FQDN) which should be matched against traffic destination. Maximum number of destination fqdn allowed is 100.
     """
-    destIpRanges: Optional[List[str]] = None
+    destIpRanges: list[str] | None = None
     """
     CIDR IP address range. Maximum number of destination CIDR IP ranges allowed is 5000.
     """
-    destRegionCodes: Optional[List[str]] = None
+    destRegionCodes: list[str] | None = None
     """
     Region codes whose IP addresses will be used to match for destination of traffic. Should be specified as 2 letter country code defined as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of dest region codes allowed is 5000.
     """
-    destThreatIntelligences: Optional[List[str]] = None
+    destThreatIntelligences: list[str] | None = None
     """
     Names of Network Threat Intelligence lists. The IPs in these lists will be matched against traffic destination.
     """
-    layer4Configs: Optional[List[Layer4Config]] = None
+    layer4Configs: list[Layer4Config] | None = None
     """
     Pairs of IP protocols and ports that the rule should match.
     Structure is documented below.
     """
-    srcAddressGroups: Optional[List[str]] = None
+    srcAddressGroups: list[str] | None = None
     """
     Address groups which should be matched against the traffic source. Maximum number of source address groups is 10.
     """
-    srcFqdns: Optional[List[str]] = None
+    srcFqdns: list[str] | None = None
     """
     Fully Qualified Domain Name (FQDN) which should be matched against traffic source. Maximum number of source fqdn allowed is 100.
     """
-    srcIpRanges: Optional[List[str]] = None
+    srcIpRanges: list[str] | None = None
     """
     CIDR IP address range. Maximum number of source CIDR IP ranges allowed is 5000.
     """
-    srcRegionCodes: Optional[List[str]] = None
+    srcRegionCodes: list[str] | None = None
     """
     Region codes whose IP addresses will be used to match for source of traffic. Should be specified as 2 letter country code defined as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of source region codes allowed is 5000.
     """
-    srcSecureTags: Optional[List[SrcSecureTag]] = None
+    srcSecureTags: list[SrcSecureTag] | None = None
     """
     List of secure tag values, which should be matched at the source of the traffic. For INGRESS rule, if all the srcSecureTag are INEFFECTIVE, and there is no srcIpRange, this rule will be ignored. Maximum number of source tag values allowed is 256.
     Structure is documented below.
     """
-    srcThreatIntelligences: Optional[List[str]] = None
+    srcThreatIntelligences: list[str] | None = None
     """
     Names of Network Threat Intelligence lists. The IPs in these lists will be matched against traffic source.
     """
 
 
 class TargetSecureTag(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the secure tag, created with TagManager's TagValue API.
     """
-    nameRef: Optional[NameRef] = None
+    nameRef: NameRef | None = None
     """
     Reference to a TagValue in tags to populate name.
     """
-    nameSelector: Optional[NameSelector] = None
+    nameSelector: NameSelector | None = None
     """
     Selector for a TagValue in tags to populate name.
     """
 
 
 class ForProvider(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     The Action to perform when the client connection triggers the rule. Valid actions are "allow", "deny", "goto_next" and "apply_security_profile_group".
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description for this resource.
     """
-    direction: Optional[str] = None
+    direction: str | None = None
     """
     The direction in which this rule applies.
     Possible values are: INGRESS, EGRESS.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     Denotes whether the firewall policy rule is disabled.
     When set to true, the firewall policy rule is not enforced and traffic behaves as if it did not exist.
     If this is unspecified, the firewall policy rule will be enabled.
     """
-    enableLogging: Optional[bool] = None
+    enableLogging: bool | None = None
     """
     Denotes whether to enable logging for a particular rule.
     If logging is enabled, logs will be exported to the configured export destination in Stackdriver.
     Logs may be exported to BigQuery or Pub/Sub.
     Note: you cannot enable logging on "goto_next" rules.
     """
-    firewallPolicy: Optional[str] = None
+    firewallPolicy: str | None = None
     """
     The firewall policy of the resource.
     """
-    firewallPolicyRef: Optional[FirewallPolicyRef] = None
+    firewallPolicyRef: FirewallPolicyRef | None = None
     """
     Reference to a FirewallPolicy in compute to populate firewallPolicy.
     """
-    firewallPolicySelector: Optional[FirewallPolicySelector] = None
+    firewallPolicySelector: FirewallPolicySelector | None = None
     """
     Selector for a FirewallPolicy in compute to populate firewallPolicy.
     """
-    match: Optional[Match] = None
+    match: Match | None = None
     """
     A match condition that incoming traffic is evaluated against. If it evaluates to true, the corresponding 'action' is enforced.
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     An integer indicating the priority of a rule in the list.
     The priority must be a positive value between 0 and 2147483647.
     Rules are evaluated from highest to lowest priority where 0 is the highest priority and 2147483647 is the lowest prority.
     """
-    securityProfileGroup: Optional[str] = None
+    securityProfileGroup: str | None = None
     """
     A fully-qualified URL of a SecurityProfile resource instance.
     Example: https://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group
     Must be specified if action = 'apply_security_profile_group' and cannot be specified for other actions.
     """
-    targetResources: Optional[List[str]] = None
+    targetResources: list[str] | None = None
     """
     A list of network resource URLs to which this rule applies.
     This field allows you to control which network's VMs get this rule.
     If this field is left blank, all VMs within the organization will receive the rule.
     """
-    targetSecureTags: Optional[List[TargetSecureTag]] = None
+    targetSecureTags: list[TargetSecureTag] | None = None
     """
     A list of secure tags that controls which instances the firewall rule applies to.
     If targetSecureTag are specified, then the firewall rule applies only to instances in the VPC network that have one of those EFFECTIVE secure tags, if all the targetSecureTag are in INEFFECTIVE state, then this rule will be ignored.
     targetSecureTag may not be set at the same time as targetServiceAccounts. If neither targetServiceAccounts nor targetSecureTag are specified, the firewall rule applies to all instances on the specified network. Maximum number of target secure tags allowed is 256.
     Structure is documented below.
     """
-    targetServiceAccounts: Optional[List[str]] = None
+    targetServiceAccounts: list[str] | None = None
     """
     A list of service accounts indicating the sets of instances that are applied with this rule.
     """
-    tlsInspect: Optional[bool] = None
+    tlsInspect: bool | None = None
     """
     Boolean flag indicating if the traffic should be TLS decrypted.
     Can be set only if action = 'apply_security_profile_group' and cannot be set for other actions.
@@ -317,79 +316,79 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     The Action to perform when the client connection triggers the rule. Valid actions are "allow", "deny", "goto_next" and "apply_security_profile_group".
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description for this resource.
     """
-    direction: Optional[str] = None
+    direction: str | None = None
     """
     The direction in which this rule applies.
     Possible values are: INGRESS, EGRESS.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     Denotes whether the firewall policy rule is disabled.
     When set to true, the firewall policy rule is not enforced and traffic behaves as if it did not exist.
     If this is unspecified, the firewall policy rule will be enabled.
     """
-    enableLogging: Optional[bool] = None
+    enableLogging: bool | None = None
     """
     Denotes whether to enable logging for a particular rule.
     If logging is enabled, logs will be exported to the configured export destination in Stackdriver.
     Logs may be exported to BigQuery or Pub/Sub.
     Note: you cannot enable logging on "goto_next" rules.
     """
-    firewallPolicy: Optional[str] = None
+    firewallPolicy: str | None = None
     """
     The firewall policy of the resource.
     """
-    firewallPolicyRef: Optional[FirewallPolicyRef] = None
+    firewallPolicyRef: FirewallPolicyRef | None = None
     """
     Reference to a FirewallPolicy in compute to populate firewallPolicy.
     """
-    firewallPolicySelector: Optional[FirewallPolicySelector] = None
+    firewallPolicySelector: FirewallPolicySelector | None = None
     """
     Selector for a FirewallPolicy in compute to populate firewallPolicy.
     """
-    match: Optional[Match] = None
+    match: Match | None = None
     """
     A match condition that incoming traffic is evaluated against. If it evaluates to true, the corresponding 'action' is enforced.
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     An integer indicating the priority of a rule in the list.
     The priority must be a positive value between 0 and 2147483647.
     Rules are evaluated from highest to lowest priority where 0 is the highest priority and 2147483647 is the lowest prority.
     """
-    securityProfileGroup: Optional[str] = None
+    securityProfileGroup: str | None = None
     """
     A fully-qualified URL of a SecurityProfile resource instance.
     Example: https://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group
     Must be specified if action = 'apply_security_profile_group' and cannot be specified for other actions.
     """
-    targetResources: Optional[List[str]] = None
+    targetResources: list[str] | None = None
     """
     A list of network resource URLs to which this rule applies.
     This field allows you to control which network's VMs get this rule.
     If this field is left blank, all VMs within the organization will receive the rule.
     """
-    targetSecureTags: Optional[List[TargetSecureTag]] = None
+    targetSecureTags: list[TargetSecureTag] | None = None
     """
     A list of secure tags that controls which instances the firewall rule applies to.
     If targetSecureTag are specified, then the firewall rule applies only to instances in the VPC network that have one of those EFFECTIVE secure tags, if all the targetSecureTag are in INEFFECTIVE state, then this rule will be ignored.
     targetSecureTag may not be set at the same time as targetServiceAccounts. If neither targetServiceAccounts nor targetSecureTag are specified, the firewall rule applies to all instances on the specified network. Maximum number of target secure tags allowed is 256.
     Structure is documented below.
     """
-    targetServiceAccounts: Optional[List[str]] = None
+    targetServiceAccounts: list[str] | None = None
     """
     A list of service accounts indicating the sets of instances that are applied with this rule.
     """
-    tlsInspect: Optional[bool] = None
+    tlsInspect: bool | None = None
     """
     Boolean flag indicating if the traffic should be TLS decrypted.
     Can be set only if action = 'apply_security_profile_group' and cannot be set for other actions.
@@ -416,7 +415,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -429,9 +428,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -440,17 +440,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -460,11 +458,11 @@ class Spec(BaseModel):
 
 
 class SrcSecureTagModel(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the secure tag, created with TagManager's TagValue API.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
     (Output)
     State of the secure tag, either EFFECTIVE or INEFFECTIVE. A secure tag is INEFFECTIVE when it is deleted or its network is deleted.
@@ -472,64 +470,64 @@ class SrcSecureTagModel(BaseModel):
 
 
 class MatchModel(BaseModel):
-    destAddressGroups: Optional[List[str]] = None
+    destAddressGroups: list[str] | None = None
     """
     Address groups which should be matched against the traffic destination. Maximum number of destination address groups is 10.
     """
-    destFqdns: Optional[List[str]] = None
+    destFqdns: list[str] | None = None
     """
     Fully Qualified Domain Name (FQDN) which should be matched against traffic destination. Maximum number of destination fqdn allowed is 100.
     """
-    destIpRanges: Optional[List[str]] = None
+    destIpRanges: list[str] | None = None
     """
     CIDR IP address range. Maximum number of destination CIDR IP ranges allowed is 5000.
     """
-    destRegionCodes: Optional[List[str]] = None
+    destRegionCodes: list[str] | None = None
     """
     Region codes whose IP addresses will be used to match for destination of traffic. Should be specified as 2 letter country code defined as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of dest region codes allowed is 5000.
     """
-    destThreatIntelligences: Optional[List[str]] = None
+    destThreatIntelligences: list[str] | None = None
     """
     Names of Network Threat Intelligence lists. The IPs in these lists will be matched against traffic destination.
     """
-    layer4Configs: Optional[List[Layer4Config]] = None
+    layer4Configs: list[Layer4Config] | None = None
     """
     Pairs of IP protocols and ports that the rule should match.
     Structure is documented below.
     """
-    srcAddressGroups: Optional[List[str]] = None
+    srcAddressGroups: list[str] | None = None
     """
     Address groups which should be matched against the traffic source. Maximum number of source address groups is 10.
     """
-    srcFqdns: Optional[List[str]] = None
+    srcFqdns: list[str] | None = None
     """
     Fully Qualified Domain Name (FQDN) which should be matched against traffic source. Maximum number of source fqdn allowed is 100.
     """
-    srcIpRanges: Optional[List[str]] = None
+    srcIpRanges: list[str] | None = None
     """
     CIDR IP address range. Maximum number of source CIDR IP ranges allowed is 5000.
     """
-    srcRegionCodes: Optional[List[str]] = None
+    srcRegionCodes: list[str] | None = None
     """
     Region codes whose IP addresses will be used to match for source of traffic. Should be specified as 2 letter country code defined as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of source region codes allowed is 5000.
     """
-    srcSecureTags: Optional[List[SrcSecureTagModel]] = None
+    srcSecureTags: list[SrcSecureTagModel] | None = None
     """
     List of secure tag values, which should be matched at the source of the traffic. For INGRESS rule, if all the srcSecureTag are INEFFECTIVE, and there is no srcIpRange, this rule will be ignored. Maximum number of source tag values allowed is 256.
     Structure is documented below.
     """
-    srcThreatIntelligences: Optional[List[str]] = None
+    srcThreatIntelligences: list[str] | None = None
     """
     Names of Network Threat Intelligence lists. The IPs in these lists will be matched against traffic source.
     """
 
 
 class TargetSecureTagModel(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the secure tag, created with TagManager's TagValue API.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
     (Output)
     State of the secure tag, either EFFECTIVE or INEFFECTIVE. A secure tag is INEFFECTIVE when it is deleted or its network is deleted.
@@ -537,87 +535,87 @@ class TargetSecureTagModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     The Action to perform when the client connection triggers the rule. Valid actions are "allow", "deny", "goto_next" and "apply_security_profile_group".
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description for this resource.
     """
-    direction: Optional[str] = None
+    direction: str | None = None
     """
     The direction in which this rule applies.
     Possible values are: INGRESS, EGRESS.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     Denotes whether the firewall policy rule is disabled.
     When set to true, the firewall policy rule is not enforced and traffic behaves as if it did not exist.
     If this is unspecified, the firewall policy rule will be enabled.
     """
-    enableLogging: Optional[bool] = None
+    enableLogging: bool | None = None
     """
     Denotes whether to enable logging for a particular rule.
     If logging is enabled, logs will be exported to the configured export destination in Stackdriver.
     Logs may be exported to BigQuery or Pub/Sub.
     Note: you cannot enable logging on "goto_next" rules.
     """
-    firewallPolicy: Optional[str] = None
+    firewallPolicy: str | None = None
     """
     The firewall policy of the resource.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format locations/global/firewallPolicies/{{firewall_policy}}/rules/{{priority}}
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Type of the resource. Always compute#firewallPolicyRule for firewall policy rules
     """
-    match: Optional[MatchModel] = None
+    match: MatchModel | None = None
     """
     A match condition that incoming traffic is evaluated against. If it evaluates to true, the corresponding 'action' is enforced.
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     An integer indicating the priority of a rule in the list.
     The priority must be a positive value between 0 and 2147483647.
     Rules are evaluated from highest to lowest priority where 0 is the highest priority and 2147483647 is the lowest prority.
     """
-    ruleTupleCount: Optional[float] = None
+    ruleTupleCount: float | None = None
     """
     Calculation of the complexity of a single firewall policy rule.
     """
-    securityProfileGroup: Optional[str] = None
+    securityProfileGroup: str | None = None
     """
     A fully-qualified URL of a SecurityProfile resource instance.
     Example: https://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group
     Must be specified if action = 'apply_security_profile_group' and cannot be specified for other actions.
     """
-    targetResources: Optional[List[str]] = None
+    targetResources: list[str] | None = None
     """
     A list of network resource URLs to which this rule applies.
     This field allows you to control which network's VMs get this rule.
     If this field is left blank, all VMs within the organization will receive the rule.
     """
-    targetSecureTags: Optional[List[TargetSecureTagModel]] = None
+    targetSecureTags: list[TargetSecureTagModel] | None = None
     """
     A list of secure tags that controls which instances the firewall rule applies to.
     If targetSecureTag are specified, then the firewall rule applies only to instances in the VPC network that have one of those EFFECTIVE secure tags, if all the targetSecureTag are in INEFFECTIVE state, then this rule will be ignored.
     targetSecureTag may not be set at the same time as targetServiceAccounts. If neither targetServiceAccounts nor targetSecureTag are specified, the firewall rule applies to all instances on the specified network. Maximum number of target secure tags allowed is 256.
     Structure is documented below.
     """
-    targetServiceAccounts: Optional[List[str]] = None
+    targetServiceAccounts: list[str] | None = None
     """
     A list of service accounts indicating the sets of instances that are applied with this rule.
     """
-    tlsInspect: Optional[bool] = None
+    tlsInspect: bool | None = None
     """
     Boolean flag indicating if the traffic should be TLS decrypted.
     Can be set only if action = 'apply_security_profile_group' and cannot be set for other actions.
@@ -625,17 +623,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -657,12 +655,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -671,17 +669,17 @@ class Status(BaseModel):
 
 
 class FirewallPolicyRule(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['FirewallPolicyRule']] = 'FirewallPolicyRule'
+    kind: Literal['FirewallPolicyRule'] | None = 'FirewallPolicyRule'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -689,26 +687,26 @@ class FirewallPolicyRule(BaseModel):
     """
     FirewallPolicyRuleSpec defines the desired state of FirewallPolicyRule
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     FirewallPolicyRuleStatus defines the observed state of FirewallPolicyRule.
     """
 
 
 class FirewallPolicyRuleList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[FirewallPolicyRule]
+    items: list[FirewallPolicyRule]
     """
     List of firewallpolicyrules. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

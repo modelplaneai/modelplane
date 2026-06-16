@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Dependency(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion of the package.
     """
@@ -21,7 +20,7 @@ class Dependency(BaseModel):
     Constraints is a valid semver range or a digest, which will be used to select a valid
     dependency version.
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind of the package (not the kind of the package revision).
     """
@@ -29,7 +28,7 @@ class Dependency(BaseModel):
     """
     Package is the OCI image name without a tag or digest.
     """
-    type: Optional[Literal['Configuration', 'Provider', 'Function']] = None
+    type: Literal['Configuration', 'Provider', 'Function'] | None = None
     """
     Type is the type of package. Can be either Configuration or Provider.
 
@@ -38,16 +37,16 @@ class Dependency(BaseModel):
 
 
 class Package(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion of the package.
     """
-    dependencies: List[Dependency]
+    dependencies: list[Dependency]
     """
     Dependencies are the list of dependencies of this package. The order of
     the dependencies will dictate the order in which they are resolved.
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind of the package (not the kind of the package revision).
     """
@@ -59,7 +58,7 @@ class Package(BaseModel):
     """
     Source is the OCI image name without a tag or digest.
     """
-    type: Optional[Literal['Configuration', 'Provider', 'Function']] = None
+    type: Literal['Configuration', 'Provider', 'Function'] | None = None
     """
     Type is the type of package.
 
@@ -72,17 +71,17 @@ class Package(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -104,48 +103,48 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
 
 
 class Lock(BaseModel):
-    apiVersion: Optional[Literal['pkg.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['pkg.crossplane.io/v1beta1'] | None = (
         'pkg.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Lock']] = 'Lock'
+    kind: Literal['Lock'] | None = 'Lock'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    packages: Optional[List[Package]] = None
-    status: Optional[Status] = None
+    packages: list[Package] | None = None
+    status: Status | None = None
     """
     Status of the Lock.
     """
 
 
 class LockList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Lock]
+    items: list[Lock]
     """
     List of locks. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

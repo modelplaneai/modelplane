@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class PackagePullSecret(BaseModel):
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -23,11 +22,11 @@ class PackagePullSecret(BaseModel):
 
 
 class RuntimeConfigRef(BaseModel):
-    apiVersion: Optional[str] = 'pkg.crossplane.io/v1beta1'
+    apiVersion: str | None = 'pkg.crossplane.io/v1beta1'
     """
     API version of the referent.
     """
-    kind: Optional[str] = 'DeploymentRuntimeConfig'
+    kind: str | None = 'DeploymentRuntimeConfig'
     """
     Kind of the referent.
     """
@@ -38,7 +37,12 @@ class RuntimeConfigRef(BaseModel):
 
 
 class Spec(BaseModel):
-    commonLabels: Optional[Dict[str, str]] = None
+    commonAnnotations: dict[str, str] | None = None
+    """
+    Map of string keys and values that can be used to annotate objects.
+    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+    """
+    commonLabels: dict[str, str] | None = None
     """
     Map of string keys and values that can be used to organize and categorize
     (scope and select) objects. May match selectors of replication controllers
@@ -49,7 +53,7 @@ class Spec(BaseModel):
     """
     DesiredState of the PackageRevision. Can be either Active or Inactive.
     """
-    ignoreCrossplaneConstraints: Optional[bool] = False
+    ignoreCrossplaneConstraints: bool | None = False
     """
     IgnoreCrossplaneConstraints indicates to the package manager whether to
     honor Crossplane version constrains specified by the package.
@@ -59,14 +63,14 @@ class Spec(BaseModel):
     """
     Package image used by install Pod to extract package contents.
     """
-    packagePullPolicy: Optional[str] = 'IfNotPresent'
+    packagePullPolicy: str | None = 'IfNotPresent'
     """
     PackagePullPolicy defines the pull policy for the package. It is also
     applied to any images pulled for the package, such as a provider's
     controller image.
     Default is IfNotPresent.
     """
-    packagePullSecrets: Optional[List[PackagePullSecret]] = None
+    packagePullSecrets: list[PackagePullSecret] | None = None
     """
     PackagePullSecrets are named secrets in the same namespace that can be
     used to fetch packages from private registries. They are also applied to
@@ -77,26 +81,26 @@ class Spec(BaseModel):
     Revision number. Indicates when the revision will be garbage collected
     based on the parent's RevisionHistoryLimit.
     """
-    runtimeConfigRef: Optional[RuntimeConfigRef] = Field(
-        default_factory=lambda: RuntimeConfigRef.model_validate({'name': 'default'})
+    runtimeConfigRef: RuntimeConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     RuntimeConfigRef references a RuntimeConfig resource that will be used
     to configure the package runtime.
     """
-    skipDependencyResolution: Optional[bool] = False
+    skipDependencyResolution: bool | None = False
     """
     SkipDependencyResolution indicates to the package manager whether to skip
     resolving dependencies for a package. Setting this value to true may have
     unintended consequences.
     Default is false.
     """
-    tlsClientSecretName: Optional[str] = None
+    tlsClientSecretName: str | None = None
     """
     TLSClientSecretName is the name of the TLS Secret that stores client
     certificates of the Provider.
     """
-    tlsServerSecretName: Optional[str] = None
+    tlsServerSecretName: str | None = None
     """
     TLSServerSecretName is the name of the TLS Secret that stores server
     certificates of the Provider.
@@ -115,17 +119,17 @@ class AppliedImageConfigRef(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -159,54 +163,54 @@ class ObjectRef(BaseModel):
     """
     Name of the referenced object.
     """
-    uid: Optional[str] = None
+    uid: str | None = None
     """
     UID of the referenced object.
     """
 
 
 class Status(BaseModel):
-    appliedImageConfigRefs: Optional[List[AppliedImageConfigRef]] = None
+    appliedImageConfigRefs: list[AppliedImageConfigRef] | None = None
     """
     AppliedImageConfigRefs records any image configs that were applied in
     reconciling this revision, and what they were used for.
     """
-    capabilities: Optional[List[str]] = None
+    capabilities: list[str] | None = None
     """
     Capabilities of this package. Capabilities are opaque strings that
     may be meaningful to package consumers.
     """
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    endpoint: Optional[str] = None
+    endpoint: str | None = None
     """
     Endpoint is the gRPC endpoint where Crossplane will send
     RunFunctionRequests.
     """
-    foundDependencies: Optional[int] = None
+    foundDependencies: int | None = None
     """
     Dependency information.
     """
-    installedDependencies: Optional[int] = None
-    invalidDependencies: Optional[int] = None
-    objectRefs: Optional[List[ObjectRef]] = None
+    installedDependencies: int | None = None
+    invalidDependencies: int | None = None
+    objectRefs: list[ObjectRef] | None = None
     """
     References to objects owned by PackageRevision.
     """
-    resolvedImage: Optional[str] = None
+    resolvedImage: str | None = None
     """
     ResolvedPackage is the name of the package that was installed. It may be
     different from spec.image if the package path was rewritten using an
     image config.
     """
-    tlsClientSecretName: Optional[str] = None
+    tlsClientSecretName: str | None = None
     """
     TLSClientSecretName is the name of the TLS Secret that stores client
     certificates of the Provider.
     """
-    tlsServerSecretName: Optional[str] = None
+    tlsServerSecretName: str | None = None
     """
     TLSServerSecretName is the name of the TLS Secret that stores server
     certificates of the Provider.
@@ -214,44 +218,44 @@ class Status(BaseModel):
 
 
 class FunctionRevision(BaseModel):
-    apiVersion: Optional[Literal['pkg.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['pkg.crossplane.io/v1beta1'] | None = (
         'pkg.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['FunctionRevision']] = 'FunctionRevision'
+    kind: Literal['FunctionRevision'] | None = 'FunctionRevision'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[Spec] = None
+    spec: Spec | None = None
     """
     FunctionRevisionSpec specifies configuration for a FunctionRevision.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     FunctionRevisionStatus represents the observed state of a FunctionRevision.
     """
 
 
 class FunctionRevisionList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[FunctionRevision]
+    items: list[FunctionRevision]
     """
     List of functionrevisions. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

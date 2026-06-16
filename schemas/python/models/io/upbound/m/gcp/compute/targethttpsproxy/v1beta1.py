@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class SslCertificatesRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SslCertificatesSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,38 +67,38 @@ class UrlMapRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class UrlMapSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    certificateManagerCertificates: Optional[List[str]] = None
+    certificateManagerCertificates: list[str] | None = None
     """
     URLs to certificate manager certificate resources that are used to authenticate connections between users and the load balancer.
     Certificate manager certificates only apply when the load balancing scheme is set to INTERNAL_MANAGED.
@@ -107,18 +106,18 @@ class ForProvider(BaseModel):
     sslCertificates and certificateManagerCertificates fields can not be defined together.
     Accepted format is //certificatemanager.googleapis.com/projects/{project}/locations/{location}/certificates/{resourceName} or just the self_link projects/{project}/locations/{location}/certificates/{resourceName}
     """
-    certificateMap: Optional[str] = None
+    certificateMap: str | None = None
     """
     A reference to the CertificateMap resource uri that identifies a certificate map
     associated with the given target proxy. This field is only supported for EXTERNAL and EXTERNAL_MANAGED load balancing schemes.
     For INTERNAL_MANAGED, use certificate_manager_certificates instead.
     Accepted format is //certificatemanager.googleapis.com/projects/{project}/locations/{location}/certificateMaps/{resourceName}.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    httpKeepAliveTimeoutSec: Optional[float] = None
+    httpKeepAliveTimeoutSec: float | None = None
     """
     Specifies how long to keep a connection open, after completing a response,
     while there is no matching traffic (in seconds). If an HTTP keepalive is
@@ -130,17 +129,17 @@ class ForProvider(BaseModel):
     maximum allowed value is 600 seconds. For Global external HTTP(S) load
     balancer (classic), this option is not available publicly.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    proxyBind: Optional[bool] = None
+    proxyBind: bool | None = None
     """
     This field only applies when the forwarding rule that references
     this target proxy has a loadBalancingScheme set to INTERNAL_SELF_MANAGED.
     """
-    quicOverride: Optional[str] = None
+    quicOverride: str | None = None
     """
     Specifies the QUIC override policy for this resource. This determines
     whether the load balancer will attempt to negotiate QUIC with clients
@@ -149,7 +148,7 @@ class ForProvider(BaseModel):
     Default value is NONE.
     Possible values are: NONE, ENABLE, DISABLE.
     """
-    serverTlsPolicy: Optional[str] = None
+    serverTlsPolicy: str | None = None
     """
     A URL referring to a networksecurity.ServerTlsPolicy
     resource that describes how the proxy should authenticate inbound
@@ -165,27 +164,27 @@ class ForProvider(BaseModel):
     receive a resourceInUseByAnotherResource error. Use lifecycle.create_before_destroy
     within the ServerTlsPolicy resource to avoid this.
     """
-    sslCertificates: Optional[List[str]] = None
+    sslCertificates: list[str] | None = None
     """
     URLs to SslCertificate resources that are used to authenticate connections between users and the load balancer.
     Currently, you may specify up to 15 SSL certificates. sslCertificates do not apply when the load balancing scheme is set to INTERNAL_SELF_MANAGED.
     sslCertificates and certificateManagerCertificates can not be defined together.
     """
-    sslCertificatesRefs: Optional[List[SslCertificatesRef]] = None
+    sslCertificatesRefs: list[SslCertificatesRef] | None = None
     """
     References to SSLCertificate in compute to populate sslCertificates.
     """
-    sslCertificatesSelector: Optional[SslCertificatesSelector] = None
+    sslCertificatesSelector: SslCertificatesSelector | None = None
     """
     Selector for a list of SSLCertificate in compute to populate sslCertificates.
     """
-    sslPolicy: Optional[str] = None
+    sslPolicy: str | None = None
     """
     A reference to the SslPolicy resource that will be associated with
     the TargetHttpsProxy resource. If not set, the TargetHttpsProxy
     resource will not have any SSL policy configured.
     """
-    tlsEarlyData: Optional[str] = None
+    tlsEarlyData: str | None = None
     """
     Specifies whether TLS 1.3 0-RTT Data (“Early Data”) should be accepted for this service.
     Early Data allows a TLS resumption handshake to include the initial application payload
@@ -193,23 +192,23 @@ class ForProvider(BaseModel):
     This applies to TLS 1.3 connections over TCP (HTTP/2) as well as over UDP (QUIC/h3).
     Possible values are: STRICT, PERMISSIVE, UNRESTRICTED, DISABLED.
     """
-    urlMap: Optional[str] = None
+    urlMap: str | None = None
     """
     A reference to the UrlMap resource that defines the mapping from URL
     to the BackendService.
     """
-    urlMapRef: Optional[UrlMapRef] = None
+    urlMapRef: UrlMapRef | None = None
     """
     Reference to a URLMap in compute to populate urlMap.
     """
-    urlMapSelector: Optional[UrlMapSelector] = None
+    urlMapSelector: UrlMapSelector | None = None
     """
     Selector for a URLMap in compute to populate urlMap.
     """
 
 
 class InitProvider(BaseModel):
-    certificateManagerCertificates: Optional[List[str]] = None
+    certificateManagerCertificates: list[str] | None = None
     """
     URLs to certificate manager certificate resources that are used to authenticate connections between users and the load balancer.
     Certificate manager certificates only apply when the load balancing scheme is set to INTERNAL_MANAGED.
@@ -217,18 +216,18 @@ class InitProvider(BaseModel):
     sslCertificates and certificateManagerCertificates fields can not be defined together.
     Accepted format is //certificatemanager.googleapis.com/projects/{project}/locations/{location}/certificates/{resourceName} or just the self_link projects/{project}/locations/{location}/certificates/{resourceName}
     """
-    certificateMap: Optional[str] = None
+    certificateMap: str | None = None
     """
     A reference to the CertificateMap resource uri that identifies a certificate map
     associated with the given target proxy. This field is only supported for EXTERNAL and EXTERNAL_MANAGED load balancing schemes.
     For INTERNAL_MANAGED, use certificate_manager_certificates instead.
     Accepted format is //certificatemanager.googleapis.com/projects/{project}/locations/{location}/certificateMaps/{resourceName}.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    httpKeepAliveTimeoutSec: Optional[float] = None
+    httpKeepAliveTimeoutSec: float | None = None
     """
     Specifies how long to keep a connection open, after completing a response,
     while there is no matching traffic (in seconds). If an HTTP keepalive is
@@ -240,17 +239,17 @@ class InitProvider(BaseModel):
     maximum allowed value is 600 seconds. For Global external HTTP(S) load
     balancer (classic), this option is not available publicly.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    proxyBind: Optional[bool] = None
+    proxyBind: bool | None = None
     """
     This field only applies when the forwarding rule that references
     this target proxy has a loadBalancingScheme set to INTERNAL_SELF_MANAGED.
     """
-    quicOverride: Optional[str] = None
+    quicOverride: str | None = None
     """
     Specifies the QUIC override policy for this resource. This determines
     whether the load balancer will attempt to negotiate QUIC with clients
@@ -259,7 +258,7 @@ class InitProvider(BaseModel):
     Default value is NONE.
     Possible values are: NONE, ENABLE, DISABLE.
     """
-    serverTlsPolicy: Optional[str] = None
+    serverTlsPolicy: str | None = None
     """
     A URL referring to a networksecurity.ServerTlsPolicy
     resource that describes how the proxy should authenticate inbound
@@ -275,27 +274,27 @@ class InitProvider(BaseModel):
     receive a resourceInUseByAnotherResource error. Use lifecycle.create_before_destroy
     within the ServerTlsPolicy resource to avoid this.
     """
-    sslCertificates: Optional[List[str]] = None
+    sslCertificates: list[str] | None = None
     """
     URLs to SslCertificate resources that are used to authenticate connections between users and the load balancer.
     Currently, you may specify up to 15 SSL certificates. sslCertificates do not apply when the load balancing scheme is set to INTERNAL_SELF_MANAGED.
     sslCertificates and certificateManagerCertificates can not be defined together.
     """
-    sslCertificatesRefs: Optional[List[SslCertificatesRef]] = None
+    sslCertificatesRefs: list[SslCertificatesRef] | None = None
     """
     References to SSLCertificate in compute to populate sslCertificates.
     """
-    sslCertificatesSelector: Optional[SslCertificatesSelector] = None
+    sslCertificatesSelector: SslCertificatesSelector | None = None
     """
     Selector for a list of SSLCertificate in compute to populate sslCertificates.
     """
-    sslPolicy: Optional[str] = None
+    sslPolicy: str | None = None
     """
     A reference to the SslPolicy resource that will be associated with
     the TargetHttpsProxy resource. If not set, the TargetHttpsProxy
     resource will not have any SSL policy configured.
     """
-    tlsEarlyData: Optional[str] = None
+    tlsEarlyData: str | None = None
     """
     Specifies whether TLS 1.3 0-RTT Data (“Early Data”) should be accepted for this service.
     Early Data allows a TLS resumption handshake to include the initial application payload
@@ -303,16 +302,16 @@ class InitProvider(BaseModel):
     This applies to TLS 1.3 connections over TCP (HTTP/2) as well as over UDP (QUIC/h3).
     Possible values are: STRICT, PERMISSIVE, UNRESTRICTED, DISABLED.
     """
-    urlMap: Optional[str] = None
+    urlMap: str | None = None
     """
     A reference to the UrlMap resource that defines the mapping from URL
     to the BackendService.
     """
-    urlMapRef: Optional[UrlMapRef] = None
+    urlMapRef: UrlMapRef | None = None
     """
     Reference to a URLMap in compute to populate urlMap.
     """
-    urlMapSelector: Optional[UrlMapSelector] = None
+    urlMapSelector: UrlMapSelector | None = None
     """
     Selector for a URLMap in compute to populate urlMap.
     """
@@ -338,7 +337,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -351,9 +350,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -362,17 +362,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -382,7 +380,7 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    certificateManagerCertificates: Optional[List[str]] = None
+    certificateManagerCertificates: list[str] | None = None
     """
     URLs to certificate manager certificate resources that are used to authenticate connections between users and the load balancer.
     Certificate manager certificates only apply when the load balancing scheme is set to INTERNAL_MANAGED.
@@ -390,22 +388,22 @@ class AtProvider(BaseModel):
     sslCertificates and certificateManagerCertificates fields can not be defined together.
     Accepted format is //certificatemanager.googleapis.com/projects/{project}/locations/{location}/certificates/{resourceName} or just the self_link projects/{project}/locations/{location}/certificates/{resourceName}
     """
-    certificateMap: Optional[str] = None
+    certificateMap: str | None = None
     """
     A reference to the CertificateMap resource uri that identifies a certificate map
     associated with the given target proxy. This field is only supported for EXTERNAL and EXTERNAL_MANAGED load balancing schemes.
     For INTERNAL_MANAGED, use certificate_manager_certificates instead.
     Accepted format is //certificatemanager.googleapis.com/projects/{project}/locations/{location}/certificateMaps/{resourceName}.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    fingerprint: Optional[str] = None
+    fingerprint: str | None = None
     """
     Fingerprint of this resource. A hash of the contents stored in this object. This field is used in optimistic locking.
     This field will be ignored when inserting a TargetHttpsProxy. An up-to-date fingerprint must be provided in order to
@@ -413,7 +411,7 @@ class AtProvider(BaseModel):
     To see the latest fingerprint, make a get() request to retrieve the TargetHttpsProxy.
     A base64-encoded string.
     """
-    httpKeepAliveTimeoutSec: Optional[float] = None
+    httpKeepAliveTimeoutSec: float | None = None
     """
     Specifies how long to keep a connection open, after completing a response,
     while there is no matching traffic (in seconds). If an HTTP keepalive is
@@ -425,25 +423,25 @@ class AtProvider(BaseModel):
     maximum allowed value is 600 seconds. For Global external HTTP(S) load
     balancer (classic), this option is not available publicly.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/targetHttpsProxies/{{name}}
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    proxyBind: Optional[bool] = None
+    proxyBind: bool | None = None
     """
     This field only applies when the forwarding rule that references
     this target proxy has a loadBalancingScheme set to INTERNAL_SELF_MANAGED.
     """
-    proxyId: Optional[float] = None
+    proxyId: float | None = None
     """
     The unique identifier for the resource.
     """
-    quicOverride: Optional[str] = None
+    quicOverride: str | None = None
     """
     Specifies the QUIC override policy for this resource. This determines
     whether the load balancer will attempt to negotiate QUIC with clients
@@ -452,11 +450,11 @@ class AtProvider(BaseModel):
     Default value is NONE.
     Possible values are: NONE, ENABLE, DISABLE.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    serverTlsPolicy: Optional[str] = None
+    serverTlsPolicy: str | None = None
     """
     A URL referring to a networksecurity.ServerTlsPolicy
     resource that describes how the proxy should authenticate inbound
@@ -472,19 +470,19 @@ class AtProvider(BaseModel):
     receive a resourceInUseByAnotherResource error. Use lifecycle.create_before_destroy
     within the ServerTlsPolicy resource to avoid this.
     """
-    sslCertificates: Optional[List[str]] = None
+    sslCertificates: list[str] | None = None
     """
     URLs to SslCertificate resources that are used to authenticate connections between users and the load balancer.
     Currently, you may specify up to 15 SSL certificates. sslCertificates do not apply when the load balancing scheme is set to INTERNAL_SELF_MANAGED.
     sslCertificates and certificateManagerCertificates can not be defined together.
     """
-    sslPolicy: Optional[str] = None
+    sslPolicy: str | None = None
     """
     A reference to the SslPolicy resource that will be associated with
     the TargetHttpsProxy resource. If not set, the TargetHttpsProxy
     resource will not have any SSL policy configured.
     """
-    tlsEarlyData: Optional[str] = None
+    tlsEarlyData: str | None = None
     """
     Specifies whether TLS 1.3 0-RTT Data (“Early Data”) should be accepted for this service.
     Early Data allows a TLS resumption handshake to include the initial application payload
@@ -492,7 +490,7 @@ class AtProvider(BaseModel):
     This applies to TLS 1.3 connections over TCP (HTTP/2) as well as over UDP (QUIC/h3).
     Possible values are: STRICT, PERMISSIVE, UNRESTRICTED, DISABLED.
     """
-    urlMap: Optional[str] = None
+    urlMap: str | None = None
     """
     A reference to the UrlMap resource that defines the mapping from URL
     to the BackendService.
@@ -500,17 +498,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -532,12 +530,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -546,17 +544,17 @@ class Status(BaseModel):
 
 
 class TargetHTTPSProxy(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['TargetHTTPSProxy']] = 'TargetHTTPSProxy'
+    kind: Literal['TargetHTTPSProxy'] | None = 'TargetHTTPSProxy'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -564,26 +562,26 @@ class TargetHTTPSProxy(BaseModel):
     """
     TargetHTTPSProxySpec defines the desired state of TargetHTTPSProxy
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     TargetHTTPSProxyStatus defines the observed state of TargetHTTPSProxy.
     """
 
 
 class TargetHTTPSProxyList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[TargetHTTPSProxy]
+    items: list[TargetHTTPSProxy]
     """
     List of targethttpsproxies. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

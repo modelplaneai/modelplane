@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class Ipv4IpamPoolIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class Ipv4IpamPoolIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,121 +67,121 @@ class VpcIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class VpcIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    assignIpv6AddressOnCreation: Optional[bool] = None
+    assignIpv6AddressOnCreation: bool | None = None
     """
     Specify true to indicate
     that network interfaces created in the specified subnet should be
     assigned an IPv6 address. Default is false
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     AZ for the subnet.
     """
-    availabilityZoneId: Optional[str] = None
+    availabilityZoneId: str | None = None
     """
     AZ ID of the subnet. This argument is not supported in all regions or partitions. If necessary, use availability_zone instead.
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The IPv4 CIDR block for the subnet.
     """
-    customerOwnedIpv4Pool: Optional[str] = None
+    customerOwnedIpv4Pool: str | None = None
     """
     The customer owned IPv4 address pool. Typically used with the map_customer_owned_ip_on_launch argument. The outpost_arn argument must be specified when configured.
     """
-    enableDns64: Optional[bool] = None
+    enableDns64: bool | None = None
     """
     Indicates whether DNS queries made to the Amazon-provided DNS Resolver in this subnet should return synthetic IPv6 addresses for IPv4-only destinations. Default: false.
     """
-    enableLniAtDeviceIndex: Optional[float] = None
+    enableLniAtDeviceIndex: float | None = None
     """
     Indicates the device position for local network interfaces in this subnet. For example, 1 indicates local network interfaces in this subnet are the secondary network interface (eth1). A local network interface cannot be the primary network interface (eth0).
     """
-    enableResourceNameDnsARecordOnLaunch: Optional[bool] = None
+    enableResourceNameDnsARecordOnLaunch: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS A records. Default: false.
     """
-    enableResourceNameDnsAaaaRecordOnLaunch: Optional[bool] = None
+    enableResourceNameDnsAaaaRecordOnLaunch: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS AAAA records. Default: false.
     """
-    ipv4IpamPoolId: Optional[str] = None
+    ipv4IpamPoolId: str | None = None
     """
     ID of an IPv4 VPC Resource Planning IPAM Pool. The CIDR of this pool is used to allocate the CIDR for the subnet.
     """
-    ipv4IpamPoolIdRef: Optional[Ipv4IpamPoolIdRef] = None
+    ipv4IpamPoolIdRef: Ipv4IpamPoolIdRef | None = None
     """
     Reference to a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4IpamPoolIdSelector: Optional[Ipv4IpamPoolIdSelector] = None
+    ipv4IpamPoolIdSelector: Ipv4IpamPoolIdSelector | None = None
     """
     Selector for a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4NetmaskLength: Optional[float] = None
+    ipv4NetmaskLength: float | None = None
     """
     Netmask. Requires specifying a ipv4_ipam_pool_id.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     The IPv6 network range for the subnet,
     in CIDR notation. The subnet size must use a /64 prefix length. If the existing IPv6 subnet was created with assign_ipv6_address_on_creation = true, changing this value will force resource recreation.
     """
-    ipv6IpamPoolId: Optional[str] = None
+    ipv6IpamPoolId: str | None = None
     """
     ID of an IPv6 VPC Resource Planning IPAM Pool. The CIDR of this pool is used to allocate the CIDR for the subnet.
     """
-    ipv6Native: Optional[bool] = None
+    ipv6Native: bool | None = None
     """
     Indicates whether to create an IPv6-only subnet. Default: false.
     """
-    ipv6NetmaskLength: Optional[float] = None
+    ipv6NetmaskLength: float | None = None
     """
     Netmask. Requires specifying a ipv6_ipam_pool_id. Valid values are from 44 to 64 in increments of 4.
     """
-    mapCustomerOwnedIpOnLaunch: Optional[bool] = None
+    mapCustomerOwnedIpOnLaunch: bool | None = None
     """
     Specify true to indicate that network interfaces created in the subnet should be assigned a customer owned IP address. The customer_owned_ipv4_pool and outpost_arn arguments must be specified when set to true. Default is false.
     """
-    mapPublicIpOnLaunch: Optional[bool] = None
+    mapPublicIpOnLaunch: bool | None = None
     """
     Specify true to indicate that instances launched into the subnet should be assigned a public IP address. Default is false.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     The Amazon Resource Name (ARN) of the Outpost.
     """
-    privateDnsHostnameTypeOnLaunch: Optional[str] = None
+    privateDnsHostnameTypeOnLaunch: str | None = None
     """
     The type of hostnames to assign to instances in the subnet at launch. For IPv6-only subnets, an instance DNS name must be based on the instance ID. For dual-stack and IPv4-only subnets, you can specify whether DNS names use the instance IPv4 address or the instance ID. Valid values: ip-name, resource-name.
     """
@@ -191,125 +190,125 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     The VPC ID.
     """
-    vpcIdRef: Optional[VpcIdRef] = None
+    vpcIdRef: VpcIdRef | None = None
     """
     Reference to a VPC in ec2 to populate vpcId.
     """
-    vpcIdSelector: Optional[VpcIdSelector] = None
+    vpcIdSelector: VpcIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate vpcId.
     """
 
 
 class InitProvider(BaseModel):
-    assignIpv6AddressOnCreation: Optional[bool] = None
+    assignIpv6AddressOnCreation: bool | None = None
     """
     Specify true to indicate
     that network interfaces created in the specified subnet should be
     assigned an IPv6 address. Default is false
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     AZ for the subnet.
     """
-    availabilityZoneId: Optional[str] = None
+    availabilityZoneId: str | None = None
     """
     AZ ID of the subnet. This argument is not supported in all regions or partitions. If necessary, use availability_zone instead.
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The IPv4 CIDR block for the subnet.
     """
-    customerOwnedIpv4Pool: Optional[str] = None
+    customerOwnedIpv4Pool: str | None = None
     """
     The customer owned IPv4 address pool. Typically used with the map_customer_owned_ip_on_launch argument. The outpost_arn argument must be specified when configured.
     """
-    enableDns64: Optional[bool] = None
+    enableDns64: bool | None = None
     """
     Indicates whether DNS queries made to the Amazon-provided DNS Resolver in this subnet should return synthetic IPv6 addresses for IPv4-only destinations. Default: false.
     """
-    enableLniAtDeviceIndex: Optional[float] = None
+    enableLniAtDeviceIndex: float | None = None
     """
     Indicates the device position for local network interfaces in this subnet. For example, 1 indicates local network interfaces in this subnet are the secondary network interface (eth1). A local network interface cannot be the primary network interface (eth0).
     """
-    enableResourceNameDnsARecordOnLaunch: Optional[bool] = None
+    enableResourceNameDnsARecordOnLaunch: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS A records. Default: false.
     """
-    enableResourceNameDnsAaaaRecordOnLaunch: Optional[bool] = None
+    enableResourceNameDnsAaaaRecordOnLaunch: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS AAAA records. Default: false.
     """
-    ipv4IpamPoolId: Optional[str] = None
+    ipv4IpamPoolId: str | None = None
     """
     ID of an IPv4 VPC Resource Planning IPAM Pool. The CIDR of this pool is used to allocate the CIDR for the subnet.
     """
-    ipv4IpamPoolIdRef: Optional[Ipv4IpamPoolIdRef] = None
+    ipv4IpamPoolIdRef: Ipv4IpamPoolIdRef | None = None
     """
     Reference to a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4IpamPoolIdSelector: Optional[Ipv4IpamPoolIdSelector] = None
+    ipv4IpamPoolIdSelector: Ipv4IpamPoolIdSelector | None = None
     """
     Selector for a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4NetmaskLength: Optional[float] = None
+    ipv4NetmaskLength: float | None = None
     """
     Netmask. Requires specifying a ipv4_ipam_pool_id.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     The IPv6 network range for the subnet,
     in CIDR notation. The subnet size must use a /64 prefix length. If the existing IPv6 subnet was created with assign_ipv6_address_on_creation = true, changing this value will force resource recreation.
     """
-    ipv6IpamPoolId: Optional[str] = None
+    ipv6IpamPoolId: str | None = None
     """
     ID of an IPv6 VPC Resource Planning IPAM Pool. The CIDR of this pool is used to allocate the CIDR for the subnet.
     """
-    ipv6Native: Optional[bool] = None
+    ipv6Native: bool | None = None
     """
     Indicates whether to create an IPv6-only subnet. Default: false.
     """
-    ipv6NetmaskLength: Optional[float] = None
+    ipv6NetmaskLength: float | None = None
     """
     Netmask. Requires specifying a ipv6_ipam_pool_id. Valid values are from 44 to 64 in increments of 4.
     """
-    mapCustomerOwnedIpOnLaunch: Optional[bool] = None
+    mapCustomerOwnedIpOnLaunch: bool | None = None
     """
     Specify true to indicate that network interfaces created in the subnet should be assigned a customer owned IP address. The customer_owned_ipv4_pool and outpost_arn arguments must be specified when set to true. Default is false.
     """
-    mapPublicIpOnLaunch: Optional[bool] = None
+    mapPublicIpOnLaunch: bool | None = None
     """
     Specify true to indicate that instances launched into the subnet should be assigned a public IP address. Default is false.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     The Amazon Resource Name (ARN) of the Outpost.
     """
-    privateDnsHostnameTypeOnLaunch: Optional[str] = None
+    privateDnsHostnameTypeOnLaunch: str | None = None
     """
     The type of hostnames to assign to instances in the subnet at launch. For IPv6-only subnets, an instance DNS name must be based on the instance ID. For dual-stack and IPv4-only subnets, you can specify whether DNS names use the instance IPv4 address or the instance ID. Valid values: ip-name, resource-name.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     The VPC ID.
     """
-    vpcIdRef: Optional[VpcIdRef] = None
+    vpcIdRef: VpcIdRef | None = None
     """
     Reference to a VPC in ec2 to populate vpcId.
     """
-    vpcIdSelector: Optional[VpcIdSelector] = None
+    vpcIdSelector: VpcIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate vpcId.
     """
@@ -335,7 +334,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -348,9 +347,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -359,17 +359,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -379,132 +377,132 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     The ARN of the subnet.
     """
-    assignIpv6AddressOnCreation: Optional[bool] = None
+    assignIpv6AddressOnCreation: bool | None = None
     """
     Specify true to indicate
     that network interfaces created in the specified subnet should be
     assigned an IPv6 address. Default is false
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     AZ for the subnet.
     """
-    availabilityZoneId: Optional[str] = None
+    availabilityZoneId: str | None = None
     """
     AZ ID of the subnet. This argument is not supported in all regions or partitions. If necessary, use availability_zone instead.
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The IPv4 CIDR block for the subnet.
     """
-    customerOwnedIpv4Pool: Optional[str] = None
+    customerOwnedIpv4Pool: str | None = None
     """
     The customer owned IPv4 address pool. Typically used with the map_customer_owned_ip_on_launch argument. The outpost_arn argument must be specified when configured.
     """
-    enableDns64: Optional[bool] = None
+    enableDns64: bool | None = None
     """
     Indicates whether DNS queries made to the Amazon-provided DNS Resolver in this subnet should return synthetic IPv6 addresses for IPv4-only destinations. Default: false.
     """
-    enableLniAtDeviceIndex: Optional[float] = None
+    enableLniAtDeviceIndex: float | None = None
     """
     Indicates the device position for local network interfaces in this subnet. For example, 1 indicates local network interfaces in this subnet are the secondary network interface (eth1). A local network interface cannot be the primary network interface (eth0).
     """
-    enableResourceNameDnsARecordOnLaunch: Optional[bool] = None
+    enableResourceNameDnsARecordOnLaunch: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS A records. Default: false.
     """
-    enableResourceNameDnsAaaaRecordOnLaunch: Optional[bool] = None
+    enableResourceNameDnsAaaaRecordOnLaunch: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS AAAA records. Default: false.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the subnet
     """
-    ipv4IpamPoolId: Optional[str] = None
+    ipv4IpamPoolId: str | None = None
     """
     ID of an IPv4 VPC Resource Planning IPAM Pool. The CIDR of this pool is used to allocate the CIDR for the subnet.
     """
-    ipv4NetmaskLength: Optional[float] = None
+    ipv4NetmaskLength: float | None = None
     """
     Netmask. Requires specifying a ipv4_ipam_pool_id.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     The IPv6 network range for the subnet,
     in CIDR notation. The subnet size must use a /64 prefix length. If the existing IPv6 subnet was created with assign_ipv6_address_on_creation = true, changing this value will force resource recreation.
     """
-    ipv6CidrBlockAssociationId: Optional[str] = None
+    ipv6CidrBlockAssociationId: str | None = None
     """
     The association ID for the IPv6 CIDR block.
     """
-    ipv6IpamPoolId: Optional[str] = None
+    ipv6IpamPoolId: str | None = None
     """
     ID of an IPv6 VPC Resource Planning IPAM Pool. The CIDR of this pool is used to allocate the CIDR for the subnet.
     """
-    ipv6Native: Optional[bool] = None
+    ipv6Native: bool | None = None
     """
     Indicates whether to create an IPv6-only subnet. Default: false.
     """
-    ipv6NetmaskLength: Optional[float] = None
+    ipv6NetmaskLength: float | None = None
     """
     Netmask. Requires specifying a ipv6_ipam_pool_id. Valid values are from 44 to 64 in increments of 4.
     """
-    mapCustomerOwnedIpOnLaunch: Optional[bool] = None
+    mapCustomerOwnedIpOnLaunch: bool | None = None
     """
     Specify true to indicate that network interfaces created in the subnet should be assigned a customer owned IP address. The customer_owned_ipv4_pool and outpost_arn arguments must be specified when set to true. Default is false.
     """
-    mapPublicIpOnLaunch: Optional[bool] = None
+    mapPublicIpOnLaunch: bool | None = None
     """
     Specify true to indicate that instances launched into the subnet should be assigned a public IP address. Default is false.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     The Amazon Resource Name (ARN) of the Outpost.
     """
-    ownerId: Optional[str] = None
+    ownerId: str | None = None
     """
     The ID of the AWS account that owns the subnet.
     """
-    privateDnsHostnameTypeOnLaunch: Optional[str] = None
+    privateDnsHostnameTypeOnLaunch: str | None = None
     """
     The type of hostnames to assign to instances in the subnet at launch. For IPv6-only subnets, an instance DNS name must be based on the instance ID. For dual-stack and IPv4-only subnets, you can specify whether DNS names use the instance IPv4 address or the instance ID. Valid values: ip-name, resource-name.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     The VPC ID.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -526,12 +524,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -540,17 +538,17 @@ class Status(BaseModel):
 
 
 class Subnet(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.m.upbound.io/v1beta1'] | None = (
         'ec2.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Subnet']] = 'Subnet'
+    kind: Literal['Subnet'] | None = 'Subnet'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -558,26 +556,26 @@ class Subnet(BaseModel):
     """
     SubnetSpec defines the desired state of Subnet
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     SubnetStatus defines the observed state of Subnet.
     """
 
 
 class SubnetList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Subnet]
+    items: list[Subnet]
     """
     List of subnets. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

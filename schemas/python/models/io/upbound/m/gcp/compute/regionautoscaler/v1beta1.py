@@ -3,34 +3,33 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class CpuUtilization(BaseModel):
-    predictiveMethod: Optional[str] = None
+    predictiveMethod: str | None = None
     """
     Indicates whether predictive autoscaling based on CPU metric is enabled. Valid values are:
     """
-    target: Optional[float] = None
+    target: float | None = None
     """
     URL of the managed instance group that this autoscaler will scale.
     """
 
 
 class LoadBalancingUtilization(BaseModel):
-    target: Optional[float] = None
+    target: float | None = None
     """
     URL of the managed instance group that this autoscaler will scale.
     """
 
 
 class MetricItem(BaseModel):
-    filter: Optional[str] = None
+    filter: str | None = None
     """
     A filter string to be used as the filter string for
     a Stackdriver Monitoring TimeSeries.list API call.
@@ -60,11 +59,11 @@ class MetricItem(BaseModel):
     TimeSeries are returned upon the query execution, the autoscaler
     will sum their respective values to obtain its scaling value.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The identifier for this object. Format specified above.
     """
-    singleInstanceAssignment: Optional[float] = None
+    singleInstanceAssignment: float | None = None
     """
     If scaling is based on a per-group metric value that represents the
     total amount of work to be done or resource usage, set this value to
@@ -81,11 +80,11 @@ class MetricItem(BaseModel):
     single instance, it could be better used with utilization_target
     instead.
     """
-    target: Optional[float] = None
+    target: float | None = None
     """
     URL of the managed instance group that this autoscaler will scale.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     Defines how target utilization value is expressed for a
     Stackdriver Monitoring metric.
@@ -94,12 +93,12 @@ class MetricItem(BaseModel):
 
 
 class MaxScaledInReplicas(BaseModel):
-    fixed: Optional[float] = None
+    fixed: float | None = None
     """
     Specifies a fixed number of VM instances. This must be a positive
     integer.
     """
-    percent: Optional[float] = None
+    percent: float | None = None
     """
     Specifies a percentage of instances between 0 to 100%, inclusive.
     For example, specify 80 for 80%.
@@ -107,12 +106,12 @@ class MaxScaledInReplicas(BaseModel):
 
 
 class ScaleInControl(BaseModel):
-    maxScaledInReplicas: Optional[MaxScaledInReplicas] = None
+    maxScaledInReplicas: MaxScaledInReplicas | None = None
     """
     A nested object resource.
     Structure is documented below.
     """
-    timeWindowSec: Optional[float] = None
+    timeWindowSec: float | None = None
     """
     How long back autoscaling should look when computing recommendations
     to include directives regarding slower scale down, as described above.
@@ -120,38 +119,38 @@ class ScaleInControl(BaseModel):
 
 
 class ScalingSchedule(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     A description of a scaling schedule.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     A boolean value that specifies if a scaling schedule can influence autoscaler recommendations. If set to true, then a scaling schedule has no effect.
     """
-    durationSec: Optional[float] = None
+    durationSec: float | None = None
     """
     The duration of time intervals (in seconds) for which this scaling schedule will be running. The minimum allowed value is 300.
     """
-    minRequiredReplicas: Optional[float] = None
+    minRequiredReplicas: float | None = None
     """
     Minimum number of VM instances that autoscaler will recommend in time intervals starting according to schedule.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The identifier for this object. Format specified above.
     """
-    schedule: Optional[str] = None
+    schedule: str | None = None
     """
     The start timestamps of time intervals when this scaling schedule should provide a scaling signal. This field uses the extended cron format (with an optional year field).
     """
-    timeZone: Optional[str] = None
+    timeZone: str | None = None
     """
     The time zone to be used when interpreting the schedule. The value of this field must be a time zone name from the tz database: http://en.wikipedia.org/wiki/Tz_database.
     """
 
 
 class AutoscalingPolicy(BaseModel):
-    cooldownPeriod: Optional[float] = None
+    cooldownPeriod: float | None = None
     """
     The number of seconds that the autoscaler should wait before it
     starts collecting information from a new instance. This prevents
@@ -163,48 +162,48 @@ class AutoscalingPolicy(BaseModel):
     instance may take to initialize. To do this, create an instance
     and time the startup process.
     """
-    cpuUtilization: Optional[CpuUtilization] = None
+    cpuUtilization: CpuUtilization | None = None
     """
     Defines the CPU utilization policy that allows the autoscaler to
     scale based on the average CPU utilization of a managed instance
     group.
     Structure is documented below.
     """
-    loadBalancingUtilization: Optional[LoadBalancingUtilization] = None
+    loadBalancingUtilization: LoadBalancingUtilization | None = None
     """
     Configuration parameters of autoscaling based on a load balancer.
     Structure is documented below.
     """
-    maxReplicas: Optional[float] = None
+    maxReplicas: float | None = None
     """
     The maximum number of instances that the autoscaler can scale up
     to. This is required when creating or updating an autoscaler. The
     maximum number of replicas should not be lower than minimal number
     of replicas.
     """
-    metric: Optional[List[MetricItem]] = None
+    metric: list[MetricItem] | None = None
     """
     Configuration parameters of autoscaling based on a custom metric.
     Structure is documented below.
     """
-    minReplicas: Optional[float] = None
+    minReplicas: float | None = None
     """
     The minimum number of replicas that the autoscaler can scale down
     to. This cannot be less than 0. If not provided, autoscaler will
     choose a default value depending on maximum number of instances
     allowed.
     """
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     Defines operating mode for this policy.
     """
-    scaleInControl: Optional[ScaleInControl] = None
+    scaleInControl: ScaleInControl | None = None
     """
     Defines scale in controls to reduce the risk of response latency
     and outages due to abrupt scale-in events
     Structure is documented below.
     """
-    scalingSchedules: Optional[List[ScalingSchedule]] = None
+    scalingSchedules: list[ScalingSchedule] | None = None
     """
     Scaling schedules defined for an autoscaler. Multiple schedules can be set on an autoscaler and they can overlap.
     Structure is documented below.
@@ -212,14 +211,14 @@ class AutoscalingPolicy(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -233,38 +232,38 @@ class TargetRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class TargetSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    autoscalingPolicy: Optional[AutoscalingPolicy] = None
+    autoscalingPolicy: AutoscalingPolicy | None = None
     """
     The configuration parameters for the autoscaling algorithm. You can
     define one or more of the policies for an autoscaler: cpuUtilization,
@@ -273,11 +272,11 @@ class ForProvider(BaseModel):
     on cpuUtilization to 0.6 or 60%.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -286,22 +285,22 @@ class ForProvider(BaseModel):
     """
     URL of the region where the instance group resides.
     """
-    target: Optional[str] = None
+    target: str | None = None
     """
     URL of the managed instance group that this autoscaler will scale.
     """
-    targetRef: Optional[TargetRef] = None
+    targetRef: TargetRef | None = None
     """
     Reference to a RegionInstanceGroupManager in compute to populate target.
     """
-    targetSelector: Optional[TargetSelector] = None
+    targetSelector: TargetSelector | None = None
     """
     Selector for a RegionInstanceGroupManager in compute to populate target.
     """
 
 
 class InitProvider(BaseModel):
-    autoscalingPolicy: Optional[AutoscalingPolicy] = None
+    autoscalingPolicy: AutoscalingPolicy | None = None
     """
     The configuration parameters for the autoscaling algorithm. You can
     define one or more of the policies for an autoscaler: cpuUtilization,
@@ -310,24 +309,24 @@ class InitProvider(BaseModel):
     on cpuUtilization to 0.6 or 60%.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    target: Optional[str] = None
+    target: str | None = None
     """
     URL of the managed instance group that this autoscaler will scale.
     """
-    targetRef: Optional[TargetRef] = None
+    targetRef: TargetRef | None = None
     """
     Reference to a RegionInstanceGroupManager in compute to populate target.
     """
-    targetSelector: Optional[TargetSelector] = None
+    targetSelector: TargetSelector | None = None
     """
     Selector for a RegionInstanceGroupManager in compute to populate target.
     """
@@ -353,7 +352,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -366,9 +365,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -377,17 +377,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -397,7 +395,7 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    autoscalingPolicy: Optional[AutoscalingPolicy] = None
+    autoscalingPolicy: AutoscalingPolicy | None = None
     """
     The configuration parameters for the autoscaling algorithm. You can
     define one or more of the policies for an autoscaler: cpuUtilization,
@@ -406,49 +404,49 @@ class AtProvider(BaseModel):
     on cpuUtilization to 0.6 or 60%.
     Structure is documented below.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/autoscalers/{{name}}
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     URL of the region where the instance group resides.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    target: Optional[str] = None
+    target: str | None = None
     """
     URL of the managed instance group that this autoscaler will scale.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -470,12 +468,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -484,17 +482,17 @@ class Status(BaseModel):
 
 
 class RegionAutoscaler(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['RegionAutoscaler']] = 'RegionAutoscaler'
+    kind: Literal['RegionAutoscaler'] | None = 'RegionAutoscaler'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -502,26 +500,26 @@ class RegionAutoscaler(BaseModel):
     """
     RegionAutoscalerSpec defines the desired state of RegionAutoscaler
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     RegionAutoscalerStatus defines the observed state of RegionAutoscaler.
     """
 
 
 class RegionAutoscalerList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[RegionAutoscaler]
+    items: list[RegionAutoscaler]
     """
     List of regionautoscalers. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

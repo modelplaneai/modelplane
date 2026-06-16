@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -34,24 +34,24 @@ class ResourceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    uid: Optional[str] = None
+    uid: str | None = None
     """
     UID of the referenced object.
     """
 
 
 class ProviderConfigUsage(BaseModel):
-    apiVersion: Optional[Literal['helm.m.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['helm.m.crossplane.io/v1beta1'] | None = (
         'helm.m.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ProviderConfigUsage']] = 'ProviderConfigUsage'
+    kind: Literal['ProviderConfigUsage'] | None = 'ProviderConfigUsage'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -66,19 +66,19 @@ class ProviderConfigUsage(BaseModel):
 
 
 class ProviderConfigUsageList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ProviderConfigUsage]
+    items: list[ProviderConfigUsage]
     """
     List of providerconfigusages. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

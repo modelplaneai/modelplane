@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -11,41 +11,41 @@ from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class EnvironmentConfig(BaseModel):
-    apiVersion: Optional[Literal['apiextensions.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['apiextensions.crossplane.io/v1beta1'] | None = (
         'apiextensions.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    data: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
     """
     The data of this EnvironmentConfig.
     This may contain any kind of structure that can be serialized into JSON.
     """
-    kind: Optional[Literal['EnvironmentConfig']] = 'EnvironmentConfig'
+    kind: Literal['EnvironmentConfig'] | None = 'EnvironmentConfig'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
 
 
 class EnvironmentConfigList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[EnvironmentConfig]
+    items: list[EnvironmentConfig]
     """
     List of environmentconfigs. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

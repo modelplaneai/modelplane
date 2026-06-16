@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,42 +32,42 @@ class NetworkInsightsPathIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkInsightsPathIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    filterInArns: Optional[List[str]] = None
+    filterInArns: list[str] | None = None
     """
     A list of ARNs for resources the path must traverse.
     """
-    networkInsightsPathId: Optional[str] = None
+    networkInsightsPathId: str | None = None
     """
     ID of the Network Insights Path to run an analysis on.
     """
-    networkInsightsPathIdRef: Optional[NetworkInsightsPathIdRef] = None
+    networkInsightsPathIdRef: NetworkInsightsPathIdRef | None = None
     """
     Reference to a NetworkInsightsPath in ec2 to populate networkInsightsPathId.
     """
-    networkInsightsPathIdSelector: Optional[NetworkInsightsPathIdSelector] = None
+    networkInsightsPathIdSelector: NetworkInsightsPathIdSelector | None = None
     """
     Selector for a NetworkInsightsPath in ec2 to populate networkInsightsPathId.
     """
@@ -77,38 +76,38 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    waitForCompletion: Optional[bool] = None
+    waitForCompletion: bool | None = None
     """
     If enabled, the resource will wait for the Network Insights Analysis status to change to succeeded or failed. Setting this to false will skip the process. Default: true.
     """
 
 
 class InitProvider(BaseModel):
-    filterInArns: Optional[List[str]] = None
+    filterInArns: list[str] | None = None
     """
     A list of ARNs for resources the path must traverse.
     """
-    networkInsightsPathId: Optional[str] = None
+    networkInsightsPathId: str | None = None
     """
     ID of the Network Insights Path to run an analysis on.
     """
-    networkInsightsPathIdRef: Optional[NetworkInsightsPathIdRef] = None
+    networkInsightsPathIdRef: NetworkInsightsPathIdRef | None = None
     """
     Reference to a NetworkInsightsPath in ec2 to populate networkInsightsPathId.
     """
-    networkInsightsPathIdSelector: Optional[NetworkInsightsPathIdSelector] = None
+    networkInsightsPathIdSelector: NetworkInsightsPathIdSelector | None = None
     """
     Selector for a NetworkInsightsPath in ec2 to populate networkInsightsPathId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    waitForCompletion: Optional[bool] = None
+    waitForCompletion: bool | None = None
     """
     If enabled, the resource will wait for the Network Insights Analysis status to change to succeeded or failed. Setting this to false will skip the process. Default: true.
     """
@@ -119,7 +118,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -137,7 +136,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -148,7 +147,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -161,9 +160,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -176,15 +176,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -194,658 +194,652 @@ class Spec(BaseModel):
 
 
 class AlternatePathHint(BaseModel):
-    componentArn: Optional[str] = None
+    componentArn: str | None = None
     """
     The Amazon Resource Name (ARN) of the component.
     """
-    componentId: Optional[str] = None
+    componentId: str | None = None
     """
     The ID of the component.
     """
 
 
 class AclItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class PortRangeItem(BaseModel):
-    from_: Optional[float] = Field(None, alias='from')
-    to: Optional[float] = None
+    from_: float | None = Field(None, alias='from')
+    to: float | None = None
 
 
 class AclRuleItem(BaseModel):
-    cidr: Optional[str] = None
-    egress: Optional[bool] = None
-    portRange: Optional[List[PortRangeItem]] = None
-    protocol: Optional[str] = None
-    ruleAction: Optional[str] = None
-    ruleNumber: Optional[float] = None
+    cidr: str | None = None
+    egress: bool | None = None
+    portRange: list[PortRangeItem] | None = None
+    protocol: str | None = None
+    ruleAction: str | None = None
+    ruleNumber: float | None = None
 
 
 class AttachedToItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class ClassicLoadBalancerListenerItem(BaseModel):
-    instancePort: Optional[float] = None
-    loadBalancerPort: Optional[float] = None
+    instancePort: float | None = None
+    loadBalancerPort: float | None = None
 
 
 class ComponentItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class CustomerGatewayItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class DestinationItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class DestinationVpcItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class ElasticLoadBalancerListenerItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class IngressRouteTableItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class InternetGatewayItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class LoadBalancerTargetGroupItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class LoadBalancerTargetGroup(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class NatGatewayItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class NetworkInterfaceItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class PortRange(BaseModel):
-    from_: Optional[float] = Field(None, alias='from')
-    to: Optional[float] = None
+    from_: float | None = Field(None, alias='from')
+    to: float | None = None
 
 
 class PrefixListItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class RouteTableItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class RouteTableRouteItem(BaseModel):
-    destinationCidr: Optional[str] = None
-    destinationPrefixListId: Optional[str] = None
+    destinationCidr: str | None = None
+    destinationPrefixListId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    egressOnlyInternetGatewayId: Optional[str] = None
+    egressOnlyInternetGatewayId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    gatewayId: Optional[str] = None
+    gatewayId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    instanceId: Optional[str] = None
+    instanceId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    natGatewayId: Optional[str] = None
+    natGatewayId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    networkInterfaceId: Optional[str] = None
+    networkInterfaceId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    origin: Optional[str] = None
-    transitGatewayId: Optional[str] = None
+    origin: str | None = None
+    transitGatewayId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    vpcPeeringConnectionId: Optional[str] = None
+    vpcPeeringConnectionId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
 
 
 class SecurityGroupItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class SecurityGroupRuleItem(BaseModel):
-    cidr: Optional[str] = None
-    direction: Optional[str] = None
-    portRange: Optional[List[PortRangeItem]] = None
-    prefixListId: Optional[str] = None
+    cidr: str | None = None
+    direction: str | None = None
+    portRange: list[PortRangeItem] | None = None
+    prefixListId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    protocol: Optional[str] = None
-    securityGroupId: Optional[str] = None
+    protocol: str | None = None
+    securityGroupId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
 
 
 class SecurityGroup(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class SourceVpcItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class SubnetItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class SubnetRouteTableItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class TransitGatewayItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class TransitGatewayAttachmentItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class TransitGatewayRouteTableItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class TransitGatewayRouteTableRouteItem(BaseModel):
-    attachmentId: Optional[str] = None
+    attachmentId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    destinationCidr: Optional[str] = None
-    prefixListId: Optional[str] = None
+    destinationCidr: str | None = None
+    prefixListId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    resourceId: Optional[str] = None
+    resourceId: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    resourceType: Optional[str] = None
-    routeOrigin: Optional[str] = None
-    state: Optional[str] = None
+    resourceType: str | None = None
+    routeOrigin: str | None = None
+    state: str | None = None
 
 
 class VpcItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class VpcEndpointItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class VpcPeeringConnectionItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class VpnConnectionItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class VpnGatewayItem(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    name: Optional[str] = None
+    name: str | None = None
 
 
 class Explanation(BaseModel):
-    acl: Optional[List[AclItem]] = None
-    aclRule: Optional[List[AclRuleItem]] = None
-    address: Optional[str] = None
-    addresses: Optional[List[str]] = None
-    attachedTo: Optional[List[AttachedToItem]] = None
-    availabilityZones: Optional[List[str]] = None
-    cidrs: Optional[List[str]] = None
-    classicLoadBalancerListener: Optional[List[ClassicLoadBalancerListenerItem]] = None
-    component: Optional[List[ComponentItem]] = None
-    customerGateway: Optional[List[CustomerGatewayItem]] = None
-    destination: Optional[List[DestinationItem]] = None
-    destinationVpc: Optional[List[DestinationVpcItem]] = None
-    direction: Optional[str] = None
-    elasticLoadBalancerListener: Optional[List[ElasticLoadBalancerListenerItem]] = None
-    explanationCode: Optional[str] = None
-    ingressRouteTable: Optional[List[IngressRouteTableItem]] = None
-    internetGateway: Optional[List[InternetGatewayItem]] = None
-    loadBalancerArn: Optional[str] = None
+    acl: list[AclItem] | None = None
+    aclRule: list[AclRuleItem] | None = None
+    address: str | None = None
+    addresses: list[str] | None = None
+    attachedTo: list[AttachedToItem] | None = None
+    availabilityZones: list[str] | None = None
+    cidrs: list[str] | None = None
+    classicLoadBalancerListener: list[ClassicLoadBalancerListenerItem] | None = None
+    component: list[ComponentItem] | None = None
+    customerGateway: list[CustomerGatewayItem] | None = None
+    destination: list[DestinationItem] | None = None
+    destinationVpc: list[DestinationVpcItem] | None = None
+    direction: str | None = None
+    elasticLoadBalancerListener: list[ElasticLoadBalancerListenerItem] | None = None
+    explanationCode: str | None = None
+    ingressRouteTable: list[IngressRouteTableItem] | None = None
+    internetGateway: list[InternetGatewayItem] | None = None
+    loadBalancerArn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    loadBalancerListenerPort: Optional[float] = None
-    loadBalancerTargetGroup: Optional[List[LoadBalancerTargetGroupItem]] = None
-    loadBalancerTargetGroups: Optional[List[LoadBalancerTargetGroup]] = None
-    loadBalancerTargetPort: Optional[float] = None
-    missingComponent: Optional[str] = None
-    natGateway: Optional[List[NatGatewayItem]] = None
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
-    packetField: Optional[str] = None
-    port: Optional[float] = None
-    portRanges: Optional[List[PortRange]] = None
-    prefixList: Optional[List[PrefixListItem]] = None
-    protocols: Optional[List[str]] = None
-    routeTable: Optional[List[RouteTableItem]] = None
-    routeTableRoute: Optional[List[RouteTableRouteItem]] = None
-    securityGroup: Optional[List[SecurityGroupItem]] = None
-    securityGroupRule: Optional[List[SecurityGroupRuleItem]] = None
-    securityGroups: Optional[List[SecurityGroup]] = None
-    sourceVpc: Optional[List[SourceVpcItem]] = None
-    state: Optional[str] = None
-    subnet: Optional[List[SubnetItem]] = None
-    subnetRouteTable: Optional[List[SubnetRouteTableItem]] = None
-    transitGateway: Optional[List[TransitGatewayItem]] = None
-    transitGatewayAttachment: Optional[List[TransitGatewayAttachmentItem]] = None
-    transitGatewayRouteTable: Optional[List[TransitGatewayRouteTableItem]] = None
-    transitGatewayRouteTableRoute: Optional[List[TransitGatewayRouteTableRouteItem]] = (
-        None
-    )
-    vpc: Optional[List[VpcItem]] = None
-    vpcEndpoint: Optional[List[VpcEndpointItem]] = None
-    vpcPeeringConnection: Optional[List[VpcPeeringConnectionItem]] = None
-    vpnConnection: Optional[List[VpnConnectionItem]] = None
-    vpnGateway: Optional[List[VpnGatewayItem]] = None
+    loadBalancerListenerPort: float | None = None
+    loadBalancerTargetGroup: list[LoadBalancerTargetGroupItem] | None = None
+    loadBalancerTargetGroups: list[LoadBalancerTargetGroup] | None = None
+    loadBalancerTargetPort: float | None = None
+    missingComponent: str | None = None
+    natGateway: list[NatGatewayItem] | None = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
+    packetField: str | None = None
+    port: float | None = None
+    portRanges: list[PortRange] | None = None
+    prefixList: list[PrefixListItem] | None = None
+    protocols: list[str] | None = None
+    routeTable: list[RouteTableItem] | None = None
+    routeTableRoute: list[RouteTableRouteItem] | None = None
+    securityGroup: list[SecurityGroupItem] | None = None
+    securityGroupRule: list[SecurityGroupRuleItem] | None = None
+    securityGroups: list[SecurityGroup] | None = None
+    sourceVpc: list[SourceVpcItem] | None = None
+    state: str | None = None
+    subnet: list[SubnetItem] | None = None
+    subnetRouteTable: list[SubnetRouteTableItem] | None = None
+    transitGateway: list[TransitGatewayItem] | None = None
+    transitGatewayAttachment: list[TransitGatewayAttachmentItem] | None = None
+    transitGatewayRouteTable: list[TransitGatewayRouteTableItem] | None = None
+    transitGatewayRouteTableRoute: list[TransitGatewayRouteTableRouteItem] | None = None
+    vpc: list[VpcItem] | None = None
+    vpcEndpoint: list[VpcEndpointItem] | None = None
+    vpcPeeringConnection: list[VpcPeeringConnectionItem] | None = None
+    vpnConnection: list[VpnConnectionItem] | None = None
+    vpnGateway: list[VpnGatewayItem] | None = None
 
 
 class AdditionalDetail(BaseModel):
-    additionalDetailType: Optional[str] = None
-    component: Optional[List[ComponentItem]] = None
+    additionalDetailType: str | None = None
+    component: list[ComponentItem] | None = None
 
 
 class DestinationPortRange(BaseModel):
-    from_: Optional[float] = Field(None, alias='from')
-    to: Optional[float] = None
+    from_: float | None = Field(None, alias='from')
+    to: float | None = None
 
 
 class SourcePortRange(BaseModel):
-    from_: Optional[float] = Field(None, alias='from')
-    to: Optional[float] = None
+    from_: float | None = Field(None, alias='from')
+    to: float | None = None
 
 
 class InboundHeaderItem(BaseModel):
-    destinationAddresses: Optional[List[str]] = None
-    destinationPortRanges: Optional[List[DestinationPortRange]] = None
-    protocol: Optional[str] = None
-    sourceAddresses: Optional[List[str]] = None
-    sourcePortRanges: Optional[List[SourcePortRange]] = None
+    destinationAddresses: list[str] | None = None
+    destinationPortRanges: list[DestinationPortRange] | None = None
+    protocol: str | None = None
+    sourceAddresses: list[str] | None = None
+    sourcePortRanges: list[SourcePortRange] | None = None
 
 
 class OutboundHeaderItem(BaseModel):
-    destinationAddresses: Optional[List[str]] = None
-    destinationPortRanges: Optional[List[DestinationPortRange]] = None
-    protocol: Optional[str] = None
-    sourceAddresses: Optional[List[str]] = None
-    sourcePortRanges: Optional[List[SourcePortRange]] = None
+    destinationAddresses: list[str] | None = None
+    destinationPortRanges: list[DestinationPortRange] | None = None
+    protocol: str | None = None
+    sourceAddresses: list[str] | None = None
+    sourcePortRanges: list[SourcePortRange] | None = None
 
 
 class ForwardPathComponent(BaseModel):
-    aclRule: Optional[List[AclRuleItem]] = None
-    additionalDetails: Optional[List[AdditionalDetail]] = None
-    attachedTo: Optional[List[AttachedToItem]] = None
-    component: Optional[List[ComponentItem]] = None
-    destinationVpc: Optional[List[DestinationVpcItem]] = None
-    inboundHeader: Optional[List[InboundHeaderItem]] = None
-    outboundHeader: Optional[List[OutboundHeaderItem]] = None
-    routeTableRoute: Optional[List[RouteTableRouteItem]] = None
-    securityGroupRule: Optional[List[SecurityGroupRuleItem]] = None
-    sequenceNumber: Optional[float] = None
-    sourceVpc: Optional[List[SourceVpcItem]] = None
-    subnet: Optional[List[SubnetItem]] = None
-    transitGateway: Optional[List[TransitGatewayItem]] = None
-    transitGatewayRouteTableRoute: Optional[List[TransitGatewayRouteTableRouteItem]] = (
-        None
-    )
-    vpc: Optional[List[VpcItem]] = None
+    aclRule: list[AclRuleItem] | None = None
+    additionalDetails: list[AdditionalDetail] | None = None
+    attachedTo: list[AttachedToItem] | None = None
+    component: list[ComponentItem] | None = None
+    destinationVpc: list[DestinationVpcItem] | None = None
+    inboundHeader: list[InboundHeaderItem] | None = None
+    outboundHeader: list[OutboundHeaderItem] | None = None
+    routeTableRoute: list[RouteTableRouteItem] | None = None
+    securityGroupRule: list[SecurityGroupRuleItem] | None = None
+    sequenceNumber: float | None = None
+    sourceVpc: list[SourceVpcItem] | None = None
+    subnet: list[SubnetItem] | None = None
+    transitGateway: list[TransitGatewayItem] | None = None
+    transitGatewayRouteTableRoute: list[TransitGatewayRouteTableRouteItem] | None = None
+    vpc: list[VpcItem] | None = None
 
 
 class ReturnPathComponent(BaseModel):
-    aclRule: Optional[List[AclRuleItem]] = None
-    additionalDetails: Optional[List[AdditionalDetail]] = None
-    attachedTo: Optional[List[AttachedToItem]] = None
-    component: Optional[List[ComponentItem]] = None
-    destinationVpc: Optional[List[DestinationVpcItem]] = None
-    inboundHeader: Optional[List[InboundHeaderItem]] = None
-    outboundHeader: Optional[List[OutboundHeaderItem]] = None
-    routeTableRoute: Optional[List[RouteTableRouteItem]] = None
-    securityGroupRule: Optional[List[SecurityGroupRuleItem]] = None
-    sequenceNumber: Optional[float] = None
-    sourceVpc: Optional[List[SourceVpcItem]] = None
-    subnet: Optional[List[SubnetItem]] = None
-    transitGateway: Optional[List[TransitGatewayItem]] = None
-    transitGatewayRouteTableRoute: Optional[List[TransitGatewayRouteTableRouteItem]] = (
-        None
-    )
-    vpc: Optional[List[VpcItem]] = None
+    aclRule: list[AclRuleItem] | None = None
+    additionalDetails: list[AdditionalDetail] | None = None
+    attachedTo: list[AttachedToItem] | None = None
+    component: list[ComponentItem] | None = None
+    destinationVpc: list[DestinationVpcItem] | None = None
+    inboundHeader: list[InboundHeaderItem] | None = None
+    outboundHeader: list[OutboundHeaderItem] | None = None
+    routeTableRoute: list[RouteTableRouteItem] | None = None
+    securityGroupRule: list[SecurityGroupRuleItem] | None = None
+    sequenceNumber: float | None = None
+    sourceVpc: list[SourceVpcItem] | None = None
+    subnet: list[SubnetItem] | None = None
+    transitGateway: list[TransitGatewayItem] | None = None
+    transitGatewayRouteTableRoute: list[TransitGatewayRouteTableRouteItem] | None = None
+    vpc: list[VpcItem] | None = None
 
 
 class AtProvider(BaseModel):
-    alternatePathHints: Optional[List[AlternatePathHint]] = None
+    alternatePathHints: list[AlternatePathHint] | None = None
     """
     Potential intermediate components of a feasible path. Described below.
     """
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Analysis.
     """
-    explanations: Optional[List[Explanation]] = None
+    explanations: list[Explanation] | None = None
     """
     Explanation codes for an unreachable path. See the AWS documentation for details.
     """
-    filterInArns: Optional[List[str]] = None
+    filterInArns: list[str] | None = None
     """
     A list of ARNs for resources the path must traverse.
     """
-    forwardPathComponents: Optional[List[ForwardPathComponent]] = None
+    forwardPathComponents: list[ForwardPathComponent] | None = None
     """
     The components in the path from source to destination. See the AWS documentation for details.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Analysis.
     """
-    networkInsightsPathId: Optional[str] = None
+    networkInsightsPathId: str | None = None
     """
     ID of the Network Insights Path to run an analysis on.
     """
-    pathFound: Optional[bool] = None
+    pathFound: bool | None = None
     """
     Set to true if the destination was reachable.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    returnPathComponents: Optional[List[ReturnPathComponent]] = None
+    returnPathComponents: list[ReturnPathComponent] | None = None
     """
     The components in the path from destination to source. See the AWS documentation for details.
     """
-    startDate: Optional[str] = None
+    startDate: str | None = None
     """
     The date/time the analysis was started.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     The status of the analysis. succeeded means the analysis was completed, not that a path was found, for that see path_found.
     """
-    statusMessage: Optional[str] = None
+    statusMessage: str | None = None
     """
     A message to provide more context when the status is failed.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    waitForCompletion: Optional[bool] = None
+    waitForCompletion: bool | None = None
     """
     If enabled, the resource will wait for the Network Insights Analysis status to change to succeeded or failed. Setting this to false will skip the process. Default: true.
     """
-    warningMessage: Optional[str] = None
+    warningMessage: str | None = None
     """
     The warning message.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -867,12 +861,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -881,17 +875,17 @@ class Status(BaseModel):
 
 
 class NetworkInsightsAnalysis(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta1'] | None = (
         'ec2.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['NetworkInsightsAnalysis']] = 'NetworkInsightsAnalysis'
+    kind: Literal['NetworkInsightsAnalysis'] | None = 'NetworkInsightsAnalysis'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -899,26 +893,26 @@ class NetworkInsightsAnalysis(BaseModel):
     """
     NetworkInsightsAnalysisSpec defines the desired state of NetworkInsightsAnalysis
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     NetworkInsightsAnalysisStatus defines the observed state of NetworkInsightsAnalysis.
     """
 
 
 class NetworkInsightsAnalysisList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[NetworkInsightsAnalysis]
+    items: list[NetworkInsightsAnalysis]
     """
     List of networkinsightsanalyses. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

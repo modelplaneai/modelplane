@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, constr
+from pydantic import AwareDatetime, Base64Str, BaseModel, Field, constr
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ClaimNames(BaseModel):
-    categories: Optional[List[str]] = None
+    categories: list[str] | None = None
     """
     categories is a list of grouped resources this custom resource belongs to (e.g. 'all').
     This is published in API discovery documents, and used by clients to support invocations like
@@ -23,7 +22,7 @@ class ClaimNames(BaseModel):
     kind is the serialized kind of the resource. It is normally CamelCase and singular.
     Custom resource instances will use this value as the `kind` attribute in API calls.
     """
-    listKind: Optional[str] = None
+    listKind: str | None = None
     """
     listKind is the serialized kind of the list for this resource. Defaults to "`kind`List".
     """
@@ -34,13 +33,13 @@ class ClaimNames(BaseModel):
     Must match the name of the CustomResourceDefinition (in the form `<names.plural>.<group>`).
     Must be all lowercase.
     """
-    shortNames: Optional[List[str]] = None
+    shortNames: list[str] | None = None
     """
     shortNames are short names for the resource, exposed in API discovery documents,
     and used by clients to support invocations like `kubectl get <shortname>`.
     It must be all lowercase.
     """
-    singular: Optional[str] = None
+    singular: str | None = None
     """
     singular is the singular name of the resource. It must be all lowercase. Defaults to lowercased `kind`.
     """
@@ -57,11 +56,11 @@ class Service(BaseModel):
     namespace is the namespace of the service.
     Required
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     path is an optional URL path at which the webhook will be contacted.
     """
-    port: Optional[int] = None
+    port: int | None = None
     """
     port is an optional service port at which the webhook will be contacted.
     `port` should be a valid port number (1-65535, inclusive).
@@ -70,19 +69,19 @@ class Service(BaseModel):
 
 
 class ClientConfig(BaseModel):
-    caBundle: Optional[str] = None
+    caBundle: Base64Str | None = None
     """
     caBundle is a PEM encoded CA bundle which will be used to validate the webhook's server certificate.
     If unspecified, system trust roots on the apiserver are used.
     """
-    service: Optional[Service] = None
+    service: Service | None = None
     """
     service is a reference to the service for this webhook. Either
     service or url must be specified.
 
     If the webhook is running within the cluster, then you should use `service`.
     """
-    url: Optional[str] = None
+    url: str | None = None
     """
     url gives the location of the webhook, in standard URL form
     (`scheme://host:port/path`). Exactly one of `url` or `service`
@@ -113,11 +112,11 @@ class ClientConfig(BaseModel):
 
 
 class Webhook(BaseModel):
-    clientConfig: Optional[ClientConfig] = None
+    clientConfig: ClientConfig | None = None
     """
     clientConfig is the instructions for how to call the webhook if strategy is `Webhook`.
     """
-    conversionReviewVersions: List[str]
+    conversionReviewVersions: list[str]
     """
     conversionReviewVersions is an ordered list of preferred `ConversionReview`
     versions the Webhook expects. The API server will use the first version in
@@ -136,7 +135,7 @@ class Conversion(BaseModel):
     - `"Webhook"`: API Server will call to an external webhook to do the conversion. Additional information
       is needed for this option. This requires spec.preserveUnknownFields to be false, and spec.conversion.webhook to be set.
     """
-    webhook: Optional[Webhook] = None
+    webhook: Webhook | None = None
     """
     webhook describes how to call the conversion webhook. Required when `strategy` is set to `"Webhook"`.
     """
@@ -159,7 +158,7 @@ class MatchExpression(BaseModel):
     operator represents a key's relationship to a set of values.
     Valid operators are In, NotIn, Exists and DoesNotExist.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     values is an array of string values. If the operator is In or NotIn,
     the values array must be non-empty. If the operator is Exists or DoesNotExist,
@@ -169,11 +168,11 @@ class MatchExpression(BaseModel):
 
 
 class DefaultCompositionRevisionSelector(BaseModel):
-    matchExpressions: Optional[List[MatchExpression]] = None
+    matchExpressions: list[MatchExpression] | None = None
     """
     matchExpressions is a list of label selector requirements. The requirements are ANDed.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
     map is equivalent to an element of matchExpressions, whose key field is "key", the
@@ -189,14 +188,14 @@ class EnforcedCompositionRef(BaseModel):
 
 
 class Metadata(BaseModel):
-    annotations: Optional[Dict[str, str]] = None
+    annotations: dict[str, str] | None = None
     """
     Annotations is an unstructured key value map stored with a resource that may be
     set by external tools to store and retrieve arbitrary metadata. They are not
     queryable and should be preserved when modifying objects.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Map of string keys and values that can be used to organize and categorize
     (scope and select) objects. May match selectors of replication controllers
@@ -208,7 +207,7 @@ class Metadata(BaseModel):
 
 
 class Names(BaseModel):
-    categories: Optional[List[str]] = None
+    categories: list[str] | None = None
     """
     categories is a list of grouped resources this custom resource belongs to (e.g. 'all').
     This is published in API discovery documents, and used by clients to support invocations like
@@ -219,7 +218,7 @@ class Names(BaseModel):
     kind is the serialized kind of the resource. It is normally CamelCase and singular.
     Custom resource instances will use this value as the `kind` attribute in API calls.
     """
-    listKind: Optional[str] = None
+    listKind: str | None = None
     """
     listKind is the serialized kind of the list for this resource. Defaults to "`kind`List".
     """
@@ -230,24 +229,24 @@ class Names(BaseModel):
     Must match the name of the CustomResourceDefinition (in the form `<names.plural>.<group>`).
     Must be all lowercase.
     """
-    shortNames: Optional[List[str]] = None
+    shortNames: list[str] | None = None
     """
     shortNames are short names for the resource, exposed in API discovery documents,
     and used by clients to support invocations like `kubectl get <shortname>`.
     It must be all lowercase.
     """
-    singular: Optional[str] = None
+    singular: str | None = None
     """
     singular is the singular name of the resource. It must be all lowercase. Defaults to lowercased `kind`.
     """
 
 
 class AdditionalPrinterColumn(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     description is a human readable description of this column.
     """
-    format: Optional[str] = None
+    format: str | None = None
     """
     format is an optional OpenAPI type definition for this column. The 'name' format is applied
     to the primary identifier column to assist in clients identifying column is the resource name.
@@ -262,7 +261,7 @@ class AdditionalPrinterColumn(BaseModel):
     """
     name is a human readable name for the column.
     """
-    priority: Optional[int] = None
+    priority: int | None = None
     """
     priority is an integer defining the relative importance of this column compared to others. Lower
     numbers are considered higher priority. Columns that may be omitted in limited space scenarios
@@ -276,27 +275,64 @@ class AdditionalPrinterColumn(BaseModel):
 
 
 class Schema(BaseModel):
-    openAPIV3Schema: Optional[Dict[str, Any]] = None
+    openAPIV3Schema: dict[str, Any] | None = None
     """
     OpenAPIV3Schema is the OpenAPI v3 schema to use for validation and
     pruning.
     """
 
 
+class Scale(BaseModel):
+    labelSelectorPath: str | None = None
+    """
+    labelSelectorPath defines the JSON path inside of a custom resource that corresponds to Scale `status.selector`.
+    Only JSON paths without the array notation are allowed.
+    Must be a JSON Path under `.status` or `.spec`.
+    Must be set to work with HorizontalPodAutoscaler.
+    The field pointed by this JSON path must be a string field (not a complex selector struct)
+    which contains a serialized label selector in string form.
+    More info: https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions#scale-subresource
+    If there is no value under the given path in the custom resource, the `status.selector` value in the `/scale`
+    subresource will default to the empty string.
+    """
+    specReplicasPath: str
+    """
+    specReplicasPath defines the JSON path inside of a custom resource that corresponds to Scale `spec.replicas`.
+    Only JSON paths without the array notation are allowed.
+    Must be a JSON Path under `.spec`.
+    If there is no value under the given path in the custom resource, the `/scale` subresource will return an error on GET.
+    """
+    statusReplicasPath: str
+    """
+    statusReplicasPath defines the JSON path inside of a custom resource that corresponds to Scale `status.replicas`.
+    Only JSON paths without the array notation are allowed.
+    Must be a JSON Path under `.status`.
+    If there is no value under the given path in the custom resource, the `status.replicas` value in the `/scale` subresource
+    will default to 0.
+    """
+
+
+class Subresources(BaseModel):
+    scale: Scale | None = None
+    """
+    Scale indicates the CRD should serve a `/scale` subresource that returns an `autoscaling/v1` Scale object.
+    """
+
+
 class Version(BaseModel):
-    additionalPrinterColumns: Optional[List[AdditionalPrinterColumn]] = None
+    additionalPrinterColumns: list[AdditionalPrinterColumn] | None = None
     """
     AdditionalPrinterColumns specifies additional columns returned in Table
     output. If no columns are specified, a single column displaying the age
     of the custom resource is used. See the following link for details:
     https://kubernetes.io/docs/reference/using-api/api-concepts/#receiving-resources-as-tables
     """
-    deprecated: Optional[bool] = None
+    deprecated: bool | None = None
     """
     The deprecated field specifies that this version is deprecated and should
     not be used.
     """
-    deprecationWarning: Optional[constr(max_length=256)] = None
+    deprecationWarning: constr(max_length=256) | None = None
     """
     DeprecationWarning specifies the message that should be shown to the user
     when using this version.
@@ -315,7 +351,7 @@ class Version(BaseModel):
     must target only the referenceable version. The referenceable version
     must be served. It's mapped to the CRD's `spec.versions[*].storage` field.
     """
-    schema_: Optional[Schema] = Field(None, alias='schema')
+    schema_: Schema | None = Field(None, alias='schema')
     """
     Schema describes the schema used for validation, pruning, and defaulting
     of this version of the defined composite resource. Fields required by all
@@ -328,10 +364,15 @@ class Version(BaseModel):
     """
     Served specifies that this version should be served via REST APIs.
     """
+    subresources: Subresources | None = None
+    """
+    Subresources specifies what subresources this version of the defined Composite resource has.
+    The composition authors have responsibility to implement the logic fulfilling the subresources.
+    """
 
 
 class Spec(BaseModel):
-    claimNames: Optional[ClaimNames] = None
+    claimNames: ClaimNames | None = None
     """
     ClaimNames specifies the names of an optional composite resource claim.
     When claim names are specified Crossplane will create a namespaced
@@ -344,7 +385,7 @@ class Spec(BaseModel):
 
     Deprecated: Claims aren't supported in apiextensions.crossplane.io/v2.
     """
-    connectionSecretKeys: Optional[List[str]] = None
+    connectionSecretKeys: list[str] | None = None
     """
     ConnectionSecretKeys is the list of connection secret keys the
     defined XR can publish. If the list is empty, all keys will be
@@ -355,37 +396,33 @@ class Spec(BaseModel):
     Deprecated: XR connection secrets aren't supported in
     apiextensions.crossplane.io/v2. Compose a secret instead.
     """
-    conversion: Optional[Conversion] = None
+    conversion: Conversion | None = None
     """
     Conversion defines all conversion settings for the defined Composite resource.
     """
-    defaultCompositeDeletePolicy: Optional[Literal['Background', 'Foreground']] = None
+    defaultCompositeDeletePolicy: Literal['Background', 'Foreground'] | None = None
     """
     DefaultCompositeDeletePolicy is the policy used when deleting the Composite
     that is associated with the Claim if no policy has been specified.
 
     Deprecated: Claims aren't supported in apiextensions.crossplane.io/v2.
     """
-    defaultCompositionRef: Optional[DefaultCompositionRef] = None
+    defaultCompositionRef: DefaultCompositionRef | None = None
     """
     DefaultCompositionRef refers to the Composition resource that will be used
     in case no composition selector is given.
     """
-    defaultCompositionRevisionSelector: Optional[DefaultCompositionRevisionSelector] = (
-        None
-    )
+    defaultCompositionRevisionSelector: DefaultCompositionRevisionSelector | None = None
     """
     DefaultCompositionRevisionSelector refers to the CompositionRevision that will be used
     in case no compositionRevision selector is given.
     """
-    defaultCompositionUpdatePolicy: Optional[Literal['Automatic', 'Manual']] = (
-        'Automatic'
-    )
+    defaultCompositionUpdatePolicy: Literal['Automatic', 'Manual'] | None = 'Automatic'
     """
     DefaultCompositionUpdatePolicy is the policy used when updating composites after a new
     Composition Revision has been created if no policy has been specified on the composite.
     """
-    enforcedCompositionRef: Optional[EnforcedCompositionRef] = None
+    enforcedCompositionRef: EnforcedCompositionRef | None = None
     """
     EnforcedCompositionRef refers to the Composition resource that will be used
     by all composite instances whose schema is defined by this definition.
@@ -396,7 +433,7 @@ class Spec(BaseModel):
     Composite resources are served under `/apis/<group>/...`. Must match the
     name of the XRD (in the form `<names.plural>.<group>`).
     """
-    metadata: Optional[Metadata] = None
+    metadata: Metadata | None = None
     """
     Metadata specifies the desired metadata for the defined composite resource and claim CRD's.
     """
@@ -405,13 +442,13 @@ class Spec(BaseModel):
     Names specifies the resource and kind names of the defined composite
     resource.
     """
-    scope: Optional[Literal['Namespaced', 'Cluster']] = 'Namespaced'
+    scope: Literal['Namespaced', 'Cluster'] | None = 'Namespaced'
     """
     Scope of the defined composite resource. Namespaced composite resources
     are scoped to a single namespace. Cluster scoped composite resource exist
     outside the scope of any namespace.
     """
-    versions: List[Version]
+    versions: list[Version]
     """
     Versions is the list of all API versions of the defined composite
     resource. Version names are used to compute the order in which served
@@ -428,17 +465,17 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -482,7 +519,7 @@ class CompositeResourceType(BaseModel):
 
 
 class Controllers(BaseModel):
-    compositeResourceClaimType: Optional[CompositeResourceClaimType] = None
+    compositeResourceClaimType: CompositeResourceClaimType | None = None
     """
     The CompositeResourceClaimTypeRef is the type of composite resource claim
     that Crossplane is currently reconciling for this definition. Its version
@@ -490,7 +527,7 @@ class Controllers(BaseModel):
     version. Note that clients may interact with any served type; this is
     simply the type that Crossplane interacts with.
     """
-    compositeResourceType: Optional[CompositeResourceType] = None
+    compositeResourceType: CompositeResourceType | None = None
     """
     The CompositeResourceTypeRef is the type of composite resource that
     Crossplane is currently reconciling for this definition. Its version will
@@ -501,11 +538,11 @@ class Controllers(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    controllers: Optional[Controllers] = None
+    controllers: Controllers | None = None
     """
     Controllers represents the status of the controllers that power this
     composite resource definition.
@@ -513,46 +550,44 @@ class Status(BaseModel):
 
 
 class CompositeResourceDefinition(BaseModel):
-    apiVersion: Optional[Literal['apiextensions.crossplane.io/v2']] = (
+    apiVersion: Literal['apiextensions.crossplane.io/v2'] | None = (
         'apiextensions.crossplane.io/v2'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['CompositeResourceDefinition']] = (
-        'CompositeResourceDefinition'
-    )
+    kind: Literal['CompositeResourceDefinition'] | None = 'CompositeResourceDefinition'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[Spec] = None
+    spec: Spec | None = None
     """
     CompositeResourceDefinitionSpec specifies the desired state of the definition.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     CompositeResourceDefinitionStatus shows the observed state of the definition.
     """
 
 
 class CompositeResourceDefinitionList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[CompositeResourceDefinition]
+    items: list[CompositeResourceDefinition]
     """
     List of compositeresourcedefinitions. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

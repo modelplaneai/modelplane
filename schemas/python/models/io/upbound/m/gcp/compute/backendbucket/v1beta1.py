@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,50 +32,50 @@ class BucketNameRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class BucketNameSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class BypassCacheOnRequestHeader(BaseModel):
-    headerName: Optional[str] = None
+    headerName: str | None = None
     """
     The header field name to match on when bypassing cache. Values are case-insensitive.
     """
 
 
 class CacheKeyPolicy(BaseModel):
-    includeHttpHeaders: Optional[List[str]] = None
+    includeHttpHeaders: list[str] | None = None
     """
     Allows HTTP request headers (by name) to be used in the
     cache key.
     """
-    queryStringWhitelist: Optional[List[str]] = None
+    queryStringWhitelist: list[str] | None = None
     """
     Names of query string parameters to include in cache keys.
     Default parameters are always included. '&' and '=' will
@@ -85,12 +84,12 @@ class CacheKeyPolicy(BaseModel):
 
 
 class NegativeCachingPolicyItem(BaseModel):
-    code: Optional[float] = None
+    code: float | None = None
     """
     The HTTP status code to define a TTL against. Only HTTP status codes 300, 301, 308, 404, 405, 410, 421, 451 and 501
     can be specified as values, and you cannot specify a status code more than once.
     """
-    ttl: Optional[float] = None
+    ttl: float | None = None
     """
     The TTL (in seconds) for which to cache responses with the corresponding status code. The maximum allowed value is 1800s
     (30 minutes), noting that infrequently accessed objects may be evicted from the cache before the defined TTL.
@@ -98,57 +97,57 @@ class NegativeCachingPolicyItem(BaseModel):
 
 
 class CdnPolicy(BaseModel):
-    bypassCacheOnRequestHeaders: Optional[List[BypassCacheOnRequestHeader]] = None
+    bypassCacheOnRequestHeaders: list[BypassCacheOnRequestHeader] | None = None
     """
     Bypass the cache when the specified request headers are matched - e.g. Pragma or Authorization headers. Up to 5 headers can be specified. The cache is bypassed for all cdnPolicy.cacheMode settings.
     Structure is documented below.
     """
-    cacheKeyPolicy: Optional[CacheKeyPolicy] = None
+    cacheKeyPolicy: CacheKeyPolicy | None = None
     """
     The CacheKeyPolicy for this CdnPolicy.
     Structure is documented below.
     """
-    cacheMode: Optional[str] = None
+    cacheMode: str | None = None
     """
     Specifies the cache setting for all responses from this backend.
     The possible values are: USE_ORIGIN_HEADERS, FORCE_CACHE_ALL and CACHE_ALL_STATIC
     Possible values are: USE_ORIGIN_HEADERS, FORCE_CACHE_ALL, CACHE_ALL_STATIC.
     """
-    clientTtl: Optional[float] = None
+    clientTtl: float | None = None
     """
     Specifies the maximum allowed TTL for cached content served by this origin. When the
     cache_mode is set to "USE_ORIGIN_HEADERS", you must omit this field.
     """
-    defaultTtl: Optional[float] = None
+    defaultTtl: float | None = None
     """
     Specifies the default TTL for cached content served by this origin for responses
     that do not have an existing valid TTL (max-age or s-max-age). When the cache_mode
     is set to "USE_ORIGIN_HEADERS", you must omit this field.
     """
-    maxTtl: Optional[float] = None
+    maxTtl: float | None = None
     """
     Specifies the maximum allowed TTL for cached content served by this origin. When the
     cache_mode is set to "USE_ORIGIN_HEADERS", you must omit this field.
     """
-    negativeCaching: Optional[bool] = None
+    negativeCaching: bool | None = None
     """
     Negative caching allows per-status code TTLs to be set, in order to apply fine-grained caching for common errors or redirects.
     """
-    negativeCachingPolicy: Optional[List[NegativeCachingPolicyItem]] = None
+    negativeCachingPolicy: list[NegativeCachingPolicyItem] | None = None
     """
     Sets a cache TTL for the specified HTTP status code. negativeCaching must be enabled to configure negativeCachingPolicy.
     Omitting the policy and leaving negativeCaching enabled will use Cloud CDN's default cache TTLs.
     Structure is documented below.
     """
-    requestCoalescing: Optional[bool] = None
+    requestCoalescing: bool | None = None
     """
     If true then Cloud CDN will combine multiple concurrent cache fill requests into a small number of requests to the origin.
     """
-    serveWhileStale: Optional[float] = None
+    serveWhileStale: float | None = None
     """
     Serve existing content from the cache (if available) when revalidating content with the origin, or when an error is encountered when refreshing the cache.
     """
-    signedUrlCacheMaxAgeSec: Optional[float] = None
+    signedUrlCacheMaxAgeSec: float | None = None
     """
     Maximum number of seconds the response to a signed URL request will
     be considered fresh. After this time period,
@@ -166,91 +165,91 @@ class EdgeSecurityPolicyRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class EdgeSecurityPolicySelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    bucketName: Optional[str] = None
+    bucketName: str | None = None
     """
     Cloud Storage bucket name.
     """
-    bucketNameRef: Optional[BucketNameRef] = None
+    bucketNameRef: BucketNameRef | None = None
     """
     Reference to a Bucket in storage to populate bucketName.
     """
-    bucketNameSelector: Optional[BucketNameSelector] = None
+    bucketNameSelector: BucketNameSelector | None = None
     """
     Selector for a Bucket in storage to populate bucketName.
     """
-    cdnPolicy: Optional[CdnPolicy] = None
+    cdnPolicy: CdnPolicy | None = None
     """
     Cloud CDN configuration for this Backend Bucket.
     Structure is documented below.
     """
-    compressionMode: Optional[str] = None
+    compressionMode: str | None = None
     """
     Compress text responses using Brotli or gzip compression, based on the client's Accept-Encoding header.
     Possible values are: AUTOMATIC, DISABLED.
     """
-    customResponseHeaders: Optional[List[str]] = None
+    customResponseHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied responses.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the resource; provided by the
     client when the resource is created.
     """
-    edgeSecurityPolicy: Optional[str] = None
+    edgeSecurityPolicy: str | None = None
     """
     The security policy associated with this backend bucket.
     """
-    edgeSecurityPolicyRef: Optional[EdgeSecurityPolicyRef] = None
+    edgeSecurityPolicyRef: EdgeSecurityPolicyRef | None = None
     """
     Reference to a SecurityPolicy in compute to populate edgeSecurityPolicy.
     """
-    edgeSecurityPolicySelector: Optional[EdgeSecurityPolicySelector] = None
+    edgeSecurityPolicySelector: EdgeSecurityPolicySelector | None = None
     """
     Selector for a SecurityPolicy in compute to populate edgeSecurityPolicy.
     """
-    enableCdn: Optional[bool] = None
+    enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendBucket.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     The value can only be INTERNAL_MANAGED for cross-region internal layer 7 load balancer.
     If loadBalancingScheme is not specified, the backend bucket can be used by classic global external load balancers, or global application external load balancers, or both.
     Possible values are: INTERNAL_MANAGED.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -258,60 +257,60 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    bucketName: Optional[str] = None
+    bucketName: str | None = None
     """
     Cloud Storage bucket name.
     """
-    bucketNameRef: Optional[BucketNameRef] = None
+    bucketNameRef: BucketNameRef | None = None
     """
     Reference to a Bucket in storage to populate bucketName.
     """
-    bucketNameSelector: Optional[BucketNameSelector] = None
+    bucketNameSelector: BucketNameSelector | None = None
     """
     Selector for a Bucket in storage to populate bucketName.
     """
-    cdnPolicy: Optional[CdnPolicy] = None
+    cdnPolicy: CdnPolicy | None = None
     """
     Cloud CDN configuration for this Backend Bucket.
     Structure is documented below.
     """
-    compressionMode: Optional[str] = None
+    compressionMode: str | None = None
     """
     Compress text responses using Brotli or gzip compression, based on the client's Accept-Encoding header.
     Possible values are: AUTOMATIC, DISABLED.
     """
-    customResponseHeaders: Optional[List[str]] = None
+    customResponseHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied responses.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the resource; provided by the
     client when the resource is created.
     """
-    edgeSecurityPolicy: Optional[str] = None
+    edgeSecurityPolicy: str | None = None
     """
     The security policy associated with this backend bucket.
     """
-    edgeSecurityPolicyRef: Optional[EdgeSecurityPolicyRef] = None
+    edgeSecurityPolicyRef: EdgeSecurityPolicyRef | None = None
     """
     Reference to a SecurityPolicy in compute to populate edgeSecurityPolicy.
     """
-    edgeSecurityPolicySelector: Optional[EdgeSecurityPolicySelector] = None
+    edgeSecurityPolicySelector: EdgeSecurityPolicySelector | None = None
     """
     Selector for a SecurityPolicy in compute to populate edgeSecurityPolicy.
     """
-    enableCdn: Optional[bool] = None
+    enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendBucket.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     The value can only be INTERNAL_MANAGED for cross-region internal layer 7 load balancer.
     If loadBalancingScheme is not specified, the backend bucket can be used by classic global external load balancers, or global application external load balancers, or both.
     Possible values are: INTERNAL_MANAGED.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -338,7 +337,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -351,9 +350,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -362,17 +362,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -382,74 +380,74 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    bucketName: Optional[str] = None
+    bucketName: str | None = None
     """
     Cloud Storage bucket name.
     """
-    cdnPolicy: Optional[CdnPolicy] = None
+    cdnPolicy: CdnPolicy | None = None
     """
     Cloud CDN configuration for this Backend Bucket.
     Structure is documented below.
     """
-    compressionMode: Optional[str] = None
+    compressionMode: str | None = None
     """
     Compress text responses using Brotli or gzip compression, based on the client's Accept-Encoding header.
     Possible values are: AUTOMATIC, DISABLED.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    customResponseHeaders: Optional[List[str]] = None
+    customResponseHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied responses.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the resource; provided by the
     client when the resource is created.
     """
-    edgeSecurityPolicy: Optional[str] = None
+    edgeSecurityPolicy: str | None = None
     """
     The security policy associated with this backend bucket.
     """
-    enableCdn: Optional[bool] = None
+    enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendBucket.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/backendBuckets/{{name}}
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     The value can only be INTERNAL_MANAGED for cross-region internal layer 7 load balancer.
     If loadBalancingScheme is not specified, the backend bucket can be used by classic global external load balancers, or global application external load balancers, or both.
     Possible values are: INTERNAL_MANAGED.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -471,12 +469,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -485,17 +483,17 @@ class Status(BaseModel):
 
 
 class BackendBucket(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['BackendBucket']] = 'BackendBucket'
+    kind: Literal['BackendBucket'] | None = 'BackendBucket'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -503,26 +501,26 @@ class BackendBucket(BaseModel):
     """
     BackendBucketSpec defines the desired state of BackendBucket
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     BackendBucketStatus defines the observed state of BackendBucket.
     """
 
 
 class BackendBucketList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[BackendBucket]
+    items: list[BackendBucket]
     """
     List of backendbuckets. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

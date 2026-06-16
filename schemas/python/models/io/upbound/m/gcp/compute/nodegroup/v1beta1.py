@@ -3,47 +3,46 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class AutoscalingPolicy(BaseModel):
-    maxNodes: Optional[float] = None
+    maxNodes: float | None = None
     """
     Maximum size of the node group. Set to a value less than or equal
     to 100 and greater than or equal to min-nodes.
     """
-    minNodes: Optional[float] = None
+    minNodes: float | None = None
     """
     Minimum size of the node group. Must be less
     than or equal to max-nodes. The default value is 0.
     """
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     The autoscaling mode. Set to one of the following:
     """
 
 
 class MaintenanceWindow(BaseModel):
-    startTime: Optional[str] = None
+    startTime: str | None = None
     """
     instances.start time of the window. This must be in UTC format that resolves to one of 00:00, 04:00, 08:00, 12:00, 16:00, or 20:00. For example, both 13:00-5 and 08:00 are valid.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -57,31 +56,31 @@ class NodeTemplateRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NodeTemplateSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -92,31 +91,31 @@ class IdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class IdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -127,70 +126,70 @@ class ProjectIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ProjectIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ProjectMapItem(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     The identifier for this object. Format specified above.
     """
-    idRef: Optional[IdRef] = None
+    idRef: IdRef | None = None
     """
     Reference to a Project in cloudplatform to populate id.
     """
-    idSelector: Optional[IdSelector] = None
+    idSelector: IdSelector | None = None
     """
     Selector for a Project in cloudplatform to populate id.
     """
-    projectId: Optional[str] = None
+    projectId: str | None = None
     """
     The project id/number should be the same as the key of this project config in the project map.
     """
-    projectIdRef: Optional[ProjectIdRef] = None
+    projectIdRef: ProjectIdRef | None = None
     """
     Reference to a Project in cloudplatform to populate projectId.
     """
-    projectIdSelector: Optional[ProjectIdSelector] = None
+    projectIdSelector: ProjectIdSelector | None = None
     """
     Selector for a Project in cloudplatform to populate projectId.
     """
 
 
 class ShareSettings(BaseModel):
-    projectMap: Optional[List[ProjectMapItem]] = None
+    projectMap: list[ProjectMapItem] | None = None
     """
     A map of project id and project config. This is only valid when shareType's value is SPECIFIC_PROJECTS.
     Structure is documented below.
     """
-    shareType: Optional[str] = None
+    shareType: str | None = None
     """
     Node group sharing type.
     Possible values are: ORGANIZATION, SPECIFIC_PROJECTS, LOCAL.
@@ -198,48 +197,48 @@ class ShareSettings(BaseModel):
 
 
 class ForProvider(BaseModel):
-    autoscalingPolicy: Optional[AutoscalingPolicy] = None
+    autoscalingPolicy: AutoscalingPolicy | None = None
     """
     If you use sole-tenant nodes for your workloads, you can use the node
     group autoscaler to automatically manage the sizes of your node groups.
     One of initial_size or autoscaling_policy must be configured on resource creation.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the resource.
     """
-    initialSize: Optional[float] = None
+    initialSize: float | None = None
     """
     The initial number of nodes in the node group. One of initial_size or autoscaling_policy must be configured on resource creation.
     """
-    maintenancePolicy: Optional[str] = None
+    maintenancePolicy: str | None = None
     """
     Specifies how to handle instances when a node in the group undergoes maintenance. Set to one of: DEFAULT, RESTART_IN_PLACE, or MIGRATE_WITHIN_NODE_GROUP. The default value is DEFAULT.
     """
-    maintenanceWindow: Optional[MaintenanceWindow] = None
+    maintenanceWindow: MaintenanceWindow | None = None
     """
     contains properties for the timeframe of maintenance
     Structure is documented below.
     """
-    nodeTemplate: Optional[str] = None
+    nodeTemplate: str | None = None
     """
     The URL of the node template to which this node group belongs.
     """
-    nodeTemplateRef: Optional[NodeTemplateRef] = None
+    nodeTemplateRef: NodeTemplateRef | None = None
     """
     Reference to a NodeTemplate in compute to populate nodeTemplate.
     """
-    nodeTemplateSelector: Optional[NodeTemplateSelector] = None
+    nodeTemplateSelector: NodeTemplateSelector | None = None
     """
     Selector for a NodeTemplate in compute to populate nodeTemplate.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    shareSettings: Optional[ShareSettings] = None
+    shareSettings: ShareSettings | None = None
     """
     Share settings for the node group.
     Structure is documented below.
@@ -251,48 +250,48 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    autoscalingPolicy: Optional[AutoscalingPolicy] = None
+    autoscalingPolicy: AutoscalingPolicy | None = None
     """
     If you use sole-tenant nodes for your workloads, you can use the node
     group autoscaler to automatically manage the sizes of your node groups.
     One of initial_size or autoscaling_policy must be configured on resource creation.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the resource.
     """
-    initialSize: Optional[float] = None
+    initialSize: float | None = None
     """
     The initial number of nodes in the node group. One of initial_size or autoscaling_policy must be configured on resource creation.
     """
-    maintenancePolicy: Optional[str] = None
+    maintenancePolicy: str | None = None
     """
     Specifies how to handle instances when a node in the group undergoes maintenance. Set to one of: DEFAULT, RESTART_IN_PLACE, or MIGRATE_WITHIN_NODE_GROUP. The default value is DEFAULT.
     """
-    maintenanceWindow: Optional[MaintenanceWindow] = None
+    maintenanceWindow: MaintenanceWindow | None = None
     """
     contains properties for the timeframe of maintenance
     Structure is documented below.
     """
-    nodeTemplate: Optional[str] = None
+    nodeTemplate: str | None = None
     """
     The URL of the node template to which this node group belongs.
     """
-    nodeTemplateRef: Optional[NodeTemplateRef] = None
+    nodeTemplateRef: NodeTemplateRef | None = None
     """
     Reference to a NodeTemplate in compute to populate nodeTemplate.
     """
-    nodeTemplateSelector: Optional[NodeTemplateSelector] = None
+    nodeTemplateSelector: NodeTemplateSelector | None = None
     """
     Selector for a NodeTemplate in compute to populate nodeTemplate.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    shareSettings: Optional[ShareSettings] = None
+    shareSettings: ShareSettings | None = None
     """
     Share settings for the node group.
     Structure is documented below.
@@ -319,7 +318,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -332,9 +331,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -343,17 +343,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -363,89 +361,89 @@ class Spec(BaseModel):
 
 
 class ProjectMapItemModel(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     The identifier for this object. Format specified above.
     """
-    projectId: Optional[str] = None
+    projectId: str | None = None
     """
     The project id/number should be the same as the key of this project config in the project map.
     """
 
 
 class AtProvider(BaseModel):
-    autoscalingPolicy: Optional[AutoscalingPolicy] = None
+    autoscalingPolicy: AutoscalingPolicy | None = None
     """
     If you use sole-tenant nodes for your workloads, you can use the node
     group autoscaler to automatically manage the sizes of your node groups.
     One of initial_size or autoscaling_policy must be configured on resource creation.
     Structure is documented below.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional textual description of the resource.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/zones/{{zone}}/nodeGroups/{{name}}
     """
-    initialSize: Optional[float] = None
+    initialSize: float | None = None
     """
     The initial number of nodes in the node group. One of initial_size or autoscaling_policy must be configured on resource creation.
     """
-    maintenancePolicy: Optional[str] = None
+    maintenancePolicy: str | None = None
     """
     Specifies how to handle instances when a node in the group undergoes maintenance. Set to one of: DEFAULT, RESTART_IN_PLACE, or MIGRATE_WITHIN_NODE_GROUP. The default value is DEFAULT.
     """
-    maintenanceWindow: Optional[MaintenanceWindow] = None
+    maintenanceWindow: MaintenanceWindow | None = None
     """
     contains properties for the timeframe of maintenance
     Structure is documented below.
     """
-    nodeTemplate: Optional[str] = None
+    nodeTemplate: str | None = None
     """
     The URL of the node template to which this node group belongs.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    shareSettings: Optional[ShareSettings] = None
+    shareSettings: ShareSettings | None = None
     """
     Share settings for the node group.
     Structure is documented below.
     """
-    size: Optional[float] = None
+    size: float | None = None
     """
     The total number of nodes in the node group.
     """
-    zone: Optional[str] = None
+    zone: str | None = None
     """
     Zone where this node group is located
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -467,12 +465,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -481,17 +479,17 @@ class Status(BaseModel):
 
 
 class NodeGroup(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['NodeGroup']] = 'NodeGroup'
+    kind: Literal['NodeGroup'] | None = 'NodeGroup'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -499,26 +497,26 @@ class NodeGroup(BaseModel):
     """
     NodeGroupSpec defines the desired state of NodeGroup
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     NodeGroupStatus defines the observed state of NodeGroup.
     """
 
 
 class NodeGroupList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[NodeGroup]
+    items: list[NodeGroup]
     """
     List of nodegroups. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

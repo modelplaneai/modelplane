@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class GuestOsFeature(BaseModel):
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of supported feature. Read Enabling guest operating system features to see a list of available options.
     Possible values are: MULTI_IP_SUBNET, SECURE_BOOT, SEV_CAPABLE, UEFI_COMPATIBLE, VIRTIO_SCSI_MULTIQUEUE, WINDOWS, GVNIC, SEV_LIVE_MIGRATABLE, SEV_SNP_CAPABLE, SUSPEND_RESUME_COMPATIBLE, TDX_CAPABLE, SEV_LIVE_MIGRATABLE_V2.
@@ -50,24 +49,24 @@ class RsaEncryptedKeySecretRef(BaseModel):
 
 
 class ImageEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key that is stored in Google Cloud
     KMS.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
     account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
@@ -76,7 +75,7 @@ class ImageEncryptionKeyItem(BaseModel):
 
 
 class RawDiskItem(BaseModel):
-    containerType: Optional[str] = None
+    containerType: str | None = None
     """
     The format used to encode and transmit the block device, which
     should be TAR. This is just a container and transmission format
@@ -85,12 +84,12 @@ class RawDiskItem(BaseModel):
     Default value is TAR.
     Possible values are: TAR.
     """
-    sha1: Optional[str] = None
+    sha1: str | None = None
     """
     An optional SHA1 checksum of the disk image before unpackaging.
     This is provided by the client when the disk image is created.
     """
-    source: Optional[str] = None
+    source: str | None = None
     """
     The full Google Cloud Storage URL where disk storage is stored
     You must provide either this property or the sourceDisk property
@@ -99,70 +98,70 @@ class RawDiskItem(BaseModel):
 
 
 class Db(BaseModel):
-    content: Optional[str] = None
+    content: str | None = None
     """
     The raw content in the secure keys file.
     A base64-encoded string.
     """
-    fileType: Optional[str] = None
+    fileType: str | None = None
     """
     The file type of source file.
     """
 
 
 class Dbx(BaseModel):
-    content: Optional[str] = None
+    content: str | None = None
     """
     The raw content in the secure keys file.
     A base64-encoded string.
     """
-    fileType: Optional[str] = None
+    fileType: str | None = None
     """
     The file type of source file.
     """
 
 
 class Kek(BaseModel):
-    content: Optional[str] = None
+    content: str | None = None
     """
     The raw content in the secure keys file.
     A base64-encoded string.
     """
-    fileType: Optional[str] = None
+    fileType: str | None = None
     """
     The file type of source file.
     """
 
 
 class PkItem(BaseModel):
-    content: Optional[str] = None
+    content: str | None = None
     """
     The raw content in the secure keys file.
     A base64-encoded string.
     """
-    fileType: Optional[str] = None
+    fileType: str | None = None
     """
     The file type of source file.
     """
 
 
 class ShieldedInstanceInitialStateItem(BaseModel):
-    dbs: Optional[List[Db]] = None
+    dbs: list[Db] | None = None
     """
     The Key Database (db).
     Structure is documented below.
     """
-    dbxs: Optional[List[Dbx]] = None
+    dbxs: list[Dbx] | None = None
     """
     The forbidden key database (dbx).
     Structure is documented below.
     """
-    keks: Optional[List[Kek]] = None
+    keks: list[Kek] | None = None
     """
     The Key Exchange Key (KEK).
     Structure is documented below.
     """
-    pk: Optional[List[PkItem]] = None
+    pk: list[PkItem] | None = None
     """
     The Platform Key (PK).
     Structure is documented below.
@@ -170,7 +169,7 @@ class ShieldedInstanceInitialStateItem(BaseModel):
 
 
 class SourceDiskEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -178,19 +177,19 @@ class SourceDiskEncryptionKeyItem(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
     account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit
     customer-supplied encryption key to either encrypt or decrypt
@@ -200,14 +199,14 @@ class SourceDiskEncryptionKeyItem(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -221,30 +220,30 @@ class SourceDiskRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceDiskSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class SourceImageEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -252,19 +251,19 @@ class SourceImageEncryptionKeyItem(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
     account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit
     customer-supplied encryption key to either encrypt or decrypt
@@ -274,7 +273,7 @@ class SourceImageEncryptionKeyItem(BaseModel):
 
 
 class SourceSnapshotEncryptionKeyItem(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -282,19 +281,19 @@ class SourceSnapshotEncryptionKeyItem(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
     account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     Specifies a 256-bit customer-supplied encryption key, encoded in
     RFC 4648 base64 to either encrypt or decrypt this resource.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit
     customer-supplied encryption key to either encrypt or decrypt
@@ -304,16 +303,16 @@ class SourceSnapshotEncryptionKeyItem(BaseModel):
 
 
 class ForProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     Size of the image when restored onto a persistent disk (in GB).
     """
-    family: Optional[str] = None
+    family: str | None = None
     """
     The name of the image family to which this image belongs. You can
     create disks by specifying an image family instead of a specific
@@ -321,13 +320,13 @@ class ForProvider(BaseModel):
     not deprecated. The name of the image family must comply with
     RFC1035.
     """
-    guestOsFeatures: Optional[List[GuestOsFeature]] = None
+    guestOsFeatures: list[GuestOsFeature] | None = None
     """
     A list of features to enable on the guest operating system.
     Applicable only for bootable images.
     Structure is documented below.
     """
-    imageEncryptionKey: Optional[List[ImageEncryptionKeyItem]] = None
+    imageEncryptionKey: list[ImageEncryptionKeyItem] | None = None
     """
     Encrypts the image using a customer-supplied encryption key.
     After you encrypt an image with a customer-supplied key, you must
@@ -335,76 +334,74 @@ class ForProvider(BaseModel):
     disk from the image)
     Structure is documented below.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this Image.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    licenses: Optional[List[str]] = None
+    licenses: list[str] | None = None
     """
     Any applicable license URI.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    rawDisk: Optional[List[RawDiskItem]] = None
+    rawDisk: list[RawDiskItem] | None = None
     """
     The parameters of the raw disk image.
     Structure is documented below.
     """
-    shieldedInstanceInitialState: Optional[List[ShieldedInstanceInitialStateItem]] = (
-        None
-    )
+    shieldedInstanceInitialState: list[ShieldedInstanceInitialStateItem] | None = None
     """
     Set the secure boot keys of shielded instance.
     Structure is documented below.
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     The source disk to create this image based on.
     You must provide either this property or the
     rawDisk.source property but not both to create an image.
     """
-    sourceDiskEncryptionKey: Optional[List[SourceDiskEncryptionKeyItem]] = None
+    sourceDiskEncryptionKey: list[SourceDiskEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source disk. Required if
     the source disk is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceDiskRef: Optional[SourceDiskRef] = None
+    sourceDiskRef: SourceDiskRef | None = None
     """
     Reference to a Disk in compute to populate sourceDisk.
     """
-    sourceDiskSelector: Optional[SourceDiskSelector] = None
+    sourceDiskSelector: SourceDiskSelector | None = None
     """
     Selector for a Disk in compute to populate sourceDisk.
     """
-    sourceImage: Optional[str] = None
+    sourceImage: str | None = None
     """
     URL of the source image used to create this image. In order to create an image, you must provide the full or partial
     URL of one of the following:
     """
-    sourceImageEncryptionKey: Optional[List[SourceImageEncryptionKeyItem]] = None
+    sourceImageEncryptionKey: list[SourceImageEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source image. Required if
     the source image is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceSnapshot: Optional[str] = None
+    sourceSnapshot: str | None = None
     """
     URL of the source snapshot used to create this image.
     In order to create an image, you must provide the full or partial URL of one of the following:
     """
-    sourceSnapshotEncryptionKey: Optional[List[SourceSnapshotEncryptionKeyItem]] = None
+    sourceSnapshotEncryptionKey: list[SourceSnapshotEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required if
     the source snapshot is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    storageLocations: Optional[List[str]] = None
+    storageLocations: list[str] | None = None
     """
     Cloud Storage bucket storage location of the image
     (regional or multi-regional).
@@ -413,16 +410,16 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     Size of the image when restored onto a persistent disk (in GB).
     """
-    family: Optional[str] = None
+    family: str | None = None
     """
     The name of the image family to which this image belongs. You can
     create disks by specifying an image family instead of a specific
@@ -430,13 +427,13 @@ class InitProvider(BaseModel):
     not deprecated. The name of the image family must comply with
     RFC1035.
     """
-    guestOsFeatures: Optional[List[GuestOsFeature]] = None
+    guestOsFeatures: list[GuestOsFeature] | None = None
     """
     A list of features to enable on the guest operating system.
     Applicable only for bootable images.
     Structure is documented below.
     """
-    imageEncryptionKey: Optional[List[ImageEncryptionKeyItem]] = None
+    imageEncryptionKey: list[ImageEncryptionKeyItem] | None = None
     """
     Encrypts the image using a customer-supplied encryption key.
     After you encrypt an image with a customer-supplied key, you must
@@ -444,76 +441,74 @@ class InitProvider(BaseModel):
     disk from the image)
     Structure is documented below.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this Image.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    licenses: Optional[List[str]] = None
+    licenses: list[str] | None = None
     """
     Any applicable license URI.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    rawDisk: Optional[List[RawDiskItem]] = None
+    rawDisk: list[RawDiskItem] | None = None
     """
     The parameters of the raw disk image.
     Structure is documented below.
     """
-    shieldedInstanceInitialState: Optional[List[ShieldedInstanceInitialStateItem]] = (
-        None
-    )
+    shieldedInstanceInitialState: list[ShieldedInstanceInitialStateItem] | None = None
     """
     Set the secure boot keys of shielded instance.
     Structure is documented below.
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     The source disk to create this image based on.
     You must provide either this property or the
     rawDisk.source property but not both to create an image.
     """
-    sourceDiskEncryptionKey: Optional[List[SourceDiskEncryptionKeyItem]] = None
+    sourceDiskEncryptionKey: list[SourceDiskEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source disk. Required if
     the source disk is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceDiskRef: Optional[SourceDiskRef] = None
+    sourceDiskRef: SourceDiskRef | None = None
     """
     Reference to a Disk in compute to populate sourceDisk.
     """
-    sourceDiskSelector: Optional[SourceDiskSelector] = None
+    sourceDiskSelector: SourceDiskSelector | None = None
     """
     Selector for a Disk in compute to populate sourceDisk.
     """
-    sourceImage: Optional[str] = None
+    sourceImage: str | None = None
     """
     URL of the source image used to create this image. In order to create an image, you must provide the full or partial
     URL of one of the following:
     """
-    sourceImageEncryptionKey: Optional[List[SourceImageEncryptionKeyItem]] = None
+    sourceImageEncryptionKey: list[SourceImageEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source image. Required if
     the source image is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceSnapshot: Optional[str] = None
+    sourceSnapshot: str | None = None
     """
     URL of the source snapshot used to create this image.
     In order to create an image, you must provide the full or partial URL of one of the following:
     """
-    sourceSnapshotEncryptionKey: Optional[List[SourceSnapshotEncryptionKeyItem]] = None
+    sourceSnapshotEncryptionKey: list[SourceSnapshotEncryptionKeyItem] | None = None
     """
     The customer-supplied encryption key of the source snapshot. Required if
     the source snapshot is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    storageLocations: Optional[List[str]] = None
+    storageLocations: list[str] | None = None
     """
     Cloud Storage bucket storage location of the image
     (regional or multi-regional).
@@ -526,7 +521,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -544,7 +539,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -555,7 +550,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -568,9 +563,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -583,15 +579,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -601,12 +597,12 @@ class Spec(BaseModel):
 
 
 class ImageEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key that is stored in Google Cloud
     KMS.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
@@ -615,7 +611,7 @@ class ImageEncryptionKeyItemModel(BaseModel):
 
 
 class SourceDiskEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -623,7 +619,7 @@ class SourceDiskEncryptionKeyItemModel(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
@@ -632,7 +628,7 @@ class SourceDiskEncryptionKeyItemModel(BaseModel):
 
 
 class SourceImageEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -640,7 +636,7 @@ class SourceImageEncryptionKeyItemModel(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
@@ -649,7 +645,7 @@ class SourceImageEncryptionKeyItemModel(BaseModel):
 
 
 class SourceSnapshotEncryptionKeyItemModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key used to decrypt this resource. Also called KmsKeyName
     in the cloud console. Your project's Compute Engine System service account
@@ -657,7 +653,7 @@ class SourceSnapshotEncryptionKeyItemModel(BaseModel):
     roles/cloudkms.cryptoKeyEncrypterDecrypter to use this feature.
     See https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the encryption request for the
     given KMS key. If absent, the Compute Engine default service
@@ -666,26 +662,26 @@ class SourceSnapshotEncryptionKeyItemModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    archiveSizeBytes: Optional[float] = None
+    archiveSizeBytes: float | None = None
     """
     Size of the image tar.gz archive stored in Google Cloud Storage (in
     bytes).
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     Size of the image when restored onto a persistent disk (in GB).
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
-    family: Optional[str] = None
+    effectiveLabels: dict[str, str] | None = None
+    family: str | None = None
     """
     The name of the image family to which this image belongs. You can
     create disks by specifying an image family instead of a specific
@@ -693,17 +689,17 @@ class AtProvider(BaseModel):
     not deprecated. The name of the image family must comply with
     RFC1035.
     """
-    guestOsFeatures: Optional[List[GuestOsFeature]] = None
+    guestOsFeatures: list[GuestOsFeature] | None = None
     """
     A list of features to enable on the guest operating system.
     Applicable only for bootable images.
     Structure is documented below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/images/{{name}}
     """
-    imageEncryptionKey: Optional[List[ImageEncryptionKeyItemModel]] = None
+    imageEncryptionKey: list[ImageEncryptionKeyItemModel] | None = None
     """
     Encrypts the image using a customer-supplied encryption key.
     After you encrypt an image with a customer-supplied key, you must
@@ -711,85 +707,83 @@ class AtProvider(BaseModel):
     disk from the image)
     Structure is documented below.
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     The fingerprint used for optimistic locking of this resource. Used
     internally during updates.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this Image.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    licenses: Optional[List[str]] = None
+    licenses: list[str] | None = None
     """
     Any applicable license URI.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    rawDisk: Optional[List[RawDiskItem]] = None
+    rawDisk: list[RawDiskItem] | None = None
     """
     The parameters of the raw disk image.
     Structure is documented below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    shieldedInstanceInitialState: Optional[List[ShieldedInstanceInitialStateItem]] = (
-        None
-    )
+    shieldedInstanceInitialState: list[ShieldedInstanceInitialStateItem] | None = None
     """
     Set the secure boot keys of shielded instance.
     Structure is documented below.
     """
-    sourceDisk: Optional[str] = None
+    sourceDisk: str | None = None
     """
     The source disk to create this image based on.
     You must provide either this property or the
     rawDisk.source property but not both to create an image.
     """
-    sourceDiskEncryptionKey: Optional[List[SourceDiskEncryptionKeyItemModel]] = None
+    sourceDiskEncryptionKey: list[SourceDiskEncryptionKeyItemModel] | None = None
     """
     The customer-supplied encryption key of the source disk. Required if
     the source disk is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceImage: Optional[str] = None
+    sourceImage: str | None = None
     """
     URL of the source image used to create this image. In order to create an image, you must provide the full or partial
     URL of one of the following:
     """
-    sourceImageEncryptionKey: Optional[List[SourceImageEncryptionKeyItemModel]] = None
+    sourceImageEncryptionKey: list[SourceImageEncryptionKeyItemModel] | None = None
     """
     The customer-supplied encryption key of the source image. Required if
     the source image is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    sourceSnapshot: Optional[str] = None
+    sourceSnapshot: str | None = None
     """
     URL of the source snapshot used to create this image.
     In order to create an image, you must provide the full or partial URL of one of the following:
     """
-    sourceSnapshotEncryptionKey: Optional[
-        List[SourceSnapshotEncryptionKeyItemModel]
-    ] = None
+    sourceSnapshotEncryptionKey: list[SourceSnapshotEncryptionKeyItemModel] | None = (
+        None
+    )
     """
     The customer-supplied encryption key of the source snapshot. Required if
     the source snapshot is protected by a customer-supplied encryption key.
     Structure is documented below.
     """
-    storageLocations: Optional[List[str]] = None
+    storageLocations: list[str] | None = None
     """
     Cloud Storage bucket storage location of the image
     (regional or multi-regional).
     Reference link: https://cloud.google.com/compute/docs/reference/rest/v1/images
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource
     and default labels configured on the provider.
@@ -797,17 +791,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -829,12 +823,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -843,17 +837,17 @@ class Status(BaseModel):
 
 
 class Image(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Image']] = 'Image'
+    kind: Literal['Image'] | None = 'Image'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -861,26 +855,26 @@ class Image(BaseModel):
     """
     ImageSpec defines the desired state of Image
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ImageStatus defines the observed state of Image.
     """
 
 
 class ImageList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Image]
+    items: list[Image]
     """
     List of images. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

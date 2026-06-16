@@ -3,48 +3,47 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class DdosProtectionConfig(BaseModel):
-    ddosProtection: Optional[str] = None
+    ddosProtection: str | None = None
     """
     Google Cloud Armor offers the following options to help protect systems against DDoS attacks:
     """
 
 
 class Config(BaseModel):
-    srcIpRanges: Optional[List[str]] = None
+    srcIpRanges: list[str] | None = None
     """
     Source IPv4/IPv6 addresses or CIDR prefixes, in standard text format.
     """
 
 
 class Expr(BaseModel):
-    expression: Optional[str] = None
+    expression: str | None = None
     """
     Textual representation of an expression in Common Expression Language syntax. The application context of the containing message determines which well-known feature set of CEL is supported.
     """
 
 
 class Match(BaseModel):
-    config: Optional[Config] = None
+    config: Config | None = None
     """
     The configuration options available when specifying versionedExpr.
     This field must be specified if versionedExpr is specified and cannot be specified if versionedExpr is not specified.
     Structure is documented below.
     """
-    expr: Optional[Expr] = None
+    expr: Expr | None = None
     """
     User defined CEVAL expression. A CEVAL expression is used to specify match criteria such as origin.ip, source.region_code and contents in the request header. See Sample expressions for examples.
     Structure is documented below.
     """
-    versionedExpr: Optional[str] = None
+    versionedExpr: str | None = None
     """
     Preconfigured versioned expression. If this field is specified, config must also be specified.
     Available preconfigured expressions along with their requirements are: SRC_IPS_V1 - must specify the corresponding srcIpRange field in config.
@@ -53,46 +52,46 @@ class Match(BaseModel):
 
 
 class UserDefinedField(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of this field. Must be unique within the policy.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     Matching values of the field. Each element can be a 32-bit unsigned decimal or hexadecimal (starting with "0x") number (e.g. "64") or range (e.g. "0x400-0x7ff").
     """
 
 
 class NetworkMatch(BaseModel):
-    destIpRanges: Optional[List[str]] = None
+    destIpRanges: list[str] | None = None
     """
     Destination IPv4/IPv6 addresses or CIDR prefixes, in standard text format.
     """
-    destPorts: Optional[List[str]] = None
+    destPorts: list[str] | None = None
     """
     Destination port numbers for TCP/UDP/SCTP. Each element can be a 16-bit unsigned decimal number (e.g. "80") or range (e.g. "0-1023").
     """
-    ipProtocols: Optional[List[str]] = None
+    ipProtocols: list[str] | None = None
     """
     IPv4 protocol / IPv6 next header (after extension headers). Each element can be an 8-bit unsigned decimal number (e.g. "6"), range (e.g. "253-254"), or one of the following protocol names: "tcp", "udp", "icmp", "esp", "ah", "ipip", or "sctp".
     """
-    srcAsns: Optional[List[float]] = None
+    srcAsns: list[float] | None = None
     """
     BGP Autonomous System Number associated with the source IP address.
     """
-    srcIpRanges: Optional[List[str]] = None
+    srcIpRanges: list[str] | None = None
     """
     Source IPv4/IPv6 addresses or CIDR prefixes, in standard text format.
     """
-    srcPorts: Optional[List[str]] = None
+    srcPorts: list[str] | None = None
     """
     Source port numbers for TCP/UDP/SCTP. Each element can be a 16-bit unsigned decimal number (e.g. "80") or range (e.g. "0-1023").
     """
-    srcRegionCodes: Optional[List[str]] = None
+    srcRegionCodes: list[str] | None = None
     """
     Two-letter ISO 3166-1 alpha-2 country code associated with the source IP address.
     """
-    userDefinedFields: Optional[List[UserDefinedField]] = None
+    userDefinedFields: list[UserDefinedField] | None = None
     """
     Definitions of user-defined fields for CLOUD_ARMOR_NETWORK policies.
     A user-defined field consists of up to 4 bytes extracted from a fixed offset in the packet, relative to the IPv4, IPv6, TCP, or UDP header, with an optional mask to select certain bits.
@@ -102,7 +101,7 @@ class NetworkMatch(BaseModel):
 
 
 class RequestCookieItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     Available options:
@@ -113,7 +112,7 @@ class RequestCookieItem(BaseModel):
     EQUALS_ANY: The operator matches if the field value is any value.
     Possible values are: CONTAINS, ENDS_WITH, EQUALS, EQUALS_ANY, STARTS_WITH.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     A request field matching the specified value will be excluded from inspection during preconfigured WAF evaluation.
     The field value must be given if the field operator is not EQUALS_ANY, and cannot be given if the field operator is EQUALS_ANY.
@@ -121,7 +120,7 @@ class RequestCookieItem(BaseModel):
 
 
 class RequestHeaderItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     Available options:
@@ -132,7 +131,7 @@ class RequestHeaderItem(BaseModel):
     EQUALS_ANY: The operator matches if the field value is any value.
     Possible values are: CONTAINS, ENDS_WITH, EQUALS, EQUALS_ANY, STARTS_WITH.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     A request field matching the specified value will be excluded from inspection during preconfigured WAF evaluation.
     The field value must be given if the field operator is not EQUALS_ANY, and cannot be given if the field operator is EQUALS_ANY.
@@ -140,7 +139,7 @@ class RequestHeaderItem(BaseModel):
 
 
 class RequestQueryParamItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     Available options:
@@ -151,7 +150,7 @@ class RequestQueryParamItem(BaseModel):
     EQUALS_ANY: The operator matches if the field value is any value.
     Possible values are: CONTAINS, ENDS_WITH, EQUALS, EQUALS_ANY, STARTS_WITH.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     A request field matching the specified value will be excluded from inspection during preconfigured WAF evaluation.
     The field value must be given if the field operator is not EQUALS_ANY, and cannot be given if the field operator is EQUALS_ANY.
@@ -159,7 +158,7 @@ class RequestQueryParamItem(BaseModel):
 
 
 class RequestUriItem(BaseModel):
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     You can specify an exact match or a partial match by using a field operator and a field value.
     Available options:
@@ -170,7 +169,7 @@ class RequestUriItem(BaseModel):
     EQUALS_ANY: The operator matches if the field value is any value.
     Possible values are: CONTAINS, ENDS_WITH, EQUALS, EQUALS_ANY, STARTS_WITH.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     A request field matching the specified value will be excluded from inspection during preconfigured WAF evaluation.
     The field value must be given if the field operator is not EQUALS_ANY, and cannot be given if the field operator is EQUALS_ANY.
@@ -178,41 +177,41 @@ class RequestUriItem(BaseModel):
 
 
 class ExclusionItem(BaseModel):
-    requestCookie: Optional[List[RequestCookieItem]] = None
+    requestCookie: list[RequestCookieItem] | None = None
     """
     Request cookie whose value will be excluded from inspection during preconfigured WAF evaluation.
     Structure is documented below.
     """
-    requestHeader: Optional[List[RequestHeaderItem]] = None
+    requestHeader: list[RequestHeaderItem] | None = None
     """
     Request header whose value will be excluded from inspection during preconfigured WAF evaluation.
     Structure is documented below.
     """
-    requestQueryParam: Optional[List[RequestQueryParamItem]] = None
+    requestQueryParam: list[RequestQueryParamItem] | None = None
     """
     Request query parameter whose value will be excluded from inspection during preconfigured WAF evaluation.
     Note that the parameter can be in the query string or in the POST body.
     Structure is documented below.
     """
-    requestUri: Optional[List[RequestUriItem]] = None
+    requestUri: list[RequestUriItem] | None = None
     """
     Request URI from the request line to be excluded from inspection during preconfigured WAF evaluation.
     When specifying this field, the query or fragment part should be excluded.
     Structure is documented below.
     """
-    targetRuleIds: Optional[List[str]] = None
+    targetRuleIds: list[str] | None = None
     """
     A list of target rule IDs under the WAF rule set to apply the preconfigured WAF exclusion.
     If omitted, it refers to all the rule IDs under the WAF rule set.
     """
-    targetRuleSet: Optional[str] = None
+    targetRuleSet: str | None = None
     """
     Target WAF rule set to apply the preconfigured WAF exclusion.
     """
 
 
 class PreconfiguredWafConfig(BaseModel):
-    exclusion: Optional[List[ExclusionItem]] = None
+    exclusion: list[ExclusionItem] | None = None
     """
     An exclusion to apply during preconfigured WAF evaluation.
     Structure is documented below.
@@ -220,80 +219,80 @@ class PreconfiguredWafConfig(BaseModel):
 
 
 class BanThreshold(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     Number of HTTP(S) requests for calculating the threshold.
     """
-    intervalSec: Optional[float] = None
+    intervalSec: float | None = None
     """
     Interval over which the threshold is computed.
     """
 
 
 class EnforceOnKeyConfig(BaseModel):
-    enforceOnKeyName: Optional[str] = None
+    enforceOnKeyName: str | None = None
     """
     Rate limit key name applicable only for the following key types:
     HTTP_HEADER -- Name of the HTTP header whose value is taken as the key value.
     HTTP_COOKIE -- Name of the HTTP cookie whose value is taken as the key value.
     """
-    enforceOnKeyType: Optional[str] = None
+    enforceOnKeyType: str | None = None
     """
     Determines the key to enforce the rateLimitThreshold on. Possible values are:
     """
 
 
 class RateLimitThreshold(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     Number of HTTP(S) requests for calculating the threshold.
     """
-    intervalSec: Optional[float] = None
+    intervalSec: float | None = None
     """
     Interval over which the threshold is computed.
     """
 
 
 class RateLimitOptions(BaseModel):
-    banDurationSec: Optional[float] = None
+    banDurationSec: float | None = None
     """
     Can only be specified if the action for the rule is "rate_based_ban".
     If specified, determines the time (in seconds) the traffic will continue to be banned by the rate limit after the rate falls below the threshold.
     """
-    banThreshold: Optional[BanThreshold] = None
+    banThreshold: BanThreshold | None = None
     """
     Can only be specified if the action for the rule is "rate_based_ban".
     If specified, the key will be banned for the configured 'banDurationSec' when the number of requests that exceed the 'rateLimitThreshold' also exceed this 'banThreshold'.
     Structure is documented below.
     """
-    conformAction: Optional[str] = None
+    conformAction: str | None = None
     """
     Action to take for requests that are under the configured rate limit threshold.
     Valid option is "allow" only.
     """
-    enforceOnKey: Optional[str] = None
+    enforceOnKey: str | None = None
     """
     Determines the key to enforce the rateLimitThreshold on. Possible values are:
     """
-    enforceOnKeyConfigs: Optional[List[EnforceOnKeyConfig]] = None
+    enforceOnKeyConfigs: list[EnforceOnKeyConfig] | None = None
     """
     If specified, any combination of values of enforceOnKeyType/enforceOnKeyName is treated as the key on which ratelimit threshold/action is enforced.
     You can specify up to 3 enforceOnKeyConfigs.
     If enforceOnKeyConfigs is specified, enforceOnKey must not be specified.
     Structure is documented below.
     """
-    enforceOnKeyName: Optional[str] = None
+    enforceOnKeyName: str | None = None
     """
     Rate limit key name applicable only for the following key types:
     HTTP_HEADER -- Name of the HTTP header whose value is taken as the key value.
     HTTP_COOKIE -- Name of the HTTP cookie whose value is taken as the key value.
     """
-    exceedAction: Optional[str] = None
+    exceedAction: str | None = None
     """
     Action to take for requests that are above the configured rate limit threshold, to deny with a specified HTTP response code.
     Valid options are deny(STATUS), where valid values for STATUS are 403, 404, 429, and 502.
     """
-    rateLimitThreshold: Optional[RateLimitThreshold] = None
+    rateLimitThreshold: RateLimitThreshold | None = None
     """
     Threshold at which to begin ratelimiting.
     Structure is documented below.
@@ -301,21 +300,21 @@ class RateLimitOptions(BaseModel):
 
 
 class Rule(BaseModel):
-    action: Optional[str] = None
+    action: str | None = None
     """
     The Action to perform when the rule is matched. The following are the valid actions:
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
-    match: Optional[Match] = None
+    match: Match | None = None
     """
     A match condition that incoming traffic is evaluated against.
     If it evaluates to true, the corresponding 'action' is enforced.
     Structure is documented below.
     """
-    networkMatch: Optional[NetworkMatch] = None
+    networkMatch: NetworkMatch | None = None
     """
     A match condition that incoming packets are evaluated against for CLOUD_ARMOR_NETWORK security policies. If it matches, the corresponding 'action' is enforced.
     The match criteria for a rule consists of built-in match fields (like 'srcIpRanges') and potentially multiple user-defined match fields ('userDefinedFields').
@@ -327,23 +326,23 @@ class Rule(BaseModel):
     The above match condition matches packets with a source IP in 192.0.2.0/24 or 198.51.100.0/24 and a user-defined field named "ipv4_fragment_offset" with a value between 1 and 0x1fff inclusive
     Structure is documented below.
     """
-    preconfiguredWafConfig: Optional[PreconfiguredWafConfig] = None
+    preconfiguredWafConfig: PreconfiguredWafConfig | None = None
     """
     Preconfigured WAF configuration to be applied for the rule.
     If the rule does not evaluate preconfigured WAF rules, i.e., if evaluatePreconfiguredWaf() is not used, this field will have no effect.
     Structure is documented below.
     """
-    preview: Optional[bool] = None
+    preview: bool | None = None
     """
     If set to true, the specified action is not enforced.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     An integer indicating the priority of a rule in the list.
     The priority must be a positive value between 0 and 2147483647.
     Rules are evaluated from highest to lowest priority where 0 is the highest priority and 2147483647 is the lowest priority.
     """
-    rateLimitOptions: Optional[RateLimitOptions] = None
+    rateLimitOptions: RateLimitOptions | None = None
     """
     Must be specified if the action is "rate_based_ban" or "throttle". Cannot be specified for any other actions.
     Structure is documented below.
@@ -351,41 +350,41 @@ class Rule(BaseModel):
 
 
 class UserDefinedFieldModel(BaseModel):
-    base: Optional[str] = None
+    base: str | None = None
     """
     The base relative to which 'offset' is measured. Possible values are:
     """
-    mask: Optional[str] = None
+    mask: str | None = None
     """
     If specified, apply this mask (bitwise AND) to the field to ignore bits before matching.
     Encoded as a hexadecimal number (starting with "0x").
     The last byte of the field (in network byte order) corresponds to the least significant byte of the mask.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of this field. Must be unique within the policy.
     """
-    offset: Optional[float] = None
+    offset: float | None = None
     """
     Offset of the first byte of the field (in network byte order) relative to 'base'.
     """
-    size: Optional[float] = None
+    size: float | None = None
     """
     Size of the field in bytes. Valid values: 1-4.
     """
 
 
 class ForProvider(BaseModel):
-    ddosProtectionConfig: Optional[DdosProtectionConfig] = None
+    ddosProtectionConfig: DdosProtectionConfig | None = None
     """
     Configuration for Google Cloud Armor DDOS Proctection Config.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -395,16 +394,16 @@ class ForProvider(BaseModel):
     The Region in which the created Region Security Policy should reside.
     If it is not provided, the provider region is used.
     """
-    rules: Optional[List[Rule]] = None
+    rules: list[Rule] | None = None
     """
     The set of rules that belong to this policy. There must always be a default rule (rule with priority 2147483647 and match "*"). If no rules are provided when creating a security policy, a default rule with action "allow" will be added.
     Structure is documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy.
     """
-    userDefinedFields: Optional[List[UserDefinedFieldModel]] = None
+    userDefinedFields: list[UserDefinedFieldModel] | None = None
     """
     Definitions of user-defined fields for CLOUD_ARMOR_NETWORK policies.
     A user-defined field consists of up to 4 bytes extracted from a fixed offset in the packet, relative to the IPv4, IPv6, TCP, or UDP header, with an optional mask to select certain bits.
@@ -414,66 +413,66 @@ class ForProvider(BaseModel):
 
 
 class UserDefinedFieldModel1(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of this field. Must be unique within the policy.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     Matching values of the field. Each element can be a 32-bit unsigned decimal or hexadecimal (starting with "0x") number (e.g. "64") or range (e.g. "0x400-0x7ff").
     """
 
 
 class UserDefinedFieldModel2(BaseModel):
-    base: Optional[str] = None
+    base: str | None = None
     """
     The base relative to which 'offset' is measured. Possible values are:
     """
-    mask: Optional[str] = None
+    mask: str | None = None
     """
     If specified, apply this mask (bitwise AND) to the field to ignore bits before matching.
     Encoded as a hexadecimal number (starting with "0x").
     The last byte of the field (in network byte order) corresponds to the least significant byte of the mask.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of this field. Must be unique within the policy.
     """
-    offset: Optional[float] = None
+    offset: float | None = None
     """
     Offset of the first byte of the field (in network byte order) relative to 'base'.
     """
-    size: Optional[float] = None
+    size: float | None = None
     """
     Size of the field in bytes. Valid values: 1-4.
     """
 
 
 class InitProvider(BaseModel):
-    ddosProtectionConfig: Optional[DdosProtectionConfig] = None
+    ddosProtectionConfig: DdosProtectionConfig | None = None
     """
     Configuration for Google Cloud Armor DDOS Proctection Config.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    rules: Optional[List[Rule]] = None
+    rules: list[Rule] | None = None
     """
     The set of rules that belong to this policy. There must always be a default rule (rule with priority 2147483647 and match "*"). If no rules are provided when creating a security policy, a default rule with action "allow" will be added.
     Structure is documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy.
     """
-    userDefinedFields: Optional[List[UserDefinedFieldModel2]] = None
+    userDefinedFields: list[UserDefinedFieldModel2] | None = None
     """
     Definitions of user-defined fields for CLOUD_ARMOR_NETWORK policies.
     A user-defined field consists of up to 4 bytes extracted from a fixed offset in the packet, relative to the IPv4, IPv6, TCP, or UDP header, with an optional mask to select certain bits.
@@ -483,14 +482,14 @@ class InitProvider(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -504,7 +503,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -522,7 +521,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -533,7 +532,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -546,9 +545,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -561,15 +561,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -579,92 +579,92 @@ class Spec(BaseModel):
 
 
 class UserDefinedFieldModel3(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of this field. Must be unique within the policy.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     Matching values of the field. Each element can be a 32-bit unsigned decimal or hexadecimal (starting with "0x") number (e.g. "64") or range (e.g. "0x400-0x7ff").
     """
 
 
 class UserDefinedFieldModel4(BaseModel):
-    base: Optional[str] = None
+    base: str | None = None
     """
     The base relative to which 'offset' is measured. Possible values are:
     """
-    mask: Optional[str] = None
+    mask: str | None = None
     """
     If specified, apply this mask (bitwise AND) to the field to ignore bits before matching.
     Encoded as a hexadecimal number (starting with "0x").
     The last byte of the field (in network byte order) corresponds to the least significant byte of the mask.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of this field. Must be unique within the policy.
     """
-    offset: Optional[float] = None
+    offset: float | None = None
     """
     Offset of the first byte of the field (in network byte order) relative to 'base'.
     """
-    size: Optional[float] = None
+    size: float | None = None
     """
     Size of the field in bytes. Valid values: 1-4.
     """
 
 
 class AtProvider(BaseModel):
-    ddosProtectionConfig: Optional[DdosProtectionConfig] = None
+    ddosProtectionConfig: DdosProtectionConfig | None = None
     """
     Configuration for Google Cloud Armor DDOS Proctection Config.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create the resource.
     """
-    fingerprint: Optional[str] = None
+    fingerprint: str | None = None
     """
     Fingerprint of this resource. This field is used internally during
     updates of this resource.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/securityPolicies/{{name}}
     """
-    policyId: Optional[str] = None
+    policyId: str | None = None
     """
     The unique identifier for the resource. This identifier is defined by the server.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     The Region in which the created Region Security Policy should reside.
     If it is not provided, the provider region is used.
     """
-    rules: Optional[List[Rule]] = None
+    rules: list[Rule] | None = None
     """
     The set of rules that belong to this policy. There must always be a default rule (rule with priority 2147483647 and match "*"). If no rules are provided when creating a security policy, a default rule with action "allow" will be added.
     Structure is documented below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     Server-defined URL for the resource.
     """
-    selfLinkWithPolicyId: Optional[str] = None
+    selfLinkWithPolicyId: str | None = None
     """
     Server-defined URL for this resource with the resource id.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type indicates the intended use of the security policy.
     """
-    userDefinedFields: Optional[List[UserDefinedFieldModel4]] = None
+    userDefinedFields: list[UserDefinedFieldModel4] | None = None
     """
     Definitions of user-defined fields for CLOUD_ARMOR_NETWORK policies.
     A user-defined field consists of up to 4 bytes extracted from a fixed offset in the packet, relative to the IPv4, IPv6, TCP, or UDP header, with an optional mask to select certain bits.
@@ -674,17 +674,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -706,12 +706,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -720,17 +720,17 @@ class Status(BaseModel):
 
 
 class RegionSecurityPolicy(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['RegionSecurityPolicy']] = 'RegionSecurityPolicy'
+    kind: Literal['RegionSecurityPolicy'] | None = 'RegionSecurityPolicy'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -738,26 +738,26 @@ class RegionSecurityPolicy(BaseModel):
     """
     RegionSecurityPolicySpec defines the desired state of RegionSecurityPolicy
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     RegionSecurityPolicyStatus defines the observed state of RegionSecurityPolicy.
     """
 
 
 class RegionSecurityPolicyList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[RegionSecurityPolicy]
+    items: list[RegionSecurityPolicy]
     """
     List of regionsecuritypolicies. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

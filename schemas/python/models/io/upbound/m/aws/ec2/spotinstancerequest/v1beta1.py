@@ -3,155 +3,154 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class CapacityReservationTarget(BaseModel):
-    capacityReservationId: Optional[str] = None
+    capacityReservationId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    capacityReservationResourceGroupArn: Optional[str] = None
+    capacityReservationResourceGroupArn: str | None = None
 
 
 class CapacityReservationSpecification(BaseModel):
-    capacityReservationPreference: Optional[str] = None
-    capacityReservationTarget: Optional[CapacityReservationTarget] = None
+    capacityReservationPreference: str | None = None
+    capacityReservationTarget: CapacityReservationTarget | None = None
 
 
 class CpuOptions(BaseModel):
-    amdSevSnp: Optional[str] = None
-    coreCount: Optional[float] = None
-    nestedVirtualization: Optional[str] = None
-    threadsPerCore: Optional[float] = None
+    amdSevSnp: str | None = None
+    coreCount: float | None = None
+    nestedVirtualization: str | None = None
+    threadsPerCore: float | None = None
 
 
 class CreditSpecification(BaseModel):
-    cpuCredits: Optional[str] = None
+    cpuCredits: str | None = None
 
 
 class EbsBlockDeviceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceName: Optional[str] = None
-    encrypted: Optional[bool] = None
-    iops: Optional[float] = None
-    kmsKeyId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceName: str | None = None
+    encrypted: bool | None = None
+    iops: float | None = None
+    kmsKeyId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    snapshotId: Optional[str] = None
+    snapshotId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
-    volumeSize: Optional[float] = None
-    volumeType: Optional[str] = None
+    throughput: float | None = None
+    volumeSize: float | None = None
+    volumeType: str | None = None
 
 
 class EnclaveOptions(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
 
 
 class EphemeralBlockDeviceItem(BaseModel):
-    deviceName: Optional[str] = None
-    noDevice: Optional[bool] = None
-    virtualName: Optional[str] = None
+    deviceName: str | None = None
+    noDevice: bool | None = None
+    virtualName: str | None = None
 
 
 class LaunchTemplate(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     The Spot Instance Request ID.
     """
-    name: Optional[str] = None
-    version: Optional[str] = None
+    name: str | None = None
+    version: str | None = None
 
 
 class MaintenanceOptions(BaseModel):
-    autoRecovery: Optional[str] = None
+    autoRecovery: str | None = None
 
 
 class MetadataOptions(BaseModel):
-    httpEndpoint: Optional[str] = None
-    httpProtocolIpv6: Optional[str] = None
-    httpPutResponseHopLimit: Optional[float] = None
-    httpTokens: Optional[str] = None
-    instanceMetadataTags: Optional[str] = None
+    httpEndpoint: str | None = None
+    httpProtocolIpv6: str | None = None
+    httpPutResponseHopLimit: float | None = None
+    httpTokens: str | None = None
+    instanceMetadataTags: str | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class NetworkInterfaceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceIndex: Optional[float] = None
-    networkInterfaceId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceIndex: float | None = None
+    networkInterfaceId: str | None = None
     """
     The Spot Instance Request ID.
     """
 
 
 class PrivateDnsNameOptions(BaseModel):
-    enableResourceNameDnsARecord: Optional[bool] = None
-    enableResourceNameDnsAaaaRecord: Optional[bool] = None
-    hostnameType: Optional[str] = None
+    enableResourceNameDnsARecord: bool | None = None
+    enableResourceNameDnsAaaaRecord: bool | None = None
+    hostnameType: str | None = None
 
 
 class RootBlockDevice(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    encrypted: Optional[bool] = None
-    iops: Optional[float] = None
-    kmsKeyId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    encrypted: bool | None = None
+    iops: float | None = None
+    kmsKeyId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
-    volumeSize: Optional[float] = None
-    volumeType: Optional[str] = None
+    throughput: float | None = None
+    volumeSize: float | None = None
+    volumeType: str | None = None
 
 
 class SecondaryNetworkInterfaceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceIndex: Optional[float] = None
-    interfaceType: Optional[str] = None
-    networkCardIndex: Optional[float] = None
-    privateIpAddressCount: Optional[float] = None
-    secondarySubnetId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceIndex: float | None = None
+    interfaceType: str | None = None
+    networkCardIndex: float | None = None
+    privateIpAddressCount: float | None = None
+    secondarySubnetId: str | None = None
     """
     The Spot Instance Request ID.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -165,31 +164,31 @@ class SubnetIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -200,86 +199,86 @@ class VpcSecurityGroupIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class VpcSecurityGroupIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    ami: Optional[str] = None
-    associatePublicIpAddress: Optional[bool] = None
-    availabilityZone: Optional[str] = None
-    capacityReservationSpecification: Optional[CapacityReservationSpecification] = None
-    cpuOptions: Optional[CpuOptions] = None
-    creditSpecification: Optional[CreditSpecification] = None
-    disableApiStop: Optional[bool] = None
-    disableApiTermination: Optional[bool] = None
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
-    ebsOptimized: Optional[bool] = None
-    enablePrimaryIpv6: Optional[bool] = None
-    enclaveOptions: Optional[EnclaveOptions] = None
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
-    forceDestroy: Optional[bool] = None
-    getPasswordData: Optional[bool] = None
-    hibernation: Optional[bool] = None
-    hostId: Optional[str] = None
+    ami: str | None = None
+    associatePublicIpAddress: bool | None = None
+    availabilityZone: str | None = None
+    capacityReservationSpecification: CapacityReservationSpecification | None = None
+    cpuOptions: CpuOptions | None = None
+    creditSpecification: CreditSpecification | None = None
+    disableApiStop: bool | None = None
+    disableApiTermination: bool | None = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
+    ebsOptimized: bool | None = None
+    enablePrimaryIpv6: bool | None = None
+    enclaveOptions: EnclaveOptions | None = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
+    forceDestroy: bool | None = None
+    getPasswordData: bool | None = None
+    hibernation: bool | None = None
+    hostId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    hostResourceGroupArn: Optional[str] = None
-    iamInstanceProfile: Optional[str] = None
-    instanceInitiatedShutdownBehavior: Optional[str] = None
-    instanceInterruptionBehavior: Optional[str] = None
+    hostResourceGroupArn: str | None = None
+    iamInstanceProfile: str | None = None
+    instanceInitiatedShutdownBehavior: str | None = None
+    instanceInterruptionBehavior: str | None = None
     """
     Indicates Spot instance behavior when it is interrupted. Valid values are terminate, stop, or hibernate. Default value is terminate.
     """
-    instanceType: Optional[str] = None
-    ipv6AddressCount: Optional[float] = None
-    ipv6Addresses: Optional[List[str]] = None
-    keyName: Optional[str] = None
-    launchGroup: Optional[str] = None
+    instanceType: str | None = None
+    ipv6AddressCount: float | None = None
+    ipv6Addresses: list[str] | None = None
+    keyName: str | None = None
+    launchGroup: str | None = None
     """
     A launch group is a group of spot instances that launch together and terminate together.
     If left empty instances are launched and terminated individually.
     """
-    launchTemplate: Optional[LaunchTemplate] = None
-    maintenanceOptions: Optional[MaintenanceOptions] = None
-    metadataOptions: Optional[MetadataOptions] = None
-    monitoring: Optional[bool] = None
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
-    placementGroup: Optional[str] = None
-    placementGroupId: Optional[str] = None
+    launchTemplate: LaunchTemplate | None = None
+    maintenanceOptions: MaintenanceOptions | None = None
+    metadataOptions: MetadataOptions | None = None
+    monitoring: bool | None = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
+    placementGroup: str | None = None
+    placementGroupId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    placementPartitionNumber: Optional[float] = None
-    privateDnsNameOptions: Optional[PrivateDnsNameOptions] = None
-    privateIp: Optional[str] = None
+    placementPartitionNumber: float | None = None
+    privateDnsNameOptions: PrivateDnsNameOptions | None = None
+    privateIp: str | None = None
     """
     The private IP address assigned to the instance
     """
@@ -288,173 +287,173 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    rootBlockDevice: Optional[RootBlockDevice] = None
-    secondaryNetworkInterface: Optional[List[SecondaryNetworkInterfaceItem]] = None
-    secondaryPrivateIps: Optional[List[str]] = None
-    securityGroups: Optional[List[str]] = None
-    sourceDestCheck: Optional[bool] = None
-    spotPrice: Optional[str] = None
+    rootBlockDevice: RootBlockDevice | None = None
+    secondaryNetworkInterface: list[SecondaryNetworkInterfaceItem] | None = None
+    secondaryPrivateIps: list[str] | None = None
+    securityGroups: list[str] | None = None
+    sourceDestCheck: bool | None = None
+    spotPrice: str | None = None
     """
     The maximum price to request on the spot market.
     """
-    spotType: Optional[str] = None
+    spotType: str | None = None
     """
     If set to one-time, after
     the instance is terminated, the spot request will be closed.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tenancy: Optional[str] = None
-    userData: Optional[str] = None
-    userDataBase64: Optional[str] = None
-    userDataReplaceOnChange: Optional[bool] = None
-    validFrom: Optional[str] = None
+    tenancy: str | None = None
+    userData: str | None = None
+    userDataBase64: str | None = None
+    userDataReplaceOnChange: bool | None = None
+    validFrom: str | None = None
     """
     The start date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). The default is to start fulfilling the request immediately.
     """
-    validUntil: Optional[str] = None
+    validUntil: str | None = None
     """
     The end date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). At this point, no new Spot instance requests are placed or enabled to fulfill the request. The default end date is 7 days from the current date.
     """
-    volumeTags: Optional[Dict[str, str]] = None
+    volumeTags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcSecurityGroupIdRefs: Optional[List[VpcSecurityGroupIdRef]] = None
+    vpcSecurityGroupIdRefs: list[VpcSecurityGroupIdRef] | None = None
     """
     References to SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIdSelector: Optional[VpcSecurityGroupIdSelector] = None
+    vpcSecurityGroupIdSelector: VpcSecurityGroupIdSelector | None = None
     """
     Selector for a list of SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIds: Optional[List[str]] = None
-    waitForFulfillment: Optional[bool] = None
+    vpcSecurityGroupIds: list[str] | None = None
+    waitForFulfillment: bool | None = None
 
 
 class InitProvider(BaseModel):
-    ami: Optional[str] = None
-    associatePublicIpAddress: Optional[bool] = None
-    availabilityZone: Optional[str] = None
-    capacityReservationSpecification: Optional[CapacityReservationSpecification] = None
-    cpuOptions: Optional[CpuOptions] = None
-    creditSpecification: Optional[CreditSpecification] = None
-    disableApiStop: Optional[bool] = None
-    disableApiTermination: Optional[bool] = None
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
-    ebsOptimized: Optional[bool] = None
-    enablePrimaryIpv6: Optional[bool] = None
-    enclaveOptions: Optional[EnclaveOptions] = None
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
-    forceDestroy: Optional[bool] = None
-    getPasswordData: Optional[bool] = None
-    hibernation: Optional[bool] = None
-    hostId: Optional[str] = None
+    ami: str | None = None
+    associatePublicIpAddress: bool | None = None
+    availabilityZone: str | None = None
+    capacityReservationSpecification: CapacityReservationSpecification | None = None
+    cpuOptions: CpuOptions | None = None
+    creditSpecification: CreditSpecification | None = None
+    disableApiStop: bool | None = None
+    disableApiTermination: bool | None = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
+    ebsOptimized: bool | None = None
+    enablePrimaryIpv6: bool | None = None
+    enclaveOptions: EnclaveOptions | None = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
+    forceDestroy: bool | None = None
+    getPasswordData: bool | None = None
+    hibernation: bool | None = None
+    hostId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    hostResourceGroupArn: Optional[str] = None
-    iamInstanceProfile: Optional[str] = None
-    instanceInitiatedShutdownBehavior: Optional[str] = None
-    instanceInterruptionBehavior: Optional[str] = None
+    hostResourceGroupArn: str | None = None
+    iamInstanceProfile: str | None = None
+    instanceInitiatedShutdownBehavior: str | None = None
+    instanceInterruptionBehavior: str | None = None
     """
     Indicates Spot instance behavior when it is interrupted. Valid values are terminate, stop, or hibernate. Default value is terminate.
     """
-    instanceType: Optional[str] = None
-    ipv6AddressCount: Optional[float] = None
-    ipv6Addresses: Optional[List[str]] = None
-    keyName: Optional[str] = None
-    launchGroup: Optional[str] = None
+    instanceType: str | None = None
+    ipv6AddressCount: float | None = None
+    ipv6Addresses: list[str] | None = None
+    keyName: str | None = None
+    launchGroup: str | None = None
     """
     A launch group is a group of spot instances that launch together and terminate together.
     If left empty instances are launched and terminated individually.
     """
-    launchTemplate: Optional[LaunchTemplate] = None
-    maintenanceOptions: Optional[MaintenanceOptions] = None
-    metadataOptions: Optional[MetadataOptions] = None
-    monitoring: Optional[bool] = None
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
-    placementGroup: Optional[str] = None
-    placementGroupId: Optional[str] = None
+    launchTemplate: LaunchTemplate | None = None
+    maintenanceOptions: MaintenanceOptions | None = None
+    metadataOptions: MetadataOptions | None = None
+    monitoring: bool | None = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
+    placementGroup: str | None = None
+    placementGroupId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    placementPartitionNumber: Optional[float] = None
-    privateDnsNameOptions: Optional[PrivateDnsNameOptions] = None
-    privateIp: Optional[str] = None
+    placementPartitionNumber: float | None = None
+    privateDnsNameOptions: PrivateDnsNameOptions | None = None
+    privateIp: str | None = None
     """
     The private IP address assigned to the instance
     """
-    rootBlockDevice: Optional[RootBlockDevice] = None
-    secondaryNetworkInterface: Optional[List[SecondaryNetworkInterfaceItem]] = None
-    secondaryPrivateIps: Optional[List[str]] = None
-    securityGroups: Optional[List[str]] = None
-    sourceDestCheck: Optional[bool] = None
-    spotPrice: Optional[str] = None
+    rootBlockDevice: RootBlockDevice | None = None
+    secondaryNetworkInterface: list[SecondaryNetworkInterfaceItem] | None = None
+    secondaryPrivateIps: list[str] | None = None
+    securityGroups: list[str] | None = None
+    sourceDestCheck: bool | None = None
+    spotPrice: str | None = None
     """
     The maximum price to request on the spot market.
     """
-    spotType: Optional[str] = None
+    spotType: str | None = None
     """
     If set to one-time, after
     the instance is terminated, the spot request will be closed.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tenancy: Optional[str] = None
-    userData: Optional[str] = None
-    userDataBase64: Optional[str] = None
-    userDataReplaceOnChange: Optional[bool] = None
-    validFrom: Optional[str] = None
+    tenancy: str | None = None
+    userData: str | None = None
+    userDataBase64: str | None = None
+    userDataReplaceOnChange: bool | None = None
+    validFrom: str | None = None
     """
     The start date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). The default is to start fulfilling the request immediately.
     """
-    validUntil: Optional[str] = None
+    validUntil: str | None = None
     """
     The end date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). At this point, no new Spot instance requests are placed or enabled to fulfill the request. The default end date is 7 days from the current date.
     """
-    volumeTags: Optional[Dict[str, str]] = None
+    volumeTags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcSecurityGroupIdRefs: Optional[List[VpcSecurityGroupIdRef]] = None
+    vpcSecurityGroupIdRefs: list[VpcSecurityGroupIdRef] | None = None
     """
     References to SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIdSelector: Optional[VpcSecurityGroupIdSelector] = None
+    vpcSecurityGroupIdSelector: VpcSecurityGroupIdSelector | None = None
     """
     Selector for a list of SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIds: Optional[List[str]] = None
-    waitForFulfillment: Optional[bool] = None
+    vpcSecurityGroupIds: list[str] | None = None
+    waitForFulfillment: bool | None = None
 
 
 class ProviderConfigRef(BaseModel):
@@ -477,7 +476,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -490,9 +489,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -501,17 +501,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -521,264 +519,264 @@ class Spec(BaseModel):
 
 
 class EbsBlockDeviceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceName: Optional[str] = None
-    encrypted: Optional[bool] = None
-    iops: Optional[float] = None
-    kmsKeyId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceName: str | None = None
+    encrypted: bool | None = None
+    iops: float | None = None
+    kmsKeyId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    snapshotId: Optional[str] = None
+    snapshotId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
-    volumeId: Optional[str] = None
+    throughput: float | None = None
+    volumeId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    volumeSize: Optional[float] = None
-    volumeType: Optional[str] = None
+    volumeSize: float | None = None
+    volumeType: str | None = None
 
 
 class NetworkInterfaceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceIndex: Optional[float] = None
-    networkCardIndex: Optional[float] = None
-    networkInterfaceId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceIndex: float | None = None
+    networkCardIndex: float | None = None
+    networkInterfaceId: str | None = None
     """
     The Spot Instance Request ID.
     """
 
 
 class PrimaryNetworkInterfaceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    networkInterfaceId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    networkInterfaceId: str | None = None
     """
     The Spot Instance Request ID.
     """
 
 
 class RootBlockDeviceModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceName: Optional[str] = None
-    encrypted: Optional[bool] = None
-    iops: Optional[float] = None
-    kmsKeyId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceName: str | None = None
+    encrypted: bool | None = None
+    iops: float | None = None
+    kmsKeyId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
-    volumeId: Optional[str] = None
+    throughput: float | None = None
+    volumeId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    volumeSize: Optional[float] = None
-    volumeType: Optional[str] = None
+    volumeSize: float | None = None
+    volumeType: str | None = None
 
 
 class SecondaryNetworkInterfaceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceIndex: Optional[float] = None
-    interfaceType: Optional[str] = None
-    macAddress: Optional[str] = None
-    networkCardIndex: Optional[float] = None
-    privateIpAddressCount: Optional[float] = None
-    privateIpAddresses: Optional[List[str]] = None
-    secondaryInterfaceId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceIndex: float | None = None
+    interfaceType: str | None = None
+    macAddress: str | None = None
+    networkCardIndex: float | None = None
+    privateIpAddressCount: float | None = None
+    privateIpAddresses: list[str] | None = None
+    secondaryInterfaceId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    secondaryNetworkId: Optional[str] = None
+    secondaryNetworkId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    secondarySubnetId: Optional[str] = None
+    secondarySubnetId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    sourceDestCheck: Optional[bool] = None
-    status: Optional[str] = None
+    sourceDestCheck: bool | None = None
+    status: str | None = None
 
 
 class AtProvider(BaseModel):
-    ami: Optional[str] = None
-    arn: Optional[str] = None
-    associatePublicIpAddress: Optional[bool] = None
-    availabilityZone: Optional[str] = None
-    capacityReservationSpecification: Optional[CapacityReservationSpecification] = None
-    cpuOptions: Optional[CpuOptions] = None
-    creditSpecification: Optional[CreditSpecification] = None
-    disableApiStop: Optional[bool] = None
-    disableApiTermination: Optional[bool] = None
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItemModel]] = None
-    ebsOptimized: Optional[bool] = None
-    enablePrimaryIpv6: Optional[bool] = None
-    enclaveOptions: Optional[EnclaveOptions] = None
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
-    forceDestroy: Optional[bool] = None
-    getPasswordData: Optional[bool] = None
-    hibernation: Optional[bool] = None
-    hostId: Optional[str] = None
+    ami: str | None = None
+    arn: str | None = None
+    associatePublicIpAddress: bool | None = None
+    availabilityZone: str | None = None
+    capacityReservationSpecification: CapacityReservationSpecification | None = None
+    cpuOptions: CpuOptions | None = None
+    creditSpecification: CreditSpecification | None = None
+    disableApiStop: bool | None = None
+    disableApiTermination: bool | None = None
+    ebsBlockDevice: list[EbsBlockDeviceItemModel] | None = None
+    ebsOptimized: bool | None = None
+    enablePrimaryIpv6: bool | None = None
+    enclaveOptions: EnclaveOptions | None = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
+    forceDestroy: bool | None = None
+    getPasswordData: bool | None = None
+    hibernation: bool | None = None
+    hostId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    hostResourceGroupArn: Optional[str] = None
-    iamInstanceProfile: Optional[str] = None
-    id: Optional[str] = None
+    hostResourceGroupArn: str | None = None
+    iamInstanceProfile: str | None = None
+    id: str | None = None
     """
     The Spot Instance Request ID.
     """
-    instanceInitiatedShutdownBehavior: Optional[str] = None
-    instanceInterruptionBehavior: Optional[str] = None
+    instanceInitiatedShutdownBehavior: str | None = None
+    instanceInterruptionBehavior: str | None = None
     """
     Indicates Spot instance behavior when it is interrupted. Valid values are terminate, stop, or hibernate. Default value is terminate.
     """
-    instanceState: Optional[str] = None
-    instanceType: Optional[str] = None
-    ipv6AddressCount: Optional[float] = None
-    ipv6Addresses: Optional[List[str]] = None
-    keyName: Optional[str] = None
-    launchGroup: Optional[str] = None
+    instanceState: str | None = None
+    instanceType: str | None = None
+    ipv6AddressCount: float | None = None
+    ipv6Addresses: list[str] | None = None
+    keyName: str | None = None
+    launchGroup: str | None = None
     """
     A launch group is a group of spot instances that launch together and terminate together.
     If left empty instances are launched and terminated individually.
     """
-    launchTemplate: Optional[LaunchTemplate] = None
-    maintenanceOptions: Optional[MaintenanceOptions] = None
-    metadataOptions: Optional[MetadataOptions] = None
-    monitoring: Optional[bool] = None
-    networkInterface: Optional[List[NetworkInterfaceItemModel]] = None
-    outpostArn: Optional[str] = None
-    passwordData: Optional[str] = None
-    placementGroup: Optional[str] = None
-    placementGroupId: Optional[str] = None
+    launchTemplate: LaunchTemplate | None = None
+    maintenanceOptions: MaintenanceOptions | None = None
+    metadataOptions: MetadataOptions | None = None
+    monitoring: bool | None = None
+    networkInterface: list[NetworkInterfaceItemModel] | None = None
+    outpostArn: str | None = None
+    passwordData: str | None = None
+    placementGroup: str | None = None
+    placementGroupId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    placementPartitionNumber: Optional[float] = None
-    primaryNetworkInterface: Optional[List[PrimaryNetworkInterfaceItem]] = None
-    primaryNetworkInterfaceId: Optional[str] = None
+    placementPartitionNumber: float | None = None
+    primaryNetworkInterface: list[PrimaryNetworkInterfaceItem] | None = None
+    primaryNetworkInterfaceId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    privateDns: Optional[str] = None
+    privateDns: str | None = None
     """
     The private DNS name assigned to the instance. Can only be
     used inside the Amazon EC2, and only available if you've enabled DNS hostnames
     for your VPC
     """
-    privateDnsNameOptions: Optional[PrivateDnsNameOptions] = None
-    privateIp: Optional[str] = None
+    privateDnsNameOptions: PrivateDnsNameOptions | None = None
+    privateIp: str | None = None
     """
     The private IP address assigned to the instance
     """
-    publicDns: Optional[str] = None
+    publicDns: str | None = None
     """
     The public DNS name assigned to the instance. For EC2-VPC, this
     is only available if you've enabled DNS hostnames for your VPC
     """
-    publicIp: Optional[str] = None
+    publicIp: str | None = None
     """
     The public IP address assigned to the instance, if applicable.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    rootBlockDevice: Optional[RootBlockDeviceModel] = None
-    secondaryNetworkInterface: Optional[List[SecondaryNetworkInterfaceItemModel]] = None
-    secondaryPrivateIps: Optional[List[str]] = None
-    securityGroups: Optional[List[str]] = None
-    sourceDestCheck: Optional[bool] = None
-    spotBidStatus: Optional[str] = None
+    rootBlockDevice: RootBlockDeviceModel | None = None
+    secondaryNetworkInterface: list[SecondaryNetworkInterfaceItemModel] | None = None
+    secondaryPrivateIps: list[str] | None = None
+    securityGroups: list[str] | None = None
+    sourceDestCheck: bool | None = None
+    spotBidStatus: str | None = None
     """
     The current bid
     status
     of the Spot Instance Request.
     """
-    spotInstanceId: Optional[str] = None
+    spotInstanceId: str | None = None
     """
     The Instance ID (if any) that is currently fulfilling
     the Spot Instance request.
     """
-    spotPrice: Optional[str] = None
+    spotPrice: str | None = None
     """
     The maximum price to request on the spot market.
     """
-    spotRequestState: Optional[str] = None
+    spotRequestState: str | None = None
     """
     The current request
     state
     of the Spot Instance Request.
     """
-    spotType: Optional[str] = None
+    spotType: str | None = None
     """
     If set to one-time, after
     the instance is terminated, the spot request will be closed.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The Spot Instance Request ID.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    tenancy: Optional[str] = None
-    userData: Optional[str] = None
-    userDataBase64: Optional[str] = None
-    userDataReplaceOnChange: Optional[bool] = None
-    validFrom: Optional[str] = None
+    tenancy: str | None = None
+    userData: str | None = None
+    userDataBase64: str | None = None
+    userDataReplaceOnChange: bool | None = None
+    validFrom: str | None = None
     """
     The start date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). The default is to start fulfilling the request immediately.
     """
-    validUntil: Optional[str] = None
+    validUntil: str | None = None
     """
     The end date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). At this point, no new Spot instance requests are placed or enabled to fulfill the request. The default end date is 7 days from the current date.
     """
-    volumeTags: Optional[Dict[str, str]] = None
+    volumeTags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcSecurityGroupIds: Optional[List[str]] = None
-    waitForFulfillment: Optional[bool] = None
+    vpcSecurityGroupIds: list[str] | None = None
+    waitForFulfillment: bool | None = None
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -800,12 +798,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -814,17 +812,17 @@ class Status(BaseModel):
 
 
 class SpotInstanceRequest(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.m.upbound.io/v1beta1'] | None = (
         'ec2.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['SpotInstanceRequest']] = 'SpotInstanceRequest'
+    kind: Literal['SpotInstanceRequest'] | None = 'SpotInstanceRequest'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -832,26 +830,26 @@ class SpotInstanceRequest(BaseModel):
     """
     SpotInstanceRequestSpec defines the desired state of SpotInstanceRequest
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     SpotInstanceRequestStatus defines the observed state of SpotInstanceRequest.
     """
 
 
 class SpotInstanceRequestList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[SpotInstanceRequest]
+    items: list[SpotInstanceRequest]
     """
     List of spotinstancerequests. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

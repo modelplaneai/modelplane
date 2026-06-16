@@ -3,35 +3,41 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class LogConfigItem(BaseModel):
-    enable: Optional[bool] = None
+    enable: bool | None = None
     """
     Indicates whether or not to export logs.
     """
-    filter: Optional[str] = None
+    filter: str | None = None
     """
     Specifies the desired filtering of logs on this NAT.
     Possible values are: ERRORS_ONLY, TRANSLATIONS_ONLY, ALL.
     """
 
 
+class Nat64SubnetworkItem(BaseModel):
+    name: str | None = None
+    """
+    Self-link of the subnetwork resource that will use NAT64
+    """
+
+
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -45,23 +51,23 @@ class NatIpsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NatIpsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -72,23 +78,23 @@ class RouterRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class RouterSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -99,23 +105,23 @@ class SourceNatActiveIpsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceNatActiveIpsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -126,65 +132,65 @@ class SourceNatActiveRangesRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceNatActiveRangesSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ActionItem(BaseModel):
-    sourceNatActiveIps: Optional[List[str]] = None
+    sourceNatActiveIps: list[str] | None = None
     """
     A list of URLs of the IP resources used for this NAT rule.
     These IP addresses must be valid static external IP addresses assigned to the project.
     This field is used for public NAT.
     """
-    sourceNatActiveIpsRefs: Optional[List[SourceNatActiveIpsRef]] = None
+    sourceNatActiveIpsRefs: list[SourceNatActiveIpsRef] | None = None
     """
     References to Address in compute to populate sourceNatActiveIps.
     """
-    sourceNatActiveIpsSelector: Optional[SourceNatActiveIpsSelector] = None
+    sourceNatActiveIpsSelector: SourceNatActiveIpsSelector | None = None
     """
     Selector for a list of Address in compute to populate sourceNatActiveIps.
     """
-    sourceNatActiveRanges: Optional[List[str]] = None
+    sourceNatActiveRanges: list[str] | None = None
     """
     A list of URLs of the subnetworks used as source ranges for this NAT Rule.
     These subnetworks must have purpose set to PRIVATE_NAT.
     This field is used for private NAT.
     """
-    sourceNatActiveRangesRefs: Optional[List[SourceNatActiveRangesRef]] = None
+    sourceNatActiveRangesRefs: list[SourceNatActiveRangesRef] | None = None
     """
     References to Subnetwork in compute to populate sourceNatActiveRanges.
     """
-    sourceNatActiveRangesSelector: Optional[SourceNatActiveRangesSelector] = None
+    sourceNatActiveRangesSelector: SourceNatActiveRangesSelector | None = None
     """
     Selector for a list of Subnetwork in compute to populate sourceNatActiveRanges.
     """
-    sourceNatDrainIps: Optional[List[str]] = None
+    sourceNatDrainIps: list[str] | None = None
     """
     A list of URLs of the IP resources to be drained.
     These IPs must be valid static external IPs that have been assigned to the NAT.
     These IPs should be used for updating/patching a NAT rule only.
     This field is used for public NAT.
     """
-    sourceNatDrainRanges: Optional[List[str]] = None
+    sourceNatDrainRanges: list[str] | None = None
     """
     A list of URLs of subnetworks representing source ranges to be drained.
     This is only supported on patch/update, and these subnetworks must have previously been used as active ranges in this NAT Rule.
@@ -193,16 +199,16 @@ class ActionItem(BaseModel):
 
 
 class Rule(BaseModel):
-    action: Optional[List[ActionItem]] = None
+    action: list[ActionItem] | None = None
     """
     The action to be enforced for traffic that matches this rule.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this rule.
     """
-    match: Optional[str] = None
+    match: str | None = None
     """
     CEL expression that specifies the match condition that egress traffic from a VM is evaluated against.
     If it evaluates to true, the corresponding action is enforced.
@@ -212,7 +218,7 @@ class Rule(BaseModel):
     The following example is a valid match expression for private NAT:
     "nexthop.hub == 'https://networkconnectivity.googleapis.com/v1alpha1/projects/my-project/global/hub/hub-1'"
     """
-    ruleNumber: Optional[float] = None
+    ruleNumber: float | None = None
     """
     An integer uniquely identifying a rule in the list.
     The rule number must be a positive value between 0 and 65000, and must be unique among rules within a NAT.
@@ -224,49 +230,49 @@ class NameRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NameSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class SubnetworkItem(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Self-link of subnetwork to NAT
     """
-    nameRef: Optional[NameRef] = None
+    nameRef: NameRef | None = None
     """
     Reference to a Subnetwork in compute to populate name.
     """
-    nameSelector: Optional[NameSelector] = None
+    nameSelector: NameSelector | None = None
     """
     Selector for a Subnetwork in compute to populate name.
     """
-    secondaryIpRangeNames: Optional[List[str]] = None
+    secondaryIpRangeNames: list[str] | None = None
     """
     List of the secondary ranges of the subnetwork that are allowed
     to use NAT. This can be populated only if
     LIST_OF_SECONDARY_IP_RANGES is one of the values in
     sourceIpRangesToNat
     """
-    sourceIpRangesToNat: Optional[List[str]] = None
+    sourceIpRangesToNat: list[str] | None = None
     """
     List of options for which source IPs in the subnetwork
     should have NAT enabled. Supported values include:
@@ -276,19 +282,19 @@ class SubnetworkItem(BaseModel):
 
 
 class ForProvider(BaseModel):
-    autoNetworkTier: Optional[str] = None
+    autoNetworkTier: str | None = None
     """
     The network tier to use when automatically reserving NAT IP addresses.
     Must be one of: PREMIUM, STANDARD. If not specified, then the current
     project-level default tier is used.
     Possible values are: PREMIUM, STANDARD.
     """
-    drainNatIps: Optional[List[str]] = None
+    drainNatIps: list[str] | None = None
     """
     A list of URLs of the IP resources to be drained. These IPs must be
     valid static external IPs that have been assigned to the NAT.
     """
-    enableDynamicPortAllocation: Optional[bool] = None
+    enableDynamicPortAllocation: bool | None = None
     """
     Enable Dynamic Port Allocation.
     If minPortsPerVm is set, minPortsPerVm must be set to a power of two greater than or equal to 32.
@@ -297,57 +303,68 @@ class ForProvider(BaseModel):
     If maxPortsPerVm is not set, a maximum of 65536 ports will be allocated to a VM from this NAT config.
     Mutually exclusive with enableEndpointIndependentMapping.
     """
-    enableEndpointIndependentMapping: Optional[bool] = None
+    enableEndpointIndependentMapping: bool | None = None
     """
     Enable endpoint independent mapping.
     For more information see the official documentation.
     """
-    endpointTypes: Optional[List[str]] = None
+    endpointTypes: list[str] | None = None
     """
     Specifies the endpoint Types supported by the NAT Gateway.
     Supported values include:
     ENDPOINT_TYPE_VM, ENDPOINT_TYPE_SWG,
     ENDPOINT_TYPE_MANAGED_PROXY_LB.
     """
-    icmpIdleTimeoutSec: Optional[float] = None
+    icmpIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for ICMP connections. Defaults to 30s if not set.
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    initialNatIps: list[str] | None = None
+    """
+    Self-links of NAT IPs to be used as initial value for creation alongside a RouterNatAddress resource.
+    Conflicts with natIps and drainNatIps. Only valid if natIpAllocateOption is set to MANUAL_ONLY.
+    """
+    logConfig: list[LogConfigItem] | None = None
     """
     Configuration for logging on NAT
     Structure is documented below.
     """
-    maxPortsPerVm: Optional[float] = None
+    maxPortsPerVm: float | None = None
     """
     Maximum number of ports allocated to a VM from this NAT.
     This field can only be set when enableDynamicPortAllocation is enabled.
     """
-    minPortsPerVm: Optional[float] = None
+    minPortsPerVm: float | None = None
     """
     Minimum number of ports allocated to a VM from this NAT. Defaults to 64 for static port allocation and 32 dynamic port allocation if not set.
     """
-    natIpAllocateOption: Optional[str] = None
+    nat64Subnetwork: list[Nat64SubnetworkItem] | None = None
+    """
+    One or more subnetwork NAT configurations whose traffic should be translated by NAT64 Gateway.
+    Only used if source_subnetwork_ip_ranges_to_nat64 is set to LIST_OF_IPV6_SUBNETWORKS
+    Structure is documented below.
+    """
+    natIpAllocateOption: str | None = None
     """
     How external IPs should be allocated for this NAT. Valid values are
     AUTO_ONLY for only allowing NAT IPs allocated by Google Cloud
     Platform, or MANUAL_ONLY for only user-allocated NAT IP addresses.
     Possible values are: MANUAL_ONLY, AUTO_ONLY.
     """
-    natIps: Optional[List[str]] = None
+    natIps: list[str] | None = None
     """
     Self-links of NAT IPs. Only valid if natIpAllocateOption
     is set to MANUAL_ONLY.
     """
-    natIpsRefs: Optional[List[NatIpsRef]] = None
+    natIpsRefs: list[NatIpsRef] | None = None
     """
     References to Address in compute to populate natIps.
     """
-    natIpsSelector: Optional[NatIpsSelector] = None
+    natIpsSelector: NatIpsSelector | None = None
     """
     Selector for a list of Address in compute to populate natIps.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -356,24 +373,24 @@ class ForProvider(BaseModel):
     """
     Region where the router and NAT reside.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     The name of the Cloud Router in which this NAT will be configured.
     """
-    routerRef: Optional[RouterRef] = None
+    routerRef: RouterRef | None = None
     """
     Reference to a Router in compute to populate router.
     """
-    routerSelector: Optional[RouterSelector] = None
+    routerSelector: RouterSelector | None = None
     """
     Selector for a Router in compute to populate router.
     """
-    rules: Optional[List[Rule]] = None
+    rules: list[Rule] | None = None
     """
     A list of rules associated with this NAT.
     Structure is documented below.
     """
-    sourceSubnetworkIpRangesToNat: Optional[str] = None
+    sourceSubnetworkIpRangesToNat: str | None = None
     """
     How NAT should be configured per Subnetwork.
     If ALL_SUBNETWORKS_ALL_IP_RANGES, all of the
@@ -387,47 +404,59 @@ class ForProvider(BaseModel):
     other RouterNat section in any Router for this network in this region.
     Possible values are: ALL_SUBNETWORKS_ALL_IP_RANGES, ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, LIST_OF_SUBNETWORKS.
     """
-    subnetwork: Optional[List[SubnetworkItem]] = None
+    sourceSubnetworkIpRangesToNat64: str | None = None
+    """
+    Specify the Nat option for NAT64, which can take one of the following values:
+    ALL_IPV6_SUBNETWORKS: All of the IP ranges in every Subnetwork are allowed to Nat.
+    LIST_OF_IPV6_SUBNETWORKS: A list of Subnetworks are allowed to Nat (specified in the field nat64Subnetwork below).
+    Possible values are: ALL_IPV6_SUBNETWORKS, LIST_OF_IPV6_SUBNETWORKS.
+    """
+    subnetwork: list[SubnetworkItem] | None = None
     """
     One or more subnetwork NAT configurations. Only used if
     source_subnetwork_ip_ranges_to_nat is set to LIST_OF_SUBNETWORKS
     Structure is documented below.
     """
-    tcpEstablishedIdleTimeoutSec: Optional[float] = None
+    tcpEstablishedIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP established connections.
     Defaults to 1200s if not set.
     """
-    tcpTimeWaitTimeoutSec: Optional[float] = None
+    tcpTimeWaitTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP connections that are in TIME_WAIT state.
     Defaults to 120s if not set.
     """
-    tcpTransitoryIdleTimeoutSec: Optional[float] = None
+    tcpTransitoryIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP transitory connections.
     Defaults to 30s if not set.
     """
-    udpIdleTimeoutSec: Optional[float] = None
+    type: str | None = None
+    """
+    Indicates whether this NAT is used for public or private IP translation.
+    Possible values are: PUBLIC, PRIVATE.
+    """
+    udpIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for UDP connections. Defaults to 30s if not set.
     """
 
 
 class InitProvider(BaseModel):
-    autoNetworkTier: Optional[str] = None
+    autoNetworkTier: str | None = None
     """
     The network tier to use when automatically reserving NAT IP addresses.
     Must be one of: PREMIUM, STANDARD. If not specified, then the current
     project-level default tier is used.
     Possible values are: PREMIUM, STANDARD.
     """
-    drainNatIps: Optional[List[str]] = None
+    drainNatIps: list[str] | None = None
     """
     A list of URLs of the IP resources to be drained. These IPs must be
     valid static external IPs that have been assigned to the NAT.
     """
-    enableDynamicPortAllocation: Optional[bool] = None
+    enableDynamicPortAllocation: bool | None = None
     """
     Enable Dynamic Port Allocation.
     If minPortsPerVm is set, minPortsPerVm must be set to a power of two greater than or equal to 32.
@@ -436,67 +465,78 @@ class InitProvider(BaseModel):
     If maxPortsPerVm is not set, a maximum of 65536 ports will be allocated to a VM from this NAT config.
     Mutually exclusive with enableEndpointIndependentMapping.
     """
-    enableEndpointIndependentMapping: Optional[bool] = None
+    enableEndpointIndependentMapping: bool | None = None
     """
     Enable endpoint independent mapping.
     For more information see the official documentation.
     """
-    endpointTypes: Optional[List[str]] = None
+    endpointTypes: list[str] | None = None
     """
     Specifies the endpoint Types supported by the NAT Gateway.
     Supported values include:
     ENDPOINT_TYPE_VM, ENDPOINT_TYPE_SWG,
     ENDPOINT_TYPE_MANAGED_PROXY_LB.
     """
-    icmpIdleTimeoutSec: Optional[float] = None
+    icmpIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for ICMP connections. Defaults to 30s if not set.
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    initialNatIps: list[str] | None = None
+    """
+    Self-links of NAT IPs to be used as initial value for creation alongside a RouterNatAddress resource.
+    Conflicts with natIps and drainNatIps. Only valid if natIpAllocateOption is set to MANUAL_ONLY.
+    """
+    logConfig: list[LogConfigItem] | None = None
     """
     Configuration for logging on NAT
     Structure is documented below.
     """
-    maxPortsPerVm: Optional[float] = None
+    maxPortsPerVm: float | None = None
     """
     Maximum number of ports allocated to a VM from this NAT.
     This field can only be set when enableDynamicPortAllocation is enabled.
     """
-    minPortsPerVm: Optional[float] = None
+    minPortsPerVm: float | None = None
     """
     Minimum number of ports allocated to a VM from this NAT. Defaults to 64 for static port allocation and 32 dynamic port allocation if not set.
     """
-    natIpAllocateOption: Optional[str] = None
+    nat64Subnetwork: list[Nat64SubnetworkItem] | None = None
+    """
+    One or more subnetwork NAT configurations whose traffic should be translated by NAT64 Gateway.
+    Only used if source_subnetwork_ip_ranges_to_nat64 is set to LIST_OF_IPV6_SUBNETWORKS
+    Structure is documented below.
+    """
+    natIpAllocateOption: str | None = None
     """
     How external IPs should be allocated for this NAT. Valid values are
     AUTO_ONLY for only allowing NAT IPs allocated by Google Cloud
     Platform, or MANUAL_ONLY for only user-allocated NAT IP addresses.
     Possible values are: MANUAL_ONLY, AUTO_ONLY.
     """
-    natIps: Optional[List[str]] = None
+    natIps: list[str] | None = None
     """
     Self-links of NAT IPs. Only valid if natIpAllocateOption
     is set to MANUAL_ONLY.
     """
-    natIpsRefs: Optional[List[NatIpsRef]] = None
+    natIpsRefs: list[NatIpsRef] | None = None
     """
     References to Address in compute to populate natIps.
     """
-    natIpsSelector: Optional[NatIpsSelector] = None
+    natIpsSelector: NatIpsSelector | None = None
     """
     Selector for a list of Address in compute to populate natIps.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    rules: Optional[List[Rule]] = None
+    rules: list[Rule] | None = None
     """
     A list of rules associated with this NAT.
     Structure is documented below.
     """
-    sourceSubnetworkIpRangesToNat: Optional[str] = None
+    sourceSubnetworkIpRangesToNat: str | None = None
     """
     How NAT should be configured per Subnetwork.
     If ALL_SUBNETWORKS_ALL_IP_RANGES, all of the
@@ -510,28 +550,42 @@ class InitProvider(BaseModel):
     other RouterNat section in any Router for this network in this region.
     Possible values are: ALL_SUBNETWORKS_ALL_IP_RANGES, ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, LIST_OF_SUBNETWORKS.
     """
-    subnetwork: Optional[List[SubnetworkItem]] = None
+    sourceSubnetworkIpRangesToNat64: str | None = None
+    """
+    Specify the Nat option for NAT64, which can take one of the following values:
+    ALL_IPV6_SUBNETWORKS: All of the IP ranges in every Subnetwork are allowed to Nat.
+    LIST_OF_IPV6_SUBNETWORKS: A list of Subnetworks are allowed to Nat (specified in the field nat64Subnetwork below).
+    Possible values are: ALL_IPV6_SUBNETWORKS, LIST_OF_IPV6_SUBNETWORKS.
+    """
+    subnetwork: list[SubnetworkItem] | None = None
     """
     One or more subnetwork NAT configurations. Only used if
     source_subnetwork_ip_ranges_to_nat is set to LIST_OF_SUBNETWORKS
     Structure is documented below.
     """
-    tcpEstablishedIdleTimeoutSec: Optional[float] = None
+    tcpEstablishedIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP established connections.
     Defaults to 1200s if not set.
     """
-    tcpTimeWaitTimeoutSec: Optional[float] = None
+    tcpTimeWaitTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP connections that are in TIME_WAIT state.
     Defaults to 120s if not set.
     """
-    tcpTransitoryIdleTimeoutSec: Optional[float] = None
+    tcpTransitoryIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP transitory connections.
     Defaults to 30s if not set.
     """
-    udpIdleTimeoutSec: Optional[float] = None
+    type: str | None = None
+    """
+    Indicates whether this NAT is used for public or private IP translation.
+    If unspecified, it defaults to PUBLIC.
+    Default value is PUBLIC.
+    Possible values are: PUBLIC, PRIVATE.
+    """
+    udpIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for UDP connections. Defaults to 30s if not set.
     """
@@ -542,7 +596,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -560,7 +614,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -571,7 +625,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -584,9 +638,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -599,15 +654,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -617,26 +672,26 @@ class Spec(BaseModel):
 
 
 class ActionItemModel(BaseModel):
-    sourceNatActiveIps: Optional[List[str]] = None
+    sourceNatActiveIps: list[str] | None = None
     """
     A list of URLs of the IP resources used for this NAT rule.
     These IP addresses must be valid static external IP addresses assigned to the project.
     This field is used for public NAT.
     """
-    sourceNatActiveRanges: Optional[List[str]] = None
+    sourceNatActiveRanges: list[str] | None = None
     """
     A list of URLs of the subnetworks used as source ranges for this NAT Rule.
     These subnetworks must have purpose set to PRIVATE_NAT.
     This field is used for private NAT.
     """
-    sourceNatDrainIps: Optional[List[str]] = None
+    sourceNatDrainIps: list[str] | None = None
     """
     A list of URLs of the IP resources to be drained.
     These IPs must be valid static external IPs that have been assigned to the NAT.
     These IPs should be used for updating/patching a NAT rule only.
     This field is used for public NAT.
     """
-    sourceNatDrainRanges: Optional[List[str]] = None
+    sourceNatDrainRanges: list[str] | None = None
     """
     A list of URLs of subnetworks representing source ranges to be drained.
     This is only supported on patch/update, and these subnetworks must have previously been used as active ranges in this NAT Rule.
@@ -645,18 +700,18 @@ class ActionItemModel(BaseModel):
 
 
 class SubnetworkItemModel(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Self-link of subnetwork to NAT
     """
-    secondaryIpRangeNames: Optional[List[str]] = None
+    secondaryIpRangeNames: list[str] | None = None
     """
     List of the secondary ranges of the subnetwork that are allowed
     to use NAT. This can be populated only if
     LIST_OF_SECONDARY_IP_RANGES is one of the values in
     sourceIpRangesToNat
     """
-    sourceIpRangesToNat: Optional[List[str]] = None
+    sourceIpRangesToNat: list[str] | None = None
     """
     List of options for which source IPs in the subnetwork
     should have NAT enabled. Supported values include:
@@ -666,19 +721,19 @@ class SubnetworkItemModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    autoNetworkTier: Optional[str] = None
+    autoNetworkTier: str | None = None
     """
     The network tier to use when automatically reserving NAT IP addresses.
     Must be one of: PREMIUM, STANDARD. If not specified, then the current
     project-level default tier is used.
     Possible values are: PREMIUM, STANDARD.
     """
-    drainNatIps: Optional[List[str]] = None
+    drainNatIps: list[str] | None = None
     """
     A list of URLs of the IP resources to be drained. These IPs must be
     valid static external IPs that have been assigned to the NAT.
     """
-    enableDynamicPortAllocation: Optional[bool] = None
+    enableDynamicPortAllocation: bool | None = None
     """
     Enable Dynamic Port Allocation.
     If minPortsPerVm is set, minPortsPerVm must be set to a power of two greater than or equal to 32.
@@ -687,71 +742,82 @@ class AtProvider(BaseModel):
     If maxPortsPerVm is not set, a maximum of 65536 ports will be allocated to a VM from this NAT config.
     Mutually exclusive with enableEndpointIndependentMapping.
     """
-    enableEndpointIndependentMapping: Optional[bool] = None
+    enableEndpointIndependentMapping: bool | None = None
     """
     Enable endpoint independent mapping.
     For more information see the official documentation.
     """
-    endpointTypes: Optional[List[str]] = None
+    endpointTypes: list[str] | None = None
     """
     Specifies the endpoint Types supported by the NAT Gateway.
     Supported values include:
     ENDPOINT_TYPE_VM, ENDPOINT_TYPE_SWG,
     ENDPOINT_TYPE_MANAGED_PROXY_LB.
     """
-    icmpIdleTimeoutSec: Optional[float] = None
+    icmpIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for ICMP connections. Defaults to 30s if not set.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format {{project}}/{{region}}/{{router}}/{{name}}
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    initialNatIps: list[str] | None = None
+    """
+    Self-links of NAT IPs to be used as initial value for creation alongside a RouterNatAddress resource.
+    Conflicts with natIps and drainNatIps. Only valid if natIpAllocateOption is set to MANUAL_ONLY.
+    """
+    logConfig: list[LogConfigItem] | None = None
     """
     Configuration for logging on NAT
     Structure is documented below.
     """
-    maxPortsPerVm: Optional[float] = None
+    maxPortsPerVm: float | None = None
     """
     Maximum number of ports allocated to a VM from this NAT.
     This field can only be set when enableDynamicPortAllocation is enabled.
     """
-    minPortsPerVm: Optional[float] = None
+    minPortsPerVm: float | None = None
     """
     Minimum number of ports allocated to a VM from this NAT. Defaults to 64 for static port allocation and 32 dynamic port allocation if not set.
     """
-    natIpAllocateOption: Optional[str] = None
+    nat64Subnetwork: list[Nat64SubnetworkItem] | None = None
+    """
+    One or more subnetwork NAT configurations whose traffic should be translated by NAT64 Gateway.
+    Only used if source_subnetwork_ip_ranges_to_nat64 is set to LIST_OF_IPV6_SUBNETWORKS
+    Structure is documented below.
+    """
+    natIpAllocateOption: str | None = None
     """
     How external IPs should be allocated for this NAT. Valid values are
     AUTO_ONLY for only allowing NAT IPs allocated by Google Cloud
     Platform, or MANUAL_ONLY for only user-allocated NAT IP addresses.
     Possible values are: MANUAL_ONLY, AUTO_ONLY.
     """
-    natIps: Optional[List[str]] = None
+    natIps: list[str] | None = None
     """
     Self-links of NAT IPs. Only valid if natIpAllocateOption
     is set to MANUAL_ONLY.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where the router and NAT reside.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     The name of the Cloud Router in which this NAT will be configured.
     """
-    rules: Optional[List[Rule]] = None
+    rules: list[Rule] | None = None
     """
     A list of rules associated with this NAT.
     Structure is documented below.
     """
-    sourceSubnetworkIpRangesToNat: Optional[str] = None
+    sourceSubnetworkIpRangesToNat: str | None = None
     """
     How NAT should be configured per Subnetwork.
     If ALL_SUBNETWORKS_ALL_IP_RANGES, all of the
@@ -765,45 +831,57 @@ class AtProvider(BaseModel):
     other RouterNat section in any Router for this network in this region.
     Possible values are: ALL_SUBNETWORKS_ALL_IP_RANGES, ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, LIST_OF_SUBNETWORKS.
     """
-    subnetwork: Optional[List[SubnetworkItemModel]] = None
+    sourceSubnetworkIpRangesToNat64: str | None = None
+    """
+    Specify the Nat option for NAT64, which can take one of the following values:
+    ALL_IPV6_SUBNETWORKS: All of the IP ranges in every Subnetwork are allowed to Nat.
+    LIST_OF_IPV6_SUBNETWORKS: A list of Subnetworks are allowed to Nat (specified in the field nat64Subnetwork below).
+    Possible values are: ALL_IPV6_SUBNETWORKS, LIST_OF_IPV6_SUBNETWORKS.
+    """
+    subnetwork: list[SubnetworkItemModel] | None = None
     """
     One or more subnetwork NAT configurations. Only used if
     source_subnetwork_ip_ranges_to_nat is set to LIST_OF_SUBNETWORKS
     Structure is documented below.
     """
-    tcpEstablishedIdleTimeoutSec: Optional[float] = None
+    tcpEstablishedIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP established connections.
     Defaults to 1200s if not set.
     """
-    tcpTimeWaitTimeoutSec: Optional[float] = None
+    tcpTimeWaitTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP connections that are in TIME_WAIT state.
     Defaults to 120s if not set.
     """
-    tcpTransitoryIdleTimeoutSec: Optional[float] = None
+    tcpTransitoryIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for TCP transitory connections.
     Defaults to 30s if not set.
     """
-    udpIdleTimeoutSec: Optional[float] = None
+    type: str | None = None
+    """
+    Indicates whether this NAT is used for public or private IP translation.
+    Possible values are: PUBLIC, PRIVATE.
+    """
+    udpIdleTimeoutSec: float | None = None
     """
     Timeout (in seconds) for UDP connections. Defaults to 30s if not set.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -825,12 +903,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -839,17 +917,17 @@ class Status(BaseModel):
 
 
 class RouterNAT(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['RouterNAT']] = 'RouterNAT'
+    kind: Literal['RouterNAT'] | None = 'RouterNAT'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -857,26 +935,26 @@ class RouterNAT(BaseModel):
     """
     RouterNATSpec defines the desired state of RouterNAT
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     RouterNATStatus defines the observed state of RouterNAT.
     """
 
 
 class RouterNATList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[RouterNAT]
+    items: list[RouterNAT]
     """
     List of routernats. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

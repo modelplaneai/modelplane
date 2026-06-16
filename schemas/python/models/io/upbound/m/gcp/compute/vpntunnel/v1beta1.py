@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class PeerExternalGatewayRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class PeerExternalGatewaySelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,31 +67,31 @@ class RouterRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class RouterSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -111,31 +110,31 @@ class TargetVpnGatewayRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class TargetVpnGatewaySelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -146,88 +145,88 @@ class VpnGatewayRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class VpnGatewaySelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    ikeVersion: Optional[float] = None
+    ikeVersion: float | None = None
     """
     IKE protocol version to use when establishing the VPN tunnel with
     peer VPN gateway.
     Acceptable IKE versions are 1 or 2. Default version is 2.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this VpnTunnel.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    localTrafficSelector: Optional[List[str]] = None
+    localTrafficSelector: list[str] | None = None
     """
     Local traffic selector to use when establishing the VPN tunnel with
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
     """
-    peerExternalGateway: Optional[str] = None
+    peerExternalGateway: str | None = None
     """
     URL of the peer side external VPN gateway to which this VPN tunnel is connected.
     """
-    peerExternalGatewayInterface: Optional[float] = None
+    peerExternalGatewayInterface: float | None = None
     """
     The interface ID of the external VPN gateway to which this VPN tunnel is connected.
     """
-    peerExternalGatewayRef: Optional[PeerExternalGatewayRef] = None
+    peerExternalGatewayRef: PeerExternalGatewayRef | None = None
     """
     Reference to a ExternalVPNGateway in compute to populate peerExternalGateway.
     """
-    peerExternalGatewaySelector: Optional[PeerExternalGatewaySelector] = None
+    peerExternalGatewaySelector: PeerExternalGatewaySelector | None = None
     """
     Selector for a ExternalVPNGateway in compute to populate peerExternalGateway.
     """
-    peerGcpGateway: Optional[str] = None
+    peerGcpGateway: str | None = None
     """
     URL of the peer side HA GCP VPN gateway to which this VPN tunnel is connected.
     If provided, the VPN tunnel will automatically use the same vpn_gateway_interface
     ID in the peer GCP VPN gateway.
     This field must reference a google_compute_ha_vpn_gateway resource.
     """
-    peerIp: Optional[str] = None
+    peerIp: str | None = None
     """
     IP address of the peer VPN gateway. Only IPv4 is supported.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -236,136 +235,136 @@ class ForProvider(BaseModel):
     """
     The region where the tunnel is located. If unset, is set to the region of target_vpn_gateway.
     """
-    remoteTrafficSelector: Optional[List[str]] = None
+    remoteTrafficSelector: list[str] | None = None
     """
     Remote traffic selector to use when establishing the VPN tunnel with
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     URL of router resource to be used for dynamic routing.
     """
-    routerRef: Optional[RouterRef] = None
+    routerRef: RouterRef | None = None
     """
     Reference to a Router in compute to populate router.
     """
-    routerSelector: Optional[RouterSelector] = None
+    routerSelector: RouterSelector | None = None
     """
     Selector for a Router in compute to populate router.
     """
-    sharedSecretSecretRef: Optional[SharedSecretSecretRef] = None
+    sharedSecretSecretRef: SharedSecretSecretRef | None = None
     """
     Shared secret used to set the secure session between the Cloud VPN
     gateway and the peer VPN gateway.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    targetVpnGateway: Optional[str] = None
+    targetVpnGateway: str | None = None
     """
     URL of the Target VPN gateway with which this VPN tunnel is
     associated.
     """
-    targetVpnGatewayRef: Optional[TargetVpnGatewayRef] = None
+    targetVpnGatewayRef: TargetVpnGatewayRef | None = None
     """
     Reference to a VPNGateway in compute to populate targetVpnGateway.
     """
-    targetVpnGatewaySelector: Optional[TargetVpnGatewaySelector] = None
+    targetVpnGatewaySelector: TargetVpnGatewaySelector | None = None
     """
     Selector for a VPNGateway in compute to populate targetVpnGateway.
     """
-    vpnGateway: Optional[str] = None
+    vpnGateway: str | None = None
     """
     URL of the VPN gateway with which this VPN tunnel is associated.
     This must be used if a High Availability VPN gateway resource is created.
     This field must reference a google_compute_ha_vpn_gateway resource.
     """
-    vpnGatewayInterface: Optional[float] = None
+    vpnGatewayInterface: float | None = None
     """
     The interface ID of the VPN gateway with which this VPN tunnel is associated.
     """
-    vpnGatewayRef: Optional[VpnGatewayRef] = None
+    vpnGatewayRef: VpnGatewayRef | None = None
     """
     Reference to a HaVPNGateway in compute to populate vpnGateway.
     """
-    vpnGatewaySelector: Optional[VpnGatewaySelector] = None
+    vpnGatewaySelector: VpnGatewaySelector | None = None
     """
     Selector for a HaVPNGateway in compute to populate vpnGateway.
     """
 
 
 class InitProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    ikeVersion: Optional[float] = None
+    ikeVersion: float | None = None
     """
     IKE protocol version to use when establishing the VPN tunnel with
     peer VPN gateway.
     Acceptable IKE versions are 1 or 2. Default version is 2.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this VpnTunnel.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    localTrafficSelector: Optional[List[str]] = None
+    localTrafficSelector: list[str] | None = None
     """
     Local traffic selector to use when establishing the VPN tunnel with
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
     """
-    peerExternalGateway: Optional[str] = None
+    peerExternalGateway: str | None = None
     """
     URL of the peer side external VPN gateway to which this VPN tunnel is connected.
     """
-    peerExternalGatewayInterface: Optional[float] = None
+    peerExternalGatewayInterface: float | None = None
     """
     The interface ID of the external VPN gateway to which this VPN tunnel is connected.
     """
-    peerExternalGatewayRef: Optional[PeerExternalGatewayRef] = None
+    peerExternalGatewayRef: PeerExternalGatewayRef | None = None
     """
     Reference to a ExternalVPNGateway in compute to populate peerExternalGateway.
     """
-    peerExternalGatewaySelector: Optional[PeerExternalGatewaySelector] = None
+    peerExternalGatewaySelector: PeerExternalGatewaySelector | None = None
     """
     Selector for a ExternalVPNGateway in compute to populate peerExternalGateway.
     """
-    peerGcpGateway: Optional[str] = None
+    peerGcpGateway: str | None = None
     """
     URL of the peer side HA GCP VPN gateway to which this VPN tunnel is connected.
     If provided, the VPN tunnel will automatically use the same vpn_gateway_interface
     ID in the peer GCP VPN gateway.
     This field must reference a google_compute_ha_vpn_gateway resource.
     """
-    peerIp: Optional[str] = None
+    peerIp: str | None = None
     """
     IP address of the peer VPN gateway. Only IPv4 is supported.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    remoteTrafficSelector: Optional[List[str]] = None
+    remoteTrafficSelector: list[str] | None = None
     """
     Remote traffic selector to use when establishing the VPN tunnel with
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     URL of router resource to be used for dynamic routing.
     """
-    routerRef: Optional[RouterRef] = None
+    routerRef: RouterRef | None = None
     """
     Reference to a Router in compute to populate router.
     """
-    routerSelector: Optional[RouterSelector] = None
+    routerSelector: RouterSelector | None = None
     """
     Selector for a Router in compute to populate router.
     """
@@ -375,34 +374,34 @@ class InitProvider(BaseModel):
     gateway and the peer VPN gateway.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    targetVpnGateway: Optional[str] = None
+    targetVpnGateway: str | None = None
     """
     URL of the Target VPN gateway with which this VPN tunnel is
     associated.
     """
-    targetVpnGatewayRef: Optional[TargetVpnGatewayRef] = None
+    targetVpnGatewayRef: TargetVpnGatewayRef | None = None
     """
     Reference to a VPNGateway in compute to populate targetVpnGateway.
     """
-    targetVpnGatewaySelector: Optional[TargetVpnGatewaySelector] = None
+    targetVpnGatewaySelector: TargetVpnGatewaySelector | None = None
     """
     Selector for a VPNGateway in compute to populate targetVpnGateway.
     """
-    vpnGateway: Optional[str] = None
+    vpnGateway: str | None = None
     """
     URL of the VPN gateway with which this VPN tunnel is associated.
     This must be used if a High Availability VPN gateway resource is created.
     This field must reference a google_compute_ha_vpn_gateway resource.
     """
-    vpnGatewayInterface: Optional[float] = None
+    vpnGatewayInterface: float | None = None
     """
     The interface ID of the VPN gateway with which this VPN tunnel is associated.
     """
-    vpnGatewayRef: Optional[VpnGatewayRef] = None
+    vpnGatewayRef: VpnGatewayRef | None = None
     """
     Reference to a HaVPNGateway in compute to populate vpnGateway.
     """
-    vpnGatewaySelector: Optional[VpnGatewaySelector] = None
+    vpnGatewaySelector: VpnGatewaySelector | None = None
     """
     Selector for a HaVPNGateway in compute to populate vpnGateway.
     """
@@ -428,7 +427,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -441,9 +440,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -452,17 +452,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -472,132 +470,132 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    detailedStatus: Optional[str] = None
+    detailedStatus: str | None = None
     """
     Detailed status message for the VPN tunnel.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
-    id: Optional[str] = None
+    effectiveLabels: dict[str, str] | None = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/vpnTunnels/{{name}}
     """
-    ikeVersion: Optional[float] = None
+    ikeVersion: float | None = None
     """
     IKE protocol version to use when establishing the VPN tunnel with
     peer VPN gateway.
     Acceptable IKE versions are 1 or 2. Default version is 2.
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     The fingerprint used for optimistic locking of this resource.  Used
     internally during updates.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels to apply to this VpnTunnel.
     Note: This field is non-authoritative, and will only manage the labels present in your configuration.
     Please refer to the field effective_labels for all of the labels present on the resource.
     """
-    localTrafficSelector: Optional[List[str]] = None
+    localTrafficSelector: list[str] | None = None
     """
     Local traffic selector to use when establishing the VPN tunnel with
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
     """
-    peerExternalGateway: Optional[str] = None
+    peerExternalGateway: str | None = None
     """
     URL of the peer side external VPN gateway to which this VPN tunnel is connected.
     """
-    peerExternalGatewayInterface: Optional[float] = None
+    peerExternalGatewayInterface: float | None = None
     """
     The interface ID of the external VPN gateway to which this VPN tunnel is connected.
     """
-    peerGcpGateway: Optional[str] = None
+    peerGcpGateway: str | None = None
     """
     URL of the peer side HA GCP VPN gateway to which this VPN tunnel is connected.
     If provided, the VPN tunnel will automatically use the same vpn_gateway_interface
     ID in the peer GCP VPN gateway.
     This field must reference a google_compute_ha_vpn_gateway resource.
     """
-    peerIp: Optional[str] = None
+    peerIp: str | None = None
     """
     IP address of the peer VPN gateway. Only IPv4 is supported.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     The region where the tunnel is located. If unset, is set to the region of target_vpn_gateway.
     """
-    remoteTrafficSelector: Optional[List[str]] = None
+    remoteTrafficSelector: list[str] | None = None
     """
     Remote traffic selector to use when establishing the VPN tunnel with
     peer VPN gateway. The value should be a CIDR formatted string,
     for example 192.168.0.0/16. The ranges should be disjoint.
     Only IPv4 is supported.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     URL of router resource to be used for dynamic routing.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    sharedSecretHash: Optional[str] = None
+    sharedSecretHash: str | None = None
     """
     Hash of the shared secret.
     """
-    targetVpnGateway: Optional[str] = None
+    targetVpnGateway: str | None = None
     """
     URL of the Target VPN gateway with which this VPN tunnel is
     associated.
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource
     and default labels configured on the provider.
     """
-    tunnelId: Optional[str] = None
+    tunnelId: str | None = None
     """
     The unique identifier for the resource. This identifier is defined by the server.
     """
-    vpnGateway: Optional[str] = None
+    vpnGateway: str | None = None
     """
     URL of the VPN gateway with which this VPN tunnel is associated.
     This must be used if a High Availability VPN gateway resource is created.
     This field must reference a google_compute_ha_vpn_gateway resource.
     """
-    vpnGatewayInterface: Optional[float] = None
+    vpnGatewayInterface: float | None = None
     """
     The interface ID of the VPN gateway with which this VPN tunnel is associated.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -619,12 +617,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -633,17 +631,17 @@ class Status(BaseModel):
 
 
 class VPNTunnel(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['VPNTunnel']] = 'VPNTunnel'
+    kind: Literal['VPNTunnel'] | None = 'VPNTunnel'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -651,26 +649,26 @@ class VPNTunnel(BaseModel):
     """
     VPNTunnelSpec defines the desired state of VPNTunnel
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     VPNTunnelStatus defines the observed state of VPNTunnel.
     """
 
 
 class VPNTunnelList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[VPNTunnel]
+    items: list[VPNTunnel]
     """
     List of vpntunnels. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

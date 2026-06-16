@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional, Union
+from typing import Literal
 
 from pydantic import BaseModel, RootModel, constr
 
@@ -11,14 +11,14 @@ from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Metadata(BaseModel):
-    annotations: Optional[Dict[str, str]] = None
+    annotations: dict[str, str] | None = None
     """
     Annotations is an unstructured key value map stored with a resource that
     may be set by external tools to store and retrieve arbitrary metadata.
     They are not queryable and should be preserved when modifying objects.
     More info: http:https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Map of string keys and values that can be used to organize and categorize
     (scope and select) objects. Labels will be merged with internal labels
@@ -26,7 +26,7 @@ class Metadata(BaseModel):
     overwritten.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name is the name of the object.
     """
@@ -42,7 +42,7 @@ class MatchExpression(BaseModel):
     operator represents a key's relationship to a set of values.
     Valid operators are In, NotIn, Exists and DoesNotExist.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     values is an array of string values. If the operator is In or NotIn,
     the values array must be non-empty. If the operator is Exists or DoesNotExist,
@@ -52,11 +52,11 @@ class MatchExpression(BaseModel):
 
 
 class Selector(BaseModel):
-    matchExpressions: Optional[List[MatchExpression]] = None
+    matchExpressions: list[MatchExpression] | None = None
     """
     matchExpressions is a list of label selector requirements. The requirements are ANDed.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
     map is equivalent to an element of matchExpressions, whose key field is "key", the
@@ -65,7 +65,7 @@ class Selector(BaseModel):
 
 
 class RollingUpdate(BaseModel):
-    maxSurge: Optional[Union[int, str]] = None
+    maxSurge: int | str | None = None
     """
     The maximum number of pods that can be scheduled above the desired number of
     pods.
@@ -79,7 +79,7 @@ class RollingUpdate(BaseModel):
     new ReplicaSet can be scaled up further, ensuring that total number of pods running
     at any time during the update is at most 130% of desired pods.
     """
-    maxUnavailable: Optional[Union[int, str]] = None
+    maxUnavailable: int | str | None = None
     """
     The maximum number of pods that can be unavailable during the update.
     Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%).
@@ -95,23 +95,23 @@ class RollingUpdate(BaseModel):
 
 
 class Strategy(BaseModel):
-    rollingUpdate: Optional[RollingUpdate] = None
+    rollingUpdate: RollingUpdate | None = None
     """
     Rolling update config params. Present only if DeploymentStrategyType =
     RollingUpdate.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     Type of deployment. Can be "Recreate" or "RollingUpdate". Default is RollingUpdate.
     """
 
 
 class MetadataModel(BaseModel):
-    annotations: Optional[Dict[str, str]] = None
-    finalizers: Optional[List[str]] = None
-    labels: Optional[Dict[str, str]] = None
-    name: Optional[str] = None
-    namespace: Optional[str] = None
+    annotations: dict[str, str] | None = None
+    finalizers: list[str] | None = None
+    labels: dict[str, str] | None = None
+    name: str | None = None
+    namespace: str | None = None
 
 
 class MatchExpressionModel(BaseModel):
@@ -124,7 +124,7 @@ class MatchExpressionModel(BaseModel):
     Represents a key's relationship to a set of values.
     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     An array of string values. If the operator is In or NotIn,
     the values array must be non-empty. If the operator is Exists or DoesNotExist,
@@ -144,7 +144,7 @@ class MatchField(BaseModel):
     Represents a key's relationship to a set of values.
     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     An array of string values. If the operator is In or NotIn,
     the values array must be non-empty. If the operator is Exists or DoesNotExist,
@@ -155,11 +155,11 @@ class MatchField(BaseModel):
 
 
 class Preference(BaseModel):
-    matchExpressions: Optional[List[MatchExpressionModel]] = None
+    matchExpressions: list[MatchExpressionModel] | None = None
     """
     A list of node selector requirements by node's labels.
     """
-    matchFields: Optional[List[MatchField]] = None
+    matchFields: list[MatchField] | None = None
     """
     A list of node selector requirements by node's fields.
     """
@@ -177,27 +177,27 @@ class PreferredDuringSchedulingIgnoredDuringExecutionItem(BaseModel):
 
 
 class NodeSelectorTerm(BaseModel):
-    matchExpressions: Optional[List[MatchExpressionModel]] = None
+    matchExpressions: list[MatchExpressionModel] | None = None
     """
     A list of node selector requirements by node's labels.
     """
-    matchFields: Optional[List[MatchField]] = None
+    matchFields: list[MatchField] | None = None
     """
     A list of node selector requirements by node's fields.
     """
 
 
 class RequiredDuringSchedulingIgnoredDuringExecution(BaseModel):
-    nodeSelectorTerms: List[NodeSelectorTerm]
+    nodeSelectorTerms: list[NodeSelectorTerm]
     """
     Required. A list of node selector terms. The terms are ORed.
     """
 
 
 class NodeAffinity(BaseModel):
-    preferredDuringSchedulingIgnoredDuringExecution: Optional[
-        List[PreferredDuringSchedulingIgnoredDuringExecutionItem]
-    ] = None
+    preferredDuringSchedulingIgnoredDuringExecution: (
+        list[PreferredDuringSchedulingIgnoredDuringExecutionItem] | None
+    ) = None
     """
     The scheduler will prefer to schedule pods to nodes that satisfy
     the affinity expressions specified by this field, but it may choose
@@ -209,9 +209,9 @@ class NodeAffinity(BaseModel):
     "weight" to the sum if the node matches the corresponding matchExpressions; the
     node(s) with the highest sum are the most preferred.
     """
-    requiredDuringSchedulingIgnoredDuringExecution: Optional[
-        RequiredDuringSchedulingIgnoredDuringExecution
-    ] = None
+    requiredDuringSchedulingIgnoredDuringExecution: (
+        RequiredDuringSchedulingIgnoredDuringExecution | None
+    ) = None
     """
     If the affinity requirements specified by this field are not met at
     scheduling time, the pod will not be scheduled onto the node.
@@ -231,7 +231,7 @@ class MatchExpressionModel1(BaseModel):
     operator represents a key's relationship to a set of values.
     Valid operators are In, NotIn, Exists and DoesNotExist.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     values is an array of string values. If the operator is In or NotIn,
     the values array must be non-empty. If the operator is Exists or DoesNotExist,
@@ -241,11 +241,11 @@ class MatchExpressionModel1(BaseModel):
 
 
 class LabelSelector(BaseModel):
-    matchExpressions: Optional[List[MatchExpressionModel1]] = None
+    matchExpressions: list[MatchExpressionModel1] | None = None
     """
     matchExpressions is a list of label selector requirements. The requirements are ANDed.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
     map is equivalent to an element of matchExpressions, whose key field is "key", the
@@ -254,11 +254,11 @@ class LabelSelector(BaseModel):
 
 
 class NamespaceSelector(BaseModel):
-    matchExpressions: Optional[List[MatchExpressionModel1]] = None
+    matchExpressions: list[MatchExpressionModel1] | None = None
     """
     matchExpressions is a list of label selector requirements. The requirements are ANDed.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
     map is equivalent to an element of matchExpressions, whose key field is "key", the
@@ -267,12 +267,12 @@ class NamespaceSelector(BaseModel):
 
 
 class PodAffinityTerm(BaseModel):
-    labelSelector: Optional[LabelSelector] = None
+    labelSelector: LabelSelector | None = None
     """
     A label query over a set of resources, in this case pods.
     If it's null, this PodAffinityTerm matches with no Pods.
     """
-    matchLabelKeys: Optional[List[str]] = None
+    matchLabelKeys: list[str] | None = None
     """
     MatchLabelKeys is a set of pod label keys to select which pods will
     be taken into consideration. The keys are used to lookup values from the
@@ -283,7 +283,7 @@ class PodAffinityTerm(BaseModel):
     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
     Also, matchLabelKeys cannot be set when labelSelector isn't set.
     """
-    mismatchLabelKeys: Optional[List[str]] = None
+    mismatchLabelKeys: list[str] | None = None
     """
     MismatchLabelKeys is a set of pod label keys to select which pods will
     be taken into consideration. The keys are used to lookup values from the
@@ -294,7 +294,7 @@ class PodAffinityTerm(BaseModel):
     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
     """
-    namespaceSelector: Optional[NamespaceSelector] = None
+    namespaceSelector: NamespaceSelector | None = None
     """
     A label query over the set of namespaces that the term applies to.
     The term is applied to the union of the namespaces selected by this field
@@ -302,7 +302,7 @@ class PodAffinityTerm(BaseModel):
     null selector and null or empty namespaces list means "this pod's namespace".
     An empty selector ({}) matches all namespaces.
     """
-    namespaces: Optional[List[str]] = None
+    namespaces: list[str] | None = None
     """
     namespaces specifies a static list of namespace names that the term applies to.
     The term is applied to the union of the namespaces listed in this field
@@ -332,12 +332,12 @@ class PreferredDuringSchedulingIgnoredDuringExecutionItemModel(BaseModel):
 
 
 class RequiredDuringSchedulingIgnoredDuringExecutionItem(BaseModel):
-    labelSelector: Optional[LabelSelector] = None
+    labelSelector: LabelSelector | None = None
     """
     A label query over a set of resources, in this case pods.
     If it's null, this PodAffinityTerm matches with no Pods.
     """
-    matchLabelKeys: Optional[List[str]] = None
+    matchLabelKeys: list[str] | None = None
     """
     MatchLabelKeys is a set of pod label keys to select which pods will
     be taken into consideration. The keys are used to lookup values from the
@@ -348,7 +348,7 @@ class RequiredDuringSchedulingIgnoredDuringExecutionItem(BaseModel):
     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
     Also, matchLabelKeys cannot be set when labelSelector isn't set.
     """
-    mismatchLabelKeys: Optional[List[str]] = None
+    mismatchLabelKeys: list[str] | None = None
     """
     MismatchLabelKeys is a set of pod label keys to select which pods will
     be taken into consideration. The keys are used to lookup values from the
@@ -359,7 +359,7 @@ class RequiredDuringSchedulingIgnoredDuringExecutionItem(BaseModel):
     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
     """
-    namespaceSelector: Optional[NamespaceSelector] = None
+    namespaceSelector: NamespaceSelector | None = None
     """
     A label query over the set of namespaces that the term applies to.
     The term is applied to the union of the namespaces selected by this field
@@ -367,7 +367,7 @@ class RequiredDuringSchedulingIgnoredDuringExecutionItem(BaseModel):
     null selector and null or empty namespaces list means "this pod's namespace".
     An empty selector ({}) matches all namespaces.
     """
-    namespaces: Optional[List[str]] = None
+    namespaces: list[str] | None = None
     """
     namespaces specifies a static list of namespace names that the term applies to.
     The term is applied to the union of the namespaces listed in this field
@@ -385,9 +385,9 @@ class RequiredDuringSchedulingIgnoredDuringExecutionItem(BaseModel):
 
 
 class PodAffinity(BaseModel):
-    preferredDuringSchedulingIgnoredDuringExecution: Optional[
-        List[PreferredDuringSchedulingIgnoredDuringExecutionItemModel]
-    ] = None
+    preferredDuringSchedulingIgnoredDuringExecution: (
+        list[PreferredDuringSchedulingIgnoredDuringExecutionItemModel] | None
+    ) = None
     """
     The scheduler will prefer to schedule pods to nodes that satisfy
     the affinity expressions specified by this field, but it may choose
@@ -399,9 +399,9 @@ class PodAffinity(BaseModel):
     "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
     node(s) with the highest sum are the most preferred.
     """
-    requiredDuringSchedulingIgnoredDuringExecution: Optional[
-        List[RequiredDuringSchedulingIgnoredDuringExecutionItem]
-    ] = None
+    requiredDuringSchedulingIgnoredDuringExecution: (
+        list[RequiredDuringSchedulingIgnoredDuringExecutionItem] | None
+    ) = None
     """
     If the affinity requirements specified by this field are not met at
     scheduling time, the pod will not be scheduled onto the node.
@@ -414,9 +414,9 @@ class PodAffinity(BaseModel):
 
 
 class PodAntiAffinity(BaseModel):
-    preferredDuringSchedulingIgnoredDuringExecution: Optional[
-        List[PreferredDuringSchedulingIgnoredDuringExecutionItemModel]
-    ] = None
+    preferredDuringSchedulingIgnoredDuringExecution: (
+        list[PreferredDuringSchedulingIgnoredDuringExecutionItemModel] | None
+    ) = None
     """
     The scheduler will prefer to schedule pods to nodes that satisfy
     the anti-affinity expressions specified by this field, but it may choose
@@ -428,9 +428,9 @@ class PodAntiAffinity(BaseModel):
     "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
     node(s) with the highest sum are the most preferred.
     """
-    requiredDuringSchedulingIgnoredDuringExecution: Optional[
-        List[RequiredDuringSchedulingIgnoredDuringExecutionItem]
-    ] = None
+    requiredDuringSchedulingIgnoredDuringExecution: (
+        list[RequiredDuringSchedulingIgnoredDuringExecutionItem] | None
+    ) = None
     """
     If the anti-affinity requirements specified by this field are not met at
     scheduling time, the pod will not be scheduled onto the node.
@@ -443,15 +443,15 @@ class PodAntiAffinity(BaseModel):
 
 
 class Affinity(BaseModel):
-    nodeAffinity: Optional[NodeAffinity] = None
+    nodeAffinity: NodeAffinity | None = None
     """
     Describes node affinity scheduling rules for the pod.
     """
-    podAffinity: Optional[PodAffinity] = None
+    podAffinity: PodAffinity | None = None
     """
     Describes pod affinity scheduling rules (e.g. co-locate this pod in the same node, zone, etc. as some other pod(s)).
     """
-    podAntiAffinity: Optional[PodAntiAffinity] = None
+    podAntiAffinity: PodAntiAffinity | None = None
     """
     Describes pod anti-affinity scheduling rules (e.g. avoid putting this pod in the same node, zone, etc. as some other pod(s)).
     """
@@ -462,7 +462,7 @@ class ConfigMapKeyRef(BaseModel):
     """
     The key to select.
     """
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -470,14 +470,14 @@ class ConfigMapKeyRef(BaseModel):
     almost certainly wrong.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     Specify whether the ConfigMap or its key must be defined
     """
 
 
 class FieldRef(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     Version of the schema the FieldPath is written in terms of, defaults to "v1".
     """
@@ -494,7 +494,7 @@ class FileKeyRef(BaseModel):
     The keys defined within a source may consist of any printable ASCII characters except '='.
     During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
     """
-    optional: Optional[bool] = False
+    optional: bool | None = False
     """
     Specify whether the file or its key must be defined. If the file or key
     does not exist, then the env var is not published.
@@ -538,11 +538,11 @@ class DivisorModel(
 
 
 class ResourceFieldRef(BaseModel):
-    containerName: Optional[str] = None
+    containerName: str | None = None
     """
     Container name: required for volumes, optional for env vars
     """
-    divisor: Optional[Union[Divisor, DivisorModel]] = None
+    divisor: Divisor | DivisorModel | None = None
     """
     Specifies the output format of the exposed resources, defaults to "1"
     """
@@ -557,7 +557,7 @@ class SecretKeyRef(BaseModel):
     """
     The key of the secret to select from.  Must be a valid secret key.
     """
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -565,33 +565,33 @@ class SecretKeyRef(BaseModel):
     almost certainly wrong.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     Specify whether the Secret or its key must be defined
     """
 
 
 class ValueFrom(BaseModel):
-    configMapKeyRef: Optional[ConfigMapKeyRef] = None
+    configMapKeyRef: ConfigMapKeyRef | None = None
     """
     Selects a key of a ConfigMap.
     """
-    fieldRef: Optional[FieldRef] = None
+    fieldRef: FieldRef | None = None
     """
     Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
     spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
     """
-    fileKeyRef: Optional[FileKeyRef] = None
+    fileKeyRef: FileKeyRef | None = None
     """
     FileKeyRef selects a key of the env file.
     Requires the EnvFiles feature gate to be enabled.
     """
-    resourceFieldRef: Optional[ResourceFieldRef] = None
+    resourceFieldRef: ResourceFieldRef | None = None
     """
     Selects a resource of the container: only resources limits and requests
     (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
     """
-    secretKeyRef: Optional[SecretKeyRef] = None
+    secretKeyRef: SecretKeyRef | None = None
     """
     Selects a key of a secret in the pod's namespace
     """
@@ -603,7 +603,7 @@ class EnvItem(BaseModel):
     Name of the environment variable.
     May consist of any printable ASCII characters except '='.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Variable references $(VAR_NAME) are expanded
     using the previously defined environment variables in the container and
@@ -615,14 +615,14 @@ class EnvItem(BaseModel):
     exists or not.
     Defaults to "".
     """
-    valueFrom: Optional[ValueFrom] = None
+    valueFrom: ValueFrom | None = None
     """
     Source for the environment variable's value. Cannot be used if value is not empty.
     """
 
 
 class ConfigMapRef(BaseModel):
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -630,14 +630,14 @@ class ConfigMapRef(BaseModel):
     almost certainly wrong.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     Specify whether the ConfigMap must be defined
     """
 
 
 class SecretRef(BaseModel):
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -645,30 +645,30 @@ class SecretRef(BaseModel):
     almost certainly wrong.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     Specify whether the Secret must be defined
     """
 
 
 class EnvFromItem(BaseModel):
-    configMapRef: Optional[ConfigMapRef] = None
+    configMapRef: ConfigMapRef | None = None
     """
     The ConfigMap to select from
     """
-    prefix: Optional[str] = None
+    prefix: str | None = None
     """
     Optional text to prepend to the name of each environment variable.
     May consist of any printable ASCII characters except '='.
     """
-    secretRef: Optional[SecretRef] = None
+    secretRef: SecretRef | None = None
     """
     The Secret to select from
     """
 
 
 class Exec(BaseModel):
-    command: Optional[List[str]] = None
+    command: list[str] | None = None
     """
     Command is the command line to execute inside the container, the working directory for the
     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
@@ -691,26 +691,26 @@ class HttpHeader(BaseModel):
 
 
 class HttpGet(BaseModel):
-    host: Optional[str] = None
+    host: str | None = None
     """
     Host name to connect to, defaults to the pod IP. You probably want to set
     "Host" in httpHeaders instead.
     """
-    httpHeaders: Optional[List[HttpHeader]] = None
+    httpHeaders: list[HttpHeader] | None = None
     """
     Custom headers to set in the request. HTTP allows repeated headers.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path to access on the HTTP server.
     """
-    port: Union[int, str]
+    port: int | str
     """
     Name or number of the port to access on the container.
     Number must be in the range 1 to 65535.
     Name must be an IANA_SVC_NAME.
     """
-    scheme: Optional[str] = None
+    scheme: str | None = None
     """
     Scheme to use for connecting to the host.
     Defaults to HTTP.
@@ -725,11 +725,11 @@ class Sleep(BaseModel):
 
 
 class TcpSocket(BaseModel):
-    host: Optional[str] = None
+    host: str | None = None
     """
     Optional: Host name to connect to, defaults to the pod IP.
     """
-    port: Union[int, str]
+    port: int | str
     """
     Number or name of the port to access on the container.
     Number must be in the range 1 to 65535.
@@ -738,19 +738,19 @@ class TcpSocket(BaseModel):
 
 
 class PostStart(BaseModel):
-    exec: Optional[Exec] = None
+    exec: Exec | None = None
     """
     Exec specifies a command to execute in the container.
     """
-    httpGet: Optional[HttpGet] = None
+    httpGet: HttpGet | None = None
     """
     HTTPGet specifies an HTTP GET request to perform.
     """
-    sleep: Optional[Sleep] = None
+    sleep: Sleep | None = None
     """
     Sleep represents a duration that the container should sleep.
     """
-    tcpSocket: Optional[TcpSocket] = None
+    tcpSocket: TcpSocket | None = None
     """
     Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
     for backward compatibility. There is no validation of this field and
@@ -759,19 +759,19 @@ class PostStart(BaseModel):
 
 
 class PreStop(BaseModel):
-    exec: Optional[Exec] = None
+    exec: Exec | None = None
     """
     Exec specifies a command to execute in the container.
     """
-    httpGet: Optional[HttpGet] = None
+    httpGet: HttpGet | None = None
     """
     HTTPGet specifies an HTTP GET request to perform.
     """
-    sleep: Optional[Sleep] = None
+    sleep: Sleep | None = None
     """
     Sleep represents a duration that the container should sleep.
     """
-    tcpSocket: Optional[TcpSocket] = None
+    tcpSocket: TcpSocket | None = None
     """
     Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
     for backward compatibility. There is no validation of this field and
@@ -780,14 +780,14 @@ class PreStop(BaseModel):
 
 
 class Lifecycle(BaseModel):
-    postStart: Optional[PostStart] = None
+    postStart: PostStart | None = None
     """
     PostStart is called immediately after a container is created. If the handler fails,
     the container is terminated and restarted according to its restart policy.
     Other management of the container blocks until the hook completes.
     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
     """
-    preStop: Optional[PreStop] = None
+    preStop: PreStop | None = None
     """
     PreStop is called immediately before a container is terminated due to an
     API request or management event such as liveness/startup probe failure,
@@ -799,7 +799,7 @@ class Lifecycle(BaseModel):
     or until the termination grace period is reached.
     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
     """
-    stopSignal: Optional[str] = None
+    stopSignal: str | None = None
     """
     StopSignal defines which signal will be sent to a container when it is being stopped.
     If not specified, the default is defined by the container runtime in use.
@@ -812,7 +812,7 @@ class Grpc(BaseModel):
     """
     Port number of the gRPC service. Number must be in the range 1 to 65535.
     """
-    service: Optional[str] = ''
+    service: str | None = ''
     """
     Service is the name of the service to place in the gRPC HealthCheckRequest
     (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
@@ -822,43 +822,43 @@ class Grpc(BaseModel):
 
 
 class LivenessProbe(BaseModel):
-    exec: Optional[Exec] = None
+    exec: Exec | None = None
     """
     Exec specifies a command to execute in the container.
     """
-    failureThreshold: Optional[int] = None
+    failureThreshold: int | None = None
     """
     Minimum consecutive failures for the probe to be considered failed after having succeeded.
     Defaults to 3. Minimum value is 1.
     """
-    grpc: Optional[Grpc] = None
+    grpc: Grpc | None = None
     """
     GRPC specifies a GRPC HealthCheckRequest.
     """
-    httpGet: Optional[HttpGet] = None
+    httpGet: HttpGet | None = None
     """
     HTTPGet specifies an HTTP GET request to perform.
     """
-    initialDelaySeconds: Optional[int] = None
+    initialDelaySeconds: int | None = None
     """
     Number of seconds after the container has started before liveness probes are initiated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
     """
-    periodSeconds: Optional[int] = None
+    periodSeconds: int | None = None
     """
     How often (in seconds) to perform the probe.
     Default to 10 seconds. Minimum value is 1.
     """
-    successThreshold: Optional[int] = None
+    successThreshold: int | None = None
     """
     Minimum consecutive successes for the probe to be considered successful after having failed.
     Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
     """
-    tcpSocket: Optional[TcpSocket] = None
+    tcpSocket: TcpSocket | None = None
     """
     TCPSocket specifies a connection to a TCP port.
     """
-    terminationGracePeriodSeconds: Optional[int] = None
+    terminationGracePeriodSeconds: int | None = None
     """
     Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
     The grace period is the duration in seconds after the processes running in the pod are sent
@@ -871,7 +871,7 @@ class LivenessProbe(BaseModel):
     This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
     Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
     """
-    timeoutSeconds: Optional[int] = None
+    timeoutSeconds: int | None = None
     """
     Number of seconds after which the probe times out.
     Defaults to 1 second. Minimum value is 1.
@@ -885,24 +885,24 @@ class Port(BaseModel):
     Number of port to expose on the pod's IP address.
     This must be a valid port number, 0 < x < 65536.
     """
-    hostIP: Optional[str] = None
+    hostIP: str | None = None
     """
     What host IP to bind the external port to.
     """
-    hostPort: Optional[int] = None
+    hostPort: int | None = None
     """
     Number of port to expose on the host.
     If specified, this must be a valid port number, 0 < x < 65536.
     If HostNetwork is specified, this must match ContainerPort.
     Most containers do not need this.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
     named port in a pod must have a unique name. Name for the port that can be
     referred to by services.
     """
-    protocol: Optional[str] = 'TCP'
+    protocol: str | None = 'TCP'
     """
     Protocol for port. Must be UDP, TCP, or SCTP.
     Defaults to "TCP".
@@ -910,43 +910,43 @@ class Port(BaseModel):
 
 
 class ReadinessProbe(BaseModel):
-    exec: Optional[Exec] = None
+    exec: Exec | None = None
     """
     Exec specifies a command to execute in the container.
     """
-    failureThreshold: Optional[int] = None
+    failureThreshold: int | None = None
     """
     Minimum consecutive failures for the probe to be considered failed after having succeeded.
     Defaults to 3. Minimum value is 1.
     """
-    grpc: Optional[Grpc] = None
+    grpc: Grpc | None = None
     """
     GRPC specifies a GRPC HealthCheckRequest.
     """
-    httpGet: Optional[HttpGet] = None
+    httpGet: HttpGet | None = None
     """
     HTTPGet specifies an HTTP GET request to perform.
     """
-    initialDelaySeconds: Optional[int] = None
+    initialDelaySeconds: int | None = None
     """
     Number of seconds after the container has started before liveness probes are initiated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
     """
-    periodSeconds: Optional[int] = None
+    periodSeconds: int | None = None
     """
     How often (in seconds) to perform the probe.
     Default to 10 seconds. Minimum value is 1.
     """
-    successThreshold: Optional[int] = None
+    successThreshold: int | None = None
     """
     Minimum consecutive successes for the probe to be considered successful after having failed.
     Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
     """
-    tcpSocket: Optional[TcpSocket] = None
+    tcpSocket: TcpSocket | None = None
     """
     TCPSocket specifies a connection to a TCP port.
     """
-    terminationGracePeriodSeconds: Optional[int] = None
+    terminationGracePeriodSeconds: int | None = None
     """
     Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
     The grace period is the duration in seconds after the processes running in the pod are sent
@@ -959,7 +959,7 @@ class ReadinessProbe(BaseModel):
     This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
     Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
     """
-    timeoutSeconds: Optional[int] = None
+    timeoutSeconds: int | None = None
     """
     Number of seconds after which the probe times out.
     Defaults to 1 second. Minimum value is 1.
@@ -987,7 +987,7 @@ class Claim(BaseModel):
     the Pod where this field is used. It makes that resource available
     inside a container.
     """
-    request: Optional[str] = None
+    request: str | None = None
     """
     Request is the name chosen for a request in the referenced claim.
     If empty, everything from the claim is made available, otherwise
@@ -1028,7 +1028,7 @@ class RequestsModel(
 
 
 class Resources(BaseModel):
-    claims: Optional[List[Claim]] = None
+    claims: list[Claim] | None = None
     """
     Claims lists the names of resources, defined in spec.resourceClaims,
     that are used by this container.
@@ -1038,12 +1038,12 @@ class Resources(BaseModel):
 
     This field is immutable. It can only be set for containers.
     """
-    limits: Optional[Dict[str, Union[Limits, LimitsModel]]] = None
+    limits: dict[str, Limits | LimitsModel] | None = None
     """
     Limits describes the maximum amount of compute resources allowed.
     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     """
-    requests: Optional[Dict[str, Union[Requests, RequestsModel]]] = None
+    requests: dict[str, Requests | RequestsModel] | None = None
     """
     Requests describes the minimum amount of compute resources required.
     If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
@@ -1062,7 +1062,7 @@ class ExitCodes(BaseModel):
     - NotIn: the requirement is satisfied if the container exit code is
       not in the set of specified values.
     """
-    values: Optional[List[int]] = None
+    values: list[int] | None = None
     """
     Specifies the set of values to check for container exit codes.
     At most 255 elements are allowed.
@@ -1076,14 +1076,14 @@ class RestartPolicyRule(BaseModel):
     are satisfied. The only possible value is "Restart" to restart the
     container.
     """
-    exitCodes: Optional[ExitCodes] = None
+    exitCodes: ExitCodes | None = None
     """
     Represents the exit codes to check on container exits.
     """
 
 
 class AppArmorProfile(BaseModel):
-    localhostProfile: Optional[str] = None
+    localhostProfile: str | None = None
     """
     localhostProfile indicates a profile loaded on the node that should be used.
     The profile must be preconfigured on the node to work.
@@ -1101,37 +1101,37 @@ class AppArmorProfile(BaseModel):
 
 
 class Capabilities(BaseModel):
-    add: Optional[List[str]] = None
+    add: list[str] | None = None
     """
     Added capabilities
     """
-    drop: Optional[List[str]] = None
+    drop: list[str] | None = None
     """
     Removed capabilities
     """
 
 
 class SeLinuxOptions(BaseModel):
-    level: Optional[str] = None
+    level: str | None = None
     """
     Level is SELinux level label that applies to the container.
     """
-    role: Optional[str] = None
+    role: str | None = None
     """
     Role is a SELinux role label that applies to the container.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     Type is a SELinux type label that applies to the container.
     """
-    user: Optional[str] = None
+    user: str | None = None
     """
     User is a SELinux user label that applies to the container.
     """
 
 
 class SeccompProfile(BaseModel):
-    localhostProfile: Optional[str] = None
+    localhostProfile: str | None = None
     """
     localhostProfile indicates a profile defined in a file on the node should be used.
     The profile must be preconfigured on the node to work.
@@ -1150,24 +1150,24 @@ class SeccompProfile(BaseModel):
 
 
 class WindowsOptions(BaseModel):
-    gmsaCredentialSpec: Optional[str] = None
+    gmsaCredentialSpec: str | None = None
     """
     GMSACredentialSpec is where the GMSA admission webhook
     (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
     GMSA credential spec named by the GMSACredentialSpecName field.
     """
-    gmsaCredentialSpecName: Optional[str] = None
+    gmsaCredentialSpecName: str | None = None
     """
     GMSACredentialSpecName is the name of the GMSA credential spec to use.
     """
-    hostProcess: Optional[bool] = None
+    hostProcess: bool | None = None
     """
     HostProcess determines if a container should be run as a 'Host Process' container.
     All of a Pod's containers must have the same effective HostProcess value
     (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
     In addition, if HostProcess is true then HostNetwork must also be set to true.
     """
-    runAsUserName: Optional[str] = None
+    runAsUserName: str | None = None
     """
     The UserName in Windows to run the entrypoint of the container process.
     Defaults to the user specified in image metadata if unspecified.
@@ -1177,7 +1177,7 @@ class WindowsOptions(BaseModel):
 
 
 class SecurityContext(BaseModel):
-    allowPrivilegeEscalation: Optional[bool] = None
+    allowPrivilegeEscalation: bool | None = None
     """
     AllowPrivilegeEscalation controls whether a process can gain more
     privileges than its parent process. This bool directly controls if
@@ -1187,26 +1187,26 @@ class SecurityContext(BaseModel):
     2) has CAP_SYS_ADMIN
     Note that this field cannot be set when spec.os.name is windows.
     """
-    appArmorProfile: Optional[AppArmorProfile] = None
+    appArmorProfile: AppArmorProfile | None = None
     """
     appArmorProfile is the AppArmor options to use by this container. If set, this profile
     overrides the pod's appArmorProfile.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    capabilities: Optional[Capabilities] = None
+    capabilities: Capabilities | None = None
     """
     The capabilities to add/drop when running containers.
     Defaults to the default set of capabilities granted by the container runtime.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    privileged: Optional[bool] = None
+    privileged: bool | None = None
     """
     Run container in privileged mode.
     Processes in privileged containers are essentially equivalent to root on the host.
     Defaults to false.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    procMount: Optional[str] = None
+    procMount: str | None = None
     """
     procMount denotes the type of proc mount to use for the containers.
     The default value is Default which uses the container runtime defaults for
@@ -1214,13 +1214,13 @@ class SecurityContext(BaseModel):
     This requires the ProcMountType feature flag to be enabled.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    readOnlyRootFilesystem: Optional[bool] = None
+    readOnlyRootFilesystem: bool | None = None
     """
     Whether this container has a read-only root filesystem.
     Default is false.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    runAsGroup: Optional[int] = None
+    runAsGroup: int | None = None
     """
     The GID to run the entrypoint of the container process.
     Uses runtime default if unset.
@@ -1228,7 +1228,7 @@ class SecurityContext(BaseModel):
     PodSecurityContext, the value specified in SecurityContext takes precedence.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    runAsNonRoot: Optional[bool] = None
+    runAsNonRoot: bool | None = None
     """
     Indicates that the container must run as a non-root user.
     If true, the Kubelet will validate the image at runtime to ensure that it
@@ -1237,7 +1237,7 @@ class SecurityContext(BaseModel):
     May also be set in PodSecurityContext.  If set in both SecurityContext and
     PodSecurityContext, the value specified in SecurityContext takes precedence.
     """
-    runAsUser: Optional[int] = None
+    runAsUser: int | None = None
     """
     The UID to run the entrypoint of the container process.
     Defaults to user specified in image metadata if unspecified.
@@ -1245,7 +1245,7 @@ class SecurityContext(BaseModel):
     PodSecurityContext, the value specified in SecurityContext takes precedence.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    seLinuxOptions: Optional[SeLinuxOptions] = None
+    seLinuxOptions: SeLinuxOptions | None = None
     """
     The SELinux context to be applied to the container.
     If unspecified, the container runtime will allocate a random SELinux context for each
@@ -1253,14 +1253,14 @@ class SecurityContext(BaseModel):
     PodSecurityContext, the value specified in SecurityContext takes precedence.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    seccompProfile: Optional[SeccompProfile] = None
+    seccompProfile: SeccompProfile | None = None
     """
     The seccomp options to use by this container. If seccomp options are
     provided at both the pod & container level, the container options
     override the pod options.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    windowsOptions: Optional[WindowsOptions] = None
+    windowsOptions: WindowsOptions | None = None
     """
     The Windows specific settings applied to all containers.
     If unspecified, the options from the PodSecurityContext will be used.
@@ -1270,43 +1270,43 @@ class SecurityContext(BaseModel):
 
 
 class StartupProbe(BaseModel):
-    exec: Optional[Exec] = None
+    exec: Exec | None = None
     """
     Exec specifies a command to execute in the container.
     """
-    failureThreshold: Optional[int] = None
+    failureThreshold: int | None = None
     """
     Minimum consecutive failures for the probe to be considered failed after having succeeded.
     Defaults to 3. Minimum value is 1.
     """
-    grpc: Optional[Grpc] = None
+    grpc: Grpc | None = None
     """
     GRPC specifies a GRPC HealthCheckRequest.
     """
-    httpGet: Optional[HttpGet] = None
+    httpGet: HttpGet | None = None
     """
     HTTPGet specifies an HTTP GET request to perform.
     """
-    initialDelaySeconds: Optional[int] = None
+    initialDelaySeconds: int | None = None
     """
     Number of seconds after the container has started before liveness probes are initiated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
     """
-    periodSeconds: Optional[int] = None
+    periodSeconds: int | None = None
     """
     How often (in seconds) to perform the probe.
     Default to 10 seconds. Minimum value is 1.
     """
-    successThreshold: Optional[int] = None
+    successThreshold: int | None = None
     """
     Minimum consecutive successes for the probe to be considered successful after having failed.
     Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
     """
-    tcpSocket: Optional[TcpSocket] = None
+    tcpSocket: TcpSocket | None = None
     """
     TCPSocket specifies a connection to a TCP port.
     """
-    terminationGracePeriodSeconds: Optional[int] = None
+    terminationGracePeriodSeconds: int | None = None
     """
     Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
     The grace period is the duration in seconds after the processes running in the pod are sent
@@ -1319,7 +1319,7 @@ class StartupProbe(BaseModel):
     This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
     Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
     """
-    timeoutSeconds: Optional[int] = None
+    timeoutSeconds: int | None = None
     """
     Number of seconds after which the probe times out.
     Defaults to 1 second. Minimum value is 1.
@@ -1344,7 +1344,7 @@ class VolumeMount(BaseModel):
     Path within the container at which the volume should be mounted.  Must
     not contain ':'.
     """
-    mountPropagation: Optional[str] = None
+    mountPropagation: str | None = None
     """
     mountPropagation determines how mounts are propagated from the host
     to container and the other way around.
@@ -1357,12 +1357,12 @@ class VolumeMount(BaseModel):
     """
     This must match the Name of a Volume.
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     Mounted read-only if true, read-write otherwise (false or unspecified).
     Defaults to false.
     """
-    recursiveReadOnly: Optional[str] = None
+    recursiveReadOnly: str | None = None
     """
     RecursiveReadOnly specifies whether read-only mounts should be handled
     recursively.
@@ -1381,12 +1381,12 @@ class VolumeMount(BaseModel):
 
     If this field is not specified, it is treated as an equivalent of Disabled.
     """
-    subPath: Optional[str] = None
+    subPath: str | None = None
     """
     Path within the volume from which the container's volume should be mounted.
     Defaults to "" (volume's root).
     """
-    subPathExpr: Optional[str] = None
+    subPathExpr: str | None = None
     """
     Expanded path within the volume from which the container's volume should be mounted.
     Behaves similarly to SubPath but environment variable references $(VAR_NAME) are expanded using the container's environment.
@@ -1396,7 +1396,7 @@ class VolumeMount(BaseModel):
 
 
 class Container(BaseModel):
-    args: Optional[List[str]] = None
+    args: list[str] | None = None
     """
     Arguments to the entrypoint.
     The container image's CMD is used if this is not provided.
@@ -1407,7 +1407,7 @@ class Container(BaseModel):
     of whether the variable exists or not. Cannot be updated.
     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
     """
-    command: Optional[List[str]] = None
+    command: list[str] | None = None
     """
     Entrypoint array. Not executed within a shell.
     The container image's ENTRYPOINT is used if this is not provided.
@@ -1418,12 +1418,12 @@ class Container(BaseModel):
     of whether the variable exists or not. Cannot be updated.
     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
     """
-    env: Optional[List[EnvItem]] = None
+    env: list[EnvItem] | None = None
     """
     List of environment variables to set in the container.
     Cannot be updated.
     """
-    envFrom: Optional[List[EnvFromItem]] = None
+    envFrom: list[EnvFromItem] | None = None
     """
     List of sources to populate environment variables in the container.
     The keys defined within a source may consist of any printable ASCII characters except '='.
@@ -1432,14 +1432,14 @@ class Container(BaseModel):
     Values defined by an Env with a duplicate key will take precedence.
     Cannot be updated.
     """
-    image: Optional[str] = None
+    image: str | None = None
     """
     Container image name.
     More info: https://kubernetes.io/docs/concepts/containers/images
     This field is optional to allow higher level config management to default or override
     container images in workload controllers like Deployments and StatefulSets.
     """
-    imagePullPolicy: Optional[str] = None
+    imagePullPolicy: str | None = None
     """
     Image pull policy.
     One of Always, Never, IfNotPresent.
@@ -1447,12 +1447,12 @@ class Container(BaseModel):
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images
     """
-    lifecycle: Optional[Lifecycle] = None
+    lifecycle: Lifecycle | None = None
     """
     Actions that the management system should take in response to container lifecycle events.
     Cannot be updated.
     """
-    livenessProbe: Optional[LivenessProbe] = None
+    livenessProbe: LivenessProbe | None = None
     """
     Periodic probe of container liveness.
     Container will be restarted if the probe fails.
@@ -1465,7 +1465,7 @@ class Container(BaseModel):
     Each container in a pod must have a unique name (DNS_LABEL).
     Cannot be updated.
     """
-    ports: Optional[List[Port]] = None
+    ports: list[Port] | None = None
     """
     List of ports to expose from the container. Not specifying a port here
     DOES NOT prevent that port from being exposed. Any port which is
@@ -1475,25 +1475,25 @@ class Container(BaseModel):
     For more information See https://github.com/kubernetes/kubernetes/issues/108255.
     Cannot be updated.
     """
-    readinessProbe: Optional[ReadinessProbe] = None
+    readinessProbe: ReadinessProbe | None = None
     """
     Periodic probe of container service readiness.
     Container will be removed from service endpoints if the probe fails.
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
     """
-    resizePolicy: Optional[List[ResizePolicyItem]] = None
+    resizePolicy: list[ResizePolicyItem] | None = None
     """
     Resources resize policy for the container.
     This field cannot be set on ephemeral containers.
     """
-    resources: Optional[Resources] = None
+    resources: Resources | None = None
     """
     Compute Resources required by this container.
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     """
-    restartPolicy: Optional[str] = None
+    restartPolicy: str | None = None
     """
     RestartPolicy defines the restart behavior of individual containers in a pod.
     This overrides the pod-level restart policy. When this field is not specified,
@@ -1511,7 +1511,7 @@ class Container(BaseModel):
     init container is started, or after any startupProbe has successfully
     completed.
     """
-    restartPolicyRules: Optional[List[RestartPolicyRule]] = None
+    restartPolicyRules: list[RestartPolicyRule] | None = None
     """
     Represents a list of rules to be checked to determine if the
     container should be restarted on exit. The rules are evaluated in
@@ -1525,13 +1525,13 @@ class Container(BaseModel):
     When rules are specified, container MUST set RestartPolicy explicitly
     even it if matches the Pod's RestartPolicy.
     """
-    securityContext: Optional[SecurityContext] = None
+    securityContext: SecurityContext | None = None
     """
     SecurityContext defines the security options the container should be run with.
     If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
     More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
     """
-    startupProbe: Optional[StartupProbe] = None
+    startupProbe: StartupProbe | None = None
     """
     StartupProbe indicates that the Pod has successfully initialized.
     If specified, no other probes are executed until this completes successfully.
@@ -1541,13 +1541,13 @@ class Container(BaseModel):
     This cannot be updated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
     """
-    stdin: Optional[bool] = None
+    stdin: bool | None = None
     """
     Whether this container should allocate a buffer for stdin in the container runtime. If this
     is not set, reads from stdin in the container will always result in EOF.
     Default is false.
     """
-    stdinOnce: Optional[bool] = None
+    stdinOnce: bool | None = None
     """
     Whether the container runtime should close the stdin channel after it has been opened by
     a single attach. When stdin is true the stdin stream will remain open across multiple attach
@@ -1557,7 +1557,7 @@ class Container(BaseModel):
     flag is false, a container processes that reads from stdin will never receive an EOF.
     Default is false
     """
-    terminationMessagePath: Optional[str] = None
+    terminationMessagePath: str | None = None
     """
     Optional: Path at which the file to which the container's termination message
     will be written is mounted into the container's filesystem.
@@ -1567,7 +1567,7 @@ class Container(BaseModel):
     Defaults to /dev/termination-log.
     Cannot be updated.
     """
-    terminationMessagePolicy: Optional[str] = None
+    terminationMessagePolicy: str | None = None
     """
     Indicate how the termination message should be populated. File will use the contents of
     terminationMessagePath to populate the container status message on both success and failure.
@@ -1577,21 +1577,21 @@ class Container(BaseModel):
     Defaults to File.
     Cannot be updated.
     """
-    tty: Optional[bool] = None
+    tty: bool | None = None
     """
     Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
     Default is false.
     """
-    volumeDevices: Optional[List[VolumeDevice]] = None
+    volumeDevices: list[VolumeDevice] | None = None
     """
     volumeDevices is the list of block devices to be used by the container.
     """
-    volumeMounts: Optional[List[VolumeMount]] = None
+    volumeMounts: list[VolumeMount] | None = None
     """
     Pod volumes to mount into the container's filesystem.
     Cannot be updated.
     """
-    workingDir: Optional[str] = None
+    workingDir: str | None = None
     """
     Container's working directory.
     If not specified, the container runtime's default will be used, which
@@ -1601,32 +1601,32 @@ class Container(BaseModel):
 
 
 class Option(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name is this DNS resolver option's name.
     Required.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Value is this DNS resolver option's value.
     """
 
 
 class DnsConfig(BaseModel):
-    nameservers: Optional[List[str]] = None
+    nameservers: list[str] | None = None
     """
     A list of DNS name server IP addresses.
     This will be appended to the base nameservers generated from DNSPolicy.
     Duplicated nameservers will be removed.
     """
-    options: Optional[List[Option]] = None
+    options: list[Option] | None = None
     """
     A list of DNS resolver options.
     This will be merged with the base options generated from DNSPolicy.
     Duplicated entries will be removed. Resolution options given in Options
     will override those that appear in the base DNSPolicy.
     """
-    searches: Optional[List[str]] = None
+    searches: list[str] | None = None
     """
     A list of DNS search domains for host-name lookup.
     This will be appended to the base search paths generated from DNSPolicy.
@@ -1689,7 +1689,7 @@ class RequestsModel2(
 
 
 class EphemeralContainer(BaseModel):
-    args: Optional[List[str]] = None
+    args: list[str] | None = None
     """
     Arguments to the entrypoint.
     The image's CMD is used if this is not provided.
@@ -1700,7 +1700,7 @@ class EphemeralContainer(BaseModel):
     of whether the variable exists or not. Cannot be updated.
     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
     """
-    command: Optional[List[str]] = None
+    command: list[str] | None = None
     """
     Entrypoint array. Not executed within a shell.
     The image's ENTRYPOINT is used if this is not provided.
@@ -1711,12 +1711,12 @@ class EphemeralContainer(BaseModel):
     of whether the variable exists or not. Cannot be updated.
     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
     """
-    env: Optional[List[EnvItem]] = None
+    env: list[EnvItem] | None = None
     """
     List of environment variables to set in the container.
     Cannot be updated.
     """
-    envFrom: Optional[List[EnvFromItem]] = None
+    envFrom: list[EnvFromItem] | None = None
     """
     List of sources to populate environment variables in the container.
     The keys defined within a source may consist of any printable ASCII characters except '='.
@@ -1725,12 +1725,12 @@ class EphemeralContainer(BaseModel):
     Values defined by an Env with a duplicate key will take precedence.
     Cannot be updated.
     """
-    image: Optional[str] = None
+    image: str | None = None
     """
     Container image name.
     More info: https://kubernetes.io/docs/concepts/containers/images
     """
-    imagePullPolicy: Optional[str] = None
+    imagePullPolicy: str | None = None
     """
     Image pull policy.
     One of Always, Never, IfNotPresent.
@@ -1738,11 +1738,11 @@ class EphemeralContainer(BaseModel):
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images
     """
-    lifecycle: Optional[Lifecycle] = None
+    lifecycle: Lifecycle | None = None
     """
     Lifecycle is not allowed for ephemeral containers.
     """
-    livenessProbe: Optional[LivenessProbe] = None
+    livenessProbe: LivenessProbe | None = None
     """
     Probes are not allowed for ephemeral containers.
     """
@@ -1751,51 +1751,51 @@ class EphemeralContainer(BaseModel):
     Name of the ephemeral container specified as a DNS_LABEL.
     This name must be unique among all containers, init containers and ephemeral containers.
     """
-    ports: Optional[List[Port]] = None
+    ports: list[Port] | None = None
     """
     Ports are not allowed for ephemeral containers.
     """
-    readinessProbe: Optional[ReadinessProbe] = None
+    readinessProbe: ReadinessProbe | None = None
     """
     Probes are not allowed for ephemeral containers.
     """
-    resizePolicy: Optional[List[ResizePolicyItem]] = None
+    resizePolicy: list[ResizePolicyItem] | None = None
     """
     Resources resize policy for the container.
     """
-    resources: Optional[Resources] = None
+    resources: Resources | None = None
     """
     Resources are not allowed for ephemeral containers. Ephemeral containers use spare resources
     already allocated to the pod.
     """
-    restartPolicy: Optional[str] = None
+    restartPolicy: str | None = None
     """
     Restart policy for the container to manage the restart behavior of each
     container within a pod.
     You cannot set this field on ephemeral containers.
     """
-    restartPolicyRules: Optional[List[RestartPolicyRule]] = None
+    restartPolicyRules: list[RestartPolicyRule] | None = None
     """
     Represents a list of rules to be checked to determine if the
     container should be restarted on exit. You cannot set this field on
     ephemeral containers.
     """
-    securityContext: Optional[SecurityContext] = None
+    securityContext: SecurityContext | None = None
     """
     Optional: SecurityContext defines the security options the ephemeral container should be run with.
     If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
     """
-    startupProbe: Optional[StartupProbe] = None
+    startupProbe: StartupProbe | None = None
     """
     Probes are not allowed for ephemeral containers.
     """
-    stdin: Optional[bool] = None
+    stdin: bool | None = None
     """
     Whether this container should allocate a buffer for stdin in the container runtime. If this
     is not set, reads from stdin in the container will always result in EOF.
     Default is false.
     """
-    stdinOnce: Optional[bool] = None
+    stdinOnce: bool | None = None
     """
     Whether the container runtime should close the stdin channel after it has been opened by
     a single attach. When stdin is true the stdin stream will remain open across multiple attach
@@ -1805,7 +1805,7 @@ class EphemeralContainer(BaseModel):
     flag is false, a container processes that reads from stdin will never receive an EOF.
     Default is false
     """
-    targetContainerName: Optional[str] = None
+    targetContainerName: str | None = None
     """
     If set, the name of the container from PodSpec that this ephemeral container targets.
     The ephemeral container will be run in the namespaces (IPC, PID, etc) of this container.
@@ -1814,7 +1814,7 @@ class EphemeralContainer(BaseModel):
     The container runtime must implement support for this feature. If the runtime does not
     support namespace targeting then the result of setting this field is undefined.
     """
-    terminationMessagePath: Optional[str] = None
+    terminationMessagePath: str | None = None
     """
     Optional: Path at which the file to which the container's termination message
     will be written is mounted into the container's filesystem.
@@ -1824,7 +1824,7 @@ class EphemeralContainer(BaseModel):
     Defaults to /dev/termination-log.
     Cannot be updated.
     """
-    terminationMessagePolicy: Optional[str] = None
+    terminationMessagePolicy: str | None = None
     """
     Indicate how the termination message should be populated. File will use the contents of
     terminationMessagePath to populate the container status message on both success and failure.
@@ -1834,21 +1834,21 @@ class EphemeralContainer(BaseModel):
     Defaults to File.
     Cannot be updated.
     """
-    tty: Optional[bool] = None
+    tty: bool | None = None
     """
     Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
     Default is false.
     """
-    volumeDevices: Optional[List[VolumeDevice]] = None
+    volumeDevices: list[VolumeDevice] | None = None
     """
     volumeDevices is the list of block devices to be used by the container.
     """
-    volumeMounts: Optional[List[VolumeMount]] = None
+    volumeMounts: list[VolumeMount] | None = None
     """
     Pod volumes to mount into the container's filesystem. Subpath mounts are not allowed for ephemeral containers.
     Cannot be updated.
     """
-    workingDir: Optional[str] = None
+    workingDir: str | None = None
     """
     Container's working directory.
     If not specified, the container runtime's default will be used, which
@@ -1858,7 +1858,7 @@ class EphemeralContainer(BaseModel):
 
 
 class HostAliase(BaseModel):
-    hostnames: Optional[List[str]] = None
+    hostnames: list[str] | None = None
     """
     Hostnames for the above IP address.
     """
@@ -1934,7 +1934,7 @@ class RequestsModel4(
 
 
 class InitContainer(BaseModel):
-    args: Optional[List[str]] = None
+    args: list[str] | None = None
     """
     Arguments to the entrypoint.
     The container image's CMD is used if this is not provided.
@@ -1945,7 +1945,7 @@ class InitContainer(BaseModel):
     of whether the variable exists or not. Cannot be updated.
     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
     """
-    command: Optional[List[str]] = None
+    command: list[str] | None = None
     """
     Entrypoint array. Not executed within a shell.
     The container image's ENTRYPOINT is used if this is not provided.
@@ -1956,12 +1956,12 @@ class InitContainer(BaseModel):
     of whether the variable exists or not. Cannot be updated.
     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
     """
-    env: Optional[List[EnvItem]] = None
+    env: list[EnvItem] | None = None
     """
     List of environment variables to set in the container.
     Cannot be updated.
     """
-    envFrom: Optional[List[EnvFromItem]] = None
+    envFrom: list[EnvFromItem] | None = None
     """
     List of sources to populate environment variables in the container.
     The keys defined within a source may consist of any printable ASCII characters except '='.
@@ -1970,14 +1970,14 @@ class InitContainer(BaseModel):
     Values defined by an Env with a duplicate key will take precedence.
     Cannot be updated.
     """
-    image: Optional[str] = None
+    image: str | None = None
     """
     Container image name.
     More info: https://kubernetes.io/docs/concepts/containers/images
     This field is optional to allow higher level config management to default or override
     container images in workload controllers like Deployments and StatefulSets.
     """
-    imagePullPolicy: Optional[str] = None
+    imagePullPolicy: str | None = None
     """
     Image pull policy.
     One of Always, Never, IfNotPresent.
@@ -1985,12 +1985,12 @@ class InitContainer(BaseModel):
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images
     """
-    lifecycle: Optional[Lifecycle] = None
+    lifecycle: Lifecycle | None = None
     """
     Actions that the management system should take in response to container lifecycle events.
     Cannot be updated.
     """
-    livenessProbe: Optional[LivenessProbe] = None
+    livenessProbe: LivenessProbe | None = None
     """
     Periodic probe of container liveness.
     Container will be restarted if the probe fails.
@@ -2003,7 +2003,7 @@ class InitContainer(BaseModel):
     Each container in a pod must have a unique name (DNS_LABEL).
     Cannot be updated.
     """
-    ports: Optional[List[Port]] = None
+    ports: list[Port] | None = None
     """
     List of ports to expose from the container. Not specifying a port here
     DOES NOT prevent that port from being exposed. Any port which is
@@ -2013,25 +2013,25 @@ class InitContainer(BaseModel):
     For more information See https://github.com/kubernetes/kubernetes/issues/108255.
     Cannot be updated.
     """
-    readinessProbe: Optional[ReadinessProbe] = None
+    readinessProbe: ReadinessProbe | None = None
     """
     Periodic probe of container service readiness.
     Container will be removed from service endpoints if the probe fails.
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
     """
-    resizePolicy: Optional[List[ResizePolicyItem]] = None
+    resizePolicy: list[ResizePolicyItem] | None = None
     """
     Resources resize policy for the container.
     This field cannot be set on ephemeral containers.
     """
-    resources: Optional[Resources] = None
+    resources: Resources | None = None
     """
     Compute Resources required by this container.
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     """
-    restartPolicy: Optional[str] = None
+    restartPolicy: str | None = None
     """
     RestartPolicy defines the restart behavior of individual containers in a pod.
     This overrides the pod-level restart policy. When this field is not specified,
@@ -2049,7 +2049,7 @@ class InitContainer(BaseModel):
     init container is started, or after any startupProbe has successfully
     completed.
     """
-    restartPolicyRules: Optional[List[RestartPolicyRule]] = None
+    restartPolicyRules: list[RestartPolicyRule] | None = None
     """
     Represents a list of rules to be checked to determine if the
     container should be restarted on exit. The rules are evaluated in
@@ -2063,13 +2063,13 @@ class InitContainer(BaseModel):
     When rules are specified, container MUST set RestartPolicy explicitly
     even it if matches the Pod's RestartPolicy.
     """
-    securityContext: Optional[SecurityContext] = None
+    securityContext: SecurityContext | None = None
     """
     SecurityContext defines the security options the container should be run with.
     If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
     More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
     """
-    startupProbe: Optional[StartupProbe] = None
+    startupProbe: StartupProbe | None = None
     """
     StartupProbe indicates that the Pod has successfully initialized.
     If specified, no other probes are executed until this completes successfully.
@@ -2079,13 +2079,13 @@ class InitContainer(BaseModel):
     This cannot be updated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
     """
-    stdin: Optional[bool] = None
+    stdin: bool | None = None
     """
     Whether this container should allocate a buffer for stdin in the container runtime. If this
     is not set, reads from stdin in the container will always result in EOF.
     Default is false.
     """
-    stdinOnce: Optional[bool] = None
+    stdinOnce: bool | None = None
     """
     Whether the container runtime should close the stdin channel after it has been opened by
     a single attach. When stdin is true the stdin stream will remain open across multiple attach
@@ -2095,7 +2095,7 @@ class InitContainer(BaseModel):
     flag is false, a container processes that reads from stdin will never receive an EOF.
     Default is false
     """
-    terminationMessagePath: Optional[str] = None
+    terminationMessagePath: str | None = None
     """
     Optional: Path at which the file to which the container's termination message
     will be written is mounted into the container's filesystem.
@@ -2105,7 +2105,7 @@ class InitContainer(BaseModel):
     Defaults to /dev/termination-log.
     Cannot be updated.
     """
-    terminationMessagePolicy: Optional[str] = None
+    terminationMessagePolicy: str | None = None
     """
     Indicate how the termination message should be populated. File will use the contents of
     terminationMessagePath to populate the container status message on both success and failure.
@@ -2115,21 +2115,21 @@ class InitContainer(BaseModel):
     Defaults to File.
     Cannot be updated.
     """
-    tty: Optional[bool] = None
+    tty: bool | None = None
     """
     Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
     Default is false.
     """
-    volumeDevices: Optional[List[VolumeDevice]] = None
+    volumeDevices: list[VolumeDevice] | None = None
     """
     volumeDevices is the list of block devices to be used by the container.
     """
-    volumeMounts: Optional[List[VolumeMount]] = None
+    volumeMounts: list[VolumeMount] | None = None
     """
     Pod volumes to mount into the container's filesystem.
     Cannot be updated.
     """
-    workingDir: Optional[str] = None
+    workingDir: str | None = None
     """
     Container's working directory.
     If not specified, the container runtime's default will be used, which
@@ -2177,7 +2177,7 @@ class ResourceClaim(BaseModel):
     Name uniquely identifies this resource claim inside the pod.
     This must be a DNS_LABEL.
     """
-    resourceClaimName: Optional[str] = None
+    resourceClaimName: str | None = None
     """
     ResourceClaimName is the name of a ResourceClaim object in the same
     namespace as this pod.
@@ -2185,7 +2185,7 @@ class ResourceClaim(BaseModel):
     Exactly one of ResourceClaimName and ResourceClaimTemplateName must
     be set.
     """
-    resourceClaimTemplateName: Optional[str] = None
+    resourceClaimTemplateName: str | None = None
     """
     ResourceClaimTemplateName is the name of a ResourceClaimTemplate
     object in the same namespace as this pod.
@@ -2257,12 +2257,12 @@ class Sysctl(BaseModel):
 
 
 class SecurityContextModel(BaseModel):
-    appArmorProfile: Optional[AppArmorProfile] = None
+    appArmorProfile: AppArmorProfile | None = None
     """
     appArmorProfile is the AppArmor options to use by the containers in this pod.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    fsGroup: Optional[int] = None
+    fsGroup: int | None = None
     """
     A special supplemental group that applies to all containers in a pod.
     Some volume types allow the Kubelet to change the ownership of that volume
@@ -2275,7 +2275,7 @@ class SecurityContextModel(BaseModel):
     If unset, the Kubelet will not modify the ownership and permissions of any volume.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    fsGroupChangePolicy: Optional[str] = None
+    fsGroupChangePolicy: str | None = None
     """
     fsGroupChangePolicy defines behavior of changing ownership and permission of the volume
     before being exposed inside Pod. This field will only apply to
@@ -2285,7 +2285,7 @@ class SecurityContextModel(BaseModel):
     Valid values are "OnRootMismatch" and "Always". If not specified, "Always" is used.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    runAsGroup: Optional[int] = None
+    runAsGroup: int | None = None
     """
     The GID to run the entrypoint of the container process.
     Uses runtime default if unset.
@@ -2294,7 +2294,7 @@ class SecurityContextModel(BaseModel):
     for that container.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    runAsNonRoot: Optional[bool] = None
+    runAsNonRoot: bool | None = None
     """
     Indicates that the container must run as a non-root user.
     If true, the Kubelet will validate the image at runtime to ensure that it
@@ -2303,7 +2303,7 @@ class SecurityContextModel(BaseModel):
     May also be set in SecurityContext.  If set in both SecurityContext and
     PodSecurityContext, the value specified in SecurityContext takes precedence.
     """
-    runAsUser: Optional[int] = None
+    runAsUser: int | None = None
     """
     The UID to run the entrypoint of the container process.
     Defaults to user specified in image metadata if unspecified.
@@ -2312,7 +2312,7 @@ class SecurityContextModel(BaseModel):
     for that container.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    seLinuxChangePolicy: Optional[str] = None
+    seLinuxChangePolicy: str | None = None
     """
     seLinuxChangePolicy defines how the container's SELinux label is applied to all volumes used by the Pod.
     It has no effect on nodes that do not support SELinux or to volumes does not support SELinux.
@@ -2338,7 +2338,7 @@ class SecurityContextModel(BaseModel):
     All Pods that use the same volume should use the same seLinuxChangePolicy, otherwise some pods can get stuck in ContainerCreating state.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    seLinuxOptions: Optional[SeLinuxOptions] = None
+    seLinuxOptions: SeLinuxOptions | None = None
     """
     The SELinux context to be applied to all containers.
     If unspecified, the container runtime will allocate a random SELinux context for each
@@ -2347,12 +2347,12 @@ class SecurityContextModel(BaseModel):
     takes precedence for that container.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    seccompProfile: Optional[SeccompProfile] = None
+    seccompProfile: SeccompProfile | None = None
     """
     The seccomp options to use by the containers in this pod.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    supplementalGroups: Optional[List[int]] = None
+    supplementalGroups: list[int] | None = None
     """
     A list of groups applied to the first process run in each container, in
     addition to the container's primary GID and fsGroup (if specified).  If
@@ -2364,7 +2364,7 @@ class SecurityContextModel(BaseModel):
     supplementalGroupsPolicy field.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    supplementalGroupsPolicy: Optional[str] = None
+    supplementalGroupsPolicy: str | None = None
     """
     Defines how supplemental groups of the first container processes are calculated.
     Valid values are "Merge" and "Strict". If not specified, "Merge" is used.
@@ -2372,13 +2372,13 @@ class SecurityContextModel(BaseModel):
     and the container runtime must implement support for this feature.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    sysctls: Optional[List[Sysctl]] = None
+    sysctls: list[Sysctl] | None = None
     """
     Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported
     sysctls (by the container runtime) might fail to launch.
     Note that this field cannot be set when spec.os.name is windows.
     """
-    windowsOptions: Optional[WindowsOptions] = None
+    windowsOptions: WindowsOptions | None = None
     """
     The Windows specific settings applied to all containers.
     If unspecified, the options within a container's SecurityContext will be used.
@@ -2388,17 +2388,17 @@ class SecurityContextModel(BaseModel):
 
 
 class Toleration(BaseModel):
-    effect: Optional[str] = None
+    effect: str | None = None
     """
     Effect indicates the taint effect to match. Empty means match all taint effects.
     When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
     """
-    key: Optional[str] = None
+    key: str | None = None
     """
     Key is the taint key that the toleration applies to. Empty means match all taint keys.
     If the key is empty, operator must be Exists; this combination means to match all values and all keys.
     """
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     Operator represents a key's relationship to the value.
     Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
@@ -2406,14 +2406,14 @@ class Toleration(BaseModel):
     tolerate all taints of a particular category.
     Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
     """
-    tolerationSeconds: Optional[int] = None
+    tolerationSeconds: int | None = None
     """
     TolerationSeconds represents the period of time the toleration (which must be
     of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
     it is not set, which means tolerate the taint forever (do not evict). Zero and
     negative values will be treated as 0 (evict immediately) by the system.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Value is the taint value the toleration matches to.
     If the operator is Exists, the value should be empty, otherwise just a regular string.
@@ -2421,13 +2421,13 @@ class Toleration(BaseModel):
 
 
 class TopologySpreadConstraint(BaseModel):
-    labelSelector: Optional[LabelSelector] = None
+    labelSelector: LabelSelector | None = None
     """
     LabelSelector is used to find matching pods.
     Pods that match this label selector are counted to determine the number of pods
     in their corresponding topology domain.
     """
-    matchLabelKeys: Optional[List[str]] = None
+    matchLabelKeys: list[str] | None = None
     """
     MatchLabelKeys is a set of pod label keys to select the pods over which
     spreading will be calculated. The keys are used to lookup values from the
@@ -2460,7 +2460,7 @@ class TopologySpreadConstraint(BaseModel):
     to topologies that satisfy it.
     It's a required field. Default value is 1 and 0 is not allowed.
     """
-    minDomains: Optional[int] = None
+    minDomains: int | None = None
     """
     MinDomains indicates a minimum number of eligible domains.
     When the number of eligible domains with matching topology keys is less than minDomains,
@@ -2482,7 +2482,7 @@ class TopologySpreadConstraint(BaseModel):
     because computed skew will be 3(3 - 0) if new Pod is scheduled to any of the three zones,
     it will violate MaxSkew.
     """
-    nodeAffinityPolicy: Optional[str] = None
+    nodeAffinityPolicy: str | None = None
     """
     NodeAffinityPolicy indicates how we will treat Pod's nodeAffinity/nodeSelector
     when calculating pod topology spread skew. Options are:
@@ -2491,7 +2491,7 @@ class TopologySpreadConstraint(BaseModel):
 
     If this value is nil, the behavior is equivalent to the Honor policy.
     """
-    nodeTaintsPolicy: Optional[str] = None
+    nodeTaintsPolicy: str | None = None
     """
     NodeTaintsPolicy indicates how we will treat node taints when calculating
     pod topology spread skew. Options are:
@@ -2538,21 +2538,21 @@ class TopologySpreadConstraint(BaseModel):
 
 
 class AwsElasticBlockStore(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type of the volume that you want to mount.
     Tip: Ensure that the filesystem type is supported by the host operating system.
     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore
     """
-    partition: Optional[int] = None
+    partition: int | None = None
     """
     partition is the partition in the volume that you want to mount.
     If omitted, the default is to mount by volume name.
     Examples: For volume /dev/sda1, you specify the partition as "1".
     Similarly, the volume partition for /dev/sda is "0" (or you can leave the property empty).
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly value true will force the readOnly setting in VolumeMounts.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore
@@ -2565,7 +2565,7 @@ class AwsElasticBlockStore(BaseModel):
 
 
 class AzureDisk(BaseModel):
-    cachingMode: Optional[str] = None
+    cachingMode: str | None = None
     """
     cachingMode is the Host Caching mode: None, Read Only, Read Write.
     """
@@ -2577,17 +2577,17 @@ class AzureDisk(BaseModel):
     """
     diskURI is the URI of data disk in the blob storage
     """
-    fsType: Optional[str] = 'ext4'
+    fsType: str | None = 'ext4'
     """
     fsType is Filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     kind expected values are Shared: multiple blob disks per storage account  Dedicated: single blob disk per storage account  Managed: azure managed data disk (only in managed availability set). defaults to shared
     """
-    readOnly: Optional[bool] = False
+    readOnly: bool | None = False
     """
     readOnly Defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
@@ -2595,7 +2595,7 @@ class AzureDisk(BaseModel):
 
 
 class AzureFile(BaseModel):
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
@@ -2611,7 +2611,7 @@ class AzureFile(BaseModel):
 
 
 class SecretRefModel(BaseModel):
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -2622,32 +2622,32 @@ class SecretRefModel(BaseModel):
 
 
 class Cephfs(BaseModel):
-    monitors: List[str]
+    monitors: list[str]
     """
     monitors is Required: Monitors is a collection of Ceph monitors
     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     path is Optional: Used as the mounted root, rather than the full Ceph tree, default is /
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly is Optional: Defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
     """
-    secretFile: Optional[str] = None
+    secretFile: str | None = None
     """
     secretFile is Optional: SecretFile is the path to key ring for User, default is /etc/ceph/user.secret
     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
     """
-    secretRef: Optional[SecretRefModel] = None
+    secretRef: SecretRefModel | None = None
     """
     secretRef is Optional: SecretRef is reference to the authentication secret for User, default is empty.
     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
     """
-    user: Optional[str] = None
+    user: str | None = None
     """
     user is optional: User is the rados user name, default is admin
     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
@@ -2655,20 +2655,20 @@ class Cephfs(BaseModel):
 
 
 class Cinder(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     More info: https://examples.k8s.io/mysql-cinder-pd/README.md
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
     More info: https://examples.k8s.io/mysql-cinder-pd/README.md
     """
-    secretRef: Optional[SecretRefModel] = None
+    secretRef: SecretRefModel | None = None
     """
     secretRef is optional: points to a secret object containing parameters used to connect
     to OpenStack.
@@ -2685,7 +2685,7 @@ class Item(BaseModel):
     """
     key is the key to project.
     """
-    mode: Optional[int] = None
+    mode: int | None = None
     """
     mode is Optional: mode bits used to set permissions on this file.
     Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
@@ -2704,7 +2704,7 @@ class Item(BaseModel):
 
 
 class ConfigMap(BaseModel):
-    defaultMode: Optional[int] = None
+    defaultMode: int | None = None
     """
     defaultMode is optional: mode bits used to set permissions on created files by default.
     Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
@@ -2714,7 +2714,7 @@ class ConfigMap(BaseModel):
     This might be in conflict with other options that affect the file
     mode, like fsGroup, and the result can be other mode bits set.
     """
-    items: Optional[List[Item]] = None
+    items: list[Item] | None = None
     """
     items if unspecified, each key-value pair in the Data field of the referenced
     ConfigMap will be projected into the volume as a file whose name is the
@@ -2724,7 +2724,7 @@ class ConfigMap(BaseModel):
     the volume setup will error unless it is marked optional. Paths must be
     relative and may not contain the '..' path or start with '..'.
     """
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -2732,14 +2732,14 @@ class ConfigMap(BaseModel):
     almost certainly wrong.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     optional specify whether the ConfigMap or its keys must be defined
     """
 
 
 class NodePublishSecretRef(BaseModel):
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -2755,13 +2755,13 @@ class Csi(BaseModel):
     driver is the name of the CSI driver that handles this volume.
     Consult with your admin for the correct name as registered in the cluster.
     """
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType to mount. Ex. "ext4", "xfs", "ntfs".
     If not provided, the empty value is passed to the associated CSI driver
     which will determine the default filesystem to apply.
     """
-    nodePublishSecretRef: Optional[NodePublishSecretRef] = None
+    nodePublishSecretRef: NodePublishSecretRef | None = None
     """
     nodePublishSecretRef is a reference to the secret object containing
     sensitive information to pass to the CSI driver to complete the CSI
@@ -2769,12 +2769,12 @@ class Csi(BaseModel):
     This field is optional, and  may be empty if no secret is required. If the
     secret object contains more than one secret, all secret references are passed.
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly specifies a read-only configuration for the volume.
     Defaults to false (read/write).
     """
-    volumeAttributes: Optional[Dict[str, str]] = None
+    volumeAttributes: dict[str, str] | None = None
     """
     volumeAttributes stores driver-specific properties that are passed to the CSI
     driver. Consult your driver's documentation for supported values.
@@ -2804,11 +2804,11 @@ class DivisorModel6(
 
 
 class ItemModel(BaseModel):
-    fieldRef: Optional[FieldRef] = None
+    fieldRef: FieldRef | None = None
     """
     Required: Selects a field of the pod: only annotations, labels, name, namespace and uid are supported.
     """
-    mode: Optional[int] = None
+    mode: int | None = None
     """
     Optional: mode bits used to set permissions on this file, must be an octal value
     between 0000 and 0777 or a decimal value between 0 and 511.
@@ -2821,7 +2821,7 @@ class ItemModel(BaseModel):
     """
     Required: Path is  the relative path name of the file to be created. Must not be absolute or contain the '..' path. Must be utf-8 encoded. The first item of the relative path must not start with '..'
     """
-    resourceFieldRef: Optional[ResourceFieldRef] = None
+    resourceFieldRef: ResourceFieldRef | None = None
     """
     Selects a resource of the container: only resources limits and requests
     (limits.cpu, limits.memory, requests.cpu and requests.memory) are currently supported.
@@ -2829,7 +2829,7 @@ class ItemModel(BaseModel):
 
 
 class DownwardAPI(BaseModel):
-    defaultMode: Optional[int] = None
+    defaultMode: int | None = None
     """
     Optional: mode bits to use on created files by default. Must be a
     Optional: mode bits used to set permissions on created files by default.
@@ -2840,7 +2840,7 @@ class DownwardAPI(BaseModel):
     This might be in conflict with other options that affect the file
     mode, like fsGroup, and the result can be other mode bits set.
     """
-    items: Optional[List[ItemModel]] = None
+    items: list[ItemModel] | None = None
     """
     Items is a list of downward API volume file
     """
@@ -2879,14 +2879,14 @@ class SizeLimitModel(
 
 
 class EmptyDir(BaseModel):
-    medium: Optional[str] = None
+    medium: str | None = None
     """
     medium represents what type of storage medium should back this directory.
     The default is "" which means to use the node's default medium.
     Must be an empty string (default) or Memory.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
     """
-    sizeLimit: Optional[Union[SizeLimit, SizeLimitModel]] = None
+    sizeLimit: SizeLimit | SizeLimitModel | None = None
     """
     sizeLimit is the total amount of local storage required for this EmptyDir volume.
     The size limit is also applicable for memory medium.
@@ -2898,7 +2898,7 @@ class EmptyDir(BaseModel):
 
 
 class DataSource(BaseModel):
-    apiGroup: Optional[str] = None
+    apiGroup: str | None = None
     """
     APIGroup is the group for the resource being referenced.
     If APIGroup is not specified, the specified Kind must be in the core API group.
@@ -2915,7 +2915,7 @@ class DataSource(BaseModel):
 
 
 class DataSourceRef(BaseModel):
-    apiGroup: Optional[str] = None
+    apiGroup: str | None = None
     """
     APIGroup is the group for the resource being referenced.
     If APIGroup is not specified, the specified Kind must be in the core API group.
@@ -2929,7 +2929,7 @@ class DataSourceRef(BaseModel):
     """
     Name is the name of resource being referenced
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace is the namespace of resource being referenced
     Note that when a namespace is specified, a gateway.networking.k8s.io/ReferenceGrant object is required in the referent namespace to allow that namespace's owner to accept the reference. See the ReferenceGrant documentation for details.
@@ -2970,12 +2970,12 @@ class RequestsModel8(
 
 
 class ResourcesModel(BaseModel):
-    limits: Optional[Dict[str, Union[LimitsModel7, LimitsModel8]]] = None
+    limits: dict[str, LimitsModel7 | LimitsModel8] | None = None
     """
     Limits describes the maximum amount of compute resources allowed.
     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
     """
-    requests: Optional[Dict[str, Union[RequestsModel7, RequestsModel8]]] = None
+    requests: dict[str, RequestsModel7 | RequestsModel8] | None = None
     """
     Requests describes the minimum amount of compute resources required.
     If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
@@ -2985,12 +2985,12 @@ class ResourcesModel(BaseModel):
 
 
 class Spec(BaseModel):
-    accessModes: Optional[List[str]] = None
+    accessModes: list[str] | None = None
     """
     accessModes contains the desired access modes the volume should have.
     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1
     """
-    dataSource: Optional[DataSource] = None
+    dataSource: DataSource | None = None
     """
     dataSource field can be used to specify either:
     * An existing VolumeSnapshot object (snapshot.storage.k8s.io/VolumeSnapshot)
@@ -3001,7 +3001,7 @@ class Spec(BaseModel):
     and dataSourceRef contents will be copied to dataSource when dataSourceRef.namespace is not specified.
     If the namespace is specified, then dataSourceRef will not be copied to dataSource.
     """
-    dataSourceRef: Optional[DataSourceRef] = None
+    dataSourceRef: DataSourceRef | None = None
     """
     dataSourceRef specifies the object from which to populate the volume with data, if a non-empty
     volume is desired. This may be any object from a non-empty API group (non
@@ -3027,7 +3027,7 @@ class Spec(BaseModel):
     (Beta) Using this field requires the AnyVolumeDataSource feature gate to be enabled.
     (Alpha) Using the namespace field of dataSourceRef requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
     """
-    resources: Optional[ResourcesModel] = None
+    resources: ResourcesModel | None = None
     """
     resources represents the minimum resources the volume should have.
     Users are allowed to specify resource requirements
@@ -3035,16 +3035,16 @@ class Spec(BaseModel):
     status field of the claim.
     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
     """
-    selector: Optional[Selector] = None
+    selector: Selector | None = None
     """
     selector is a label query over volumes to consider for binding.
     """
-    storageClassName: Optional[str] = None
+    storageClassName: str | None = None
     """
     storageClassName is the name of the StorageClass required by the claim.
     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#class-1
     """
-    volumeAttributesClassName: Optional[str] = None
+    volumeAttributesClassName: str | None = None
     """
     volumeAttributesClassName may be used to set the VolumeAttributesClass used by this claim.
     If specified, the CSI driver will create or update the volume with the attributes defined
@@ -3057,19 +3057,19 @@ class Spec(BaseModel):
     exists.
     More info: https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/
     """
-    volumeMode: Optional[str] = None
+    volumeMode: str | None = None
     """
     volumeMode defines what type of volume is required by the claim.
     Value of Filesystem is implied when not included in claim spec.
     """
-    volumeName: Optional[str] = None
+    volumeName: str | None = None
     """
     volumeName is the binding reference to the PersistentVolume backing this claim.
     """
 
 
 class VolumeClaimTemplate(BaseModel):
-    metadata: Optional[MetadataModel] = None
+    metadata: MetadataModel | None = None
     """
     May contain labels and annotations that will be copied into the PVC
     when creating it. No other fields are allowed and will be rejected during
@@ -3085,7 +3085,7 @@ class VolumeClaimTemplate(BaseModel):
 
 
 class Ephemeral(BaseModel):
-    volumeClaimTemplate: Optional[VolumeClaimTemplate] = None
+    volumeClaimTemplate: VolumeClaimTemplate | None = None
     """
     Will be used to create a stand-alone PVC to provision the volume.
     The pod in which this EphemeralVolumeSource is embedded will be the
@@ -3112,26 +3112,26 @@ class Ephemeral(BaseModel):
 
 
 class Fc(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     """
-    lun: Optional[int] = None
+    lun: int | None = None
     """
     lun is Optional: FC target lun number
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly is Optional: Defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
     """
-    targetWWNs: Optional[List[str]] = None
+    targetWWNs: list[str] | None = None
     """
     targetWWNs is Optional: FC target worldwide names (WWNs)
     """
-    wwids: Optional[List[str]] = None
+    wwids: list[str] | None = None
     """
     wwids Optional: FC volume world wide identifiers (wwids)
     Either wwids or combination of targetWWNs and lun must be set, but not both simultaneously.
@@ -3143,22 +3143,22 @@ class FlexVolume(BaseModel):
     """
     driver is the name of the driver to use for this volume.
     """
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
     Ex. "ext4", "xfs", "ntfs". The default filesystem depends on FlexVolume script.
     """
-    options: Optional[Dict[str, str]] = None
+    options: dict[str, str] | None = None
     """
     options is Optional: this field holds extra command options if any.
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly is Optional: defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
     """
-    secretRef: Optional[SecretRefModel] = None
+    secretRef: SecretRefModel | None = None
     """
     secretRef is Optional: secretRef is reference to the secret object containing
     sensitive information to pass to the plugin scripts. This may be
@@ -3169,26 +3169,26 @@ class FlexVolume(BaseModel):
 
 
 class Flocker(BaseModel):
-    datasetName: Optional[str] = None
+    datasetName: str | None = None
     """
     datasetName is Name of the dataset stored as metadata -> name on the dataset for Flocker
     should be considered as deprecated
     """
-    datasetUUID: Optional[str] = None
+    datasetUUID: str | None = None
     """
     datasetUUID is the UUID of the dataset. This is unique identifier of a Flocker dataset
     """
 
 
 class GcePersistentDisk(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is filesystem type of the volume that you want to mount.
     Tip: Ensure that the filesystem type is supported by the host operating system.
     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
     """
-    partition: Optional[int] = None
+    partition: int | None = None
     """
     partition is the partition in the volume that you want to mount.
     If omitted, the default is to mount by volume name.
@@ -3201,7 +3201,7 @@ class GcePersistentDisk(BaseModel):
     pdName is unique name of the PD resource in GCE. Used to identify the disk in GCE.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly here will force the ReadOnly setting in VolumeMounts.
     Defaults to false.
@@ -3210,7 +3210,7 @@ class GcePersistentDisk(BaseModel):
 
 
 class GitRepo(BaseModel):
-    directory: Optional[str] = None
+    directory: str | None = None
     """
     directory is the target directory name.
     Must not contain or start with '..'.  If '.' is supplied, the volume directory will be the
@@ -3221,7 +3221,7 @@ class GitRepo(BaseModel):
     """
     repository is the URL
     """
-    revision: Optional[str] = None
+    revision: str | None = None
     """
     revision is the commit hash for the specified revision.
     """
@@ -3237,7 +3237,7 @@ class Glusterfs(BaseModel):
     path is the Glusterfs volume path.
     More info: https://examples.k8s.io/volumes/glusterfs/README.md#create-a-pod
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly here will force the Glusterfs volume to be mounted with read-only permissions.
     Defaults to false.
@@ -3252,7 +3252,7 @@ class HostPath(BaseModel):
     If the path is a symlink, it will follow the link to the real path.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     type for HostPath Volume
     Defaults to ""
@@ -3261,7 +3261,7 @@ class HostPath(BaseModel):
 
 
 class Image(BaseModel):
-    pullPolicy: Optional[str] = None
+    pullPolicy: str | None = None
     """
     Policy for pulling OCI objects. Possible values are:
     Always: the kubelet always attempts to pull the reference. Container creation will fail If the pull fails.
@@ -3269,7 +3269,7 @@ class Image(BaseModel):
     IfNotPresent: the kubelet pulls if the reference isn't already present on disk. Container creation will fail if the reference isn't present and the pull fails.
     Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
     """
-    reference: Optional[str] = None
+    reference: str | None = None
     """
     Required: Image or artifact reference to be used.
     Behaves in the same way as pod.spec.containers[*].image.
@@ -3281,22 +3281,22 @@ class Image(BaseModel):
 
 
 class Iscsi(BaseModel):
-    chapAuthDiscovery: Optional[bool] = None
+    chapAuthDiscovery: bool | None = None
     """
     chapAuthDiscovery defines whether support iSCSI Discovery CHAP authentication
     """
-    chapAuthSession: Optional[bool] = None
+    chapAuthSession: bool | None = None
     """
     chapAuthSession defines whether support iSCSI Session CHAP authentication
     """
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type of the volume that you want to mount.
     Tip: Ensure that the filesystem type is supported by the host operating system.
     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#iscsi
     """
-    initiatorName: Optional[str] = None
+    initiatorName: str | None = None
     """
     initiatorName is the custom iSCSI Initiator Name.
     If initiatorName is specified with iscsiInterface simultaneously, new iSCSI interface
@@ -3306,7 +3306,7 @@ class Iscsi(BaseModel):
     """
     iqn is the target iSCSI Qualified Name.
     """
-    iscsiInterface: Optional[str] = 'default'
+    iscsiInterface: str | None = 'default'
     """
     iscsiInterface is the interface Name that uses an iSCSI transport.
     Defaults to 'default' (tcp).
@@ -3315,17 +3315,17 @@ class Iscsi(BaseModel):
     """
     lun represents iSCSI Target Lun number.
     """
-    portals: Optional[List[str]] = None
+    portals: list[str] | None = None
     """
     portals is the iSCSI Target Portal List. The portal is either an IP or ip_addr:port if the port
     is other than default (typically TCP ports 860 and 3260).
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly here will force the ReadOnly setting in VolumeMounts.
     Defaults to false.
     """
-    secretRef: Optional[SecretRefModel] = None
+    secretRef: SecretRefModel | None = None
     """
     secretRef is the CHAP Secret for iSCSI target and initiator authentication
     """
@@ -3342,7 +3342,7 @@ class Nfs(BaseModel):
     path that is exported by the NFS server.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly here will force the NFS export to be mounted with read-only permissions.
     Defaults to false.
@@ -3361,7 +3361,7 @@ class PersistentVolumeClaim(BaseModel):
     claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly Will force the ReadOnly setting in VolumeMounts.
     Default false.
@@ -3369,7 +3369,7 @@ class PersistentVolumeClaim(BaseModel):
 
 
 class PhotonPersistentDisk(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
@@ -3382,13 +3382,13 @@ class PhotonPersistentDisk(BaseModel):
 
 
 class PortworxVolume(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fSType represents the filesystem type to mount
     Must be a filesystem type supported by the host operating system.
     Ex. "ext4", "xfs". Implicitly inferred to be "ext4" if unspecified.
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
@@ -3400,19 +3400,19 @@ class PortworxVolume(BaseModel):
 
 
 class ClusterTrustBundle(BaseModel):
-    labelSelector: Optional[LabelSelector] = None
+    labelSelector: LabelSelector | None = None
     """
     Select all ClusterTrustBundles that match this label selector.  Only has
     effect if signerName is set.  Mutually-exclusive with name.  If unset,
     interpreted as "match nothing".  If set but empty, interpreted as "match
     everything".
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Select a single ClusterTrustBundle by object name.  Mutually-exclusive
     with signerName and labelSelector.
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     If true, don't block pod startup if the referenced ClusterTrustBundle(s)
     aren't available.  If using name, then the named ClusterTrustBundle is
@@ -3424,7 +3424,7 @@ class ClusterTrustBundle(BaseModel):
     """
     Relative path from the volume root to write the bundle.
     """
-    signerName: Optional[str] = None
+    signerName: str | None = None
     """
     Select all ClusterTrustBundles that match this signer name.
     Mutually-exclusive with name.  The contents of all selected
@@ -3437,7 +3437,7 @@ class ItemModel1(BaseModel):
     """
     key is the key to project.
     """
-    mode: Optional[int] = None
+    mode: int | None = None
     """
     mode is Optional: mode bits used to set permissions on this file.
     Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
@@ -3456,7 +3456,7 @@ class ItemModel1(BaseModel):
 
 
 class ConfigMapModel(BaseModel):
-    items: Optional[List[ItemModel1]] = None
+    items: list[ItemModel1] | None = None
     """
     items if unspecified, each key-value pair in the Data field of the referenced
     ConfigMap will be projected into the volume as a file whose name is the
@@ -3466,7 +3466,7 @@ class ConfigMapModel(BaseModel):
     the volume setup will error unless it is marked optional. Paths must be
     relative and may not contain the '..' path or start with '..'.
     """
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -3474,7 +3474,7 @@ class ConfigMapModel(BaseModel):
     almost certainly wrong.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     optional specify whether the ConfigMap or its keys must be defined
     """
@@ -3503,11 +3503,11 @@ class DivisorModel8(
 
 
 class ItemModel2(BaseModel):
-    fieldRef: Optional[FieldRef] = None
+    fieldRef: FieldRef | None = None
     """
     Required: Selects a field of the pod: only annotations, labels, name, namespace and uid are supported.
     """
-    mode: Optional[int] = None
+    mode: int | None = None
     """
     Optional: mode bits used to set permissions on this file, must be an octal value
     between 0000 and 0777 or a decimal value between 0 and 511.
@@ -3520,7 +3520,7 @@ class ItemModel2(BaseModel):
     """
     Required: Path is  the relative path name of the file to be created. Must not be absolute or contain the '..' path. Must be utf-8 encoded. The first item of the relative path must not start with '..'
     """
-    resourceFieldRef: Optional[ResourceFieldRef] = None
+    resourceFieldRef: ResourceFieldRef | None = None
     """
     Selects a resource of the container: only resources limits and requests
     (limits.cpu, limits.memory, requests.cpu and requests.memory) are currently supported.
@@ -3528,14 +3528,14 @@ class ItemModel2(BaseModel):
 
 
 class DownwardAPIModel(BaseModel):
-    items: Optional[List[ItemModel2]] = None
+    items: list[ItemModel2] | None = None
     """
     Items is a list of DownwardAPIVolume file
     """
 
 
 class PodCertificate(BaseModel):
-    certificateChainPath: Optional[str] = None
+    certificateChainPath: str | None = None
     """
     Write the certificate chain at this path in the projected volume.
 
@@ -3544,7 +3544,7 @@ class PodCertificate(BaseModel):
     and leaf certificate are consistent, because it is possible to read the
     files mid-rotation.
     """
-    credentialBundlePath: Optional[str] = None
+    credentialBundlePath: str | None = None
     """
     Write the credential bundle at this path in the projected volume.
 
@@ -3560,7 +3560,7 @@ class PodCertificate(BaseModel):
     project them to separate files, your application code will need to
     additionally check that the leaf certificate was issued to the key.
     """
-    keyPath: Optional[str] = None
+    keyPath: str | None = None
     """
     Write the key at this path in the projected volume.
 
@@ -3576,7 +3576,7 @@ class PodCertificate(BaseModel):
     Valid values are "RSA3072", "RSA4096", "ECDSAP256", "ECDSAP384",
     "ECDSAP521", and "ED25519".
     """
-    maxExpirationSeconds: Optional[int] = None
+    maxExpirationSeconds: int | None = None
     """
     maxExpirationSeconds is the maximum lifetime permitted for the
     certificate.
@@ -3598,7 +3598,7 @@ class PodCertificate(BaseModel):
     """
     Kubelet's generated CSRs will be addressed to this signer.
     """
-    userAnnotations: Optional[Dict[str, str]] = None
+    userAnnotations: dict[str, str] | None = None
     """
     userAnnotations allow pod authors to pass additional information to
     the signer implementation.  Kubernetes does not restrict or validate this
@@ -3621,7 +3621,7 @@ class ItemModel3(BaseModel):
     """
     key is the key to project.
     """
-    mode: Optional[int] = None
+    mode: int | None = None
     """
     mode is Optional: mode bits used to set permissions on this file.
     Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
@@ -3640,7 +3640,7 @@ class ItemModel3(BaseModel):
 
 
 class Secret(BaseModel):
-    items: Optional[List[ItemModel3]] = None
+    items: list[ItemModel3] | None = None
     """
     items if unspecified, each key-value pair in the Data field of the referenced
     Secret will be projected into the volume as a file whose name is the
@@ -3650,7 +3650,7 @@ class Secret(BaseModel):
     the volume setup will error unless it is marked optional. Paths must be
     relative and may not contain the '..' path or start with '..'.
     """
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -3658,21 +3658,21 @@ class Secret(BaseModel):
     almost certainly wrong.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     optional field specify whether the Secret or its key must be defined
     """
 
 
 class ServiceAccountToken(BaseModel):
-    audience: Optional[str] = None
+    audience: str | None = None
     """
     audience is the intended audience of the token. A recipient of a token
     must identify itself with an identifier specified in the audience of the
     token, and otherwise should reject the token. The audience defaults to the
     identifier of the apiserver.
     """
-    expirationSeconds: Optional[int] = None
+    expirationSeconds: int | None = None
     """
     expirationSeconds is the requested duration of validity of the service
     account token. As the token approaches expiration, the kubelet volume
@@ -3689,7 +3689,7 @@ class ServiceAccountToken(BaseModel):
 
 
 class Source(BaseModel):
-    clusterTrustBundle: Optional[ClusterTrustBundle] = None
+    clusterTrustBundle: ClusterTrustBundle | None = None
     """
     ClusterTrustBundle allows a pod to access the `.spec.trustBundle` field
     of ClusterTrustBundle objects in an auto-updating file.
@@ -3705,15 +3705,15 @@ class Source(BaseModel):
     The ordering of certificates within the file is arbitrary, and Kubelet
     may change the order over time.
     """
-    configMap: Optional[ConfigMapModel] = None
+    configMap: ConfigMapModel | None = None
     """
     configMap information about the configMap data to project
     """
-    downwardAPI: Optional[DownwardAPIModel] = None
+    downwardAPI: DownwardAPIModel | None = None
     """
     downwardAPI information about the downwardAPI data to project
     """
-    podCertificate: Optional[PodCertificate] = None
+    podCertificate: PodCertificate | None = None
     """
     Projects an auto-rotating credential bundle (private key and certificate
     chain) that the pod can use either as a TLS client or server.
@@ -3750,18 +3750,18 @@ class Source(BaseModel):
     issues; consult the signer implementation's documentation to learn how to
     use the certificates it issues.
     """
-    secret: Optional[Secret] = None
+    secret: Secret | None = None
     """
     secret information about the secret data to project
     """
-    serviceAccountToken: Optional[ServiceAccountToken] = None
+    serviceAccountToken: ServiceAccountToken | None = None
     """
     serviceAccountToken is information about the serviceAccountToken data to project
     """
 
 
 class Projected(BaseModel):
-    defaultMode: Optional[int] = None
+    defaultMode: int | None = None
     """
     defaultMode are the mode bits used to set permissions on created files by default.
     Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
@@ -3770,7 +3770,7 @@ class Projected(BaseModel):
     This might be in conflict with other options that affect the file
     mode, like fsGroup, and the result can be other mode bits set.
     """
-    sources: Optional[List[Source]] = None
+    sources: list[Source] | None = None
     """
     sources is the list of volume projections. Each entry in this list
     handles one source.
@@ -3778,12 +3778,12 @@ class Projected(BaseModel):
 
 
 class Quobyte(BaseModel):
-    group: Optional[str] = None
+    group: str | None = None
     """
     group to map volume access to
     Default is no group
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly here will force the Quobyte volume to be mounted with read-only permissions.
     Defaults to false.
@@ -3794,12 +3794,12 @@ class Quobyte(BaseModel):
     specified as a string as host:port pair (multiple entries are separated with commas)
     which acts as the central registry for volumes
     """
-    tenant: Optional[str] = None
+    tenant: str | None = None
     """
     tenant owning the given Quobyte volume in the Backend
     Used with dynamically provisioned Quobyte volumes, value is set by the plugin
     """
-    user: Optional[str] = None
+    user: str | None = None
     """
     user to map volume access to
     Defaults to serivceaccount user
@@ -3811,7 +3811,7 @@ class Quobyte(BaseModel):
 
 
 class Rbd(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type of the volume that you want to mount.
     Tip: Ensure that the filesystem type is supported by the host operating system.
@@ -3823,37 +3823,37 @@ class Rbd(BaseModel):
     image is the rados image name.
     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
     """
-    keyring: Optional[str] = '/etc/ceph/keyring'
+    keyring: str | None = '/etc/ceph/keyring'
     """
     keyring is the path to key ring for RBDUser.
     Default is /etc/ceph/keyring.
     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
     """
-    monitors: List[str]
+    monitors: list[str]
     """
     monitors is a collection of Ceph monitors.
     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
     """
-    pool: Optional[str] = 'rbd'
+    pool: str | None = 'rbd'
     """
     pool is the rados pool name.
     Default is rbd.
     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly here will force the ReadOnly setting in VolumeMounts.
     Defaults to false.
     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
     """
-    secretRef: Optional[SecretRefModel] = None
+    secretRef: SecretRefModel | None = None
     """
     secretRef is name of the authentication secret for RBDUser. If provided
     overrides keyring.
     Default is nil.
     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
     """
-    user: Optional[str] = 'admin'
+    user: str | None = 'admin'
     """
     user is the rados user name.
     Default is admin.
@@ -3862,7 +3862,7 @@ class Rbd(BaseModel):
 
 
 class ScaleIO(BaseModel):
-    fsType: Optional[str] = 'xfs'
+    fsType: str | None = 'xfs'
     """
     fsType is the filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
@@ -3873,11 +3873,11 @@ class ScaleIO(BaseModel):
     """
     gateway is the host address of the ScaleIO API Gateway.
     """
-    protectionDomain: Optional[str] = None
+    protectionDomain: str | None = None
     """
     protectionDomain is the name of the ScaleIO Protection Domain for the configured storage.
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly Defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
@@ -3887,16 +3887,16 @@ class ScaleIO(BaseModel):
     secretRef references to the secret for ScaleIO user and other
     sensitive information. If this is not provided, Login operation will fail.
     """
-    sslEnabled: Optional[bool] = None
+    sslEnabled: bool | None = None
     """
     sslEnabled Flag enable/disable SSL communication with Gateway, default false
     """
-    storageMode: Optional[str] = 'ThinProvisioned'
+    storageMode: str | None = 'ThinProvisioned'
     """
     storageMode indicates whether the storage for a volume should be ThickProvisioned or ThinProvisioned.
     Default is ThinProvisioned.
     """
-    storagePool: Optional[str] = None
+    storagePool: str | None = None
     """
     storagePool is the ScaleIO Storage Pool associated with the protection domain.
     """
@@ -3904,7 +3904,7 @@ class ScaleIO(BaseModel):
     """
     system is the name of the storage system as configured in ScaleIO.
     """
-    volumeName: Optional[str] = None
+    volumeName: str | None = None
     """
     volumeName is the name of a volume already created in the ScaleIO system
     that is associated with this volume source.
@@ -3912,7 +3912,7 @@ class ScaleIO(BaseModel):
 
 
 class SecretModel(BaseModel):
-    defaultMode: Optional[int] = None
+    defaultMode: int | None = None
     """
     defaultMode is Optional: mode bits used to set permissions on created files by default.
     Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
@@ -3922,7 +3922,7 @@ class SecretModel(BaseModel):
     This might be in conflict with other options that affect the file
     mode, like fsGroup, and the result can be other mode bits set.
     """
-    items: Optional[List[ItemModel3]] = None
+    items: list[ItemModel3] | None = None
     """
     items If unspecified, each key-value pair in the Data field of the referenced
     Secret will be projected into the volume as a file whose name is the
@@ -3932,11 +3932,11 @@ class SecretModel(BaseModel):
     the volume setup will error unless it is marked optional. Paths must be
     relative and may not contain the '..' path or start with '..'.
     """
-    optional: Optional[bool] = None
+    optional: bool | None = None
     """
     optional field specify whether the Secret or its keys must be defined
     """
-    secretName: Optional[str] = None
+    secretName: str | None = None
     """
     secretName is the name of the secret in the pod's namespace to use.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
@@ -3944,28 +3944,28 @@ class SecretModel(BaseModel):
 
 
 class Storageos(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is the filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     """
-    readOnly: Optional[bool] = None
+    readOnly: bool | None = None
     """
     readOnly defaults to false (read/write). ReadOnly here will force
     the ReadOnly setting in VolumeMounts.
     """
-    secretRef: Optional[SecretRefModel] = None
+    secretRef: SecretRefModel | None = None
     """
     secretRef specifies the secret to use for obtaining the StorageOS API
     credentials.  If not specified, default values will be attempted.
     """
-    volumeName: Optional[str] = None
+    volumeName: str | None = None
     """
     volumeName is the human-readable name of the StorageOS volume.  Volume
     names are only unique within a namespace.
     """
-    volumeNamespace: Optional[str] = None
+    volumeNamespace: str | None = None
     """
     volumeNamespace specifies the scope of the volume within StorageOS.  If no
     namespace is specified then the Pod's namespace will be used.  This allows the
@@ -3977,17 +3977,17 @@ class Storageos(BaseModel):
 
 
 class VsphereVolume(BaseModel):
-    fsType: Optional[str] = None
+    fsType: str | None = None
     """
     fsType is filesystem type to mount.
     Must be a filesystem type supported by the host operating system.
     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
     """
-    storagePolicyID: Optional[str] = None
+    storagePolicyID: str | None = None
     """
     storagePolicyID is the storage Policy Based Management (SPBM) profile ID associated with the StoragePolicyName.
     """
-    storagePolicyName: Optional[str] = None
+    storagePolicyName: str | None = None
     """
     storagePolicyName is the storage Policy Based Management (SPBM) profile name.
     """
@@ -3998,7 +3998,7 @@ class VsphereVolume(BaseModel):
 
 
 class Volume(BaseModel):
-    awsElasticBlockStore: Optional[AwsElasticBlockStore] = None
+    awsElasticBlockStore: AwsElasticBlockStore | None = None
     """
     awsElasticBlockStore represents an AWS Disk resource that is attached to a
     kubelet's host machine and then exposed to the pod.
@@ -4006,48 +4006,48 @@ class Volume(BaseModel):
     awsElasticBlockStore type are redirected to the ebs.csi.aws.com CSI driver.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore
     """
-    azureDisk: Optional[AzureDisk] = None
+    azureDisk: AzureDisk | None = None
     """
     azureDisk represents an Azure Data Disk mount on the host and bind mount to the pod.
     Deprecated: AzureDisk is deprecated. All operations for the in-tree azureDisk type
     are redirected to the disk.csi.azure.com CSI driver.
     """
-    azureFile: Optional[AzureFile] = None
+    azureFile: AzureFile | None = None
     """
     azureFile represents an Azure File Service mount on the host and bind mount to the pod.
     Deprecated: AzureFile is deprecated. All operations for the in-tree azureFile type
     are redirected to the file.csi.azure.com CSI driver.
     """
-    cephfs: Optional[Cephfs] = None
+    cephfs: Cephfs | None = None
     """
     cephFS represents a Ceph FS mount on the host that shares a pod's lifetime.
     Deprecated: CephFS is deprecated and the in-tree cephfs type is no longer supported.
     """
-    cinder: Optional[Cinder] = None
+    cinder: Cinder | None = None
     """
     cinder represents a cinder volume attached and mounted on kubelets host machine.
     Deprecated: Cinder is deprecated. All operations for the in-tree cinder type
     are redirected to the cinder.csi.openstack.org CSI driver.
     More info: https://examples.k8s.io/mysql-cinder-pd/README.md
     """
-    configMap: Optional[ConfigMap] = None
+    configMap: ConfigMap | None = None
     """
     configMap represents a configMap that should populate this volume
     """
-    csi: Optional[Csi] = None
+    csi: Csi | None = None
     """
     csi (Container Storage Interface) represents ephemeral storage that is handled by certain external CSI drivers.
     """
-    downwardAPI: Optional[DownwardAPI] = None
+    downwardAPI: DownwardAPI | None = None
     """
     downwardAPI represents downward API about the pod that should populate this volume
     """
-    emptyDir: Optional[EmptyDir] = None
+    emptyDir: EmptyDir | None = None
     """
     emptyDir represents a temporary directory that shares a pod's lifetime.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
     """
-    ephemeral: Optional[Ephemeral] = None
+    ephemeral: Ephemeral | None = None
     """
     ephemeral represents a volume that is handled by a cluster storage driver.
     The volume's lifecycle is tied to the pod that defines it - it will be created before the pod starts,
@@ -4074,22 +4074,22 @@ class Volume(BaseModel):
     A pod can use both types of ephemeral volumes and
     persistent volumes at the same time.
     """
-    fc: Optional[Fc] = None
+    fc: Fc | None = None
     """
     fc represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod.
     """
-    flexVolume: Optional[FlexVolume] = None
+    flexVolume: FlexVolume | None = None
     """
     flexVolume represents a generic volume resource that is
     provisioned/attached using an exec based plugin.
     Deprecated: FlexVolume is deprecated. Consider using a CSIDriver instead.
     """
-    flocker: Optional[Flocker] = None
+    flocker: Flocker | None = None
     """
     flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running.
     Deprecated: Flocker is deprecated and the in-tree flocker type is no longer supported.
     """
-    gcePersistentDisk: Optional[GcePersistentDisk] = None
+    gcePersistentDisk: GcePersistentDisk | None = None
     """
     gcePersistentDisk represents a GCE Disk resource that is attached to a
     kubelet's host machine and then exposed to the pod.
@@ -4097,19 +4097,19 @@ class Volume(BaseModel):
     gcePersistentDisk type are redirected to the pd.csi.storage.gke.io CSI driver.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
     """
-    gitRepo: Optional[GitRepo] = None
+    gitRepo: GitRepo | None = None
     """
     gitRepo represents a git repository at a particular revision.
     Deprecated: GitRepo is deprecated. To provision a container with a git repo, mount an
     EmptyDir into an InitContainer that clones the repo using git, then mount the EmptyDir
     into the Pod's container.
     """
-    glusterfs: Optional[Glusterfs] = None
+    glusterfs: Glusterfs | None = None
     """
     glusterfs represents a Glusterfs mount on the host that shares a pod's lifetime.
     Deprecated: Glusterfs is deprecated and the in-tree glusterfs type is no longer supported.
     """
-    hostPath: Optional[HostPath] = None
+    hostPath: HostPath | None = None
     """
     hostPath represents a pre-existing file or directory on the host
     machine that is directly exposed to the container. This is generally
@@ -4117,7 +4117,7 @@ class Volume(BaseModel):
     to see the host machine. Most containers will NOT need this.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath
     """
-    image: Optional[Image] = None
+    image: Image | None = None
     """
     image represents an OCI object (a container image or artifact) pulled and mounted on the kubelet's host machine.
     The volume is resolved at pod startup depending on which PullPolicy value is provided:
@@ -4134,7 +4134,7 @@ class Volume(BaseModel):
     Sub path mounts for containers are not supported (spec.containers[*].volumeMounts.subpath) before 1.33.
     The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type.
     """
-    iscsi: Optional[Iscsi] = None
+    iscsi: Iscsi | None = None
     """
     iscsi represents an ISCSI Disk resource that is attached to a
     kubelet's host machine and then exposed to the pod.
@@ -4146,59 +4146,59 @@ class Volume(BaseModel):
     Must be a DNS_LABEL and unique within the pod.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    nfs: Optional[Nfs] = None
+    nfs: Nfs | None = None
     """
     nfs represents an NFS mount on the host that shares a pod's lifetime
     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
     """
-    persistentVolumeClaim: Optional[PersistentVolumeClaim] = None
+    persistentVolumeClaim: PersistentVolumeClaim | None = None
     """
     persistentVolumeClaimVolumeSource represents a reference to a
     PersistentVolumeClaim in the same namespace.
     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
     """
-    photonPersistentDisk: Optional[PhotonPersistentDisk] = None
+    photonPersistentDisk: PhotonPersistentDisk | None = None
     """
     photonPersistentDisk represents a PhotonController persistent disk attached and mounted on kubelets host machine.
     Deprecated: PhotonPersistentDisk is deprecated and the in-tree photonPersistentDisk type is no longer supported.
     """
-    portworxVolume: Optional[PortworxVolume] = None
+    portworxVolume: PortworxVolume | None = None
     """
     portworxVolume represents a portworx volume attached and mounted on kubelets host machine.
     Deprecated: PortworxVolume is deprecated. All operations for the in-tree portworxVolume type
     are redirected to the pxd.portworx.com CSI driver when the CSIMigrationPortworx feature-gate
     is on.
     """
-    projected: Optional[Projected] = None
+    projected: Projected | None = None
     """
     projected items for all in one resources secrets, configmaps, and downward API
     """
-    quobyte: Optional[Quobyte] = None
+    quobyte: Quobyte | None = None
     """
     quobyte represents a Quobyte mount on the host that shares a pod's lifetime.
     Deprecated: Quobyte is deprecated and the in-tree quobyte type is no longer supported.
     """
-    rbd: Optional[Rbd] = None
+    rbd: Rbd | None = None
     """
     rbd represents a Rados Block Device mount on the host that shares a pod's lifetime.
     Deprecated: RBD is deprecated and the in-tree rbd type is no longer supported.
     """
-    scaleIO: Optional[ScaleIO] = None
+    scaleIO: ScaleIO | None = None
     """
     scaleIO represents a ScaleIO persistent volume attached and mounted on Kubernetes nodes.
     Deprecated: ScaleIO is deprecated and the in-tree scaleIO type is no longer supported.
     """
-    secret: Optional[SecretModel] = None
+    secret: SecretModel | None = None
     """
     secret represents a secret that should populate this volume.
     More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
     """
-    storageos: Optional[Storageos] = None
+    storageos: Storageos | None = None
     """
     storageOS represents a StorageOS volume attached and mounted on Kubernetes nodes.
     Deprecated: StorageOS is deprecated and the in-tree storageos type is no longer supported.
     """
-    vsphereVolume: Optional[VsphereVolume] = None
+    vsphereVolume: VsphereVolume | None = None
     """
     vsphereVolume represents a vSphere volume attached and mounted on kubelets host machine.
     Deprecated: VsphereVolume is deprecated. All operations for the in-tree vsphereVolume type
@@ -4222,7 +4222,7 @@ class WorkloadRef(BaseModel):
     the Pod will remain unschedulable until the Workload object is recreated
     and observed by the kube-scheduler. It must be a DNS label.
     """
-    podGroupReplicaKey: Optional[str] = None
+    podGroupReplicaKey: str | None = None
     """
     PodGroupReplicaKey specifies the replica key of the PodGroup to which this
     Pod belongs. It is used to distinguish pods belonging to different replicas
@@ -4232,34 +4232,34 @@ class WorkloadRef(BaseModel):
 
 
 class SpecModel(BaseModel):
-    activeDeadlineSeconds: Optional[int] = None
+    activeDeadlineSeconds: int | None = None
     """
     Optional duration in seconds the pod may be active on the node relative to
     StartTime before the system will actively try to mark it failed and kill associated containers.
     Value must be a positive integer.
     """
-    affinity: Optional[Affinity] = None
+    affinity: Affinity | None = None
     """
     If specified, the pod's scheduling constraints
     """
-    automountServiceAccountToken: Optional[bool] = None
+    automountServiceAccountToken: bool | None = None
     """
     AutomountServiceAccountToken indicates whether a service account token should be automatically mounted.
     """
-    containers: List[Container]
+    containers: list[Container]
     """
     List of containers belonging to the pod.
     Containers cannot currently be added or removed.
     There must be at least one container in a Pod.
     Cannot be updated.
     """
-    dnsConfig: Optional[DnsConfig] = None
+    dnsConfig: DnsConfig | None = None
     """
     Specifies the DNS parameters of a pod.
     Parameters specified here will be merged to the generated DNS
     configuration based on DNSPolicy.
     """
-    dnsPolicy: Optional[str] = None
+    dnsPolicy: str | None = None
     """
     Set DNS policy for the pod.
     Defaults to "ClusterFirst".
@@ -4268,30 +4268,30 @@ class SpecModel(BaseModel):
     To have DNS options set along with hostNetwork, you have to specify DNS policy
     explicitly to 'ClusterFirstWithHostNet'.
     """
-    enableServiceLinks: Optional[bool] = None
+    enableServiceLinks: bool | None = None
     """
     EnableServiceLinks indicates whether information about services should be injected into pod's
     environment variables, matching the syntax of Docker links.
     Optional: Defaults to true.
     """
-    ephemeralContainers: Optional[List[EphemeralContainer]] = None
+    ephemeralContainers: list[EphemeralContainer] | None = None
     """
     List of ephemeral containers run in this pod. Ephemeral containers may be run in an existing
     pod to perform user-initiated actions such as debugging. This list cannot be specified when
     creating a pod, and it cannot be modified by updating the pod spec. In order to add an
     ephemeral container to an existing pod, use the pod's ephemeralcontainers subresource.
     """
-    hostAliases: Optional[List[HostAliase]] = None
+    hostAliases: list[HostAliase] | None = None
     """
     HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
     file if specified.
     """
-    hostIPC: Optional[bool] = None
+    hostIPC: bool | None = None
     """
     Use the host's ipc namespace.
     Optional: Default to false.
     """
-    hostNetwork: Optional[bool] = None
+    hostNetwork: bool | None = None
     """
     Host networking requested for this pod. Use the host's network namespace.
     When using HostNetwork you should specify ports so the scheduler is aware.
@@ -4299,12 +4299,12 @@ class SpecModel(BaseModel):
     and unspecified `hostPort` fields in port definitions are defaulted to match `containerPort`.
     Default to false.
     """
-    hostPID: Optional[bool] = None
+    hostPID: bool | None = None
     """
     Use the host's pid namespace.
     Optional: Default to false.
     """
-    hostUsers: Optional[bool] = None
+    hostUsers: bool | None = None
     """
     Use the host's user namespace.
     Optional: Default to true.
@@ -4316,12 +4316,12 @@ class SpecModel(BaseModel):
     containers as root without actually having root privileges on the host.
     This field is alpha-level and is only honored by servers that enable the UserNamespacesSupport feature.
     """
-    hostname: Optional[str] = None
+    hostname: str | None = None
     """
     Specifies the hostname of the Pod
     If not specified, the pod's hostname will be set to a system-defined value.
     """
-    hostnameOverride: Optional[str] = None
+    hostnameOverride: str | None = None
     """
     HostnameOverride specifies an explicit override for the pod's hostname as perceived by the pod.
     This field only specifies the pod's hostname and does not affect its DNS records.
@@ -4334,13 +4334,13 @@ class SpecModel(BaseModel):
     This field must be a valid DNS subdomain as defined in RFC 1123 and contain at most 64 characters.
     Requires the HostnameOverride feature gate to be enabled.
     """
-    imagePullSecrets: Optional[List[ImagePullSecret]] = None
+    imagePullSecrets: list[ImagePullSecret] | None = None
     """
     ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images used by this PodSpec.
     If specified, these secrets will be passed to individual puller implementations for them to use.
     More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
     """
-    initContainers: Optional[List[InitContainer]] = None
+    initContainers: list[InitContainer] | None = None
     """
     List of initialization containers belonging to the pod.
     Init containers are executed in order prior to containers being started. If any
@@ -4356,7 +4356,7 @@ class SpecModel(BaseModel):
     Cannot be updated.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
     """
-    nodeName: Optional[str] = None
+    nodeName: str | None = None
     """
     NodeName indicates in which node this pod is scheduled.
     If empty, this pod is a candidate for scheduling by the scheduler defined in schedulerName.
@@ -4364,13 +4364,13 @@ class SpecModel(BaseModel):
     This field should not be used to express a desire for the pod to be scheduled on a specific node.
     https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodename
     """
-    nodeSelector: Optional[Dict[str, str]] = None
+    nodeSelector: dict[str, str] | None = None
     """
     NodeSelector is a selector which must be true for the pod to fit on a node.
     Selector which must match a node's labels for the pod to be scheduled on that node.
     More info: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
     """
-    os: Optional[Os] = None
+    os: Os | None = None
     """
     Specifies the OS of the containers in the pod.
     Some pod and container fields are restricted if this is set.
@@ -4405,7 +4405,7 @@ class SpecModel(BaseModel):
     - spec.containers[*].securityContext.runAsUser
     - spec.containers[*].securityContext.runAsGroup
     """
-    overhead: Optional[Dict[str, Union[Overhead, OverheadModel]]] = None
+    overhead: dict[str, Overhead | OverheadModel] | None = None
     """
     Overhead represents the resource overhead associated with running a pod for a given RuntimeClass.
     This field will be autopopulated at admission time by the RuntimeClass admission controller. If
@@ -4415,13 +4415,13 @@ class SpecModel(BaseModel):
     defined in the corresponding RuntimeClass, otherwise it will remain unset and treated as zero.
     More info: https://git.k8s.io/enhancements/keps/sig-node/688-pod-overhead/README.md
     """
-    preemptionPolicy: Optional[str] = None
+    preemptionPolicy: str | None = None
     """
     PreemptionPolicy is the Policy for preempting pods with lower priority.
     One of Never, PreemptLowerPriority.
     Defaults to PreemptLowerPriority if unset.
     """
-    priority: Optional[int] = None
+    priority: int | None = None
     """
     The priority value. Various system components use this field to find the
     priority of the pod. When Priority Admission Controller is enabled, it
@@ -4429,7 +4429,7 @@ class SpecModel(BaseModel):
     this field from PriorityClassName.
     The higher the value, the higher the priority.
     """
-    priorityClassName: Optional[str] = None
+    priorityClassName: str | None = None
     """
     If specified, indicates the pod's priority. "system-node-critical" and
     "system-cluster-critical" are two special keywords which indicate the
@@ -4438,14 +4438,14 @@ class SpecModel(BaseModel):
     If not specified, the pod priority will be default or zero if there is no
     default.
     """
-    readinessGates: Optional[List[ReadinessGate]] = None
+    readinessGates: list[ReadinessGate] | None = None
     """
     If specified, all readiness gates will be evaluated for pod readiness.
     A pod is ready when all its containers are ready AND
     all conditions specified in the readiness gates have status equal to "True"
     More info: https://git.k8s.io/enhancements/keps/sig-network/580-pod-readiness-gates
     """
-    resourceClaims: Optional[List[ResourceClaim]] = None
+    resourceClaims: list[ResourceClaim] | None = None
     """
     ResourceClaims defines which ResourceClaims must be allocated
     and reserved before the Pod is allowed to start. The resources
@@ -4457,7 +4457,7 @@ class SpecModel(BaseModel):
 
     This field is immutable.
     """
-    resources: Optional[Resources] = None
+    resources: Resources | None = None
     """
     Resources is the total amount of CPU and Memory resources required by all
     containers in the pod. It supports specifying Requests and Limits for
@@ -4469,14 +4469,14 @@ class SpecModel(BaseModel):
     This is an alpha field and requires enabling the PodLevelResources feature
     gate.
     """
-    restartPolicy: Optional[str] = None
+    restartPolicy: str | None = None
     """
     Restart policy for all containers within the pod.
     One of Always, OnFailure, Never. In some contexts, only a subset of those values may be permitted.
     Default to Always.
     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy
     """
-    runtimeClassName: Optional[str] = None
+    runtimeClassName: str | None = None
     """
     RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used
     to run this pod.  If no RuntimeClass resource matches the named class, the pod will not be run.
@@ -4484,12 +4484,12 @@ class SpecModel(BaseModel):
     empty definition that uses the default runtime handler.
     More info: https://git.k8s.io/enhancements/keps/sig-node/585-runtime-class
     """
-    schedulerName: Optional[str] = None
+    schedulerName: str | None = None
     """
     If specified, the pod will be dispatched by specified scheduler.
     If not specified, the pod will be dispatched by default scheduler.
     """
-    schedulingGates: Optional[List[SchedulingGate]] = None
+    schedulingGates: list[SchedulingGate] | None = None
     """
     SchedulingGates is an opaque list of values that if specified will block scheduling the pod.
     If schedulingGates is not empty, the pod will stay in the SchedulingGated state and the
@@ -4497,30 +4497,30 @@ class SpecModel(BaseModel):
 
     SchedulingGates can only be set at pod creation time, and be removed only afterwards.
     """
-    securityContext: Optional[SecurityContextModel] = None
+    securityContext: SecurityContextModel | None = None
     """
     SecurityContext holds pod-level security attributes and common container settings.
     Optional: Defaults to empty.  See type description for default values of each field.
     """
-    serviceAccount: Optional[str] = None
+    serviceAccount: str | None = None
     """
     DeprecatedServiceAccount is a deprecated alias for ServiceAccountName.
     Deprecated: Use serviceAccountName instead.
     """
-    serviceAccountName: Optional[str] = None
+    serviceAccountName: str | None = None
     """
     ServiceAccountName is the name of the ServiceAccount to use to run this pod.
     More info: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
     """
-    setHostnameAsFQDN: Optional[bool] = None
+    setHostnameAsFQDN: bool | None = None
     """
     If true the pod's hostname will be configured as the pod's FQDN, rather than the leaf name (the default).
     In Linux containers, this means setting the FQDN in the hostname field of the kernel (the nodename field of struct utsname).
-    In Windows containers, this means setting the registry value of hostname for the registry key HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters to FQDN.
+    In Windows containers, this means setting the registry value of hostname for the registry key HKEY_LOCAL_MACHINE\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\Tcpip\\\\Parameters to FQDN.
     If a pod does not have FQDN, this has no effect.
     Default to false.
     """
-    shareProcessNamespace: Optional[bool] = None
+    shareProcessNamespace: bool | None = None
     """
     Share a single process namespace between all of the containers in a pod.
     When this is set containers will be able to view and signal processes from other containers
@@ -4528,12 +4528,12 @@ class SpecModel(BaseModel):
     HostPID and ShareProcessNamespace cannot both be set.
     Optional: Default to false.
     """
-    subdomain: Optional[str] = None
+    subdomain: str | None = None
     """
     If specified, the fully qualified Pod hostname will be "<hostname>.<subdomain>.<pod namespace>.svc.<cluster domain>".
     If not specified, the pod will not have a domainname at all.
     """
-    terminationGracePeriodSeconds: Optional[int] = None
+    terminationGracePeriodSeconds: int | None = None
     """
     Optional duration in seconds the pod needs to terminate gracefully. May be decreased in delete request.
     Value must be non-negative integer. The value zero indicates stop immediately via
@@ -4544,22 +4544,22 @@ class SpecModel(BaseModel):
     Set this value longer than the expected cleanup time for your process.
     Defaults to 30 seconds.
     """
-    tolerations: Optional[List[Toleration]] = None
+    tolerations: list[Toleration] | None = None
     """
     If specified, the pod's tolerations.
     """
-    topologySpreadConstraints: Optional[List[TopologySpreadConstraint]] = None
+    topologySpreadConstraints: list[TopologySpreadConstraint] | None = None
     """
     TopologySpreadConstraints describes how a group of pods ought to spread across topology
     domains. Scheduler will schedule pods in a way which abides by the constraints.
     All topologySpreadConstraints are ANDed.
     """
-    volumes: Optional[List[Volume]] = None
+    volumes: list[Volume] | None = None
     """
     List of volumes that can be mounted by containers belonging to the pod.
     More info: https://kubernetes.io/docs/concepts/storage/volumes
     """
-    workloadRef: Optional[WorkloadRef] = None
+    workloadRef: WorkloadRef | None = None
     """
     WorkloadRef provides a reference to the Workload object that this Pod belongs to.
     This field is used by the scheduler to identify the PodGroup and apply the
@@ -4572,12 +4572,12 @@ class SpecModel(BaseModel):
 
 
 class Template(BaseModel):
-    metadata: Optional[MetadataModel] = None
+    metadata: MetadataModel | None = None
     """
     Standard object's metadata.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[SpecModel] = None
+    spec: SpecModel | None = None
     """
     Specification of the desired behavior of the pod.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
@@ -4585,17 +4585,17 @@ class Template(BaseModel):
 
 
 class SpecModel1(BaseModel):
-    minReadySeconds: Optional[int] = None
+    minReadySeconds: int | None = None
     """
     Minimum number of seconds for which a newly created pod should be ready
     without any of its container crashing, for it to be considered available.
     Defaults to 0 (pod will be considered available as soon as it is ready)
     """
-    paused: Optional[bool] = None
+    paused: bool | None = None
     """
     Indicates that the deployment is paused.
     """
-    progressDeadlineSeconds: Optional[int] = None
+    progressDeadlineSeconds: int | None = None
     """
     The maximum time in seconds for a deployment to make progress before it
     is considered to be failed. The deployment controller will continue to
@@ -4603,12 +4603,12 @@ class SpecModel1(BaseModel):
     reason will be surfaced in the deployment status. Note that progress will
     not be estimated during the time a deployment is paused. Defaults to 600s.
     """
-    replicas: Optional[int] = None
+    replicas: int | None = None
     """
     Number of desired pods. This is a pointer to distinguish between explicit
     zero and not specified. Defaults to 1.
     """
-    revisionHistoryLimit: Optional[int] = None
+    revisionHistoryLimit: int | None = None
     """
     The number of old ReplicaSets to retain to allow rollback.
     This is a pointer to distinguish between explicit zero and not specified.
@@ -4620,7 +4620,7 @@ class SpecModel1(BaseModel):
     selected by this will be the ones affected by this deployment.
     It must match the pod template's labels.
     """
-    strategy: Optional[Strategy] = None
+    strategy: Strategy | None = None
     """
     The deployment strategy to use to replace existing pods with new ones.
     """
@@ -4632,25 +4632,25 @@ class SpecModel1(BaseModel):
 
 
 class DeploymentTemplate(BaseModel):
-    metadata: Optional[Metadata] = None
+    metadata: Metadata | None = None
     """
     Metadata contains the configurable metadata fields for the Deployment.
     """
-    spec: Optional[SpecModel1] = None
+    spec: SpecModel1 | None = None
     """
     Spec contains the configurable spec fields for the Deployment object.
     """
 
 
 class MetadataModel1(BaseModel):
-    annotations: Optional[Dict[str, str]] = None
+    annotations: dict[str, str] | None = None
     """
     Annotations is an unstructured key value map stored with a resource that
     may be set by external tools to store and retrieve arbitrary metadata.
     They are not queryable and should be preserved when modifying objects.
     More info: http:https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Map of string keys and values that can be used to organize and categorize
     (scope and select) objects. Labels will be merged with internal labels
@@ -4658,57 +4658,57 @@ class MetadataModel1(BaseModel):
     overwritten.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name is the name of the object.
     """
 
 
 class ServiceAccountTemplate(BaseModel):
-    metadata: Optional[MetadataModel1] = None
+    metadata: MetadataModel1 | None = None
     """
     Metadata contains the configurable metadata fields for the ServiceAccount.
     """
 
 
 class ServiceTemplate(BaseModel):
-    metadata: Optional[MetadataModel1] = None
+    metadata: MetadataModel1 | None = None
     """
     Metadata contains the configurable metadata fields for the Service.
     """
 
 
 class SpecModel2(BaseModel):
-    deploymentTemplate: Optional[DeploymentTemplate] = None
+    deploymentTemplate: DeploymentTemplate | None = None
     """
     DeploymentTemplate is the template for the Deployment object.
     """
-    serviceAccountTemplate: Optional[ServiceAccountTemplate] = None
+    serviceAccountTemplate: ServiceAccountTemplate | None = None
     """
     ServiceAccountTemplate is the template for the ServiceAccount object.
     """
-    serviceTemplate: Optional[ServiceTemplate] = None
+    serviceTemplate: ServiceTemplate | None = None
     """
     ServiceTemplate is the template for the Service object.
     """
 
 
 class DeploymentRuntimeConfig(BaseModel):
-    apiVersion: Optional[Literal['pkg.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['pkg.crossplane.io/v1beta1'] | None = (
         'pkg.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['DeploymentRuntimeConfig']] = 'DeploymentRuntimeConfig'
+    kind: Literal['DeploymentRuntimeConfig'] | None = 'DeploymentRuntimeConfig'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[SpecModel2] = None
+    spec: SpecModel2 | None = None
     """
     DeploymentRuntimeConfigSpec specifies the configuration for a packaged controller.
     Values provided will override package manager defaults. Labels and
@@ -4717,19 +4717,19 @@ class DeploymentRuntimeConfig(BaseModel):
 
 
 class DeploymentRuntimeConfigList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[DeploymentRuntimeConfig]
+    items: list[DeploymentRuntimeConfig]
     """
     List of deploymentruntimeconfigs. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

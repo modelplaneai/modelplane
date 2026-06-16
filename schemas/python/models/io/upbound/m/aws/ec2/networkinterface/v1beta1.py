@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class SecurityGroupRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SecurityGroupSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,95 +67,95 @@ class SubnetIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description for the network interface.
     """
-    enablePrimaryIpv6: Optional[bool] = None
+    enablePrimaryIpv6: bool | None = None
     """
     Enables assigning a primary IPv6 Global Unicast Address (GUA) to the network interface (ENI) in dual-stack or IPv6-only subnets. This ensures the instance attached to the ENI retains a consistent IPv6 address. Once enabled, the first IPv6 GUA becomes the primary IPv6 address and cannot be disabled. The primary IPv6 address remains assigned until the instance is terminated or the ENI is detached. Enabling and subsequent disabling forces recreation of the ENI.
     """
-    interfaceType: Optional[str] = None
+    interfaceType: str | None = None
     """
     Type of network interface to create. Set to efa for Elastic Fabric Adapter. Changing interface_type will cause the resource to be destroyed and re-created.
     """
-    ipv4PrefixCount: Optional[float] = None
+    ipv4PrefixCount: float | None = None
     """
     Number of IPv4 prefixes that AWS automatically assigns to the network interface.
     """
-    ipv4Prefixes: Optional[List[str]] = None
+    ipv4Prefixes: list[str] | None = None
     """
     One or more IPv4 prefixes assigned to the network interface.
     """
-    ipv6AddressCount: Optional[float] = None
+    ipv6AddressCount: float | None = None
     """
     Number of IPv6 addresses to assign to a network interface. You can't use this option if specifying specific ipv6_addresses. If your subnet has the AssignIpv6AddressOnCreation attribute set to true, you can specify 0 to override this setting.
     """
-    ipv6AddressList: Optional[List[str]] = None
+    ipv6AddressList: list[str] | None = None
     """
     List of private IPs to assign to the ENI in sequential order.
     """
-    ipv6AddressListEnabled: Optional[bool] = None
+    ipv6AddressListEnabled: bool | None = None
     """
     Whether ipv6_address_list is allowed and controls the IPs to assign to the ENI and ipv6_addresses and ipv6_address_count become read-only. Default is false.
     """
-    ipv6Addresses: Optional[List[str]] = None
+    ipv6Addresses: list[str] | None = None
     """
     One or more specific IPv6 addresses from the IPv6 CIDR block range of your subnet. Addresses are assigned without regard to order. You can't use this option if you're specifying ipv6_address_count.
     """
-    ipv6PrefixCount: Optional[float] = None
+    ipv6PrefixCount: float | None = None
     """
     Number of IPv6 prefixes that AWS automatically assigns to the network interface.
     """
-    ipv6Prefixes: Optional[List[str]] = None
+    ipv6Prefixes: list[str] | None = None
     """
     One or more IPv6 prefixes assigned to the network interface.
     """
-    privateIp: Optional[str] = None
-    privateIpList: Optional[List[str]] = None
+    privateIp: str | None = None
+    privateIpList: list[str] | None = None
     """
     List of private IPs to assign to the ENI in sequential order. Requires setting private_ip_list_enabled to true.
     """
-    privateIpListEnabled: Optional[bool] = None
+    privateIpListEnabled: bool | None = None
     """
     Whether private_ip_list is allowed and controls the IPs to assign to the ENI and private_ips and private_ips_count become read-only. Default is false.
     """
-    privateIps: Optional[List[str]] = None
+    privateIps: list[str] | None = None
     """
     List of private IPs to assign to the ENI without regard to order.
     """
-    privateIpsCount: Optional[float] = None
+    privateIpsCount: float | None = None
     """
     Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assiged to an ENI by default.
     """
@@ -165,131 +164,131 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    securityGroupRefs: Optional[List[SecurityGroupRef]] = None
+    securityGroupRefs: list[SecurityGroupRef] | None = None
     """
     References to SecurityGroup in ec2 to populate securityGroups.
     """
-    securityGroupSelector: Optional[SecurityGroupSelector] = None
+    securityGroupSelector: SecurityGroupSelector | None = None
     """
     Selector for a list of SecurityGroup in ec2 to populate securityGroups.
     """
-    securityGroups: Optional[List[str]] = None
+    securityGroups: list[str] | None = None
     """
     List of security group IDs to assign to the ENI.
     """
-    sourceDestCheck: Optional[bool] = None
+    sourceDestCheck: bool | None = None
     """
     Whether to enable source destination checking for the ENI. Default true.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     Subnet ID to create the ENI in.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description for the network interface.
     """
-    enablePrimaryIpv6: Optional[bool] = None
+    enablePrimaryIpv6: bool | None = None
     """
     Enables assigning a primary IPv6 Global Unicast Address (GUA) to the network interface (ENI) in dual-stack or IPv6-only subnets. This ensures the instance attached to the ENI retains a consistent IPv6 address. Once enabled, the first IPv6 GUA becomes the primary IPv6 address and cannot be disabled. The primary IPv6 address remains assigned until the instance is terminated or the ENI is detached. Enabling and subsequent disabling forces recreation of the ENI.
     """
-    interfaceType: Optional[str] = None
+    interfaceType: str | None = None
     """
     Type of network interface to create. Set to efa for Elastic Fabric Adapter. Changing interface_type will cause the resource to be destroyed and re-created.
     """
-    ipv4PrefixCount: Optional[float] = None
+    ipv4PrefixCount: float | None = None
     """
     Number of IPv4 prefixes that AWS automatically assigns to the network interface.
     """
-    ipv4Prefixes: Optional[List[str]] = None
+    ipv4Prefixes: list[str] | None = None
     """
     One or more IPv4 prefixes assigned to the network interface.
     """
-    ipv6AddressCount: Optional[float] = None
+    ipv6AddressCount: float | None = None
     """
     Number of IPv6 addresses to assign to a network interface. You can't use this option if specifying specific ipv6_addresses. If your subnet has the AssignIpv6AddressOnCreation attribute set to true, you can specify 0 to override this setting.
     """
-    ipv6AddressList: Optional[List[str]] = None
+    ipv6AddressList: list[str] | None = None
     """
     List of private IPs to assign to the ENI in sequential order.
     """
-    ipv6AddressListEnabled: Optional[bool] = None
+    ipv6AddressListEnabled: bool | None = None
     """
     Whether ipv6_address_list is allowed and controls the IPs to assign to the ENI and ipv6_addresses and ipv6_address_count become read-only. Default is false.
     """
-    ipv6Addresses: Optional[List[str]] = None
+    ipv6Addresses: list[str] | None = None
     """
     One or more specific IPv6 addresses from the IPv6 CIDR block range of your subnet. Addresses are assigned without regard to order. You can't use this option if you're specifying ipv6_address_count.
     """
-    ipv6PrefixCount: Optional[float] = None
+    ipv6PrefixCount: float | None = None
     """
     Number of IPv6 prefixes that AWS automatically assigns to the network interface.
     """
-    ipv6Prefixes: Optional[List[str]] = None
+    ipv6Prefixes: list[str] | None = None
     """
     One or more IPv6 prefixes assigned to the network interface.
     """
-    privateIp: Optional[str] = None
-    privateIpList: Optional[List[str]] = None
+    privateIp: str | None = None
+    privateIpList: list[str] | None = None
     """
     List of private IPs to assign to the ENI in sequential order. Requires setting private_ip_list_enabled to true.
     """
-    privateIpListEnabled: Optional[bool] = None
+    privateIpListEnabled: bool | None = None
     """
     Whether private_ip_list is allowed and controls the IPs to assign to the ENI and private_ips and private_ips_count become read-only. Default is false.
     """
-    privateIps: Optional[List[str]] = None
+    privateIps: list[str] | None = None
     """
     List of private IPs to assign to the ENI without regard to order.
     """
-    privateIpsCount: Optional[float] = None
+    privateIpsCount: float | None = None
     """
     Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assiged to an ENI by default.
     """
-    securityGroupRefs: Optional[List[SecurityGroupRef]] = None
+    securityGroupRefs: list[SecurityGroupRef] | None = None
     """
     References to SecurityGroup in ec2 to populate securityGroups.
     """
-    securityGroupSelector: Optional[SecurityGroupSelector] = None
+    securityGroupSelector: SecurityGroupSelector | None = None
     """
     Selector for a list of SecurityGroup in ec2 to populate securityGroups.
     """
-    securityGroups: Optional[List[str]] = None
+    securityGroups: list[str] | None = None
     """
     List of security group IDs to assign to the ENI.
     """
-    sourceDestCheck: Optional[bool] = None
+    sourceDestCheck: bool | None = None
     """
     Whether to enable source destination checking for the ENI. Default true.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     Subnet ID to create the ENI in.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -315,7 +314,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -328,9 +327,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -339,17 +339,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -359,153 +357,153 @@ class Spec(BaseModel):
 
 
 class AttachmentItem(BaseModel):
-    attachmentId: Optional[str] = None
+    attachmentId: str | None = None
     """
     ID of the network interface.
     """
-    deviceIndex: Optional[float] = None
+    deviceIndex: float | None = None
     """
     Integer to define the devices index.
     """
-    instance: Optional[str] = None
+    instance: str | None = None
     """
     ID of the instance to attach to.
     """
-    networkCardIndex: Optional[float] = None
+    networkCardIndex: float | None = None
     """
     Index of the network card. Specify a value greater than 0 when using multiple network cards, which are supported by some instance types. The default is 0.
     """
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the network interface.
     """
-    attachment: Optional[List[AttachmentItem]] = None
+    attachment: list[AttachmentItem] | None = None
     """
     Configuration block to define the attachment of the ENI. See Attachment below for more details!
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description for the network interface.
     """
-    enablePrimaryIpv6: Optional[bool] = None
+    enablePrimaryIpv6: bool | None = None
     """
     Enables assigning a primary IPv6 Global Unicast Address (GUA) to the network interface (ENI) in dual-stack or IPv6-only subnets. This ensures the instance attached to the ENI retains a consistent IPv6 address. Once enabled, the first IPv6 GUA becomes the primary IPv6 address and cannot be disabled. The primary IPv6 address remains assigned until the instance is terminated or the ENI is detached. Enabling and subsequent disabling forces recreation of the ENI.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the network interface.
     """
-    interfaceType: Optional[str] = None
+    interfaceType: str | None = None
     """
     Type of network interface to create. Set to efa for Elastic Fabric Adapter. Changing interface_type will cause the resource to be destroyed and re-created.
     """
-    ipv4PrefixCount: Optional[float] = None
+    ipv4PrefixCount: float | None = None
     """
     Number of IPv4 prefixes that AWS automatically assigns to the network interface.
     """
-    ipv4Prefixes: Optional[List[str]] = None
+    ipv4Prefixes: list[str] | None = None
     """
     One or more IPv4 prefixes assigned to the network interface.
     """
-    ipv6AddressCount: Optional[float] = None
+    ipv6AddressCount: float | None = None
     """
     Number of IPv6 addresses to assign to a network interface. You can't use this option if specifying specific ipv6_addresses. If your subnet has the AssignIpv6AddressOnCreation attribute set to true, you can specify 0 to override this setting.
     """
-    ipv6AddressList: Optional[List[str]] = None
+    ipv6AddressList: list[str] | None = None
     """
     List of private IPs to assign to the ENI in sequential order.
     """
-    ipv6AddressListEnabled: Optional[bool] = None
+    ipv6AddressListEnabled: bool | None = None
     """
     Whether ipv6_address_list is allowed and controls the IPs to assign to the ENI and ipv6_addresses and ipv6_address_count become read-only. Default is false.
     """
-    ipv6Addresses: Optional[List[str]] = None
+    ipv6Addresses: list[str] | None = None
     """
     One or more specific IPv6 addresses from the IPv6 CIDR block range of your subnet. Addresses are assigned without regard to order. You can't use this option if you're specifying ipv6_address_count.
     """
-    ipv6PrefixCount: Optional[float] = None
+    ipv6PrefixCount: float | None = None
     """
     Number of IPv6 prefixes that AWS automatically assigns to the network interface.
     """
-    ipv6Prefixes: Optional[List[str]] = None
+    ipv6Prefixes: list[str] | None = None
     """
     One or more IPv6 prefixes assigned to the network interface.
     """
-    macAddress: Optional[str] = None
+    macAddress: str | None = None
     """
     MAC address of the network interface.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     ARN of the network interface.
     """
-    ownerId: Optional[str] = None
+    ownerId: str | None = None
     """
     AWS account ID of the owner of the network interface.
     """
-    privateDnsName: Optional[str] = None
+    privateDnsName: str | None = None
     """
     Private DNS name of the network interface (IPv4).
     """
-    privateIp: Optional[str] = None
-    privateIpList: Optional[List[str]] = None
+    privateIp: str | None = None
+    privateIpList: list[str] | None = None
     """
     List of private IPs to assign to the ENI in sequential order. Requires setting private_ip_list_enabled to true.
     """
-    privateIpListEnabled: Optional[bool] = None
+    privateIpListEnabled: bool | None = None
     """
     Whether private_ip_list is allowed and controls the IPs to assign to the ENI and private_ips and private_ips_count become read-only. Default is false.
     """
-    privateIps: Optional[List[str]] = None
+    privateIps: list[str] | None = None
     """
     List of private IPs to assign to the ENI without regard to order.
     """
-    privateIpsCount: Optional[float] = None
+    privateIpsCount: float | None = None
     """
     Number of secondary private IPs to assign to the ENI. The total number of private IPs will be 1 + private_ips_count, as a primary private IP will be assiged to an ENI by default.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    securityGroups: Optional[List[str]] = None
+    securityGroups: list[str] | None = None
     """
     List of security group IDs to assign to the ENI.
     """
-    sourceDestCheck: Optional[bool] = None
+    sourceDestCheck: bool | None = None
     """
     Whether to enable source destination checking for the ENI. Default true.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     Subnet ID to create the ENI in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -527,12 +525,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -541,17 +539,17 @@ class Status(BaseModel):
 
 
 class NetworkInterface(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.m.upbound.io/v1beta1'] | None = (
         'ec2.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['NetworkInterface']] = 'NetworkInterface'
+    kind: Literal['NetworkInterface'] | None = 'NetworkInterface'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -559,26 +557,26 @@ class NetworkInterface(BaseModel):
     """
     NetworkInterfaceSpec defines the desired state of NetworkInterface
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     NetworkInterfaceStatus defines the observed state of NetworkInterface.
     """
 
 
 class NetworkInterfaceList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[NetworkInterface]
+    items: list[NetworkInterface]
     """
     List of networkinterfaces. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

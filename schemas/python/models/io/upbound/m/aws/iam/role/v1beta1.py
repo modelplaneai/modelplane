@@ -3,34 +3,33 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class InlinePolicyItem(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Friendly name of the role. See IAM Identifiers for more information.
     """
-    policy: Optional[str] = None
+    policy: str | None = None
     """
     Policy document as a JSON formatted string.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -44,125 +43,125 @@ class ManagedPolicyArnsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ManagedPolicyArnsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    assumeRolePolicy: Optional[str] = None
+    assumeRolePolicy: str | None = None
     """
     Policy that grants an entity permission to assume the role. This field is required, but it can be specified in either 'spec.forProvider.assumeRolePolicy' or 'spec.initProvider.assumeRolePolicy'. While it may appear optional in each location individually, the resource requires that it is defined in at least one of them during creation.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description of the role.
     """
-    forceDetachPolicies: Optional[bool] = None
+    forceDetachPolicies: bool | None = None
     """
     Whether to force detaching any policies the role has before destroying it. Defaults to false.
     """
-    inlinePolicy: Optional[List[InlinePolicyItem]] = None
+    inlinePolicy: list[InlinePolicyItem] | None = None
     """
     Configuration block defining an exclusive set of IAM inline policies associated with the IAM role. See below. If no blocks are configured, Crossplane will not manage any inline policies in this resource. Configuring one empty block (i.e., inline_policy {}) will cause Crossplane to remove all inline policies added out of band on apply.
     """
-    managedPolicyArns: Optional[List[str]] = None
+    managedPolicyArns: list[str] | None = None
     """
     Set of exclusive IAM managed policy ARNs to attach to the IAM role. If this attribute is not configured, Crossplane will ignore policy attachments to this resource. When configured, Crossplane will align the role's managed policy attachments with this set by attaching or detaching managed policies. Configuring an empty set (i.e., managed_policy_arns = []) will cause Crossplane to remove all managed policy attachments.
     """
-    managedPolicyArnsRefs: Optional[List[ManagedPolicyArnsRef]] = None
+    managedPolicyArnsRefs: list[ManagedPolicyArnsRef] | None = None
     """
     References to Policy in iam to populate managedPolicyArns.
     """
-    managedPolicyArnsSelector: Optional[ManagedPolicyArnsSelector] = None
+    managedPolicyArnsSelector: ManagedPolicyArnsSelector | None = None
     """
     Selector for a list of Policy in iam to populate managedPolicyArns.
     """
-    maxSessionDuration: Optional[float] = None
+    maxSessionDuration: float | None = None
     """
     Maximum session duration (in seconds) that you want to set for the specified role. If you do not specify a value for this setting, the default maximum of one hour is applied. This setting can have a value from 1 hour to 12 hours.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path to the role. See IAM Identifiers for more information.
     """
-    permissionsBoundary: Optional[str] = None
+    permissionsBoundary: str | None = None
     """
     ARN of the policy that is used to set the permissions boundary for the role.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    assumeRolePolicy: Optional[str] = None
+    assumeRolePolicy: str | None = None
     """
     Policy that grants an entity permission to assume the role. This field is required, but it can be specified in either 'spec.forProvider.assumeRolePolicy' or 'spec.initProvider.assumeRolePolicy'. While it may appear optional in each location individually, the resource requires that it is defined in at least one of them during creation.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description of the role.
     """
-    forceDetachPolicies: Optional[bool] = None
+    forceDetachPolicies: bool | None = None
     """
     Whether to force detaching any policies the role has before destroying it. Defaults to false.
     """
-    inlinePolicy: Optional[List[InlinePolicyItem]] = None
+    inlinePolicy: list[InlinePolicyItem] | None = None
     """
     Configuration block defining an exclusive set of IAM inline policies associated with the IAM role. See below. If no blocks are configured, Crossplane will not manage any inline policies in this resource. Configuring one empty block (i.e., inline_policy {}) will cause Crossplane to remove all inline policies added out of band on apply.
     """
-    managedPolicyArns: Optional[List[str]] = None
+    managedPolicyArns: list[str] | None = None
     """
     Set of exclusive IAM managed policy ARNs to attach to the IAM role. If this attribute is not configured, Crossplane will ignore policy attachments to this resource. When configured, Crossplane will align the role's managed policy attachments with this set by attaching or detaching managed policies. Configuring an empty set (i.e., managed_policy_arns = []) will cause Crossplane to remove all managed policy attachments.
     """
-    managedPolicyArnsRefs: Optional[List[ManagedPolicyArnsRef]] = None
+    managedPolicyArnsRefs: list[ManagedPolicyArnsRef] | None = None
     """
     References to Policy in iam to populate managedPolicyArns.
     """
-    managedPolicyArnsSelector: Optional[ManagedPolicyArnsSelector] = None
+    managedPolicyArnsSelector: ManagedPolicyArnsSelector | None = None
     """
     Selector for a list of Policy in iam to populate managedPolicyArns.
     """
-    maxSessionDuration: Optional[float] = None
+    maxSessionDuration: float | None = None
     """
     Maximum session duration (in seconds) that you want to set for the specified role. If you do not specify a value for this setting, the default maximum of one hour is applied. This setting can have a value from 1 hour to 12 hours.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path to the role. See IAM Identifiers for more information.
     """
-    permissionsBoundary: Optional[str] = None
+    permissionsBoundary: str | None = None
     """
     ARN of the policy that is used to set the permissions boundary for the role.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -188,7 +187,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -201,9 +200,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -212,17 +212,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -232,76 +230,76 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     Amazon Resource Name (ARN) specifying the role.
     """
-    assumeRolePolicy: Optional[str] = None
+    assumeRolePolicy: str | None = None
     """
     Policy that grants an entity permission to assume the role. This field is required, but it can be specified in either 'spec.forProvider.assumeRolePolicy' or 'spec.initProvider.assumeRolePolicy'. While it may appear optional in each location individually, the resource requires that it is defined in at least one of them during creation.
     """
-    createDate: Optional[str] = None
+    createDate: str | None = None
     """
     Creation date of the IAM role.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description of the role.
     """
-    forceDetachPolicies: Optional[bool] = None
+    forceDetachPolicies: bool | None = None
     """
     Whether to force detaching any policies the role has before destroying it. Defaults to false.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     Name of the role.
     """
-    inlinePolicy: Optional[List[InlinePolicyItem]] = None
+    inlinePolicy: list[InlinePolicyItem] | None = None
     """
     Configuration block defining an exclusive set of IAM inline policies associated with the IAM role. See below. If no blocks are configured, Crossplane will not manage any inline policies in this resource. Configuring one empty block (i.e., inline_policy {}) will cause Crossplane to remove all inline policies added out of band on apply.
     """
-    managedPolicyArns: Optional[List[str]] = None
+    managedPolicyArns: list[str] | None = None
     """
     Set of exclusive IAM managed policy ARNs to attach to the IAM role. If this attribute is not configured, Crossplane will ignore policy attachments to this resource. When configured, Crossplane will align the role's managed policy attachments with this set by attaching or detaching managed policies. Configuring an empty set (i.e., managed_policy_arns = []) will cause Crossplane to remove all managed policy attachments.
     """
-    maxSessionDuration: Optional[float] = None
+    maxSessionDuration: float | None = None
     """
     Maximum session duration (in seconds) that you want to set for the specified role. If you do not specify a value for this setting, the default maximum of one hour is applied. This setting can have a value from 1 hour to 12 hours.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path to the role. See IAM Identifiers for more information.
     """
-    permissionsBoundary: Optional[str] = None
+    permissionsBoundary: str | None = None
     """
     ARN of the policy that is used to set the permissions boundary for the role.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    uniqueId: Optional[str] = None
+    uniqueId: str | None = None
     """
     Stable and unique string identifying the role.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -323,12 +321,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -337,17 +335,17 @@ class Status(BaseModel):
 
 
 class Role(BaseModel):
-    apiVersion: Optional[Literal['iam.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['iam.aws.m.upbound.io/v1beta1'] | None = (
         'iam.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Role']] = 'Role'
+    kind: Literal['Role'] | None = 'Role'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -355,26 +353,26 @@ class Role(BaseModel):
     """
     RoleSpec defines the desired state of Role
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     RoleStatus defines the observed state of Role.
     """
 
 
 class RoleList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Role]
+    items: list[Role]
     """
     List of roles. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

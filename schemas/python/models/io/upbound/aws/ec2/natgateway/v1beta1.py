@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,23 +32,23 @@ class AllocationIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class AllocationIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -60,46 +59,46 @@ class AllocationIdsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class AllocationIdsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class AvailabilityZoneAddres(BaseModel):
-    allocationIds: Optional[List[str]] = None
+    allocationIds: list[str] | None = None
     """
     List of allocation IDs of the Elastic IP addresses (EIPs) to be used for handling outbound NAT traffic in this specific Availability Zone.
     """
-    allocationIdsRefs: Optional[List[AllocationIdsRef]] = None
+    allocationIdsRefs: list[AllocationIdsRef] | None = None
     """
     References to EIP in ec2 to populate allocationIds.
     """
-    allocationIdsSelector: Optional[AllocationIdsSelector] = None
+    allocationIdsSelector: AllocationIdsSelector | None = None
     """
     Selector for a list of EIP in ec2 to populate allocationIds.
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     Availability Zone (e.g. us-west-2a) where this specific NAT gateway configuration will be active. Exactly one of availability_zone or availability_zone_id must be specified.
     """
-    availabilityZoneId: Optional[str] = None
+    availabilityZoneId: str | None = None
     """
     Availability Zone ID (e.g. usw2-az2) where this specific NAT gateway configuration will be active. Exactly one of availability_zone or availability_zone_id must be specified.
     """
@@ -110,23 +109,23 @@ class SecondaryAllocationIdsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SecondaryAllocationIdsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -137,23 +136,23 @@ class SubnetIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -164,54 +163,54 @@ class VpcIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class VpcIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    allocationId: Optional[str] = None
+    allocationId: str | None = None
     """
     The Allocation ID of the Elastic IP address for the NAT Gateway. Required when connectivity_type is set to public and availability_mode is set to zonal. When availability_mode is set to regional, this must not be set; instead, use the availability_zone_address block to specify EIPs for each AZ.
     """
-    allocationIdRef: Optional[AllocationIdRef] = None
+    allocationIdRef: AllocationIdRef | None = None
     """
     Reference to a EIP in ec2 to populate allocationId.
     """
-    allocationIdSelector: Optional[AllocationIdSelector] = None
+    allocationIdSelector: AllocationIdSelector | None = None
     """
     Selector for a EIP in ec2 to populate allocationId.
     """
-    availabilityMode: Optional[str] = None
+    availabilityMode: str | None = None
     """
     Specifies whether to create a zonal (single-AZ) or regional (multi-AZ) NAT gateway. Valid values are zonal and regional. Defaults to zonal.
     """
-    availabilityZoneAddress: Optional[List[AvailabilityZoneAddres]] = None
+    availabilityZoneAddress: list[AvailabilityZoneAddres] | None = None
     """
     Repeatable configuration block for the Elastic IP addresses (EIPs) and availability zones for the regional NAT gateway. When not specified, the regional NAT gateway will automatically expand to new AZs and associate EIPs upon detection of an elastic network interface (auto mode). When specified, auto-expansion is disabled (manual mode). See availability_zone_address below for details.
     """
-    connectivityType: Optional[str] = None
+    connectivityType: str | None = None
     """
     Connectivity type for the NAT Gateway. Valid values are private and public. When availability_mode is set to regional, this must be set to public. Defaults to public.
     """
-    privateIp: Optional[str] = None
+    privateIp: str | None = None
     """
     The private IPv4 address to assign to the NAT Gateway. If you don't provide an address, a private IPv4 address will be automatically assigned.
     """
@@ -220,130 +219,130 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    secondaryAllocationIds: Optional[List[str]] = None
+    secondaryAllocationIds: list[str] | None = None
     """
     A list of secondary allocation EIP IDs for this NAT Gateway. To remove all secondary allocations an empty list should be specified.
     """
-    secondaryAllocationIdsRefs: Optional[List[SecondaryAllocationIdsRef]] = None
+    secondaryAllocationIdsRefs: list[SecondaryAllocationIdsRef] | None = None
     """
     References to EIP in ec2 to populate secondaryAllocationIds.
     """
-    secondaryAllocationIdsSelector: Optional[SecondaryAllocationIdsSelector] = None
+    secondaryAllocationIdsSelector: SecondaryAllocationIdsSelector | None = None
     """
     Selector for a list of EIP in ec2 to populate secondaryAllocationIds.
     """
-    secondaryPrivateIpAddressCount: Optional[float] = None
+    secondaryPrivateIpAddressCount: float | None = None
     """
     The number of secondary private IPv4 addresses you want to assign to the NAT Gateway.
     """
-    secondaryPrivateIpAddresses: Optional[List[str]] = None
+    secondaryPrivateIpAddresses: list[str] | None = None
     """
     A list of secondary private IPv4 addresses to assign to the NAT Gateway. To remove all secondary private addresses an empty list should be specified.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The Subnet ID of the subnet in which to place the NAT Gateway. Required when availability_mode is set to zonal. Must not be set when availability_mode is set to regional.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     VPC ID where this NAT Gateway will be created. Required when availability_mode is set to regional.
     """
-    vpcIdRef: Optional[VpcIdRef] = None
+    vpcIdRef: VpcIdRef | None = None
     """
     Reference to a VPC in ec2 to populate vpcId.
     """
-    vpcIdSelector: Optional[VpcIdSelector] = None
+    vpcIdSelector: VpcIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate vpcId.
     """
 
 
 class InitProvider(BaseModel):
-    allocationId: Optional[str] = None
+    allocationId: str | None = None
     """
     The Allocation ID of the Elastic IP address for the NAT Gateway. Required when connectivity_type is set to public and availability_mode is set to zonal. When availability_mode is set to regional, this must not be set; instead, use the availability_zone_address block to specify EIPs for each AZ.
     """
-    allocationIdRef: Optional[AllocationIdRef] = None
+    allocationIdRef: AllocationIdRef | None = None
     """
     Reference to a EIP in ec2 to populate allocationId.
     """
-    allocationIdSelector: Optional[AllocationIdSelector] = None
+    allocationIdSelector: AllocationIdSelector | None = None
     """
     Selector for a EIP in ec2 to populate allocationId.
     """
-    availabilityMode: Optional[str] = None
+    availabilityMode: str | None = None
     """
     Specifies whether to create a zonal (single-AZ) or regional (multi-AZ) NAT gateway. Valid values are zonal and regional. Defaults to zonal.
     """
-    availabilityZoneAddress: Optional[List[AvailabilityZoneAddres]] = None
+    availabilityZoneAddress: list[AvailabilityZoneAddres] | None = None
     """
     Repeatable configuration block for the Elastic IP addresses (EIPs) and availability zones for the regional NAT gateway. When not specified, the regional NAT gateway will automatically expand to new AZs and associate EIPs upon detection of an elastic network interface (auto mode). When specified, auto-expansion is disabled (manual mode). See availability_zone_address below for details.
     """
-    connectivityType: Optional[str] = None
+    connectivityType: str | None = None
     """
     Connectivity type for the NAT Gateway. Valid values are private and public. When availability_mode is set to regional, this must be set to public. Defaults to public.
     """
-    privateIp: Optional[str] = None
+    privateIp: str | None = None
     """
     The private IPv4 address to assign to the NAT Gateway. If you don't provide an address, a private IPv4 address will be automatically assigned.
     """
-    secondaryAllocationIds: Optional[List[str]] = None
+    secondaryAllocationIds: list[str] | None = None
     """
     A list of secondary allocation EIP IDs for this NAT Gateway. To remove all secondary allocations an empty list should be specified.
     """
-    secondaryAllocationIdsRefs: Optional[List[SecondaryAllocationIdsRef]] = None
+    secondaryAllocationIdsRefs: list[SecondaryAllocationIdsRef] | None = None
     """
     References to EIP in ec2 to populate secondaryAllocationIds.
     """
-    secondaryAllocationIdsSelector: Optional[SecondaryAllocationIdsSelector] = None
+    secondaryAllocationIdsSelector: SecondaryAllocationIdsSelector | None = None
     """
     Selector for a list of EIP in ec2 to populate secondaryAllocationIds.
     """
-    secondaryPrivateIpAddressCount: Optional[float] = None
+    secondaryPrivateIpAddressCount: float | None = None
     """
     The number of secondary private IPv4 addresses you want to assign to the NAT Gateway.
     """
-    secondaryPrivateIpAddresses: Optional[List[str]] = None
+    secondaryPrivateIpAddresses: list[str] | None = None
     """
     A list of secondary private IPv4 addresses to assign to the NAT Gateway. To remove all secondary private addresses an empty list should be specified.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The Subnet ID of the subnet in which to place the NAT Gateway. Required when availability_mode is set to zonal. Must not be set when availability_mode is set to regional.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     VPC ID where this NAT Gateway will be created. Required when availability_mode is set to regional.
     """
-    vpcIdRef: Optional[VpcIdRef] = None
+    vpcIdRef: VpcIdRef | None = None
     """
     Reference to a VPC in ec2 to populate vpcId.
     """
-    vpcIdSelector: Optional[VpcIdSelector] = None
+    vpcIdSelector: VpcIdSelector | None = None
     """
     Selector for a VPC in ec2 to populate vpcId.
     """
@@ -354,7 +353,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -372,7 +371,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -383,7 +382,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -396,9 +395,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -411,15 +411,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -429,152 +429,152 @@ class Spec(BaseModel):
 
 
 class AvailabilityZoneAddresModel(BaseModel):
-    allocationIds: Optional[List[str]] = None
+    allocationIds: list[str] | None = None
     """
     List of allocation IDs of the Elastic IP addresses (EIPs) to be used for handling outbound NAT traffic in this specific Availability Zone.
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     Availability Zone (e.g. us-west-2a) where this specific NAT gateway configuration will be active. Exactly one of availability_zone or availability_zone_id must be specified.
     """
-    availabilityZoneId: Optional[str] = None
+    availabilityZoneId: str | None = None
     """
     Availability Zone ID (e.g. usw2-az2) where this specific NAT gateway configuration will be active. Exactly one of availability_zone or availability_zone_id must be specified.
     """
 
 
 class RegionalNatGatewayAddres(BaseModel):
-    allocationId: Optional[str] = None
+    allocationId: str | None = None
     """
     The Allocation ID of the Elastic IP address for the NAT Gateway. Required when connectivity_type is set to public and availability_mode is set to zonal. When availability_mode is set to regional, this must not be set; instead, use the availability_zone_address block to specify EIPs for each AZ.
     """
-    associationId: Optional[str] = None
+    associationId: str | None = None
     """
     (zonal NAT gateways only) The association ID of the Elastic IP address that's associated with the NAT Gateway. Only available when connectivity_type is public.
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     Availability Zone (e.g. us-west-2a) where this specific NAT gateway configuration will be active. Exactly one of availability_zone or availability_zone_id must be specified.
     """
-    availabilityZoneId: Optional[str] = None
+    availabilityZoneId: str | None = None
     """
     Availability Zone ID where this specific NAT gateway configuration is active
     """
-    networkInterfaceId: Optional[str] = None
+    networkInterfaceId: str | None = None
     """
     (zonal NAT gateways only) The ID of the network interface associated with the NAT Gateway.
     """
-    publicIp: Optional[str] = None
+    publicIp: str | None = None
     """
     (zonal NAT gateways only) The Elastic IP address associated with the NAT Gateway.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     Status of the NAT gateway address.
     """
 
 
 class AtProvider(BaseModel):
-    allocationId: Optional[str] = None
+    allocationId: str | None = None
     """
     The Allocation ID of the Elastic IP address for the NAT Gateway. Required when connectivity_type is set to public and availability_mode is set to zonal. When availability_mode is set to regional, this must not be set; instead, use the availability_zone_address block to specify EIPs for each AZ.
     """
-    associationId: Optional[str] = None
+    associationId: str | None = None
     """
     (zonal NAT gateways only) The association ID of the Elastic IP address that's associated with the NAT Gateway. Only available when connectivity_type is public.
     """
-    autoProvisionZones: Optional[str] = None
+    autoProvisionZones: str | None = None
     """
     (regional NAT gateways only) Indicates whether AWS automatically manages AZ coverage.
     """
-    autoScalingIps: Optional[str] = None
+    autoScalingIps: str | None = None
     """
     (regional NAT gateways only) Indicates whether AWS automatically allocates additional Elastic IP addresses (EIPs) in an AZ when the NAT gateway needs more ports due to increased concurrent connections to a single destination from that AZ.
     """
-    availabilityMode: Optional[str] = None
+    availabilityMode: str | None = None
     """
     Specifies whether to create a zonal (single-AZ) or regional (multi-AZ) NAT gateway. Valid values are zonal and regional. Defaults to zonal.
     """
-    availabilityZoneAddress: Optional[List[AvailabilityZoneAddresModel]] = None
+    availabilityZoneAddress: list[AvailabilityZoneAddresModel] | None = None
     """
     Repeatable configuration block for the Elastic IP addresses (EIPs) and availability zones for the regional NAT gateway. When not specified, the regional NAT gateway will automatically expand to new AZs and associate EIPs upon detection of an elastic network interface (auto mode). When specified, auto-expansion is disabled (manual mode). See availability_zone_address below for details.
     """
-    connectivityType: Optional[str] = None
+    connectivityType: str | None = None
     """
     Connectivity type for the NAT Gateway. Valid values are private and public. When availability_mode is set to regional, this must be set to public. Defaults to public.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the NAT Gateway.
     """
-    networkInterfaceId: Optional[str] = None
+    networkInterfaceId: str | None = None
     """
     (zonal NAT gateways only) The ID of the network interface associated with the NAT Gateway.
     """
-    privateIp: Optional[str] = None
+    privateIp: str | None = None
     """
     The private IPv4 address to assign to the NAT Gateway. If you don't provide an address, a private IPv4 address will be automatically assigned.
     """
-    publicIp: Optional[str] = None
+    publicIp: str | None = None
     """
     (zonal NAT gateways only) The Elastic IP address associated with the NAT Gateway.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    regionalNatGatewayAddress: Optional[List[RegionalNatGatewayAddres]] = None
+    regionalNatGatewayAddress: list[RegionalNatGatewayAddres] | None = None
     """
     (regional NAT gateways only) Repeatable blocks for information about the IP addresses and network interface associated with the regional NAT gateway.
     """
-    regionalNatGatewayAutoMode: Optional[str] = None
-    routeTableId: Optional[str] = None
+    regionalNatGatewayAutoMode: str | None = None
+    routeTableId: str | None = None
     """
     (regional NAT gateways only) ID of the automatically created route table.
     """
-    secondaryAllocationIds: Optional[List[str]] = None
+    secondaryAllocationIds: list[str] | None = None
     """
     A list of secondary allocation EIP IDs for this NAT Gateway. To remove all secondary allocations an empty list should be specified.
     """
-    secondaryPrivateIpAddressCount: Optional[float] = None
+    secondaryPrivateIpAddressCount: float | None = None
     """
     The number of secondary private IPv4 addresses you want to assign to the NAT Gateway.
     """
-    secondaryPrivateIpAddresses: Optional[List[str]] = None
+    secondaryPrivateIpAddresses: list[str] | None = None
     """
     A list of secondary private IPv4 addresses to assign to the NAT Gateway. To remove all secondary private addresses an empty list should be specified.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The Subnet ID of the subnet in which to place the NAT Gateway. Required when availability_mode is set to zonal. Must not be set when availability_mode is set to regional.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    vpcId: Optional[str] = None
+    vpcId: str | None = None
     """
     VPC ID where this NAT Gateway will be created. Required when availability_mode is set to regional.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -596,12 +596,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -610,17 +610,17 @@ class Status(BaseModel):
 
 
 class NATGateway(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta1'] | None = (
         'ec2.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['NATGateway']] = 'NATGateway'
+    kind: Literal['NATGateway'] | None = 'NATGateway'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -628,26 +628,26 @@ class NATGateway(BaseModel):
     """
     NATGatewaySpec defines the desired state of NATGateway
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     NATGatewayStatus defines the observed state of NATGateway.
     """
 
 
 class NATGatewayList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[NATGateway]
+    items: list[NATGateway]
     """
     List of natgateways. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

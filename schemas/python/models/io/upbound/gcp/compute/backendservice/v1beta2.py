@@ -3,40 +3,39 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class CustomMetric(BaseModel):
-    dryRun: Optional[bool] = None
+    dryRun: bool | None = None
     """
     If true, the metric data is collected and reported to Cloud
     Monitoring, but is not used for load balancing.
     """
-    maxUtilization: Optional[float] = None
+    maxUtilization: float | None = None
     """
     Optional parameter to define a target utilization for the Custom Metrics
     balancing mode. The valid range is [0.0, 1.0].
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -50,30 +49,30 @@ class GroupRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class GroupSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class BackendItem(BaseModel):
-    balancingMode: Optional[str] = None
+    balancingMode: str | None = None
     """
     Specifies the balancing mode for this backend.
     For global HTTP(S) or TCP/SSL load balancing, the default is
@@ -84,7 +83,7 @@ class BackendItem(BaseModel):
     Default value is UTILIZATION.
     Possible values are: UTILIZATION, RATE, CONNECTION, CUSTOM_METRICS.
     """
-    capacityScaler: Optional[float] = None
+    capacityScaler: float | None = None
     """
     A multiplier applied to the group's maximum servicing capacity
     (based on UTILIZATION, RATE or CONNECTION).
@@ -93,17 +92,17 @@ class BackendItem(BaseModel):
     setting of 0 means the group is completely drained, offering
     0% of its available Capacity. Valid range is [0.0,1.0].
     """
-    customMetrics: Optional[List[CustomMetric]] = None
+    customMetrics: list[CustomMetric] | None = None
     """
     The set of custom metrics that are used for CUSTOM_METRICS BalancingMode.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     Provide this property when you create the resource.
     """
-    group: Optional[str] = None
+    group: str | None = None
     """
     The fully-qualified URL of an Instance Group or Network Endpoint
     Group resource. In case of instance group this defines the list
@@ -120,15 +119,15 @@ class BackendItem(BaseModel):
     Group resource using the fully-qualified URL, rather than a
     partial URL.
     """
-    groupRef: Optional[GroupRef] = None
+    groupRef: GroupRef | None = None
     """
     Reference to a InstanceGroupManager in compute to populate group.
     """
-    groupSelector: Optional[GroupSelector] = None
+    groupSelector: GroupSelector | None = None
     """
     Selector for a InstanceGroupManager in compute to populate group.
     """
-    maxConnections: Optional[float] = None
+    maxConnections: float | None = None
     """
     The max number of simultaneous connections for the group. Can
     be used with either CONNECTION or UTILIZATION balancing modes.
@@ -136,7 +135,7 @@ class BackendItem(BaseModel):
     of maxConnectionsPerInstance or maxConnectionsPerEndpoint,
     as appropriate for group type, must be set.
     """
-    maxConnectionsPerEndpoint: Optional[float] = None
+    maxConnectionsPerEndpoint: float | None = None
     """
     The max number of simultaneous connections that a single backend
     network endpoint can handle. This is used to calculate the
@@ -145,7 +144,7 @@ class BackendItem(BaseModel):
     For CONNECTION mode, either
     maxConnections or maxConnectionsPerEndpoint must be set.
     """
-    maxConnectionsPerInstance: Optional[float] = None
+    maxConnectionsPerInstance: float | None = None
     """
     The max number of simultaneous connections that a single
     backend instance can handle. This is used to calculate the
@@ -154,7 +153,7 @@ class BackendItem(BaseModel):
     For CONNECTION mode, either maxConnections or
     maxConnectionsPerInstance must be set.
     """
-    maxRate: Optional[float] = None
+    maxRate: float | None = None
     """
     The max requests per second (RPS) of the group.
     Can be used with either RATE or UTILIZATION balancing modes,
@@ -162,26 +161,26 @@ class BackendItem(BaseModel):
     of maxRatePerInstance or maxRatePerEndpoint, as appropriate for
     group type, must be set.
     """
-    maxRatePerEndpoint: Optional[float] = None
+    maxRatePerEndpoint: float | None = None
     """
     The max requests per second (RPS) that a single backend network
     endpoint can handle. This is used to calculate the capacity of
     the group. Can be used in either balancing mode. For RATE mode,
     either maxRate or maxRatePerEndpoint must be set.
     """
-    maxRatePerInstance: Optional[float] = None
+    maxRatePerInstance: float | None = None
     """
     The max requests per second (RPS) that a single backend
     instance can handle. This is used to calculate the capacity of
     the group. Can be used in either balancing mode. For RATE mode,
     either maxRate or maxRatePerInstance must be set.
     """
-    maxUtilization: Optional[float] = None
+    maxUtilization: float | None = None
     """
     Used when balancingMode is UTILIZATION. This ratio defines the
     CPU utilization target for the group. Valid range is [0.0, 1.0].
     """
-    preference: Optional[str] = None
+    preference: str | None = None
     """
     This field indicates whether this backend should be fully utilized before sending traffic to backends
     with default preference. This field cannot be set when loadBalancingScheme is set to 'EXTERNAL'. The possible values are:
@@ -189,31 +188,31 @@ class BackendItem(BaseModel):
 
 
 class BypassCacheOnRequestHeader(BaseModel):
-    headerName: Optional[str] = None
+    headerName: str | None = None
     """
     The header field name to match on when bypassing cache. Values are case-insensitive.
     """
 
 
 class CacheKeyPolicy(BaseModel):
-    includeHost: Optional[bool] = None
+    includeHost: bool | None = None
     """
     If true requests to different hosts will be cached separately.
     """
-    includeHttpHeaders: Optional[List[str]] = None
+    includeHttpHeaders: list[str] | None = None
     """
     Allows HTTP request headers (by name) to be used in the
     cache key.
     """
-    includeNamedCookies: Optional[List[str]] = None
+    includeNamedCookies: list[str] | None = None
     """
     Names of cookies to include in cache keys.
     """
-    includeProtocol: Optional[bool] = None
+    includeProtocol: bool | None = None
     """
     If true, http and https requests will be cached separately.
     """
-    includeQueryString: Optional[bool] = None
+    includeQueryString: bool | None = None
     """
     If true, include query string parameters in the cache key
     according to query_string_whitelist and
@@ -222,7 +221,7 @@ class CacheKeyPolicy(BaseModel):
     If false, the query string will be excluded from the cache
     key entirely.
     """
-    queryStringBlacklist: Optional[List[str]] = None
+    queryStringBlacklist: list[str] | None = None
     """
     Names of query string parameters to exclude in cache keys.
     All other parameters will be included. Either specify
@@ -230,7 +229,7 @@ class CacheKeyPolicy(BaseModel):
     '&' and '=' will be percent encoded and not treated as
     delimiters.
     """
-    queryStringWhitelist: Optional[List[str]] = None
+    queryStringWhitelist: list[str] | None = None
     """
     Names of query string parameters to include in cache keys.
     All other parameters will be excluded. Either specify
@@ -241,12 +240,12 @@ class CacheKeyPolicy(BaseModel):
 
 
 class NegativeCachingPolicyItem(BaseModel):
-    code: Optional[float] = None
+    code: float | None = None
     """
     The HTTP status code to define a TTL against. Only HTTP status codes 300, 301, 308, 404, 405, 410, 421, 451 and 501
     can be specified as values, and you cannot specify a status code more than once.
     """
-    ttl: Optional[float] = None
+    ttl: float | None = None
     """
     Lifetime of the cookie.
     Structure is documented below.
@@ -254,56 +253,56 @@ class NegativeCachingPolicyItem(BaseModel):
 
 
 class CdnPolicy(BaseModel):
-    bypassCacheOnRequestHeaders: Optional[List[BypassCacheOnRequestHeader]] = None
+    bypassCacheOnRequestHeaders: list[BypassCacheOnRequestHeader] | None = None
     """
     Bypass the cache when the specified request headers are matched - e.g. Pragma or Authorization headers. Up to 5 headers can be specified.
     The cache is bypassed for all cdnPolicy.cacheMode settings.
     Structure is documented below.
     """
-    cacheKeyPolicy: Optional[CacheKeyPolicy] = None
+    cacheKeyPolicy: CacheKeyPolicy | None = None
     """
     The CacheKeyPolicy for this CdnPolicy.
     Structure is documented below.
     """
-    cacheMode: Optional[str] = None
+    cacheMode: str | None = None
     """
     Specifies the cache setting for all responses from this backend.
     The possible values are: USE_ORIGIN_HEADERS, FORCE_CACHE_ALL and CACHE_ALL_STATIC
     Possible values are: USE_ORIGIN_HEADERS, FORCE_CACHE_ALL, CACHE_ALL_STATIC.
     """
-    clientTtl: Optional[float] = None
+    clientTtl: float | None = None
     """
     Specifies the maximum allowed TTL for cached content served by this origin.
     """
-    defaultTtl: Optional[float] = None
+    defaultTtl: float | None = None
     """
     Specifies the default TTL for cached content served by this origin for responses
     that do not have an existing valid TTL (max-age or s-max-age).
     """
-    maxTtl: Optional[float] = None
+    maxTtl: float | None = None
     """
     Specifies the maximum allowed TTL for cached content served by this origin.
     """
-    negativeCaching: Optional[bool] = None
+    negativeCaching: bool | None = None
     """
     Negative caching allows per-status code TTLs to be set, in order to apply fine-grained caching for common errors or redirects.
     """
-    negativeCachingPolicy: Optional[List[NegativeCachingPolicyItem]] = None
+    negativeCachingPolicy: list[NegativeCachingPolicyItem] | None = None
     """
     Sets a cache TTL for the specified HTTP status code. negativeCaching must be enabled to configure negativeCachingPolicy.
     Omitting the policy and leaving negativeCaching enabled will use Cloud CDN's default cache TTLs.
     Structure is documented below.
     """
-    requestCoalescing: Optional[bool] = None
+    requestCoalescing: bool | None = None
     """
     If true then Cloud CDN will combine multiple concurrent cache fill requests into a small number of requests
     to the origin.
     """
-    serveWhileStale: Optional[float] = None
+    serveWhileStale: float | None = None
     """
     Serve existing content from the cache (if available) when revalidating content with the origin, or when an error is encountered when refreshing the cache.
     """
-    signedUrlCacheMaxAgeSec: Optional[float] = None
+    signedUrlCacheMaxAgeSec: float | None = None
     """
     Maximum number of seconds the response to a signed URL request
     will be considered fresh, defaults to 1hr (3600s). After this
@@ -318,29 +317,29 @@ class CdnPolicy(BaseModel):
 
 
 class CircuitBreakers(BaseModel):
-    maxConnections: Optional[float] = None
+    maxConnections: float | None = None
     """
     The maximum number of connections to the backend cluster.
     Defaults to 1024.
     """
-    maxPendingRequests: Optional[float] = None
+    maxPendingRequests: float | None = None
     """
     The maximum number of pending requests to the backend cluster.
     Defaults to 1024.
     """
-    maxRequests: Optional[float] = None
+    maxRequests: float | None = None
     """
     The maximum number of parallel requests to the backend cluster.
     Defaults to 1024.
     """
-    maxRequestsPerConnection: Optional[float] = None
+    maxRequestsPerConnection: float | None = None
     """
     Maximum requests for a single backend connection. This parameter
     is respected by both the HTTP/1.1 and HTTP/2 implementations. If
     not specified, there is no limit. Setting this parameter to 1
     will effectively disable keep alive.
     """
-    maxRetries: Optional[float] = None
+    maxRetries: float | None = None
     """
     The maximum number of parallel retries to the backend cluster.
     Defaults to 3.
@@ -348,14 +347,14 @@ class CircuitBreakers(BaseModel):
 
 
 class Ttl(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond
     resolution. Durations less than one second are represented
     with a 0 seconds field and a positive nanos field. Must
     be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[float] = None
+    seconds: float | None = None
     """
     Span of time at a resolution of a second.
     Must be from 0 to 315,576,000,000 inclusive.
@@ -363,15 +362,15 @@ class Ttl(BaseModel):
 
 
 class HttpCookie(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path to set for the cookie.
     """
-    ttl: Optional[Ttl] = None
+    ttl: Ttl | None = None
     """
     Lifetime of the cookie.
     Structure is documented below.
@@ -379,7 +378,7 @@ class HttpCookie(BaseModel):
 
 
 class ConsistentHash(BaseModel):
-    httpCookie: Optional[HttpCookie] = None
+    httpCookie: HttpCookie | None = None
     """
     Hash is based on HTTP Cookie. This field describes a HTTP cookie
     that will be used as the hash key for the consistent hash load
@@ -387,12 +386,12 @@ class ConsistentHash(BaseModel):
     This field is applicable if the sessionAffinity is set to HTTP_COOKIE.
     Structure is documented below.
     """
-    httpHeaderName: Optional[str] = None
+    httpHeaderName: str | None = None
     """
     The hash based on the value of the specified header field.
     This field is applicable if the sessionAffinity is set to HEADER_FIELD.
     """
-    minimumRingSize: Optional[float] = None
+    minimumRingSize: float | None = None
     """
     The minimum number of virtual nodes to use for the hash ring.
     Larger ring sizes result in more granular load
@@ -404,12 +403,12 @@ class ConsistentHash(BaseModel):
 
 
 class CustomMetricModel(BaseModel):
-    dryRun: Optional[bool] = None
+    dryRun: bool | None = None
     """
     If true, the metric data is collected and reported to Cloud
     Monitoring, but is not used for load balancing.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of a custom utilization signal. The name must be 1-64 characters
     long and match the regular expression a-z? which
@@ -428,23 +427,23 @@ class HealthChecksRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class HealthChecksSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -466,15 +465,15 @@ class Oauth2ClientSecretSecretRef(BaseModel):
 
 
 class Iap(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether the serving infrastructure will authenticate and authorize all incoming requests.
     """
-    oauth2ClientId: Optional[str] = None
+    oauth2ClientId: str | None = None
     """
     OAuth2 Client ID for IAP
     """
-    oauth2ClientSecretSecretRef: Optional[Oauth2ClientSecretSecretRef] = None
+    oauth2ClientSecretSecretRef: Oauth2ClientSecretSecretRef | None = None
     """
     OAuth2 Client Secret for IAP
     Note: This property is sensitive and will not be displayed in the plan.
@@ -482,32 +481,32 @@ class Iap(BaseModel):
 
 
 class CustomPolicy(BaseModel):
-    data: Optional[str] = None
+    data: str | None = None
     """
     An optional, arbitrary JSON object with configuration data, understood
     by a locally installed custom policy implementation.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
 
 
 class PolicyModel(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
 
 
 class LocalityLbPolicy(BaseModel):
-    customPolicy: Optional[CustomPolicy] = None
+    customPolicy: CustomPolicy | None = None
     """
     The configuration for a custom policy implemented by the user and
     deployed with the client.
     Structure is documented below.
     """
-    policy: Optional[PolicyModel] = None
+    policy: PolicyModel | None = None
     """
     The configuration for a built-in load balancing policy.
     Structure is documented below.
@@ -515,24 +514,24 @@ class LocalityLbPolicy(BaseModel):
 
 
 class LogConfig(BaseModel):
-    enable: Optional[bool] = None
+    enable: bool | None = None
     """
     Whether to enable logging for the load balancer traffic served by this backend service.
     """
-    optionalFields: Optional[List[str]] = None
+    optionalFields: list[str] | None = None
     """
     This field can only be specified if logging is enabled for this backend service and "logConfig.optionalMode"
     was set to CUSTOM. Contains a list of optional fields you want to include in the logs.
     For example: serverInstance, serverGkeDetails.cluster, serverGkeDetails.pod.podNamespace
     For example: orca_load_report, tls.protocol
     """
-    optionalMode: Optional[str] = None
+    optionalMode: str | None = None
     """
     Specifies the optional logging mode for the load balancer traffic.
     Supported values: INCLUDE_ALL_OPTIONAL, EXCLUDE_ALL_OPTIONAL, CUSTOM.
     Possible values are: INCLUDE_ALL_OPTIONAL, EXCLUDE_ALL_OPTIONAL, CUSTOM.
     """
-    sampleRate: Optional[float] = None
+    sampleRate: float | None = None
     """
     This field can only be specified if logging is enabled for this backend service. The value of
     the field must be in [0, 1]. This configures the sampling rate of requests to the load balancer
@@ -542,27 +541,27 @@ class LogConfig(BaseModel):
 
 
 class MaxStreamDuration(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond resolution.
     Durations less than one second are represented with a 0 seconds field and a positive nanos field.
     Must be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[str] = None
+    seconds: str | None = None
     """
     Span of time at a resolution of a second. Must be from 0 to 315,576,000,000 inclusive. (int64 format)
     """
 
 
 class BaseEjectionTime(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond
     resolution. Durations less than one second are represented
     with a 0 seconds field and a positive nanos field. Must
     be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[float] = None
+    seconds: float | None = None
     """
     Span of time at a resolution of a second.
     Must be from 0 to 315,576,000,000 inclusive.
@@ -570,14 +569,14 @@ class BaseEjectionTime(BaseModel):
 
 
 class Interval(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond
     resolution. Durations less than one second are represented
     with a 0 seconds field and a positive nanos field. Must
     be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[float] = None
+    seconds: float | None = None
     """
     Span of time at a resolution of a second.
     Must be from 0 to 315,576,000,000 inclusive.
@@ -585,62 +584,62 @@ class Interval(BaseModel):
 
 
 class OutlierDetection(BaseModel):
-    baseEjectionTime: Optional[BaseEjectionTime] = None
+    baseEjectionTime: BaseEjectionTime | None = None
     """
     The base time that a host is ejected for. The real time is equal to the base
     time multiplied by the number of times the host has been ejected. Defaults to
     30000ms or 30s.
     Structure is documented below.
     """
-    consecutiveErrors: Optional[float] = None
+    consecutiveErrors: float | None = None
     """
     Number of errors before a host is ejected from the connection pool. When the
     backend host is accessed over HTTP, a 5xx return code qualifies as an error.
     Defaults to 5.
     """
-    consecutiveGatewayFailure: Optional[float] = None
+    consecutiveGatewayFailure: float | None = None
     """
     The number of consecutive gateway failures (502, 503, 504 status or connection
     errors that are mapped to one of those status codes) before a consecutive
     gateway failure ejection occurs. Defaults to 5.
     """
-    enforcingConsecutiveErrors: Optional[float] = None
+    enforcingConsecutiveErrors: float | None = None
     """
     The percentage chance that a host will be actually ejected when an outlier
     status is detected through consecutive 5xx. This setting can be used to disable
     ejection or to ramp it up slowly. Defaults to 100.
     """
-    enforcingConsecutiveGatewayFailure: Optional[float] = None
+    enforcingConsecutiveGatewayFailure: float | None = None
     """
     The percentage chance that a host will be actually ejected when an outlier
     status is detected through consecutive gateway failures. This setting can be
     used to disable ejection or to ramp it up slowly. Defaults to 0.
     """
-    enforcingSuccessRate: Optional[float] = None
+    enforcingSuccessRate: float | None = None
     """
     The percentage chance that a host will be actually ejected when an outlier
     status is detected through success rate statistics. This setting can be used to
     disable ejection or to ramp it up slowly. Defaults to 100.
     """
-    interval: Optional[Interval] = None
+    interval: Interval | None = None
     """
     Time interval between ejection sweep analysis. This can result in both new
     ejections as well as hosts being returned to service. Defaults to 10 seconds.
     Structure is documented below.
     """
-    maxEjectionPercent: Optional[float] = None
+    maxEjectionPercent: float | None = None
     """
     Maximum percentage of hosts in the load balancing pool for the backend service
     that can be ejected. Defaults to 10%.
     """
-    successRateMinimumHosts: Optional[float] = None
+    successRateMinimumHosts: float | None = None
     """
     The number of hosts in a cluster that must have enough request volume to detect
     success rate outliers. If the number of hosts is less than this setting, outlier
     detection via success rate statistics is not performed for any host in the
     cluster. Defaults to 5.
     """
-    successRateRequestVolume: Optional[float] = None
+    successRateRequestVolume: float | None = None
     """
     The minimum number of total requests that must be collected in one interval (as
     defined by the interval duration above) to include this host in success rate
@@ -648,7 +647,7 @@ class OutlierDetection(BaseModel):
     detection via success rate statistics is not performed for that host. Defaults
     to 100.
     """
-    successRateStdevFactor: Optional[float] = None
+    successRateStdevFactor: float | None = None
     """
     This factor is used to determine the ejection threshold for success rate outlier
     ejection. The ejection threshold is the difference between the mean success
@@ -675,21 +674,21 @@ class AccessKeySecretRef(BaseModel):
 
 
 class AwsV4Authentication(BaseModel):
-    accessKeyId: Optional[str] = None
+    accessKeyId: str | None = None
     """
     The identifier of an access key used for s3 bucket authentication.
     """
-    accessKeySecretRef: Optional[AccessKeySecretRef] = None
+    accessKeySecretRef: AccessKeySecretRef | None = None
     """
     The access key used for s3 bucket authentication.
     Required for updating or creating a backend that uses AWS v4 signature authentication, but will not be returned as part of the configuration when queried with a REST API GET request.
     Note: This property is sensitive and will not be displayed in the plan.
     """
-    accessKeyVersion: Optional[str] = None
+    accessKeyVersion: str | None = None
     """
     The optional version identifier for the access key. You can use this to keep track of different iterations of your access key.
     """
-    originRegion: Optional[str] = None
+    originRegion: str | None = None
     """
     The name of the cloud region of your origin. This is a free-form field with the name of the region your cloud uses to host your origin.
     For example, "us-east-1" for AWS or "us-ashburn-1" for OCI.
@@ -697,19 +696,19 @@ class AwsV4Authentication(BaseModel):
 
 
 class SecuritySettings(BaseModel):
-    awsV4Authentication: Optional[AwsV4Authentication] = None
+    awsV4Authentication: AwsV4Authentication | None = None
     """
     The configuration needed to generate a signature for access to private storage buckets that support AWS's Signature Version 4 for authentication.
     Allowed only for INTERNET_IP_PORT and INTERNET_FQDN_PORT NEG backends.
     Structure is documented below.
     """
-    clientTlsPolicy: Optional[str] = None
+    clientTlsPolicy: str | None = None
     """
     ClientTlsPolicy is a resource that specifies how a client should authenticate
     connections to backends of a service. This resource itself does not affect
     configuration unless it is attached to a backend service resource.
     """
-    subjectAltNames: Optional[List[str]] = None
+    subjectAltNames: list[str] | None = None
     """
     A list of alternate names to verify the subject identity in the certificate.
     If specified, the client will verify that the server certificate's subject
@@ -718,15 +717,15 @@ class SecuritySettings(BaseModel):
 
 
 class StrongSessionAffinityCookie(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path to set for the cookie.
     """
-    ttl: Optional[Ttl] = None
+    ttl: Ttl | None = None
     """
     Lifetime of the cookie.
     Structure is documented below.
@@ -734,31 +733,31 @@ class StrongSessionAffinityCookie(BaseModel):
 
 
 class SubjectAltName(BaseModel):
-    dnsName: Optional[str] = None
+    dnsName: str | None = None
     """
     The SAN specified as a DNS Name.
     """
-    uniformResourceIdentifier: Optional[str] = None
+    uniformResourceIdentifier: str | None = None
     """
     The SAN specified as a URI.
     """
 
 
 class TlsSettings(BaseModel):
-    authenticationConfig: Optional[str] = None
+    authenticationConfig: str | None = None
     """
     Reference to the BackendAuthenticationConfig resource from the networksecurity.googleapis.com namespace.
     Can be used in authenticating TLS connections to the backend, as specified by the authenticationMode field.
     Can only be specified if authenticationMode is not NONE.
     """
-    sni: Optional[str] = None
+    sni: str | None = None
     """
     Server Name Indication - see RFC3546 section 3.1. If set, the load balancer sends this string as the SNI hostname in the
     TLS connection to the backend, and requires that this string match a Subject Alternative Name (SAN) in the backend's
     server certificate. With a Regional Internet NEG backend, if the SNI is specified here, the load balancer uses it
     regardless of whether the Regional Internet NEG is specified with FQDN or IP address and port.
     """
-    subjectAltNames: Optional[List[SubjectAltName]] = None
+    subjectAltNames: list[SubjectAltName] | None = None
     """
     A list of Subject Alternative Names (SANs) that the Load Balancer verifies during a TLS handshake with the backend.
     When the server presents its X.509 certificate to the Load Balancer, the Load Balancer inspects the certificate's SAN field,
@@ -770,7 +769,7 @@ class TlsSettings(BaseModel):
 
 
 class ForProvider(BaseModel):
-    affinityCookieTtlSec: Optional[float] = None
+    affinityCookieTtlSec: float | None = None
     """
     Lifetime of cookies in seconds if session_affinity is
     GENERATED_COOKIE. If set to 0, the cookie is non-persistent and lasts
@@ -778,33 +777,33 @@ class ForProvider(BaseModel):
     maximum allowed value for TTL is one day.
     When the load balancing scheme is INTERNAL, this field is not used.
     """
-    backend: Optional[List[BackendItem]] = None
+    backend: list[BackendItem] | None = None
     """
     The set of backends that serve this BackendService.
     Structure is documented below.
     """
-    cdnPolicy: Optional[CdnPolicy] = None
+    cdnPolicy: CdnPolicy | None = None
     """
     Cloud CDN configuration for this BackendService.
     Structure is documented below.
     """
-    circuitBreakers: Optional[CircuitBreakers] = None
+    circuitBreakers: CircuitBreakers | None = None
     """
     Settings controlling the volume of connections to a backend service. This field
     is applicable only when the load_balancing_scheme is set to INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    compressionMode: Optional[str] = None
+    compressionMode: str | None = None
     """
     Compress text responses using Brotli or gzip compression, based on the client's Accept-Encoding header.
     Possible values are: AUTOMATIC, DISABLED.
     """
-    connectionDrainingTimeoutSec: Optional[float] = None
+    connectionDrainingTimeoutSec: float | None = None
     """
     Time for which instance will be drained (not accept new
     connections, but still work to finish started).
     """
-    consistentHash: Optional[ConsistentHash] = None
+    consistentHash: ConsistentHash | None = None
     """
     Consistent Hash-based load balancing can be used to provide soft session
     affinity based on HTTP headers, cookies or other properties. This load balancing
@@ -816,34 +815,34 @@ class ForProvider(BaseModel):
     set to MAGLEV or RING_HASH.
     Structure is documented below.
     """
-    customMetrics: Optional[List[CustomMetricModel]] = None
+    customMetrics: list[CustomMetricModel] | None = None
     """
     List of custom metrics that are used for the WEIGHTED_ROUND_ROBIN locality_lb_policy.
     Structure is documented below.
     """
-    customRequestHeaders: Optional[List[str]] = None
+    customRequestHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied
     requests.
     """
-    customResponseHeaders: Optional[List[str]] = None
+    customResponseHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied
     responses.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    edgeSecurityPolicy: Optional[str] = None
+    edgeSecurityPolicy: str | None = None
     """
     The resource URL for the edge security policy associated with this backend service.
     """
-    enableCdn: Optional[bool] = None
+    enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendService.
     """
-    externalManagedMigrationState: Optional[str] = None
+    externalManagedMigrationState: str | None = None
     """
     Specifies the canary migration state. Possible values are PREPARE, TEST_BY_PERCENTAGE, and
     TEST_ALL_TRAFFIC.
@@ -857,7 +856,7 @@ class ForProvider(BaseModel):
     back to EXTERNAL or PREPARE can be used to migrate all traffic back to EXTERNAL.
     Possible values are: PREPARE, TEST_BY_PERCENTAGE, TEST_ALL_TRAFFIC.
     """
-    externalManagedMigrationTestingPercentage: Optional[float] = None
+    externalManagedMigrationTestingPercentage: float | None = None
     """
     Determines the fraction of requests that should be processed by the Global external
     Application Load Balancer.
@@ -867,7 +866,7 @@ class ForProvider(BaseModel):
     This value can only be set if the loadBalancingScheme in the backend service is set to
     EXTERNAL (when using the Classic ALB) and the migration state is TEST_BY_PERCENTAGE.
     """
-    healthChecks: Optional[List[str]] = None
+    healthChecks: list[str] | None = None
     """
     The set of URLs to the HttpHealthCheck or HttpsHealthCheck resource
     for health checking this BackendService. Currently at most one health
@@ -876,26 +875,26 @@ class ForProvider(BaseModel):
     or serverless NEG as a backend.
     For internal load balancing, a URL to a HealthCheck resource must be specified instead.
     """
-    healthChecksRefs: Optional[List[HealthChecksRef]] = None
+    healthChecksRefs: list[HealthChecksRef] | None = None
     """
     References to HealthCheck in compute to populate healthChecks.
     """
-    healthChecksSelector: Optional[HealthChecksSelector] = None
+    healthChecksSelector: HealthChecksSelector | None = None
     """
     Selector for a list of HealthCheck in compute to populate healthChecks.
     """
-    iap: Optional[Iap] = None
+    iap: Iap | None = None
     """
     Settings for enabling Cloud Identity Aware Proxy.
     If OAuth client is not set, the Google-managed OAuth client is used.
     Structure is documented below.
     """
-    ipAddressSelectionPolicy: Optional[str] = None
+    ipAddressSelectionPolicy: str | None = None
     """
     Specifies preference of traffic to the backend (from the proxy and from the client for proxyless gRPC).
     Possible values are: IPV4_ONLY, PREFER_IPV6, IPV6_ONLY.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     Indicates whether the backend service will be used with internal or
     external load balancing. A backend service created for one type of
@@ -904,7 +903,7 @@ class ForProvider(BaseModel):
     Default value is EXTERNAL.
     Possible values are: EXTERNAL, INTERNAL_SELF_MANAGED, INTERNAL_MANAGED, EXTERNAL_MANAGED.
     """
-    localityLbPolicies: Optional[List[LocalityLbPolicy]] = None
+    localityLbPolicies: list[LocalityLbPolicy] | None = None
     """
     A list of locality load balancing policies to be used in order of
     preference. Either the policy or the customPolicy field should be set.
@@ -914,18 +913,18 @@ class ForProvider(BaseModel):
     validateForProxyless field set to true.
     Structure is documented below.
     """
-    localityLbPolicy: Optional[str] = None
+    localityLbPolicy: str | None = None
     """
     The load balancing algorithm used within the scope of the locality.
     The possible values are:
     """
-    logConfig: Optional[LogConfig] = None
+    logConfig: LogConfig | None = None
     """
     This field denotes the logging options for the load balancer traffic served by this backend service.
     If logging is enabled, logs will be exported to Stackdriver.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the default maximum duration (timeout) for streams to this service. Duration is computed from the
     beginning of the stream until the response has been completely processed, including all retries. A stream that
@@ -935,25 +934,25 @@ class ForProvider(BaseModel):
     This field is only allowed when the loadBalancingScheme of the backend service is INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    outlierDetection: Optional[OutlierDetection] = None
+    outlierDetection: OutlierDetection | None = None
     """
     Settings controlling eviction of unhealthy hosts from the load balancing pool.
     Applicable backend service types can be a global backend service with the
     loadBalancingScheme set to INTERNAL_SELF_MANAGED or EXTERNAL_MANAGED.
     Structure is documented below.
     """
-    portName: Optional[str] = None
+    portName: str | None = None
     """
     Name of backend port. The same name should appear in the instance
     groups referenced by this service. Required when the load balancing
     scheme is EXTERNAL.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The protocol this BackendService uses to communicate with backends.
     The default is HTTP. Possible values are HTTP, HTTPS, HTTP2, H2C, TCP, SSL, UDP
@@ -962,11 +961,11 @@ class ForProvider(BaseModel):
     by a URL map that is bound to target gRPC proxy.
     Possible values are: HTTP, HTTPS, HTTP2, TCP, SSL, UDP, GRPC, UNSPECIFIED, H2C.
     """
-    securityPolicy: Optional[str] = None
+    securityPolicy: str | None = None
     """
     The security policy associated with this backend service.
     """
-    securitySettings: Optional[SecuritySettings] = None
+    securitySettings: SecuritySettings | None = None
     """
     The security settings that apply to this backend service. This field is applicable to either
     a regional backend service with the service_protocol set to HTTP, HTTPS, HTTP2 or H2C, and
@@ -974,30 +973,30 @@ class ForProvider(BaseModel):
     load_balancing_scheme set to INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    serviceLbPolicy: Optional[str] = None
+    serviceLbPolicy: str | None = None
     """
     URL to networkservices.ServiceLbPolicy resource.
     Can only be set if load balancing scheme is EXTERNAL, EXTERNAL_MANAGED, INTERNAL_MANAGED or INTERNAL_SELF_MANAGED and the scope is global.
     """
-    sessionAffinity: Optional[str] = None
+    sessionAffinity: str | None = None
     """
     Type of session affinity to use. The default is NONE. Session affinity is
     not applicable if the protocol is UDP.
     Possible values are: NONE, CLIENT_IP, CLIENT_IP_PORT_PROTO, CLIENT_IP_PROTO, GENERATED_COOKIE, HEADER_FIELD, HTTP_COOKIE, STRONG_COOKIE_AFFINITY.
     """
-    strongSessionAffinityCookie: Optional[StrongSessionAffinityCookie] = None
+    strongSessionAffinityCookie: StrongSessionAffinityCookie | None = None
     """
     Describes the HTTP cookie used for stateful session affinity. This field is applicable and required if the sessionAffinity is set to STRONG_COOKIE_AFFINITY.
     Structure is documented below.
     """
-    timeoutSec: Optional[float] = None
+    timeoutSec: float | None = None
     """
     The backend service timeout has a different meaning depending on the type of load balancer.
     For more information see, Backend service settings.
     The default is 30 seconds.
     The full range of timeout values allowed goes from 1 through 2,147,483,647 seconds.
     """
-    tlsSettings: Optional[TlsSettings] = None
+    tlsSettings: TlsSettings | None = None
     """
     Configuration for Backend Authenticated TLS and mTLS. May only be specified when the backend protocol is SSL, HTTPS or HTTP2.
     Structure is documented below.
@@ -1005,31 +1004,31 @@ class ForProvider(BaseModel):
 
 
 class CustomMetricModel1(BaseModel):
-    dryRun: Optional[bool] = None
+    dryRun: bool | None = None
     """
     If true, the metric data is collected and reported to Cloud
     Monitoring, but is not used for load balancing.
     """
-    maxUtilization: Optional[float] = None
+    maxUtilization: float | None = None
     """
     Optional parameter to define a target utilization for the Custom Metrics
     balancing mode. The valid range is [0.0, 1.0].
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
 
 
 class PolicyModel1(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -1039,12 +1038,12 @@ class PolicyModel1(BaseModel):
 
 
 class CustomMetricModel2(BaseModel):
-    dryRun: Optional[bool] = None
+    dryRun: bool | None = None
     """
     If true, the metric data is collected and reported to Cloud
     Monitoring, but is not used for load balancing.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of a custom utilization signal. The name must be 1-64 characters
     long and match the regular expression a-z? which
@@ -1059,14 +1058,14 @@ class CustomMetricModel2(BaseModel):
 
 
 class PolicyModel2(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
 
 
 class InitProvider(BaseModel):
-    affinityCookieTtlSec: Optional[float] = None
+    affinityCookieTtlSec: float | None = None
     """
     Lifetime of cookies in seconds if session_affinity is
     GENERATED_COOKIE. If set to 0, the cookie is non-persistent and lasts
@@ -1074,33 +1073,33 @@ class InitProvider(BaseModel):
     maximum allowed value for TTL is one day.
     When the load balancing scheme is INTERNAL, this field is not used.
     """
-    backend: Optional[List[BackendItem]] = None
+    backend: list[BackendItem] | None = None
     """
     The set of backends that serve this BackendService.
     Structure is documented below.
     """
-    cdnPolicy: Optional[CdnPolicy] = None
+    cdnPolicy: CdnPolicy | None = None
     """
     Cloud CDN configuration for this BackendService.
     Structure is documented below.
     """
-    circuitBreakers: Optional[CircuitBreakers] = None
+    circuitBreakers: CircuitBreakers | None = None
     """
     Settings controlling the volume of connections to a backend service. This field
     is applicable only when the load_balancing_scheme is set to INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    compressionMode: Optional[str] = None
+    compressionMode: str | None = None
     """
     Compress text responses using Brotli or gzip compression, based on the client's Accept-Encoding header.
     Possible values are: AUTOMATIC, DISABLED.
     """
-    connectionDrainingTimeoutSec: Optional[float] = None
+    connectionDrainingTimeoutSec: float | None = None
     """
     Time for which instance will be drained (not accept new
     connections, but still work to finish started).
     """
-    consistentHash: Optional[ConsistentHash] = None
+    consistentHash: ConsistentHash | None = None
     """
     Consistent Hash-based load balancing can be used to provide soft session
     affinity based on HTTP headers, cookies or other properties. This load balancing
@@ -1112,34 +1111,34 @@ class InitProvider(BaseModel):
     set to MAGLEV or RING_HASH.
     Structure is documented below.
     """
-    customMetrics: Optional[List[CustomMetricModel2]] = None
+    customMetrics: list[CustomMetricModel2] | None = None
     """
     List of custom metrics that are used for the WEIGHTED_ROUND_ROBIN locality_lb_policy.
     Structure is documented below.
     """
-    customRequestHeaders: Optional[List[str]] = None
+    customRequestHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied
     requests.
     """
-    customResponseHeaders: Optional[List[str]] = None
+    customResponseHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied
     responses.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    edgeSecurityPolicy: Optional[str] = None
+    edgeSecurityPolicy: str | None = None
     """
     The resource URL for the edge security policy associated with this backend service.
     """
-    enableCdn: Optional[bool] = None
+    enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendService.
     """
-    externalManagedMigrationState: Optional[str] = None
+    externalManagedMigrationState: str | None = None
     """
     Specifies the canary migration state. Possible values are PREPARE, TEST_BY_PERCENTAGE, and
     TEST_ALL_TRAFFIC.
@@ -1153,7 +1152,7 @@ class InitProvider(BaseModel):
     back to EXTERNAL or PREPARE can be used to migrate all traffic back to EXTERNAL.
     Possible values are: PREPARE, TEST_BY_PERCENTAGE, TEST_ALL_TRAFFIC.
     """
-    externalManagedMigrationTestingPercentage: Optional[float] = None
+    externalManagedMigrationTestingPercentage: float | None = None
     """
     Determines the fraction of requests that should be processed by the Global external
     Application Load Balancer.
@@ -1163,7 +1162,7 @@ class InitProvider(BaseModel):
     This value can only be set if the loadBalancingScheme in the backend service is set to
     EXTERNAL (when using the Classic ALB) and the migration state is TEST_BY_PERCENTAGE.
     """
-    healthChecks: Optional[List[str]] = None
+    healthChecks: list[str] | None = None
     """
     The set of URLs to the HttpHealthCheck or HttpsHealthCheck resource
     for health checking this BackendService. Currently at most one health
@@ -1172,26 +1171,26 @@ class InitProvider(BaseModel):
     or serverless NEG as a backend.
     For internal load balancing, a URL to a HealthCheck resource must be specified instead.
     """
-    healthChecksRefs: Optional[List[HealthChecksRef]] = None
+    healthChecksRefs: list[HealthChecksRef] | None = None
     """
     References to HealthCheck in compute to populate healthChecks.
     """
-    healthChecksSelector: Optional[HealthChecksSelector] = None
+    healthChecksSelector: HealthChecksSelector | None = None
     """
     Selector for a list of HealthCheck in compute to populate healthChecks.
     """
-    iap: Optional[Iap] = None
+    iap: Iap | None = None
     """
     Settings for enabling Cloud Identity Aware Proxy.
     If OAuth client is not set, the Google-managed OAuth client is used.
     Structure is documented below.
     """
-    ipAddressSelectionPolicy: Optional[str] = None
+    ipAddressSelectionPolicy: str | None = None
     """
     Specifies preference of traffic to the backend (from the proxy and from the client for proxyless gRPC).
     Possible values are: IPV4_ONLY, PREFER_IPV6, IPV6_ONLY.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     Indicates whether the backend service will be used with internal or
     external load balancing. A backend service created for one type of
@@ -1200,7 +1199,7 @@ class InitProvider(BaseModel):
     Default value is EXTERNAL.
     Possible values are: EXTERNAL, INTERNAL_SELF_MANAGED, INTERNAL_MANAGED, EXTERNAL_MANAGED.
     """
-    localityLbPolicies: Optional[List[LocalityLbPolicy]] = None
+    localityLbPolicies: list[LocalityLbPolicy] | None = None
     """
     A list of locality load balancing policies to be used in order of
     preference. Either the policy or the customPolicy field should be set.
@@ -1210,18 +1209,18 @@ class InitProvider(BaseModel):
     validateForProxyless field set to true.
     Structure is documented below.
     """
-    localityLbPolicy: Optional[str] = None
+    localityLbPolicy: str | None = None
     """
     The load balancing algorithm used within the scope of the locality.
     The possible values are:
     """
-    logConfig: Optional[LogConfig] = None
+    logConfig: LogConfig | None = None
     """
     This field denotes the logging options for the load balancer traffic served by this backend service.
     If logging is enabled, logs will be exported to Stackdriver.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the default maximum duration (timeout) for streams to this service. Duration is computed from the
     beginning of the stream until the response has been completely processed, including all retries. A stream that
@@ -1231,25 +1230,25 @@ class InitProvider(BaseModel):
     This field is only allowed when the loadBalancingScheme of the backend service is INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    outlierDetection: Optional[OutlierDetection] = None
+    outlierDetection: OutlierDetection | None = None
     """
     Settings controlling eviction of unhealthy hosts from the load balancing pool.
     Applicable backend service types can be a global backend service with the
     loadBalancingScheme set to INTERNAL_SELF_MANAGED or EXTERNAL_MANAGED.
     Structure is documented below.
     """
-    portName: Optional[str] = None
+    portName: str | None = None
     """
     Name of backend port. The same name should appear in the instance
     groups referenced by this service. Required when the load balancing
     scheme is EXTERNAL.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The protocol this BackendService uses to communicate with backends.
     The default is HTTP. Possible values are HTTP, HTTPS, HTTP2, H2C, TCP, SSL, UDP
@@ -1258,11 +1257,11 @@ class InitProvider(BaseModel):
     by a URL map that is bound to target gRPC proxy.
     Possible values are: HTTP, HTTPS, HTTP2, TCP, SSL, UDP, GRPC, UNSPECIFIED, H2C.
     """
-    securityPolicy: Optional[str] = None
+    securityPolicy: str | None = None
     """
     The security policy associated with this backend service.
     """
-    securitySettings: Optional[SecuritySettings] = None
+    securitySettings: SecuritySettings | None = None
     """
     The security settings that apply to this backend service. This field is applicable to either
     a regional backend service with the service_protocol set to HTTP, HTTPS, HTTP2 or H2C, and
@@ -1270,30 +1269,30 @@ class InitProvider(BaseModel):
     load_balancing_scheme set to INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    serviceLbPolicy: Optional[str] = None
+    serviceLbPolicy: str | None = None
     """
     URL to networkservices.ServiceLbPolicy resource.
     Can only be set if load balancing scheme is EXTERNAL, EXTERNAL_MANAGED, INTERNAL_MANAGED or INTERNAL_SELF_MANAGED and the scope is global.
     """
-    sessionAffinity: Optional[str] = None
+    sessionAffinity: str | None = None
     """
     Type of session affinity to use. The default is NONE. Session affinity is
     not applicable if the protocol is UDP.
     Possible values are: NONE, CLIENT_IP, CLIENT_IP_PORT_PROTO, CLIENT_IP_PROTO, GENERATED_COOKIE, HEADER_FIELD, HTTP_COOKIE, STRONG_COOKIE_AFFINITY.
     """
-    strongSessionAffinityCookie: Optional[StrongSessionAffinityCookie] = None
+    strongSessionAffinityCookie: StrongSessionAffinityCookie | None = None
     """
     Describes the HTTP cookie used for stateful session affinity. This field is applicable and required if the sessionAffinity is set to STRONG_COOKIE_AFFINITY.
     Structure is documented below.
     """
-    timeoutSec: Optional[float] = None
+    timeoutSec: float | None = None
     """
     The backend service timeout has a different meaning depending on the type of load balancer.
     For more information see, Backend service settings.
     The default is 30 seconds.
     The full range of timeout values allowed goes from 1 through 2,147,483,647 seconds.
     """
-    tlsSettings: Optional[TlsSettings] = None
+    tlsSettings: TlsSettings | None = None
     """
     Configuration for Backend Authenticated TLS and mTLS. May only be specified when the backend protocol is SSL, HTTPS or HTTP2.
     Structure is documented below.
@@ -1301,14 +1300,14 @@ class InitProvider(BaseModel):
 
 
 class PolicyModel3(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -1322,7 +1321,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[PolicyModel3] = None
+    policy: PolicyModel3 | None = None
     """
     Policies for referencing.
     """
@@ -1340,7 +1339,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -1351,7 +1350,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -1364,9 +1363,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -1379,15 +1379,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -1397,24 +1397,24 @@ class Spec(BaseModel):
 
 
 class CustomMetricModel3(BaseModel):
-    dryRun: Optional[bool] = None
+    dryRun: bool | None = None
     """
     If true, the metric data is collected and reported to Cloud
     Monitoring, but is not used for load balancing.
     """
-    maxUtilization: Optional[float] = None
+    maxUtilization: float | None = None
     """
     Optional parameter to define a target utilization for the Custom Metrics
     balancing mode. The valid range is [0.0, 1.0].
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
 
 
 class BackendItemModel(BaseModel):
-    balancingMode: Optional[str] = None
+    balancingMode: str | None = None
     """
     Specifies the balancing mode for this backend.
     For global HTTP(S) or TCP/SSL load balancing, the default is
@@ -1425,7 +1425,7 @@ class BackendItemModel(BaseModel):
     Default value is UTILIZATION.
     Possible values are: UTILIZATION, RATE, CONNECTION, CUSTOM_METRICS.
     """
-    capacityScaler: Optional[float] = None
+    capacityScaler: float | None = None
     """
     A multiplier applied to the group's maximum servicing capacity
     (based on UTILIZATION, RATE or CONNECTION).
@@ -1434,17 +1434,17 @@ class BackendItemModel(BaseModel):
     setting of 0 means the group is completely drained, offering
     0% of its available Capacity. Valid range is [0.0,1.0].
     """
-    customMetrics: Optional[List[CustomMetricModel3]] = None
+    customMetrics: list[CustomMetricModel3] | None = None
     """
     The set of custom metrics that are used for CUSTOM_METRICS BalancingMode.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     Provide this property when you create the resource.
     """
-    group: Optional[str] = None
+    group: str | None = None
     """
     The fully-qualified URL of an Instance Group or Network Endpoint
     Group resource. In case of instance group this defines the list
@@ -1461,7 +1461,7 @@ class BackendItemModel(BaseModel):
     Group resource using the fully-qualified URL, rather than a
     partial URL.
     """
-    maxConnections: Optional[float] = None
+    maxConnections: float | None = None
     """
     The max number of simultaneous connections for the group. Can
     be used with either CONNECTION or UTILIZATION balancing modes.
@@ -1469,7 +1469,7 @@ class BackendItemModel(BaseModel):
     of maxConnectionsPerInstance or maxConnectionsPerEndpoint,
     as appropriate for group type, must be set.
     """
-    maxConnectionsPerEndpoint: Optional[float] = None
+    maxConnectionsPerEndpoint: float | None = None
     """
     The max number of simultaneous connections that a single backend
     network endpoint can handle. This is used to calculate the
@@ -1478,7 +1478,7 @@ class BackendItemModel(BaseModel):
     For CONNECTION mode, either
     maxConnections or maxConnectionsPerEndpoint must be set.
     """
-    maxConnectionsPerInstance: Optional[float] = None
+    maxConnectionsPerInstance: float | None = None
     """
     The max number of simultaneous connections that a single
     backend instance can handle. This is used to calculate the
@@ -1487,7 +1487,7 @@ class BackendItemModel(BaseModel):
     For CONNECTION mode, either maxConnections or
     maxConnectionsPerInstance must be set.
     """
-    maxRate: Optional[float] = None
+    maxRate: float | None = None
     """
     The max requests per second (RPS) of the group.
     Can be used with either RATE or UTILIZATION balancing modes,
@@ -1495,26 +1495,26 @@ class BackendItemModel(BaseModel):
     of maxRatePerInstance or maxRatePerEndpoint, as appropriate for
     group type, must be set.
     """
-    maxRatePerEndpoint: Optional[float] = None
+    maxRatePerEndpoint: float | None = None
     """
     The max requests per second (RPS) that a single backend network
     endpoint can handle. This is used to calculate the capacity of
     the group. Can be used in either balancing mode. For RATE mode,
     either maxRate or maxRatePerEndpoint must be set.
     """
-    maxRatePerInstance: Optional[float] = None
+    maxRatePerInstance: float | None = None
     """
     The max requests per second (RPS) that a single backend
     instance can handle. This is used to calculate the capacity of
     the group. Can be used in either balancing mode. For RATE mode,
     either maxRate or maxRatePerInstance must be set.
     """
-    maxUtilization: Optional[float] = None
+    maxUtilization: float | None = None
     """
     Used when balancingMode is UTILIZATION. This ratio defines the
     CPU utilization target for the group. Valid range is [0.0, 1.0].
     """
-    preference: Optional[str] = None
+    preference: str | None = None
     """
     This field indicates whether this backend should be fully utilized before sending traffic to backends
     with default preference. This field cannot be set when loadBalancingScheme is set to 'EXTERNAL'. The possible values are:
@@ -1522,12 +1522,12 @@ class BackendItemModel(BaseModel):
 
 
 class CustomMetricModel4(BaseModel):
-    dryRun: Optional[bool] = None
+    dryRun: bool | None = None
     """
     If true, the metric data is collected and reported to Cloud
     Monitoring, but is not used for load balancing.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of a custom utilization signal. The name must be 1-64 characters
     long and match the regular expression a-z? which
@@ -1542,33 +1542,33 @@ class CustomMetricModel4(BaseModel):
 
 
 class IapModel(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether the serving infrastructure will authenticate and authorize all incoming requests.
     """
-    oauth2ClientId: Optional[str] = None
+    oauth2ClientId: str | None = None
     """
     OAuth2 Client ID for IAP
     """
 
 
 class PolicyModel4(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the cookie.
     """
 
 
 class AwsV4AuthenticationModel(BaseModel):
-    accessKeyId: Optional[str] = None
+    accessKeyId: str | None = None
     """
     The identifier of an access key used for s3 bucket authentication.
     """
-    accessKeyVersion: Optional[str] = None
+    accessKeyVersion: str | None = None
     """
     The optional version identifier for the access key. You can use this to keep track of different iterations of your access key.
     """
-    originRegion: Optional[str] = None
+    originRegion: str | None = None
     """
     The name of the cloud region of your origin. This is a free-form field with the name of the region your cloud uses to host your origin.
     For example, "us-east-1" for AWS or "us-ashburn-1" for OCI.
@@ -1576,7 +1576,7 @@ class AwsV4AuthenticationModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    affinityCookieTtlSec: Optional[float] = None
+    affinityCookieTtlSec: float | None = None
     """
     Lifetime of cookies in seconds if session_affinity is
     GENERATED_COOKIE. If set to 0, the cookie is non-persistent and lasts
@@ -1584,33 +1584,33 @@ class AtProvider(BaseModel):
     maximum allowed value for TTL is one day.
     When the load balancing scheme is INTERNAL, this field is not used.
     """
-    backend: Optional[List[BackendItemModel]] = None
+    backend: list[BackendItemModel] | None = None
     """
     The set of backends that serve this BackendService.
     Structure is documented below.
     """
-    cdnPolicy: Optional[CdnPolicy] = None
+    cdnPolicy: CdnPolicy | None = None
     """
     Cloud CDN configuration for this BackendService.
     Structure is documented below.
     """
-    circuitBreakers: Optional[CircuitBreakers] = None
+    circuitBreakers: CircuitBreakers | None = None
     """
     Settings controlling the volume of connections to a backend service. This field
     is applicable only when the load_balancing_scheme is set to INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    compressionMode: Optional[str] = None
+    compressionMode: str | None = None
     """
     Compress text responses using Brotli or gzip compression, based on the client's Accept-Encoding header.
     Possible values are: AUTOMATIC, DISABLED.
     """
-    connectionDrainingTimeoutSec: Optional[float] = None
+    connectionDrainingTimeoutSec: float | None = None
     """
     Time for which instance will be drained (not accept new
     connections, but still work to finish started).
     """
-    consistentHash: Optional[ConsistentHash] = None
+    consistentHash: ConsistentHash | None = None
     """
     Consistent Hash-based load balancing can be used to provide soft session
     affinity based on HTTP headers, cookies or other properties. This load balancing
@@ -1622,38 +1622,38 @@ class AtProvider(BaseModel):
     set to MAGLEV or RING_HASH.
     Structure is documented below.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    customMetrics: Optional[List[CustomMetricModel4]] = None
+    customMetrics: list[CustomMetricModel4] | None = None
     """
     List of custom metrics that are used for the WEIGHTED_ROUND_ROBIN locality_lb_policy.
     Structure is documented below.
     """
-    customRequestHeaders: Optional[List[str]] = None
+    customRequestHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied
     requests.
     """
-    customResponseHeaders: Optional[List[str]] = None
+    customResponseHeaders: list[str] | None = None
     """
     Headers that the HTTP/S load balancer should add to proxied
     responses.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    edgeSecurityPolicy: Optional[str] = None
+    edgeSecurityPolicy: str | None = None
     """
     The resource URL for the edge security policy associated with this backend service.
     """
-    enableCdn: Optional[bool] = None
+    enableCdn: bool | None = None
     """
     If true, enable Cloud CDN for this BackendService.
     """
-    externalManagedMigrationState: Optional[str] = None
+    externalManagedMigrationState: str | None = None
     """
     Specifies the canary migration state. Possible values are PREPARE, TEST_BY_PERCENTAGE, and
     TEST_ALL_TRAFFIC.
@@ -1667,7 +1667,7 @@ class AtProvider(BaseModel):
     back to EXTERNAL or PREPARE can be used to migrate all traffic back to EXTERNAL.
     Possible values are: PREPARE, TEST_BY_PERCENTAGE, TEST_ALL_TRAFFIC.
     """
-    externalManagedMigrationTestingPercentage: Optional[float] = None
+    externalManagedMigrationTestingPercentage: float | None = None
     """
     Determines the fraction of requests that should be processed by the Global external
     Application Load Balancer.
@@ -1677,16 +1677,16 @@ class AtProvider(BaseModel):
     This value can only be set if the loadBalancingScheme in the backend service is set to
     EXTERNAL (when using the Classic ALB) and the migration state is TEST_BY_PERCENTAGE.
     """
-    fingerprint: Optional[str] = None
+    fingerprint: str | None = None
     """
     Fingerprint of this resource. A hash of the contents stored in this
     object. This field is used in optimistic locking.
     """
-    generatedId: Optional[float] = None
+    generatedId: float | None = None
     """
     The unique identifier for the resource. This identifier is defined by the server.
     """
-    healthChecks: Optional[List[str]] = None
+    healthChecks: list[str] | None = None
     """
     The set of URLs to the HttpHealthCheck or HttpsHealthCheck resource
     for health checking this BackendService. Currently at most one health
@@ -1695,22 +1695,22 @@ class AtProvider(BaseModel):
     or serverless NEG as a backend.
     For internal load balancing, a URL to a HealthCheck resource must be specified instead.
     """
-    iap: Optional[IapModel] = None
+    iap: IapModel | None = None
     """
     Settings for enabling Cloud Identity Aware Proxy.
     If OAuth client is not set, the Google-managed OAuth client is used.
     Structure is documented below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/backendServices/{{name}}
     """
-    ipAddressSelectionPolicy: Optional[str] = None
+    ipAddressSelectionPolicy: str | None = None
     """
     Specifies preference of traffic to the backend (from the proxy and from the client for proxyless gRPC).
     Possible values are: IPV4_ONLY, PREFER_IPV6, IPV6_ONLY.
     """
-    loadBalancingScheme: Optional[str] = None
+    loadBalancingScheme: str | None = None
     """
     Indicates whether the backend service will be used with internal or
     external load balancing. A backend service created for one type of
@@ -1719,7 +1719,7 @@ class AtProvider(BaseModel):
     Default value is EXTERNAL.
     Possible values are: EXTERNAL, INTERNAL_SELF_MANAGED, INTERNAL_MANAGED, EXTERNAL_MANAGED.
     """
-    localityLbPolicies: Optional[List[LocalityLbPolicy]] = None
+    localityLbPolicies: list[LocalityLbPolicy] | None = None
     """
     A list of locality load balancing policies to be used in order of
     preference. Either the policy or the customPolicy field should be set.
@@ -1729,18 +1729,18 @@ class AtProvider(BaseModel):
     validateForProxyless field set to true.
     Structure is documented below.
     """
-    localityLbPolicy: Optional[str] = None
+    localityLbPolicy: str | None = None
     """
     The load balancing algorithm used within the scope of the locality.
     The possible values are:
     """
-    logConfig: Optional[LogConfig] = None
+    logConfig: LogConfig | None = None
     """
     This field denotes the logging options for the load balancer traffic served by this backend service.
     If logging is enabled, logs will be exported to Stackdriver.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the default maximum duration (timeout) for streams to this service. Duration is computed from the
     beginning of the stream until the response has been completely processed, including all retries. A stream that
@@ -1750,25 +1750,25 @@ class AtProvider(BaseModel):
     This field is only allowed when the loadBalancingScheme of the backend service is INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    outlierDetection: Optional[OutlierDetection] = None
+    outlierDetection: OutlierDetection | None = None
     """
     Settings controlling eviction of unhealthy hosts from the load balancing pool.
     Applicable backend service types can be a global backend service with the
     loadBalancingScheme set to INTERNAL_SELF_MANAGED or EXTERNAL_MANAGED.
     Structure is documented below.
     """
-    portName: Optional[str] = None
+    portName: str | None = None
     """
     Name of backend port. The same name should appear in the instance
     groups referenced by this service. Required when the load balancing
     scheme is EXTERNAL.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     The protocol this BackendService uses to communicate with backends.
     The default is HTTP. Possible values are HTTP, HTTPS, HTTP2, H2C, TCP, SSL, UDP
@@ -1777,11 +1777,11 @@ class AtProvider(BaseModel):
     by a URL map that is bound to target gRPC proxy.
     Possible values are: HTTP, HTTPS, HTTP2, TCP, SSL, UDP, GRPC, UNSPECIFIED, H2C.
     """
-    securityPolicy: Optional[str] = None
+    securityPolicy: str | None = None
     """
     The security policy associated with this backend service.
     """
-    securitySettings: Optional[SecuritySettings] = None
+    securitySettings: SecuritySettings | None = None
     """
     The security settings that apply to this backend service. This field is applicable to either
     a regional backend service with the service_protocol set to HTTP, HTTPS, HTTP2 or H2C, and
@@ -1789,34 +1789,34 @@ class AtProvider(BaseModel):
     load_balancing_scheme set to INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    serviceLbPolicy: Optional[str] = None
+    serviceLbPolicy: str | None = None
     """
     URL to networkservices.ServiceLbPolicy resource.
     Can only be set if load balancing scheme is EXTERNAL, EXTERNAL_MANAGED, INTERNAL_MANAGED or INTERNAL_SELF_MANAGED and the scope is global.
     """
-    sessionAffinity: Optional[str] = None
+    sessionAffinity: str | None = None
     """
     Type of session affinity to use. The default is NONE. Session affinity is
     not applicable if the protocol is UDP.
     Possible values are: NONE, CLIENT_IP, CLIENT_IP_PORT_PROTO, CLIENT_IP_PROTO, GENERATED_COOKIE, HEADER_FIELD, HTTP_COOKIE, STRONG_COOKIE_AFFINITY.
     """
-    strongSessionAffinityCookie: Optional[StrongSessionAffinityCookie] = None
+    strongSessionAffinityCookie: StrongSessionAffinityCookie | None = None
     """
     Describes the HTTP cookie used for stateful session affinity. This field is applicable and required if the sessionAffinity is set to STRONG_COOKIE_AFFINITY.
     Structure is documented below.
     """
-    timeoutSec: Optional[float] = None
+    timeoutSec: float | None = None
     """
     The backend service timeout has a different meaning depending on the type of load balancer.
     For more information see, Backend service settings.
     The default is 30 seconds.
     The full range of timeout values allowed goes from 1 through 2,147,483,647 seconds.
     """
-    tlsSettings: Optional[TlsSettings] = None
+    tlsSettings: TlsSettings | None = None
     """
     Configuration for Backend Authenticated TLS and mTLS. May only be specified when the backend protocol is SSL, HTTPS or HTTP2.
     Structure is documented below.
@@ -1824,17 +1824,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -1856,12 +1856,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -1870,17 +1870,17 @@ class Status(BaseModel):
 
 
 class BackendService(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta2']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta2'] | None = (
         'compute.gcp.upbound.io/v1beta2'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['BackendService']] = 'BackendService'
+    kind: Literal['BackendService'] | None = 'BackendService'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -1888,26 +1888,26 @@ class BackendService(BaseModel):
     """
     BackendServiceSpec defines the desired state of BackendService
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     BackendServiceStatus defines the observed state of BackendService.
     """
 
 
 class BackendServiceList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[BackendService]
+    items: list[BackendService]
     """
     List of backendservices. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

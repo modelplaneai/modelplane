@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,91 +32,91 @@ class DestinationRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class DestinationSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class DestinationPortRange(BaseModel):
-    fromPort: Optional[float] = None
+    fromPort: float | None = None
     """
     The first port in the range.
     """
-    toPort: Optional[float] = None
+    toPort: float | None = None
     """
     The last port in the range.
     """
 
 
 class SourcePortRange(BaseModel):
-    fromPort: Optional[float] = None
+    fromPort: float | None = None
     """
     The first port in the range.
     """
-    toPort: Optional[float] = None
+    toPort: float | None = None
     """
     The last port in the range.
     """
 
 
 class FilterAtDestination(BaseModel):
-    destinationAddress: Optional[str] = None
+    destinationAddress: str | None = None
     """
     The destination IPv4 address.
     """
-    destinationPortRange: Optional[DestinationPortRange] = None
+    destinationPortRange: DestinationPortRange | None = None
     """
     The destination port range. See below for details.
     """
-    sourceAddress: Optional[str] = None
+    sourceAddress: str | None = None
     """
     IP address of the source resource.
     """
-    sourcePortRange: Optional[SourcePortRange] = None
+    sourcePortRange: SourcePortRange | None = None
     """
     The source port range. See below for details.
     """
 
 
 class FilterAtSource(BaseModel):
-    destinationAddress: Optional[str] = None
+    destinationAddress: str | None = None
     """
     The destination IPv4 address.
     """
-    destinationPortRange: Optional[DestinationPortRange] = None
+    destinationPortRange: DestinationPortRange | None = None
     """
     The destination port range. See below for details.
     """
-    sourceAddress: Optional[str] = None
+    sourceAddress: str | None = None
     """
     IP address of the source resource.
     """
-    sourcePortRange: Optional[SourcePortRange] = None
+    sourcePortRange: SourcePortRange | None = None
     """
     The source port range. See below for details.
     """
@@ -128,66 +127,66 @@ class SourceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    destination: Optional[str] = None
+    destination: str | None = None
     """
     ID or ARN of the resource which is the destination of the path. Can be an Instance, Internet Gateway, Network Interface, Transit Gateway, VPC Endpoint, VPC Peering Connection or VPN Gateway. If the resource is in another account, you must specify an ARN. Either the destination argument or the destination_address argument in the filter_at_source block must be specified.
     """
-    destinationIp: Optional[str] = None
+    destinationIp: str | None = None
     """
     IP address of the destination resource.
     """
-    destinationPort: Optional[float] = None
+    destinationPort: float | None = None
     """
     Destination port to analyze access to.
     """
-    destinationRef: Optional[DestinationRef] = None
+    destinationRef: DestinationRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate destination.
     """
-    destinationSelector: Optional[DestinationSelector] = None
+    destinationSelector: DestinationSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate destination.
     """
-    filterAtDestination: Optional[FilterAtDestination] = None
+    filterAtDestination: FilterAtDestination | None = None
     """
     Scopes the analysis to network paths that match specific filters at the destination. If you specify this parameter, you can't specify destination_ip. See below for details.
     """
-    filterAtSource: Optional[FilterAtSource] = None
+    filterAtSource: FilterAtSource | None = None
     """
     Scopes the analysis to network paths that match specific filters at the source. If you specify this parameter, you can't specify source_ip or destination_port. See below for details.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     Protocol to use for analysis. Valid options are tcp or udp.
     """
@@ -196,78 +195,78 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    source: Optional[str] = None
+    source: str | None = None
     """
     ID or ARN of the resource which is the source of the path. Can be an Instance, Internet Gateway, Network Interface, Transit Gateway, VPC Endpoint, VPC Peering Connection or VPN Gateway. If the resource is in another account, you must specify an ARN.
     """
-    sourceIp: Optional[str] = None
+    sourceIp: str | None = None
     """
     IP address of the source resource.
     """
-    sourceRef: Optional[SourceRef] = None
+    sourceRef: SourceRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate source.
     """
-    sourceSelector: Optional[SourceSelector] = None
+    sourceSelector: SourceSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate source.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    destination: Optional[str] = None
+    destination: str | None = None
     """
     ID or ARN of the resource which is the destination of the path. Can be an Instance, Internet Gateway, Network Interface, Transit Gateway, VPC Endpoint, VPC Peering Connection or VPN Gateway. If the resource is in another account, you must specify an ARN. Either the destination argument or the destination_address argument in the filter_at_source block must be specified.
     """
-    destinationIp: Optional[str] = None
+    destinationIp: str | None = None
     """
     IP address of the destination resource.
     """
-    destinationPort: Optional[float] = None
+    destinationPort: float | None = None
     """
     Destination port to analyze access to.
     """
-    destinationRef: Optional[DestinationRef] = None
+    destinationRef: DestinationRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate destination.
     """
-    destinationSelector: Optional[DestinationSelector] = None
+    destinationSelector: DestinationSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate destination.
     """
-    filterAtDestination: Optional[FilterAtDestination] = None
+    filterAtDestination: FilterAtDestination | None = None
     """
     Scopes the analysis to network paths that match specific filters at the destination. If you specify this parameter, you can't specify destination_ip. See below for details.
     """
-    filterAtSource: Optional[FilterAtSource] = None
+    filterAtSource: FilterAtSource | None = None
     """
     Scopes the analysis to network paths that match specific filters at the source. If you specify this parameter, you can't specify source_ip or destination_port. See below for details.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     Protocol to use for analysis. Valid options are tcp or udp.
     """
-    source: Optional[str] = None
+    source: str | None = None
     """
     ID or ARN of the resource which is the source of the path. Can be an Instance, Internet Gateway, Network Interface, Transit Gateway, VPC Endpoint, VPC Peering Connection or VPN Gateway. If the resource is in another account, you must specify an ARN.
     """
-    sourceIp: Optional[str] = None
+    sourceIp: str | None = None
     """
     IP address of the source resource.
     """
-    sourceRef: Optional[SourceRef] = None
+    sourceRef: SourceRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate source.
     """
-    sourceSelector: Optional[SourceSelector] = None
+    sourceSelector: SourceSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate source.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -293,7 +292,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -306,9 +305,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -317,17 +317,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -337,81 +335,81 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the Network Insights Path.
     """
-    destination: Optional[str] = None
+    destination: str | None = None
     """
     ID or ARN of the resource which is the destination of the path. Can be an Instance, Internet Gateway, Network Interface, Transit Gateway, VPC Endpoint, VPC Peering Connection or VPN Gateway. If the resource is in another account, you must specify an ARN. Either the destination argument or the destination_address argument in the filter_at_source block must be specified.
     """
-    destinationArn: Optional[str] = None
+    destinationArn: str | None = None
     """
     ARN of the destination.
     """
-    destinationIp: Optional[str] = None
+    destinationIp: str | None = None
     """
     IP address of the destination resource.
     """
-    destinationPort: Optional[float] = None
+    destinationPort: float | None = None
     """
     Destination port to analyze access to.
     """
-    filterAtDestination: Optional[FilterAtDestination] = None
+    filterAtDestination: FilterAtDestination | None = None
     """
     Scopes the analysis to network paths that match specific filters at the destination. If you specify this parameter, you can't specify destination_ip. See below for details.
     """
-    filterAtSource: Optional[FilterAtSource] = None
+    filterAtSource: FilterAtSource | None = None
     """
     Scopes the analysis to network paths that match specific filters at the source. If you specify this parameter, you can't specify source_ip or destination_port. See below for details.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the Network Insights Path.
     """
-    protocol: Optional[str] = None
+    protocol: str | None = None
     """
     Protocol to use for analysis. Valid options are tcp or udp.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    source: Optional[str] = None
+    source: str | None = None
     """
     ID or ARN of the resource which is the source of the path. Can be an Instance, Internet Gateway, Network Interface, Transit Gateway, VPC Endpoint, VPC Peering Connection or VPN Gateway. If the resource is in another account, you must specify an ARN.
     """
-    sourceArn: Optional[str] = None
+    sourceArn: str | None = None
     """
     ARN of the source.
     """
-    sourceIp: Optional[str] = None
+    sourceIp: str | None = None
     """
     IP address of the source resource.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -433,12 +431,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -447,17 +445,17 @@ class Status(BaseModel):
 
 
 class NetworkInsightsPath(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.m.upbound.io/v1beta1'] | None = (
         'ec2.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['NetworkInsightsPath']] = 'NetworkInsightsPath'
+    kind: Literal['NetworkInsightsPath'] | None = 'NetworkInsightsPath'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -465,26 +463,26 @@ class NetworkInsightsPath(BaseModel):
     """
     NetworkInsightsPathSpec defines the desired state of NetworkInsightsPath
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     NetworkInsightsPathStatus defines the observed state of NetworkInsightsPath.
     """
 
 
 class NetworkInsightsPathList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[NetworkInsightsPath]
+    items: list[NetworkInsightsPath]
     """
     List of networkinsightspaths. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

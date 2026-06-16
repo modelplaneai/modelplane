@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Params(BaseModel):
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     Resource manager tags to be bound to the network. Tag keys and values have the
     same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
@@ -21,7 +20,7 @@ class Params(BaseModel):
 
 
 class ForProvider(BaseModel):
-    autoCreateSubnetworks: Optional[bool] = None
+    autoCreateSubnetworks: bool | None = None
     """
     When set to true, the network is created in "auto subnet mode" and
     it will create a subnet for each region automatically across the
@@ -29,37 +28,37 @@ class ForProvider(BaseModel):
     When set to false, the network is created in "custom subnet mode" so
     the user can explicitly connect subnetwork resources.
     """
-    bgpAlwaysCompareMed: Optional[bool] = None
+    bgpAlwaysCompareMed: bool | None = None
     """
     Enables/disables the comparison of MED across routes with different Neighbor ASNs.
     This value can only be set if the --bgp-best-path-selection-mode is STANDARD
     """
-    bgpBestPathSelectionMode: Optional[str] = None
+    bgpBestPathSelectionMode: str | None = None
     """
     The BGP best selection algorithm to be employed. MODE can be LEGACY or STANDARD.
     Possible values are: LEGACY, STANDARD.
     """
-    bgpInterRegionCost: Optional[str] = None
+    bgpInterRegionCost: str | None = None
     """
     Choice of the behavior of inter-regional cost and MED in the BPS algorithm.
     Possible values are: DEFAULT, ADD_COST_TO_MED.
     """
-    deleteDefaultRoutesOnCreate: Optional[bool] = None
+    deleteDefaultRoutesOnCreate: bool | None = None
     """
     If set to true, default routes (0.0.0.0/0) will be deleted
     immediately after network creation. Defaults to false.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. The resource must be
     recreated to modify this field.
     """
-    enableUlaInternalIpv6: Optional[bool] = None
+    enableUlaInternalIpv6: bool | None = None
     """
     Enable ULA internal ipv6 on this network. Enabling this feature will assign
     a /48 from google defined ULA prefix fd20::/20.
     """
-    internalIpv6Range: Optional[str] = None
+    internalIpv6Range: str | None = None
     """
     When enabling ula internal ipv6, caller optionally can specify the /48 range
     they want from the google defined ULA prefix fd20::/20. The input must be a
@@ -67,7 +66,7 @@ class ForProvider(BaseModel):
     fail if the speficied /48 is already in used by another resource.
     If the field is not speficied, then a /48 range will be randomly allocated from fd20::/20 and returned via this field.
     """
-    mtu: Optional[float] = None
+    mtu: float | None = None
     """
     Maximum Transmission Unit in bytes. The default value is 1460 bytes.
     The minimum value for this field is 1300 and the maximum value is 8896 bytes (jumbo frames).
@@ -75,29 +74,29 @@ class ForProvider(BaseModel):
     with an ICMP Fragmentation-Needed message if the packets are routed to the Internet or other VPCs
     with varying MTUs.
     """
-    networkFirewallPolicyEnforcementOrder: Optional[str] = None
+    networkFirewallPolicyEnforcementOrder: str | None = None
     """
     Set the order that Firewall Rules and Firewall Policies are evaluated.
     Default value is AFTER_CLASSIC_FIREWALL.
     Possible values are: BEFORE_CLASSIC_FIREWALL, AFTER_CLASSIC_FIREWALL.
     """
-    networkProfile: Optional[str] = None
+    networkProfile: str | None = None
     """
     A full or partial URL of the network profile to apply to this network.
     This field can be set only at resource creation time. For example, the
     following are valid URLs:
     """
-    params: Optional[Params] = None
+    params: Params | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    routingMode: Optional[str] = None
+    routingMode: str | None = None
     """
     The network-wide routing mode to use. If set to REGIONAL, this
     network's cloud routers will only advertise routes with subnetworks
@@ -109,7 +108,7 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    autoCreateSubnetworks: Optional[bool] = None
+    autoCreateSubnetworks: bool | None = None
     """
     When set to true, the network is created in "auto subnet mode" and
     it will create a subnet for each region automatically across the
@@ -117,37 +116,37 @@ class InitProvider(BaseModel):
     When set to false, the network is created in "custom subnet mode" so
     the user can explicitly connect subnetwork resources.
     """
-    bgpAlwaysCompareMed: Optional[bool] = None
+    bgpAlwaysCompareMed: bool | None = None
     """
     Enables/disables the comparison of MED across routes with different Neighbor ASNs.
     This value can only be set if the --bgp-best-path-selection-mode is STANDARD
     """
-    bgpBestPathSelectionMode: Optional[str] = None
+    bgpBestPathSelectionMode: str | None = None
     """
     The BGP best selection algorithm to be employed. MODE can be LEGACY or STANDARD.
     Possible values are: LEGACY, STANDARD.
     """
-    bgpInterRegionCost: Optional[str] = None
+    bgpInterRegionCost: str | None = None
     """
     Choice of the behavior of inter-regional cost and MED in the BPS algorithm.
     Possible values are: DEFAULT, ADD_COST_TO_MED.
     """
-    deleteDefaultRoutesOnCreate: Optional[bool] = None
+    deleteDefaultRoutesOnCreate: bool | None = None
     """
     If set to true, default routes (0.0.0.0/0) will be deleted
     immediately after network creation. Defaults to false.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. The resource must be
     recreated to modify this field.
     """
-    enableUlaInternalIpv6: Optional[bool] = None
+    enableUlaInternalIpv6: bool | None = None
     """
     Enable ULA internal ipv6 on this network. Enabling this feature will assign
     a /48 from google defined ULA prefix fd20::/20.
     """
-    internalIpv6Range: Optional[str] = None
+    internalIpv6Range: str | None = None
     """
     When enabling ula internal ipv6, caller optionally can specify the /48 range
     they want from the google defined ULA prefix fd20::/20. The input must be a
@@ -155,7 +154,7 @@ class InitProvider(BaseModel):
     fail if the speficied /48 is already in used by another resource.
     If the field is not speficied, then a /48 range will be randomly allocated from fd20::/20 and returned via this field.
     """
-    mtu: Optional[float] = None
+    mtu: float | None = None
     """
     Maximum Transmission Unit in bytes. The default value is 1460 bytes.
     The minimum value for this field is 1300 and the maximum value is 8896 bytes (jumbo frames).
@@ -163,29 +162,29 @@ class InitProvider(BaseModel):
     with an ICMP Fragmentation-Needed message if the packets are routed to the Internet or other VPCs
     with varying MTUs.
     """
-    networkFirewallPolicyEnforcementOrder: Optional[str] = None
+    networkFirewallPolicyEnforcementOrder: str | None = None
     """
     Set the order that Firewall Rules and Firewall Policies are evaluated.
     Default value is AFTER_CLASSIC_FIREWALL.
     Possible values are: BEFORE_CLASSIC_FIREWALL, AFTER_CLASSIC_FIREWALL.
     """
-    networkProfile: Optional[str] = None
+    networkProfile: str | None = None
     """
     A full or partial URL of the network profile to apply to this network.
     This field can be set only at resource creation time. For example, the
     following are valid URLs:
     """
-    params: Optional[Params] = None
+    params: Params | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    routingMode: Optional[str] = None
+    routingMode: str | None = None
     """
     The network-wide routing mode to use. If set to REGIONAL, this
     network's cloud routers will only advertise routes with subnetworks
@@ -216,7 +215,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -229,9 +228,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -240,17 +240,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -260,7 +258,7 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    autoCreateSubnetworks: Optional[bool] = None
+    autoCreateSubnetworks: bool | None = None
     """
     When set to true, the network is created in "auto subnet mode" and
     it will create a subnet for each region automatically across the
@@ -268,46 +266,46 @@ class AtProvider(BaseModel):
     When set to false, the network is created in "custom subnet mode" so
     the user can explicitly connect subnetwork resources.
     """
-    bgpAlwaysCompareMed: Optional[bool] = None
+    bgpAlwaysCompareMed: bool | None = None
     """
     Enables/disables the comparison of MED across routes with different Neighbor ASNs.
     This value can only be set if the --bgp-best-path-selection-mode is STANDARD
     """
-    bgpBestPathSelectionMode: Optional[str] = None
+    bgpBestPathSelectionMode: str | None = None
     """
     The BGP best selection algorithm to be employed. MODE can be LEGACY or STANDARD.
     Possible values are: LEGACY, STANDARD.
     """
-    bgpInterRegionCost: Optional[str] = None
+    bgpInterRegionCost: str | None = None
     """
     Choice of the behavior of inter-regional cost and MED in the BPS algorithm.
     Possible values are: DEFAULT, ADD_COST_TO_MED.
     """
-    deleteDefaultRoutesOnCreate: Optional[bool] = None
+    deleteDefaultRoutesOnCreate: bool | None = None
     """
     If set to true, default routes (0.0.0.0/0) will be deleted
     immediately after network creation. Defaults to false.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. The resource must be
     recreated to modify this field.
     """
-    enableUlaInternalIpv6: Optional[bool] = None
+    enableUlaInternalIpv6: bool | None = None
     """
     Enable ULA internal ipv6 on this network. Enabling this feature will assign
     a /48 from google defined ULA prefix fd20::/20.
     """
-    gatewayIpv4: Optional[str] = None
+    gatewayIpv4: str | None = None
     """
     The gateway address for default routing out of the network. This value
     is selected by GCP.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/networks/{{name}}
     """
-    internalIpv6Range: Optional[str] = None
+    internalIpv6Range: str | None = None
     """
     When enabling ula internal ipv6, caller optionally can specify the /48 range
     they want from the google defined ULA prefix fd20::/20. The input must be a
@@ -315,7 +313,7 @@ class AtProvider(BaseModel):
     fail if the speficied /48 is already in used by another resource.
     If the field is not speficied, then a /48 range will be randomly allocated from fd20::/20 and returned via this field.
     """
-    mtu: Optional[float] = None
+    mtu: float | None = None
     """
     Maximum Transmission Unit in bytes. The default value is 1460 bytes.
     The minimum value for this field is 1300 and the maximum value is 8896 bytes (jumbo frames).
@@ -323,38 +321,38 @@ class AtProvider(BaseModel):
     with an ICMP Fragmentation-Needed message if the packets are routed to the Internet or other VPCs
     with varying MTUs.
     """
-    networkFirewallPolicyEnforcementOrder: Optional[str] = None
+    networkFirewallPolicyEnforcementOrder: str | None = None
     """
     Set the order that Firewall Rules and Firewall Policies are evaluated.
     Default value is AFTER_CLASSIC_FIREWALL.
     Possible values are: BEFORE_CLASSIC_FIREWALL, AFTER_CLASSIC_FIREWALL.
     """
-    networkId: Optional[str] = None
+    networkId: str | None = None
     """
     The unique identifier for the resource. This identifier is defined by the server.
     """
-    networkProfile: Optional[str] = None
+    networkProfile: str | None = None
     """
     A full or partial URL of the network profile to apply to this network.
     This field can be set only at resource creation time. For example, the
     following are valid URLs:
     """
-    numericId: Optional[str] = None
+    numericId: str | None = None
     """
     (Deprecated)
     The unique identifier for the resource. This identifier is defined by the server.
     """
-    params: Optional[Params] = None
+    params: Params | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    routingMode: Optional[str] = None
+    routingMode: str | None = None
     """
     The network-wide routing mode to use. If set to REGIONAL, this
     network's cloud routers will only advertise routes with subnetworks
@@ -363,24 +361,24 @@ class AtProvider(BaseModel):
     subnetworks of this network, across regions.
     Possible values are: REGIONAL, GLOBAL.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -402,12 +400,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -416,17 +414,17 @@ class Status(BaseModel):
 
 
 class Network(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Network']] = 'Network'
+    kind: Literal['Network'] | None = 'Network'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -434,26 +432,26 @@ class Network(BaseModel):
     """
     NetworkSpec defines the desired state of Network
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     NetworkStatus defines the observed state of Network.
     """
 
 
 class NetworkList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Network]
+    items: list[Network]
     """
     List of networks. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

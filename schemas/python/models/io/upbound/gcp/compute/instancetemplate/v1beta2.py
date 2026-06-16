@@ -3,60 +3,59 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class AdvancedMachineFeatures(BaseModel):
-    enableNestedVirtualization: Optional[bool] = None
+    enableNestedVirtualization: bool | None = None
     """
     Defines whether the instance should have nested virtualization enabled. Defaults to false.
     """
-    enableUefiNetworking: Optional[bool] = None
+    enableUefiNetworking: bool | None = None
     """
     Whether to enable UEFI networking for instance creation.
     """
-    performanceMonitoringUnit: Optional[str] = None
+    performanceMonitoringUnit: str | None = None
     """
     The PMU is a hardware component within the CPU core that monitors how the processor runs code. Valid values for the level of PMU are STANDARD, ENHANCED, and ARCHITECTURAL.
     """
-    threadsPerCore: Optional[float] = None
+    threadsPerCore: float | None = None
     """
     The number of threads per physical core. To disable simultaneous multithreading (SMT) set this to 1.
     """
-    turboMode: Optional[str] = None
+    turboMode: str | None = None
     """
     Turbo frequency mode to use for the instance. Supported modes are currently either ALL_CORE_MAX or unset (default).
     """
-    visibleCoreCount: Optional[float] = None
+    visibleCoreCount: float | None = None
     """
     The number of physical cores to expose to an instance. visible cores info (VC).
     """
 
 
 class ConfidentialInstanceConfig(BaseModel):
-    confidentialInstanceType: Optional[str] = None
+    confidentialInstanceType: str | None = None
     """
     Defines the confidential computing technology the instance uses. SEV is an AMD feature. TDX is an Intel feature. One of the following values is required: SEV, SEV_SNP, TDX. on_host_maintenance can be set to MIGRATE if confidential_instance_type is set to SEV and min_cpu_platform is set to "AMD Milan". Otherwise, on_host_maintenance has to be set to TERMINATE or this will fail to create the VM. If SEV_SNP, currently min_cpu_platform has to be set to "AMD Milan" or this will fail to create the VM.
     """
-    enableConfidentialCompute: Optional[bool] = None
+    enableConfidentialCompute: bool | None = None
     """
     Defines whether the instance should have confidential compute enabled with AMD SEV. If enabled, on_host_maintenance can be set to MIGRATE if min_cpu_platform is set to "AMD Milan". Otherwise, on_host_maintenance has to be set to TERMINATE or this will fail to create the VM.
     """
 
 
 class DiskEncryptionKey(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key that is
     stored in Google Cloud KMS. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
     may be set.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the
     encryption request for the given KMS key. If absent, the Compute Engine
@@ -65,14 +64,14 @@ class DiskEncryptionKey(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -86,23 +85,23 @@ class ResourcePoliciesRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ResourcePoliciesSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -139,19 +138,19 @@ class RsaEncryptedKeySecretRef(BaseModel):
 
 
 class SourceImageEncryptionKey(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key that is
     stored in Google Cloud KMS. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
     may be set.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the
     encryption request for the given KMS key. If absent, the Compute Engine
     default service account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     A 256-bit [customer-supplied encryption key]
     (https://cloud.google.com/compute/docs/disks/customer-supplied-encryption),
@@ -159,7 +158,7 @@ class SourceImageEncryptionKey(BaseModel):
     to decrypt this snapshot. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
     may be set.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit [customer-supplied encryption key]
     (https://cloud.google.com/compute/docs/disks/customer-supplied-encryption) to decrypt this snapshot. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
@@ -172,42 +171,42 @@ class SourceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class SourceSnapshotEncryptionKey(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key that is
     stored in Google Cloud KMS. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
     may be set.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the
     encryption request for the given KMS key. If absent, the Compute Engine
     default service account is used.
     """
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     A 256-bit [customer-supplied encryption key]
     (https://cloud.google.com/compute/docs/disks/customer-supplied-encryption),
@@ -215,7 +214,7 @@ class SourceSnapshotEncryptionKey(BaseModel):
     to decrypt this snapshot. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
     may be set.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     Specifies an RFC 4648 base64 encoded, RSA-wrapped 2048-bit [customer-supplied encryption key]
     (https://cloud.google.com/compute/docs/disks/customer-supplied-encryption) to decrypt this snapshot. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
@@ -224,98 +223,98 @@ class SourceSnapshotEncryptionKey(BaseModel):
 
 
 class DiskItem(BaseModel):
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     The architecture of the attached disk. Valid values are ARM64 or x86_64.
     """
-    autoDelete: Optional[bool] = None
+    autoDelete: bool | None = None
     """
     Whether or not the disk should be auto-deleted.
     This defaults to true.
     """
-    boot: Optional[bool] = None
+    boot: bool | None = None
     """
     Indicates that this is a boot disk.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     A unique device name that is reflected into the
     /dev/  tree of a Linux operating system running within the instance. If not
     specified, the server chooses a default device name to apply to this disk.
     """
-    diskEncryptionKey: Optional[DiskEncryptionKey] = None
+    diskEncryptionKey: DiskEncryptionKey | None = None
     """
     Encrypts or decrypts a disk using a customer-supplied encryption key.
     """
-    diskName: Optional[str] = None
+    diskName: str | None = None
     """
     Name of the disk. When not provided, this defaults
     to the name of the instance.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     The size of the image in gigabytes. If not
     specified, it will inherit the size of its base image. For SCRATCH disks,
     the size must be exactly 375GB.
     """
-    diskType: Optional[str] = None
+    diskType: str | None = None
     """
     The GCE disk type. Such as "pd-ssd", "local-ssd",
     "pd-balanced" or "pd-standard", "hyperdisk-balanced", "hyperdisk-throughput" or "hyperdisk-extreme".
     """
-    guestOsFeatures: Optional[List[str]] = None
+    guestOsFeatures: list[str] | None = None
     """
     A list of features to enable on the guest operating system. Applicable only for bootable images. Read Enabling guest operating system features to see a list of available options.
     """
-    interface: Optional[str] = None
+    interface: str | None = None
     """
     Specifies the disk interface to use for attaching this disk,
     which is either SCSI or NVME. The default is SCSI. Persistent disks must always use SCSI
     and the request will fail if you attempt to attach a persistent disk in any other format
     than SCSI. Local SSDs can use either NVME or SCSI.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     A set of ket/value label pairs to assign to disk created from
     this template
     """
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     The mode in which to attach this disk, either READ_WRITE
     or READ_ONLY. If you are attaching or creating a boot disk, this must
     read-write mode.
     """
-    provisionedIops: Optional[float] = None
+    provisionedIops: float | None = None
     """
     Indicates how many IOPS to provision for the disk. This
     sets the number of I/O operations per second that the disk can handle.
     Values must be between 10,000 and 120,000. For more details, see the
     Extreme persistent disk documentation.
     """
-    provisionedThroughput: Optional[float] = None
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    provisionedThroughput: float | None = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A set of key/value resource manager tag pairs to bind to this disk. Keys must be in the format tagKeys/{tag_key_id}, and values are in the format tagValues/456.
     """
-    resourcePolicies: Optional[List[str]] = None
+    resourcePolicies: list[str] | None = None
     """
     - A list (short name or id) of resource policies to attach to this disk for automatic snapshot creations. Currently a max of 1 resource policy is supported.
     """
-    resourcePoliciesRefs: Optional[List[ResourcePoliciesRef]] = None
+    resourcePoliciesRefs: list[ResourcePoliciesRef] | None = None
     """
     References to ResourcePolicy in compute to populate resourcePolicies.
     """
-    resourcePoliciesSelector: Optional[ResourcePoliciesSelector] = None
+    resourcePoliciesSelector: ResourcePoliciesSelector | None = None
     """
     Selector for a list of ResourcePolicy in compute to populate resourcePolicies.
     """
-    source: Optional[str] = None
+    source: str | None = None
     """
     The name (not self_link)
     of the disk (such as those managed by google_compute_disk) to attach.
     ~> Note: Either source, source_image, or source_snapshot is required in a disk block unless the disk type is local-ssd. Check the API docs for details.
     """
-    sourceImage: Optional[str] = None
+    sourceImage: str | None = None
     """
     The image from which to
     initialize this disk. This can be one of: the image's self_link,
@@ -325,32 +324,32 @@ class DiskItem(BaseModel):
     {project}/{image}, {family}, or {image}.
     ~> Note: Either source, source_image, or source_snapshot is required in a disk block unless the disk type is local-ssd. Check the API docs for details.
     """
-    sourceImageEncryptionKey: Optional[SourceImageEncryptionKey] = None
+    sourceImageEncryptionKey: SourceImageEncryptionKey | None = None
     """
     The customer-supplied encryption
     key of the source image. Required if the source image is protected by a
     customer-supplied encryption key.
     """
-    sourceRef: Optional[SourceRef] = None
+    sourceRef: SourceRef | None = None
     """
     Reference to a Disk in compute to populate source.
     """
-    sourceSelector: Optional[SourceSelector] = None
+    sourceSelector: SourceSelector | None = None
     """
     Selector for a Disk in compute to populate source.
     """
-    sourceSnapshot: Optional[str] = None
+    sourceSnapshot: str | None = None
     """
     The source snapshot to create this disk.
     ~> Note: Either source, source_image, or source_snapshot is required in a disk block unless the disk type is local-ssd. Check the API docs for details.
     """
-    sourceSnapshotEncryptionKey: Optional[SourceSnapshotEncryptionKey] = None
+    sourceSnapshotEncryptionKey: SourceSnapshotEncryptionKey | None = None
     """
     The customer-supplied encryption
     key of the source snapshot. Structure
     documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of GCE disk, can be either "SCRATCH" or
     "PERSISTENT".
@@ -358,23 +357,23 @@ class DiskItem(BaseModel):
 
 
 class GuestAcceleratorItem(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     The number of the guest accelerator cards exposed to this instance.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The accelerator type resource to expose to this instance. E.g. nvidia-tesla-k80.
     """
 
 
 class AccessConfigItem(BaseModel):
-    natIp: Optional[str] = None
+    natIp: str | None = None
     """
     The IP address that will be 1:1 mapped to the instance's
     network ip. If not given, one will be generated.
     """
-    networkTier: Optional[str] = None
+    networkTier: str | None = None
     """
     The service-level to be provided for IPv6 traffic when the
     subnet has an external subnet. Only PREMIUM and STANDARD tier is valid for IPv6.
@@ -382,7 +381,7 @@ class AccessConfigItem(BaseModel):
 
 
 class AliasIpRangeItem(BaseModel):
-    ipCidrRange: Optional[str] = None
+    ipCidrRange: str | None = None
     """
     The IP CIDR range represented by this alias IP range. This IP CIDR range
     must belong to the specified subnetwork and cannot contain IP addresses reserved by
@@ -390,7 +389,7 @@ class AliasIpRangeItem(BaseModel):
     netmask (e.g. /24) may be supplied, with a CIDR format resulting in an API
     error.
     """
-    subnetworkRangeName: Optional[str] = None
+    subnetworkRangeName: str | None = None
     """
     The subnetwork secondary range name specifying
     the secondary range from which to allocate the IP CIDR range for this alias IP
@@ -399,7 +398,7 @@ class AliasIpRangeItem(BaseModel):
 
 
 class Ipv6AccessConfigItem(BaseModel):
-    networkTier: Optional[str] = None
+    networkTier: str | None = None
     """
     The service-level to be provided for IPv6 traffic when the
     subnet has an external subnet. Only PREMIUM and STANDARD tier is valid for IPv6.
@@ -411,23 +410,23 @@ class NetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -438,140 +437,140 @@ class SubnetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class NetworkInterfaceItem(BaseModel):
-    accessConfig: Optional[List[AccessConfigItem]] = None
+    accessConfig: list[AccessConfigItem] | None = None
     """
     Access configurations, i.e. IPs via which this
     instance can be accessed via the Internet.g. via tunnel or because it is running on another cloud instance
     on that network). This block can be specified once per network_interface. Structure documented below.
     """
-    aliasIpRange: Optional[List[AliasIpRangeItem]] = None
+    aliasIpRange: list[AliasIpRangeItem] | None = None
     """
     An
     array of alias IP ranges for this network interface. Can only be specified for network
     interfaces on subnet-mode networks. Structure documented below.
     """
-    internalIpv6PrefixLength: Optional[float] = None
-    ipv6AccessConfig: Optional[List[Ipv6AccessConfigItem]] = None
+    internalIpv6PrefixLength: float | None = None
+    ipv6AccessConfig: list[Ipv6AccessConfigItem] | None = None
     """
     An array of IPv6 access configurations for this interface.
     Currently, only one IPv6 access config, DIRECT_IPV6, is supported. If there is no ipv6AccessConfig
     specified, then this instance will have no external IPv6 Internet access. Structure documented below.
     """
-    ipv6Address: Optional[str] = None
-    network: Optional[str] = None
+    ipv6Address: str | None = None
+    network: str | None = None
     """
     The name or self_link of the network to attach this interface to.
     Use network attribute for Legacy or Auto subnetted networks and
     subnetwork for custom subnetted networks.
     """
-    networkIp: Optional[str] = None
+    networkIp: str | None = None
     """
     The private IP address to assign to the instance. If
     empty, the address will be automatically assigned.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    nicType: Optional[str] = None
+    nicType: str | None = None
     """
     The type of vNIC to be used on this interface. Possible values: GVNIC, VIRTIO_NET, MRDMA, IRDMA.
     """
-    queueCount: Optional[float] = None
+    queueCount: float | None = None
     """
     The networking queue count that's specified by users for the network interface. Both Rx and Tx queues will be set to this number. It will be empty if not specified.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this network interface to identify whether the IPv6 feature is enabled or not. Values are IPV4_IPV6, IPV6_ONLY or IPV4_ONLY. If not specified, IPV4_ONLY will be used.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     the name of the subnetwork to attach this interface
     to. The subnetwork must exist in the same region this instance will be
     created in. Either network or subnetwork must be provided.
     """
-    subnetworkProject: Optional[str] = None
+    subnetworkProject: str | None = None
     """
     The ID of the project in which the subnetwork belongs.
     If it is not provided, the provider project is used.
     """
-    subnetworkRef: Optional[SubnetworkRef] = None
+    subnetworkRef: SubnetworkRef | None = None
     """
     Reference to a Subnetwork in compute to populate subnetwork.
     """
-    subnetworkSelector: Optional[SubnetworkSelector] = None
+    subnetworkSelector: SubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate subnetwork.
     """
 
 
 class NetworkPerformanceConfig(BaseModel):
-    totalEgressBandwidthTier: Optional[str] = None
+    totalEgressBandwidthTier: str | None = None
     """
     The egress bandwidth tier to enable. Possible values: TIER_1, DEFAULT
     """
 
 
 class SpecificReservation(BaseModel):
-    key: Optional[str] = None
+    key: str | None = None
     """
     Corresponds to the label key of a reservation resource. To target a SPECIFIC_RESERVATION by name, specify compute.googleapis.com/reservation-name as the key and specify the name of your reservation as the only value.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     Corresponds to the label values of a reservation resource.
     """
 
 
 class ReservationAffinity(BaseModel):
-    specificReservation: Optional[SpecificReservation] = None
+    specificReservation: SpecificReservation | None = None
     """
     Specifies the label selector for the reservation to use..
     Structure is documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of reservation from which this instance can consume resources.
     """
 
 
 class LocalSsdRecoveryTimeoutItem(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond
     resolution. Durations less than one second are represented with a 0
     seconds field and a positive nanos field. Must be from 0 to
     999,999,999 inclusive.
     """
-    seconds: Optional[float] = None
+    seconds: float | None = None
     """
     Span of time at a resolution of a second.
     The value must be between 1 and 3600, which is 3,600 seconds (one hour).`
@@ -579,14 +578,14 @@ class LocalSsdRecoveryTimeoutItem(BaseModel):
 
 
 class MaxRunDuration(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond
     resolution. Durations less than one second are represented with a 0
     seconds field and a positive nanos field. Must be from 0 to
     999,999,999 inclusive.
     """
-    seconds: Optional[float] = None
+    seconds: float | None = None
     """
     Span of time at a resolution of a second.
     The value must be between 1 and 3600, which is 3,600 seconds (one hour).`
@@ -594,53 +593,53 @@ class MaxRunDuration(BaseModel):
 
 
 class NodeAffinity(BaseModel):
-    key: Optional[str] = None
+    key: str | None = None
     """
     Corresponds to the label key of a reservation resource. To target a SPECIFIC_RESERVATION by name, specify compute.googleapis.com/reservation-name as the key and specify the name of your reservation as the only value.
     """
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     The operator. Can be IN for node-affinities
     or NOT_IN for anti-affinities.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     Corresponds to the label values of a reservation resource.
     """
 
 
 class OnInstanceStopAction(BaseModel):
-    discardLocalSsd: Optional[bool] = None
+    discardLocalSsd: bool | None = None
     """
     Whether to discard local SSDs attached to the VM while terminating using max_run_duration. Only supports true at this point.
     """
 
 
 class Scheduling(BaseModel):
-    automaticRestart: Optional[bool] = None
+    automaticRestart: bool | None = None
     """
     Specifies whether the instance should be
     automatically restarted if it is terminated by Compute Engine (not
     terminated by a user). This defaults to true.
     """
-    availabilityDomain: Optional[float] = None
+    availabilityDomain: float | None = None
     """
     Specifies the availability domain to place the instance in. The value must be a number between 1 and the number of availability domains specified in the spread placement policy attached to the instance.
     """
-    instanceTerminationAction: Optional[str] = None
+    instanceTerminationAction: str | None = None
     """
     Describe the type of termination action for SPOT VM. Can be STOP or DELETE.  Read more on here
     """
-    localSsdRecoveryTimeout: Optional[List[LocalSsdRecoveryTimeoutItem]] = None
+    localSsdRecoveryTimeout: list[LocalSsdRecoveryTimeoutItem] | None = None
     """
     io/docs/providers/google/guides/provider_versions.html) Specifies the maximum amount of time a Local Ssd Vm should wait while recovery of the Local Ssd state is attempted. Its value should be in between 0 and 168 hours with hour granularity and the default value being 1 hour. Structure is documented below.
     """
-    maxRunDuration: Optional[MaxRunDuration] = None
+    maxRunDuration: MaxRunDuration | None = None
     """
     The duration of the instance. Instance will run and be terminated after then, the termination action could be defined in instance_termination_action. Structure is documented below.
     """
-    minNodeCpus: Optional[float] = None
-    nodeAffinities: Optional[List[NodeAffinity]] = None
+    minNodeCpus: float | None = None
+    nodeAffinities: list[NodeAffinity] | None = None
     """
     Specifies node affinities or anti-affinities
     to determine which sole-tenant nodes your instances and managed instance
@@ -648,29 +647,29 @@ class Scheduling(BaseModel):
     here.
     Structure documented below.
     """
-    onHostMaintenance: Optional[str] = None
+    onHostMaintenance: str | None = None
     """
     Defines the maintenance behavior for this
     instance.
     """
-    onInstanceStopAction: Optional[OnInstanceStopAction] = None
+    onInstanceStopAction: OnInstanceStopAction | None = None
     """
     Specifies the action to be performed when the instance is terminated using max_run_duration and STOP instance_termination_action. Only support true discard_local_ssd at this point. Structure is documented below.
     """
-    preemptible: Optional[bool] = None
+    preemptible: bool | None = None
     """
     Allows instance to be preempted. This defaults to
     false. Read more on this
     here.
     """
-    provisioningModel: Optional[str] = None
+    provisioningModel: str | None = None
     """
     Describe the type of preemptible VM. This field accepts the value STANDARD or SPOT. If the value is STANDARD, there will be no discount. If this   is set to SPOT,
     preemptible should be true and automatic_restart should be
     false. For more info about
     SPOT, read here
     """
-    terminationTime: Optional[str] = None
+    terminationTime: str | None = None
     """
     Specifies the timestamp, when the instance will be terminated, in RFC3339 text format. If specified, the instance termination action will be performed at the termination time.
     """
@@ -681,43 +680,43 @@ class EmailRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class EmailSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ServiceAccount(BaseModel):
-    email: Optional[str] = None
+    email: str | None = None
     """
     The service account e-mail address. If not given, the
     default Google Compute Engine service account is used.
     """
-    emailRef: Optional[EmailRef] = None
+    emailRef: EmailRef | None = None
     """
     Reference to a ServiceAccount in cloudplatform to populate email.
     """
-    emailSelector: Optional[EmailSelector] = None
+    emailSelector: EmailSelector | None = None
     """
     Selector for a ServiceAccount in cloudplatform to populate email.
     """
-    scopes: Optional[List[str]] = None
+    scopes: list[str] | None = None
     """
     A list of service scopes. Both OAuth2 URLs and gcloud
     short names are supported. To allow full access to all Cloud APIs, use the
@@ -726,111 +725,111 @@ class ServiceAccount(BaseModel):
 
 
 class ShieldedInstanceConfig(BaseModel):
-    enableIntegrityMonitoring: Optional[bool] = None
+    enableIntegrityMonitoring: bool | None = None
     """
     - Compare the most recent boot measurements to the integrity policy baseline and return a pair of pass/fail results depending on whether they match or not. Defaults to true.
     """
-    enableSecureBoot: Optional[bool] = None
+    enableSecureBoot: bool | None = None
     """
     - Verify the digital signature of all boot components, and halt the boot process if signature verification fails. Defaults to false.
     """
-    enableVtpm: Optional[bool] = None
+    enableVtpm: bool | None = None
     """
     - Use a virtualized trusted platform module, which is a specialized computer chip you can use to encrypt objects like keys and certificates. Defaults to true.
     """
 
 
 class ForProvider(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
     """
     Configure Nested Virtualisation and Simultaneous Hyper Threading on this VM. Structure is documented below
     """
-    canIpForward: Optional[bool] = None
+    canIpForward: bool | None = None
     """
     Whether to allow sending and receiving of
     packets with non-matching source or destination IPs. This defaults to false.
     """
-    confidentialInstanceConfig: Optional[ConfidentialInstanceConfig] = None
+    confidentialInstanceConfig: ConfidentialInstanceConfig | None = None
     """
     Enable Confidential Mode on this VM. Structure is documented below
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     A brief description of this resource.
     """
-    disk: Optional[List[DiskItem]] = None
+    disk: list[DiskItem] | None = None
     """
     Disks to attach to instances created from this template.
     This can be specified multiple times for multiple disks. Structure is
     documented below.
     """
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
     """
     List of the type and count of accelerator cards attached to the instance. Structure documented below.
     """
-    instanceDescription: Optional[str] = None
+    instanceDescription: str | None = None
     """
     A brief description to use for instances
     created from this template.
     """
-    keyRevocationActionType: Optional[str] = None
+    keyRevocationActionType: str | None = None
     """
     Action to be taken when a customer's encryption key is revoked. Supports STOP and NONE, with NONE being the default.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     A set of key/value label pairs to assign to instances
     created from this template.
     """
-    machineType: Optional[str] = None
+    machineType: str | None = None
     """
     The machine type to create.
     """
-    metadata: Optional[Dict[str, str]] = None
+    metadata: dict[str, str] | None = None
     """
     Metadata key/value pairs to make available from
     within instances created from this template.
     """
-    metadataStartupScript: Optional[str] = None
+    metadataStartupScript: str | None = None
     """
     An alternative to using the
     startup-script metadata key, mostly to match the compute_instance resource.
     This replaces the startup-script metadata key on the created instance and
     thus the two mechanisms are not allowed to be used simultaneously.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     Specifies a minimum CPU platform. Applicable values are the friendly names of CPU platforms, such as
     Intel Haswell or Intel Skylake. See the complete list here.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the instance template.
     """
-    namePrefix: Optional[str] = None
+    namePrefix: str | None = None
     """
     Creates a unique name beginning with the specified
     prefix. Conflicts with name. Max length is 54 characters.
     Prefixes with lengths longer than 37 characters will use a shortened
     UUID that will be more prone to collisions.
     """
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
     """
     Networks to attach to instances created from
     this template. This can be specified multiple times for multiple networks.
     Structure is documented below.
     """
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
     """
     os-features, and network_interface.0.nic-type must be GVNIC
     in order for this setting to take effect.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     An instance template is a global resource that is not
     bound to a zone or a region. However, you can still specify some regional
@@ -839,130 +838,130 @@ class ForProvider(BaseModel):
     resource is tied to a specific region. Defaults to the region of the
     Provider if no value is given.
     """
-    reservationAffinity: Optional[ReservationAffinity] = None
+    reservationAffinity: ReservationAffinity | None = None
     """
     Specifies the reservations that this instance can consume from.
     Structure is documented below.
     """
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A set of key/value resource manager tag pairs to bind to the instances. Keys must be in the format tagKeys/{tag_key_id}, and values are in the format tagValues/456.
     """
-    resourcePolicies: Optional[List[str]] = None
+    resourcePolicies: list[str] | None = None
     """
     - A list of self_links of resource policies to attach to the instance. Modifying this list will cause the instance to recreate. Currently a max of 1 resource policy is supported.
     """
-    scheduling: Optional[Scheduling] = None
+    scheduling: Scheduling | None = None
     """
     The scheduling strategy to use. More details about
     this configuration option are detailed below.
     """
-    serviceAccount: Optional[ServiceAccount] = None
+    serviceAccount: ServiceAccount | None = None
     """
     Service account to attach to the instance. Structure is documented below.
     """
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
     """
     Enable Shielded VM on this instance. Shielded VM provides verifiable integrity to prevent against malware and rootkits. Defaults to disabled. Structure is documented below.
     Note: shielded_instance_config can only be used with boot images with shielded vm support. See the complete list here.
     """
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
     """
     Tags to attach to the instance.
     """
 
 
 class InitProvider(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
     """
     Configure Nested Virtualisation and Simultaneous Hyper Threading on this VM. Structure is documented below
     """
-    canIpForward: Optional[bool] = None
+    canIpForward: bool | None = None
     """
     Whether to allow sending and receiving of
     packets with non-matching source or destination IPs. This defaults to false.
     """
-    confidentialInstanceConfig: Optional[ConfidentialInstanceConfig] = None
+    confidentialInstanceConfig: ConfidentialInstanceConfig | None = None
     """
     Enable Confidential Mode on this VM. Structure is documented below
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     A brief description of this resource.
     """
-    disk: Optional[List[DiskItem]] = None
+    disk: list[DiskItem] | None = None
     """
     Disks to attach to instances created from this template.
     This can be specified multiple times for multiple disks. Structure is
     documented below.
     """
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
     """
     List of the type and count of accelerator cards attached to the instance. Structure documented below.
     """
-    instanceDescription: Optional[str] = None
+    instanceDescription: str | None = None
     """
     A brief description to use for instances
     created from this template.
     """
-    keyRevocationActionType: Optional[str] = None
+    keyRevocationActionType: str | None = None
     """
     Action to be taken when a customer's encryption key is revoked. Supports STOP and NONE, with NONE being the default.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     A set of key/value label pairs to assign to instances
     created from this template.
     """
-    machineType: Optional[str] = None
+    machineType: str | None = None
     """
     The machine type to create.
     """
-    metadata: Optional[Dict[str, str]] = None
+    metadata: dict[str, str] | None = None
     """
     Metadata key/value pairs to make available from
     within instances created from this template.
     """
-    metadataStartupScript: Optional[str] = None
+    metadataStartupScript: str | None = None
     """
     An alternative to using the
     startup-script metadata key, mostly to match the compute_instance resource.
     This replaces the startup-script metadata key on the created instance and
     thus the two mechanisms are not allowed to be used simultaneously.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     Specifies a minimum CPU platform. Applicable values are the friendly names of CPU platforms, such as
     Intel Haswell or Intel Skylake. See the complete list here.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the instance template.
     """
-    namePrefix: Optional[str] = None
+    namePrefix: str | None = None
     """
     Creates a unique name beginning with the specified
     prefix. Conflicts with name. Max length is 54 characters.
     Prefixes with lengths longer than 37 characters will use a shortened
     UUID that will be more prone to collisions.
     """
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
     """
     Networks to attach to instances created from
     this template. This can be specified multiple times for multiple networks.
     Structure is documented below.
     """
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
     """
     os-features, and network_interface.0.nic-type must be GVNIC
     in order for this setting to take effect.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     An instance template is a global resource that is not
     bound to a zone or a region. However, you can still specify some regional
@@ -971,34 +970,34 @@ class InitProvider(BaseModel):
     resource is tied to a specific region. Defaults to the region of the
     Provider if no value is given.
     """
-    reservationAffinity: Optional[ReservationAffinity] = None
+    reservationAffinity: ReservationAffinity | None = None
     """
     Specifies the reservations that this instance can consume from.
     Structure is documented below.
     """
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A set of key/value resource manager tag pairs to bind to the instances. Keys must be in the format tagKeys/{tag_key_id}, and values are in the format tagValues/456.
     """
-    resourcePolicies: Optional[List[str]] = None
+    resourcePolicies: list[str] | None = None
     """
     - A list of self_links of resource policies to attach to the instance. Modifying this list will cause the instance to recreate. Currently a max of 1 resource policy is supported.
     """
-    scheduling: Optional[Scheduling] = None
+    scheduling: Scheduling | None = None
     """
     The scheduling strategy to use. More details about
     this configuration option are detailed below.
     """
-    serviceAccount: Optional[ServiceAccount] = None
+    serviceAccount: ServiceAccount | None = None
     """
     Service account to attach to the instance. Structure is documented below.
     """
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
     """
     Enable Shielded VM on this instance. Shielded VM provides verifiable integrity to prevent against malware and rootkits. Defaults to disabled. Structure is documented below.
     Note: shielded_instance_config can only be used with boot images with shielded vm support. See the complete list here.
     """
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
     """
     Tags to attach to the instance.
     """
@@ -1009,7 +1008,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -1027,7 +1026,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -1038,7 +1037,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -1051,9 +1050,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -1066,15 +1066,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -1084,13 +1084,13 @@ class Spec(BaseModel):
 
 
 class SourceImageEncryptionKeyModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key that is
     stored in Google Cloud KMS. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
     may be set.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the
     encryption request for the given KMS key. If absent, the Compute Engine
@@ -1099,13 +1099,13 @@ class SourceImageEncryptionKeyModel(BaseModel):
 
 
 class SourceSnapshotEncryptionKeyModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
+    kmsKeySelfLink: str | None = None
     """
     The self link of the encryption key that is
     stored in Google Cloud KMS. Only one of kms_key_self_link, rsa_encrypted_key and raw_key
     may be set.
     """
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeyServiceAccount: str | None = None
     """
     The service account being used for the
     encryption request for the given KMS key. If absent, the Compute Engine
@@ -1114,90 +1114,90 @@ class SourceSnapshotEncryptionKeyModel(BaseModel):
 
 
 class DiskItemModel(BaseModel):
-    architecture: Optional[str] = None
+    architecture: str | None = None
     """
     The architecture of the attached disk. Valid values are ARM64 or x86_64.
     """
-    autoDelete: Optional[bool] = None
+    autoDelete: bool | None = None
     """
     Whether or not the disk should be auto-deleted.
     This defaults to true.
     """
-    boot: Optional[bool] = None
+    boot: bool | None = None
     """
     Indicates that this is a boot disk.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     A unique device name that is reflected into the
     /dev/  tree of a Linux operating system running within the instance. If not
     specified, the server chooses a default device name to apply to this disk.
     """
-    diskEncryptionKey: Optional[DiskEncryptionKey] = None
+    diskEncryptionKey: DiskEncryptionKey | None = None
     """
     Encrypts or decrypts a disk using a customer-supplied encryption key.
     """
-    diskName: Optional[str] = None
+    diskName: str | None = None
     """
     Name of the disk. When not provided, this defaults
     to the name of the instance.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     The size of the image in gigabytes. If not
     specified, it will inherit the size of its base image. For SCRATCH disks,
     the size must be exactly 375GB.
     """
-    diskType: Optional[str] = None
+    diskType: str | None = None
     """
     The GCE disk type. Such as "pd-ssd", "local-ssd",
     "pd-balanced" or "pd-standard", "hyperdisk-balanced", "hyperdisk-throughput" or "hyperdisk-extreme".
     """
-    guestOsFeatures: Optional[List[str]] = None
+    guestOsFeatures: list[str] | None = None
     """
     A list of features to enable on the guest operating system. Applicable only for bootable images. Read Enabling guest operating system features to see a list of available options.
     """
-    interface: Optional[str] = None
+    interface: str | None = None
     """
     Specifies the disk interface to use for attaching this disk,
     which is either SCSI or NVME. The default is SCSI. Persistent disks must always use SCSI
     and the request will fail if you attempt to attach a persistent disk in any other format
     than SCSI. Local SSDs can use either NVME or SCSI.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     A set of ket/value label pairs to assign to disk created from
     this template
     """
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     The mode in which to attach this disk, either READ_WRITE
     or READ_ONLY. If you are attaching or creating a boot disk, this must
     read-write mode.
     """
-    provisionedIops: Optional[float] = None
+    provisionedIops: float | None = None
     """
     Indicates how many IOPS to provision for the disk. This
     sets the number of I/O operations per second that the disk can handle.
     Values must be between 10,000 and 120,000. For more details, see the
     Extreme persistent disk documentation.
     """
-    provisionedThroughput: Optional[float] = None
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    provisionedThroughput: float | None = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A set of key/value resource manager tag pairs to bind to this disk. Keys must be in the format tagKeys/{tag_key_id}, and values are in the format tagValues/456.
     """
-    resourcePolicies: Optional[List[str]] = None
+    resourcePolicies: list[str] | None = None
     """
     - A list (short name or id) of resource policies to attach to this disk for automatic snapshot creations. Currently a max of 1 resource policy is supported.
     """
-    source: Optional[str] = None
+    source: str | None = None
     """
     The name (not self_link)
     of the disk (such as those managed by google_compute_disk) to attach.
     ~> Note: Either source, source_image, or source_snapshot is required in a disk block unless the disk type is local-ssd. Check the API docs for details.
     """
-    sourceImage: Optional[str] = None
+    sourceImage: str | None = None
     """
     The image from which to
     initialize this disk. This can be one of: the image's self_link,
@@ -1207,24 +1207,24 @@ class DiskItemModel(BaseModel):
     {project}/{image}, {family}, or {image}.
     ~> Note: Either source, source_image, or source_snapshot is required in a disk block unless the disk type is local-ssd. Check the API docs for details.
     """
-    sourceImageEncryptionKey: Optional[SourceImageEncryptionKeyModel] = None
+    sourceImageEncryptionKey: SourceImageEncryptionKeyModel | None = None
     """
     The customer-supplied encryption
     key of the source image. Required if the source image is protected by a
     customer-supplied encryption key.
     """
-    sourceSnapshot: Optional[str] = None
+    sourceSnapshot: str | None = None
     """
     The source snapshot to create this disk.
     ~> Note: Either source, source_image, or source_snapshot is required in a disk block unless the disk type is local-ssd. Check the API docs for details.
     """
-    sourceSnapshotEncryptionKey: Optional[SourceSnapshotEncryptionKeyModel] = None
+    sourceSnapshotEncryptionKey: SourceSnapshotEncryptionKeyModel | None = None
     """
     The customer-supplied encryption
     key of the source snapshot. Structure
     documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of GCE disk, can be either "SCRATCH" or
     "PERSISTENT".
@@ -1232,96 +1232,96 @@ class DiskItemModel(BaseModel):
 
 
 class AccessConfigItemModel(BaseModel):
-    natIp: Optional[str] = None
+    natIp: str | None = None
     """
     The IP address that will be 1:1 mapped to the instance's
     network ip. If not given, one will be generated.
     """
-    networkTier: Optional[str] = None
+    networkTier: str | None = None
     """
     The service-level to be provided for IPv6 traffic when the
     subnet has an external subnet. Only PREMIUM and STANDARD tier is valid for IPv6.
     """
-    publicPtrDomainName: Optional[str] = None
+    publicPtrDomainName: str | None = None
     """
     The name of the instance template.
     """
 
 
 class Ipv6AccessConfigItemModel(BaseModel):
-    externalIpv6: Optional[str] = None
-    externalIpv6PrefixLength: Optional[str] = None
-    name: Optional[str] = None
+    externalIpv6: str | None = None
+    externalIpv6PrefixLength: str | None = None
+    name: str | None = None
     """
     The name of the instance template.
     """
-    networkTier: Optional[str] = None
+    networkTier: str | None = None
     """
     The service-level to be provided for IPv6 traffic when the
     subnet has an external subnet. Only PREMIUM and STANDARD tier is valid for IPv6.
     """
-    publicPtrDomainName: Optional[str] = None
+    publicPtrDomainName: str | None = None
     """
     The name of the instance template.
     """
 
 
 class NetworkInterfaceItemModel(BaseModel):
-    accessConfig: Optional[List[AccessConfigItemModel]] = None
+    accessConfig: list[AccessConfigItemModel] | None = None
     """
     Access configurations, i.e. IPs via which this
     instance can be accessed via the Internet.g. via tunnel or because it is running on another cloud instance
     on that network). This block can be specified once per network_interface. Structure documented below.
     """
-    aliasIpRange: Optional[List[AliasIpRangeItem]] = None
+    aliasIpRange: list[AliasIpRangeItem] | None = None
     """
     An
     array of alias IP ranges for this network interface. Can only be specified for network
     interfaces on subnet-mode networks. Structure documented below.
     """
-    internalIpv6PrefixLength: Optional[float] = None
-    ipv6AccessConfig: Optional[List[Ipv6AccessConfigItemModel]] = None
+    internalIpv6PrefixLength: float | None = None
+    ipv6AccessConfig: list[Ipv6AccessConfigItemModel] | None = None
     """
     An array of IPv6 access configurations for this interface.
     Currently, only one IPv6 access config, DIRECT_IPV6, is supported. If there is no ipv6AccessConfig
     specified, then this instance will have no external IPv6 Internet access. Structure documented below.
     """
-    ipv6AccessType: Optional[str] = None
-    ipv6Address: Optional[str] = None
-    name: Optional[str] = None
+    ipv6AccessType: str | None = None
+    ipv6Address: str | None = None
+    name: str | None = None
     """
     The name of the instance template.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the network to attach this interface to.
     Use network attribute for Legacy or Auto subnetted networks and
     subnetwork for custom subnetted networks.
     """
-    networkIp: Optional[str] = None
+    networkIp: str | None = None
     """
     The private IP address to assign to the instance. If
     empty, the address will be automatically assigned.
     """
-    nicType: Optional[str] = None
+    nicType: str | None = None
     """
     The type of vNIC to be used on this interface. Possible values: GVNIC, VIRTIO_NET, MRDMA, IRDMA.
     """
-    queueCount: Optional[float] = None
+    queueCount: float | None = None
     """
     The networking queue count that's specified by users for the network interface. Both Rx and Tx queues will be set to this number. It will be empty if not specified.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this network interface to identify whether the IPv6 feature is enabled or not. Values are IPV4_IPV6, IPV6_ONLY or IPV4_ONLY. If not specified, IPV4_ONLY will be used.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     the name of the subnetwork to attach this interface
     to. The subnetwork must exist in the same region this instance will be
     created in. Either network or subnetwork must be provided.
     """
-    subnetworkProject: Optional[str] = None
+    subnetworkProject: str | None = None
     """
     The ID of the project in which the subnetwork belongs.
     If it is not provided, the provider project is used.
@@ -1329,12 +1329,12 @@ class NetworkInterfaceItemModel(BaseModel):
 
 
 class ServiceAccountModel(BaseModel):
-    email: Optional[str] = None
+    email: str | None = None
     """
     The service account e-mail address. If not given, the
     default Google Compute Engine service account is used.
     """
-    scopes: Optional[List[str]] = None
+    scopes: list[str] | None = None
     """
     A list of service scopes. Both OAuth2 URLs and gcloud
     short names are supported. To allow full access to all Cloud APIs, use the
@@ -1343,113 +1343,113 @@ class ServiceAccountModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
     """
     Configure Nested Virtualisation and Simultaneous Hyper Threading on this VM. Structure is documented below
     """
-    canIpForward: Optional[bool] = None
+    canIpForward: bool | None = None
     """
     Whether to allow sending and receiving of
     packets with non-matching source or destination IPs. This defaults to false.
     """
-    confidentialInstanceConfig: Optional[ConfidentialInstanceConfig] = None
+    confidentialInstanceConfig: ConfidentialInstanceConfig | None = None
     """
     Enable Confidential Mode on this VM. Structure is documented below
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     A brief description of this resource.
     """
-    disk: Optional[List[DiskItemModel]] = None
+    disk: list[DiskItemModel] | None = None
     """
     Disks to attach to instances created from this template.
     This can be specified multiple times for multiple disks. Structure is
     documented below.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
+    effectiveLabels: dict[str, str] | None = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
     """
     List of the type and count of accelerator cards attached to the instance. Structure documented below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/instanceTemplates/{{name}}
     """
-    instanceDescription: Optional[str] = None
+    instanceDescription: str | None = None
     """
     A brief description to use for instances
     created from this template.
     """
-    keyRevocationActionType: Optional[str] = None
+    keyRevocationActionType: str | None = None
     """
     Action to be taken when a customer's encryption key is revoked. Supports STOP and NONE, with NONE being the default.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     A set of key/value label pairs to assign to instances
     created from this template.
     """
-    machineType: Optional[str] = None
+    machineType: str | None = None
     """
     The machine type to create.
     """
-    metadata: Optional[Dict[str, str]] = None
+    metadata: dict[str, str] | None = None
     """
     Metadata key/value pairs to make available from
     within instances created from this template.
     """
-    metadataFingerprint: Optional[str] = None
+    metadataFingerprint: str | None = None
     """
     The unique fingerprint of the metadata.
     """
-    metadataStartupScript: Optional[str] = None
+    metadataStartupScript: str | None = None
     """
     An alternative to using the
     startup-script metadata key, mostly to match the compute_instance resource.
     This replaces the startup-script metadata key on the created instance and
     thus the two mechanisms are not allowed to be used simultaneously.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     Specifies a minimum CPU platform. Applicable values are the friendly names of CPU platforms, such as
     Intel Haswell or Intel Skylake. See the complete list here.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the instance template.
     """
-    namePrefix: Optional[str] = None
+    namePrefix: str | None = None
     """
     Creates a unique name beginning with the specified
     prefix. Conflicts with name. Max length is 54 characters.
     Prefixes with lengths longer than 37 characters will use a shortened
     UUID that will be more prone to collisions.
     """
-    networkInterface: Optional[List[NetworkInterfaceItemModel]] = None
+    networkInterface: list[NetworkInterfaceItemModel] | None = None
     """
     Networks to attach to instances created from
     this template. This can be specified multiple times for multiple networks.
     Structure is documented below.
     """
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
     """
     os-features, and network_interface.0.nic-type must be GVNIC
     in order for this setting to take effect.
     """
-    numericId: Optional[str] = None
+    numericId: str | None = None
     """
     numeric identifier of the resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     An instance template is a global resource that is not
     bound to a zone or a region. However, you can still specify some regional
@@ -1458,68 +1458,68 @@ class AtProvider(BaseModel):
     resource is tied to a specific region. Defaults to the region of the
     Provider if no value is given.
     """
-    reservationAffinity: Optional[ReservationAffinity] = None
+    reservationAffinity: ReservationAffinity | None = None
     """
     Specifies the reservations that this instance can consume from.
     Structure is documented below.
     """
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A set of key/value resource manager tag pairs to bind to the instances. Keys must be in the format tagKeys/{tag_key_id}, and values are in the format tagValues/456.
     """
-    resourcePolicies: Optional[List[str]] = None
+    resourcePolicies: list[str] | None = None
     """
     - A list of self_links of resource policies to attach to the instance. Modifying this list will cause the instance to recreate. Currently a max of 1 resource policy is supported.
     """
-    scheduling: Optional[Scheduling] = None
+    scheduling: Scheduling | None = None
     """
     The scheduling strategy to use. More details about
     this configuration option are detailed below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    selfLinkUnique: Optional[str] = None
+    selfLinkUnique: str | None = None
     """
     A special URI of the created resource that uniquely identifies this instance template with the following format: projects/{{project}}/global/instanceTemplates/{{name}}?uniqueId={{uniqueId}}
     Referencing an instance template via this attribute prevents Time of Check to Time of Use attacks when the instance template resides in a shared/untrusted environment.
     """
-    serviceAccount: Optional[ServiceAccountModel] = None
+    serviceAccount: ServiceAccountModel | None = None
     """
     Service account to attach to the instance. Structure is documented below.
     """
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
     """
     Enable Shielded VM on this instance. Shielded VM provides verifiable integrity to prevent against malware and rootkits. Defaults to disabled. Structure is documented below.
     Note: shielded_instance_config can only be used with boot images with shielded vm support. See the complete list here.
     """
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
     """
     Tags to attach to the instance.
     """
-    tagsFingerprint: Optional[str] = None
+    tagsFingerprint: str | None = None
     """
     The unique fingerprint of the tags.
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource and default labels configured on the provider.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -1541,12 +1541,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -1555,17 +1555,17 @@ class Status(BaseModel):
 
 
 class InstanceTemplate(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta2']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta2'] | None = (
         'compute.gcp.upbound.io/v1beta2'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['InstanceTemplate']] = 'InstanceTemplate'
+    kind: Literal['InstanceTemplate'] | None = 'InstanceTemplate'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -1573,26 +1573,26 @@ class InstanceTemplate(BaseModel):
     """
     InstanceTemplateSpec defines the desired state of InstanceTemplate
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     InstanceTemplateStatus defines the observed state of InstanceTemplate.
     """
 
 
 class InstanceTemplateList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[InstanceTemplate]
+    items: list[InstanceTemplate]
     """
     List of instancetemplates. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

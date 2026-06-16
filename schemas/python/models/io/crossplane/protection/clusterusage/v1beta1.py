@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
@@ -19,32 +18,32 @@ class ResourceRef(BaseModel):
 
 
 class ResourceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
 
 
 class By(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     API version of the referent.
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind of the referent.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    resourceRef: Optional[ResourceRef] = None
+    resourceRef: ResourceRef | None = None
     """
     Reference to the resource.
     """
-    resourceSelector: Optional[ResourceSelector] = None
+    resourceSelector: ResourceSelector | None = None
     """
     Selector to the resource.
     This field will be ignored if ResourceRef is set.
@@ -52,20 +51,20 @@ class By(BaseModel):
 
 
 class Of(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     API version of the referent.
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind of the referent.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    resourceRef: Optional[ResourceRef] = None
+    resourceRef: ResourceRef | None = None
     """
     Reference to the resource.
     """
-    resourceSelector: Optional[ResourceSelector] = None
+    resourceSelector: ResourceSelector | None = None
     """
     Selector to the resource.
     This field will be ignored if ResourceRef is set.
@@ -73,7 +72,7 @@ class Of(BaseModel):
 
 
 class Spec(BaseModel):
-    by: Optional[By] = None
+    by: By | None = None
     """
     By is the resource that is "using the other resource".
     """
@@ -81,28 +80,28 @@ class Spec(BaseModel):
     """
     Of is the resource that is "being used".
     """
-    reason: Optional[str] = None
+    reason: str | None = None
     """
     Reason is the reason for blocking deletion of the resource.
     """
-    replayDeletion: Optional[bool] = None
+    replayDeletion: bool | None = None
     """
     ReplayDeletion will trigger a deletion on the used resource during the deletion of the usage itself, if it was attempted to be deleted at least once.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -124,24 +123,24 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
 
 
 class ClusterUsage(BaseModel):
-    apiVersion: Optional[Literal['protection.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['protection.crossplane.io/v1beta1'] | None = (
         'protection.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ClusterUsage']] = 'ClusterUsage'
+    kind: Literal['ClusterUsage'] | None = 'ClusterUsage'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -149,26 +148,26 @@ class ClusterUsage(BaseModel):
     """
     ClusterUsageSpec defines the desired state of a ClusterUsage.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     UsageStatus defines the observed state of Usage.
     """
 
 
 class ClusterUsageList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ClusterUsage]
+    items: list[ClusterUsage]
     """
     List of clusterusages. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

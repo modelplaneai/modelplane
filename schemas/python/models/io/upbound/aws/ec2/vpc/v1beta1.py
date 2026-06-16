@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,82 +32,82 @@ class Ipv4IpamPoolIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class Ipv4IpamPoolIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    assignGeneratedIpv6CidrBlock: Optional[bool] = None
+    assignGeneratedIpv6CidrBlock: bool | None = None
     """
     Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
     """
-    enableDnsHostnames: Optional[bool] = None
+    enableDnsHostnames: bool | None = None
     """
     A boolean flag to enable/disable DNS hostnames in the VPC. Defaults false.
     """
-    enableDnsSupport: Optional[bool] = None
+    enableDnsSupport: bool | None = None
     """
     A boolean flag to enable/disable DNS support in the VPC. Defaults to true.
     """
-    enableNetworkAddressUsageMetrics: Optional[bool] = None
+    enableNetworkAddressUsageMetrics: bool | None = None
     """
     Indicates whether Network Address Usage metrics are enabled for your VPC. Defaults to false.
     """
-    instanceTenancy: Optional[str] = None
+    instanceTenancy: str | None = None
     """
     A tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
     """
-    ipv4IpamPoolId: Optional[str] = None
+    ipv4IpamPoolId: str | None = None
     """
     The ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
     """
-    ipv4IpamPoolIdRef: Optional[Ipv4IpamPoolIdRef] = None
+    ipv4IpamPoolIdRef: Ipv4IpamPoolIdRef | None = None
     """
     Reference to a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4IpamPoolIdSelector: Optional[Ipv4IpamPoolIdSelector] = None
+    ipv4IpamPoolIdSelector: Ipv4IpamPoolIdSelector | None = None
     """
     Selector for a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4NetmaskLength: Optional[float] = None
+    ipv4NetmaskLength: float | None = None
     """
     The netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     IPv6 CIDR block to request from an IPAM Pool. Can be set explicitly or derived from IPAM using ipv6_netmask_length.
     """
-    ipv6CidrBlockNetworkBorderGroup: Optional[str] = None
+    ipv6CidrBlockNetworkBorderGroup: str | None = None
     """
     By default when an IPv6 CIDR is assigned to a VPC a default ipv6_cidr_block_network_border_group will be set to the region of the VPC. This can be changed to restrict advertisement of public addresses to specific Network Border Groups such as LocalZones.
     """
-    ipv6IpamPoolId: Optional[str] = None
+    ipv6IpamPoolId: str | None = None
     """
     IPAM Pool ID for a IPv6 pool. Conflicts with assign_generated_ipv6_cidr_block.
     """
-    ipv6NetmaskLength: Optional[float] = None
+    ipv6NetmaskLength: float | None = None
     """
     Netmask length to request from IPAM Pool. Conflicts with ipv6_cidr_block. This can be omitted if IPAM pool as a allocation_default_netmask_length set. Valid values are from 44 to 60 in increments of 4.
     """
@@ -117,70 +116,70 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
 
 
 class InitProvider(BaseModel):
-    assignGeneratedIpv6CidrBlock: Optional[bool] = None
+    assignGeneratedIpv6CidrBlock: bool | None = None
     """
     Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
     """
-    enableDnsHostnames: Optional[bool] = None
+    enableDnsHostnames: bool | None = None
     """
     A boolean flag to enable/disable DNS hostnames in the VPC. Defaults false.
     """
-    enableDnsSupport: Optional[bool] = None
+    enableDnsSupport: bool | None = None
     """
     A boolean flag to enable/disable DNS support in the VPC. Defaults to true.
     """
-    enableNetworkAddressUsageMetrics: Optional[bool] = None
+    enableNetworkAddressUsageMetrics: bool | None = None
     """
     Indicates whether Network Address Usage metrics are enabled for your VPC. Defaults to false.
     """
-    instanceTenancy: Optional[str] = None
+    instanceTenancy: str | None = None
     """
     A tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
     """
-    ipv4IpamPoolId: Optional[str] = None
+    ipv4IpamPoolId: str | None = None
     """
     The ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
     """
-    ipv4IpamPoolIdRef: Optional[Ipv4IpamPoolIdRef] = None
+    ipv4IpamPoolIdRef: Ipv4IpamPoolIdRef | None = None
     """
     Reference to a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4IpamPoolIdSelector: Optional[Ipv4IpamPoolIdSelector] = None
+    ipv4IpamPoolIdSelector: Ipv4IpamPoolIdSelector | None = None
     """
     Selector for a VPCIpamPool in ec2 to populate ipv4IpamPoolId.
     """
-    ipv4NetmaskLength: Optional[float] = None
+    ipv4NetmaskLength: float | None = None
     """
     The netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     IPv6 CIDR block to request from an IPAM Pool. Can be set explicitly or derived from IPAM using ipv6_netmask_length.
     """
-    ipv6CidrBlockNetworkBorderGroup: Optional[str] = None
+    ipv6CidrBlockNetworkBorderGroup: str | None = None
     """
     By default when an IPv6 CIDR is assigned to a VPC a default ipv6_cidr_block_network_border_group will be set to the region of the VPC. This can be changed to restrict advertisement of public addresses to specific Network Border Groups such as LocalZones.
     """
-    ipv6IpamPoolId: Optional[str] = None
+    ipv6IpamPoolId: str | None = None
     """
     IPAM Pool ID for a IPv6 pool. Conflicts with assign_generated_ipv6_cidr_block.
     """
-    ipv6NetmaskLength: Optional[float] = None
+    ipv6NetmaskLength: float | None = None
     """
     Netmask length to request from IPAM Pool. Conflicts with ipv6_cidr_block. This can be omitted if IPAM pool as a allocation_default_netmask_length set. Valid values are from 44 to 60 in increments of 4.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
@@ -191,7 +190,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -209,7 +208,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -220,7 +219,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -233,9 +232,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -248,15 +248,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -266,119 +266,119 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     Amazon Resource Name (ARN) of VPC
     """
-    assignGeneratedIpv6CidrBlock: Optional[bool] = None
+    assignGeneratedIpv6CidrBlock: bool | None = None
     """
     Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id
     """
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     The IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
     """
-    defaultNetworkAclId: Optional[str] = None
+    defaultNetworkAclId: str | None = None
     """
     The ID of the network ACL created by default on VPC creation
     """
-    defaultRouteTableId: Optional[str] = None
+    defaultRouteTableId: str | None = None
     """
     The ID of the route table created by default on VPC creation
     """
-    defaultSecurityGroupId: Optional[str] = None
+    defaultSecurityGroupId: str | None = None
     """
     The ID of the security group created by default on VPC creation
     """
-    dhcpOptionsId: Optional[str] = None
+    dhcpOptionsId: str | None = None
     """
     DHCP options id of the desired VPC.
     """
-    enableDnsHostnames: Optional[bool] = None
+    enableDnsHostnames: bool | None = None
     """
     A boolean flag to enable/disable DNS hostnames in the VPC. Defaults false.
     """
-    enableDnsSupport: Optional[bool] = None
+    enableDnsSupport: bool | None = None
     """
     A boolean flag to enable/disable DNS support in the VPC. Defaults to true.
     """
-    enableNetworkAddressUsageMetrics: Optional[bool] = None
+    enableNetworkAddressUsageMetrics: bool | None = None
     """
     Indicates whether Network Address Usage metrics are enabled for your VPC. Defaults to false.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the VPC
     """
-    instanceTenancy: Optional[str] = None
+    instanceTenancy: str | None = None
     """
     A tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
     """
-    ipv4IpamPoolId: Optional[str] = None
+    ipv4IpamPoolId: str | None = None
     """
     The ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
     """
-    ipv4NetmaskLength: Optional[float] = None
+    ipv4NetmaskLength: float | None = None
     """
     The netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
     """
-    ipv6AssociationId: Optional[str] = None
+    ipv6AssociationId: str | None = None
     """
     The association ID for the IPv6 CIDR block.
     """
-    ipv6CidrBlock: Optional[str] = None
+    ipv6CidrBlock: str | None = None
     """
     IPv6 CIDR block to request from an IPAM Pool. Can be set explicitly or derived from IPAM using ipv6_netmask_length.
     """
-    ipv6CidrBlockNetworkBorderGroup: Optional[str] = None
+    ipv6CidrBlockNetworkBorderGroup: str | None = None
     """
     By default when an IPv6 CIDR is assigned to a VPC a default ipv6_cidr_block_network_border_group will be set to the region of the VPC. This can be changed to restrict advertisement of public addresses to specific Network Border Groups such as LocalZones.
     """
-    ipv6IpamPoolId: Optional[str] = None
+    ipv6IpamPoolId: str | None = None
     """
     IPAM Pool ID for a IPv6 pool. Conflicts with assign_generated_ipv6_cidr_block.
     """
-    ipv6NetmaskLength: Optional[float] = None
+    ipv6NetmaskLength: float | None = None
     """
     Netmask length to request from IPAM Pool. Conflicts with ipv6_cidr_block. This can be omitted if IPAM pool as a allocation_default_netmask_length set. Valid values are from 44 to 60 in increments of 4.
     """
-    mainRouteTableId: Optional[str] = None
+    mainRouteTableId: str | None = None
     """
     The ID of the main route table associated with
     this VPC. Note that you can change a VPC's main route table by using an
     aws_main_route_table_association.
     """
-    ownerId: Optional[str] = None
+    ownerId: str | None = None
     """
     The ID of the AWS account that owns the VPC.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -400,12 +400,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -414,17 +414,17 @@ class Status(BaseModel):
 
 
 class VPC(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta1'] | None = (
         'ec2.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['VPC']] = 'VPC'
+    kind: Literal['VPC'] | None = 'VPC'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -432,26 +432,26 @@ class VPC(BaseModel):
     """
     VPCSpec defines the desired state of VPC
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     VPCStatus defines the observed state of VPC.
     """
 
 
 class VPCList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[VPC]
+    items: list[VPC]
     """
     List of vpcs. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

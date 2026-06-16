@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -16,14 +16,14 @@ class MatchImage(BaseModel):
     Prefix is the prefix that should be matched. When multiple prefix rules
     match an image path, the longest one takes precedence.
     """
-    type: Optional[Literal['Prefix']] = 'Prefix'
+    type: Literal['Prefix'] | None = 'Prefix'
     """
     Type is the type of match.
     """
 
 
 class PullSecretRef(BaseModel):
-    name: Optional[str] = ''
+    name: str | None = ''
     """
     Name of the referent.
     This field is effectively required, but due to backwards compatibility is
@@ -42,7 +42,7 @@ class Authentication(BaseModel):
 
 
 class Registry(BaseModel):
-    authentication: Optional[Authentication] = None
+    authentication: Authentication | None = None
     """
     Authentication is the authentication information for the registry.
     """
@@ -58,11 +58,11 @@ class RewriteImage(BaseModel):
 
 
 class ConfigRef(BaseModel):
-    apiVersion: Optional[str] = 'pkg.crossplane.io/v1beta1'
+    apiVersion: str | None = 'pkg.crossplane.io/v1beta1'
     """
     API version of the referent.
     """
-    kind: Optional[str] = 'DeploymentRuntimeConfig'
+    kind: str | None = 'DeploymentRuntimeConfig'
     """
     Kind of the referent.
     """
@@ -73,7 +73,7 @@ class ConfigRef(BaseModel):
 
 
 class Runtime(BaseModel):
-    configRef: Optional[ConfigRef] = None
+    configRef: ConfigRef | None = None
     """
     ConfigReference references a RuntimeConfig resource that will be
     used to configure the package runtime.
@@ -115,20 +115,20 @@ class Key(BaseModel):
 
 
 class Identity(BaseModel):
-    issuer: Optional[str] = None
+    issuer: str | None = None
     """
     Issuer defines the issuer for this identity.
     """
-    issuerRegExp: Optional[str] = None
+    issuerRegExp: str | None = None
     """
     IssuerRegExp specifies a regular expression to match the issuer for this identity.
     This has precedence over the Issuer field.
     """
-    subject: Optional[str] = None
+    subject: str | None = None
     """
     Subject defines the subject for this identity.
     """
-    subjectRegExp: Optional[str] = None
+    subjectRegExp: str | None = None
     """
     SubjectRegExp specifies a regular expression to match the subject for this identity.
     This has precedence over the Subject field.
@@ -136,27 +136,27 @@ class Identity(BaseModel):
 
 
 class Keyless(BaseModel):
-    identities: List[Identity]
+    identities: list[Identity]
     """
     Identities sets a list of identities.
     """
-    insecureIgnoreSCT: Optional[bool] = None
+    insecureIgnoreSCT: bool | None = None
     """
     InsecureIgnoreSCT omits verifying if a certificate contains an embedded SCT
     """
 
 
 class Authority(BaseModel):
-    attestations: Optional[List[Attestation]] = None
+    attestations: list[Attestation] | None = None
     """
     Attestations is a list of individual attestations for this authority,
     once the signature for this authority has been verified.
     """
-    key: Optional[Key] = None
+    key: Key | None = None
     """
     Key defines the type of key to validate the image.
     """
-    keyless: Optional[Keyless] = None
+    keyless: Keyless | None = None
     """
     Keyless sets the configuration to verify the authority against a Fulcio
     instance.
@@ -168,14 +168,14 @@ class Authority(BaseModel):
 
 
 class Cosign(BaseModel):
-    authorities: List[Authority]
+    authorities: list[Authority]
     """
     Authorities defines the rules for discovering and validating signatures.
     """
 
 
 class Verification(BaseModel):
-    cosign: Optional[Cosign] = None
+    cosign: Cosign | None = None
     """
     Cosign is the configuration for verifying the image using cosign.
     """
@@ -186,7 +186,7 @@ class Verification(BaseModel):
 
 
 class Spec(BaseModel):
-    matchImages: List[MatchImage]
+    matchImages: list[MatchImage]
     """
     MatchImages is a list of image matching rules. This ImageConfig will
     match an image if any one of these rules is satisfied. In the case where
@@ -194,59 +194,59 @@ class Spec(BaseModel):
     most specific match will be used. If multiple rules of equal specificity
     match an arbitrary one will be selected.
     """
-    registry: Optional[Registry] = None
+    registry: Registry | None = None
     """
     Registry is the configuration for the registry.
     """
-    rewriteImage: Optional[RewriteImage] = None
+    rewriteImage: RewriteImage | None = None
     """
     RewriteImage defines how a matched image's path should be rewritten.
     """
-    runtime: Optional[Runtime] = None
+    runtime: Runtime | None = None
     """
     Runtime allows configuration of runtime options for the image.
     """
-    verification: Optional[Verification] = None
+    verification: Verification | None = None
     """
     Verification contains the configuration for verifying the image.
     """
 
 
 class ImageConfig(BaseModel):
-    apiVersion: Optional[Literal['pkg.crossplane.io/v1beta1']] = (
+    apiVersion: Literal['pkg.crossplane.io/v1beta1'] | None = (
         'pkg.crossplane.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ImageConfig']] = 'ImageConfig'
+    kind: Literal['ImageConfig'] | None = 'ImageConfig'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[Spec] = None
+    spec: Spec | None = None
     """
     ImageConfigSpec contains the configuration for matching images.
     """
 
 
 class ImageConfigList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ImageConfig]
+    items: list[ImageConfig]
     """
     List of imageconfigs. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

@@ -3,71 +3,70 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class CapacityReservationTargetItem(BaseModel):
-    capacityReservationId: Optional[str] = None
+    capacityReservationId: str | None = None
     """
     ID of the Capacity Reservation in which to run the instance.
     """
-    capacityReservationResourceGroupArn: Optional[str] = None
+    capacityReservationResourceGroupArn: str | None = None
     """
     ARN of the Capacity Reservation resource group in which to run the instance.
     """
 
 
 class CapacityReservationSpecificationItem(BaseModel):
-    capacityReservationPreference: Optional[str] = None
+    capacityReservationPreference: str | None = None
     """
     Indicates the instance's Capacity Reservation preferences. Can be "open" or "none". (Default: "open").
     """
-    capacityReservationTarget: Optional[List[CapacityReservationTargetItem]] = None
+    capacityReservationTarget: list[CapacityReservationTargetItem] | None = None
     """
     Information about the target Capacity Reservation. See Capacity Reservation Target below for more details.
     """
 
 
 class CpuOption(BaseModel):
-    amdSevSnp: Optional[str] = None
+    amdSevSnp: str | None = None
     """
     Indicates whether to enable the instance for AMD SEV-SNP. AMD SEV-SNP is supported with M6a, R6a, and C6a instance types only. Valid values are enabled and disabled.
     """
-    coreCount: Optional[float] = None
+    coreCount: float | None = None
     """
     Sets the number of CPU cores for an instance. This option is only supported on creation of instance type that support CPU Options CPU Cores and Threads Per CPU Core Per Instance Type - specifying this option for unsupported instance types will return an error from the EC2 API.
     """
-    nestedVirtualization: Optional[str] = None
+    nestedVirtualization: str | None = None
     """
     Indicates whether to enable the instance for nested virtualization. Nested virtualization is supported on 8th generation Intel-based instance types (C8i, M8i, R8i, and their flex variants) only. When nested virtualization is enabled, Virtual Secure Mode (VSM) is automatically disabled for the instance. Valid values are enabled and disabled.
     """
-    threadsPerCore: Optional[float] = None
+    threadsPerCore: float | None = None
     """
     If set to 1, hyperthreading is disabled on the launched instance. Defaults to 2 if not set. See Optimizing CPU Options for more information.
     """
 
 
 class CreditSpecificationItem(BaseModel):
-    cpuCredits: Optional[str] = None
+    cpuCredits: str | None = None
     """
     Credit option for CPU usage. Valid values include standard or unlimited. T3 instances are launched as unlimited by default. T2 instances are launched as standard by default.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -81,175 +80,175 @@ class KmsKeyIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class KmsKeyIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class EbsBlockDeviceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether the volume should be destroyed on instance termination. Defaults to true.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     Name of the device to mount.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Enables EBS encryption on the volume. Defaults to false. Cannot be used with snapshot_id. Must be configured to perform drift detection.
     """
-    iops: Optional[float] = None
+    iops: float | None = None
     """
     Amount of provisioned IOPS. Only valid for volume_type of io1, io2 or gp3.
     """
-    kmsKeyId: Optional[str] = None
+    kmsKeyId: str | None = None
     """
     Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
-    kmsKeyIdRef: Optional[KmsKeyIdRef] = None
+    kmsKeyIdRef: KmsKeyIdRef | None = None
     """
     Reference to a Key in kms to populate kmsKeyId.
     """
-    kmsKeyIdSelector: Optional[KmsKeyIdSelector] = None
+    kmsKeyIdSelector: KmsKeyIdSelector | None = None
     """
     Selector for a Key in kms to populate kmsKeyId.
     """
-    snapshotId: Optional[str] = None
+    snapshotId: str | None = None
     """
     Snapshot ID to mount.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Map of tags to assign to the device. Note: Tags specified here are applied after instance creation via a separate API call. This means they cannot be used with IAM policies that require tags during resource creation (e.g., ABAC policies with ec2:CreateAction conditions or SCPs requiring volume tags). For ABAC compliance, use volume_tags instead, which applies uniform tags to all volumes during instance creation.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
+    throughput: float | None = None
     """
     Throughput to provision for a volume in mebibytes per second (MiB/s). This is only valid for volume_type of gp3.
     """
-    volumeSize: Optional[float] = None
+    volumeSize: float | None = None
     """
     Size of the volume in gibibytes (GiB).
     """
-    volumeType: Optional[str] = None
+    volumeType: str | None = None
     """
     Type of volume. Valid values include standard, gp2, gp3, io1, io2, sc1, or st1. Defaults to gp2.
     """
 
 
 class EnclaveOption(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether Nitro Enclaves will be enabled on the instance. Defaults to false.
     """
 
 
 class EphemeralBlockDeviceItem(BaseModel):
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     Name of the block device to mount on the instance.
     """
-    noDevice: Optional[bool] = None
+    noDevice: bool | None = None
     """
     Suppresses the specified device included in the AMI's block device mapping.
     """
-    virtualName: Optional[str] = None
+    virtualName: str | None = None
     """
     Instance Store Device Name (e.g., ephemeral0).
     """
 
 
 class SpotOption(BaseModel):
-    instanceInterruptionBehavior: Optional[str] = None
+    instanceInterruptionBehavior: str | None = None
     """
     The behavior when a Spot Instance is interrupted. Valid values include hibernate, stop, terminate . The default is terminate.
     """
-    maxPrice: Optional[str] = None
+    maxPrice: str | None = None
     """
     The maximum hourly price that you're willing to pay for a Spot Instance.
     """
-    spotInstanceType: Optional[str] = None
+    spotInstanceType: str | None = None
     """
     The Spot Instance request type. Valid values include one-time, persistent. Persistent Spot Instance requests are only supported when the instance interruption behavior is either hibernate or stop. The default is one-time.
     """
-    validUntil: Optional[str] = None
+    validUntil: str | None = None
     """
     The end date of the request, in UTC format (YYYY-MM-DDTHH:MM:SSZ). Supported only for persistent requests.
     """
 
 
 class InstanceMarketOption(BaseModel):
-    marketType: Optional[str] = None
+    marketType: str | None = None
     """
     Type of market for the instance. Valid values are spot and capacity-block. Defaults to spot. Required if spot_options is specified.
     """
-    spotOptions: Optional[List[SpotOption]] = None
+    spotOptions: list[SpotOption] | None = None
     """
     Block to configure the options for Spot Instances. See Spot Options below for details on attributes.
     """
 
 
 class LaunchTemplateItem(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the launch template. Conflicts with name.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the launch template. Conflicts with id.
     """
-    version: Optional[str] = None
+    version: str | None = None
     """
     Template version. Can be a specific version number, $Latest or $Default. The default value is $Default.
     """
 
 
 class MaintenanceOption(BaseModel):
-    autoRecovery: Optional[str] = None
+    autoRecovery: str | None = None
     """
     Automatic recovery behavior of the Instance. Can be "default" or "disabled". See Recover your instance for more details.
     """
 
 
 class MetadataOption(BaseModel):
-    httpEndpoint: Optional[str] = None
+    httpEndpoint: str | None = None
     """
     Whether the metadata service is available. Valid values include enabled or disabled. Defaults to enabled.
     """
-    httpProtocolIpv6: Optional[str] = None
+    httpProtocolIpv6: str | None = None
     """
     Whether the IPv6 endpoint for the instance metadata service is enabled. Defaults to disabled.
     """
-    httpPutResponseHopLimit: Optional[float] = None
+    httpPutResponseHopLimit: float | None = None
     """
     Desired HTTP PUT response hop limit for instance metadata requests. The larger the number, the further instance metadata requests can travel. Valid values are integer from 1 to 64. Defaults to 1.
     """
-    httpTokens: Optional[str] = None
+    httpTokens: str | None = None
     """
     Whether or not the metadata service requires session tokens, also referred to as Instance Metadata Service Version 2 (IMDSv2). Valid values include optional or required.
     """
-    instanceMetadataTags: Optional[str] = None
+    instanceMetadataTags: str | None = None
     """
     Enables or disables access to instance tags from the instance metadata service. Valid values include enabled or disabled. Defaults to disabled.
     """
@@ -260,154 +259,154 @@ class NetworkInterfaceIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkInterfaceIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class NetworkInterfaceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether or not to delete the network interface on instance termination. Defaults to false. Currently, the only valid value is false, as this is only supported when creating new network interfaces when launching an instance.
     """
-    deviceIndex: Optional[float] = None
+    deviceIndex: float | None = None
     """
     Integer index of the network interface attachment. Limited by instance type.
     """
-    networkCardIndex: Optional[float] = None
+    networkCardIndex: float | None = None
     """
     Integer index of the network card. Limited by instance type. The default index is 0.
     """
-    networkInterfaceId: Optional[str] = None
+    networkInterfaceId: str | None = None
     """
     ID of the network interface to attach.
     """
-    networkInterfaceIdRef: Optional[NetworkInterfaceIdRef] = None
+    networkInterfaceIdRef: NetworkInterfaceIdRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate networkInterfaceId.
     """
-    networkInterfaceIdSelector: Optional[NetworkInterfaceIdSelector] = None
+    networkInterfaceIdSelector: NetworkInterfaceIdSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate networkInterfaceId.
     """
 
 
 class PrimaryNetworkInterfaceItem(BaseModel):
-    networkInterfaceId: Optional[str] = None
+    networkInterfaceId: str | None = None
     """
     ID of the network interface to attach.
     """
-    networkInterfaceIdRef: Optional[NetworkInterfaceIdRef] = None
+    networkInterfaceIdRef: NetworkInterfaceIdRef | None = None
     """
     Reference to a NetworkInterface in ec2 to populate networkInterfaceId.
     """
-    networkInterfaceIdSelector: Optional[NetworkInterfaceIdSelector] = None
+    networkInterfaceIdSelector: NetworkInterfaceIdSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate networkInterfaceId.
     """
 
 
 class PrivateDnsNameOption(BaseModel):
-    enableResourceNameDnsARecord: Optional[bool] = None
+    enableResourceNameDnsARecord: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS A records.
     """
-    enableResourceNameDnsAaaaRecord: Optional[bool] = None
+    enableResourceNameDnsAaaaRecord: bool | None = None
     """
     Indicates whether to respond to DNS queries for instance hostnames with DNS AAAA records.
     """
-    hostnameType: Optional[str] = None
+    hostnameType: str | None = None
     """
     Type of hostname for Amazon EC2 instances. For IPv4 only subnets, an instance DNS name must be based on the instance IPv4 address. For IPv6 native subnets, an instance DNS name must be based on the instance ID. For dual-stack subnets, you can specify whether DNS names use the instance IPv4 address or the instance ID. Valid values: ip-name and resource-name.
     """
 
 
 class RootBlockDeviceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether the volume should be destroyed on instance termination. Defaults to true.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Whether to enable volume encryption. Defaults to false. Must be configured to perform drift detection.
     """
-    iops: Optional[float] = None
+    iops: float | None = None
     """
     Amount of provisioned IOPS. Only valid for volume_type of io1, io2 or gp3.
     """
-    kmsKeyId: Optional[str] = None
+    kmsKeyId: str | None = None
     """
     Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
-    kmsKeyIdRef: Optional[KmsKeyIdRef] = None
+    kmsKeyIdRef: KmsKeyIdRef | None = None
     """
     Reference to a Key in kms to populate kmsKeyId.
     """
-    kmsKeyIdSelector: Optional[KmsKeyIdSelector] = None
+    kmsKeyIdSelector: KmsKeyIdSelector | None = None
     """
     Selector for a Key in kms to populate kmsKeyId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Map of tags to assign to the device. Note: Tags specified here are applied after instance creation via a separate API call. This means they cannot be used with IAM policies that require tags during resource creation (e.g., ABAC policies with ec2:CreateAction conditions or SCPs requiring volume tags). For ABAC compliance, use volume_tags instead, which applies uniform tags to all volumes during instance creation.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
+    throughput: float | None = None
     """
     Throughput to provision for a volume in mebibytes per second (MiB/s). This is only valid for volume_type of gp3.
     """
-    volumeSize: Optional[float] = None
+    volumeSize: float | None = None
     """
     Size of the volume in gibibytes (GiB).
     """
-    volumeType: Optional[str] = None
+    volumeType: str | None = None
     """
     Type of volume. Valid values include standard, gp2, gp3, io1, io2, sc1, or st1. Defaults to the volume type that the AMI uses.
     """
 
 
 class SecondaryNetworkInterfaceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether the network interface should be destroyed when the instance is terminated. Defaults to true. Forces replacement.
     """
-    deviceIndex: Optional[float] = None
+    deviceIndex: float | None = None
     """
     Device index for the network interface attachment. Defaults to 0. Forces replacement.
     """
-    interfaceType: Optional[str] = None
+    interfaceType: str | None = None
     """
     Type of network interface. Currently only secondary is supported. Defaults to secondary. Forces replacement.
     """
-    networkCardIndex: Optional[float] = None
+    networkCardIndex: float | None = None
     """
     Network card index for the interface. Each network card can have one secondary interface. Forces replacement.
     """
-    privateIpAddressCount: Optional[float] = None
+    privateIpAddressCount: float | None = None
     """
     Number of private IP addresses to assign to the network interface. Defaults to 1. Forces replacement.
     """
-    secondarySubnetId: Optional[str] = None
+    secondarySubnetId: str | None = None
     """
     ID of the secondary subnet in which to create the network interface. Forces replacement.
     """
@@ -418,23 +417,23 @@ class SubnetIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -445,172 +444,172 @@ class VpcSecurityGroupIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class VpcSecurityGroupIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    ami: Optional[str] = None
+    ami: str | None = None
     """
     AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifes an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
     """
-    associatePublicIpAddress: Optional[bool] = None
+    associatePublicIpAddress: bool | None = None
     """
     Whether to associate a public IP address with an instance in a VPC.
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     AZ to start the instance in.
     """
-    capacityReservationSpecification: Optional[
-        List[CapacityReservationSpecificationItem]
-    ] = None
+    capacityReservationSpecification: (
+        list[CapacityReservationSpecificationItem] | None
+    ) = None
     """
     Describes an instance's Capacity Reservation targeting option. See Capacity Reservation Specification below for more details.
     """
-    cpuOptions: Optional[List[CpuOption]] = None
+    cpuOptions: list[CpuOption] | None = None
     """
     The CPU options for the instance. See CPU Options below for more details.
     """
-    creditSpecification: Optional[List[CreditSpecificationItem]] = None
+    creditSpecification: list[CreditSpecificationItem] | None = None
     """
     Configuration block for customizing the credit specification of the instance. See Credit Specification below for more details. Removing this configuration on existing instances will only stop managing it. It will not change the configuration back to the default for the instance type.
     """
-    disableApiStop: Optional[bool] = None
+    disableApiStop: bool | None = None
     """
     If true, enables EC2 Instance Stop Protection.
     """
-    disableApiTermination: Optional[bool] = None
+    disableApiTermination: bool | None = None
     """
     If true, enables EC2 Instance Termination Protection.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
     """
     One or more configuration blocks with additional EBS block devices to attach to the instance. Block device configurations only apply on resource creation. See Block Devices below for details on attributes and drift detection. When accessing this as an attribute reference, it is a set of objects.
     """
-    ebsOptimized: Optional[bool] = None
+    ebsOptimized: bool | None = None
     """
     If true, the launched EC2 instance will be EBS-optimized. Note that if this is not set on an instance type that is optimized by default then this will show as disabled but if the instance type is optimized by default then there is no need to set this and there is no effect to disabling it. See the EBS Optimized section of the AWS User Guide for more information.
     """
-    enablePrimaryIpv6: Optional[bool] = None
+    enablePrimaryIpv6: bool | None = None
     """
     Whether to assign a primary IPv6 Global Unicast Address (GUA) to the instance when launched in a dual-stack or IPv6-only subnet. A primary IPv6 address ensures a consistent IPv6 address for the instance and is automatically assigned by AWS to the ENI. Once enabled, the first IPv6 GUA becomes the primary IPv6 address and cannot be disabled. The primary IPv6 address remains until the instance is terminated or the ENI is detached. Disabling enable_primary_ipv6 after it has been enabled forces recreation of the instance.
     """
-    enclaveOptions: Optional[List[EnclaveOption]] = None
+    enclaveOptions: list[EnclaveOption] | None = None
     """
     Enable Nitro Enclaves on launched instances. See Enclave Options below for more details.
     """
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
     """
     One or more configuration blocks to customize Ephemeral (also known as "Instance Store") volumes on the instance. See Block Devices below for details. When accessing this as an attribute reference, it is a set of objects.
     """
-    forceDestroy: Optional[bool] = None
+    forceDestroy: bool | None = None
     """
     Destroys instance even if disable_api_termination or disable_api_stop is set to true. Defaults to false. If setting this field in the same operation that would require replacing the instance or destroying the instance, this flag will not work.
     """
-    getPasswordData: Optional[bool] = None
+    getPasswordData: bool | None = None
     """
     If true, wait for password data to become available and retrieve it. Useful for getting the administrator password for instances running Microsoft Windows. The password data is exported to the password_data attribute. See GetPasswordData for more information.
     """
-    hibernation: Optional[bool] = None
+    hibernation: bool | None = None
     """
     If true, the launched EC2 instance will support hibernation.
     """
-    hostId: Optional[str] = None
+    hostId: str | None = None
     """
     ID of a dedicated host that the instance will be assigned to. Use when an instance is to be launched on a specific dedicated host.
     """
-    hostResourceGroupArn: Optional[str] = None
+    hostResourceGroupArn: str | None = None
     """
     ARN of the host resource group in which to launch the instances. If you specify an ARN, omit the tenancy parameter or set it to host.
     """
-    iamInstanceProfile: Optional[str] = None
+    iamInstanceProfile: str | None = None
     """
     IAM Instance Profile to launch the instance with. Specified as the name of the Instance Profile. Ensure your credentials have the correct permission to assign the instance profile according to the EC2 documentation, notably iam:PassRole.
     """
-    instanceInitiatedShutdownBehavior: Optional[str] = None
+    instanceInitiatedShutdownBehavior: str | None = None
     """
     Shutdown behavior for the instance. Amazon defaults this to stop for EBS-backed instances and terminate for instance-store instances. Cannot be set on instance-store instances. See Shutdown Behavior for more information.
     """
-    instanceMarketOptions: Optional[List[InstanceMarketOption]] = None
+    instanceMarketOptions: list[InstanceMarketOption] | None = None
     """
     Describes the market (purchasing) option for the instances. See Market Options below for details on attributes.
     """
-    instanceType: Optional[str] = None
+    instanceType: str | None = None
     """
     Instance type to use for the instance. Required unless launch_template is specified and the Launch Template specifies an instance type. If an instance type is specified in the Launch Template, setting instance_type will override the instance type specified in the Launch Template. Updates to this field will trigger a stop/start of the EC2 instance.
     """
-    ipv6AddressCount: Optional[float] = None
+    ipv6AddressCount: float | None = None
     """
     Number of IPv6 addresses to associate with the primary network interface. Amazon EC2 chooses the IPv6 addresses from the range of your subnet.
     """
-    ipv6Addresses: Optional[List[str]] = None
+    ipv6Addresses: list[str] | None = None
     """
     Specify one or more IPv6 addresses from the range of the subnet to associate with the primary network interface
     """
-    keyName: Optional[str] = None
+    keyName: str | None = None
     """
     Key name of the Key Pair to use for the instance; which can be managed using the .
     """
-    launchTemplate: Optional[List[LaunchTemplateItem]] = None
+    launchTemplate: list[LaunchTemplateItem] | None = None
     """
     Specifies a Launch Template to configure the instance. Parameters configured on this resource will override the corresponding parameters in the Launch Template. See Launch Template Specification below for more details.
     """
-    maintenanceOptions: Optional[List[MaintenanceOption]] = None
+    maintenanceOptions: list[MaintenanceOption] | None = None
     """
     Maintenance and recovery options for the instance. See Maintenance Options below for more details.
     """
-    metadataOptions: Optional[List[MetadataOption]] = None
+    metadataOptions: list[MetadataOption] | None = None
     """
     Customize the metadata options of the instance. See Metadata Options below for more details.
     """
-    monitoring: Optional[bool] = None
+    monitoring: bool | None = None
     """
     If true, the launched EC2 instance will have detailed monitoring enabled. (Available since v0.6.0)
     """
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
     """
     Customize network interfaces to be attached at instance boot time. See Network Interfaces below for more details.
     """
-    placementGroup: Optional[str] = None
+    placementGroup: str | None = None
     """
     Placement Group to start the instance in. Conflicts with placement_group_id.
     """
-    placementGroupId: Optional[str] = None
+    placementGroupId: str | None = None
     """
     Placement Group ID to start the instance in. Conflicts with placement_group.
     """
-    placementPartitionNumber: Optional[float] = None
+    placementPartitionNumber: float | None = None
     """
     Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition".
     """
-    primaryNetworkInterface: Optional[List[PrimaryNetworkInterfaceItem]] = None
+    primaryNetworkInterface: list[PrimaryNetworkInterfaceItem] | None = None
     """
     The primary network interface. See Primary Network Interface below.
     """
-    privateDnsNameOptions: Optional[List[PrivateDnsNameOption]] = None
+    privateDnsNameOptions: list[PrivateDnsNameOption] | None = None
     """
     Options for the instance hostname. The default values are inherited from the subnet. See Private DNS Name Options below for more details.
     """
-    privateIp: Optional[str] = None
+    privateIp: str | None = None
     """
     Private IP address to associate with the instance in a VPC.
     """
@@ -619,280 +618,280 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    rootBlockDevice: Optional[List[RootBlockDeviceItem]] = None
+    rootBlockDevice: list[RootBlockDeviceItem] | None = None
     """
     Configuration block to customize details about the root block device of the instance. See Block Devices below for details. When accessing this as an attribute reference, it is a list containing one object.
     """
-    secondaryNetworkInterface: Optional[List[SecondaryNetworkInterfaceItem]] = None
+    secondaryNetworkInterface: list[SecondaryNetworkInterfaceItem] | None = None
     """
     One or more secondary network interfaces to attach to the instance at launch time. See Secondary Network Interface below for more details.
     """
-    secondaryPrivateIps: Optional[List[str]] = None
+    secondaryPrivateIps: list[str] | None = None
     """
     List of secondary private IPv4 addresses to assign to the instance's primary network interface (eth0) in a VPC. Can only be assigned to the primary network interface (eth0) attached at instance creation, not a pre-existing network interface i.e., referenced in a network_interface block. Refer to the Elastic network interfaces documentation to see the maximum number of private IP addresses allowed per instance type.
     """
-    sourceDestCheck: Optional[bool] = None
+    sourceDestCheck: bool | None = None
     """
     Controls if traffic is routed to the instance when the destination address does not match the instance. Used for NAT or VPNs. Defaults true.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     VPC Subnet ID to launch in.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tenancy: Optional[str] = None
+    tenancy: str | None = None
     """
     Tenancy of the instance (if the instance is running in a VPC). An instance with a tenancy of dedicated runs on single-tenant hardware. The host tenancy is not supported for the import-instance command. Valid values are default, dedicated, and host.
     """
-    userData: Optional[str] = None
+    userData: str | None = None
     """
     User data to provide when launching the instance. Do not pass gzip-compressed data via this argument; see user_data_base64 instead. Updates to this field will trigger a stop/start of the EC2 instance by default. If the user_data_replace_on_change is set then updates to this field will trigger a destroy and recreate of the EC2 instance.
     """
-    userDataBase64: Optional[str] = None
+    userDataBase64: str | None = None
     """
     Can be used instead of user_data to pass base64-encoded binary data directly. Use this instead of user_data whenever the value is not a valid UTF-8 string. For example, gzip-encoded user data must be base64-encoded and passed via this argument to avoid corruption. Updates to this field will trigger a stop/start of the EC2 instance by default. If the user_data_replace_on_change is set then updates to this field will trigger a destroy and recreate of the EC2 instance.
     """
-    userDataReplaceOnChange: Optional[bool] = None
+    userDataReplaceOnChange: bool | None = None
     """
     When used in combination with user_data or user_data_base64 will trigger a destroy and recreate of the EC2 instance when set to true. Defaults to false if not set.
     """
-    volumeTags: Optional[Dict[str, str]] = None
+    volumeTags: dict[str, str] | None = None
     """
     Map of tags to assign, at instance-creation time, to root and EBS volumes.
     """
-    vpcSecurityGroupIdRefs: Optional[List[VpcSecurityGroupIdRef]] = None
+    vpcSecurityGroupIdRefs: list[VpcSecurityGroupIdRef] | None = None
     """
     References to SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIdSelector: Optional[VpcSecurityGroupIdSelector] = None
+    vpcSecurityGroupIdSelector: VpcSecurityGroupIdSelector | None = None
     """
     Selector for a list of SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIds: Optional[List[str]] = None
+    vpcSecurityGroupIds: list[str] | None = None
     """
     List of security group IDs to associate with.
     """
 
 
 class InitProvider(BaseModel):
-    ami: Optional[str] = None
+    ami: str | None = None
     """
     AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifes an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
     """
-    associatePublicIpAddress: Optional[bool] = None
+    associatePublicIpAddress: bool | None = None
     """
     Whether to associate a public IP address with an instance in a VPC.
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     AZ to start the instance in.
     """
-    capacityReservationSpecification: Optional[
-        List[CapacityReservationSpecificationItem]
-    ] = None
+    capacityReservationSpecification: (
+        list[CapacityReservationSpecificationItem] | None
+    ) = None
     """
     Describes an instance's Capacity Reservation targeting option. See Capacity Reservation Specification below for more details.
     """
-    cpuOptions: Optional[List[CpuOption]] = None
+    cpuOptions: list[CpuOption] | None = None
     """
     The CPU options for the instance. See CPU Options below for more details.
     """
-    creditSpecification: Optional[List[CreditSpecificationItem]] = None
+    creditSpecification: list[CreditSpecificationItem] | None = None
     """
     Configuration block for customizing the credit specification of the instance. See Credit Specification below for more details. Removing this configuration on existing instances will only stop managing it. It will not change the configuration back to the default for the instance type.
     """
-    disableApiStop: Optional[bool] = None
+    disableApiStop: bool | None = None
     """
     If true, enables EC2 Instance Stop Protection.
     """
-    disableApiTermination: Optional[bool] = None
+    disableApiTermination: bool | None = None
     """
     If true, enables EC2 Instance Termination Protection.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
     """
     One or more configuration blocks with additional EBS block devices to attach to the instance. Block device configurations only apply on resource creation. See Block Devices below for details on attributes and drift detection. When accessing this as an attribute reference, it is a set of objects.
     """
-    ebsOptimized: Optional[bool] = None
+    ebsOptimized: bool | None = None
     """
     If true, the launched EC2 instance will be EBS-optimized. Note that if this is not set on an instance type that is optimized by default then this will show as disabled but if the instance type is optimized by default then there is no need to set this and there is no effect to disabling it. See the EBS Optimized section of the AWS User Guide for more information.
     """
-    enablePrimaryIpv6: Optional[bool] = None
+    enablePrimaryIpv6: bool | None = None
     """
     Whether to assign a primary IPv6 Global Unicast Address (GUA) to the instance when launched in a dual-stack or IPv6-only subnet. A primary IPv6 address ensures a consistent IPv6 address for the instance and is automatically assigned by AWS to the ENI. Once enabled, the first IPv6 GUA becomes the primary IPv6 address and cannot be disabled. The primary IPv6 address remains until the instance is terminated or the ENI is detached. Disabling enable_primary_ipv6 after it has been enabled forces recreation of the instance.
     """
-    enclaveOptions: Optional[List[EnclaveOption]] = None
+    enclaveOptions: list[EnclaveOption] | None = None
     """
     Enable Nitro Enclaves on launched instances. See Enclave Options below for more details.
     """
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
     """
     One or more configuration blocks to customize Ephemeral (also known as "Instance Store") volumes on the instance. See Block Devices below for details. When accessing this as an attribute reference, it is a set of objects.
     """
-    forceDestroy: Optional[bool] = None
+    forceDestroy: bool | None = None
     """
     Destroys instance even if disable_api_termination or disable_api_stop is set to true. Defaults to false. If setting this field in the same operation that would require replacing the instance or destroying the instance, this flag will not work.
     """
-    getPasswordData: Optional[bool] = None
+    getPasswordData: bool | None = None
     """
     If true, wait for password data to become available and retrieve it. Useful for getting the administrator password for instances running Microsoft Windows. The password data is exported to the password_data attribute. See GetPasswordData for more information.
     """
-    hibernation: Optional[bool] = None
+    hibernation: bool | None = None
     """
     If true, the launched EC2 instance will support hibernation.
     """
-    hostId: Optional[str] = None
+    hostId: str | None = None
     """
     ID of a dedicated host that the instance will be assigned to. Use when an instance is to be launched on a specific dedicated host.
     """
-    hostResourceGroupArn: Optional[str] = None
+    hostResourceGroupArn: str | None = None
     """
     ARN of the host resource group in which to launch the instances. If you specify an ARN, omit the tenancy parameter or set it to host.
     """
-    iamInstanceProfile: Optional[str] = None
+    iamInstanceProfile: str | None = None
     """
     IAM Instance Profile to launch the instance with. Specified as the name of the Instance Profile. Ensure your credentials have the correct permission to assign the instance profile according to the EC2 documentation, notably iam:PassRole.
     """
-    instanceInitiatedShutdownBehavior: Optional[str] = None
+    instanceInitiatedShutdownBehavior: str | None = None
     """
     Shutdown behavior for the instance. Amazon defaults this to stop for EBS-backed instances and terminate for instance-store instances. Cannot be set on instance-store instances. See Shutdown Behavior for more information.
     """
-    instanceMarketOptions: Optional[List[InstanceMarketOption]] = None
+    instanceMarketOptions: list[InstanceMarketOption] | None = None
     """
     Describes the market (purchasing) option for the instances. See Market Options below for details on attributes.
     """
-    instanceType: Optional[str] = None
+    instanceType: str | None = None
     """
     Instance type to use for the instance. Required unless launch_template is specified and the Launch Template specifies an instance type. If an instance type is specified in the Launch Template, setting instance_type will override the instance type specified in the Launch Template. Updates to this field will trigger a stop/start of the EC2 instance.
     """
-    ipv6AddressCount: Optional[float] = None
+    ipv6AddressCount: float | None = None
     """
     Number of IPv6 addresses to associate with the primary network interface. Amazon EC2 chooses the IPv6 addresses from the range of your subnet.
     """
-    ipv6Addresses: Optional[List[str]] = None
+    ipv6Addresses: list[str] | None = None
     """
     Specify one or more IPv6 addresses from the range of the subnet to associate with the primary network interface
     """
-    keyName: Optional[str] = None
+    keyName: str | None = None
     """
     Key name of the Key Pair to use for the instance; which can be managed using the .
     """
-    launchTemplate: Optional[List[LaunchTemplateItem]] = None
+    launchTemplate: list[LaunchTemplateItem] | None = None
     """
     Specifies a Launch Template to configure the instance. Parameters configured on this resource will override the corresponding parameters in the Launch Template. See Launch Template Specification below for more details.
     """
-    maintenanceOptions: Optional[List[MaintenanceOption]] = None
+    maintenanceOptions: list[MaintenanceOption] | None = None
     """
     Maintenance and recovery options for the instance. See Maintenance Options below for more details.
     """
-    metadataOptions: Optional[List[MetadataOption]] = None
+    metadataOptions: list[MetadataOption] | None = None
     """
     Customize the metadata options of the instance. See Metadata Options below for more details.
     """
-    monitoring: Optional[bool] = None
+    monitoring: bool | None = None
     """
     If true, the launched EC2 instance will have detailed monitoring enabled. (Available since v0.6.0)
     """
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
     """
     Customize network interfaces to be attached at instance boot time. See Network Interfaces below for more details.
     """
-    placementGroup: Optional[str] = None
+    placementGroup: str | None = None
     """
     Placement Group to start the instance in. Conflicts with placement_group_id.
     """
-    placementGroupId: Optional[str] = None
+    placementGroupId: str | None = None
     """
     Placement Group ID to start the instance in. Conflicts with placement_group.
     """
-    placementPartitionNumber: Optional[float] = None
+    placementPartitionNumber: float | None = None
     """
     Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition".
     """
-    primaryNetworkInterface: Optional[List[PrimaryNetworkInterfaceItem]] = None
+    primaryNetworkInterface: list[PrimaryNetworkInterfaceItem] | None = None
     """
     The primary network interface. See Primary Network Interface below.
     """
-    privateDnsNameOptions: Optional[List[PrivateDnsNameOption]] = None
+    privateDnsNameOptions: list[PrivateDnsNameOption] | None = None
     """
     Options for the instance hostname. The default values are inherited from the subnet. See Private DNS Name Options below for more details.
     """
-    privateIp: Optional[str] = None
+    privateIp: str | None = None
     """
     Private IP address to associate with the instance in a VPC.
     """
-    rootBlockDevice: Optional[List[RootBlockDeviceItem]] = None
+    rootBlockDevice: list[RootBlockDeviceItem] | None = None
     """
     Configuration block to customize details about the root block device of the instance. See Block Devices below for details. When accessing this as an attribute reference, it is a list containing one object.
     """
-    secondaryNetworkInterface: Optional[List[SecondaryNetworkInterfaceItem]] = None
+    secondaryNetworkInterface: list[SecondaryNetworkInterfaceItem] | None = None
     """
     One or more secondary network interfaces to attach to the instance at launch time. See Secondary Network Interface below for more details.
     """
-    secondaryPrivateIps: Optional[List[str]] = None
+    secondaryPrivateIps: list[str] | None = None
     """
     List of secondary private IPv4 addresses to assign to the instance's primary network interface (eth0) in a VPC. Can only be assigned to the primary network interface (eth0) attached at instance creation, not a pre-existing network interface i.e., referenced in a network_interface block. Refer to the Elastic network interfaces documentation to see the maximum number of private IP addresses allowed per instance type.
     """
-    sourceDestCheck: Optional[bool] = None
+    sourceDestCheck: bool | None = None
     """
     Controls if traffic is routed to the instance when the destination address does not match the instance. Used for NAT or VPNs. Defaults true.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     VPC Subnet ID to launch in.
     """
-    subnetIdRef: Optional[SubnetIdRef] = None
+    subnetIdRef: SubnetIdRef | None = None
     """
     Reference to a Subnet in ec2 to populate subnetId.
     """
-    subnetIdSelector: Optional[SubnetIdSelector] = None
+    subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tenancy: Optional[str] = None
+    tenancy: str | None = None
     """
     Tenancy of the instance (if the instance is running in a VPC). An instance with a tenancy of dedicated runs on single-tenant hardware. The host tenancy is not supported for the import-instance command. Valid values are default, dedicated, and host.
     """
-    userData: Optional[str] = None
+    userData: str | None = None
     """
     User data to provide when launching the instance. Do not pass gzip-compressed data via this argument; see user_data_base64 instead. Updates to this field will trigger a stop/start of the EC2 instance by default. If the user_data_replace_on_change is set then updates to this field will trigger a destroy and recreate of the EC2 instance.
     """
-    userDataBase64: Optional[str] = None
+    userDataBase64: str | None = None
     """
     Can be used instead of user_data to pass base64-encoded binary data directly. Use this instead of user_data whenever the value is not a valid UTF-8 string. For example, gzip-encoded user data must be base64-encoded and passed via this argument to avoid corruption. Updates to this field will trigger a stop/start of the EC2 instance by default. If the user_data_replace_on_change is set then updates to this field will trigger a destroy and recreate of the EC2 instance.
     """
-    userDataReplaceOnChange: Optional[bool] = None
+    userDataReplaceOnChange: bool | None = None
     """
     When used in combination with user_data or user_data_base64 will trigger a destroy and recreate of the EC2 instance when set to true. Defaults to false if not set.
     """
-    volumeTags: Optional[Dict[str, str]] = None
+    volumeTags: dict[str, str] | None = None
     """
     Map of tags to assign, at instance-creation time, to root and EBS volumes.
     """
-    vpcSecurityGroupIdRefs: Optional[List[VpcSecurityGroupIdRef]] = None
+    vpcSecurityGroupIdRefs: list[VpcSecurityGroupIdRef] | None = None
     """
     References to SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIdSelector: Optional[VpcSecurityGroupIdSelector] = None
+    vpcSecurityGroupIdSelector: VpcSecurityGroupIdSelector | None = None
     """
     Selector for a list of SecurityGroup in ec2 to populate vpcSecurityGroupIds.
     """
-    vpcSecurityGroupIds: Optional[List[str]] = None
+    vpcSecurityGroupIds: list[str] | None = None
     """
     List of security group IDs to associate with.
     """
@@ -903,7 +902,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -921,7 +920,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -932,7 +931,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -945,9 +944,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -960,15 +960,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -978,444 +978,444 @@ class Spec(BaseModel):
 
 
 class EbsBlockDeviceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether the volume should be destroyed on instance termination. Defaults to true.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     Name of the device to mount.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Enables EBS encryption on the volume. Defaults to false. Cannot be used with snapshot_id. Must be configured to perform drift detection.
     """
-    iops: Optional[float] = None
+    iops: float | None = None
     """
     Amount of provisioned IOPS. Only valid for volume_type of io1, io2 or gp3.
     """
-    kmsKeyId: Optional[str] = None
+    kmsKeyId: str | None = None
     """
     Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
-    snapshotId: Optional[str] = None
+    snapshotId: str | None = None
     """
     Snapshot ID to mount.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Map of tags to assign to the device. Note: Tags specified here are applied after instance creation via a separate API call. This means they cannot be used with IAM policies that require tags during resource creation (e.g., ABAC policies with ec2:CreateAction conditions or SCPs requiring volume tags). For ABAC compliance, use volume_tags instead, which applies uniform tags to all volumes during instance creation.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
+    throughput: float | None = None
     """
     Throughput to provision for a volume in mebibytes per second (MiB/s). This is only valid for volume_type of gp3.
     """
-    volumeId: Optional[str] = None
+    volumeId: str | None = None
     """
     ID of the volume. For example, the ID can be accessed like this, aws_instance.web.ebs_block_device.2.volume_id.
     """
-    volumeSize: Optional[float] = None
+    volumeSize: float | None = None
     """
     Size of the volume in gibibytes (GiB).
     """
-    volumeType: Optional[str] = None
+    volumeType: str | None = None
     """
     Type of volume. Valid values include standard, gp2, gp3, io1, io2, sc1, or st1. Defaults to gp2.
     """
 
 
 class NetworkInterfaceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether or not to delete the network interface on instance termination. Defaults to false. Currently, the only valid value is false, as this is only supported when creating new network interfaces when launching an instance.
     """
-    deviceIndex: Optional[float] = None
+    deviceIndex: float | None = None
     """
     Integer index of the network interface attachment. Limited by instance type.
     """
-    networkCardIndex: Optional[float] = None
+    networkCardIndex: float | None = None
     """
     Integer index of the network card. Limited by instance type. The default index is 0.
     """
-    networkInterfaceId: Optional[str] = None
+    networkInterfaceId: str | None = None
     """
     ID of the network interface to attach.
     """
 
 
 class PrimaryNetworkInterfaceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     (Read-Only) Whether the network interface will be deleted when the instance terminates.
     """
-    networkInterfaceId: Optional[str] = None
+    networkInterfaceId: str | None = None
     """
     ID of the network interface to attach.
     """
 
 
 class RootBlockDeviceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether the volume should be destroyed on instance termination. Defaults to true.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     Device name, e.g., /dev/sdh or xvdh.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Whether to enable volume encryption. Defaults to false. Must be configured to perform drift detection.
     """
-    iops: Optional[float] = None
+    iops: float | None = None
     """
     Amount of provisioned IOPS. Only valid for volume_type of io1, io2 or gp3.
     """
-    kmsKeyId: Optional[str] = None
+    kmsKeyId: str | None = None
     """
     Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Map of tags to assign to the device. Note: Tags specified here are applied after instance creation via a separate API call. This means they cannot be used with IAM policies that require tags during resource creation (e.g., ABAC policies with ec2:CreateAction conditions or SCPs requiring volume tags). For ABAC compliance, use volume_tags instead, which applies uniform tags to all volumes during instance creation.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    throughput: Optional[float] = None
+    throughput: float | None = None
     """
     Throughput to provision for a volume in mebibytes per second (MiB/s). This is only valid for volume_type of gp3.
     """
-    volumeId: Optional[str] = None
+    volumeId: str | None = None
     """
     ID of the volume. For example, the ID can be accessed like this, aws_instance.web.root_block_device.0.volume_id.
     """
-    volumeSize: Optional[float] = None
+    volumeSize: float | None = None
     """
     Size of the volume in gibibytes (GiB).
     """
-    volumeType: Optional[str] = None
+    volumeType: str | None = None
     """
     Type of volume. Valid values include standard, gp2, gp3, io1, io2, sc1, or st1. Defaults to the volume type that the AMI uses.
     """
 
 
 class SecondaryNetworkInterfaceItemModel(BaseModel):
-    deleteOnTermination: Optional[bool] = None
+    deleteOnTermination: bool | None = None
     """
     Whether the network interface should be destroyed when the instance is terminated. Defaults to true. Forces replacement.
     """
-    deviceIndex: Optional[float] = None
+    deviceIndex: float | None = None
     """
     Device index for the network interface attachment. Defaults to 0. Forces replacement.
     """
-    interfaceType: Optional[str] = None
+    interfaceType: str | None = None
     """
     Type of network interface. Currently only secondary is supported. Defaults to secondary. Forces replacement.
     """
-    macAddress: Optional[str] = None
-    networkCardIndex: Optional[float] = None
+    macAddress: str | None = None
+    networkCardIndex: float | None = None
     """
     Network card index for the interface. Each network card can have one secondary interface. Forces replacement.
     """
-    privateIpAddressCount: Optional[float] = None
+    privateIpAddressCount: float | None = None
     """
     Number of private IP addresses to assign to the network interface. Defaults to 1. Forces replacement.
     """
-    privateIpAddresses: Optional[List[str]] = None
+    privateIpAddresses: list[str] | None = None
     """
     List of private IP addresses to assign to the network interface. If not specified, AWS will automatically assign IP addresses based on private_ip_address_count. Forces replacement.
     """
-    secondaryInterfaceId: Optional[str] = None
+    secondaryInterfaceId: str | None = None
     """
     ID of the instance.
     """
-    secondaryNetworkId: Optional[str] = None
+    secondaryNetworkId: str | None = None
     """
     ID of the instance.
     """
-    secondarySubnetId: Optional[str] = None
+    secondarySubnetId: str | None = None
     """
     ID of the secondary subnet in which to create the network interface. Forces replacement.
     """
-    sourceDestCheck: Optional[bool] = None
+    sourceDestCheck: bool | None = None
     """
     Controls if traffic is routed to the instance when the destination address does not match the instance. Used for NAT or VPNs. Defaults true.
     """
-    status: Optional[str] = None
+    status: str | None = None
 
 
 class AtProvider(BaseModel):
-    ami: Optional[str] = None
+    ami: str | None = None
     """
     AMI to use for the instance. Required unless launch_template is specified and the Launch Template specifes an AMI. If an AMI is specified in the Launch Template, setting ami will override the AMI specified in the Launch Template.
     """
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     ARN of the instance.
     """
-    associatePublicIpAddress: Optional[bool] = None
+    associatePublicIpAddress: bool | None = None
     """
     Whether to associate a public IP address with an instance in a VPC.
     """
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     AZ to start the instance in.
     """
-    capacityReservationSpecification: Optional[
-        List[CapacityReservationSpecificationItem]
-    ] = None
+    capacityReservationSpecification: (
+        list[CapacityReservationSpecificationItem] | None
+    ) = None
     """
     Describes an instance's Capacity Reservation targeting option. See Capacity Reservation Specification below for more details.
     """
-    cpuOptions: Optional[List[CpuOption]] = None
+    cpuOptions: list[CpuOption] | None = None
     """
     The CPU options for the instance. See CPU Options below for more details.
     """
-    creditSpecification: Optional[List[CreditSpecificationItem]] = None
+    creditSpecification: list[CreditSpecificationItem] | None = None
     """
     Configuration block for customizing the credit specification of the instance. See Credit Specification below for more details. Removing this configuration on existing instances will only stop managing it. It will not change the configuration back to the default for the instance type.
     """
-    disableApiStop: Optional[bool] = None
+    disableApiStop: bool | None = None
     """
     If true, enables EC2 Instance Stop Protection.
     """
-    disableApiTermination: Optional[bool] = None
+    disableApiTermination: bool | None = None
     """
     If true, enables EC2 Instance Termination Protection.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItemModel]] = None
+    ebsBlockDevice: list[EbsBlockDeviceItemModel] | None = None
     """
     One or more configuration blocks with additional EBS block devices to attach to the instance. Block device configurations only apply on resource creation. See Block Devices below for details on attributes and drift detection. When accessing this as an attribute reference, it is a set of objects.
     """
-    ebsOptimized: Optional[bool] = None
+    ebsOptimized: bool | None = None
     """
     If true, the launched EC2 instance will be EBS-optimized. Note that if this is not set on an instance type that is optimized by default then this will show as disabled but if the instance type is optimized by default then there is no need to set this and there is no effect to disabling it. See the EBS Optimized section of the AWS User Guide for more information.
     """
-    enablePrimaryIpv6: Optional[bool] = None
+    enablePrimaryIpv6: bool | None = None
     """
     Whether to assign a primary IPv6 Global Unicast Address (GUA) to the instance when launched in a dual-stack or IPv6-only subnet. A primary IPv6 address ensures a consistent IPv6 address for the instance and is automatically assigned by AWS to the ENI. Once enabled, the first IPv6 GUA becomes the primary IPv6 address and cannot be disabled. The primary IPv6 address remains until the instance is terminated or the ENI is detached. Disabling enable_primary_ipv6 after it has been enabled forces recreation of the instance.
     """
-    enclaveOptions: Optional[List[EnclaveOption]] = None
+    enclaveOptions: list[EnclaveOption] | None = None
     """
     Enable Nitro Enclaves on launched instances. See Enclave Options below for more details.
     """
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
     """
     One or more configuration blocks to customize Ephemeral (also known as "Instance Store") volumes on the instance. See Block Devices below for details. When accessing this as an attribute reference, it is a set of objects.
     """
-    forceDestroy: Optional[bool] = None
+    forceDestroy: bool | None = None
     """
     Destroys instance even if disable_api_termination or disable_api_stop is set to true. Defaults to false. If setting this field in the same operation that would require replacing the instance or destroying the instance, this flag will not work.
     """
-    getPasswordData: Optional[bool] = None
+    getPasswordData: bool | None = None
     """
     If true, wait for password data to become available and retrieve it. Useful for getting the administrator password for instances running Microsoft Windows. The password data is exported to the password_data attribute. See GetPasswordData for more information.
     """
-    hibernation: Optional[bool] = None
+    hibernation: bool | None = None
     """
     If true, the launched EC2 instance will support hibernation.
     """
-    hostId: Optional[str] = None
+    hostId: str | None = None
     """
     ID of a dedicated host that the instance will be assigned to. Use when an instance is to be launched on a specific dedicated host.
     """
-    hostResourceGroupArn: Optional[str] = None
+    hostResourceGroupArn: str | None = None
     """
     ARN of the host resource group in which to launch the instances. If you specify an ARN, omit the tenancy parameter or set it to host.
     """
-    iamInstanceProfile: Optional[str] = None
+    iamInstanceProfile: str | None = None
     """
     IAM Instance Profile to launch the instance with. Specified as the name of the Instance Profile. Ensure your credentials have the correct permission to assign the instance profile according to the EC2 documentation, notably iam:PassRole.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     ID of the instance.
     """
-    instanceInitiatedShutdownBehavior: Optional[str] = None
+    instanceInitiatedShutdownBehavior: str | None = None
     """
     Shutdown behavior for the instance. Amazon defaults this to stop for EBS-backed instances and terminate for instance-store instances. Cannot be set on instance-store instances. See Shutdown Behavior for more information.
     """
-    instanceLifecycle: Optional[str] = None
+    instanceLifecycle: str | None = None
     """
     Indicates whether this is a Spot Instance or a Scheduled Instance.
     """
-    instanceMarketOptions: Optional[List[InstanceMarketOption]] = None
+    instanceMarketOptions: list[InstanceMarketOption] | None = None
     """
     Describes the market (purchasing) option for the instances. See Market Options below for details on attributes.
     """
-    instanceState: Optional[str] = None
+    instanceState: str | None = None
     """
     State of the instance. One of: pending, running, shutting-down, terminated, stopping, stopped. See Instance Lifecycle for more information.
     """
-    instanceType: Optional[str] = None
+    instanceType: str | None = None
     """
     Instance type to use for the instance. Required unless launch_template is specified and the Launch Template specifies an instance type. If an instance type is specified in the Launch Template, setting instance_type will override the instance type specified in the Launch Template. Updates to this field will trigger a stop/start of the EC2 instance.
     """
-    ipv6AddressCount: Optional[float] = None
+    ipv6AddressCount: float | None = None
     """
     Number of IPv6 addresses to associate with the primary network interface. Amazon EC2 chooses the IPv6 addresses from the range of your subnet.
     """
-    ipv6Addresses: Optional[List[str]] = None
+    ipv6Addresses: list[str] | None = None
     """
     Specify one or more IPv6 addresses from the range of the subnet to associate with the primary network interface
     """
-    keyName: Optional[str] = None
+    keyName: str | None = None
     """
     Key name of the Key Pair to use for the instance; which can be managed using the .
     """
-    launchTemplate: Optional[List[LaunchTemplateItem]] = None
+    launchTemplate: list[LaunchTemplateItem] | None = None
     """
     Specifies a Launch Template to configure the instance. Parameters configured on this resource will override the corresponding parameters in the Launch Template. See Launch Template Specification below for more details.
     """
-    maintenanceOptions: Optional[List[MaintenanceOption]] = None
+    maintenanceOptions: list[MaintenanceOption] | None = None
     """
     Maintenance and recovery options for the instance. See Maintenance Options below for more details.
     """
-    metadataOptions: Optional[List[MetadataOption]] = None
+    metadataOptions: list[MetadataOption] | None = None
     """
     Customize the metadata options of the instance. See Metadata Options below for more details.
     """
-    monitoring: Optional[bool] = None
+    monitoring: bool | None = None
     """
     If true, the launched EC2 instance will have detailed monitoring enabled. (Available since v0.6.0)
     """
-    networkInterface: Optional[List[NetworkInterfaceItemModel]] = None
+    networkInterface: list[NetworkInterfaceItemModel] | None = None
     """
     Customize network interfaces to be attached at instance boot time. See Network Interfaces below for more details.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     ARN of the Outpost the instance is assigned to.
     """
-    passwordData: Optional[str] = None
+    passwordData: str | None = None
     """
     Base-64 encoded encrypted password data for the instance. Useful for getting the administrator password for instances running Microsoft Windows. This attribute is only exported if get_password_data is true. Note that this encrypted value will be stored in the state file, as with all exported attributes. See GetPasswordData for more information.
     """
-    placementGroup: Optional[str] = None
+    placementGroup: str | None = None
     """
     Placement Group to start the instance in. Conflicts with placement_group_id.
     """
-    placementGroupId: Optional[str] = None
+    placementGroupId: str | None = None
     """
     Placement Group ID to start the instance in. Conflicts with placement_group.
     """
-    placementPartitionNumber: Optional[float] = None
+    placementPartitionNumber: float | None = None
     """
     Number of the partition the instance is in. Valid only if the  strategy argument is set to "partition".
     """
-    primaryNetworkInterface: Optional[List[PrimaryNetworkInterfaceItemModel]] = None
+    primaryNetworkInterface: list[PrimaryNetworkInterfaceItemModel] | None = None
     """
     The primary network interface. See Primary Network Interface below.
     """
-    primaryNetworkInterfaceId: Optional[str] = None
+    primaryNetworkInterfaceId: str | None = None
     """
     ID of the instance's primary network interface.
     """
-    privateDns: Optional[str] = None
+    privateDns: str | None = None
     """
     Private DNS name assigned to the instance. Can only be used inside the Amazon EC2, and only available if you've enabled DNS hostnames for your VPC.
     """
-    privateDnsNameOptions: Optional[List[PrivateDnsNameOption]] = None
+    privateDnsNameOptions: list[PrivateDnsNameOption] | None = None
     """
     Options for the instance hostname. The default values are inherited from the subnet. See Private DNS Name Options below for more details.
     """
-    privateIp: Optional[str] = None
+    privateIp: str | None = None
     """
     Private IP address to associate with the instance in a VPC.
     """
-    publicDns: Optional[str] = None
+    publicDns: str | None = None
     """
     Public DNS name assigned to the instance. For EC2-VPC, this is only available if you've enabled DNS hostnames for your VPC.
     """
-    publicIp: Optional[str] = None
+    publicIp: str | None = None
     """
     Public IP address assigned to the instance, if applicable. NOTE: If you are using an aws_eip with your instance, you should refer to the EIP's address directly and not use public_ip as this field will change after the EIP is attached.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    rootBlockDevice: Optional[List[RootBlockDeviceItemModel]] = None
+    rootBlockDevice: list[RootBlockDeviceItemModel] | None = None
     """
     Configuration block to customize details about the root block device of the instance. See Block Devices below for details. When accessing this as an attribute reference, it is a list containing one object.
     """
-    secondaryNetworkInterface: Optional[List[SecondaryNetworkInterfaceItemModel]] = None
+    secondaryNetworkInterface: list[SecondaryNetworkInterfaceItemModel] | None = None
     """
     One or more secondary network interfaces to attach to the instance at launch time. See Secondary Network Interface below for more details.
     """
-    secondaryPrivateIps: Optional[List[str]] = None
+    secondaryPrivateIps: list[str] | None = None
     """
     List of secondary private IPv4 addresses to assign to the instance's primary network interface (eth0) in a VPC. Can only be assigned to the primary network interface (eth0) attached at instance creation, not a pre-existing network interface i.e., referenced in a network_interface block. Refer to the Elastic network interfaces documentation to see the maximum number of private IP addresses allowed per instance type.
     """
-    securityGroups: Optional[List[str]] = None
+    securityGroups: list[str] | None = None
     """
     List of security group names to associate with.
     """
-    sourceDestCheck: Optional[bool] = None
+    sourceDestCheck: bool | None = None
     """
     Controls if traffic is routed to the instance when the destination address does not match the instance. Used for NAT or VPNs. Defaults true.
     """
-    spotInstanceRequestId: Optional[str] = None
+    spotInstanceRequestId: str | None = None
     """
     If the request is a Spot Instance request, the ID of the request.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     VPC Subnet ID to launch in.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    tenancy: Optional[str] = None
+    tenancy: str | None = None
     """
     Tenancy of the instance (if the instance is running in a VPC). An instance with a tenancy of dedicated runs on single-tenant hardware. The host tenancy is not supported for the import-instance command. Valid values are default, dedicated, and host.
     """
-    userData: Optional[str] = None
+    userData: str | None = None
     """
     User data to provide when launching the instance. Do not pass gzip-compressed data via this argument; see user_data_base64 instead. Updates to this field will trigger a stop/start of the EC2 instance by default. If the user_data_replace_on_change is set then updates to this field will trigger a destroy and recreate of the EC2 instance.
     """
-    userDataBase64: Optional[str] = None
+    userDataBase64: str | None = None
     """
     Can be used instead of user_data to pass base64-encoded binary data directly. Use this instead of user_data whenever the value is not a valid UTF-8 string. For example, gzip-encoded user data must be base64-encoded and passed via this argument to avoid corruption. Updates to this field will trigger a stop/start of the EC2 instance by default. If the user_data_replace_on_change is set then updates to this field will trigger a destroy and recreate of the EC2 instance.
     """
-    userDataReplaceOnChange: Optional[bool] = None
+    userDataReplaceOnChange: bool | None = None
     """
     When used in combination with user_data or user_data_base64 will trigger a destroy and recreate of the EC2 instance when set to true. Defaults to false if not set.
     """
-    volumeTags: Optional[Dict[str, str]] = None
+    volumeTags: dict[str, str] | None = None
     """
     Map of tags to assign, at instance-creation time, to root and EBS volumes.
     """
-    vpcSecurityGroupIds: Optional[List[str]] = None
+    vpcSecurityGroupIds: list[str] | None = None
     """
     List of security group IDs to associate with.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -1437,12 +1437,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -1451,17 +1451,17 @@ class Status(BaseModel):
 
 
 class Instance(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta1'] | None = (
         'ec2.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Instance']] = 'Instance'
+    kind: Literal['Instance'] | None = 'Instance'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -1469,26 +1469,26 @@ class Instance(BaseModel):
     """
     InstanceSpec defines the desired state of Instance
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     InstanceStatus defines the observed state of Instance.
     """
 
 
 class InstanceList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Instance]
+    items: list[Instance]
     """
     List of instances. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

@@ -3,21 +3,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class CloudrunConfig(BaseModel):
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     The status of the Istio addon, which makes it easy to set up Istio for services in a
     cluster. It is disabled by default. Set disabled = false to enable.
     """
-    loadBalancerType: Optional[str] = None
+    loadBalancerType: str | None = None
     """
     The load balancer type of CloudRun ingress service. It is external load balancer by default.
     Set load_balancer_type=LOAD_BALANCER_TYPE_INTERNAL to configure it as internal load balancer.
@@ -25,49 +24,49 @@ class CloudrunConfig(BaseModel):
 
 
 class ConfigConnectorConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class DnsCacheConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class GcePersistentDiskCsiDriverConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class GcpFilestoreCsiDriverConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class GcsFuseCsiDriverConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class GkeBackupAgentConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class HorizontalPodAutoscaling(BaseModel):
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     The status of the Istio addon, which makes it easy to set up Istio for services in a
     cluster. It is disabled by default. Set disabled = false to enable.
@@ -75,7 +74,7 @@ class HorizontalPodAutoscaling(BaseModel):
 
 
 class HttpLoadBalancing(BaseModel):
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     The status of the Istio addon, which makes it easy to set up Istio for services in a
     cluster. It is disabled by default. Set disabled = false to enable.
@@ -83,15 +82,15 @@ class HttpLoadBalancing(BaseModel):
 
 
 class LustreCsiDriverConfig(BaseModel):
-    enableLegacyLustrePort: Optional[bool] = None
-    enabled: Optional[bool] = None
+    enableLegacyLustrePort: bool | None = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class NetworkPolicyConfig(BaseModel):
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     The status of the Istio addon, which makes it easy to set up Istio for services in a
     cluster. It is disabled by default. Set disabled = false to enable.
@@ -99,37 +98,37 @@ class NetworkPolicyConfig(BaseModel):
 
 
 class ParallelstoreCsiDriverConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class RayClusterLoggingConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class RayClusterMonitoringConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class RayOperatorConfigItem(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
-    rayClusterLoggingConfig: Optional[RayClusterLoggingConfig] = None
+    rayClusterLoggingConfig: RayClusterLoggingConfig | None = None
     """
     Logging configuration for the cluster.
     Structure is documented below.
     """
-    rayClusterMonitoringConfig: Optional[RayClusterMonitoringConfig] = None
+    rayClusterMonitoringConfig: RayClusterMonitoringConfig | None = None
     """
     Monitoring configuration for the cluster.
     Structure is documented below.
@@ -137,40 +136,40 @@ class RayOperatorConfigItem(BaseModel):
 
 
 class StatefulHaConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class AddonsConfig(BaseModel):
-    cloudrunConfig: Optional[CloudrunConfig] = None
+    cloudrunConfig: CloudrunConfig | None = None
     """
     . Structure is documented below.
     """
-    configConnectorConfig: Optional[ConfigConnectorConfig] = None
+    configConnectorConfig: ConfigConnectorConfig | None = None
     """
     .
     The status of the ConfigConnector addon. It is disabled by default; Set enabled = true to enable.
     """
-    dnsCacheConfig: Optional[DnsCacheConfig] = None
+    dnsCacheConfig: DnsCacheConfig | None = None
     """
     .
     The status of the NodeLocal DNSCache addon. It is disabled by default.
     Set enabled = true to enable.
     """
-    gcePersistentDiskCsiDriverConfig: Optional[GcePersistentDiskCsiDriverConfig] = None
+    gcePersistentDiskCsiDriverConfig: GcePersistentDiskCsiDriverConfig | None = None
     """
     .
     Whether this cluster should enable the Google Compute Engine Persistent Disk Container Storage Interface (CSI) Driver. Set enabled = true to enable.
     """
-    gcpFilestoreCsiDriverConfig: Optional[GcpFilestoreCsiDriverConfig] = None
+    gcpFilestoreCsiDriverConfig: GcpFilestoreCsiDriverConfig | None = None
     """
     The status of the Filestore CSI driver addon,
     which allows the usage of filestore instance as volumes.
     It is disabled by default; set enabled = true to enable.
     """
-    gcsFuseCsiDriverConfig: Optional[GcsFuseCsiDriverConfig] = None
+    gcsFuseCsiDriverConfig: GcsFuseCsiDriverConfig | None = None
     """
     The status of the GCSFuse CSI driver addon,
     which allows the usage of a gcs bucket as volumes.
@@ -178,12 +177,12 @@ class AddonsConfig(BaseModel):
     It is enabled by default for Autopilot clusters with version 1.24 or later; set enabled = true to enable it explicitly.
     See Enable the Cloud Storage FUSE CSI driver for more information.
     """
-    gkeBackupAgentConfig: Optional[GkeBackupAgentConfig] = None
+    gkeBackupAgentConfig: GkeBackupAgentConfig | None = None
     """
     .
     The status of the Backup for GKE agent addon. It is disabled by default; Set enabled = true to enable.
     """
-    horizontalPodAutoscaling: Optional[HorizontalPodAutoscaling] = None
+    horizontalPodAutoscaling: HorizontalPodAutoscaling | None = None
     """
     The status of the Horizontal Pod Autoscaling
     addon, which increases or decreases the number of replica pods a replication controller
@@ -191,13 +190,13 @@ class AddonsConfig(BaseModel):
     It is enabled by default;
     set disabled = true to disable.
     """
-    httpLoadBalancing: Optional[HttpLoadBalancing] = None
+    httpLoadBalancing: HttpLoadBalancing | None = None
     """
     The status of the HTTP (L7) load balancing
     controller addon, which makes it easy to set up HTTP load balancers for services in a
     cluster. It is enabled by default; set disabled = true to disable.
     """
-    lustreCsiDriverConfig: Optional[LustreCsiDriverConfig] = None
+    lustreCsiDriverConfig: LustreCsiDriverConfig | None = None
     """
     The status of the Lustre CSI driver addon,
     which allows the usage of a Lustre instances as volumes.
@@ -208,7 +207,7 @@ class AddonsConfig(BaseModel):
     This flag is required to workaround a port conflict with the gke-metadata-server on GKE nodes.
     See Enable Lustre CSI driver for more information.
     """
-    networkPolicyConfig: Optional[NetworkPolicyConfig] = None
+    networkPolicyConfig: NetworkPolicyConfig | None = None
     """
     Whether we should enable the network policy addon
     for the master.  This must be enabled in order to enable network policy for the nodes.
@@ -217,7 +216,7 @@ class AddonsConfig(BaseModel):
     It can only be disabled if the nodes already do not have network policies enabled.
     Defaults to disabled; set disabled = false to enable.
     """
-    parallelstoreCsiDriverConfig: Optional[ParallelstoreCsiDriverConfig] = None
+    parallelstoreCsiDriverConfig: ParallelstoreCsiDriverConfig | None = None
     """
     The status of the Parallelstore CSI driver addon,
     which allows the usage of a Parallelstore instances as volumes.
@@ -225,14 +224,14 @@ class AddonsConfig(BaseModel):
     It is enabled by default for Autopilot clusters with version 1.29 or later; set enabled = true to enable it explicitly.
     See Enable the Parallelstore CSI driver for more information.
     """
-    rayOperatorConfig: Optional[List[RayOperatorConfigItem]] = None
+    rayOperatorConfig: list[RayOperatorConfigItem] | None = None
     """
     . The status of the Ray Operator
     addon.
     It is disabled by default. Set enabled = true to enable. The minimum
     cluster version to enable Ray is 1.30.0-gke.1747000.
     """
-    statefulHaConfig: Optional[StatefulHaConfig] = None
+    statefulHaConfig: StatefulHaConfig | None = None
     """
     .
     The status of the Stateful HA addon, which provides automatic configurable failover for stateful applications.
@@ -241,25 +240,25 @@ class AddonsConfig(BaseModel):
 
 
 class AnonymousAuthenticationConfig(BaseModel):
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     Sets or removes authentication restrictions. Available options include LIMITED and ENABLED.
     """
 
 
 class AuthenticatorGroupsConfig(BaseModel):
-    securityGroup: Optional[str] = None
+    securityGroup: str | None = None
     """
     The name of the RBAC security group for use with Google security groups in Kubernetes RBAC. Group name must be in format gke-security-groups@yourdomain.com.
     """
 
 
 class BinaryAuthorization(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     (DEPRECATED) Enable Binary Authorization for this cluster. Deprecated in favor of evaluation_mode.
     """
-    evaluationMode: Optional[str] = None
+    evaluationMode: str | None = None
     """
     Mode of operation for Binary Authorization policy evaluation. Valid values are DISABLED
     and PROJECT_SINGLETON_POLICY_ENFORCE.
@@ -267,96 +266,96 @@ class BinaryAuthorization(BaseModel):
 
 
 class Management(BaseModel):
-    autoRepair: Optional[bool] = None
+    autoRepair: bool | None = None
     """
     Specifies whether the node auto-repair is enabled for the node pool. If enabled, the nodes in this node pool will be monitored and, if they fail health checks too many times, an automatic repair action will be triggered.
     """
-    autoUpgrade: Optional[bool] = None
+    autoUpgrade: bool | None = None
     """
     Specifies whether node auto-upgrade is enabled for the node pool. If enabled, node auto-upgrade helps keep the nodes in your node pool up to date with the latest release version of Kubernetes.
     """
 
 
 class ShieldedInstanceConfig(BaseModel):
-    enableIntegrityMonitoring: Optional[bool] = None
+    enableIntegrityMonitoring: bool | None = None
     """
     Defines if the instance has integrity monitoring enabled.
     """
-    enableSecureBoot: Optional[bool] = None
+    enableSecureBoot: bool | None = None
     """
     Defines if the instance has Secure Boot enabled.
     """
 
 
 class StandardRolloutPolicy(BaseModel):
-    batchNodeCount: Optional[float] = None
+    batchNodeCount: float | None = None
     """
     Number of blue nodes to drain in a batch. Only one of the batch_percentage or batch_node_count can be specified.
     """
-    batchPercentage: Optional[float] = None
+    batchPercentage: float | None = None
     """
     :  Percentage of the bool pool nodes to drain in a batch. The range of this field should be (0.0, 1.0). Only one of the batch_percentage or batch_node_count can be specified.
     """
-    batchSoakDuration: Optional[str] = None
+    batchSoakDuration: str | None = None
     """
     Soak time after each batch gets drained. A duration in seconds with up to nine fractional digits, ending with 's'. Example: "3.5s".`.
     """
 
 
 class BlueGreenSettings(BaseModel):
-    nodePoolSoakDuration: Optional[str] = None
+    nodePoolSoakDuration: str | None = None
     """
     Time needed after draining entire blue pool. After this period, blue pool will be cleaned up. A duration in seconds with up to nine fractional digits, ending with 's'. Example: "3.5s".
     """
-    standardRolloutPolicy: Optional[StandardRolloutPolicy] = None
+    standardRolloutPolicy: StandardRolloutPolicy | None = None
     """
     green upgrade. To be specified when strategy is set to BLUE_GREEN. Structure is documented below.
     """
 
 
 class UpgradeSettings(BaseModel):
-    blueGreenSettings: Optional[BlueGreenSettings] = None
+    blueGreenSettings: BlueGreenSettings | None = None
     """
     Settings for blue-green upgrade strategy. To be specified when strategy is set to BLUE_GREEN. Structure is documented below.
     """
-    maxSurge: Optional[float] = None
+    maxSurge: float | None = None
     """
     The maximum number of nodes that can be created beyond the current size of the node pool during the upgrade process. To be used when strategy is set to SURGE. Default is 0.
     """
-    maxUnavailable: Optional[float] = None
+    maxUnavailable: float | None = None
     """
     The maximum number of nodes that can be simultaneously unavailable during the upgrade process. To be used when strategy is set to SURGE. Default is 0.
     """
-    strategy: Optional[str] = None
+    strategy: str | None = None
     """
     Strategy used for node pool update. Strategy can only be one of BLUE_GREEN or SURGE. The default is value is SURGE.
     """
 
 
 class AutoProvisioningDefaults(BaseModel):
-    bootDiskKmsKey: Optional[str] = None
+    bootDiskKmsKey: str | None = None
     """
     The Customer Managed Encryption Key used to encrypt the boot disk attached to each node in the node pool. This should be of the form projects/[KEY_PROJECT_ID]/locations/[LOCATION]/keyRings/[RING_NAME]/cryptoKeys/[KEY_NAME]. For more information about protecting resources with Cloud KMS Keys please see: https://cloud.google.com/compute/docs/disks/customer-managed-encryption
     """
-    diskSize: Optional[float] = None
+    diskSize: float | None = None
     """
     Size of the disk attached to each node, specified in GB. The smallest allowed disk size is 10GB. Defaults to 100
     """
-    diskType: Optional[str] = None
+    diskType: str | None = None
     """
     Type of the disk attached to each node
     (e.g. 'pd-standard', 'pd-balanced' or 'pd-ssd'). If unspecified, the default disk type is 'pd-balanced'
     """
-    imageType: Optional[str] = None
+    imageType: str | None = None
     """
     The image type to use for this node. Note that changing the image type
     will delete and recreate all nodes in the node pool.
     """
-    management: Optional[Management] = None
+    management: Management | None = None
     """
     NodeManagement configuration for this NodePool. Structure is documented below.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     Minimum CPU platform to be used by this instance.
     The instance may be scheduled on the specified or newer CPU platform. Applicable
@@ -364,37 +363,37 @@ class AutoProvisioningDefaults(BaseModel):
     official documentation
     for more information.
     """
-    oauthScopes: Optional[List[str]] = None
+    oauthScopes: list[str] | None = None
     """
     The set of Google API scopes to be made available
     on all of the node VMs under the "default" service account.
     Use the "https://www.googleapis.com/auth/cloud-platform" scope to grant access to all APIs. It is recommended that you set service_account to a non-default service account and grant IAM roles to that service account for only the resources that it needs.
     """
-    serviceAccount: Optional[str] = None
+    serviceAccount: str | None = None
     """
     The service account to be used by the Node VMs.
     If not specified, the "default" service account is used.
     """
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
     """
     Shielded Instance options. Structure is documented below.
     """
-    upgradeSettings: Optional[UpgradeSettings] = None
+    upgradeSettings: UpgradeSettings | None = None
     """
     Specifies the upgrade settings for NAP created node pools. Structure is documented below.
     """
 
 
 class ResourceLimit(BaseModel):
-    maximum: Optional[float] = None
+    maximum: float | None = None
     """
     Maximum amount of the resource in the cluster.
     """
-    minimum: Optional[float] = None
+    minimum: float | None = None
     """
     Minimum amount of the resource in the cluster.
     """
-    resourceType: Optional[str] = None
+    resourceType: str | None = None
     """
     The type of the resource. For example, cpu and
     memory.  See the guide to using Node Auto-Provisioning
@@ -403,31 +402,31 @@ class ResourceLimit(BaseModel):
 
 
 class ClusterAutoscaling(BaseModel):
-    autoProvisioningDefaults: Optional[AutoProvisioningDefaults] = None
+    autoProvisioningDefaults: AutoProvisioningDefaults | None = None
     """
     Contains defaults for a node pool created by NAP. A subset of fields also apply to
     GKE Autopilot clusters.
     Structure is documented below.
     """
-    autoProvisioningLocations: Optional[List[str]] = None
+    autoProvisioningLocations: list[str] | None = None
     """
     The list of Google Compute Engine
     zones in which the
     NodePool's nodes can be created by NAP.
     """
-    autoscalingProfile: Optional[str] = None
+    autoscalingProfile: str | None = None
     """
     Configuration
     options for the Autoscaling profile
     feature, which lets you choose whether the cluster autoscaler should optimize for resource utilization or resource availability
     when deciding to remove nodes from a cluster. Can be BALANCED or OPTIMIZE_UTILIZATION. Defaults to BALANCED.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether node auto-provisioning is enabled. Must be supplied for GKE Standard clusters, true is implied
     for autopilot clusters. Resource limits for cpu and memory must be defined to enable node auto-provisioning for GKE Standard.
     """
-    resourceLimits: Optional[List[ResourceLimit]] = None
+    resourceLimits: list[ResourceLimit] | None = None
     """
     Global constraints for machine resources in the
     cluster. Configuring the cpu and memory types is required if node
@@ -437,12 +436,12 @@ class ClusterAutoscaling(BaseModel):
 
 
 class ConfidentialNodes(BaseModel):
-    confidentialInstanceType: Optional[str] = None
+    confidentialInstanceType: str | None = None
     """
     Defines the type of technology used
     by the confidential node.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enable Confidential GKE Nodes for this node pool, to
     enforce encryption of data in-use.
@@ -450,108 +449,108 @@ class ConfidentialNodes(BaseModel):
 
 
 class DnsEndpointConfig(BaseModel):
-    allowExternalTraffic: Optional[bool] = None
+    allowExternalTraffic: bool | None = None
     """
     Controls whether user traffic is allowed over this endpoint. Note that GCP-managed services may still use the endpoint even if this is false.
     """
-    endpoint: Optional[str] = None
+    endpoint: str | None = None
     """
     (Output) The cluster's DNS endpoint.
     """
 
 
 class IpEndpointsConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Controls whether to allow direct IP access. Defaults to true.
     """
 
 
 class ControlPlaneEndpointsConfig(BaseModel):
-    dnsEndpointConfig: Optional[DnsEndpointConfig] = None
+    dnsEndpointConfig: DnsEndpointConfig | None = None
     """
     DNS endpoint configuration.
     """
-    ipEndpointsConfig: Optional[IpEndpointsConfig] = None
+    ipEndpointsConfig: IpEndpointsConfig | None = None
     """
     IP endpoint configuration.
     """
 
 
 class CostManagementConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether to enable the cost allocation feature.
     """
 
 
 class DatabaseEncryption(BaseModel):
-    keyName: Optional[str] = None
+    keyName: str | None = None
     """
     the key to use to encrypt/decrypt secrets.  See the DatabaseEncryption definition for more information.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
-    ENCRYPTED or DECRYPTED
+    ENCRYPTED, ALL_OBJECTS_ENCRYPTION_ENABLED or DECRYPTED.
     """
 
 
 class DefaultSnatStatus(BaseModel):
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     Whether the cluster disables default in-node sNAT rules. In-node sNAT rules will be disabled when defaultSnatStatus is disabled.When disabled is set to false, default IP masquerade rules will be applied to the nodes to prevent sNAT on cluster internal traffic
     """
 
 
 class DnsConfig(BaseModel):
-    additiveVpcScopeDnsDomain: Optional[str] = None
+    additiveVpcScopeDnsDomain: str | None = None
     """
     This will enable Cloud DNS additive VPC scope. Must provide a domain name that is unique within the VPC. For this to work cluster_dns = "CLOUD_DNS" and cluster_dns_scope = "CLUSTER_SCOPE" must both be set as well.
     """
-    clusterDns: Optional[str] = None
+    clusterDns: str | None = None
     """
     Which in-cluster DNS provider should be used. PROVIDER_UNSPECIFIED (default) or PLATFORM_DEFAULT or CLOUD_DNS.
     """
-    clusterDnsDomain: Optional[str] = None
+    clusterDnsDomain: str | None = None
     """
     The suffix used for all cluster service records.
     """
-    clusterDnsScope: Optional[str] = None
+    clusterDnsScope: str | None = None
     """
     The scope of access to cluster DNS records. DNS_SCOPE_UNSPECIFIED or CLUSTER_SCOPE or VPC_SCOPE. If the cluster_dns field is set to CLOUD_DNS, DNS_SCOPE_UNSPECIFIED and empty/null behave like CLUSTER_SCOPE.
     """
 
 
 class EnableK8SBetaApis(BaseModel):
-    enabledApis: Optional[List[str]] = None
+    enabledApis: list[str] | None = None
     """
     Enabled Kubernetes Beta APIs. To list a Beta API resource, use the representation {group}/{version}/{resource}. The version must be a Beta version. Note that you cannot disable beta APIs that are already enabled on a cluster without recreating it. See the Configure beta APIs for more information.
     """
 
 
 class EnterpriseConfig(BaseModel):
-    desiredTier: Optional[str] = None
+    desiredTier: str | None = None
     """
     Sets the tier of the cluster. Available options include STANDARD and ENTERPRISE.
     """
 
 
 class Fleet(BaseModel):
-    project: Optional[str] = None
+    project: str | None = None
     """
     The name of the Fleet host project where this cluster will be registered.
     """
 
 
 class GatewayApiConfig(BaseModel):
-    channel: Optional[str] = None
+    channel: str | None = None
     """
     Which Gateway Api channel should be used. CHANNEL_DISABLED, CHANNEL_EXPERIMENTAL or CHANNEL_STANDARD.
     """
 
 
 class GkeAutoUpgradeConfig(BaseModel):
-    patchMode: Optional[str] = None
+    patchMode: str | None = None
     """
     The selected patch mode.
     Accepted values are:
@@ -559,18 +558,18 @@ class GkeAutoUpgradeConfig(BaseModel):
 
 
 class IdentityServiceConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether to enable the Identity Service component. It is disabled by default. Set enabled=true to enable.
     """
 
 
 class AdditionalIpRangesConfigItem(BaseModel):
-    podIpv4RangeNames: Optional[List[str]] = None
+    podIpv4RangeNames: list[str] | None = None
     """
     List of secondary ranges names within this subnetwork that can be used for pod IPs.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The name or self_link of the Google Compute Engine
     subnetwork in which the cluster's instances are launched.
@@ -578,14 +577,14 @@ class AdditionalIpRangesConfigItem(BaseModel):
 
 
 class AdditionalPodRangesConfig(BaseModel):
-    podRangeNames: Optional[List[str]] = None
+    podRangeNames: list[str] | None = None
     """
     The names of the Pod ranges to add to the cluster.
     """
 
 
 class PodCidrOverprovisionConfig(BaseModel):
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     The status of the Istio addon, which makes it easy to set up Istio for services in a
     cluster. It is disabled by default. Set disabled = false to enable.
@@ -593,18 +592,18 @@ class PodCidrOverprovisionConfig(BaseModel):
 
 
 class IpAllocationPolicy(BaseModel):
-    additionalIpRangesConfig: Optional[List[AdditionalIpRangesConfigItem]] = None
+    additionalIpRangesConfig: list[AdditionalIpRangesConfigItem] | None = None
     """
     The configuration for individual additional subnetworks attached to the cluster.
     Structure is documented below.
     """
-    additionalPodRangesConfig: Optional[AdditionalPodRangesConfig] = None
+    additionalPodRangesConfig: AdditionalPodRangesConfig | None = None
     """
     The configuration for additional pod secondary ranges at
     the cluster level. Used for Autopilot clusters and Standard clusters with which control of the
     secondary Pod IP address assignment to node pools isn't needed. Structure is documented below.
     """
-    clusterIpv4CidrBlock: Optional[str] = None
+    clusterIpv4CidrBlock: str | None = None
     """
     The IP address range for the cluster pod IPs.
     Set to blank to have a range chosen with the default size. Set to /netmask (e.g. /14)
@@ -612,14 +611,14 @@ class IpAllocationPolicy(BaseModel):
     from the RFC-1918 private networks (e.g. 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) to
     pick a specific range to use.
     """
-    clusterSecondaryRangeName: Optional[str] = None
+    clusterSecondaryRangeName: str | None = None
     """
     The name of the existing secondary
     range in the cluster's subnetwork to use for pod IP addresses. Alternatively,
     cluster_ipv4_cidr_block can be used to automatically create a GKE-managed one.
     """
-    podCidrOverprovisionConfig: Optional[PodCidrOverprovisionConfig] = None
-    servicesIpv4CidrBlock: Optional[str] = None
+    podCidrOverprovisionConfig: PodCidrOverprovisionConfig | None = None
+    servicesIpv4CidrBlock: str | None = None
     """
     The IP address range of the services IPs in this cluster.
     Set to blank to have a range chosen with the default size. Set to /netmask (e.g. /14)
@@ -627,14 +626,14 @@ class IpAllocationPolicy(BaseModel):
     from the RFC-1918 private networks (e.g. 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) to
     pick a specific range to use.
     """
-    servicesSecondaryRangeName: Optional[str] = None
+    servicesSecondaryRangeName: str | None = None
     """
     The name of the existing
     secondary range in the cluster's subnetwork to use for service ClusterIPs.
     Alternatively, services_ipv4_cidr_block can be used to automatically create a
     GKE-managed one.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The IP Stack Type of the cluster.
     Default value is IPV4.
@@ -643,7 +642,7 @@ class IpAllocationPolicy(BaseModel):
 
 
 class LoggingConfig(BaseModel):
-    enableComponents: Optional[List[str]] = None
+    enableComponents: list[str] | None = None
     """
     The GKE components exposing logs. Supported values include:
     SYSTEM_COMPONENTS, APISERVER, CONTROLLER_MANAGER, SCHEDULER, and WORKLOADS.
@@ -651,171 +650,171 @@ class LoggingConfig(BaseModel):
 
 
 class DailyMaintenanceWindow(BaseModel):
-    startTime: Optional[str] = None
+    startTime: str | None = None
 
 
 class ExclusionOptions(BaseModel):
-    scope: Optional[str] = None
+    scope: str | None = None
     """
     Whether or not to enable GKE Auto-Monitoring. Supported values include: ALL, NONE.
     """
 
 
 class MaintenanceExclusionItem(BaseModel):
-    endTime: Optional[str] = None
-    exclusionName: Optional[str] = None
+    endTime: str | None = None
+    exclusionName: str | None = None
     """
     The name of the cluster, unique within the project and
     location.
     """
-    exclusionOptions: Optional[ExclusionOptions] = None
+    exclusionOptions: ExclusionOptions | None = None
     """
     MaintenanceExclusionOptions provides maintenance exclusion related options.
     """
-    startTime: Optional[str] = None
+    startTime: str | None = None
 
 
 class RecurringWindow(BaseModel):
-    endTime: Optional[str] = None
-    recurrence: Optional[str] = None
-    startTime: Optional[str] = None
+    endTime: str | None = None
+    recurrence: str | None = None
+    startTime: str | None = None
 
 
 class MaintenancePolicy(BaseModel):
-    dailyMaintenanceWindow: Optional[DailyMaintenanceWindow] = None
+    dailyMaintenanceWindow: DailyMaintenanceWindow | None = None
     """
     structure documented below.
     """
-    maintenanceExclusion: Optional[List[MaintenanceExclusionItem]] = None
+    maintenanceExclusion: list[MaintenanceExclusionItem] | None = None
     """
     structure documented below
     """
-    recurringWindow: Optional[RecurringWindow] = None
+    recurringWindow: RecurringWindow | None = None
     """
     structure documented below
     """
 
 
 class ClientCertificateConfig(BaseModel):
-    issueClientCertificate: Optional[bool] = None
+    issueClientCertificate: bool | None = None
 
 
 class MasterAuth(BaseModel):
-    clientCertificateConfig: Optional[ClientCertificateConfig] = None
+    clientCertificateConfig: ClientCertificateConfig | None = None
     """
     Whether client certificate authorization is enabled for this cluster.  For example:
     """
 
 
 class CidrBlock(BaseModel):
-    cidrBlock: Optional[str] = None
+    cidrBlock: str | None = None
     """
     External network that can access Kubernetes master through HTTPS.
     Must be specified in CIDR notation.
     """
-    displayName: Optional[str] = None
+    displayName: str | None = None
     """
     Field for users to identify CIDR blocks.
     """
 
 
 class MasterAuthorizedNetworksConfig(BaseModel):
-    cidrBlocks: Optional[List[CidrBlock]] = None
+    cidrBlocks: list[CidrBlock] | None = None
     """
     External networks that can access the
     Kubernetes cluster master through HTTPS.
     """
-    gcpPublicCidrsAccessEnabled: Optional[bool] = None
+    gcpPublicCidrsAccessEnabled: bool | None = None
     """
     Whether Kubernetes master is
     accessible via Google Compute Engine Public IPs.
     """
-    privateEndpointEnforcementEnabled: Optional[bool] = None
+    privateEndpointEnforcementEnabled: bool | None = None
     """
     Whether authorized networks is enforced on the private endpoint or not.
     """
 
 
 class MeshCertificates(BaseModel):
-    enableCertificates: Optional[bool] = None
+    enableCertificates: bool | None = None
     """
     Controls the issuance of workload mTLS certificates. It is enabled by default. Workload Identity is required, see workload_config.
     """
 
 
 class AdvancedDatapathObservabilityConfig(BaseModel):
-    enableMetrics: Optional[bool] = None
+    enableMetrics: bool | None = None
     """
     Whether or not to enable advanced datapath metrics.
     """
-    enableRelay: Optional[bool] = None
+    enableRelay: bool | None = None
     """
     Whether or not Relay is enabled.
     """
 
 
 class AutoMonitoringConfig(BaseModel):
-    scope: Optional[str] = None
+    scope: str | None = None
     """
     Whether or not to enable GKE Auto-Monitoring. Supported values include: ALL, NONE.
     """
 
 
 class ManagedPrometheus(BaseModel):
-    autoMonitoringConfig: Optional[AutoMonitoringConfig] = None
+    autoMonitoringConfig: AutoMonitoringConfig | None = None
     """
     Configuration options for GKE Auto-Monitoring.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class MonitoringConfig(BaseModel):
-    advancedDatapathObservabilityConfig: Optional[
-        AdvancedDatapathObservabilityConfig
-    ] = None
+    advancedDatapathObservabilityConfig: AdvancedDatapathObservabilityConfig | None = (
+        None
+    )
     """
     Configuration for Advanced Datapath Monitoring. Structure is documented below.
     """
-    enableComponents: Optional[List[str]] = None
+    enableComponents: list[str] | None = None
     """
     The GKE components exposing metrics. Supported values include: SYSTEM_COMPONENTS, APISERVER, SCHEDULER, CONTROLLER_MANAGER, STORAGE, HPA, POD, DAEMONSET, DEPLOYMENT, STATEFULSET, KUBELET, CADVISOR, DCGM and JOBSET. In beta provider, WORKLOADS is supported on top of those 12 values. (WORKLOADS is deprecated and removed in GKE 1.24.) KUBELET and CADVISOR are only supported in GKE 1.29.3-gke.1093000 and above. JOBSET is only supported in GKE 1.32.1-gke.1357001 and above.
     """
-    managedPrometheus: Optional[ManagedPrometheus] = None
+    managedPrometheus: ManagedPrometheus | None = None
     """
     Configuration for Managed Service for Prometheus. Structure is documented below.
     """
 
 
 class NetworkPerformanceConfig(BaseModel):
-    totalEgressBandwidthTier: Optional[str] = None
+    totalEgressBandwidthTier: str | None = None
     """
     Specifies the total network bandwidth tier for NodePools in the cluster.
     """
 
 
 class NetworkPolicy(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether network policy is enabled on the cluster.
     """
-    provider: Optional[str] = None
+    provider: str | None = None
     """
     The selected network policy provider. Defaults to PROVIDER_UNSPECIFIED.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -829,92 +828,90 @@ class NetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class AdvancedMachineFeatures(BaseModel):
-    enableNestedVirtualization: Optional[bool] = None
+    enableNestedVirtualization: bool | None = None
     """
     Defines whether the instance should have nested virtualization enabled. Defaults to false.
     """
-    performanceMonitoringUnit: Optional[str] = None
+    performanceMonitoringUnit: str | None = None
     """
     Defines the performance monitoring unit PMU level. Valid values are ARCHITECTURAL, STANDARD, or ENHANCED. Defaults to off.
     """
-    threadsPerCore: Optional[float] = None
+    threadsPerCore: float | None = None
     """
     The number of threads per physical core. To disable simultaneous multithreading (SMT) set this to 1. If unset, the maximum number of threads supported per core by the underlying processor is assumed.
     """
 
 
 class ConfidentialNodesModel(BaseModel):
-    confidentialInstanceType: Optional[str] = None
+    confidentialInstanceType: str | None = None
     """
     Defines the type of technology used
     by the confidential node.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class GcpSecretManagerCertificateConfig(BaseModel):
-    secretUri: Optional[str] = None
+    secretUri: str | None = None
 
 
 class CertificateAuthorityDomainConfigItem(BaseModel):
-    fqdns: Optional[List[str]] = None
-    gcpSecretManagerCertificateConfig: Optional[GcpSecretManagerCertificateConfig] = (
-        None
-    )
+    fqdns: list[str] | None = None
+    gcpSecretManagerCertificateConfig: GcpSecretManagerCertificateConfig | None = None
 
 
 class PrivateRegistryAccessConfig(BaseModel):
-    certificateAuthorityDomainConfig: Optional[
-        List[CertificateAuthorityDomainConfigItem]
-    ] = None
+    certificateAuthorityDomainConfig: (
+        list[CertificateAuthorityDomainConfigItem] | None
+    ) = None
     """
     List of configuration objects for CA and domains. Each object identifies a certificate and its assigned domains. See how to configure for private container registries for more detail. Example:
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class ContainerdConfig(BaseModel):
-    privateRegistryAccessConfig: Optional[PrivateRegistryAccessConfig] = None
+    privateRegistryAccessConfig: PrivateRegistryAccessConfig | None = None
     """
     Configuration for private container registries. There are two fields in this config:
     """
 
 
 class EphemeralStorageLocalSsdConfig(BaseModel):
-    dataCacheCount: Optional[float] = None
+    dataCacheCount: float | None = None
     """
     Number of raw-block local NVMe SSD disks to be attached to the node utilized for GKE Data Cache. If zero, then GKE Data Cache will not be enabled in the nodes.
     """
-    localSsdCount: Optional[float] = None
+    localSsdCount: float | None = None
     """
     The amount of local SSD disks that will be
     attached to each cluster node. Defaults to 0.
@@ -922,21 +919,21 @@ class EphemeralStorageLocalSsdConfig(BaseModel):
 
 
 class FastSocket(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class GcfsConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class GpuDriverInstallationConfig(BaseModel):
-    gpuDriverVersion: Optional[str] = None
+    gpuDriverVersion: str | None = None
     """
     Mode for how the GPU driver is installed.
     Accepted values are:
@@ -944,61 +941,73 @@ class GpuDriverInstallationConfig(BaseModel):
 
 
 class GpuSharingConfig(BaseModel):
-    gpuSharingStrategy: Optional[str] = None
+    gpuSharingStrategy: str | None = None
     """
     The type of GPU sharing strategy to enable on the GPU node.
     Accepted values are:
     """
-    maxSharedClientsPerGpu: Optional[float] = None
+    maxSharedClientsPerGpu: float | None = None
     """
     The maximum number of containers that can share a GPU.
     """
 
 
 class GuestAcceleratorItem(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     The number of the guest accelerator cards exposed to this instance.
     """
-    gpuDriverInstallationConfig: Optional[GpuDriverInstallationConfig] = None
+    gpuDriverInstallationConfig: GpuDriverInstallationConfig | None = None
     """
     Configuration for auto installation of GPU driver. Structure is documented below.
     """
-    gpuPartitionSize: Optional[str] = None
+    gpuPartitionSize: str | None = None
     """
     Size of partitions to create on the GPU. Valid values are described in the NVIDIA mig user guide.
     """
-    gpuSharingConfig: Optional[GpuSharingConfig] = None
+    gpuSharingConfig: GpuSharingConfig | None = None
     """
     Configuration for GPU sharing. Structure is documented below.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The accelerator type resource to expose to this instance. E.g. nvidia-tesla-k80.
     """
 
 
 class Gvnic(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class HostMaintenancePolicy(BaseModel):
-    maintenanceInterval: Optional[str] = None
+    maintenanceInterval: str | None = None
+
+
+class MemoryManager(BaseModel):
+    policy: str | None = None
+
+
+class TopologyManager(BaseModel):
+    policy: str | None = None
+    scope: str | None = None
+    """
+    Whether or not to enable GKE Auto-Monitoring. Supported values include: ALL, NONE.
+    """
 
 
 class KubeletConfig(BaseModel):
-    allowedUnsafeSysctls: Optional[List[str]] = None
+    allowedUnsafeSysctls: list[str] | None = None
     """
     Defines a comma-separated allowlist of unsafe sysctls or sysctl patterns which can be set on the Pods. The allowed sysctl groups are kernel.shm*, kernel.msg*, kernel.sem, fs.mqueue.*, and net.*.
     """
-    containerLogMaxFiles: Optional[float] = None
+    containerLogMaxFiles: float | None = None
     """
     Defines the maximum number of container log files that can be present for a container. The integer must be between 2 and 10, inclusive.
     """
-    containerLogMaxSize: Optional[str] = None
+    containerLogMaxSize: str | None = None
     """
     Defines the maximum size of the
     container log file before it is rotated. Specified as a positive number and a
@@ -1006,19 +1015,19 @@ class KubeletConfig(BaseModel):
     The value must be between "10Mi" and "500Mi", inclusive. And the total container log size
     (container_log_max_size * container_log_max_files) cannot exceed 1% of the total storage of the node.
     """
-    cpuCfsQuota: Optional[bool] = None
+    cpuCfsQuota: bool | None = None
     """
     If true, enables CPU CFS quota enforcement for
     containers that specify CPU limits.
     """
-    cpuCfsQuotaPeriod: Optional[str] = None
+    cpuCfsQuotaPeriod: str | None = None
     """
     The CPU CFS quota period value. Specified
     as a sequence of decimal numbers, each with optional fraction and a unit suffix,
     such as "300ms". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m",
     "h". The value must be a positive duration.
     """
-    cpuManagerPolicy: Optional[str] = None
+    cpuManagerPolicy: str | None = None
     """
     The CPU management policy on the node. See
     K8S CPU Management Policies.
@@ -1026,54 +1035,56 @@ class KubeletConfig(BaseModel):
     Prior to the 6.4.0 this field was marked as required. The workaround for the required field
     is setting the empty string "", which will function identically to not setting this field.
     """
-    imageGcHighThresholdPercent: Optional[float] = None
+    imageGcHighThresholdPercent: float | None = None
     """
     Defines the percent of disk usage after which image garbage collection is always run. The integer must be between 10 and 85, inclusive.
     """
-    imageGcLowThresholdPercent: Optional[float] = None
+    imageGcLowThresholdPercent: float | None = None
     """
     Defines the percent of disk usage before which image garbage collection is never run. Lowest disk usage to garbage collect to. The integer must be between 10 and 85, inclusive.
     """
-    imageMaximumGcAge: Optional[str] = None
+    imageMaximumGcAge: str | None = None
     """
     Defines the maximum age an image can be unused before it is garbage collected. Specified as a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300s", "1.5m", and "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h". The value must be a positive duration.
     """
-    imageMinimumGcAge: Optional[str] = None
+    imageMinimumGcAge: str | None = None
     """
     Defines the minimum age for an unused image before it is garbage collected. Specified as a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300s", "1.5m". The value cannot be greater than "2m".
     """
-    insecureKubeletReadonlyPortEnabled: Optional[str] = None
+    insecureKubeletReadonlyPortEnabled: str | None = None
     """
     only port is enabled for newly created node pools in the cluster. It is strongly recommended to set this to FALSE. Possible values: TRUE, FALSE.
     """
-    podPidsLimit: Optional[float] = None
+    memoryManager: MemoryManager | None = None
+    podPidsLimit: float | None = None
     """
     Controls the maximum number of processes allowed to run in a pod. The value must be greater than or equal to 1024 and less than 4194304.
     """
+    topologyManager: TopologyManager | None = None
 
 
 class HugepagesConfig(BaseModel):
-    hugepageSize1G: Optional[float] = None
+    hugepageSize1G: float | None = None
     """
     Amount of 1G hugepages.
     """
-    hugepageSize2M: Optional[float] = None
+    hugepageSize2M: float | None = None
     """
     Amount of 2M hugepages.
     """
 
 
 class LinuxNodeConfig(BaseModel):
-    cgroupMode: Optional[str] = None
+    cgroupMode: str | None = None
     """
     Possible cgroup modes that can be used.
     Accepted values are:
     """
-    hugepagesConfig: Optional[HugepagesConfig] = None
+    hugepagesConfig: HugepagesConfig | None = None
     """
     Amounts for 2M and 1G hugepages. Structure is documented below.
     """
-    sysctls: Optional[Dict[str, str]] = None
+    sysctls: dict[str, str] | None = None
     """
     The Linux kernel parameters to be applied to the nodes
     and all pods running on the nodes. Specified as a map from the key, such as
@@ -1083,7 +1094,7 @@ class LinuxNodeConfig(BaseModel):
 
 
 class LocalNvmeSsdBlockConfig(BaseModel):
-    localSsdCount: Optional[float] = None
+    localSsdCount: float | None = None
     """
     The amount of local SSD disks that will be
     attached to each cluster node. Defaults to 0.
@@ -1091,27 +1102,27 @@ class LocalNvmeSsdBlockConfig(BaseModel):
 
 
 class ReservationAffinity(BaseModel):
-    consumeReservationType: Optional[str] = None
+    consumeReservationType: str | None = None
     """
     The type of reservation consumption
     Accepted values are:
     """
-    key: Optional[str] = None
+    key: str | None = None
     """
     Key for taint.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     name"
     """
 
 
 class SecondaryBootDisk(BaseModel):
-    diskImage: Optional[str] = None
+    diskImage: str | None = None
     """
     Path to disk image to create the secondary boot disk from. After using the gke-disk-image-builder, this argument should be global/images/DISK_IMAGE_NAME.
     """
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     How to expose the node metadata to the workload running on the node.
     Accepted values are:
@@ -1123,68 +1134,68 @@ class ServiceAccountRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ServiceAccountSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class NodeAffinityItem(BaseModel):
-    key: Optional[str] = None
+    key: str | None = None
     """
     Key for taint.
     """
-    operator: Optional[str] = None
+    operator: str | None = None
     """
     Specifies affinity or anti-affinity. Accepted values are "IN" or "NOT_IN"
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     name"
     """
 
 
 class SoleTenantConfig(BaseModel):
-    nodeAffinity: Optional[List[NodeAffinityItem]] = None
+    nodeAffinity: list[NodeAffinityItem] | None = None
 
 
 class TaintItem(BaseModel):
-    effect: Optional[str] = None
+    effect: str | None = None
     """
     Effect for taint. Accepted values are NO_SCHEDULE, PREFER_NO_SCHEDULE, and NO_EXECUTE.
     """
-    key: Optional[str] = None
+    key: str | None = None
     """
     Key for taint.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Value for taint.
     """
 
 
 class WindowsNodeConfig(BaseModel):
-    osversion: Optional[str] = None
+    osversion: str | None = None
 
 
 class WorkloadMetadataConfig(BaseModel):
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     How to expose the node metadata to the workload running on the node.
     Accepted values are:
@@ -1192,53 +1203,53 @@ class WorkloadMetadataConfig(BaseModel):
 
 
 class NodeConfig(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
     """
     Specifies options for controlling
     advanced machine features. Structure is documented below.
     """
-    bootDiskKmsKey: Optional[str] = None
+    bootDiskKmsKey: str | None = None
     """
     The Customer Managed Encryption Key used to encrypt the boot disk attached to each node in the node pool. This should be of the form projects/[KEY_PROJECT_ID]/locations/[LOCATION]/keyRings/[RING_NAME]/cryptoKeys/[KEY_NAME]. For more information about protecting resources with Cloud KMS Keys please see: https://cloud.google.com/compute/docs/disks/customer-managed-encryption
     """
-    confidentialNodes: Optional[ConfidentialNodesModel] = None
+    confidentialNodes: ConfidentialNodesModel | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below.
     """
-    containerdConfig: Optional[ContainerdConfig] = None
+    containerdConfig: ContainerdConfig | None = None
     """
     Parameters to customize containerd runtime. Structure is documented below.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     Size of the disk attached to each node, specified
     in GB. The smallest allowed disk size is 10GB. Defaults to 100GB.
     """
-    diskType: Optional[str] = None
+    diskType: str | None = None
     """
     Type of the disk attached to each node
     (e.g. 'pd-standard', 'pd-balanced' or 'pd-ssd'). If unspecified, the default disk type is 'pd-balanced'
     """
-    enableConfidentialStorage: Optional[bool] = None
+    enableConfidentialStorage: bool | None = None
     """
     Enabling Confidential Storage will create boot disk with confidential mode. It is disabled by default.
     """
-    ephemeralStorageLocalSsdConfig: Optional[EphemeralStorageLocalSsdConfig] = None
+    ephemeralStorageLocalSsdConfig: EphemeralStorageLocalSsdConfig | None = None
     """
     Parameters for the ephemeral storage filesystem. If unspecified, ephemeral storage is backed by the boot disk. Structure is documented below.
     """
-    fastSocket: Optional[FastSocket] = None
+    fastSocket: FastSocket | None = None
     """
     Parameters for the NCCL Fast Socket feature. If unspecified, NCCL Fast Socket will not be enabled on the node pool.
     Node Pool must enable gvnic.
     GKE version 1.25.2-gke.1700 or later.
     Structure is documented below.
     """
-    flexStart: Optional[bool] = None
+    flexStart: bool | None = None
     """
     Enables Flex Start provisioning model for the node pool.
     """
-    gcfsConfig: Optional[GcfsConfig] = None
+    gcfsConfig: GcfsConfig | None = None
     """
     Parameters for the Google Container Filesystem (GCFS).
     If unspecified, GCFS will not be enabled on the node pool. When enabling this feature you must specify image_type = "COS_CONTAINERD" and node_version from GKE versions 1.19 or later to use it.
@@ -1247,7 +1258,7 @@ class NodeConfig(BaseModel):
     GCFS must be enabled in order to use image streaming.
     Structure is documented below.
     """
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
     """
     List of the type and count of accelerator cards attached to the instance.
     Structure documented below.
@@ -1256,7 +1267,7 @@ class NodeConfig(BaseModel):
     To dynamically set a list of guest accelerators, use dynamic blocks.
     To set an empty list, use a single guest_accelerator block with count = 0.
     """
-    gvnic: Optional[Gvnic] = None
+    gvnic: Gvnic | None = None
     """
     Google Virtual NIC (gVNIC) is a virtual network interface.
     Installing the gVNIC driver allows for more efficient traffic transmission across the Google network infrastructure.
@@ -1264,65 +1275,65 @@ class NodeConfig(BaseModel):
     GKE node version 1.15.11-gke.15 or later
     Structure is documented below.
     """
-    hostMaintenancePolicy: Optional[HostMaintenancePolicy] = None
+    hostMaintenancePolicy: HostMaintenancePolicy | None = None
     """
     The maintenance policy to use for the cluster. Structure is
     documented below.
     """
-    imageType: Optional[str] = None
+    imageType: str | None = None
     """
     The image type to use for this node. Note that changing the image type
     will delete and recreate all nodes in the node pool.
     """
-    kubeletConfig: Optional[KubeletConfig] = None
+    kubeletConfig: KubeletConfig | None = None
     """
     Kubelet configuration, currently supported attributes can be found here.
     Structure is documented below.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     The Kubernetes labels (key/value pairs) to be applied to each node. The kubernetes.io/ and k8s.io/ prefixes are
     reserved by Kubernetes Core components and cannot be specified.
     """
-    linuxNodeConfig: Optional[LinuxNodeConfig] = None
+    linuxNodeConfig: LinuxNodeConfig | None = None
     """
     Parameters that can be configured on Linux nodes. Structure is documented below.
     """
-    localNvmeSsdBlockConfig: Optional[LocalNvmeSsdBlockConfig] = None
+    localNvmeSsdBlockConfig: LocalNvmeSsdBlockConfig | None = None
     """
     Parameters for the local NVMe SSDs. Structure is documented below.
     """
-    localSsdCount: Optional[float] = None
+    localSsdCount: float | None = None
     """
     The amount of local SSD disks that will be
     attached to each cluster node. Defaults to 0.
     """
-    localSsdEncryptionMode: Optional[str] = None
+    localSsdEncryptionMode: str | None = None
     """
     Possible Local SSD encryption modes:
     Accepted values are:
     """
-    loggingVariant: Optional[str] = None
+    loggingVariant: str | None = None
     """
     wide default value. Valid values include DEFAULT and MAX_THROUGHPUT. See Increasing logging agent throughput for more information.
     """
-    machineType: Optional[str] = None
+    machineType: str | None = None
     """
     The name of a Google Compute Engine machine type.
     Defaults to e2-medium. To create a custom machine type, value should be set as specified
     here.
     """
-    maxRunDuration: Optional[str] = None
+    maxRunDuration: str | None = None
     """
     The runtime of each node in the node pool in seconds, terminated by 's'. Example: "3600s".
     """
-    metadata: Optional[Dict[str, str]] = None
+    metadata: dict[str, str] | None = None
     """
     The metadata key/value pairs assigned to instances in
     the cluster. From GKE 1. To avoid this, set the
     value in your config.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     Minimum CPU platform to be used by this instance.
     The instance may be scheduled on the specified or newer CPU platform. Applicable
@@ -1330,86 +1341,86 @@ class NodeConfig(BaseModel):
     official documentation
     for more information.
     """
-    nodeGroup: Optional[str] = None
+    nodeGroup: str | None = None
     """
     Setting this field will assign instances of this pool to run on the specified node group. This is useful for running workloads on sole tenant nodes.
     """
-    oauthScopes: Optional[List[str]] = None
+    oauthScopes: list[str] | None = None
     """
     The set of Google API scopes to be made available
     on all of the node VMs under the "default" service account.
     Use the "https://www.googleapis.com/auth/cloud-platform" scope to grant access to all APIs. It is recommended that you set service_account to a non-default service account and grant IAM roles to that service account for only the resources that it needs.
     """
-    preemptible: Optional[bool] = None
+    preemptible: bool | None = None
     """
     A boolean that represents whether or not the underlying node VMs
     are preemptible. See the official documentation
     for more information. Defaults to false.
     """
-    reservationAffinity: Optional[ReservationAffinity] = None
+    reservationAffinity: ReservationAffinity | None = None
     """
     The configuration of the desired reservation which instances could take capacity from. Structure is documented below.
     """
-    resourceLabels: Optional[Dict[str, str]] = None
+    resourceLabels: dict[str, str] | None = None
     """
     The GCP labels (key/value pairs) to be applied to each node. Refer here
     for how these labels are applied to clusters, node pools and nodes.
     """
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A map of resource manager tag keys and values to be attached to the nodes for managing Compute Engine firewalls using Network Firewall Policies. Tags must be according to specifications found here. A maximum of 5 tag key-value pairs can be specified. Existing tags will be replaced with new values. Tags must be in one of the following formats ([KEY]=[VALUE]) 1. tagKeys/{tag_key_id}=tagValues/{tag_value_id} 2. {org_id}/{tag_key_name}={tag_value_name} 3. {project_id}/{tag_key_name}={tag_value_name}.
     """
-    secondaryBootDisks: Optional[List[SecondaryBootDisk]] = None
+    secondaryBootDisks: list[SecondaryBootDisk] | None = None
     """
     Parameters for secondary boot disks to preload container images and data on new nodes. Structure is documented below. gcfs_config must be enabled=true for this feature to work. min_master_version must also be set to use GKE 1.28.3-gke.106700 or later versions.
     """
-    serviceAccount: Optional[str] = None
+    serviceAccount: str | None = None
     """
     The service account to be used by the Node VMs.
     If not specified, the "default" service account is used.
     """
-    serviceAccountRef: Optional[ServiceAccountRef] = None
+    serviceAccountRef: ServiceAccountRef | None = None
     """
     Reference to a ServiceAccount in cloudplatform to populate serviceAccount.
     """
-    serviceAccountSelector: Optional[ServiceAccountSelector] = None
+    serviceAccountSelector: ServiceAccountSelector | None = None
     """
     Selector for a ServiceAccount in cloudplatform to populate serviceAccount.
     """
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
     """
     Shielded Instance options. Structure is documented below.
     """
-    soleTenantConfig: Optional[SoleTenantConfig] = None
+    soleTenantConfig: SoleTenantConfig | None = None
     """
     Allows specifying multiple node affinities useful for running workloads on sole tenant nodes. node_affinity structure is documented below.
     """
-    spot: Optional[bool] = None
+    spot: bool | None = None
     """
     A boolean that represents whether the underlying node VMs are spot.
     See the official documentation
     for more information. Defaults to false.
     """
-    storagePools: Optional[List[str]] = None
+    storagePools: list[str] | None = None
     """
     The list of Storage Pools where boot disks are provisioned.
     """
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
     """
     The list of instance tags applied to all nodes. Tags are used to identify
     valid sources or targets for network firewalls.
     """
-    taint: Optional[List[TaintItem]] = None
+    taint: list[TaintItem] | None = None
     """
     A list of
     Kubernetes taints
     to apply to nodes. Structure is documented below.
     """
-    windowsNodeConfig: Optional[WindowsNodeConfig] = None
+    windowsNodeConfig: WindowsNodeConfig | None = None
     """
     Windows node configuration, currently supporting OSVersion attribute. The value must be one of [OS_VERSION_UNSPECIFIED, OS_VERSION_LTSC2019, OS_VERSION_LTSC2022]. For example:
     """
-    workloadMetadataConfig: Optional[WorkloadMetadataConfig] = None
+    workloadMetadataConfig: WorkloadMetadataConfig | None = None
     """
     Metadata configuration to expose to workloads on the node pool.
     Structure is documented below.
@@ -1417,7 +1428,7 @@ class NodeConfig(BaseModel):
 
 
 class LinuxNodeConfigModel(BaseModel):
-    cgroupMode: Optional[str] = None
+    cgroupMode: str | None = None
     """
     Possible cgroup modes that can be used.
     Accepted values are:
@@ -1425,7 +1436,7 @@ class LinuxNodeConfigModel(BaseModel):
 
 
 class NetworkTags(BaseModel):
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
     """
     The list of instance tags applied to all nodes. Tags are used to identify
     valid sources or targets for network firewalls.
@@ -1433,89 +1444,89 @@ class NetworkTags(BaseModel):
 
 
 class NodeKubeletConfig(BaseModel):
-    insecureKubeletReadonlyPortEnabled: Optional[str] = None
+    insecureKubeletReadonlyPortEnabled: str | None = None
     """
     only port is enabled for newly created node pools in the cluster. It is strongly recommended to set this to FALSE. Possible values: TRUE, FALSE.
     """
 
 
 class NodePoolAutoConfig(BaseModel):
-    linuxNodeConfig: Optional[LinuxNodeConfigModel] = None
+    linuxNodeConfig: LinuxNodeConfigModel | None = None
     """
     Linux system configuration for the cluster's automatically provisioned node pools. Only cgroup_mode field is supported in node_pool_auto_config. Structure is documented below.
     """
-    networkTags: Optional[NetworkTags] = None
+    networkTags: NetworkTags | None = None
     """
     The network tag config for the cluster's automatically provisioned node pools. Structure is documented below.
     """
-    nodeKubeletConfig: Optional[NodeKubeletConfig] = None
+    nodeKubeletConfig: NodeKubeletConfig | None = None
     """
     Kubelet configuration for Autopilot clusters. Currently, only insecure_kubelet_readonly_port_enabled is supported here.
     Structure is documented below.
     """
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A map of resource manager tag keys and values to be attached to the nodes for managing Compute Engine firewalls using Network Firewall Policies. Tags must be according to specifications found here. A maximum of 5 tag key-value pairs can be specified. Existing tags will be replaced with new values. Tags must be in one of the following formats ([KEY]=[VALUE]) 1. tagKeys/{tag_key_id}=tagValues/{tag_value_id} 2. {org_id}/{tag_key_name}={tag_value_name} 3. {project_id}/{tag_key_name}={tag_value_name}.
     """
 
 
 class NodeConfigDefaults(BaseModel):
-    containerdConfig: Optional[ContainerdConfig] = None
+    containerdConfig: ContainerdConfig | None = None
     """
     Parameters to customize containerd runtime. Structure is documented below.
     """
-    gcfsConfig: Optional[GcfsConfig] = None
+    gcfsConfig: GcfsConfig | None = None
     """
     The default Google Container Filesystem (GCFS) configuration at the cluster level. e.g. enable image streaming across all the node pools within the cluster. Structure is documented below.
     """
-    insecureKubeletReadonlyPortEnabled: Optional[str] = None
+    insecureKubeletReadonlyPortEnabled: str | None = None
     """
     only port is enabled for newly created node pools in the cluster. It is strongly recommended to set this to FALSE. Possible values: TRUE, FALSE.
     """
-    loggingVariant: Optional[str] = None
+    loggingVariant: str | None = None
     """
     The type of logging agent that is deployed by default for newly created node pools in the cluster. Valid values include DEFAULT and MAX_THROUGHPUT. See Increasing logging agent throughput for more information.
     """
 
 
 class NodePoolDefaults(BaseModel):
-    nodeConfigDefaults: Optional[NodeConfigDefaults] = None
+    nodeConfigDefaults: NodeConfigDefaults | None = None
     """
     Subset of NodeConfig message that has defaults.
     """
 
 
 class Filter(BaseModel):
-    eventType: Optional[List[str]] = None
+    eventType: list[str] | None = None
     """
     Can be used to filter what notifications are sent. Accepted values are UPGRADE_AVAILABLE_EVENT, UPGRADE_EVENT, SECURITY_BULLETIN_EVENT and UPGRADE_INFO_EVENT. See Filtering notifications for more details.
     """
 
 
 class Pubsub(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether or not the notification config is enabled
     """
-    filter: Optional[Filter] = None
+    filter: Filter | None = None
     """
     Choose what type of notifications you want to receive. If no filters are applied, you'll receive all notification types. Structure is documented below.
     """
-    topic: Optional[str] = None
+    topic: str | None = None
     """
     The pubsub topic to push upgrade notifications to. Must be in the same project as the cluster. Must be in the format: projects/{project}/topics/{topic}.
     """
 
 
 class NotificationConfig(BaseModel):
-    pubsub: Optional[Pubsub] = None
+    pubsub: Pubsub | None = None
     """
     The pubsub config for the cluster's upgrade notifications.
     """
 
 
 class PodAutoscaling(BaseModel):
-    hpaProfile: Optional[str] = None
+    hpaProfile: str | None = None
     """
     Enable the Horizontal Pod Autoscaling profile for this cluster.
     Acceptable values are:
@@ -1523,7 +1534,7 @@ class PodAutoscaling(BaseModel):
 
 
 class MasterGlobalAccessConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Whether the cluster master is accessible globally or
     not.
@@ -1535,49 +1546,49 @@ class PrivateEndpointSubnetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class PrivateEndpointSubnetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class PrivateClusterConfig(BaseModel):
-    enablePrivateEndpoint: Optional[bool] = None
+    enablePrivateEndpoint: bool | None = None
     """
     When true, the cluster's private
     endpoint is used as the cluster endpoint and access through the public endpoint
     is disabled. When false, either endpoint can be used. This field only applies
     to private clusters, when enable_private_nodes is true.
     """
-    enablePrivateNodes: Optional[bool] = None
+    enablePrivateNodes: bool | None = None
     """
     Enables the private cluster feature,
     creating a private endpoint on the cluster. In a private cluster, nodes only
     have RFC 1918 private addresses and communicate with the master's private
     endpoint via private networking.
     """
-    masterGlobalAccessConfig: Optional[MasterGlobalAccessConfig] = None
+    masterGlobalAccessConfig: MasterGlobalAccessConfig | None = None
     """
     Controls cluster master global
     access settings. Structure is documented below.
     """
-    masterIpv4CidrBlock: Optional[str] = None
+    masterIpv4CidrBlock: str | None = None
     """
     The IP range in CIDR notation to use for
     the hosted master network. This range will be used for assigning private IP
@@ -1587,35 +1598,33 @@ class PrivateClusterConfig(BaseModel):
     for more details. This field only applies to private clusters, when
     enable_private_nodes is true.
     """
-    privateEndpointSubnetwork: Optional[str] = None
+    privateEndpointSubnetwork: str | None = None
     """
     Subnetwork in cluster's network where master's endpoint will be provisioned.
     """
-    privateEndpointSubnetworkRef: Optional[PrivateEndpointSubnetworkRef] = None
+    privateEndpointSubnetworkRef: PrivateEndpointSubnetworkRef | None = None
     """
     Reference to a Subnetwork in compute to populate privateEndpointSubnetwork.
     """
-    privateEndpointSubnetworkSelector: Optional[PrivateEndpointSubnetworkSelector] = (
-        None
-    )
+    privateEndpointSubnetworkSelector: PrivateEndpointSubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate privateEndpointSubnetwork.
     """
 
 
 class RbacBindingConfig(BaseModel):
-    enableInsecureBindingSystemAuthenticated: Optional[bool] = None
+    enableInsecureBindingSystemAuthenticated: bool | None = None
     """
     Setting this to true will allow any ClusterRoleBinding and RoleBinding with subjects system:authenticated.
     """
-    enableInsecureBindingSystemUnauthenticated: Optional[bool] = None
+    enableInsecureBindingSystemUnauthenticated: bool | None = None
     """
     Setting this to true will allow any ClusterRoleBinding and RoleBinding with subjects system:anonymous or system:unauthenticated.
     """
 
 
 class ReleaseChannel(BaseModel):
-    channel: Optional[str] = None
+    channel: str | None = None
     """
     The selected release channel.
     Accepted values are:
@@ -1623,23 +1632,23 @@ class ReleaseChannel(BaseModel):
 
 
 class BigqueryDestination(BaseModel):
-    datasetId: Optional[str] = None
+    datasetId: str | None = None
     """
     The ID of a BigQuery Dataset. For Example:
     """
 
 
 class ResourceUsageExportConfig(BaseModel):
-    bigqueryDestination: Optional[BigqueryDestination] = None
+    bigqueryDestination: BigqueryDestination | None = None
     """
     Parameters for using BigQuery as the destination of resource usage export.
     """
-    enableNetworkEgressMetering: Optional[bool] = None
+    enableNetworkEgressMetering: bool | None = None
     """
     Whether to enable network egress metering for this cluster. If enabled, a daemonset will be created
     in the cluster to meter network egress traffic.
     """
-    enableResourceConsumptionMetering: Optional[bool] = None
+    enableResourceConsumptionMetering: bool | None = None
     """
     Whether to enable resource
     consumption metering on this cluster. When enabled, a table will be created in
@@ -1650,25 +1659,25 @@ class ResourceUsageExportConfig(BaseModel):
 
 
 class SecretManagerConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enable the Secret Manager add-on for this cluster.
     """
 
 
 class SecurityPostureConfig(BaseModel):
-    mode: Optional[str] = None
+    mode: str | None = None
     """
     Sets the mode of the Kubernetes security posture API's off-cluster features. Available options include DISABLED, BASIC, and ENTERPRISE.
     """
-    vulnerabilityMode: Optional[str] = None
+    vulnerabilityMode: str | None = None
     """
     Sets the mode of the Kubernetes security posture API's workload vulnerability scanning. Available options include VULNERABILITY_DISABLED, VULNERABILITY_BASIC and VULNERABILITY_ENTERPRISE.
     """
 
 
 class ServiceExternalIpsConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Controls whether external ips specified by a service will be allowed. It is enabled by default.
     """
@@ -1679,105 +1688,105 @@ class SubnetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class UserManagedKeysConfig(BaseModel):
-    aggregationCa: Optional[str] = None
+    aggregationCa: str | None = None
     """
     The Certificate Authority Service caPool to use for the aggreation CA in this cluster.
     """
-    clusterCa: Optional[str] = None
+    clusterCa: str | None = None
     """
     The Certificate Authority Service caPool to use for the cluster CA in this cluster.
     """
-    controlPlaneDiskEncryptionKey: Optional[str] = None
+    controlPlaneDiskEncryptionKey: str | None = None
     """
     The Cloud KMS cryptoKey to use for Confidential Hyperdisk on the control plane nodes.
     """
-    etcdApiCa: Optional[str] = None
+    etcdApiCa: str | None = None
     """
     The Certificate Authority Service caPool to use for the etcd API CA in this cluster.
     """
-    etcdPeerCa: Optional[str] = None
+    etcdPeerCa: str | None = None
     """
     The Certificate Authority Service caPool to use for the etcd peer CA in this cluster.
     """
-    gkeopsEtcdBackupEncryptionKey: Optional[str] = None
+    gkeopsEtcdBackupEncryptionKey: str | None = None
     """
     Resource path of the Cloud KMS cryptoKey to use for encryption of internal etcd backups.
     """
-    serviceAccountSigningKeys: Optional[List[str]] = None
+    serviceAccountSigningKeys: list[str] | None = None
     """
     The Cloud KMS cryptoKeyVersions to use for signing service account JWTs issued by this cluster.
     """
-    serviceAccountVerificationKeys: Optional[List[str]] = None
+    serviceAccountVerificationKeys: list[str] | None = None
     """
     The Cloud KMS cryptoKeyVersions to use for verifying service account JWTs issued by this cluster.
     """
 
 
 class VerticalPodAutoscaling(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class WorkloadIdentityConfig(BaseModel):
-    workloadPool: Optional[str] = None
+    workloadPool: str | None = None
     """
     The workload pool to attach all Kubernetes service accounts to.
     """
 
 
 class ForProvider(BaseModel):
-    addonsConfig: Optional[AddonsConfig] = None
+    addonsConfig: AddonsConfig | None = None
     """
     The configuration for addons supported by GKE.
     Structure is documented below.
     """
-    allowNetAdmin: Optional[bool] = None
+    allowNetAdmin: bool | None = None
     """
     Enable NET_ADMIN for the cluster. Defaults to
     false. This field should only be enabled for Autopilot clusters (enable_autopilot
     set to true).
     """
-    anonymousAuthenticationConfig: Optional[AnonymousAuthenticationConfig] = None
+    anonymousAuthenticationConfig: AnonymousAuthenticationConfig | None = None
     """
     Configuration for anonymous authentication restrictions. Structure is documented below.
     """
-    authenticatorGroupsConfig: Optional[AuthenticatorGroupsConfig] = None
+    authenticatorGroupsConfig: AuthenticatorGroupsConfig | None = None
     """
     Configuration for the
     Google Groups for GKE feature.
     Structure is documented below.
     """
-    binaryAuthorization: Optional[BinaryAuthorization] = None
+    binaryAuthorization: BinaryAuthorization | None = None
     """
     Configuration options for the Binary
     Authorization feature. Structure is documented below.
     """
-    clusterAutoscaling: Optional[ClusterAutoscaling] = None
+    clusterAutoscaling: ClusterAutoscaling | None = None
     """
     Per-cluster configuration of Node Auto-Provisioning with Cluster Autoscaler to
     automatically adjust the size of the cluster and create/delete node pools based
@@ -1785,140 +1794,140 @@ class ForProvider(BaseModel):
     guide to using Node Auto-Provisioning
     for more details. Structure is documented below.
     """
-    clusterIpv4Cidr: Optional[str] = None
+    clusterIpv4Cidr: str | None = None
     """
     The IP address range of the Kubernetes pods
     in this cluster in CIDR notation (e.g. 10.96.0.0/14). Leave blank to have one
     automatically chosen or specify a /14 block in 10.0.0.0/8. This field will
     default a new cluster to routes-based, where ip_allocation_policy is not defined.
     """
-    confidentialNodes: Optional[ConfidentialNodes] = None
+    confidentialNodes: ConfidentialNodes | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below documented below.
     """
-    controlPlaneEndpointsConfig: Optional[ControlPlaneEndpointsConfig] = None
+    controlPlaneEndpointsConfig: ControlPlaneEndpointsConfig | None = None
     """
     Configuration for all of the cluster's control plane endpoints.
     Structure is documented below.
     """
-    costManagementConfig: Optional[CostManagementConfig] = None
+    costManagementConfig: CostManagementConfig | None = None
     """
     Configuration for the
     Cost Allocation feature.
     Structure is documented below.
     """
-    databaseEncryption: Optional[DatabaseEncryption] = None
+    databaseEncryption: DatabaseEncryption | None = None
     """
     Structure is documented below.
     """
-    datapathProvider: Optional[str] = None
+    datapathProvider: str | None = None
     """
     The desired datapath provider for this cluster. This is set to LEGACY_DATAPATH by default, which uses the IPTables-based kube-proxy implementation. Set to ADVANCED_DATAPATH to enable Dataplane v2.
     """
-    defaultMaxPodsPerNode: Optional[float] = None
+    defaultMaxPodsPerNode: float | None = None
     """
     The default maximum number of pods
     per node in this cluster. This doesn't work on "routes-based" clusters, clusters
     that don't have IP Aliasing enabled. See the official documentation
     for more information.
     """
-    defaultSnatStatus: Optional[DefaultSnatStatus] = None
+    defaultSnatStatus: DefaultSnatStatus | None = None
     """
     GKE SNAT DefaultSnatStatus contains the desired state of whether default sNAT should be disabled on the cluster, API doc. Structure is documented below
     """
-    deletionProtection: Optional[bool] = None
-    description: Optional[str] = None
+    deletionProtection: bool | None = None
+    description: str | None = None
     """
     Description of the cluster.
     """
-    disableL4LbFirewallReconciliation: Optional[bool] = None
+    disableL4LbFirewallReconciliation: bool | None = None
     """
     Disable L4 load balancer VPC firewalls to enable firewall policies.
     """
-    dnsConfig: Optional[DnsConfig] = None
+    dnsConfig: DnsConfig | None = None
     """
     Configuration for Using Cloud DNS for GKE. Structure is documented below.
     """
-    enableAutopilot: Optional[bool] = None
+    enableAutopilot: bool | None = None
     """
     Enable Autopilot for this cluster. Defaults to false.
     Note that when this option is enabled, certain features of Standard GKE are not available.
     See the official documentation
     for available features.
     """
-    enableCiliumClusterwideNetworkPolicy: Optional[bool] = None
+    enableCiliumClusterwideNetworkPolicy: bool | None = None
     """
     Whether CiliumClusterWideNetworkPolicy is enabled on this cluster. Defaults to false.
     """
-    enableFqdnNetworkPolicy: Optional[bool] = None
+    enableFqdnNetworkPolicy: bool | None = None
     """
     Whether FQDN Network Policy is enabled on this cluster. Users who enable this feature for existing Standard clusters must restart the GKE Dataplane V2 anetd DaemonSet after enabling it. See the Enable FQDN Network Policy in an existing cluster for more information.
     """
-    enableIntranodeVisibility: Optional[bool] = None
+    enableIntranodeVisibility: bool | None = None
     """
     Whether Intra-node visibility is enabled for this cluster. This makes same node pod to pod traffic visible for VPC network.
     """
-    enableK8SBetaApis: Optional[EnableK8SBetaApis] = None
+    enableK8SBetaApis: EnableK8SBetaApis | None = None
     """
     Configuration for Kubernetes Beta APIs.
     Structure is documented below.
     """
-    enableKubernetesAlpha: Optional[bool] = None
+    enableKubernetesAlpha: bool | None = None
     """
     Whether to enable Kubernetes Alpha features for
     this cluster. Note that when this option is enabled, the cluster cannot be upgraded
     and will be automatically deleted after 30 days.
     """
-    enableL4IlbSubsetting: Optional[bool] = None
+    enableL4IlbSubsetting: bool | None = None
     """
     Whether L4ILB Subsetting is enabled for this cluster.
     """
-    enableLegacyAbac: Optional[bool] = None
+    enableLegacyAbac: bool | None = None
     """
     Whether the ABAC authorizer is enabled for this cluster.
     When enabled, identities in the system, including service accounts, nodes, and controllers,
     will have statically granted permissions beyond those provided by the RBAC configuration or IAM.
     Defaults to false
     """
-    enableMultiNetworking: Optional[bool] = None
+    enableMultiNetworking: bool | None = None
     """
     Whether multi-networking is enabled for this cluster.
     """
-    enableShieldedNodes: Optional[bool] = None
+    enableShieldedNodes: bool | None = None
     """
     Enable Shielded Nodes features on all nodes in this cluster.  Defaults to true.
     """
-    enableTpu: Optional[bool] = None
+    enableTpu: bool | None = None
     """
     Whether to enable Cloud TPU resources in this cluster.
     See the official documentation.
     """
-    enterpriseConfig: Optional[EnterpriseConfig] = None
+    enterpriseConfig: EnterpriseConfig | None = None
     """
     Configuration for [Enterprise edition].(https://cloud.google.com/kubernetes-engine/enterprise/docs/concepts/gke-editions). Structure is documented below.
     """
-    fleet: Optional[Fleet] = None
+    fleet: Fleet | None = None
     """
     Fleet configuration for the cluster. Structure is documented below.
     """
-    gatewayApiConfig: Optional[GatewayApiConfig] = None
+    gatewayApiConfig: GatewayApiConfig | None = None
     """
     Configuration for GKE Gateway API controller. Structure is documented below.
     """
-    gkeAutoUpgradeConfig: Optional[GkeAutoUpgradeConfig] = None
+    gkeAutoUpgradeConfig: GkeAutoUpgradeConfig | None = None
     """
     Configuration options for the auto-upgrade patch type feature, which provide more control over the speed of automatic upgrades of your GKE clusters.
     Structure is documented below.
     """
-    identityServiceConfig: Optional[IdentityServiceConfig] = None
+    identityServiceConfig: IdentityServiceConfig | None = None
     """
     . Structure is documented below.
     """
-    inTransitEncryptionConfig: Optional[str] = None
+    inTransitEncryptionConfig: str | None = None
     """
     Defines the config of in-transit encryption. Valid values are IN_TRANSIT_ENCRYPTION_DISABLED and IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT.
     """
-    initialNodeCount: Optional[float] = None
+    initialNodeCount: float | None = None
     """
     The number of nodes to create in this
     cluster's default node pool. In regional or multi-zonal clusters, this is the
@@ -1927,7 +1936,7 @@ class ForProvider(BaseModel):
     set this to a value of at least 1, alongside setting
     remove_default_node_pool to true.
     """
-    ipAllocationPolicy: Optional[IpAllocationPolicy] = None
+    ipAllocationPolicy: IpAllocationPolicy | None = None
     """
     Configuration of cluster IP allocation for
     VPC-native clusters. If this block is unset during creation, it will be set by the GKE backend.
@@ -1942,23 +1951,23 @@ class ForProvider(BaseModel):
     cluster will be a regional cluster with multiple masters spread across zones in
     the region, and with default node locations in those zones as well
     """
-    loggingConfig: Optional[LoggingConfig] = None
+    loggingConfig: LoggingConfig | None = None
     """
     Logging configuration for the cluster.
     Structure is documented below.
     """
-    loggingService: Optional[str] = None
+    loggingService: str | None = None
     """
     The logging service that the cluster should
     write logs to. Available options include logging.googleapis.com(Legacy Stackdriver),
     logging.googleapis.com/kubernetes(Stackdriver Kubernetes Engine Logging), and none. Defaults to logging.googleapis.com/kubernetes
     """
-    maintenancePolicy: Optional[MaintenancePolicy] = None
+    maintenancePolicy: MaintenancePolicy | None = None
     """
     The maintenance policy to use for the cluster. Structure is
     documented below.
     """
-    masterAuth: Optional[MasterAuth] = None
+    masterAuth: MasterAuth | None = None
     """
     The authentication information for accessing the
     Kubernetes master. Some values in this block are only returned by the API if
@@ -1967,7 +1976,7 @@ class ForProvider(BaseModel):
     container.clusters.getCredentials permission.
     Structure is documented below.
     """
-    masterAuthorizedNetworksConfig: Optional[MasterAuthorizedNetworksConfig] = None
+    masterAuthorizedNetworksConfig: MasterAuthorizedNetworksConfig | None = None
     """
     The desired
     configuration options for master authorized networks. Omit the
@@ -1975,11 +1984,11 @@ class ForProvider(BaseModel):
     the cluster node IPs, which GKE automatically whitelists).
     Structure is documented below.
     """
-    meshCertificates: Optional[MeshCertificates] = None
+    meshCertificates: MeshCertificates | None = None
     """
     Structure is documented below.
     """
-    minMasterVersion: Optional[str] = None
+    minMasterVersion: str | None = None
     """
     The minimum version of the master. GKE
     will auto-update the master to new versions, so this does not guarantee the
@@ -1989,12 +1998,12 @@ class ForProvider(BaseModel):
     the docs
     describe the various acceptable formats for this field.
     """
-    monitoringConfig: Optional[MonitoringConfig] = None
+    monitoringConfig: MonitoringConfig | None = None
     """
     Monitoring configuration for the cluster.
     Structure is documented below.
     """
-    monitoringService: Optional[str] = None
+    monitoringService: str | None = None
     """
     The monitoring service that the cluster
     should write metrics to.
@@ -2004,57 +2013,57 @@ class ForProvider(BaseModel):
     monitoring.googleapis.com(Legacy Stackdriver), monitoring.googleapis.com/kubernetes(Stackdriver Kubernetes Engine Monitoring), and none.
     Defaults to monitoring.googleapis.com/kubernetes
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the Google Compute Engine
     network to which the cluster is connected. For Shared VPC, set this to the self link of the
     shared network.
     """
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
     """
     Network bandwidth tier configuration. Structure is documented below.
     """
-    networkPolicy: Optional[NetworkPolicy] = None
+    networkPolicy: NetworkPolicy | None = None
     """
     Configuration options for the
     NetworkPolicy
     feature. Structure is documented below.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    networkingMode: Optional[str] = None
+    networkingMode: str | None = None
     """
     Determines whether alias IPs or routes will be used for pod IPs in the cluster.
     Options are VPC_NATIVE or ROUTES. VPC_NATIVE enables IP aliasing. Newly created clusters will default to VPC_NATIVE.
     """
-    nodeConfig: Optional[NodeConfig] = None
+    nodeConfig: NodeConfig | None = None
     """
     Parameters used in creating the default node pool. Structure is documented below.
     """
-    nodeLocations: Optional[List[str]] = None
+    nodeLocations: list[str] | None = None
     """
     The list of zones in which the cluster's nodes
     are located. Nodes must be in the region of their regional cluster or in the
     same region as their cluster's zone for zonal clusters. If this is specified for
     a zonal cluster, omit the cluster's zone.
     """
-    nodePoolAutoConfig: Optional[NodePoolAutoConfig] = None
+    nodePoolAutoConfig: NodePoolAutoConfig | None = None
     """
     Node pool configs that apply to auto-provisioned node pools in
     autopilot clusters and
     node auto-provisioning-enabled clusters. Structure is documented below.
     """
-    nodePoolDefaults: Optional[NodePoolDefaults] = None
+    nodePoolDefaults: NodePoolDefaults | None = None
     """
     Default NodePool settings for the entire cluster. These settings are overridden if specified on the specific NodePool object. Structure is documented below.
     """
-    nodeVersion: Optional[str] = None
+    nodeVersion: str | None = None
     """
     The Kubernetes version on the nodes. Must either be unset
     or set to the same value as min_master_version on create. Defaults to the default
@@ -2062,34 +2071,34 @@ class ForProvider(BaseModel):
     nodes in the default node pool.
     To update nodes in other node pools, use the version attribute on the node pool.
     """
-    notificationConfig: Optional[NotificationConfig] = None
+    notificationConfig: NotificationConfig | None = None
     """
     Configuration for the cluster upgrade notifications feature. Structure is documented below.
     """
-    podAutoscaling: Optional[PodAutoscaling] = None
+    podAutoscaling: PodAutoscaling | None = None
     """
     Configuration for the
     Structure is documented below.
     """
-    privateClusterConfig: Optional[PrivateClusterConfig] = None
+    privateClusterConfig: PrivateClusterConfig | None = None
     """
     Configuration for private clusters,
     clusters with private nodes. Structure is documented below.
     """
-    privateIpv6GoogleAccess: Optional[str] = None
+    privateIpv6GoogleAccess: str | None = None
     """
     The desired state of IPv6 connectivity to Google Services. By default, no private IPv6 access to or from Google Services (all access will be via IPv4).
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    rbacBindingConfig: Optional[RbacBindingConfig] = None
+    rbacBindingConfig: RbacBindingConfig | None = None
     """
     RBACBindingConfig allows user to restrict ClusterRoleBindings an RoleBindings that can be created. Structure is documented below.
     """
-    releaseChannel: Optional[ReleaseChannel] = None
+    releaseChannel: ReleaseChannel | None = None
     """
     Configuration options for the Release channel
     feature, which provide more control over automatic upgrades of your GKE clusters.
@@ -2099,60 +2108,60 @@ class ForProvider(BaseModel):
     the default version for a channel. Instead, use the "UNSPECIFIED"
     channel. Structure is documented below.
     """
-    removeDefaultNodePool: Optional[bool] = None
+    removeDefaultNodePool: bool | None = None
     """
     If true, deletes the default node
     pool upon cluster creation. If you're using google_container_node_pool
     resources with no default node pool, this should be set to true, alongside
     setting initial_node_count to at least 1.
     """
-    resourceLabels: Optional[Dict[str, str]] = None
+    resourceLabels: dict[str, str] | None = None
     """
     The GCE resource labels (a map of key/value pairs) to be applied to the cluster.
     """
-    resourceUsageExportConfig: Optional[ResourceUsageExportConfig] = None
+    resourceUsageExportConfig: ResourceUsageExportConfig | None = None
     """
     Configuration for the
     ResourceUsageExportConfig feature.
     Structure is documented below.
     """
-    secretManagerConfig: Optional[SecretManagerConfig] = None
+    secretManagerConfig: SecretManagerConfig | None = None
     """
     Configuration for the
     SecretManagerConfig feature.
     Structure is documented below.
     """
-    securityPostureConfig: Optional[SecurityPostureConfig] = None
+    securityPostureConfig: SecurityPostureConfig | None = None
     """
     Enable/Disable Security Posture API features for the cluster. Structure is documented below.
     """
-    serviceExternalIpsConfig: Optional[ServiceExternalIpsConfig] = None
+    serviceExternalIpsConfig: ServiceExternalIpsConfig | None = None
     """
     Structure is documented below.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The name or self_link of the Google Compute Engine
     subnetwork in which the cluster's instances are launched.
     """
-    subnetworkRef: Optional[SubnetworkRef] = None
+    subnetworkRef: SubnetworkRef | None = None
     """
     Reference to a Subnetwork in compute to populate subnetwork.
     """
-    subnetworkSelector: Optional[SubnetworkSelector] = None
+    subnetworkSelector: SubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate subnetwork.
     """
-    userManagedKeysConfig: Optional[UserManagedKeysConfig] = None
+    userManagedKeysConfig: UserManagedKeysConfig | None = None
     """
     The custom keys configuration of the cluster Structure is documented below.
     """
-    verticalPodAutoscaling: Optional[VerticalPodAutoscaling] = None
+    verticalPodAutoscaling: VerticalPodAutoscaling | None = None
     """
     Vertical Pod Autoscaling automatically adjusts the resources of pods controlled by it.
     Structure is documented below.
     """
-    workloadIdentityConfig: Optional[WorkloadIdentityConfig] = None
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
     """
     Workload Identity allows Kubernetes service accounts to act as a user-managed
     Google IAM Service Account.
@@ -2161,12 +2170,12 @@ class ForProvider(BaseModel):
 
 
 class ConfidentialNodesModel1(BaseModel):
-    confidentialInstanceType: Optional[str] = None
+    confidentialInstanceType: str | None = None
     """
     Defines the type of technology used
     by the confidential node.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enable Confidential GKE Nodes for this node pool, to
     enforce encryption of data in-use.
@@ -2174,28 +2183,28 @@ class ConfidentialNodesModel1(BaseModel):
 
 
 class ConfidentialNodesModel2(BaseModel):
-    confidentialInstanceType: Optional[str] = None
+    confidentialInstanceType: str | None = None
     """
     Defines the type of technology used
     by the confidential node.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class LinuxNodeConfigModel1(BaseModel):
-    cgroupMode: Optional[str] = None
+    cgroupMode: str | None = None
     """
     Possible cgroup modes that can be used.
     Accepted values are:
     """
-    hugepagesConfig: Optional[HugepagesConfig] = None
+    hugepagesConfig: HugepagesConfig | None = None
     """
     Amounts for 2M and 1G hugepages. Structure is documented below.
     """
-    sysctls: Optional[Dict[str, str]] = None
+    sysctls: dict[str, str] | None = None
     """
     The Linux kernel parameters to be applied to the nodes
     and all pods running on the nodes. Specified as a map from the key, such as
@@ -2205,7 +2214,7 @@ class LinuxNodeConfigModel1(BaseModel):
 
 
 class LinuxNodeConfigModel2(BaseModel):
-    cgroupMode: Optional[str] = None
+    cgroupMode: str | None = None
     """
     Possible cgroup modes that can be used.
     Accepted values are:
@@ -2213,33 +2222,33 @@ class LinuxNodeConfigModel2(BaseModel):
 
 
 class InitProvider(BaseModel):
-    addonsConfig: Optional[AddonsConfig] = None
+    addonsConfig: AddonsConfig | None = None
     """
     The configuration for addons supported by GKE.
     Structure is documented below.
     """
-    allowNetAdmin: Optional[bool] = None
+    allowNetAdmin: bool | None = None
     """
     Enable NET_ADMIN for the cluster. Defaults to
     false. This field should only be enabled for Autopilot clusters (enable_autopilot
     set to true).
     """
-    anonymousAuthenticationConfig: Optional[AnonymousAuthenticationConfig] = None
+    anonymousAuthenticationConfig: AnonymousAuthenticationConfig | None = None
     """
     Configuration for anonymous authentication restrictions. Structure is documented below.
     """
-    authenticatorGroupsConfig: Optional[AuthenticatorGroupsConfig] = None
+    authenticatorGroupsConfig: AuthenticatorGroupsConfig | None = None
     """
     Configuration for the
     Google Groups for GKE feature.
     Structure is documented below.
     """
-    binaryAuthorization: Optional[BinaryAuthorization] = None
+    binaryAuthorization: BinaryAuthorization | None = None
     """
     Configuration options for the Binary
     Authorization feature. Structure is documented below.
     """
-    clusterAutoscaling: Optional[ClusterAutoscaling] = None
+    clusterAutoscaling: ClusterAutoscaling | None = None
     """
     Per-cluster configuration of Node Auto-Provisioning with Cluster Autoscaler to
     automatically adjust the size of the cluster and create/delete node pools based
@@ -2247,140 +2256,140 @@ class InitProvider(BaseModel):
     guide to using Node Auto-Provisioning
     for more details. Structure is documented below.
     """
-    clusterIpv4Cidr: Optional[str] = None
+    clusterIpv4Cidr: str | None = None
     """
     The IP address range of the Kubernetes pods
     in this cluster in CIDR notation (e.g. 10.96.0.0/14). Leave blank to have one
     automatically chosen or specify a /14 block in 10.0.0.0/8. This field will
     default a new cluster to routes-based, where ip_allocation_policy is not defined.
     """
-    confidentialNodes: Optional[ConfidentialNodesModel1] = None
+    confidentialNodes: ConfidentialNodesModel1 | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below documented below.
     """
-    controlPlaneEndpointsConfig: Optional[ControlPlaneEndpointsConfig] = None
+    controlPlaneEndpointsConfig: ControlPlaneEndpointsConfig | None = None
     """
     Configuration for all of the cluster's control plane endpoints.
     Structure is documented below.
     """
-    costManagementConfig: Optional[CostManagementConfig] = None
+    costManagementConfig: CostManagementConfig | None = None
     """
     Configuration for the
     Cost Allocation feature.
     Structure is documented below.
     """
-    databaseEncryption: Optional[DatabaseEncryption] = None
+    databaseEncryption: DatabaseEncryption | None = None
     """
     Structure is documented below.
     """
-    datapathProvider: Optional[str] = None
+    datapathProvider: str | None = None
     """
     The desired datapath provider for this cluster. This is set to LEGACY_DATAPATH by default, which uses the IPTables-based kube-proxy implementation. Set to ADVANCED_DATAPATH to enable Dataplane v2.
     """
-    defaultMaxPodsPerNode: Optional[float] = None
+    defaultMaxPodsPerNode: float | None = None
     """
     The default maximum number of pods
     per node in this cluster. This doesn't work on "routes-based" clusters, clusters
     that don't have IP Aliasing enabled. See the official documentation
     for more information.
     """
-    defaultSnatStatus: Optional[DefaultSnatStatus] = None
+    defaultSnatStatus: DefaultSnatStatus | None = None
     """
     GKE SNAT DefaultSnatStatus contains the desired state of whether default sNAT should be disabled on the cluster, API doc. Structure is documented below
     """
-    deletionProtection: Optional[bool] = None
-    description: Optional[str] = None
+    deletionProtection: bool | None = None
+    description: str | None = None
     """
     Description of the cluster.
     """
-    disableL4LbFirewallReconciliation: Optional[bool] = None
+    disableL4LbFirewallReconciliation: bool | None = None
     """
     Disable L4 load balancer VPC firewalls to enable firewall policies.
     """
-    dnsConfig: Optional[DnsConfig] = None
+    dnsConfig: DnsConfig | None = None
     """
     Configuration for Using Cloud DNS for GKE. Structure is documented below.
     """
-    enableAutopilot: Optional[bool] = None
+    enableAutopilot: bool | None = None
     """
     Enable Autopilot for this cluster. Defaults to false.
     Note that when this option is enabled, certain features of Standard GKE are not available.
     See the official documentation
     for available features.
     """
-    enableCiliumClusterwideNetworkPolicy: Optional[bool] = None
+    enableCiliumClusterwideNetworkPolicy: bool | None = None
     """
     Whether CiliumClusterWideNetworkPolicy is enabled on this cluster. Defaults to false.
     """
-    enableFqdnNetworkPolicy: Optional[bool] = None
+    enableFqdnNetworkPolicy: bool | None = None
     """
     Whether FQDN Network Policy is enabled on this cluster. Users who enable this feature for existing Standard clusters must restart the GKE Dataplane V2 anetd DaemonSet after enabling it. See the Enable FQDN Network Policy in an existing cluster for more information.
     """
-    enableIntranodeVisibility: Optional[bool] = None
+    enableIntranodeVisibility: bool | None = None
     """
     Whether Intra-node visibility is enabled for this cluster. This makes same node pod to pod traffic visible for VPC network.
     """
-    enableK8SBetaApis: Optional[EnableK8SBetaApis] = None
+    enableK8SBetaApis: EnableK8SBetaApis | None = None
     """
     Configuration for Kubernetes Beta APIs.
     Structure is documented below.
     """
-    enableKubernetesAlpha: Optional[bool] = None
+    enableKubernetesAlpha: bool | None = None
     """
     Whether to enable Kubernetes Alpha features for
     this cluster. Note that when this option is enabled, the cluster cannot be upgraded
     and will be automatically deleted after 30 days.
     """
-    enableL4IlbSubsetting: Optional[bool] = None
+    enableL4IlbSubsetting: bool | None = None
     """
     Whether L4ILB Subsetting is enabled for this cluster.
     """
-    enableLegacyAbac: Optional[bool] = None
+    enableLegacyAbac: bool | None = None
     """
     Whether the ABAC authorizer is enabled for this cluster.
     When enabled, identities in the system, including service accounts, nodes, and controllers,
     will have statically granted permissions beyond those provided by the RBAC configuration or IAM.
     Defaults to false
     """
-    enableMultiNetworking: Optional[bool] = None
+    enableMultiNetworking: bool | None = None
     """
     Whether multi-networking is enabled for this cluster.
     """
-    enableShieldedNodes: Optional[bool] = None
+    enableShieldedNodes: bool | None = None
     """
     Enable Shielded Nodes features on all nodes in this cluster.  Defaults to true.
     """
-    enableTpu: Optional[bool] = None
+    enableTpu: bool | None = None
     """
     Whether to enable Cloud TPU resources in this cluster.
     See the official documentation.
     """
-    enterpriseConfig: Optional[EnterpriseConfig] = None
+    enterpriseConfig: EnterpriseConfig | None = None
     """
     Configuration for [Enterprise edition].(https://cloud.google.com/kubernetes-engine/enterprise/docs/concepts/gke-editions). Structure is documented below.
     """
-    fleet: Optional[Fleet] = None
+    fleet: Fleet | None = None
     """
     Fleet configuration for the cluster. Structure is documented below.
     """
-    gatewayApiConfig: Optional[GatewayApiConfig] = None
+    gatewayApiConfig: GatewayApiConfig | None = None
     """
     Configuration for GKE Gateway API controller. Structure is documented below.
     """
-    gkeAutoUpgradeConfig: Optional[GkeAutoUpgradeConfig] = None
+    gkeAutoUpgradeConfig: GkeAutoUpgradeConfig | None = None
     """
     Configuration options for the auto-upgrade patch type feature, which provide more control over the speed of automatic upgrades of your GKE clusters.
     Structure is documented below.
     """
-    identityServiceConfig: Optional[IdentityServiceConfig] = None
+    identityServiceConfig: IdentityServiceConfig | None = None
     """
     . Structure is documented below.
     """
-    inTransitEncryptionConfig: Optional[str] = None
+    inTransitEncryptionConfig: str | None = None
     """
     Defines the config of in-transit encryption. Valid values are IN_TRANSIT_ENCRYPTION_DISABLED and IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT.
     """
-    initialNodeCount: Optional[float] = None
+    initialNodeCount: float | None = None
     """
     The number of nodes to create in this
     cluster's default node pool. In regional or multi-zonal clusters, this is the
@@ -2389,29 +2398,29 @@ class InitProvider(BaseModel):
     set this to a value of at least 1, alongside setting
     remove_default_node_pool to true.
     """
-    ipAllocationPolicy: Optional[IpAllocationPolicy] = None
+    ipAllocationPolicy: IpAllocationPolicy | None = None
     """
     Configuration of cluster IP allocation for
     VPC-native clusters. If this block is unset during creation, it will be set by the GKE backend.
     Structure is documented below.
     """
-    loggingConfig: Optional[LoggingConfig] = None
+    loggingConfig: LoggingConfig | None = None
     """
     Logging configuration for the cluster.
     Structure is documented below.
     """
-    loggingService: Optional[str] = None
+    loggingService: str | None = None
     """
     The logging service that the cluster should
     write logs to. Available options include logging.googleapis.com(Legacy Stackdriver),
     logging.googleapis.com/kubernetes(Stackdriver Kubernetes Engine Logging), and none. Defaults to logging.googleapis.com/kubernetes
     """
-    maintenancePolicy: Optional[MaintenancePolicy] = None
+    maintenancePolicy: MaintenancePolicy | None = None
     """
     The maintenance policy to use for the cluster. Structure is
     documented below.
     """
-    masterAuth: Optional[MasterAuth] = None
+    masterAuth: MasterAuth | None = None
     """
     The authentication information for accessing the
     Kubernetes master. Some values in this block are only returned by the API if
@@ -2420,7 +2429,7 @@ class InitProvider(BaseModel):
     container.clusters.getCredentials permission.
     Structure is documented below.
     """
-    masterAuthorizedNetworksConfig: Optional[MasterAuthorizedNetworksConfig] = None
+    masterAuthorizedNetworksConfig: MasterAuthorizedNetworksConfig | None = None
     """
     The desired
     configuration options for master authorized networks. Omit the
@@ -2428,11 +2437,11 @@ class InitProvider(BaseModel):
     the cluster node IPs, which GKE automatically whitelists).
     Structure is documented below.
     """
-    meshCertificates: Optional[MeshCertificates] = None
+    meshCertificates: MeshCertificates | None = None
     """
     Structure is documented below.
     """
-    minMasterVersion: Optional[str] = None
+    minMasterVersion: str | None = None
     """
     The minimum version of the master. GKE
     will auto-update the master to new versions, so this does not guarantee the
@@ -2442,12 +2451,12 @@ class InitProvider(BaseModel):
     the docs
     describe the various acceptable formats for this field.
     """
-    monitoringConfig: Optional[MonitoringConfig] = None
+    monitoringConfig: MonitoringConfig | None = None
     """
     Monitoring configuration for the cluster.
     Structure is documented below.
     """
-    monitoringService: Optional[str] = None
+    monitoringService: str | None = None
     """
     The monitoring service that the cluster
     should write metrics to.
@@ -2457,57 +2466,57 @@ class InitProvider(BaseModel):
     monitoring.googleapis.com(Legacy Stackdriver), monitoring.googleapis.com/kubernetes(Stackdriver Kubernetes Engine Monitoring), and none.
     Defaults to monitoring.googleapis.com/kubernetes
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the Google Compute Engine
     network to which the cluster is connected. For Shared VPC, set this to the self link of the
     shared network.
     """
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
     """
     Network bandwidth tier configuration. Structure is documented below.
     """
-    networkPolicy: Optional[NetworkPolicy] = None
+    networkPolicy: NetworkPolicy | None = None
     """
     Configuration options for the
     NetworkPolicy
     feature. Structure is documented below.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    networkingMode: Optional[str] = None
+    networkingMode: str | None = None
     """
     Determines whether alias IPs or routes will be used for pod IPs in the cluster.
     Options are VPC_NATIVE or ROUTES. VPC_NATIVE enables IP aliasing. Newly created clusters will default to VPC_NATIVE.
     """
-    nodeConfig: Optional[NodeConfig] = None
+    nodeConfig: NodeConfig | None = None
     """
     Parameters used in creating the default node pool. Structure is documented below.
     """
-    nodeLocations: Optional[List[str]] = None
+    nodeLocations: list[str] | None = None
     """
     The list of zones in which the cluster's nodes
     are located. Nodes must be in the region of their regional cluster or in the
     same region as their cluster's zone for zonal clusters. If this is specified for
     a zonal cluster, omit the cluster's zone.
     """
-    nodePoolAutoConfig: Optional[NodePoolAutoConfig] = None
+    nodePoolAutoConfig: NodePoolAutoConfig | None = None
     """
     Node pool configs that apply to auto-provisioned node pools in
     autopilot clusters and
     node auto-provisioning-enabled clusters. Structure is documented below.
     """
-    nodePoolDefaults: Optional[NodePoolDefaults] = None
+    nodePoolDefaults: NodePoolDefaults | None = None
     """
     Default NodePool settings for the entire cluster. These settings are overridden if specified on the specific NodePool object. Structure is documented below.
     """
-    nodeVersion: Optional[str] = None
+    nodeVersion: str | None = None
     """
     The Kubernetes version on the nodes. Must either be unset
     or set to the same value as min_master_version on create. Defaults to the default
@@ -2515,34 +2524,34 @@ class InitProvider(BaseModel):
     nodes in the default node pool.
     To update nodes in other node pools, use the version attribute on the node pool.
     """
-    notificationConfig: Optional[NotificationConfig] = None
+    notificationConfig: NotificationConfig | None = None
     """
     Configuration for the cluster upgrade notifications feature. Structure is documented below.
     """
-    podAutoscaling: Optional[PodAutoscaling] = None
+    podAutoscaling: PodAutoscaling | None = None
     """
     Configuration for the
     Structure is documented below.
     """
-    privateClusterConfig: Optional[PrivateClusterConfig] = None
+    privateClusterConfig: PrivateClusterConfig | None = None
     """
     Configuration for private clusters,
     clusters with private nodes. Structure is documented below.
     """
-    privateIpv6GoogleAccess: Optional[str] = None
+    privateIpv6GoogleAccess: str | None = None
     """
     The desired state of IPv6 connectivity to Google Services. By default, no private IPv6 access to or from Google Services (all access will be via IPv4).
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    rbacBindingConfig: Optional[RbacBindingConfig] = None
+    rbacBindingConfig: RbacBindingConfig | None = None
     """
     RBACBindingConfig allows user to restrict ClusterRoleBindings an RoleBindings that can be created. Structure is documented below.
     """
-    releaseChannel: Optional[ReleaseChannel] = None
+    releaseChannel: ReleaseChannel | None = None
     """
     Configuration options for the Release channel
     feature, which provide more control over automatic upgrades of your GKE clusters.
@@ -2552,60 +2561,60 @@ class InitProvider(BaseModel):
     the default version for a channel. Instead, use the "UNSPECIFIED"
     channel. Structure is documented below.
     """
-    removeDefaultNodePool: Optional[bool] = None
+    removeDefaultNodePool: bool | None = None
     """
     If true, deletes the default node
     pool upon cluster creation. If you're using google_container_node_pool
     resources with no default node pool, this should be set to true, alongside
     setting initial_node_count to at least 1.
     """
-    resourceLabels: Optional[Dict[str, str]] = None
+    resourceLabels: dict[str, str] | None = None
     """
     The GCE resource labels (a map of key/value pairs) to be applied to the cluster.
     """
-    resourceUsageExportConfig: Optional[ResourceUsageExportConfig] = None
+    resourceUsageExportConfig: ResourceUsageExportConfig | None = None
     """
     Configuration for the
     ResourceUsageExportConfig feature.
     Structure is documented below.
     """
-    secretManagerConfig: Optional[SecretManagerConfig] = None
+    secretManagerConfig: SecretManagerConfig | None = None
     """
     Configuration for the
     SecretManagerConfig feature.
     Structure is documented below.
     """
-    securityPostureConfig: Optional[SecurityPostureConfig] = None
+    securityPostureConfig: SecurityPostureConfig | None = None
     """
     Enable/Disable Security Posture API features for the cluster. Structure is documented below.
     """
-    serviceExternalIpsConfig: Optional[ServiceExternalIpsConfig] = None
+    serviceExternalIpsConfig: ServiceExternalIpsConfig | None = None
     """
     Structure is documented below.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The name or self_link of the Google Compute Engine
     subnetwork in which the cluster's instances are launched.
     """
-    subnetworkRef: Optional[SubnetworkRef] = None
+    subnetworkRef: SubnetworkRef | None = None
     """
     Reference to a Subnetwork in compute to populate subnetwork.
     """
-    subnetworkSelector: Optional[SubnetworkSelector] = None
+    subnetworkSelector: SubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate subnetwork.
     """
-    userManagedKeysConfig: Optional[UserManagedKeysConfig] = None
+    userManagedKeysConfig: UserManagedKeysConfig | None = None
     """
     The custom keys configuration of the cluster Structure is documented below.
     """
-    verticalPodAutoscaling: Optional[VerticalPodAutoscaling] = None
+    verticalPodAutoscaling: VerticalPodAutoscaling | None = None
     """
     Vertical Pod Autoscaling automatically adjusts the resources of pods controlled by it.
     Structure is documented below.
     """
-    workloadIdentityConfig: Optional[WorkloadIdentityConfig] = None
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
     """
     Workload Identity allows Kubernetes service accounts to act as a user-managed
     Google IAM Service Account.
@@ -2618,7 +2627,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -2636,7 +2645,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -2647,7 +2656,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -2660,9 +2669,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -2675,15 +2685,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -2693,35 +2703,35 @@ class Spec(BaseModel):
 
 
 class UpgradeOption(BaseModel):
-    autoUpgradeStartTime: Optional[str] = None
-    description: Optional[str] = None
+    autoUpgradeStartTime: str | None = None
+    description: str | None = None
     """
     Description of the cluster.
     """
 
 
 class ManagementModel(BaseModel):
-    autoRepair: Optional[bool] = None
+    autoRepair: bool | None = None
     """
     Specifies whether the node auto-repair is enabled for the node pool. If enabled, the nodes in this node pool will be monitored and, if they fail health checks too many times, an automatic repair action will be triggered.
     """
-    autoUpgrade: Optional[bool] = None
+    autoUpgrade: bool | None = None
     """
     Specifies whether node auto-upgrade is enabled for the node pool. If enabled, node auto-upgrade helps keep the nodes in your node pool up to date with the latest release version of Kubernetes.
     """
-    upgradeOptions: Optional[List[UpgradeOption]] = None
+    upgradeOptions: list[UpgradeOption] | None = None
     """
     Specifies the Auto Upgrade knobs for the node pool.
     """
 
 
 class ConfidentialNodesModel3(BaseModel):
-    confidentialInstanceType: Optional[str] = None
+    confidentialInstanceType: str | None = None
     """
     Defines the type of technology used
     by the confidential node.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enable Confidential GKE Nodes for this node pool, to
     enforce encryption of data in-use.
@@ -2729,57 +2739,57 @@ class ConfidentialNodesModel3(BaseModel):
 
 
 class EnterpriseConfigModel(BaseModel):
-    clusterTier: Optional[str] = None
+    clusterTier: str | None = None
     """
     The effective tier of the cluster.
     """
-    desiredTier: Optional[str] = None
+    desiredTier: str | None = None
     """
     Sets the tier of the cluster. Available options include STANDARD and ENTERPRISE.
     """
 
 
 class FleetModel(BaseModel):
-    membership: Optional[str] = None
+    membership: str | None = None
     """
     The resource name of the fleet Membership resource associated to this cluster with format //gkehub.googleapis.com/projects/{{project}}/locations/{{location}}/memberships/{{name}}. See the official doc for fleet management.
     """
-    membershipId: Optional[str] = None
+    membershipId: str | None = None
     """
     The short name of the fleet membership, extracted from fleet.0.membership. You can use this field to configure membership_id under google_gkehub_feature_membership.
     """
-    membershipLocation: Optional[str] = None
+    membershipLocation: str | None = None
     """
     The location of the fleet membership,  extracted from fleet.0.membership. You can use this field to configure membership_location under google_gkehub_feature_membership.
     """
-    preRegistered: Optional[bool] = None
-    project: Optional[str] = None
+    preRegistered: bool | None = None
+    project: str | None = None
     """
     The name of the Fleet host project where this cluster will be registered.
     """
 
 
 class DailyMaintenanceWindowModel(BaseModel):
-    duration: Optional[str] = None
+    duration: str | None = None
     """
     Duration of the time window, automatically chosen to be
     smallest possible in the given scenario.
     Duration will be in RFC3339 format "PTnHnMnS".
     """
-    startTime: Optional[str] = None
+    startTime: str | None = None
 
 
 class MasterAuthModel(BaseModel):
-    clientCertificate: Optional[str] = None
+    clientCertificate: str | None = None
     """
     Base64 encoded public certificate
     used by clients to authenticate to the cluster endpoint.
     """
-    clientCertificateConfig: Optional[ClientCertificateConfig] = None
+    clientCertificateConfig: ClientCertificateConfig | None = None
     """
     Whether client certificate authorization is enabled for this cluster.  For example:
     """
-    clusterCaCertificate: Optional[str] = None
+    clusterCaCertificate: str | None = None
     """
     Base64 encoded public certificate
     that is the root certificate of the cluster.
@@ -2787,43 +2797,43 @@ class MasterAuthModel(BaseModel):
 
 
 class ConfidentialNodesModel4(BaseModel):
-    confidentialInstanceType: Optional[str] = None
+    confidentialInstanceType: str | None = None
     """
     Defines the type of technology used
     by the confidential node.
     """
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class EffectiveTaint(BaseModel):
-    effect: Optional[str] = None
+    effect: str | None = None
     """
     Effect for taint. Accepted values are NO_SCHEDULE, PREFER_NO_SCHEDULE, and NO_EXECUTE.
     """
-    key: Optional[str] = None
+    key: str | None = None
     """
     Key for taint.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Value for taint.
     """
 
 
 class LinuxNodeConfigModel3(BaseModel):
-    cgroupMode: Optional[str] = None
+    cgroupMode: str | None = None
     """
     Possible cgroup modes that can be used.
     Accepted values are:
     """
-    hugepagesConfig: Optional[HugepagesConfig] = None
+    hugepagesConfig: HugepagesConfig | None = None
     """
     Amounts for 2M and 1G hugepages. Structure is documented below.
     """
-    sysctls: Optional[Dict[str, str]] = None
+    sysctls: dict[str, str] | None = None
     """
     The Linux kernel parameters to be applied to the nodes
     and all pods running on the nodes. Specified as a map from the key, such as
@@ -2833,57 +2843,57 @@ class LinuxNodeConfigModel3(BaseModel):
 
 
 class NodeConfigModel(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
     """
     Specifies options for controlling
     advanced machine features. Structure is documented below.
     """
-    bootDiskKmsKey: Optional[str] = None
+    bootDiskKmsKey: str | None = None
     """
     The Customer Managed Encryption Key used to encrypt the boot disk attached to each node in the node pool. This should be of the form projects/[KEY_PROJECT_ID]/locations/[LOCATION]/keyRings/[RING_NAME]/cryptoKeys/[KEY_NAME]. For more information about protecting resources with Cloud KMS Keys please see: https://cloud.google.com/compute/docs/disks/customer-managed-encryption
     """
-    confidentialNodes: Optional[ConfidentialNodesModel4] = None
+    confidentialNodes: ConfidentialNodesModel4 | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below.
     """
-    containerdConfig: Optional[ContainerdConfig] = None
+    containerdConfig: ContainerdConfig | None = None
     """
     Parameters to customize containerd runtime. Structure is documented below.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     Size of the disk attached to each node, specified
     in GB. The smallest allowed disk size is 10GB. Defaults to 100GB.
     """
-    diskType: Optional[str] = None
+    diskType: str | None = None
     """
     Type of the disk attached to each node
     (e.g. 'pd-standard', 'pd-balanced' or 'pd-ssd'). If unspecified, the default disk type is 'pd-balanced'
     """
-    effectiveTaints: Optional[List[EffectiveTaint]] = None
+    effectiveTaints: list[EffectiveTaint] | None = None
     """
     List of kubernetes taints applied to each node. Structure is documented above.
     """
-    enableConfidentialStorage: Optional[bool] = None
+    enableConfidentialStorage: bool | None = None
     """
     Enabling Confidential Storage will create boot disk with confidential mode. It is disabled by default.
     """
-    ephemeralStorageLocalSsdConfig: Optional[EphemeralStorageLocalSsdConfig] = None
+    ephemeralStorageLocalSsdConfig: EphemeralStorageLocalSsdConfig | None = None
     """
     Parameters for the ephemeral storage filesystem. If unspecified, ephemeral storage is backed by the boot disk. Structure is documented below.
     """
-    fastSocket: Optional[FastSocket] = None
+    fastSocket: FastSocket | None = None
     """
     Parameters for the NCCL Fast Socket feature. If unspecified, NCCL Fast Socket will not be enabled on the node pool.
     Node Pool must enable gvnic.
     GKE version 1.25.2-gke.1700 or later.
     Structure is documented below.
     """
-    flexStart: Optional[bool] = None
+    flexStart: bool | None = None
     """
     Enables Flex Start provisioning model for the node pool.
     """
-    gcfsConfig: Optional[GcfsConfig] = None
+    gcfsConfig: GcfsConfig | None = None
     """
     Parameters for the Google Container Filesystem (GCFS).
     If unspecified, GCFS will not be enabled on the node pool. When enabling this feature you must specify image_type = "COS_CONTAINERD" and node_version from GKE versions 1.19 or later to use it.
@@ -2892,7 +2902,7 @@ class NodeConfigModel(BaseModel):
     GCFS must be enabled in order to use image streaming.
     Structure is documented below.
     """
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
     """
     List of the type and count of accelerator cards attached to the instance.
     Structure documented below.
@@ -2901,7 +2911,7 @@ class NodeConfigModel(BaseModel):
     To dynamically set a list of guest accelerators, use dynamic blocks.
     To set an empty list, use a single guest_accelerator block with count = 0.
     """
-    gvnic: Optional[Gvnic] = None
+    gvnic: Gvnic | None = None
     """
     Google Virtual NIC (gVNIC) is a virtual network interface.
     Installing the gVNIC driver allows for more efficient traffic transmission across the Google network infrastructure.
@@ -2909,65 +2919,65 @@ class NodeConfigModel(BaseModel):
     GKE node version 1.15.11-gke.15 or later
     Structure is documented below.
     """
-    hostMaintenancePolicy: Optional[HostMaintenancePolicy] = None
+    hostMaintenancePolicy: HostMaintenancePolicy | None = None
     """
     The maintenance policy to use for the cluster. Structure is
     documented below.
     """
-    imageType: Optional[str] = None
+    imageType: str | None = None
     """
     The image type to use for this node. Note that changing the image type
     will delete and recreate all nodes in the node pool.
     """
-    kubeletConfig: Optional[KubeletConfig] = None
+    kubeletConfig: KubeletConfig | None = None
     """
     Kubelet configuration, currently supported attributes can be found here.
     Structure is documented below.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     The Kubernetes labels (key/value pairs) to be applied to each node. The kubernetes.io/ and k8s.io/ prefixes are
     reserved by Kubernetes Core components and cannot be specified.
     """
-    linuxNodeConfig: Optional[LinuxNodeConfigModel3] = None
+    linuxNodeConfig: LinuxNodeConfigModel3 | None = None
     """
     Parameters that can be configured on Linux nodes. Structure is documented below.
     """
-    localNvmeSsdBlockConfig: Optional[LocalNvmeSsdBlockConfig] = None
+    localNvmeSsdBlockConfig: LocalNvmeSsdBlockConfig | None = None
     """
     Parameters for the local NVMe SSDs. Structure is documented below.
     """
-    localSsdCount: Optional[float] = None
+    localSsdCount: float | None = None
     """
     The amount of local SSD disks that will be
     attached to each cluster node. Defaults to 0.
     """
-    localSsdEncryptionMode: Optional[str] = None
+    localSsdEncryptionMode: str | None = None
     """
     Possible Local SSD encryption modes:
     Accepted values are:
     """
-    loggingVariant: Optional[str] = None
+    loggingVariant: str | None = None
     """
     wide default value. Valid values include DEFAULT and MAX_THROUGHPUT. See Increasing logging agent throughput for more information.
     """
-    machineType: Optional[str] = None
+    machineType: str | None = None
     """
     The name of a Google Compute Engine machine type.
     Defaults to e2-medium. To create a custom machine type, value should be set as specified
     here.
     """
-    maxRunDuration: Optional[str] = None
+    maxRunDuration: str | None = None
     """
     The runtime of each node in the node pool in seconds, terminated by 's'. Example: "3600s".
     """
-    metadata: Optional[Dict[str, str]] = None
+    metadata: dict[str, str] | None = None
     """
     The metadata key/value pairs assigned to instances in
     the cluster. From GKE 1. To avoid this, set the
     value in your config.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     Minimum CPU platform to be used by this instance.
     The instance may be scheduled on the specified or newer CPU platform. Applicable
@@ -2975,78 +2985,78 @@ class NodeConfigModel(BaseModel):
     official documentation
     for more information.
     """
-    nodeGroup: Optional[str] = None
+    nodeGroup: str | None = None
     """
     Setting this field will assign instances of this pool to run on the specified node group. This is useful for running workloads on sole tenant nodes.
     """
-    oauthScopes: Optional[List[str]] = None
+    oauthScopes: list[str] | None = None
     """
     The set of Google API scopes to be made available
     on all of the node VMs under the "default" service account.
     Use the "https://www.googleapis.com/auth/cloud-platform" scope to grant access to all APIs. It is recommended that you set service_account to a non-default service account and grant IAM roles to that service account for only the resources that it needs.
     """
-    preemptible: Optional[bool] = None
+    preemptible: bool | None = None
     """
     A boolean that represents whether or not the underlying node VMs
     are preemptible. See the official documentation
     for more information. Defaults to false.
     """
-    reservationAffinity: Optional[ReservationAffinity] = None
+    reservationAffinity: ReservationAffinity | None = None
     """
     The configuration of the desired reservation which instances could take capacity from. Structure is documented below.
     """
-    resourceLabels: Optional[Dict[str, str]] = None
+    resourceLabels: dict[str, str] | None = None
     """
     The GCP labels (key/value pairs) to be applied to each node. Refer here
     for how these labels are applied to clusters, node pools and nodes.
     """
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A map of resource manager tag keys and values to be attached to the nodes for managing Compute Engine firewalls using Network Firewall Policies. Tags must be according to specifications found here. A maximum of 5 tag key-value pairs can be specified. Existing tags will be replaced with new values. Tags must be in one of the following formats ([KEY]=[VALUE]) 1. tagKeys/{tag_key_id}=tagValues/{tag_value_id} 2. {org_id}/{tag_key_name}={tag_value_name} 3. {project_id}/{tag_key_name}={tag_value_name}.
     """
-    secondaryBootDisks: Optional[List[SecondaryBootDisk]] = None
+    secondaryBootDisks: list[SecondaryBootDisk] | None = None
     """
     Parameters for secondary boot disks to preload container images and data on new nodes. Structure is documented below. gcfs_config must be enabled=true for this feature to work. min_master_version must also be set to use GKE 1.28.3-gke.106700 or later versions.
     """
-    serviceAccount: Optional[str] = None
+    serviceAccount: str | None = None
     """
     The service account to be used by the Node VMs.
     If not specified, the "default" service account is used.
     """
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
     """
     Shielded Instance options. Structure is documented below.
     """
-    soleTenantConfig: Optional[SoleTenantConfig] = None
+    soleTenantConfig: SoleTenantConfig | None = None
     """
     Allows specifying multiple node affinities useful for running workloads on sole tenant nodes. node_affinity structure is documented below.
     """
-    spot: Optional[bool] = None
+    spot: bool | None = None
     """
     A boolean that represents whether the underlying node VMs are spot.
     See the official documentation
     for more information. Defaults to false.
     """
-    storagePools: Optional[List[str]] = None
+    storagePools: list[str] | None = None
     """
     The list of Storage Pools where boot disks are provisioned.
     """
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
     """
     The list of instance tags applied to all nodes. Tags are used to identify
     valid sources or targets for network firewalls.
     """
-    taint: Optional[List[TaintItem]] = None
+    taint: list[TaintItem] | None = None
     """
     A list of
     Kubernetes taints
     to apply to nodes. Structure is documented below.
     """
-    windowsNodeConfig: Optional[WindowsNodeConfig] = None
+    windowsNodeConfig: WindowsNodeConfig | None = None
     """
     Windows node configuration, currently supporting OSVersion attribute. The value must be one of [OS_VERSION_UNSPECIFIED, OS_VERSION_LTSC2019, OS_VERSION_LTSC2022]. For example:
     """
-    workloadMetadataConfig: Optional[WorkloadMetadataConfig] = None
+    workloadMetadataConfig: WorkloadMetadataConfig | None = None
     """
     Metadata configuration to expose to workloads on the node pool.
     Structure is documented below.
@@ -3054,32 +3064,32 @@ class NodeConfigModel(BaseModel):
 
 
 class Autoscaling(BaseModel):
-    locationPolicy: Optional[str] = None
-    maxNodeCount: Optional[float] = None
-    minNodeCount: Optional[float] = None
-    totalMaxNodeCount: Optional[float] = None
-    totalMinNodeCount: Optional[float] = None
+    locationPolicy: str | None = None
+    maxNodeCount: float | None = None
+    minNodeCount: float | None = None
+    totalMaxNodeCount: float | None = None
+    totalMinNodeCount: float | None = None
 
 
 class ManagementModel1(BaseModel):
-    autoRepair: Optional[bool] = None
+    autoRepair: bool | None = None
     """
     Specifies whether the node auto-repair is enabled for the node pool. If enabled, the nodes in this node pool will be monitored and, if they fail health checks too many times, an automatic repair action will be triggered.
     """
-    autoUpgrade: Optional[bool] = None
+    autoUpgrade: bool | None = None
     """
     Specifies whether node auto-upgrade is enabled for the node pool. If enabled, node auto-upgrade helps keep the nodes in your node pool up to date with the latest release version of Kubernetes.
     """
 
 
 class AdditionalNodeNetworkConfig(BaseModel):
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the Google Compute Engine
     network to which the cluster is connected. For Shared VPC, set this to the self link of the
     shared network.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The name or self_link of the Google Compute Engine
     subnetwork in which the cluster's instances are launched.
@@ -3087,9 +3097,9 @@ class AdditionalNodeNetworkConfig(BaseModel):
 
 
 class AdditionalPodNetworkConfig(BaseModel):
-    maxPodsPerNode: Optional[float] = None
-    secondaryPodRange: Optional[str] = None
-    subnetwork: Optional[str] = None
+    maxPodsPerNode: float | None = None
+    secondaryPodRange: str | None = None
+    subnetwork: str | None = None
     """
     The name or self_link of the Google Compute Engine
     subnetwork in which the cluster's instances are launched.
@@ -3097,24 +3107,24 @@ class AdditionalPodNetworkConfig(BaseModel):
 
 
 class NetworkConfig(BaseModel):
-    additionalNodeNetworkConfigs: Optional[List[AdditionalNodeNetworkConfig]] = None
-    additionalPodNetworkConfigs: Optional[List[AdditionalPodNetworkConfig]] = None
-    createPodRange: Optional[bool] = None
-    enablePrivateNodes: Optional[bool] = None
+    additionalNodeNetworkConfigs: list[AdditionalNodeNetworkConfig] | None = None
+    additionalPodNetworkConfigs: list[AdditionalPodNetworkConfig] | None = None
+    createPodRange: bool | None = None
+    enablePrivateNodes: bool | None = None
     """
     Enables the private cluster feature,
     creating a private endpoint on the cluster. In a private cluster, nodes only
     have RFC 1918 private addresses and communicate with the master's private
     endpoint via private networking.
     """
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
     """
     Network bandwidth tier configuration. Structure is documented below.
     """
-    podCidrOverprovisionConfig: Optional[PodCidrOverprovisionConfig] = None
-    podIpv4CidrBlock: Optional[str] = None
-    podRange: Optional[str] = None
-    subnetwork: Optional[str] = None
+    podCidrOverprovisionConfig: PodCidrOverprovisionConfig | None = None
+    podIpv4CidrBlock: str | None = None
+    podRange: str | None = None
+    subnetwork: str | None = None
     """
     The name or self_link of the Google Compute Engine
     subnetwork in which the cluster's instances are launched.
@@ -3122,61 +3132,61 @@ class NetworkConfig(BaseModel):
 
 
 class NodeConfigModel1(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
     """
     Specifies options for controlling
     advanced machine features. Structure is documented below.
     """
-    bootDiskKmsKey: Optional[str] = None
+    bootDiskKmsKey: str | None = None
     """
     The Customer Managed Encryption Key used to encrypt the boot disk attached to each node in the node pool. This should be of the form projects/[KEY_PROJECT_ID]/locations/[LOCATION]/keyRings/[RING_NAME]/cryptoKeys/[KEY_NAME]. For more information about protecting resources with Cloud KMS Keys please see: https://cloud.google.com/compute/docs/disks/customer-managed-encryption
     """
-    confidentialNodes: Optional[ConfidentialNodesModel4] = None
+    confidentialNodes: ConfidentialNodesModel4 | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below.
     """
-    containerdConfig: Optional[ContainerdConfig] = None
+    containerdConfig: ContainerdConfig | None = None
     """
     Parameters to customize containerd runtime. Structure is documented below.
     """
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     Size of the disk attached to each node, specified
     in GB. The smallest allowed disk size is 10GB. Defaults to 100GB.
     """
-    diskType: Optional[str] = None
+    diskType: str | None = None
     """
     Type of the disk attached to each node
     (e.g. 'pd-standard', 'pd-balanced' or 'pd-ssd'). If unspecified, the default disk type is 'pd-balanced'
     """
-    effectiveTaints: Optional[List[EffectiveTaint]] = None
+    effectiveTaints: list[EffectiveTaint] | None = None
     """
     List of kubernetes taints applied to each node. Structure is documented above.
     """
-    enableConfidentialStorage: Optional[bool] = None
+    enableConfidentialStorage: bool | None = None
     """
     Enabling Confidential Storage will create boot disk with confidential mode. It is disabled by default.
     """
-    ephemeralStorageLocalSsdConfig: Optional[EphemeralStorageLocalSsdConfig] = None
+    ephemeralStorageLocalSsdConfig: EphemeralStorageLocalSsdConfig | None = None
     """
     Parameters for the ephemeral storage filesystem. If unspecified, ephemeral storage is backed by the boot disk. Structure is documented below.
     """
-    fastSocket: Optional[FastSocket] = None
+    fastSocket: FastSocket | None = None
     """
     Parameters for the NCCL Fast Socket feature. If unspecified, NCCL Fast Socket will not be enabled on the node pool.
     Node Pool must enable gvnic.
     GKE version 1.25.2-gke.1700 or later.
     Structure is documented below.
     """
-    flexStart: Optional[bool] = None
+    flexStart: bool | None = None
     """
     Enables Flex Start provisioning model for the node pool.
     """
-    gcfsConfig: Optional[GcfsConfig] = None
+    gcfsConfig: GcfsConfig | None = None
     """
     The default Google Container Filesystem (GCFS) configuration at the cluster level. e.g. enable image streaming across all the node pools within the cluster. Structure is documented below.
     """
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
     """
     List of the type and count of accelerator cards attached to the instance.
     Structure documented below.
@@ -3185,7 +3195,7 @@ class NodeConfigModel1(BaseModel):
     To dynamically set a list of guest accelerators, use dynamic blocks.
     To set an empty list, use a single guest_accelerator block with count = 0.
     """
-    gvnic: Optional[Gvnic] = None
+    gvnic: Gvnic | None = None
     """
     Google Virtual NIC (gVNIC) is a virtual network interface.
     Installing the gVNIC driver allows for more efficient traffic transmission across the Google network infrastructure.
@@ -3193,65 +3203,65 @@ class NodeConfigModel1(BaseModel):
     GKE node version 1.15.11-gke.15 or later
     Structure is documented below.
     """
-    hostMaintenancePolicy: Optional[HostMaintenancePolicy] = None
+    hostMaintenancePolicy: HostMaintenancePolicy | None = None
     """
     The maintenance policy to use for the cluster. Structure is
     documented below.
     """
-    imageType: Optional[str] = None
+    imageType: str | None = None
     """
     The image type to use for this node. Note that changing the image type
     will delete and recreate all nodes in the node pool.
     """
-    kubeletConfig: Optional[KubeletConfig] = None
+    kubeletConfig: KubeletConfig | None = None
     """
     Kubelet configuration, currently supported attributes can be found here.
     Structure is documented below.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     The Kubernetes labels (key/value pairs) to be applied to each node. The kubernetes.io/ and k8s.io/ prefixes are
     reserved by Kubernetes Core components and cannot be specified.
     """
-    linuxNodeConfig: Optional[LinuxNodeConfigModel3] = None
+    linuxNodeConfig: LinuxNodeConfigModel3 | None = None
     """
     Linux system configuration for the cluster's automatically provisioned node pools. Only cgroup_mode field is supported in node_pool_auto_config. Structure is documented below.
     """
-    localNvmeSsdBlockConfig: Optional[LocalNvmeSsdBlockConfig] = None
+    localNvmeSsdBlockConfig: LocalNvmeSsdBlockConfig | None = None
     """
     Parameters for the local NVMe SSDs. Structure is documented below.
     """
-    localSsdCount: Optional[float] = None
+    localSsdCount: float | None = None
     """
     The amount of local SSD disks that will be
     attached to each cluster node. Defaults to 0.
     """
-    localSsdEncryptionMode: Optional[str] = None
+    localSsdEncryptionMode: str | None = None
     """
     Possible Local SSD encryption modes:
     Accepted values are:
     """
-    loggingVariant: Optional[str] = None
+    loggingVariant: str | None = None
     """
     The type of logging agent that is deployed by default for newly created node pools in the cluster. Valid values include DEFAULT and MAX_THROUGHPUT. See Increasing logging agent throughput for more information.
     """
-    machineType: Optional[str] = None
+    machineType: str | None = None
     """
     The name of a Google Compute Engine machine type.
     Defaults to e2-medium. To create a custom machine type, value should be set as specified
     here.
     """
-    maxRunDuration: Optional[str] = None
+    maxRunDuration: str | None = None
     """
     The runtime of each node in the node pool in seconds, terminated by 's'. Example: "3600s".
     """
-    metadata: Optional[Dict[str, str]] = None
+    metadata: dict[str, str] | None = None
     """
     The metadata key/value pairs assigned to instances in
     the cluster. From GKE 1. To avoid this, set the
     value in your config.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     Minimum CPU platform to be used by this instance.
     The instance may be scheduled on the specified or newer CPU platform. Applicable
@@ -3259,77 +3269,77 @@ class NodeConfigModel1(BaseModel):
     official documentation
     for more information.
     """
-    nodeGroup: Optional[str] = None
+    nodeGroup: str | None = None
     """
     Setting this field will assign instances of this pool to run on the specified node group. This is useful for running workloads on sole tenant nodes.
     """
-    oauthScopes: Optional[List[str]] = None
+    oauthScopes: list[str] | None = None
     """
     The set of Google API scopes to be made available
     on all of the node VMs under the "default" service account.
     Use the "https://www.googleapis.com/auth/cloud-platform" scope to grant access to all APIs. It is recommended that you set service_account to a non-default service account and grant IAM roles to that service account for only the resources that it needs.
     """
-    preemptible: Optional[bool] = None
+    preemptible: bool | None = None
     """
     A boolean that represents whether or not the underlying node VMs
     are preemptible. See the official documentation
     for more information. Defaults to false.
     """
-    reservationAffinity: Optional[ReservationAffinity] = None
+    reservationAffinity: ReservationAffinity | None = None
     """
     The configuration of the desired reservation which instances could take capacity from. Structure is documented below.
     """
-    resourceLabels: Optional[Dict[str, str]] = None
+    resourceLabels: dict[str, str] | None = None
     """
     The GCE resource labels (a map of key/value pairs) to be applied to the cluster.
     """
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     A map of resource manager tag keys and values to be attached to the nodes for managing Compute Engine firewalls using Network Firewall Policies. Tags must be according to specifications found here. A maximum of 5 tag key-value pairs can be specified. Existing tags will be replaced with new values. Tags must be in one of the following formats ([KEY]=[VALUE]) 1. tagKeys/{tag_key_id}=tagValues/{tag_value_id} 2. {org_id}/{tag_key_name}={tag_value_name} 3. {project_id}/{tag_key_name}={tag_value_name}.
     """
-    secondaryBootDisks: Optional[List[SecondaryBootDisk]] = None
+    secondaryBootDisks: list[SecondaryBootDisk] | None = None
     """
     Parameters for secondary boot disks to preload container images and data on new nodes. Structure is documented below. gcfs_config must be enabled=true for this feature to work. min_master_version must also be set to use GKE 1.28.3-gke.106700 or later versions.
     """
-    serviceAccount: Optional[str] = None
+    serviceAccount: str | None = None
     """
     The service account to be used by the Node VMs.
     If not specified, the "default" service account is used.
     """
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
     """
     Shielded Instance options. Structure is documented below.
     """
-    soleTenantConfig: Optional[SoleTenantConfig] = None
+    soleTenantConfig: SoleTenantConfig | None = None
     """
     Allows specifying multiple node affinities useful for running workloads on sole tenant nodes. node_affinity structure is documented below.
     """
-    spot: Optional[bool] = None
+    spot: bool | None = None
     """
     A boolean that represents whether the underlying node VMs are spot.
     See the official documentation
     for more information. Defaults to false.
     """
-    storagePools: Optional[List[str]] = None
+    storagePools: list[str] | None = None
     """
     The list of Storage Pools where boot disks are provisioned.
     """
-    tags: Optional[List[str]] = None
+    tags: list[str] | None = None
     """
     The list of instance tags applied to all nodes. Tags are used to identify
     valid sources or targets for network firewalls.
     """
-    taint: Optional[List[TaintItem]] = None
+    taint: list[TaintItem] | None = None
     """
     A list of
     Kubernetes taints
     to apply to nodes. Structure is documented below.
     """
-    windowsNodeConfig: Optional[WindowsNodeConfig] = None
+    windowsNodeConfig: WindowsNodeConfig | None = None
     """
     Windows node configuration, currently supporting OSVersion attribute. The value must be one of [OS_VERSION_UNSPECIFIED, OS_VERSION_LTSC2019, OS_VERSION_LTSC2022]. For example:
     """
-    workloadMetadataConfig: Optional[WorkloadMetadataConfig] = None
+    workloadMetadataConfig: WorkloadMetadataConfig | None = None
     """
     Metadata configuration to expose to workloads on the node pool.
     Structure is documented below.
@@ -3337,28 +3347,28 @@ class NodeConfigModel1(BaseModel):
 
 
 class PlacementPolicy(BaseModel):
-    policyName: Optional[str] = None
+    policyName: str | None = None
     """
     The name of the cluster, unique within the project and
     location.
     """
-    tpuTopology: Optional[str] = None
-    type: Optional[str] = None
+    tpuTopology: str | None = None
+    type: str | None = None
     """
     The accelerator type resource to expose to this instance. E.g. nvidia-tesla-k80.
     """
 
 
 class QueuedProvisioning(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
     """
     Enables vertical pod autoscaling
     """
 
 
 class NodePoolItem(BaseModel):
-    autoscaling: Optional[Autoscaling] = None
-    initialNodeCount: Optional[float] = None
+    autoscaling: Autoscaling | None = None
+    initialNodeCount: float | None = None
     """
     The number of nodes to create in this
     cluster's default node pool. In regional or multi-zonal clusters, this is the
@@ -3367,43 +3377,43 @@ class NodePoolItem(BaseModel):
     set this to a value of at least 1, alongside setting
     remove_default_node_pool to true.
     """
-    instanceGroupUrls: Optional[List[str]] = None
-    managedInstanceGroupUrls: Optional[List[str]] = None
-    management: Optional[ManagementModel1] = None
+    instanceGroupUrls: list[str] | None = None
+    managedInstanceGroupUrls: list[str] | None = None
+    management: ManagementModel1 | None = None
     """
     NodeManagement configuration for this NodePool. Structure is documented below.
     """
-    maxPodsPerNode: Optional[float] = None
-    name: Optional[str] = None
+    maxPodsPerNode: float | None = None
+    name: str | None = None
     """
     The name of the cluster, unique within the project and
     location.
     """
-    namePrefix: Optional[str] = None
-    networkConfig: Optional[NetworkConfig] = None
-    nodeConfig: Optional[NodeConfigModel1] = None
+    namePrefix: str | None = None
+    networkConfig: NetworkConfig | None = None
+    nodeConfig: NodeConfigModel1 | None = None
     """
     Parameters used in creating the default node pool. Structure is documented below.
     """
-    nodeCount: Optional[float] = None
-    nodeLocations: Optional[List[str]] = None
+    nodeCount: float | None = None
+    nodeLocations: list[str] | None = None
     """
     The list of zones in which the cluster's nodes
     are located. Nodes must be in the region of their regional cluster or in the
     same region as their cluster's zone for zonal clusters. If this is specified for
     a zonal cluster, omit the cluster's zone.
     """
-    placementPolicy: Optional[PlacementPolicy] = None
-    queuedProvisioning: Optional[QueuedProvisioning] = None
-    upgradeSettings: Optional[UpgradeSettings] = None
+    placementPolicy: PlacementPolicy | None = None
+    queuedProvisioning: QueuedProvisioning | None = None
+    upgradeSettings: UpgradeSettings | None = None
     """
     Specifies the upgrade settings for NAP created node pools. Structure is documented below.
     """
-    version: Optional[str] = None
+    version: str | None = None
 
 
 class LinuxNodeConfigModel4(BaseModel):
-    cgroupMode: Optional[str] = None
+    cgroupMode: str | None = None
     """
     Possible cgroup modes that can be used.
     Accepted values are:
@@ -3411,26 +3421,26 @@ class LinuxNodeConfigModel4(BaseModel):
 
 
 class PrivateClusterConfigModel(BaseModel):
-    enablePrivateEndpoint: Optional[bool] = None
+    enablePrivateEndpoint: bool | None = None
     """
     When true, the cluster's private
     endpoint is used as the cluster endpoint and access through the public endpoint
     is disabled. When false, either endpoint can be used. This field only applies
     to private clusters, when enable_private_nodes is true.
     """
-    enablePrivateNodes: Optional[bool] = None
+    enablePrivateNodes: bool | None = None
     """
     Enables the private cluster feature,
     creating a private endpoint on the cluster. In a private cluster, nodes only
     have RFC 1918 private addresses and communicate with the master's private
     endpoint via private networking.
     """
-    masterGlobalAccessConfig: Optional[MasterGlobalAccessConfig] = None
+    masterGlobalAccessConfig: MasterGlobalAccessConfig | None = None
     """
     Controls cluster master global
     access settings. Structure is documented below.
     """
-    masterIpv4CidrBlock: Optional[str] = None
+    masterIpv4CidrBlock: str | None = None
     """
     The IP range in CIDR notation to use for
     the hosted master network. This range will be used for assigning private IP
@@ -3440,52 +3450,52 @@ class PrivateClusterConfigModel(BaseModel):
     for more details. This field only applies to private clusters, when
     enable_private_nodes is true.
     """
-    peeringName: Optional[str] = None
+    peeringName: str | None = None
     """
     The name of the peering between this cluster and the Google owned VPC.
     """
-    privateEndpoint: Optional[str] = None
+    privateEndpoint: str | None = None
     """
     The internal IP address of this cluster's master endpoint.
     """
-    privateEndpointSubnetwork: Optional[str] = None
+    privateEndpointSubnetwork: str | None = None
     """
     Subnetwork in cluster's network where master's endpoint will be provisioned.
     """
-    publicEndpoint: Optional[str] = None
+    publicEndpoint: str | None = None
     """
     The external IP address of this cluster's master endpoint.
     """
 
 
 class AtProvider(BaseModel):
-    addonsConfig: Optional[AddonsConfig] = None
+    addonsConfig: AddonsConfig | None = None
     """
     The configuration for addons supported by GKE.
     Structure is documented below.
     """
-    allowNetAdmin: Optional[bool] = None
+    allowNetAdmin: bool | None = None
     """
     Enable NET_ADMIN for the cluster. Defaults to
     false. This field should only be enabled for Autopilot clusters (enable_autopilot
     set to true).
     """
-    anonymousAuthenticationConfig: Optional[AnonymousAuthenticationConfig] = None
+    anonymousAuthenticationConfig: AnonymousAuthenticationConfig | None = None
     """
     Configuration for anonymous authentication restrictions. Structure is documented below.
     """
-    authenticatorGroupsConfig: Optional[AuthenticatorGroupsConfig] = None
+    authenticatorGroupsConfig: AuthenticatorGroupsConfig | None = None
     """
     Configuration for the
     Google Groups for GKE feature.
     Structure is documented below.
     """
-    binaryAuthorization: Optional[BinaryAuthorization] = None
+    binaryAuthorization: BinaryAuthorization | None = None
     """
     Configuration options for the Binary
     Authorization feature. Structure is documented below.
     """
-    clusterAutoscaling: Optional[ClusterAutoscaling] = None
+    clusterAutoscaling: ClusterAutoscaling | None = None
     """
     Per-cluster configuration of Node Auto-Provisioning with Cluster Autoscaler to
     automatically adjust the size of the cluster and create/delete node pools based
@@ -3493,149 +3503,149 @@ class AtProvider(BaseModel):
     guide to using Node Auto-Provisioning
     for more details. Structure is documented below.
     """
-    clusterIpv4Cidr: Optional[str] = None
+    clusterIpv4Cidr: str | None = None
     """
     The IP address range of the Kubernetes pods
     in this cluster in CIDR notation (e.g. 10.96.0.0/14). Leave blank to have one
     automatically chosen or specify a /14 block in 10.0.0.0/8. This field will
     default a new cluster to routes-based, where ip_allocation_policy is not defined.
     """
-    confidentialNodes: Optional[ConfidentialNodesModel3] = None
+    confidentialNodes: ConfidentialNodesModel3 | None = None
     """
     Configuration for Confidential Nodes feature. Structure is documented below documented below.
     """
-    controlPlaneEndpointsConfig: Optional[ControlPlaneEndpointsConfig] = None
+    controlPlaneEndpointsConfig: ControlPlaneEndpointsConfig | None = None
     """
     Configuration for all of the cluster's control plane endpoints.
     Structure is documented below.
     """
-    costManagementConfig: Optional[CostManagementConfig] = None
+    costManagementConfig: CostManagementConfig | None = None
     """
     Configuration for the
     Cost Allocation feature.
     Structure is documented below.
     """
-    databaseEncryption: Optional[DatabaseEncryption] = None
+    databaseEncryption: DatabaseEncryption | None = None
     """
     Structure is documented below.
     """
-    datapathProvider: Optional[str] = None
+    datapathProvider: str | None = None
     """
     The desired datapath provider for this cluster. This is set to LEGACY_DATAPATH by default, which uses the IPTables-based kube-proxy implementation. Set to ADVANCED_DATAPATH to enable Dataplane v2.
     """
-    defaultMaxPodsPerNode: Optional[float] = None
+    defaultMaxPodsPerNode: float | None = None
     """
     The default maximum number of pods
     per node in this cluster. This doesn't work on "routes-based" clusters, clusters
     that don't have IP Aliasing enabled. See the official documentation
     for more information.
     """
-    defaultSnatStatus: Optional[DefaultSnatStatus] = None
+    defaultSnatStatus: DefaultSnatStatus | None = None
     """
     GKE SNAT DefaultSnatStatus contains the desired state of whether default sNAT should be disabled on the cluster, API doc. Structure is documented below
     """
-    deletionProtection: Optional[bool] = None
-    description: Optional[str] = None
+    deletionProtection: bool | None = None
+    description: str | None = None
     """
     Description of the cluster.
     """
-    disableL4LbFirewallReconciliation: Optional[bool] = None
+    disableL4LbFirewallReconciliation: bool | None = None
     """
     Disable L4 load balancer VPC firewalls to enable firewall policies.
     """
-    dnsConfig: Optional[DnsConfig] = None
+    dnsConfig: DnsConfig | None = None
     """
     Configuration for Using Cloud DNS for GKE. Structure is documented below.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
-    enableAutopilot: Optional[bool] = None
+    effectiveLabels: dict[str, str] | None = None
+    enableAutopilot: bool | None = None
     """
     Enable Autopilot for this cluster. Defaults to false.
     Note that when this option is enabled, certain features of Standard GKE are not available.
     See the official documentation
     for available features.
     """
-    enableCiliumClusterwideNetworkPolicy: Optional[bool] = None
+    enableCiliumClusterwideNetworkPolicy: bool | None = None
     """
     Whether CiliumClusterWideNetworkPolicy is enabled on this cluster. Defaults to false.
     """
-    enableFqdnNetworkPolicy: Optional[bool] = None
+    enableFqdnNetworkPolicy: bool | None = None
     """
     Whether FQDN Network Policy is enabled on this cluster. Users who enable this feature for existing Standard clusters must restart the GKE Dataplane V2 anetd DaemonSet after enabling it. See the Enable FQDN Network Policy in an existing cluster for more information.
     """
-    enableIntranodeVisibility: Optional[bool] = None
+    enableIntranodeVisibility: bool | None = None
     """
     Whether Intra-node visibility is enabled for this cluster. This makes same node pod to pod traffic visible for VPC network.
     """
-    enableK8SBetaApis: Optional[EnableK8SBetaApis] = None
+    enableK8SBetaApis: EnableK8SBetaApis | None = None
     """
     Configuration for Kubernetes Beta APIs.
     Structure is documented below.
     """
-    enableKubernetesAlpha: Optional[bool] = None
+    enableKubernetesAlpha: bool | None = None
     """
     Whether to enable Kubernetes Alpha features for
     this cluster. Note that when this option is enabled, the cluster cannot be upgraded
     and will be automatically deleted after 30 days.
     """
-    enableL4IlbSubsetting: Optional[bool] = None
+    enableL4IlbSubsetting: bool | None = None
     """
     Whether L4ILB Subsetting is enabled for this cluster.
     """
-    enableLegacyAbac: Optional[bool] = None
+    enableLegacyAbac: bool | None = None
     """
     Whether the ABAC authorizer is enabled for this cluster.
     When enabled, identities in the system, including service accounts, nodes, and controllers,
     will have statically granted permissions beyond those provided by the RBAC configuration or IAM.
     Defaults to false
     """
-    enableMultiNetworking: Optional[bool] = None
+    enableMultiNetworking: bool | None = None
     """
     Whether multi-networking is enabled for this cluster.
     """
-    enableShieldedNodes: Optional[bool] = None
+    enableShieldedNodes: bool | None = None
     """
     Enable Shielded Nodes features on all nodes in this cluster.  Defaults to true.
     """
-    enableTpu: Optional[bool] = None
+    enableTpu: bool | None = None
     """
     Whether to enable Cloud TPU resources in this cluster.
     See the official documentation.
     """
-    endpoint: Optional[str] = None
+    endpoint: str | None = None
     """
     The IP address of this cluster's Kubernetes master.
     """
-    enterpriseConfig: Optional[EnterpriseConfigModel] = None
+    enterpriseConfig: EnterpriseConfigModel | None = None
     """
     Configuration for [Enterprise edition].(https://cloud.google.com/kubernetes-engine/enterprise/docs/concepts/gke-editions). Structure is documented below.
     """
-    fleet: Optional[FleetModel] = None
+    fleet: FleetModel | None = None
     """
     Fleet configuration for the cluster. Structure is documented below.
     """
-    gatewayApiConfig: Optional[GatewayApiConfig] = None
+    gatewayApiConfig: GatewayApiConfig | None = None
     """
     Configuration for GKE Gateway API controller. Structure is documented below.
     """
-    gkeAutoUpgradeConfig: Optional[GkeAutoUpgradeConfig] = None
+    gkeAutoUpgradeConfig: GkeAutoUpgradeConfig | None = None
     """
     Configuration options for the auto-upgrade patch type feature, which provide more control over the speed of automatic upgrades of your GKE clusters.
     Structure is documented below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/locations/{{zone}}/clusters/{{name}}
     """
-    identityServiceConfig: Optional[IdentityServiceConfig] = None
+    identityServiceConfig: IdentityServiceConfig | None = None
     """
     . Structure is documented below.
     """
-    inTransitEncryptionConfig: Optional[str] = None
+    inTransitEncryptionConfig: str | None = None
     """
     Defines the config of in-transit encryption. Valid values are IN_TRANSIT_ENCRYPTION_DISABLED and IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT.
     """
-    initialNodeCount: Optional[float] = None
+    initialNodeCount: float | None = None
     """
     The number of nodes to create in this
     cluster's default node pool. In regional or multi-zonal clusters, this is the
@@ -3644,17 +3654,17 @@ class AtProvider(BaseModel):
     set this to a value of at least 1, alongside setting
     remove_default_node_pool to true.
     """
-    ipAllocationPolicy: Optional[IpAllocationPolicy] = None
+    ipAllocationPolicy: IpAllocationPolicy | None = None
     """
     Configuration of cluster IP allocation for
     VPC-native clusters. If this block is unset during creation, it will be set by the GKE backend.
     Structure is documented below.
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     The fingerprint of the set of labels for this cluster.
     """
-    location: Optional[str] = None
+    location: str | None = None
     """
     The location (region or zone) in which the cluster
     master will be created, as well as the default node location. If you specify a
@@ -3663,23 +3673,23 @@ class AtProvider(BaseModel):
     cluster will be a regional cluster with multiple masters spread across zones in
     the region, and with default node locations in those zones as well
     """
-    loggingConfig: Optional[LoggingConfig] = None
+    loggingConfig: LoggingConfig | None = None
     """
     Logging configuration for the cluster.
     Structure is documented below.
     """
-    loggingService: Optional[str] = None
+    loggingService: str | None = None
     """
     The logging service that the cluster should
     write logs to. Available options include logging.googleapis.com(Legacy Stackdriver),
     logging.googleapis.com/kubernetes(Stackdriver Kubernetes Engine Logging), and none. Defaults to logging.googleapis.com/kubernetes
     """
-    maintenancePolicy: Optional[MaintenancePolicy] = None
+    maintenancePolicy: MaintenancePolicy | None = None
     """
     The maintenance policy to use for the cluster. Structure is
     documented below.
     """
-    masterAuth: Optional[MasterAuthModel] = None
+    masterAuth: MasterAuthModel | None = None
     """
     The authentication information for accessing the
     Kubernetes master. Some values in this block are only returned by the API if
@@ -3688,7 +3698,7 @@ class AtProvider(BaseModel):
     container.clusters.getCredentials permission.
     Structure is documented below.
     """
-    masterAuthorizedNetworksConfig: Optional[MasterAuthorizedNetworksConfig] = None
+    masterAuthorizedNetworksConfig: MasterAuthorizedNetworksConfig | None = None
     """
     The desired
     configuration options for master authorized networks. Omit the
@@ -3696,17 +3706,17 @@ class AtProvider(BaseModel):
     the cluster node IPs, which GKE automatically whitelists).
     Structure is documented below.
     """
-    masterVersion: Optional[str] = None
+    masterVersion: str | None = None
     """
     The current version of the master in the cluster. This may
     be different than the min_master_version set in the config if the master
     has been updated by GKE.
     """
-    meshCertificates: Optional[MeshCertificates] = None
+    meshCertificates: MeshCertificates | None = None
     """
     Structure is documented below.
     """
-    minMasterVersion: Optional[str] = None
+    minMasterVersion: str | None = None
     """
     The minimum version of the master. GKE
     will auto-update the master to new versions, so this does not guarantee the
@@ -3716,12 +3726,12 @@ class AtProvider(BaseModel):
     the docs
     describe the various acceptable formats for this field.
     """
-    monitoringConfig: Optional[MonitoringConfig] = None
+    monitoringConfig: MonitoringConfig | None = None
     """
     Monitoring configuration for the cluster.
     Structure is documented below.
     """
-    monitoringService: Optional[str] = None
+    monitoringService: str | None = None
     """
     The monitoring service that the cluster
     should write metrics to.
@@ -3731,39 +3741,39 @@ class AtProvider(BaseModel):
     monitoring.googleapis.com(Legacy Stackdriver), monitoring.googleapis.com/kubernetes(Stackdriver Kubernetes Engine Monitoring), and none.
     Defaults to monitoring.googleapis.com/kubernetes
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The name or self_link of the Google Compute Engine
     network to which the cluster is connected. For Shared VPC, set this to the self link of the
     shared network.
     """
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
     """
     Network bandwidth tier configuration. Structure is documented below.
     """
-    networkPolicy: Optional[NetworkPolicy] = None
+    networkPolicy: NetworkPolicy | None = None
     """
     Configuration options for the
     NetworkPolicy
     feature. Structure is documented below.
     """
-    networkingMode: Optional[str] = None
+    networkingMode: str | None = None
     """
     Determines whether alias IPs or routes will be used for pod IPs in the cluster.
     Options are VPC_NATIVE or ROUTES. VPC_NATIVE enables IP aliasing. Newly created clusters will default to VPC_NATIVE.
     """
-    nodeConfig: Optional[NodeConfigModel] = None
+    nodeConfig: NodeConfigModel | None = None
     """
     Parameters used in creating the default node pool. Structure is documented below.
     """
-    nodeLocations: Optional[List[str]] = None
+    nodeLocations: list[str] | None = None
     """
     The list of zones in which the cluster's nodes
     are located. Nodes must be in the region of their regional cluster or in the
     same region as their cluster's zone for zonal clusters. If this is specified for
     a zonal cluster, omit the cluster's zone.
     """
-    nodePool: Optional[List[NodePoolItem]] = None
+    nodePool: list[NodePoolItem] | None = None
     """
     List of node pools associated with this cluster.
     See google_container_node_pool for schema.
@@ -3772,17 +3782,17 @@ class AtProvider(BaseModel):
     to say "these are the only node pools associated with this cluster", use the
     google_container_node_pool resource instead of this property.
     """
-    nodePoolAutoConfig: Optional[NodePoolAutoConfig] = None
+    nodePoolAutoConfig: NodePoolAutoConfig | None = None
     """
     Node pool configs that apply to auto-provisioned node pools in
     autopilot clusters and
     node auto-provisioning-enabled clusters. Structure is documented below.
     """
-    nodePoolDefaults: Optional[NodePoolDefaults] = None
+    nodePoolDefaults: NodePoolDefaults | None = None
     """
     Default NodePool settings for the entire cluster. These settings are overridden if specified on the specific NodePool object. Structure is documented below.
     """
-    nodeVersion: Optional[str] = None
+    nodeVersion: str | None = None
     """
     The Kubernetes version on the nodes. Must either be unset
     or set to the same value as min_master_version on create. Defaults to the default
@@ -3790,35 +3800,35 @@ class AtProvider(BaseModel):
     nodes in the default node pool.
     To update nodes in other node pools, use the version attribute on the node pool.
     """
-    notificationConfig: Optional[NotificationConfig] = None
+    notificationConfig: NotificationConfig | None = None
     """
     Configuration for the cluster upgrade notifications feature. Structure is documented below.
     """
-    operation: Optional[str] = None
-    podAutoscaling: Optional[PodAutoscaling] = None
+    operation: str | None = None
+    podAutoscaling: PodAutoscaling | None = None
     """
     Configuration for the
     Structure is documented below.
     """
-    privateClusterConfig: Optional[PrivateClusterConfigModel] = None
+    privateClusterConfig: PrivateClusterConfigModel | None = None
     """
     Configuration for private clusters,
     clusters with private nodes. Structure is documented below.
     """
-    privateIpv6GoogleAccess: Optional[str] = None
+    privateIpv6GoogleAccess: str | None = None
     """
     The desired state of IPv6 connectivity to Google Services. By default, no private IPv6 access to or from Google Services (all access will be via IPv4).
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs. If it
     is not provided, the provider project is used.
     """
-    rbacBindingConfig: Optional[RbacBindingConfig] = None
+    rbacBindingConfig: RbacBindingConfig | None = None
     """
     RBACBindingConfig allows user to restrict ClusterRoleBindings an RoleBindings that can be created. Structure is documented below.
     """
-    releaseChannel: Optional[ReleaseChannel] = None
+    releaseChannel: ReleaseChannel | None = None
     """
     Configuration options for the Release channel
     feature, which provide more control over automatic upgrades of your GKE clusters.
@@ -3828,73 +3838,73 @@ class AtProvider(BaseModel):
     the default version for a channel. Instead, use the "UNSPECIFIED"
     channel. Structure is documented below.
     """
-    removeDefaultNodePool: Optional[bool] = None
+    removeDefaultNodePool: bool | None = None
     """
     If true, deletes the default node
     pool upon cluster creation. If you're using google_container_node_pool
     resources with no default node pool, this should be set to true, alongside
     setting initial_node_count to at least 1.
     """
-    resourceLabels: Optional[Dict[str, str]] = None
+    resourceLabels: dict[str, str] | None = None
     """
     The GCE resource labels (a map of key/value pairs) to be applied to the cluster.
     """
-    resourceUsageExportConfig: Optional[ResourceUsageExportConfig] = None
+    resourceUsageExportConfig: ResourceUsageExportConfig | None = None
     """
     Configuration for the
     ResourceUsageExportConfig feature.
     Structure is documented below.
     """
-    secretManagerConfig: Optional[SecretManagerConfig] = None
+    secretManagerConfig: SecretManagerConfig | None = None
     """
     Configuration for the
     SecretManagerConfig feature.
     Structure is documented below.
     """
-    securityPostureConfig: Optional[SecurityPostureConfig] = None
+    securityPostureConfig: SecurityPostureConfig | None = None
     """
     Enable/Disable Security Posture API features for the cluster. Structure is documented below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The server-defined URL for the resource.
     """
-    serviceExternalIpsConfig: Optional[ServiceExternalIpsConfig] = None
+    serviceExternalIpsConfig: ServiceExternalIpsConfig | None = None
     """
     Structure is documented below.
     """
-    servicesIpv4Cidr: Optional[str] = None
+    servicesIpv4Cidr: str | None = None
     """
     The IP address range of the Kubernetes services in this
     cluster, in CIDR
     notation (e.g. 1.2.3.4/29). Service addresses are typically put in the last
     /16 from the container CIDR.
     """
-    subnetwork: Optional[str] = None
+    subnetwork: str | None = None
     """
     The name or self_link of the Google Compute Engine
     subnetwork in which the cluster's instances are launched.
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource and default labels configured on the provider.
     """
-    tpuIpv4CidrBlock: Optional[str] = None
+    tpuIpv4CidrBlock: str | None = None
     """
     The IP address range of the Cloud TPUs in this cluster, in
     CIDR
     notation (e.g. 1.2.3.4/29).
     """
-    userManagedKeysConfig: Optional[UserManagedKeysConfig] = None
+    userManagedKeysConfig: UserManagedKeysConfig | None = None
     """
     The custom keys configuration of the cluster Structure is documented below.
     """
-    verticalPodAutoscaling: Optional[VerticalPodAutoscaling] = None
+    verticalPodAutoscaling: VerticalPodAutoscaling | None = None
     """
     Vertical Pod Autoscaling automatically adjusts the resources of pods controlled by it.
     Structure is documented below.
     """
-    workloadIdentityConfig: Optional[WorkloadIdentityConfig] = None
+    workloadIdentityConfig: WorkloadIdentityConfig | None = None
     """
     Workload Identity allows Kubernetes service accounts to act as a user-managed
     Google IAM Service Account.
@@ -3903,17 +3913,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -3935,12 +3945,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -3949,17 +3959,17 @@ class Status(BaseModel):
 
 
 class Cluster(BaseModel):
-    apiVersion: Optional[Literal['container.gcp.upbound.io/v1beta2']] = (
+    apiVersion: Literal['container.gcp.upbound.io/v1beta2'] | None = (
         'container.gcp.upbound.io/v1beta2'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Cluster']] = 'Cluster'
+    kind: Literal['Cluster'] | None = 'Cluster'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -3967,26 +3977,26 @@ class Cluster(BaseModel):
     """
     ClusterSpec defines the desired state of Cluster
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ClusterStatus defines the observed state of Cluster.
     """
 
 
 class ClusterList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Cluster]
+    items: list[Cluster]
     """
     List of clusters. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

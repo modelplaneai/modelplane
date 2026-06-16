@@ -3,39 +3,38 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ErrorResponseRuleItem(BaseModel):
-    matchResponseCodes: Optional[List[str]] = None
+    matchResponseCodes: list[str] | None = None
     """
     Valid values include:
     """
-    overrideResponseCode: Optional[float] = None
+    overrideResponseCode: float | None = None
     """
     The HTTP status code returned with the response containing the custom error content.
     If overrideResponseCode is not supplied, the same response code returned by the original backend bucket or backend service is returned to the client.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path portion of the URL.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -49,30 +48,30 @@ class ErrorServiceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ErrorServiceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class DefaultCustomErrorResponsePolicy(BaseModel):
-    errorResponseRule: Optional[List[ErrorResponseRuleItem]] = None
+    errorResponseRule: list[ErrorResponseRuleItem] | None = None
     """
     Specifies rules for returning error responses.
     In a given policy, if you specify rules for both a range of error codes as well as rules for specific error codes then rules with specific error codes have a higher priority.
@@ -80,7 +79,7 @@ class DefaultCustomErrorResponsePolicy(BaseModel):
     If the backend service returns a 401, then the rule for 401 will be applied. However if the backend service returns a 403, the rule for 4xx takes effect.
     Structure is documented below.
     """
-    errorService: Optional[str] = None
+    errorService: str | None = None
     """
     The full or partial URL to the BackendBucket resource that contains the custom error content. Examples are:
     https://www.googleapis.com/compute/v1/projects/project/global/backendBuckets/myBackendBucket
@@ -89,51 +88,51 @@ class DefaultCustomErrorResponsePolicy(BaseModel):
     If errorService is not specified at lower levels like pathMatcher, pathRule and routeRule, an errorService specified at a higher level in the UrlMap will be used. If UrlMap.defaultCustomErrorResponsePolicy contains one or more errorResponseRules[], it must specify errorService.
     If load balancer cannot reach the backendBucket, a simple Not Found Error will be returned, with the original response code (or overrideResponseCode if configured).
     """
-    errorServiceRef: Optional[ErrorServiceRef] = None
+    errorServiceRef: ErrorServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate errorService.
     """
-    errorServiceSelector: Optional[ErrorServiceSelector] = None
+    errorServiceSelector: ErrorServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate errorService.
     """
 
 
 class CorsPolicy(BaseModel):
-    allowCredentials: Optional[bool] = None
+    allowCredentials: bool | None = None
     """
     In response to a preflight request, setting this to true indicates that the
     actual request can include user credentials. This translates to the Access-
     Control-Allow-Credentials header. Defaults to false.
     """
-    allowHeaders: Optional[List[str]] = None
+    allowHeaders: list[str] | None = None
     """
     Specifies the content for the Access-Control-Allow-Headers header.
     """
-    allowMethods: Optional[List[str]] = None
+    allowMethods: list[str] | None = None
     """
     Specifies the content for the Access-Control-Allow-Methods header.
     """
-    allowOriginRegexes: Optional[List[str]] = None
+    allowOriginRegexes: list[str] | None = None
     """
     Specifies the regular expression patterns that match allowed origins. For
     regular expression grammar please see en.cppreference.com/w/cpp/regex/ecmascript
     An origin is allowed if it matches either allow_origins or allow_origin_regex.
     """
-    allowOrigins: Optional[List[str]] = None
+    allowOrigins: list[str] | None = None
     """
     Specifies the list of origins that will be allowed to do CORS requests. An
     origin is allowed if it matches either allow_origins or allow_origin_regex.
     """
-    disabled: Optional[bool] = None
+    disabled: bool | None = None
     """
     If true, specifies the CORS policy is disabled.
     """
-    exposeHeaders: Optional[List[str]] = None
+    exposeHeaders: list[str] | None = None
     """
     Specifies the content for the Access-Control-Expose-Headers header.
     """
-    maxAge: Optional[float] = None
+    maxAge: float | None = None
     """
     Specifies how long the results of a preflight request can be cached. This
     translates to the content for the Access-Control-Max-Age header.
@@ -141,12 +140,12 @@ class CorsPolicy(BaseModel):
 
 
 class Abort(BaseModel):
-    httpStatus: Optional[float] = None
+    httpStatus: float | None = None
     """
     The HTTP status code used to abort the request. The value must be between 200
     and 599 inclusive.
     """
-    percentage: Optional[float] = None
+    percentage: float | None = None
     """
     The percentage of traffic (connections/operations/requests) on which delay will
     be introduced as part of fault injection. The value must be between 0.0 and
@@ -155,13 +154,13 @@ class Abort(BaseModel):
 
 
 class FixedDelay(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond resolution. Durations
     less than one second are represented with a 0 seconds field and a positive
     nanos field. Must be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[str] = None
+    seconds: str | None = None
     """
     Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
     inclusive.
@@ -169,12 +168,12 @@ class FixedDelay(BaseModel):
 
 
 class Delay(BaseModel):
-    fixedDelay: Optional[FixedDelay] = None
+    fixedDelay: FixedDelay | None = None
     """
     Specifies the value of the fixed delay interval.
     Structure is documented below.
     """
-    percentage: Optional[float] = None
+    percentage: float | None = None
     """
     The percentage of traffic (connections/operations/requests) on which delay will
     be introduced as part of fault injection. The value must be between 0.0 and
@@ -183,13 +182,13 @@ class Delay(BaseModel):
 
 
 class FaultInjectionPolicy(BaseModel):
-    abort: Optional[Abort] = None
+    abort: Abort | None = None
     """
     The specification for how client requests are aborted as part of fault
     injection.
     Structure is documented below.
     """
-    delay: Optional[Delay] = None
+    delay: Delay | None = None
     """
     The specification for how client requests are delayed as part of fault
     injection, before being sent to a backend service.
@@ -198,13 +197,13 @@ class FaultInjectionPolicy(BaseModel):
 
 
 class MaxStreamDuration(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond resolution. Durations
     less than one second are represented with a 0 seconds field and a positive
     nanos field. Must be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[str] = None
+    seconds: str | None = None
     """
     Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
     inclusive.
@@ -216,53 +215,53 @@ class BackendServiceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class BackendServiceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class RequestMirrorPolicy(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
     headerActions specified as part of this backendServiceWeight.
     """
-    backendServiceRef: Optional[BackendServiceRef] = None
+    backendServiceRef: BackendServiceRef | None = None
     """
     Reference to a BackendService in compute to populate backendService.
     """
-    backendServiceSelector: Optional[BackendServiceSelector] = None
+    backendServiceSelector: BackendServiceSelector | None = None
     """
     Selector for a BackendService in compute to populate backendService.
     """
 
 
 class PerTryTimeout(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond resolution. Durations
     less than one second are represented with a 0 seconds field and a positive
     nanos field. Must be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[str] = None
+    seconds: str | None = None
     """
     Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
     inclusive.
@@ -270,29 +269,29 @@ class PerTryTimeout(BaseModel):
 
 
 class RetryPolicy(BaseModel):
-    numRetries: Optional[float] = None
+    numRetries: float | None = None
     """
     Specifies the allowed number retries. This number must be > 0.
     """
-    perTryTimeout: Optional[PerTryTimeout] = None
+    perTryTimeout: PerTryTimeout | None = None
     """
     Specifies a non-zero timeout per retry attempt.
     Structure is documented below.
     """
-    retryConditions: Optional[List[str]] = None
+    retryConditions: list[str] | None = None
     """
     Specifies one or more conditions when this retry rule applies. Valid values are:
     """
 
 
 class Timeout(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Span of time that's a fraction of a second at nanosecond resolution. Durations
     less than one second are represented with a 0 seconds field and a positive
     nanos field. Must be from 0 to 999,999,999 inclusive.
     """
-    seconds: Optional[str] = None
+    seconds: str | None = None
     """
     Span of time at a resolution of a second. Must be from 0 to 315,576,000,000
     inclusive.
@@ -300,13 +299,13 @@ class Timeout(BaseModel):
 
 
 class UrlRewrite(BaseModel):
-    hostRewrite: Optional[str] = None
+    hostRewrite: str | None = None
     """
     Prior to forwarding the request to the selected service, the request's host
     header is replaced with contents of hostRewrite. The value must be between 1 and
     255 characters.
     """
-    pathPrefixRewrite: Optional[str] = None
+    pathPrefixRewrite: str | None = None
     """
     Prior to forwarding the request to the selected backend service, the matching
     portion of the request's path is replaced by pathPrefixRewrite. The value must
@@ -315,15 +314,15 @@ class UrlRewrite(BaseModel):
 
 
 class RequestHeadersToAddItem(BaseModel):
-    headerName: Optional[str] = None
+    headerName: str | None = None
     """
     The name of the header.
     """
-    headerValue: Optional[str] = None
+    headerValue: str | None = None
     """
     The value of the header to add.
     """
-    replace: Optional[bool] = None
+    replace: bool | None = None
     """
     If false, headerValue is appended to any values that already exist for the
     header. If true, headerValue is set for the header, discarding any values that
@@ -332,15 +331,15 @@ class RequestHeadersToAddItem(BaseModel):
 
 
 class ResponseHeadersToAddItem(BaseModel):
-    headerName: Optional[str] = None
+    headerName: str | None = None
     """
     The name of the header.
     """
-    headerValue: Optional[str] = None
+    headerValue: str | None = None
     """
     The value of the header to add.
     """
-    replace: Optional[bool] = None
+    replace: bool | None = None
     """
     If false, headerValue is appended to any values that already exist for the
     header. If true, headerValue is set for the header, discarding any values that
@@ -349,23 +348,23 @@ class ResponseHeadersToAddItem(BaseModel):
 
 
 class HeaderAction(BaseModel):
-    requestHeadersToAdd: Optional[List[RequestHeadersToAddItem]] = None
+    requestHeadersToAdd: list[RequestHeadersToAddItem] | None = None
     """
     Headers to add to a matching request prior to forwarding the request to the
     backendService.
     Structure is documented below.
     """
-    requestHeadersToRemove: Optional[List[str]] = None
+    requestHeadersToRemove: list[str] | None = None
     """
     A list of header names for headers that need to be removed from the request
     prior to forwarding the request to the backendService.
     """
-    responseHeadersToAdd: Optional[List[ResponseHeadersToAddItem]] = None
+    responseHeadersToAdd: list[ResponseHeadersToAddItem] | None = None
     """
     Headers to add the response prior to sending the response back to the client.
     Structure is documented below.
     """
-    responseHeadersToRemove: Optional[List[str]] = None
+    responseHeadersToRemove: list[str] | None = None
     """
     A list of header names for headers that need to be removed from the response
     prior to sending the response back to the client.
@@ -373,20 +372,20 @@ class HeaderAction(BaseModel):
 
 
 class WeightedBackendService(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
     headerActions specified as part of this backendServiceWeight.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. headerAction specified here take effect before
     headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
     Structure is documented below.
     """
-    weight: Optional[float] = None
+    weight: float | None = None
     """
     Specifies the fraction of traffic sent to backendService, computed as weight /
     (sum of all weightedBackendService weights in routeAction) . The selection of a
@@ -398,13 +397,13 @@ class WeightedBackendService(BaseModel):
 
 
 class DefaultRouteAction(BaseModel):
-    corsPolicy: Optional[CorsPolicy] = None
+    corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see
     W3C Recommendation for Cross Origin Resource Sharing
     Structure is documented below.
     """
-    faultInjectionPolicy: Optional[FaultInjectionPolicy] = None
+    faultInjectionPolicy: FaultInjectionPolicy | None = None
     """
     The specification for fault injection introduced into traffic to test the resiliency of clients to backend service failure.
     As part of fault injection, when clients send requests to a backend service, delays can be introduced by Loadbalancer on a
@@ -413,7 +412,7 @@ class DefaultRouteAction(BaseModel):
     timeout and retryPolicy will be ignored by clients that are configured with a faultInjectionPolicy.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the maximum duration (timeout) for streams on the selected route.
     Unlike the Timeout field where the timeout duration starts from the time the request
@@ -422,31 +421,31 @@ class DefaultRouteAction(BaseModel):
     including all retries. A stream that does not complete in this duration is closed.
     Structure is documented below.
     """
-    requestMirrorPolicy: Optional[RequestMirrorPolicy] = None
+    requestMirrorPolicy: RequestMirrorPolicy | None = None
     """
     Specifies the policy on how requests intended for the route's backends are shadowed to a separate mirrored backend service.
     Loadbalancer does not wait for responses from the shadow service. Prior to sending traffic to the shadow service,
     the host / authority header is suffixed with -shadow.
     Structure is documented below.
     """
-    retryPolicy: Optional[RetryPolicy] = None
+    retryPolicy: RetryPolicy | None = None
     """
     Specifies the retry policy associated with this route.
     Structure is documented below.
     """
-    timeout: Optional[Timeout] = None
+    timeout: Timeout | None = None
     """
     Specifies the timeout for the selected route. Timeout is computed from the time the request has been
     fully processed (i.e. end-of-stream) up until the response has been completely processed. Timeout includes all retries.
     If not specified, will use the largest timeout among all backend services associated with the route.
     Structure is documented below.
     """
-    urlRewrite: Optional[UrlRewrite] = None
+    urlRewrite: UrlRewrite | None = None
     """
     The spec to modify the URL of the request, prior to forwarding the request to the matched service.
     Structure is documented below.
     """
-    weightedBackendServices: Optional[List[WeightedBackendService]] = None
+    weightedBackendServices: list[WeightedBackendService] | None = None
     """
     A list of weighted backend services to send traffic to when a route match occurs.
     The weights determine the fraction of traffic that flows to their corresponding backend service.
@@ -464,42 +463,42 @@ class DefaultServiceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class DefaultServiceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class DefaultUrlRedirect(BaseModel):
-    hostRedirect: Optional[str] = None
+    hostRedirect: str | None = None
     """
     The host that will be used in the redirect response instead of the one that was
     supplied in the request. The value must be between 1 and 255 characters.
     """
-    httpsRedirect: Optional[bool] = None
+    httpsRedirect: bool | None = None
     """
     If set to true, the URL scheme in the redirected request is set to https. If set to
     false, the URL scheme of the redirected request will remain the same as that of the
     request. This must only be set for UrlMaps used in TargetHttpProxys. Setting this
     true for TargetHttpsProxy is not permitted. The default is set to false.
     """
-    pathRedirect: Optional[str] = None
+    pathRedirect: str | None = None
     """
     The path that will be used in the redirect response instead of the one that was
     supplied in the request. pathRedirect cannot be supplied together with
@@ -507,7 +506,7 @@ class DefaultUrlRedirect(BaseModel):
     original request will be used for the redirect. The value must be between 1 and 1024
     characters.
     """
-    prefixRedirect: Optional[str] = None
+    prefixRedirect: str | None = None
     """
     The prefix that replaces the prefixMatch specified in the HttpRouteRuleMatch,
     retaining the remaining portion of the URL before redirecting the request.
@@ -515,11 +514,11 @@ class DefaultUrlRedirect(BaseModel):
     neither. If neither is supplied, the path of the original request will be used for
     the redirect. The value must be between 1 and 1024 characters.
     """
-    redirectResponseCode: Optional[str] = None
+    redirectResponseCode: str | None = None
     """
     The HTTP Status code to use for this RedirectAction. Supported values are:
     """
-    stripQuery: Optional[bool] = None
+    stripQuery: bool | None = None
     """
     If set to true, any accompanying query portion of the original URL is removed prior
     to redirecting the request. If set to false, the query portion of the original URL is
@@ -529,18 +528,18 @@ class DefaultUrlRedirect(BaseModel):
 
 
 class HostRuleItem(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create
     the resource.
     """
-    hosts: Optional[List[str]] = None
+    hosts: list[str] | None = None
     """
     The list of host patterns to match. They must be valid hostnames, except * will
     match any string of ([a-z0-9-.]*). In that case, * must be the first character
     and must be followed in the pattern by either - or ..
     """
-    pathMatcher: Optional[str] = None
+    pathMatcher: str | None = None
     """
     The name of the PathMatcher to use to match the path portion of the URL if the
     hostRule matches the URL's host portion.
@@ -548,13 +547,13 @@ class HostRuleItem(BaseModel):
 
 
 class DefaultRouteActionModel(BaseModel):
-    corsPolicy: Optional[CorsPolicy] = None
+    corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
     Recommendation for Cross Origin Resource Sharing
     Structure is documented below.
     """
-    faultInjectionPolicy: Optional[FaultInjectionPolicy] = None
+    faultInjectionPolicy: FaultInjectionPolicy | None = None
     """
     The specification for fault injection introduced into traffic to test the
     resiliency of clients to backend service failure. As part of fault injection,
@@ -565,7 +564,7 @@ class DefaultRouteActionModel(BaseModel):
     ignored by clients that are configured with a fault_injection_policy.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the maximum duration (timeout) for streams on the selected route.
     Unlike the Timeout field where the timeout duration starts from the time the request
@@ -574,7 +573,7 @@ class DefaultRouteActionModel(BaseModel):
     including all retries. A stream that does not complete in this duration is closed.
     Structure is documented below.
     """
-    requestMirrorPolicy: Optional[RequestMirrorPolicy] = None
+    requestMirrorPolicy: RequestMirrorPolicy | None = None
     """
     Specifies the policy on how requests intended for the route's backends are
     shadowed to a separate mirrored backend service. Loadbalancer does not wait for
@@ -582,12 +581,12 @@ class DefaultRouteActionModel(BaseModel):
     service, the host / authority header is suffixed with -shadow.
     Structure is documented below.
     """
-    retryPolicy: Optional[RetryPolicy] = None
+    retryPolicy: RetryPolicy | None = None
     """
     Specifies the retry policy associated with this route.
     Structure is documented below.
     """
-    timeout: Optional[Timeout] = None
+    timeout: Timeout | None = None
     """
     Specifies the timeout for the selected route. Timeout is computed from the time
     the request is has been fully processed (i.e. end-of-stream) up until the
@@ -595,13 +594,13 @@ class DefaultRouteActionModel(BaseModel):
     specified, the default value is 15 seconds.
     Structure is documented below.
     """
-    urlRewrite: Optional[UrlRewrite] = None
+    urlRewrite: UrlRewrite | None = None
     """
     The spec to modify the URL of the request, prior to forwarding the request to
     the matched service
     Structure is documented below.
     """
-    weightedBackendServices: Optional[List[WeightedBackendService]] = None
+    weightedBackendServices: list[WeightedBackendService] | None = None
     """
     A list of weighted backend services to send traffic to when a route match
     occurs. The weights determine the fraction of traffic that flows to their
@@ -616,13 +615,13 @@ class DefaultRouteActionModel(BaseModel):
 
 
 class DefaultUrlRedirectModel(BaseModel):
-    hostRedirect: Optional[str] = None
+    hostRedirect: str | None = None
     """
     The host that will be used in the redirect response instead of the one
     that was supplied in the request. The value must be between 1 and 255
     characters.
     """
-    httpsRedirect: Optional[bool] = None
+    httpsRedirect: bool | None = None
     """
     If set to true, the URL scheme in the redirected request is set to https.
     If set to false, the URL scheme of the redirected request will remain the
@@ -630,7 +629,7 @@ class DefaultUrlRedirectModel(BaseModel):
     TargetHttpProxys. Setting this true for TargetHttpsProxy is not
     permitted. The default is set to false.
     """
-    pathRedirect: Optional[str] = None
+    pathRedirect: str | None = None
     """
     The path that will be used in the redirect response instead of the one
     that was supplied in the request. pathRedirect cannot be supplied
@@ -638,7 +637,7 @@ class DefaultUrlRedirectModel(BaseModel):
     supplied, the path of the original request will be used for the redirect.
     The value must be between 1 and 1024 characters.
     """
-    prefixRedirect: Optional[str] = None
+    prefixRedirect: str | None = None
     """
     The prefix that replaces the prefixMatch specified in the
     HttpRouteRuleMatch, retaining the remaining portion of the URL before
@@ -647,11 +646,11 @@ class DefaultUrlRedirectModel(BaseModel):
     path of the original request will be used for the redirect. The value
     must be between 1 and 1024 characters.
     """
-    redirectResponseCode: Optional[str] = None
+    redirectResponseCode: str | None = None
     """
     The HTTP Status code to use for this RedirectAction. Supported values are:
     """
-    stripQuery: Optional[bool] = None
+    stripQuery: bool | None = None
     """
     If set to true, any accompanying query portion of the original URL is
     removed prior to redirecting the request. If set to false, the query
@@ -661,7 +660,7 @@ class DefaultUrlRedirectModel(BaseModel):
 
 
 class CustomErrorResponsePolicy(BaseModel):
-    errorResponseRule: Optional[List[ErrorResponseRuleItem]] = None
+    errorResponseRule: list[ErrorResponseRuleItem] | None = None
     """
     Specifies rules for returning error responses.
     In a given policy, if you specify rules for both a range of error codes as well as rules for specific error codes then rules with specific error codes have a higher priority.
@@ -669,7 +668,7 @@ class CustomErrorResponsePolicy(BaseModel):
     If the backend service returns a 401, then the rule for 401 will be applied. However if the backend service returns a 403, the rule for 4xx takes effect.
     Structure is documented below.
     """
-    errorService: Optional[str] = None
+    errorService: str | None = None
     """
     The full or partial URL to the BackendBucket resource that contains the custom error content. Examples are:
     https://www.googleapis.com/compute/v1/projects/project/global/backendBuckets/myBackendBucket
@@ -678,39 +677,39 @@ class CustomErrorResponsePolicy(BaseModel):
     If errorService is not specified at lower levels like pathMatcher, pathRule and routeRule, an errorService specified at a higher level in the UrlMap will be used. If UrlMap.defaultCustomErrorResponsePolicy contains one or more errorResponseRules[], it must specify errorService.
     If load balancer cannot reach the backendBucket, a simple Not Found Error will be returned, with the original response code (or overrideResponseCode if configured).
     """
-    errorServiceRef: Optional[ErrorServiceRef] = None
+    errorServiceRef: ErrorServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate errorService.
     """
-    errorServiceSelector: Optional[ErrorServiceSelector] = None
+    errorServiceSelector: ErrorServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate errorService.
     """
 
 
 class WeightedBackendServiceModel(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
     headerActions specified as part of this backendServiceWeight.
     """
-    backendServiceRef: Optional[BackendServiceRef] = None
+    backendServiceRef: BackendServiceRef | None = None
     """
     Reference to a BackendService in compute to populate backendService.
     """
-    backendServiceSelector: Optional[BackendServiceSelector] = None
+    backendServiceSelector: BackendServiceSelector | None = None
     """
     Selector for a BackendService in compute to populate backendService.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. headerAction specified here take effect before
     headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
     Structure is documented below.
     """
-    weight: Optional[float] = None
+    weight: float | None = None
     """
     Specifies the fraction of traffic sent to backendService, computed as weight /
     (sum of all weightedBackendService weights in routeAction) . The selection of a
@@ -722,13 +721,13 @@ class WeightedBackendServiceModel(BaseModel):
 
 
 class RouteAction(BaseModel):
-    corsPolicy: Optional[CorsPolicy] = None
+    corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
     Recommendation for Cross Origin Resource Sharing
     Structure is documented below.
     """
-    faultInjectionPolicy: Optional[FaultInjectionPolicy] = None
+    faultInjectionPolicy: FaultInjectionPolicy | None = None
     """
     The specification for fault injection introduced into traffic to test the
     resiliency of clients to backend service failure. As part of fault injection,
@@ -739,7 +738,7 @@ class RouteAction(BaseModel):
     ignored by clients that are configured with a fault_injection_policy.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the maximum duration (timeout) for streams on the selected route.
     Unlike the Timeout field where the timeout duration starts from the time the request
@@ -748,7 +747,7 @@ class RouteAction(BaseModel):
     including all retries. A stream that does not complete in this duration is closed.
     Structure is documented below.
     """
-    requestMirrorPolicy: Optional[RequestMirrorPolicy] = None
+    requestMirrorPolicy: RequestMirrorPolicy | None = None
     """
     Specifies the policy on how requests intended for the route's backends are
     shadowed to a separate mirrored backend service. Loadbalancer does not wait for
@@ -756,12 +755,12 @@ class RouteAction(BaseModel):
     service, the host / authority header is suffixed with -shadow.
     Structure is documented below.
     """
-    retryPolicy: Optional[RetryPolicy] = None
+    retryPolicy: RetryPolicy | None = None
     """
     Specifies the retry policy associated with this route.
     Structure is documented below.
     """
-    timeout: Optional[Timeout] = None
+    timeout: Timeout | None = None
     """
     Specifies the timeout for the selected route. Timeout is computed from the time
     the request is has been fully processed (i.e. end-of-stream) up until the
@@ -769,13 +768,13 @@ class RouteAction(BaseModel):
     specified, the default value is 15 seconds.
     Structure is documented below.
     """
-    urlRewrite: Optional[UrlRewrite] = None
+    urlRewrite: UrlRewrite | None = None
     """
     The spec to modify the URL of the request, prior to forwarding the request to
     the matched service
     Structure is documented below.
     """
-    weightedBackendServices: Optional[List[WeightedBackendServiceModel]] = None
+    weightedBackendServices: list[WeightedBackendServiceModel] | None = None
     """
     A list of weighted backend services to send traffic to when a route match
     occurs. The weights determine the fraction of traffic that flows to their
@@ -794,36 +793,36 @@ class ServiceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ServiceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class UrlRedirect(BaseModel):
-    hostRedirect: Optional[str] = None
+    hostRedirect: str | None = None
     """
     The host that will be used in the redirect response instead of the one
     that was supplied in the request. The value must be between 1 and 255
     characters.
     """
-    httpsRedirect: Optional[bool] = None
+    httpsRedirect: bool | None = None
     """
     If set to true, the URL scheme in the redirected request is set to https.
     If set to false, the URL scheme of the redirected request will remain the
@@ -831,7 +830,7 @@ class UrlRedirect(BaseModel):
     TargetHttpProxys. Setting this true for TargetHttpsProxy is not
     permitted. The default is set to false.
     """
-    pathRedirect: Optional[str] = None
+    pathRedirect: str | None = None
     """
     The path that will be used in the redirect response instead of the one
     that was supplied in the request. pathRedirect cannot be supplied
@@ -839,7 +838,7 @@ class UrlRedirect(BaseModel):
     supplied, the path of the original request will be used for the redirect.
     The value must be between 1 and 1024 characters.
     """
-    prefixRedirect: Optional[str] = None
+    prefixRedirect: str | None = None
     """
     The prefix that replaces the prefixMatch specified in the
     HttpRouteRuleMatch, retaining the remaining portion of the URL before
@@ -848,11 +847,11 @@ class UrlRedirect(BaseModel):
     path of the original request will be used for the redirect. The value
     must be between 1 and 1024 characters.
     """
-    redirectResponseCode: Optional[str] = None
+    redirectResponseCode: str | None = None
     """
     The HTTP Status code to use for this RedirectAction. Supported values are:
     """
-    stripQuery: Optional[bool] = None
+    stripQuery: bool | None = None
     """
     If set to true, any accompanying query portion of the original URL is
     removed prior to redirecting the request. If set to false, the query
@@ -862,19 +861,19 @@ class UrlRedirect(BaseModel):
 
 
 class PathRuleItem(BaseModel):
-    customErrorResponsePolicy: Optional[CustomErrorResponsePolicy] = None
+    customErrorResponsePolicy: CustomErrorResponsePolicy | None = None
     """
     customErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     Structure is documented below.
     """
-    paths: Optional[List[str]] = None
+    paths: list[str] | None = None
     """
     The list of path patterns to match. Each must start with / and the only place a
     * is allowed is at the end following a /. The string fed to the path matcher
     does not include any text after the first ? or #, and those chars are not
     allowed here.
     """
-    routeAction: Optional[RouteAction] = None
+    routeAction: RouteAction | None = None
     """
     In response to a matching matchRule, the load balancer performs advanced routing
     actions like URL rewrites, header transformations, etc. prior to forwarding the
@@ -884,19 +883,19 @@ class PathRuleItem(BaseModel):
     or urlRedirect must be set.
     Structure is documented below.
     """
-    service: Optional[str] = None
+    service: str | None = None
     """
     The backend service or backend bucket link that should be matched by this test.
     """
-    serviceRef: Optional[ServiceRef] = None
+    serviceRef: ServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate service.
     """
-    serviceSelector: Optional[ServiceSelector] = None
+    serviceSelector: ServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate service.
     """
-    urlRedirect: Optional[UrlRedirect] = None
+    urlRedirect: UrlRedirect | None = None
     """
     When this rule is matched, the request is redirected to a URL specified by
     urlRedirect. If urlRedirect is specified, service or routeAction must not be
@@ -906,7 +905,7 @@ class PathRuleItem(BaseModel):
 
 
 class CustomErrorResponsePolicyModel(BaseModel):
-    errorResponseRule: Optional[List[ErrorResponseRuleItem]] = None
+    errorResponseRule: list[ErrorResponseRuleItem] | None = None
     """
     Specifies rules for returning error responses.
     In a given policy, if you specify rules for both a range of error codes as well as rules for specific error codes then rules with specific error codes have a higher priority.
@@ -914,7 +913,7 @@ class CustomErrorResponsePolicyModel(BaseModel):
     If the backend service returns a 401, then the rule for 401 will be applied. However if the backend service returns a 403, the rule for 4xx takes effect.
     Structure is documented below.
     """
-    errorService: Optional[str] = None
+    errorService: str | None = None
     """
     The full or partial URL to the BackendBucket resource that contains the custom error content. Examples are:
     https://www.googleapis.com/compute/v1/projects/project/global/backendBuckets/myBackendBucket
@@ -926,47 +925,47 @@ class CustomErrorResponsePolicyModel(BaseModel):
 
 
 class RangeMatch(BaseModel):
-    rangeEnd: Optional[float] = None
+    rangeEnd: float | None = None
     """
     The end of the range (exclusive).
     """
-    rangeStart: Optional[float] = None
+    rangeStart: float | None = None
     """
     The start of the range (inclusive).
     """
 
 
 class HeaderMatch(BaseModel):
-    exactMatch: Optional[str] = None
+    exactMatch: str | None = None
     """
     The queryParameterMatch matches if the value of the parameter exactly matches
     the contents of exactMatch. Only one of presentMatch, exactMatch and regexMatch
     must be set.
     """
-    headerName: Optional[str] = None
+    headerName: str | None = None
     """
     The name of the header.
     """
-    invertMatch: Optional[bool] = None
+    invertMatch: bool | None = None
     """
     If set to false, the headerMatch is considered a match if the match criteria
     above are met. If set to true, the headerMatch is considered a match if the
     match criteria above are NOT met. Defaults to false.
     """
-    prefixMatch: Optional[str] = None
+    prefixMatch: str | None = None
     """
     For satisfying the matchRule condition, the request's path must begin with the
     specified prefixMatch. prefixMatch must begin with a /. The value must be
     between 1 and 1024 characters. Only one of prefixMatch, fullPathMatch or
     regexMatch must be specified.
     """
-    presentMatch: Optional[bool] = None
+    presentMatch: bool | None = None
     """
     Specifies that the queryParameterMatch matches if the request contains the query
     parameter, irrespective of whether the parameter has a value or not. Only one of
     presentMatch, exactMatch and regexMatch must be set.
     """
-    rangeMatch: Optional[RangeMatch] = None
+    rangeMatch: RangeMatch | None = None
     """
     The header value must be an integer and its value must be in the range specified
     in rangeMatch. If the header does not contain an integer, number or is empty,
@@ -976,14 +975,14 @@ class HeaderMatch(BaseModel):
     must be set.
     Structure is documented below.
     """
-    regexMatch: Optional[str] = None
+    regexMatch: str | None = None
     """
     The queryParameterMatch matches if the value of the parameter matches the
     regular expression specified by regexMatch. For the regular expression grammar,
     please see en.cppreference.com/w/cpp/regex/ecmascript  Only one of presentMatch,
     exactMatch and regexMatch must be set.
     """
-    suffixMatch: Optional[str] = None
+    suffixMatch: str | None = None
     """
     The value of the header must end with the contents of suffixMatch. Only one of
     exactMatch, prefixMatch, suffixMatch, regexMatch, presentMatch or rangeMatch
@@ -992,26 +991,26 @@ class HeaderMatch(BaseModel):
 
 
 class FilterLabel(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the query parameter to match. The query parameter must exist in the
     request, in the absence of which the request match fails.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Header value.
     """
 
 
 class MetadataFilter(BaseModel):
-    filterLabels: Optional[List[FilterLabel]] = None
+    filterLabels: list[FilterLabel] | None = None
     """
     The list of label value pairs that must match labels in the provided metadata
     based on filterMatchCriteria  This list must not be empty and can have at the
     most 64 entries.
     Structure is documented below.
     """
-    filterMatchCriteria: Optional[str] = None
+    filterMatchCriteria: str | None = None
     """
     Specifies how individual filterLabel matches within the list of filterLabels
     contribute towards the overall metadataFilter match. Supported values are:
@@ -1019,24 +1018,24 @@ class MetadataFilter(BaseModel):
 
 
 class QueryParameterMatch(BaseModel):
-    exactMatch: Optional[str] = None
+    exactMatch: str | None = None
     """
     The queryParameterMatch matches if the value of the parameter exactly matches
     the contents of exactMatch. Only one of presentMatch, exactMatch and regexMatch
     must be set.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the query parameter to match. The query parameter must exist in the
     request, in the absence of which the request match fails.
     """
-    presentMatch: Optional[bool] = None
+    presentMatch: bool | None = None
     """
     Specifies that the queryParameterMatch matches if the request contains the query
     parameter, irrespective of whether the parameter has a value or not. Only one of
     presentMatch, exactMatch and regexMatch must be set.
     """
-    regexMatch: Optional[str] = None
+    regexMatch: str | None = None
     """
     The queryParameterMatch matches if the value of the parameter matches the
     regular expression specified by regexMatch. For the regular expression grammar,
@@ -1046,7 +1045,7 @@ class QueryParameterMatch(BaseModel):
 
 
 class MatchRule(BaseModel):
-    fullPathMatch: Optional[str] = None
+    fullPathMatch: str | None = None
     """
     For satisfying the matchRule condition, the path of the request must exactly
     match the value specified in fullPathMatch after removing any query parameters
@@ -1054,18 +1053,18 @@ class MatchRule(BaseModel):
     and 1024 characters. Only one of prefixMatch, fullPathMatch or regexMatch must
     be specified.
     """
-    headerMatches: Optional[List[HeaderMatch]] = None
+    headerMatches: list[HeaderMatch] | None = None
     """
     Specifies a list of header match criteria, all of which must match corresponding
     headers in the request.
     Structure is documented below.
     """
-    ignoreCase: Optional[bool] = None
+    ignoreCase: bool | None = None
     """
     Specifies that prefixMatch and fullPathMatch matches are case sensitive.
     Defaults to false.
     """
-    metadataFilters: Optional[List[MetadataFilter]] = None
+    metadataFilters: list[MetadataFilter] | None = None
     """
     Opaque filter criteria used by Loadbalancer to restrict routing configuration to
     a limited set xDS compliant clients. In their xDS requests to Loadbalancer, xDS
@@ -1080,7 +1079,7 @@ class MatchRule(BaseModel):
     loadBalancingScheme set to INTERNAL_SELF_MANAGED.
     Structure is documented below.
     """
-    pathTemplateMatch: Optional[str] = None
+    pathTemplateMatch: str | None = None
     """
     For satisfying the matchRule condition, the path of the request
     must match the wildcard pattern specified in pathTemplateMatch
@@ -1091,20 +1090,20 @@ class MatchRule(BaseModel):
     have at most 5 wildcard operators and at most 5 variable
     captures in total.
     """
-    prefixMatch: Optional[str] = None
+    prefixMatch: str | None = None
     """
     For satisfying the matchRule condition, the request's path must begin with the
     specified prefixMatch. prefixMatch must begin with a /. The value must be
     between 1 and 1024 characters. Only one of prefixMatch, fullPathMatch or
     regexMatch must be specified.
     """
-    queryParameterMatches: Optional[List[QueryParameterMatch]] = None
+    queryParameterMatches: list[QueryParameterMatch] | None = None
     """
     Specifies a list of query parameter match criteria, all of which must match
     corresponding query parameters in the request.
     Structure is documented below.
     """
-    regexMatch: Optional[str] = None
+    regexMatch: str | None = None
     """
     The queryParameterMatch matches if the value of the parameter matches the
     regular expression specified by regexMatch. For the regular expression grammar,
@@ -1114,7 +1113,7 @@ class MatchRule(BaseModel):
 
 
 class RequestMirrorPolicyModel(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
@@ -1123,19 +1122,19 @@ class RequestMirrorPolicyModel(BaseModel):
 
 
 class UrlRewriteModel(BaseModel):
-    hostRewrite: Optional[str] = None
+    hostRewrite: str | None = None
     """
     Prior to forwarding the request to the selected service, the request's host
     header is replaced with contents of hostRewrite. The value must be between 1 and
     255 characters.
     """
-    pathPrefixRewrite: Optional[str] = None
+    pathPrefixRewrite: str | None = None
     """
     Prior to forwarding the request to the selected backend service, the matching
     portion of the request's path is replaced by pathPrefixRewrite. The value must
     be between 1 and 1024 characters.
     """
-    pathTemplateRewrite: Optional[str] = None
+    pathTemplateRewrite: str | None = None
     """
     Prior to forwarding the request to the selected origin, if the
     request matched a pathTemplateMatch, the matching portion of the
@@ -1152,20 +1151,20 @@ class UrlRewriteModel(BaseModel):
 
 
 class WeightedBackendServiceModel1(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
     headerActions specified as part of this backendServiceWeight.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. headerAction specified here take effect before
     headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
     Structure is documented below.
     """
-    weight: Optional[float] = None
+    weight: float | None = None
     """
     Specifies the fraction of traffic sent to backendService, computed as weight /
     (sum of all weightedBackendService weights in routeAction) . The selection of a
@@ -1177,24 +1176,24 @@ class WeightedBackendServiceModel1(BaseModel):
 
 
 class RouteRule(BaseModel):
-    customErrorResponsePolicy: Optional[CustomErrorResponsePolicyModel] = None
+    customErrorResponsePolicy: CustomErrorResponsePolicyModel | None = None
     """
     customErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     Structure is documented below.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. headerAction specified here take effect before
     headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
     Structure is documented below.
     """
-    matchRules: Optional[List[MatchRule]] = None
+    matchRules: list[MatchRule] | None = None
     """
     The rules for determining a match.
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     For routeRules within a given pathMatcher, priority determines the order
     in which load balancer will interpret routeRules. RouteRules are evaluated
@@ -1210,7 +1209,7 @@ class RouteRule(BaseModel):
     you could add rules numbered from 6 to 8, 10 to 11, and 13 to 15 in the
     future without any impact on existing rules.
     """
-    routeAction: Optional[RouteAction] = None
+    routeAction: RouteAction | None = None
     """
     In response to a matching matchRule, the load balancer performs advanced routing
     actions like URL rewrites, header transformations, etc. prior to forwarding the
@@ -1220,19 +1219,19 @@ class RouteRule(BaseModel):
     or urlRedirect must be set.
     Structure is documented below.
     """
-    service: Optional[str] = None
+    service: str | None = None
     """
     The backend service or backend bucket link that should be matched by this test.
     """
-    serviceRef: Optional[ServiceRef] = None
+    serviceRef: ServiceRef | None = None
     """
     Reference to a BackendService in compute to populate service.
     """
-    serviceSelector: Optional[ServiceSelector] = None
+    serviceSelector: ServiceSelector | None = None
     """
     Selector for a BackendService in compute to populate service.
     """
-    urlRedirect: Optional[UrlRedirect] = None
+    urlRedirect: UrlRedirect | None = None
     """
     When this rule is matched, the request is redirected to a URL specified by
     urlRedirect. If urlRedirect is specified, service or routeAction must not be
@@ -1242,7 +1241,7 @@ class RouteRule(BaseModel):
 
 
 class PathMatcherItem(BaseModel):
-    defaultCustomErrorResponsePolicy: Optional[DefaultCustomErrorResponsePolicy] = None
+    defaultCustomErrorResponsePolicy: DefaultCustomErrorResponsePolicy | None = None
     """
     defaultCustomErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     This policy takes effect at the PathMatcher level and applies only when no policy has been defined for the error code at lower levels like RouteRule and PathRule within this PathMatcher. If an error code does not have a policy defined in defaultCustomErrorResponsePolicy, then a policy defined for the error code in UrlMap.defaultCustomErrorResponsePolicy takes effect.
@@ -1254,7 +1253,7 @@ class PathMatcherItem(BaseModel):
     defaultCustomErrorResponsePolicy is supported only for global external Application Load Balancers.
     Structure is documented below.
     """
-    defaultRouteAction: Optional[DefaultRouteActionModel] = None
+    defaultRouteAction: DefaultRouteActionModel | None = None
     """
     defaultRouteAction takes effect when none of the pathRules or routeRules match. The load balancer performs
     advanced routing actions like URL rewrites, header transformations, etc. prior to forwarding the request
@@ -1263,42 +1262,42 @@ class PathMatcherItem(BaseModel):
     Only one of defaultRouteAction or defaultUrlRedirect must be set.
     Structure is documented below.
     """
-    defaultService: Optional[str] = None
+    defaultService: str | None = None
     """
     The backend service or backend bucket to use when none of the given paths match.
     """
-    defaultServiceRef: Optional[DefaultServiceRef] = None
+    defaultServiceRef: DefaultServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate defaultService.
     """
-    defaultServiceSelector: Optional[DefaultServiceSelector] = None
+    defaultServiceSelector: DefaultServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate defaultService.
     """
-    defaultUrlRedirect: Optional[DefaultUrlRedirectModel] = None
+    defaultUrlRedirect: DefaultUrlRedirectModel | None = None
     """
     When none of the specified hostRules match, the request is redirected to a URL specified
     by defaultUrlRedirect. If defaultUrlRedirect is specified, defaultService or
     defaultRouteAction must not be set.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create
     the resource.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. HeaderAction specified here are applied after the
     matching HttpRouteRule HeaderAction and before the HeaderAction in the UrlMap
     Structure is documented below.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name to which this PathMatcher is referred by the HostRule.
     """
-    pathRule: Optional[List[PathRuleItem]] = None
+    pathRule: list[PathRuleItem] | None = None
     """
     The list of path rules. Use this list instead of routeRules when routing based
     on simple path matching is all that's required. The order by which path rules
@@ -1308,7 +1307,7 @@ class PathMatcherItem(BaseModel):
     given pathMatcher, only one of pathRules or routeRules must be set.
     Structure is documented below.
     """
-    routeRules: Optional[List[RouteRule]] = None
+    routeRules: list[RouteRule] | None = None
     """
     The list of ordered HTTP route rules. Use this list instead of pathRules when
     advanced route matching and routing actions are desired. The order of specifying
@@ -1321,63 +1320,63 @@ class PathMatcherItem(BaseModel):
 
 
 class Header(BaseModel):
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the query parameter to match. The query parameter must exist in the
     request, in the absence of which the request match fails.
     """
-    value: Optional[str] = None
+    value: str | None = None
     """
     Header value.
     """
 
 
 class TestItem(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description of this test case.
     """
-    expectedOutputUrl: Optional[str] = None
+    expectedOutputUrl: str | None = None
     """
     The expected output URL evaluated by the load balancer containing the scheme, host, path and query parameters.
     For rules that forward requests to backends, the test passes only when expectedOutputUrl matches the request forwarded by the load balancer to backends. For rules with urlRewrite, the test verifies that the forwarded request matches hostRewrite and pathPrefixRewrite in the urlRewrite action. When service is specified, expectedOutputUrl`s scheme is ignored.
     For rules with urlRedirect, the test passes only if expectedOutputUrl matches the URL in the load balancer's redirect response. If urlRedirect specifies httpsRedirect, the test passes only if the scheme in expectedOutputUrl is also set to HTTPS. If urlRedirect specifies stripQuery, the test passes only if expectedOutputUrl does not contain any query parameters.
     expectedOutputUrl is optional when service is specified.
     """
-    expectedRedirectResponseCode: Optional[float] = None
+    expectedRedirectResponseCode: float | None = None
     """
     For rules with urlRedirect, the test passes only if expectedRedirectResponseCode matches the HTTP status code in load balancer's redirect response.
     expectedRedirectResponseCode cannot be set when service is set.
     """
-    headers: Optional[List[Header]] = None
+    headers: list[Header] | None = None
     """
     HTTP headers for this request.
     Structure is documented below.
     """
-    host: Optional[str] = None
+    host: str | None = None
     """
     Host portion of the URL.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path portion of the URL.
     """
-    service: Optional[str] = None
+    service: str | None = None
     """
     The backend service or backend bucket link that should be matched by this test.
     """
-    serviceRef: Optional[ServiceRef] = None
+    serviceRef: ServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate service.
     """
-    serviceSelector: Optional[ServiceSelector] = None
+    serviceSelector: ServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate service.
     """
 
 
 class ForProvider(BaseModel):
-    defaultCustomErrorResponsePolicy: Optional[DefaultCustomErrorResponsePolicy] = None
+    defaultCustomErrorResponsePolicy: DefaultCustomErrorResponsePolicy | None = None
     """
     defaultCustomErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     This policy takes effect at the PathMatcher level and applies only when no policy has been defined for the error code at lower levels like RouteRule and PathRule within this PathMatcher. If an error code does not have a policy defined in defaultCustomErrorResponsePolicy, then a policy defined for the error code in UrlMap.defaultCustomErrorResponsePolicy takes effect.
@@ -1389,7 +1388,7 @@ class ForProvider(BaseModel):
     defaultCustomErrorResponsePolicy is supported only for global external Application Load Balancers.
     Structure is documented below.
     """
-    defaultRouteAction: Optional[DefaultRouteAction] = None
+    defaultRouteAction: DefaultRouteAction | None = None
     """
     defaultRouteAction takes effect when none of the hostRules match. The load balancer performs advanced routing actions
     like URL rewrites, header transformations, etc. prior to forwarding the request to the selected backend.
@@ -1398,53 +1397,53 @@ class ForProvider(BaseModel):
     Only one of defaultRouteAction or defaultUrlRedirect must be set.
     Structure is documented below.
     """
-    defaultService: Optional[str] = None
+    defaultService: str | None = None
     """
     The backend service or backend bucket to use when none of the given rules match.
     """
-    defaultServiceRef: Optional[DefaultServiceRef] = None
+    defaultServiceRef: DefaultServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate defaultService.
     """
-    defaultServiceSelector: Optional[DefaultServiceSelector] = None
+    defaultServiceSelector: DefaultServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate defaultService.
     """
-    defaultUrlRedirect: Optional[DefaultUrlRedirect] = None
+    defaultUrlRedirect: DefaultUrlRedirect | None = None
     """
     When none of the specified hostRules match, the request is redirected to a URL specified
     by defaultUrlRedirect. If defaultUrlRedirect is specified, defaultService or
     defaultRouteAction must not be set.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create
     the resource.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. The headerAction specified here take effect after
     headerAction specified under pathMatcher.
     Structure is documented below.
     """
-    hostRule: Optional[List[HostRuleItem]] = None
+    hostRule: list[HostRuleItem] | None = None
     """
     The list of HostRules to use against the URL.
     Structure is documented below.
     """
-    pathMatcher: Optional[List[PathMatcherItem]] = None
+    pathMatcher: list[PathMatcherItem] | None = None
     """
     The list of named PathMatchers to use against the URL.
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    test: Optional[List[TestItem]] = None
+    test: list[TestItem] | None = None
     """
     The list of expected URL mapping tests. Request to update this UrlMap will
     succeed only if all of the test cases pass. You can specify a maximum of 100
@@ -1454,30 +1453,30 @@ class ForProvider(BaseModel):
 
 
 class RequestMirrorPolicyModel1(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
     headerActions specified as part of this backendServiceWeight.
     """
-    backendServiceRef: Optional[BackendServiceRef] = None
+    backendServiceRef: BackendServiceRef | None = None
     """
     Reference to a BackendService in compute to populate backendService.
     """
-    backendServiceSelector: Optional[BackendServiceSelector] = None
+    backendServiceSelector: BackendServiceSelector | None = None
     """
     Selector for a BackendService in compute to populate backendService.
     """
 
 
 class UrlRewriteModel1(BaseModel):
-    hostRewrite: Optional[str] = None
+    hostRewrite: str | None = None
     """
     Prior to forwarding the request to the selected service, the request's host
     header is replaced with contents of hostRewrite. The value must be between 1 and
     255 characters.
     """
-    pathPrefixRewrite: Optional[str] = None
+    pathPrefixRewrite: str | None = None
     """
     Prior to forwarding the request to the selected backend service, the matching
     portion of the request's path is replaced by pathPrefixRewrite. The value must
@@ -1486,13 +1485,13 @@ class UrlRewriteModel1(BaseModel):
 
 
 class DefaultRouteActionModel1(BaseModel):
-    corsPolicy: Optional[CorsPolicy] = None
+    corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see
     W3C Recommendation for Cross Origin Resource Sharing
     Structure is documented below.
     """
-    faultInjectionPolicy: Optional[FaultInjectionPolicy] = None
+    faultInjectionPolicy: FaultInjectionPolicy | None = None
     """
     The specification for fault injection introduced into traffic to test the resiliency of clients to backend service failure.
     As part of fault injection, when clients send requests to a backend service, delays can be introduced by Loadbalancer on a
@@ -1501,7 +1500,7 @@ class DefaultRouteActionModel1(BaseModel):
     timeout and retryPolicy will be ignored by clients that are configured with a faultInjectionPolicy.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the maximum duration (timeout) for streams on the selected route.
     Unlike the Timeout field where the timeout duration starts from the time the request
@@ -1510,31 +1509,31 @@ class DefaultRouteActionModel1(BaseModel):
     including all retries. A stream that does not complete in this duration is closed.
     Structure is documented below.
     """
-    requestMirrorPolicy: Optional[RequestMirrorPolicyModel1] = None
+    requestMirrorPolicy: RequestMirrorPolicyModel1 | None = None
     """
     Specifies the policy on how requests intended for the route's backends are shadowed to a separate mirrored backend service.
     Loadbalancer does not wait for responses from the shadow service. Prior to sending traffic to the shadow service,
     the host / authority header is suffixed with -shadow.
     Structure is documented below.
     """
-    retryPolicy: Optional[RetryPolicy] = None
+    retryPolicy: RetryPolicy | None = None
     """
     Specifies the retry policy associated with this route.
     Structure is documented below.
     """
-    timeout: Optional[Timeout] = None
+    timeout: Timeout | None = None
     """
     Specifies the timeout for the selected route. Timeout is computed from the time the request has been
     fully processed (i.e. end-of-stream) up until the response has been completely processed. Timeout includes all retries.
     If not specified, will use the largest timeout among all backend services associated with the route.
     Structure is documented below.
     """
-    urlRewrite: Optional[UrlRewriteModel1] = None
+    urlRewrite: UrlRewriteModel1 | None = None
     """
     The spec to modify the URL of the request, prior to forwarding the request to the matched service.
     Structure is documented below.
     """
-    weightedBackendServices: Optional[List[WeightedBackendServiceModel1]] = None
+    weightedBackendServices: list[WeightedBackendServiceModel1] | None = None
     """
     A list of weighted backend services to send traffic to when a route match occurs.
     The weights determine the fraction of traffic that flows to their corresponding backend service.
@@ -1548,19 +1547,19 @@ class DefaultRouteActionModel1(BaseModel):
 
 
 class DefaultUrlRedirectModel1(BaseModel):
-    hostRedirect: Optional[str] = None
+    hostRedirect: str | None = None
     """
     The host that will be used in the redirect response instead of the one that was
     supplied in the request. The value must be between 1 and 255 characters.
     """
-    httpsRedirect: Optional[bool] = None
+    httpsRedirect: bool | None = None
     """
     If set to true, the URL scheme in the redirected request is set to https. If set to
     false, the URL scheme of the redirected request will remain the same as that of the
     request. This must only be set for UrlMaps used in TargetHttpProxys. Setting this
     true for TargetHttpsProxy is not permitted. The default is set to false.
     """
-    pathRedirect: Optional[str] = None
+    pathRedirect: str | None = None
     """
     The path that will be used in the redirect response instead of the one that was
     supplied in the request. pathRedirect cannot be supplied together with
@@ -1568,7 +1567,7 @@ class DefaultUrlRedirectModel1(BaseModel):
     original request will be used for the redirect. The value must be between 1 and 1024
     characters.
     """
-    prefixRedirect: Optional[str] = None
+    prefixRedirect: str | None = None
     """
     The prefix that replaces the prefixMatch specified in the HttpRouteRuleMatch,
     retaining the remaining portion of the URL before redirecting the request.
@@ -1576,11 +1575,11 @@ class DefaultUrlRedirectModel1(BaseModel):
     neither. If neither is supplied, the path of the original request will be used for
     the redirect. The value must be between 1 and 1024 characters.
     """
-    redirectResponseCode: Optional[str] = None
+    redirectResponseCode: str | None = None
     """
     The HTTP Status code to use for this RedirectAction. Supported values are:
     """
-    stripQuery: Optional[bool] = None
+    stripQuery: bool | None = None
     """
     If set to true, any accompanying query portion of the original URL is removed prior
     to redirecting the request. If set to false, the query portion of the original URL is
@@ -1590,13 +1589,13 @@ class DefaultUrlRedirectModel1(BaseModel):
 
 
 class DefaultRouteActionModel2(BaseModel):
-    corsPolicy: Optional[CorsPolicy] = None
+    corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
     Recommendation for Cross Origin Resource Sharing
     Structure is documented below.
     """
-    faultInjectionPolicy: Optional[FaultInjectionPolicy] = None
+    faultInjectionPolicy: FaultInjectionPolicy | None = None
     """
     The specification for fault injection introduced into traffic to test the
     resiliency of clients to backend service failure. As part of fault injection,
@@ -1607,7 +1606,7 @@ class DefaultRouteActionModel2(BaseModel):
     ignored by clients that are configured with a fault_injection_policy.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the maximum duration (timeout) for streams on the selected route.
     Unlike the Timeout field where the timeout duration starts from the time the request
@@ -1616,7 +1615,7 @@ class DefaultRouteActionModel2(BaseModel):
     including all retries. A stream that does not complete in this duration is closed.
     Structure is documented below.
     """
-    requestMirrorPolicy: Optional[RequestMirrorPolicyModel1] = None
+    requestMirrorPolicy: RequestMirrorPolicyModel1 | None = None
     """
     Specifies the policy on how requests intended for the route's backends are
     shadowed to a separate mirrored backend service. Loadbalancer does not wait for
@@ -1624,12 +1623,12 @@ class DefaultRouteActionModel2(BaseModel):
     service, the host / authority header is suffixed with -shadow.
     Structure is documented below.
     """
-    retryPolicy: Optional[RetryPolicy] = None
+    retryPolicy: RetryPolicy | None = None
     """
     Specifies the retry policy associated with this route.
     Structure is documented below.
     """
-    timeout: Optional[Timeout] = None
+    timeout: Timeout | None = None
     """
     Specifies the timeout for the selected route. Timeout is computed from the time
     the request is has been fully processed (i.e. end-of-stream) up until the
@@ -1637,13 +1636,13 @@ class DefaultRouteActionModel2(BaseModel):
     specified, the default value is 15 seconds.
     Structure is documented below.
     """
-    urlRewrite: Optional[UrlRewriteModel1] = None
+    urlRewrite: UrlRewriteModel1 | None = None
     """
     The spec to modify the URL of the request, prior to forwarding the request to
     the matched service
     Structure is documented below.
     """
-    weightedBackendServices: Optional[List[WeightedBackendServiceModel1]] = None
+    weightedBackendServices: list[WeightedBackendServiceModel1] | None = None
     """
     A list of weighted backend services to send traffic to when a route match
     occurs. The weights determine the fraction of traffic that flows to their
@@ -1658,13 +1657,13 @@ class DefaultRouteActionModel2(BaseModel):
 
 
 class DefaultUrlRedirectModel2(BaseModel):
-    hostRedirect: Optional[str] = None
+    hostRedirect: str | None = None
     """
     The host that will be used in the redirect response instead of the one
     that was supplied in the request. The value must be between 1 and 255
     characters.
     """
-    httpsRedirect: Optional[bool] = None
+    httpsRedirect: bool | None = None
     """
     If set to true, the URL scheme in the redirected request is set to https.
     If set to false, the URL scheme of the redirected request will remain the
@@ -1672,7 +1671,7 @@ class DefaultUrlRedirectModel2(BaseModel):
     TargetHttpProxys. Setting this true for TargetHttpsProxy is not
     permitted. The default is set to false.
     """
-    pathRedirect: Optional[str] = None
+    pathRedirect: str | None = None
     """
     The path that will be used in the redirect response instead of the one
     that was supplied in the request. pathRedirect cannot be supplied
@@ -1680,7 +1679,7 @@ class DefaultUrlRedirectModel2(BaseModel):
     supplied, the path of the original request will be used for the redirect.
     The value must be between 1 and 1024 characters.
     """
-    prefixRedirect: Optional[str] = None
+    prefixRedirect: str | None = None
     """
     The prefix that replaces the prefixMatch specified in the
     HttpRouteRuleMatch, retaining the remaining portion of the URL before
@@ -1689,11 +1688,11 @@ class DefaultUrlRedirectModel2(BaseModel):
     path of the original request will be used for the redirect. The value
     must be between 1 and 1024 characters.
     """
-    redirectResponseCode: Optional[str] = None
+    redirectResponseCode: str | None = None
     """
     The HTTP Status code to use for this RedirectAction. Supported values are:
     """
-    stripQuery: Optional[bool] = None
+    stripQuery: bool | None = None
     """
     If set to true, any accompanying query portion of the original URL is
     removed prior to redirecting the request. If set to false, the query
@@ -1703,7 +1702,7 @@ class DefaultUrlRedirectModel2(BaseModel):
 
 
 class CustomErrorResponsePolicyModel1(BaseModel):
-    errorResponseRule: Optional[List[ErrorResponseRuleItem]] = None
+    errorResponseRule: list[ErrorResponseRuleItem] | None = None
     """
     Specifies rules for returning error responses.
     In a given policy, if you specify rules for both a range of error codes as well as rules for specific error codes then rules with specific error codes have a higher priority.
@@ -1711,7 +1710,7 @@ class CustomErrorResponsePolicyModel1(BaseModel):
     If the backend service returns a 401, then the rule for 401 will be applied. However if the backend service returns a 403, the rule for 4xx takes effect.
     Structure is documented below.
     """
-    errorService: Optional[str] = None
+    errorService: str | None = None
     """
     The full or partial URL to the BackendBucket resource that contains the custom error content. Examples are:
     https://www.googleapis.com/compute/v1/projects/project/global/backendBuckets/myBackendBucket
@@ -1720,39 +1719,39 @@ class CustomErrorResponsePolicyModel1(BaseModel):
     If errorService is not specified at lower levels like pathMatcher, pathRule and routeRule, an errorService specified at a higher level in the UrlMap will be used. If UrlMap.defaultCustomErrorResponsePolicy contains one or more errorResponseRules[], it must specify errorService.
     If load balancer cannot reach the backendBucket, a simple Not Found Error will be returned, with the original response code (or overrideResponseCode if configured).
     """
-    errorServiceRef: Optional[ErrorServiceRef] = None
+    errorServiceRef: ErrorServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate errorService.
     """
-    errorServiceSelector: Optional[ErrorServiceSelector] = None
+    errorServiceSelector: ErrorServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate errorService.
     """
 
 
 class WeightedBackendServiceModel2(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
     headerActions specified as part of this backendServiceWeight.
     """
-    backendServiceRef: Optional[BackendServiceRef] = None
+    backendServiceRef: BackendServiceRef | None = None
     """
     Reference to a BackendService in compute to populate backendService.
     """
-    backendServiceSelector: Optional[BackendServiceSelector] = None
+    backendServiceSelector: BackendServiceSelector | None = None
     """
     Selector for a BackendService in compute to populate backendService.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. headerAction specified here take effect before
     headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
     Structure is documented below.
     """
-    weight: Optional[float] = None
+    weight: float | None = None
     """
     Specifies the fraction of traffic sent to backendService, computed as weight /
     (sum of all weightedBackendService weights in routeAction) . The selection of a
@@ -1764,7 +1763,7 @@ class WeightedBackendServiceModel2(BaseModel):
 
 
 class CustomErrorResponsePolicyModel2(BaseModel):
-    errorResponseRule: Optional[List[ErrorResponseRuleItem]] = None
+    errorResponseRule: list[ErrorResponseRuleItem] | None = None
     """
     Specifies rules for returning error responses.
     In a given policy, if you specify rules for both a range of error codes as well as rules for specific error codes then rules with specific error codes have a higher priority.
@@ -1772,7 +1771,7 @@ class CustomErrorResponsePolicyModel2(BaseModel):
     If the backend service returns a 401, then the rule for 401 will be applied. However if the backend service returns a 403, the rule for 4xx takes effect.
     Structure is documented below.
     """
-    errorService: Optional[str] = None
+    errorService: str | None = None
     """
     The full or partial URL to the BackendBucket resource that contains the custom error content. Examples are:
     https://www.googleapis.com/compute/v1/projects/project/global/backendBuckets/myBackendBucket
@@ -1784,7 +1783,7 @@ class CustomErrorResponsePolicyModel2(BaseModel):
 
 
 class RequestMirrorPolicyModel2(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
@@ -1793,19 +1792,19 @@ class RequestMirrorPolicyModel2(BaseModel):
 
 
 class UrlRewriteModel2(BaseModel):
-    hostRewrite: Optional[str] = None
+    hostRewrite: str | None = None
     """
     Prior to forwarding the request to the selected service, the request's host
     header is replaced with contents of hostRewrite. The value must be between 1 and
     255 characters.
     """
-    pathPrefixRewrite: Optional[str] = None
+    pathPrefixRewrite: str | None = None
     """
     Prior to forwarding the request to the selected backend service, the matching
     portion of the request's path is replaced by pathPrefixRewrite. The value must
     be between 1 and 1024 characters.
     """
-    pathTemplateRewrite: Optional[str] = None
+    pathTemplateRewrite: str | None = None
     """
     Prior to forwarding the request to the selected origin, if the
     request matched a pathTemplateMatch, the matching portion of the
@@ -1822,20 +1821,20 @@ class UrlRewriteModel2(BaseModel):
 
 
 class WeightedBackendServiceModel3(BaseModel):
-    backendService: Optional[str] = None
+    backendService: str | None = None
     """
     The default BackendService resource. Before
     forwarding the request to backendService, the loadbalancer applies any relevant
     headerActions specified as part of this backendServiceWeight.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. headerAction specified here take effect before
     headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
     Structure is documented below.
     """
-    weight: Optional[float] = None
+    weight: float | None = None
     """
     Specifies the fraction of traffic sent to backendService, computed as weight /
     (sum of all weightedBackendService weights in routeAction) . The selection of a
@@ -1847,7 +1846,7 @@ class WeightedBackendServiceModel3(BaseModel):
 
 
 class InitProvider(BaseModel):
-    defaultCustomErrorResponsePolicy: Optional[DefaultCustomErrorResponsePolicy] = None
+    defaultCustomErrorResponsePolicy: DefaultCustomErrorResponsePolicy | None = None
     """
     defaultCustomErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     This policy takes effect at the PathMatcher level and applies only when no policy has been defined for the error code at lower levels like RouteRule and PathRule within this PathMatcher. If an error code does not have a policy defined in defaultCustomErrorResponsePolicy, then a policy defined for the error code in UrlMap.defaultCustomErrorResponsePolicy takes effect.
@@ -1859,7 +1858,7 @@ class InitProvider(BaseModel):
     defaultCustomErrorResponsePolicy is supported only for global external Application Load Balancers.
     Structure is documented below.
     """
-    defaultRouteAction: Optional[DefaultRouteActionModel1] = None
+    defaultRouteAction: DefaultRouteActionModel1 | None = None
     """
     defaultRouteAction takes effect when none of the hostRules match. The load balancer performs advanced routing actions
     like URL rewrites, header transformations, etc. prior to forwarding the request to the selected backend.
@@ -1868,53 +1867,53 @@ class InitProvider(BaseModel):
     Only one of defaultRouteAction or defaultUrlRedirect must be set.
     Structure is documented below.
     """
-    defaultService: Optional[str] = None
+    defaultService: str | None = None
     """
     The backend service or backend bucket to use when none of the given rules match.
     """
-    defaultServiceRef: Optional[DefaultServiceRef] = None
+    defaultServiceRef: DefaultServiceRef | None = None
     """
     Reference to a BackendBucket in compute to populate defaultService.
     """
-    defaultServiceSelector: Optional[DefaultServiceSelector] = None
+    defaultServiceSelector: DefaultServiceSelector | None = None
     """
     Selector for a BackendBucket in compute to populate defaultService.
     """
-    defaultUrlRedirect: Optional[DefaultUrlRedirectModel1] = None
+    defaultUrlRedirect: DefaultUrlRedirectModel1 | None = None
     """
     When none of the specified hostRules match, the request is redirected to a URL specified
     by defaultUrlRedirect. If defaultUrlRedirect is specified, defaultService or
     defaultRouteAction must not be set.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create
     the resource.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. The headerAction specified here take effect after
     headerAction specified under pathMatcher.
     Structure is documented below.
     """
-    hostRule: Optional[List[HostRuleItem]] = None
+    hostRule: list[HostRuleItem] | None = None
     """
     The list of HostRules to use against the URL.
     Structure is documented below.
     """
-    pathMatcher: Optional[List[PathMatcherItem]] = None
+    pathMatcher: list[PathMatcherItem] | None = None
     """
     The list of named PathMatchers to use against the URL.
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    test: Optional[List[TestItem]] = None
+    test: list[TestItem] | None = None
     """
     The list of expected URL mapping tests. Request to update this UrlMap will
     succeed only if all of the test cases pass. You can specify a maximum of 100
@@ -1928,7 +1927,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -1946,7 +1945,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -1957,7 +1956,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -1970,9 +1969,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -1985,15 +1985,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -2003,7 +2003,7 @@ class Spec(BaseModel):
 
 
 class DefaultCustomErrorResponsePolicyModel(BaseModel):
-    errorResponseRule: Optional[List[ErrorResponseRuleItem]] = None
+    errorResponseRule: list[ErrorResponseRuleItem] | None = None
     """
     Specifies rules for returning error responses.
     In a given policy, if you specify rules for both a range of error codes as well as rules for specific error codes then rules with specific error codes have a higher priority.
@@ -2011,7 +2011,7 @@ class DefaultCustomErrorResponsePolicyModel(BaseModel):
     If the backend service returns a 401, then the rule for 401 will be applied. However if the backend service returns a 403, the rule for 4xx takes effect.
     Structure is documented below.
     """
-    errorService: Optional[str] = None
+    errorService: str | None = None
     """
     The full or partial URL to the BackendBucket resource that contains the custom error content. Examples are:
     https://www.googleapis.com/compute/v1/projects/project/global/backendBuckets/myBackendBucket
@@ -2023,13 +2023,13 @@ class DefaultCustomErrorResponsePolicyModel(BaseModel):
 
 
 class UrlRewriteModel3(BaseModel):
-    hostRewrite: Optional[str] = None
+    hostRewrite: str | None = None
     """
     Prior to forwarding the request to the selected service, the request's host
     header is replaced with contents of hostRewrite. The value must be between 1 and
     255 characters.
     """
-    pathPrefixRewrite: Optional[str] = None
+    pathPrefixRewrite: str | None = None
     """
     Prior to forwarding the request to the selected backend service, the matching
     portion of the request's path is replaced by pathPrefixRewrite. The value must
@@ -2038,13 +2038,13 @@ class UrlRewriteModel3(BaseModel):
 
 
 class DefaultRouteActionModel3(BaseModel):
-    corsPolicy: Optional[CorsPolicy] = None
+    corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see
     W3C Recommendation for Cross Origin Resource Sharing
     Structure is documented below.
     """
-    faultInjectionPolicy: Optional[FaultInjectionPolicy] = None
+    faultInjectionPolicy: FaultInjectionPolicy | None = None
     """
     The specification for fault injection introduced into traffic to test the resiliency of clients to backend service failure.
     As part of fault injection, when clients send requests to a backend service, delays can be introduced by Loadbalancer on a
@@ -2053,7 +2053,7 @@ class DefaultRouteActionModel3(BaseModel):
     timeout and retryPolicy will be ignored by clients that are configured with a faultInjectionPolicy.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the maximum duration (timeout) for streams on the selected route.
     Unlike the Timeout field where the timeout duration starts from the time the request
@@ -2062,31 +2062,31 @@ class DefaultRouteActionModel3(BaseModel):
     including all retries. A stream that does not complete in this duration is closed.
     Structure is documented below.
     """
-    requestMirrorPolicy: Optional[RequestMirrorPolicyModel2] = None
+    requestMirrorPolicy: RequestMirrorPolicyModel2 | None = None
     """
     Specifies the policy on how requests intended for the route's backends are shadowed to a separate mirrored backend service.
     Loadbalancer does not wait for responses from the shadow service. Prior to sending traffic to the shadow service,
     the host / authority header is suffixed with -shadow.
     Structure is documented below.
     """
-    retryPolicy: Optional[RetryPolicy] = None
+    retryPolicy: RetryPolicy | None = None
     """
     Specifies the retry policy associated with this route.
     Structure is documented below.
     """
-    timeout: Optional[Timeout] = None
+    timeout: Timeout | None = None
     """
     Specifies the timeout for the selected route. Timeout is computed from the time the request has been
     fully processed (i.e. end-of-stream) up until the response has been completely processed. Timeout includes all retries.
     If not specified, will use the largest timeout among all backend services associated with the route.
     Structure is documented below.
     """
-    urlRewrite: Optional[UrlRewriteModel3] = None
+    urlRewrite: UrlRewriteModel3 | None = None
     """
     The spec to modify the URL of the request, prior to forwarding the request to the matched service.
     Structure is documented below.
     """
-    weightedBackendServices: Optional[List[WeightedBackendServiceModel3]] = None
+    weightedBackendServices: list[WeightedBackendServiceModel3] | None = None
     """
     A list of weighted backend services to send traffic to when a route match occurs.
     The weights determine the fraction of traffic that flows to their corresponding backend service.
@@ -2100,19 +2100,19 @@ class DefaultRouteActionModel3(BaseModel):
 
 
 class DefaultUrlRedirectModel3(BaseModel):
-    hostRedirect: Optional[str] = None
+    hostRedirect: str | None = None
     """
     The host that will be used in the redirect response instead of the one that was
     supplied in the request. The value must be between 1 and 255 characters.
     """
-    httpsRedirect: Optional[bool] = None
+    httpsRedirect: bool | None = None
     """
     If set to true, the URL scheme in the redirected request is set to https. If set to
     false, the URL scheme of the redirected request will remain the same as that of the
     request. This must only be set for UrlMaps used in TargetHttpProxys. Setting this
     true for TargetHttpsProxy is not permitted. The default is set to false.
     """
-    pathRedirect: Optional[str] = None
+    pathRedirect: str | None = None
     """
     The path that will be used in the redirect response instead of the one that was
     supplied in the request. pathRedirect cannot be supplied together with
@@ -2120,7 +2120,7 @@ class DefaultUrlRedirectModel3(BaseModel):
     original request will be used for the redirect. The value must be between 1 and 1024
     characters.
     """
-    prefixRedirect: Optional[str] = None
+    prefixRedirect: str | None = None
     """
     The prefix that replaces the prefixMatch specified in the HttpRouteRuleMatch,
     retaining the remaining portion of the URL before redirecting the request.
@@ -2128,11 +2128,11 @@ class DefaultUrlRedirectModel3(BaseModel):
     neither. If neither is supplied, the path of the original request will be used for
     the redirect. The value must be between 1 and 1024 characters.
     """
-    redirectResponseCode: Optional[str] = None
+    redirectResponseCode: str | None = None
     """
     The HTTP Status code to use for this RedirectAction. Supported values are:
     """
-    stripQuery: Optional[bool] = None
+    stripQuery: bool | None = None
     """
     If set to true, any accompanying query portion of the original URL is removed prior
     to redirecting the request. If set to false, the query portion of the original URL is
@@ -2142,13 +2142,13 @@ class DefaultUrlRedirectModel3(BaseModel):
 
 
 class DefaultRouteActionModel4(BaseModel):
-    corsPolicy: Optional[CorsPolicy] = None
+    corsPolicy: CorsPolicy | None = None
     """
     The specification for allowing client side cross-origin requests. Please see W3C
     Recommendation for Cross Origin Resource Sharing
     Structure is documented below.
     """
-    faultInjectionPolicy: Optional[FaultInjectionPolicy] = None
+    faultInjectionPolicy: FaultInjectionPolicy | None = None
     """
     The specification for fault injection introduced into traffic to test the
     resiliency of clients to backend service failure. As part of fault injection,
@@ -2159,7 +2159,7 @@ class DefaultRouteActionModel4(BaseModel):
     ignored by clients that are configured with a fault_injection_policy.
     Structure is documented below.
     """
-    maxStreamDuration: Optional[MaxStreamDuration] = None
+    maxStreamDuration: MaxStreamDuration | None = None
     """
     Specifies the maximum duration (timeout) for streams on the selected route.
     Unlike the Timeout field where the timeout duration starts from the time the request
@@ -2168,7 +2168,7 @@ class DefaultRouteActionModel4(BaseModel):
     including all retries. A stream that does not complete in this duration is closed.
     Structure is documented below.
     """
-    requestMirrorPolicy: Optional[RequestMirrorPolicyModel2] = None
+    requestMirrorPolicy: RequestMirrorPolicyModel2 | None = None
     """
     Specifies the policy on how requests intended for the route's backends are
     shadowed to a separate mirrored backend service. Loadbalancer does not wait for
@@ -2176,12 +2176,12 @@ class DefaultRouteActionModel4(BaseModel):
     service, the host / authority header is suffixed with -shadow.
     Structure is documented below.
     """
-    retryPolicy: Optional[RetryPolicy] = None
+    retryPolicy: RetryPolicy | None = None
     """
     Specifies the retry policy associated with this route.
     Structure is documented below.
     """
-    timeout: Optional[Timeout] = None
+    timeout: Timeout | None = None
     """
     Specifies the timeout for the selected route. Timeout is computed from the time
     the request is has been fully processed (i.e. end-of-stream) up until the
@@ -2189,13 +2189,13 @@ class DefaultRouteActionModel4(BaseModel):
     specified, the default value is 15 seconds.
     Structure is documented below.
     """
-    urlRewrite: Optional[UrlRewriteModel3] = None
+    urlRewrite: UrlRewriteModel3 | None = None
     """
     The spec to modify the URL of the request, prior to forwarding the request to
     the matched service
     Structure is documented below.
     """
-    weightedBackendServices: Optional[List[WeightedBackendServiceModel3]] = None
+    weightedBackendServices: list[WeightedBackendServiceModel3] | None = None
     """
     A list of weighted backend services to send traffic to when a route match
     occurs. The weights determine the fraction of traffic that flows to their
@@ -2210,13 +2210,13 @@ class DefaultRouteActionModel4(BaseModel):
 
 
 class DefaultUrlRedirectModel4(BaseModel):
-    hostRedirect: Optional[str] = None
+    hostRedirect: str | None = None
     """
     The host that will be used in the redirect response instead of the one
     that was supplied in the request. The value must be between 1 and 255
     characters.
     """
-    httpsRedirect: Optional[bool] = None
+    httpsRedirect: bool | None = None
     """
     If set to true, the URL scheme in the redirected request is set to https.
     If set to false, the URL scheme of the redirected request will remain the
@@ -2224,7 +2224,7 @@ class DefaultUrlRedirectModel4(BaseModel):
     TargetHttpProxys. Setting this true for TargetHttpsProxy is not
     permitted. The default is set to false.
     """
-    pathRedirect: Optional[str] = None
+    pathRedirect: str | None = None
     """
     The path that will be used in the redirect response instead of the one
     that was supplied in the request. pathRedirect cannot be supplied
@@ -2232,7 +2232,7 @@ class DefaultUrlRedirectModel4(BaseModel):
     supplied, the path of the original request will be used for the redirect.
     The value must be between 1 and 1024 characters.
     """
-    prefixRedirect: Optional[str] = None
+    prefixRedirect: str | None = None
     """
     The prefix that replaces the prefixMatch specified in the
     HttpRouteRuleMatch, retaining the remaining portion of the URL before
@@ -2241,11 +2241,11 @@ class DefaultUrlRedirectModel4(BaseModel):
     path of the original request will be used for the redirect. The value
     must be between 1 and 1024 characters.
     """
-    redirectResponseCode: Optional[str] = None
+    redirectResponseCode: str | None = None
     """
     The HTTP Status code to use for this RedirectAction. Supported values are:
     """
-    stripQuery: Optional[bool] = None
+    stripQuery: bool | None = None
     """
     If set to true, any accompanying query portion of the original URL is
     removed prior to redirecting the request. If set to false, the query
@@ -2255,19 +2255,19 @@ class DefaultUrlRedirectModel4(BaseModel):
 
 
 class PathRuleItemModel(BaseModel):
-    customErrorResponsePolicy: Optional[CustomErrorResponsePolicyModel2] = None
+    customErrorResponsePolicy: CustomErrorResponsePolicyModel2 | None = None
     """
     customErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     Structure is documented below.
     """
-    paths: Optional[List[str]] = None
+    paths: list[str] | None = None
     """
     The list of path patterns to match. Each must start with / and the only place a
     * is allowed is at the end following a /. The string fed to the path matcher
     does not include any text after the first ? or #, and those chars are not
     allowed here.
     """
-    routeAction: Optional[RouteAction] = None
+    routeAction: RouteAction | None = None
     """
     In response to a matching matchRule, the load balancer performs advanced routing
     actions like URL rewrites, header transformations, etc. prior to forwarding the
@@ -2277,11 +2277,11 @@ class PathRuleItemModel(BaseModel):
     or urlRedirect must be set.
     Structure is documented below.
     """
-    service: Optional[str] = None
+    service: str | None = None
     """
     The backend service or backend bucket link that should be matched by this test.
     """
-    urlRedirect: Optional[UrlRedirect] = None
+    urlRedirect: UrlRedirect | None = None
     """
     When this rule is matched, the request is redirected to a URL specified by
     urlRedirect. If urlRedirect is specified, service or routeAction must not be
@@ -2291,19 +2291,19 @@ class PathRuleItemModel(BaseModel):
 
 
 class UrlRewriteModel4(BaseModel):
-    hostRewrite: Optional[str] = None
+    hostRewrite: str | None = None
     """
     Prior to forwarding the request to the selected service, the request's host
     header is replaced with contents of hostRewrite. The value must be between 1 and
     255 characters.
     """
-    pathPrefixRewrite: Optional[str] = None
+    pathPrefixRewrite: str | None = None
     """
     Prior to forwarding the request to the selected backend service, the matching
     portion of the request's path is replaced by pathPrefixRewrite. The value must
     be between 1 and 1024 characters.
     """
-    pathTemplateRewrite: Optional[str] = None
+    pathTemplateRewrite: str | None = None
     """
     Prior to forwarding the request to the selected origin, if the
     request matched a pathTemplateMatch, the matching portion of the
@@ -2320,24 +2320,24 @@ class UrlRewriteModel4(BaseModel):
 
 
 class RouteRuleModel(BaseModel):
-    customErrorResponsePolicy: Optional[CustomErrorResponsePolicyModel2] = None
+    customErrorResponsePolicy: CustomErrorResponsePolicyModel2 | None = None
     """
     customErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     Structure is documented below.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. headerAction specified here take effect before
     headerAction in the enclosing HttpRouteRule, PathMatcher and UrlMap.
     Structure is documented below.
     """
-    matchRules: Optional[List[MatchRule]] = None
+    matchRules: list[MatchRule] | None = None
     """
     The rules for determining a match.
     Structure is documented below.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     For routeRules within a given pathMatcher, priority determines the order
     in which load balancer will interpret routeRules. RouteRules are evaluated
@@ -2353,7 +2353,7 @@ class RouteRuleModel(BaseModel):
     you could add rules numbered from 6 to 8, 10 to 11, and 13 to 15 in the
     future without any impact on existing rules.
     """
-    routeAction: Optional[RouteAction] = None
+    routeAction: RouteAction | None = None
     """
     In response to a matching matchRule, the load balancer performs advanced routing
     actions like URL rewrites, header transformations, etc. prior to forwarding the
@@ -2363,11 +2363,11 @@ class RouteRuleModel(BaseModel):
     or urlRedirect must be set.
     Structure is documented below.
     """
-    service: Optional[str] = None
+    service: str | None = None
     """
     The backend service or backend bucket link that should be matched by this test.
     """
-    urlRedirect: Optional[UrlRedirect] = None
+    urlRedirect: UrlRedirect | None = None
     """
     When this rule is matched, the request is redirected to a URL specified by
     urlRedirect. If urlRedirect is specified, service or routeAction must not be
@@ -2377,9 +2377,9 @@ class RouteRuleModel(BaseModel):
 
 
 class PathMatcherItemModel(BaseModel):
-    defaultCustomErrorResponsePolicy: Optional[
-        DefaultCustomErrorResponsePolicyModel
-    ] = None
+    defaultCustomErrorResponsePolicy: DefaultCustomErrorResponsePolicyModel | None = (
+        None
+    )
     """
     defaultCustomErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     This policy takes effect at the PathMatcher level and applies only when no policy has been defined for the error code at lower levels like RouteRule and PathRule within this PathMatcher. If an error code does not have a policy defined in defaultCustomErrorResponsePolicy, then a policy defined for the error code in UrlMap.defaultCustomErrorResponsePolicy takes effect.
@@ -2391,7 +2391,7 @@ class PathMatcherItemModel(BaseModel):
     defaultCustomErrorResponsePolicy is supported only for global external Application Load Balancers.
     Structure is documented below.
     """
-    defaultRouteAction: Optional[DefaultRouteActionModel4] = None
+    defaultRouteAction: DefaultRouteActionModel4 | None = None
     """
     defaultRouteAction takes effect when none of the pathRules or routeRules match. The load balancer performs
     advanced routing actions like URL rewrites, header transformations, etc. prior to forwarding the request
@@ -2400,34 +2400,34 @@ class PathMatcherItemModel(BaseModel):
     Only one of defaultRouteAction or defaultUrlRedirect must be set.
     Structure is documented below.
     """
-    defaultService: Optional[str] = None
+    defaultService: str | None = None
     """
     The backend service or backend bucket to use when none of the given paths match.
     """
-    defaultUrlRedirect: Optional[DefaultUrlRedirectModel4] = None
+    defaultUrlRedirect: DefaultUrlRedirectModel4 | None = None
     """
     When none of the specified hostRules match, the request is redirected to a URL specified
     by defaultUrlRedirect. If defaultUrlRedirect is specified, defaultService or
     defaultRouteAction must not be set.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create
     the resource.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. HeaderAction specified here are applied after the
     matching HttpRouteRule HeaderAction and before the HeaderAction in the UrlMap
     Structure is documented below.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name to which this PathMatcher is referred by the HostRule.
     """
-    pathRule: Optional[List[PathRuleItemModel]] = None
+    pathRule: list[PathRuleItemModel] | None = None
     """
     The list of path rules. Use this list instead of routeRules when routing based
     on simple path matching is all that's required. The order by which path rules
@@ -2437,7 +2437,7 @@ class PathMatcherItemModel(BaseModel):
     given pathMatcher, only one of pathRules or routeRules must be set.
     Structure is documented below.
     """
-    routeRules: Optional[List[RouteRuleModel]] = None
+    routeRules: list[RouteRuleModel] | None = None
     """
     The list of ordered HTTP route rules. Use this list instead of pathRules when
     advanced route matching and routing actions are desired. The order of specifying
@@ -2450,49 +2450,49 @@ class PathMatcherItemModel(BaseModel):
 
 
 class TestItemModel(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     Description of this test case.
     """
-    expectedOutputUrl: Optional[str] = None
+    expectedOutputUrl: str | None = None
     """
     The expected output URL evaluated by the load balancer containing the scheme, host, path and query parameters.
     For rules that forward requests to backends, the test passes only when expectedOutputUrl matches the request forwarded by the load balancer to backends. For rules with urlRewrite, the test verifies that the forwarded request matches hostRewrite and pathPrefixRewrite in the urlRewrite action. When service is specified, expectedOutputUrl`s scheme is ignored.
     For rules with urlRedirect, the test passes only if expectedOutputUrl matches the URL in the load balancer's redirect response. If urlRedirect specifies httpsRedirect, the test passes only if the scheme in expectedOutputUrl is also set to HTTPS. If urlRedirect specifies stripQuery, the test passes only if expectedOutputUrl does not contain any query parameters.
     expectedOutputUrl is optional when service is specified.
     """
-    expectedRedirectResponseCode: Optional[float] = None
+    expectedRedirectResponseCode: float | None = None
     """
     For rules with urlRedirect, the test passes only if expectedRedirectResponseCode matches the HTTP status code in load balancer's redirect response.
     expectedRedirectResponseCode cannot be set when service is set.
     """
-    headers: Optional[List[Header]] = None
+    headers: list[Header] | None = None
     """
     HTTP headers for this request.
     Structure is documented below.
     """
-    host: Optional[str] = None
+    host: str | None = None
     """
     Host portion of the URL.
     """
-    path: Optional[str] = None
+    path: str | None = None
     """
     Path portion of the URL.
     """
-    service: Optional[str] = None
+    service: str | None = None
     """
     The backend service or backend bucket link that should be matched by this test.
     """
 
 
 class AtProvider(BaseModel):
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    defaultCustomErrorResponsePolicy: Optional[
-        DefaultCustomErrorResponsePolicyModel
-    ] = None
+    defaultCustomErrorResponsePolicy: DefaultCustomErrorResponsePolicyModel | None = (
+        None
+    )
     """
     defaultCustomErrorResponsePolicy specifies how the Load Balancer returns error responses when BackendService or BackendBucket responds with an error.
     This policy takes effect at the PathMatcher level and applies only when no policy has been defined for the error code at lower levels like RouteRule and PathRule within this PathMatcher. If an error code does not have a policy defined in defaultCustomErrorResponsePolicy, then a policy defined for the error code in UrlMap.defaultCustomErrorResponsePolicy takes effect.
@@ -2504,7 +2504,7 @@ class AtProvider(BaseModel):
     defaultCustomErrorResponsePolicy is supported only for global external Application Load Balancers.
     Structure is documented below.
     """
-    defaultRouteAction: Optional[DefaultRouteActionModel3] = None
+    defaultRouteAction: DefaultRouteActionModel3 | None = None
     """
     defaultRouteAction takes effect when none of the hostRules match. The load balancer performs advanced routing actions
     like URL rewrites, header transformations, etc. prior to forwarding the request to the selected backend.
@@ -2513,62 +2513,62 @@ class AtProvider(BaseModel):
     Only one of defaultRouteAction or defaultUrlRedirect must be set.
     Structure is documented below.
     """
-    defaultService: Optional[str] = None
+    defaultService: str | None = None
     """
     The backend service or backend bucket to use when none of the given rules match.
     """
-    defaultUrlRedirect: Optional[DefaultUrlRedirectModel3] = None
+    defaultUrlRedirect: DefaultUrlRedirectModel3 | None = None
     """
     When none of the specified hostRules match, the request is redirected to a URL specified
     by defaultUrlRedirect. If defaultUrlRedirect is specified, defaultService or
     defaultRouteAction must not be set.
     Structure is documented below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when you create
     the resource.
     """
-    fingerprint: Optional[str] = None
+    fingerprint: str | None = None
     """
     Fingerprint of this resource. A hash of the contents stored in this object. This
     field is used in optimistic locking.
     """
-    headerAction: Optional[HeaderAction] = None
+    headerAction: HeaderAction | None = None
     """
     Specifies changes to request and response headers that need to take effect for
     the selected backendService. The headerAction specified here take effect after
     headerAction specified under pathMatcher.
     Structure is documented below.
     """
-    hostRule: Optional[List[HostRuleItem]] = None
+    hostRule: list[HostRuleItem] | None = None
     """
     The list of HostRules to use against the URL.
     Structure is documented below.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/global/urlMaps/{{name}}
     """
-    mapId: Optional[float] = None
+    mapId: float | None = None
     """
     The unique identifier for the resource.
     """
-    pathMatcher: Optional[List[PathMatcherItemModel]] = None
+    pathMatcher: list[PathMatcherItemModel] | None = None
     """
     The list of named PathMatchers to use against the URL.
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    test: Optional[List[TestItemModel]] = None
+    test: list[TestItemModel] | None = None
     """
     The list of expected URL mapping tests. Request to update this UrlMap will
     succeed only if all of the test cases pass. You can specify a maximum of 100
@@ -2578,17 +2578,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -2610,12 +2610,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -2624,17 +2624,17 @@ class Status(BaseModel):
 
 
 class URLMap(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta2']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta2'] | None = (
         'compute.gcp.upbound.io/v1beta2'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['URLMap']] = 'URLMap'
+    kind: Literal['URLMap'] | None = 'URLMap'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -2642,26 +2642,26 @@ class URLMap(BaseModel):
     """
     URLMapSpec defines the desired state of URLMap
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     URLMapStatus defines the observed state of URLMap.
     """
 
 
 class URLMapList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[URLMap]
+    items: list[URLMap]
     """
     List of urlmaps. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

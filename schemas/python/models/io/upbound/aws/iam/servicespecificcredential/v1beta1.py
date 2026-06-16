@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,77 +32,77 @@ class UserNameRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class UserNameSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    credentialAgeDays: Optional[float] = None
+    credentialAgeDays: float | None = None
     """
     The number of days until the service specific credential expires. This field is only valid for Bedrock API keys and must be between 1 and 36600 (approximately 100 years). When not specified, the credential will not expire.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The name of the AWS service that is to be associated with the credentials. The service you specify here is the only service that can be accessed using these credentials. Supported services are codecommit.amazonaws.com, bedrock.amazonaws.com, and cassandra.amazonaws.com.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     The status to be assigned to the service-specific credential. Valid values are Active, Inactive, and Expired. Default value is Active. Note that Expired is only used for read operations and cannot be set manually.
     """
-    userName: Optional[str] = None
+    userName: str | None = None
     """
     The name of the IAM user that is to be associated with the credentials. The new service-specific credentials have the same permissions as the associated user except that they can be used only to access the specified service.
     """
-    userNameRef: Optional[UserNameRef] = None
+    userNameRef: UserNameRef | None = None
     """
     Reference to a User in iam to populate userName.
     """
-    userNameSelector: Optional[UserNameSelector] = None
+    userNameSelector: UserNameSelector | None = None
     """
     Selector for a User in iam to populate userName.
     """
 
 
 class InitProvider(BaseModel):
-    credentialAgeDays: Optional[float] = None
+    credentialAgeDays: float | None = None
     """
     The number of days until the service specific credential expires. This field is only valid for Bedrock API keys and must be between 1 and 36600 (approximately 100 years). When not specified, the credential will not expire.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The name of the AWS service that is to be associated with the credentials. The service you specify here is the only service that can be accessed using these credentials. Supported services are codecommit.amazonaws.com, bedrock.amazonaws.com, and cassandra.amazonaws.com.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     The status to be assigned to the service-specific credential. Valid values are Active, Inactive, and Expired. Default value is Active. Note that Expired is only used for read operations and cannot be set manually.
     """
-    userName: Optional[str] = None
+    userName: str | None = None
     """
     The name of the IAM user that is to be associated with the credentials. The new service-specific credentials have the same permissions as the associated user except that they can be used only to access the specified service.
     """
-    userNameRef: Optional[UserNameRef] = None
+    userNameRef: UserNameRef | None = None
     """
     Reference to a User in iam to populate userName.
     """
-    userNameSelector: Optional[UserNameSelector] = None
+    userNameSelector: UserNameSelector | None = None
     """
     Selector for a User in iam to populate userName.
     """
@@ -114,7 +113,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -132,7 +131,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -143,7 +142,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -156,9 +155,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -171,15 +171,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -189,60 +189,60 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    createDate: Optional[str] = None
+    createDate: str | None = None
     """
     The date and time, in RFC3339 format, when the service-specific credential was created.
     """
-    credentialAgeDays: Optional[float] = None
+    credentialAgeDays: float | None = None
     """
     The number of days until the service specific credential expires. This field is only valid for Bedrock API keys and must be between 1 and 36600 (approximately 100 years). When not specified, the credential will not expire.
     """
-    expirationDate: Optional[str] = None
+    expirationDate: str | None = None
     """
     The date and time, in RFC3339 format, when the service specific credential expires. This field is only present for Bedrock API keys that were created with an expiration period.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The combination of service_name and user_name as such: service_name:user_name:service_specific_credential_id.
     """
-    serviceCredentialAlias: Optional[str] = None
+    serviceCredentialAlias: str | None = None
     """
     For Bedrock API keys, this is the public portion of the credential that includes the IAM user name and a suffix containing version and creation information.
     """
-    serviceName: Optional[str] = None
+    serviceName: str | None = None
     """
     The name of the AWS service that is to be associated with the credentials. The service you specify here is the only service that can be accessed using these credentials. Supported services are codecommit.amazonaws.com, bedrock.amazonaws.com, and cassandra.amazonaws.com.
     """
-    serviceSpecificCredentialId: Optional[str] = None
+    serviceSpecificCredentialId: str | None = None
     """
     The unique identifier for the service-specific credential.
     """
-    serviceUserName: Optional[str] = None
+    serviceUserName: str | None = None
     """
     The generated user name for the service-specific credential. This value is generated by combining the IAM user's name combined with the ID number of the AWS account, as in jane-at-123456789012, for example.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     The status to be assigned to the service-specific credential. Valid values are Active, Inactive, and Expired. Default value is Active. Note that Expired is only used for read operations and cannot be set manually.
     """
-    userName: Optional[str] = None
+    userName: str | None = None
     """
     The name of the IAM user that is to be associated with the credentials. The new service-specific credentials have the same permissions as the associated user except that they can be used only to access the specified service.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -264,12 +264,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -278,17 +278,17 @@ class Status(BaseModel):
 
 
 class ServiceSpecificCredential(BaseModel):
-    apiVersion: Optional[Literal['iam.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['iam.aws.upbound.io/v1beta1'] | None = (
         'iam.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ServiceSpecificCredential']] = 'ServiceSpecificCredential'
+    kind: Literal['ServiceSpecificCredential'] | None = 'ServiceSpecificCredential'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -296,26 +296,26 @@ class ServiceSpecificCredential(BaseModel):
     """
     ServiceSpecificCredentialSpec defines the desired state of ServiceSpecificCredential
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ServiceSpecificCredentialStatus defines the observed state of ServiceSpecificCredential.
     """
 
 
 class ServiceSpecificCredentialList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ServiceSpecificCredential]
+    items: list[ServiceSpecificCredential]
     """
     List of servicespecificcredentials. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

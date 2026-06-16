@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
@@ -38,7 +37,7 @@ class Credential(BaseModel):
     """
     Name of this set of credentials.
     """
-    secretRef: Optional[SecretRef] = None
+    secretRef: SecretRef | None = None
     """
     A SecretRef is a reference to a secret containing credentials that should
     be supplied to the function.
@@ -65,16 +64,16 @@ class RequiredResource(BaseModel):
     """
     Kind of the required resource.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels specifies the set of labels to match for finding the
     required resource. When specified, Name is ignored.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the required resource.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the required resource if it is namespaced.
     """
@@ -102,12 +101,12 @@ class RequiredSchema(BaseModel):
 
 
 class Requirements(BaseModel):
-    requiredResources: Optional[List[RequiredResource]] = None
+    requiredResources: list[RequiredResource] | None = None
     """
     RequiredResources is a list of resources that must be fetched before
     this function is called.
     """
-    requiredSchemas: Optional[List[RequiredSchema]] = None
+    requiredSchemas: list[RequiredSchema] | None = None
     """
     RequiredSchemas is a list of OpenAPI schemas that must be fetched before
     this function is called.
@@ -115,7 +114,7 @@ class Requirements(BaseModel):
 
 
 class PipelineItem(BaseModel):
-    credentials: Optional[List[Credential]] = None
+    credentials: list[Credential] | None = None
     """
     Credentials are optional credentials that the function needs.
     """
@@ -124,13 +123,13 @@ class PipelineItem(BaseModel):
     FunctionRef is a reference to the function this step should
     execute.
     """
-    input: Optional[Dict[str, Any]] = None
+    input: dict[str, Any] | None = None
     """
     Input is an optional, arbitrary Kubernetes resource (i.e. a resource
     with an apiVersion and kind) that will be passed to the function as
     the 'input' of its RunFunctionRequest.
     """
-    requirements: Optional[Requirements] = None
+    requirements: Requirements | None = None
     """
     Requirements are resource requirements that will be satisfied before
     this pipeline step is called for the first time. This allows
@@ -149,7 +148,7 @@ class Spec(BaseModel):
     CompositeTypeRef specifies the type of composite resource that this
     composition is compatible with.
     """
-    mode: Optional[Literal['Pipeline']] = 'Pipeline'
+    mode: Literal['Pipeline'] | None = 'Pipeline'
     """
     Mode controls what type or "mode" of Composition will be used.
 
@@ -157,7 +156,7 @@ class Spec(BaseModel):
     functions, each of which is responsible for producing composed
     resources that Crossplane should create or update.
     """
-    pipeline: Optional[List[PipelineItem]] = None
+    pipeline: list[PipelineItem] | None = None
     """
     Pipeline is a list of function steps that will be used when a
     composite resource referring to this composition is created.
@@ -174,7 +173,7 @@ class Spec(BaseModel):
     edit the original CompositionRevision to change its revision number from
     0 to 2.
     """
-    writeConnectionSecretsToNamespace: Optional[str] = None
+    writeConnectionSecretsToNamespace: str | None = None
     """
     WriteConnectionSecretsToNamespace specifies the namespace in which the
     connection secrets of composite resource dynamically provisioned using
@@ -183,17 +182,17 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -215,33 +214,33 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
 
 
 class CompositionRevision(BaseModel):
-    apiVersion: Optional[Literal['apiextensions.crossplane.io/v1']] = (
+    apiVersion: Literal['apiextensions.crossplane.io/v1'] | None = (
         'apiextensions.crossplane.io/v1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['CompositionRevision']] = 'CompositionRevision'
+    kind: Literal['CompositionRevision'] | None = 'CompositionRevision'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
-    spec: Optional[Spec] = None
+    spec: Spec | None = None
     """
     CompositionRevisionSpec specifies the desired state of the composition
     revision.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     CompositionRevisionStatus shows the observed state of the composition
     revision.
@@ -249,19 +248,19 @@ class CompositionRevision(BaseModel):
 
 
 class CompositionRevisionList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[CompositionRevision]
+    items: list[CompositionRevision]
     """
     List of compositionrevisions. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

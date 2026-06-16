@@ -3,16 +3,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class LogConfigItem(BaseModel):
-    aggregationInterval: Optional[str] = None
+    aggregationInterval: str | None = None
     """
     Can only be specified if VPC flow logging for this subnetwork is enabled.
     Toggles the aggregation interval for collecting flow logs. Increasing the
@@ -21,13 +20,13 @@ class LogConfigItem(BaseModel):
     Default value is INTERVAL_5_SEC.
     Possible values are: INTERVAL_5_SEC, INTERVAL_30_SEC, INTERVAL_1_MIN, INTERVAL_5_MIN, INTERVAL_10_MIN, INTERVAL_15_MIN.
     """
-    filterExpr: Optional[str] = None
+    filterExpr: str | None = None
     """
     Export filter used to define which VPC flow logs should be logged, as as CEL expression. See
     https://cloud.google.com/vpc/docs/flow-logs#filtering for details on how to format this field.
     The default value is 'true', which evaluates to include everything.
     """
-    flowSampling: Optional[float] = None
+    flowSampling: float | None = None
     """
     Can only be specified if VPC flow logging for this subnetwork is enabled.
     The value of the field must be in [0, 1]. Set the sampling rate of VPC
@@ -35,7 +34,7 @@ class LogConfigItem(BaseModel):
     reported and 0.0 means no logs are reported. Default is 0.5 which means
     half of all collected logs are reported.
     """
-    metadata: Optional[str] = None
+    metadata: str | None = None
     """
     Can only be specified if VPC flow logging for this subnetwork is enabled.
     Configures whether metadata fields should be added to the reported VPC
@@ -43,7 +42,7 @@ class LogConfigItem(BaseModel):
     Default value is INCLUDE_ALL_METADATA.
     Possible values are: EXCLUDE_ALL_METADATA, INCLUDE_ALL_METADATA, CUSTOM_METADATA.
     """
-    metadataFields: Optional[List[str]] = None
+    metadataFields: list[str] | None = None
     """
     List of metadata fields that should be added to reported logs.
     Can only be specified if VPC flow logs for this subnetwork is enabled and "metadata" is set to CUSTOM_METADATA.
@@ -51,14 +50,14 @@ class LogConfigItem(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -72,30 +71,30 @@ class NetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class Param(BaseModel):
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
     """
     Resource manager tags to be bound to the subnetwork. Tag keys and values have the
     same definition as resource manager tags. Keys must be in the format tagKeys/{tag_key_id},
@@ -107,7 +106,7 @@ class Param(BaseModel):
 
 
 class SecondaryIpRangeItem(BaseModel):
-    ipCidrRange: Optional[str] = None
+    ipCidrRange: str | None = None
     """
     The range of IP addresses belonging to this subnetwork secondary
     range. Provide this property when you create the subnetwork.
@@ -115,14 +114,14 @@ class SecondaryIpRangeItem(BaseModel):
     secondary IP ranges within a network. Only IPv4 is supported.
     Field is optional when reserved_internal_range is defined, otherwise required.
     """
-    rangeName: Optional[str] = None
+    rangeName: str | None = None
     """
     The name associated with this subnetwork secondary range, used
     when adding an alias IP range to a VM instance. The name must
     be 1-63 characters long, and comply with RFC1035. The name
     must be unique within the subnetwork.
     """
-    reservedInternalRange: Optional[str] = None
+    reservedInternalRange: str | None = None
     """
     The ID of the reserved internal range. Must be prefixed with networkconnectivity.googleapis.com
     E.g. networkconnectivity.googleapis.com/projects/{project}/locations/global/internalRanges/{rangeId}
@@ -130,31 +129,31 @@ class SecondaryIpRangeItem(BaseModel):
 
 
 class ForProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource. This field can be set only at resource
     creation time.
     """
-    enableFlowLogs: Optional[bool] = None
+    enableFlowLogs: bool | None = None
     """
     Whether to enable flow logging for this subnetwork. If this field is not explicitly set,
     it will not appear in get listings. If not set the default behavior is determined by the
     org policy, if there is no org policy specified, then it will default to disabled.
     This field isn't supported if the subnet purpose field is set to REGIONAL_MANAGED_PROXY.
     """
-    externalIpv6Prefix: Optional[str] = None
+    externalIpv6Prefix: str | None = None
     """
     The range of external IPv6 addresses that are owned by this subnetwork.
     """
-    ipCidrRange: Optional[str] = None
+    ipCidrRange: str | None = None
     """
     The range of internal addresses that are owned by this subnetwork.
     Provide this property when you create the subnetwork. For example,
     10.0.0.0/8 or 192.168.0.0/16. Ranges must be unique and
     non-overlapping within a network. Only IPv4 is supported.
     """
-    ipCollection: Optional[str] = None
+    ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
     in EXTERNAL_IPV6_SUBNETWORK_CREATION mode.
@@ -162,14 +161,14 @@ class ForProvider(BaseModel):
     IPv6 NetLB forwarding rule using BYOIP:
     Full resource URL, as in:
     """
-    ipv6AccessType: Optional[str] = None
+    ipv6AccessType: str | None = None
     """
     The access type of IPv6 address this subnet holds. It's immutable and can only be specified during creation
     or the first time the subnet is updated into IPV4_IPV6 dual stack. If the ipv6_type is EXTERNAL then this subnet
     cannot enable direct path.
     Possible values are: EXTERNAL, INTERNAL.
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    logConfig: list[LogConfigItem] | None = None
     """
     This field denotes the VPC flow logging options for this subnetwork. If
     logging is enabled, logs are exported to Cloud Logging. Flow logging
@@ -177,39 +176,39 @@ class ForProvider(BaseModel):
     REGIONAL_MANAGED_PROXY or GLOBAL_MANAGED_PROXY.
     Structure is documented below.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The network this subnet belongs to.
     Only networks that are in the distributed mode can have subnetworks.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    privateIpGoogleAccess: Optional[bool] = None
+    privateIpGoogleAccess: bool | None = None
     """
     When enabled, VMs in this subnetwork without external IP addresses can
     access Google APIs and services by using Private Google Access.
     """
-    privateIpv6GoogleAccess: Optional[str] = None
+    privateIpv6GoogleAccess: str | None = None
     """
     The private IPv6 google access type for the VMs in this subnet.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    purpose: Optional[str] = None
+    purpose: str | None = None
     """
     The purpose of the resource. This field can be either PRIVATE_RFC_1918, REGIONAL_MANAGED_PROXY, GLOBAL_MANAGED_PROXY, PRIVATE_SERVICE_CONNECT or PRIVATE_NAT(Beta).
     A subnet with purpose set to REGIONAL_MANAGED_PROXY is a user-created subnetwork that is reserved for regional Envoy-based load balancers.
@@ -223,12 +222,12 @@ class ForProvider(BaseModel):
     """
     The GCP region for this subnetwork.
     """
-    reservedInternalRange: Optional[str] = None
+    reservedInternalRange: str | None = None
     """
     The ID of the reserved internal range. Must be prefixed with networkconnectivity.googleapis.com
     E.g. networkconnectivity.googleapis.com/projects/{project}/locations/global/internalRanges/{rangeId}
     """
-    role: Optional[str] = None
+    role: str | None = None
     """
     The role of subnetwork.
     Currently, this field is only used when purpose is REGIONAL_MANAGED_PROXY.
@@ -237,7 +236,7 @@ class ForProvider(BaseModel):
     A BACKUP subnetwork is one that is ready to be promoted to ACTIVE or is currently draining.
     Possible values are: ACTIVE, BACKUP.
     """
-    secondaryIpRange: Optional[List[SecondaryIpRangeItem]] = None
+    secondaryIpRange: list[SecondaryIpRangeItem] | None = None
     """
     An array of configurations for secondary IP ranges for VM instances
     contained in this subnetwork. The primary IP of such VM must belong
@@ -250,7 +249,7 @@ class ForProvider(BaseModel):
     For more details about this behavior, see this section.
     Structure is documented below.
     """
-    sendSecondaryIpRangeIfEmpty: Optional[bool] = None
+    sendSecondaryIpRangeIfEmpty: bool | None = None
     """
     Controls the removal behavior of secondary_ip_range.
     When false, removing secondary_ip_range from config will not produce a diff as
@@ -259,7 +258,7 @@ class ForProvider(BaseModel):
     empty list of secondary IP ranges to the API.
     Defaults to false.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this subnet to identify whether the IPv6 feature is enabled or not.
     If not specified IPV4_ONLY will be used.
@@ -268,31 +267,31 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource. This field can be set only at resource
     creation time.
     """
-    enableFlowLogs: Optional[bool] = None
+    enableFlowLogs: bool | None = None
     """
     Whether to enable flow logging for this subnetwork. If this field is not explicitly set,
     it will not appear in get listings. If not set the default behavior is determined by the
     org policy, if there is no org policy specified, then it will default to disabled.
     This field isn't supported if the subnet purpose field is set to REGIONAL_MANAGED_PROXY.
     """
-    externalIpv6Prefix: Optional[str] = None
+    externalIpv6Prefix: str | None = None
     """
     The range of external IPv6 addresses that are owned by this subnetwork.
     """
-    ipCidrRange: Optional[str] = None
+    ipCidrRange: str | None = None
     """
     The range of internal addresses that are owned by this subnetwork.
     Provide this property when you create the subnetwork. For example,
     10.0.0.0/8 or 192.168.0.0/16. Ranges must be unique and
     non-overlapping within a network. Only IPv4 is supported.
     """
-    ipCollection: Optional[str] = None
+    ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
     in EXTERNAL_IPV6_SUBNETWORK_CREATION mode.
@@ -300,14 +299,14 @@ class InitProvider(BaseModel):
     IPv6 NetLB forwarding rule using BYOIP:
     Full resource URL, as in:
     """
-    ipv6AccessType: Optional[str] = None
+    ipv6AccessType: str | None = None
     """
     The access type of IPv6 address this subnet holds. It's immutable and can only be specified during creation
     or the first time the subnet is updated into IPV4_IPV6 dual stack. If the ipv6_type is EXTERNAL then this subnet
     cannot enable direct path.
     Possible values are: EXTERNAL, INTERNAL.
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    logConfig: list[LogConfigItem] | None = None
     """
     This field denotes the VPC flow logging options for this subnetwork. If
     logging is enabled, logs are exported to Cloud Logging. Flow logging
@@ -315,39 +314,39 @@ class InitProvider(BaseModel):
     REGIONAL_MANAGED_PROXY or GLOBAL_MANAGED_PROXY.
     Structure is documented below.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The network this subnet belongs to.
     Only networks that are in the distributed mode can have subnetworks.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    privateIpGoogleAccess: Optional[bool] = None
+    privateIpGoogleAccess: bool | None = None
     """
     When enabled, VMs in this subnetwork without external IP addresses can
     access Google APIs and services by using Private Google Access.
     """
-    privateIpv6GoogleAccess: Optional[str] = None
+    privateIpv6GoogleAccess: str | None = None
     """
     The private IPv6 google access type for the VMs in this subnet.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    purpose: Optional[str] = None
+    purpose: str | None = None
     """
     The purpose of the resource. This field can be either PRIVATE_RFC_1918, REGIONAL_MANAGED_PROXY, GLOBAL_MANAGED_PROXY, PRIVATE_SERVICE_CONNECT or PRIVATE_NAT(Beta).
     A subnet with purpose set to REGIONAL_MANAGED_PROXY is a user-created subnetwork that is reserved for regional Envoy-based load balancers.
@@ -357,12 +356,12 @@ class InitProvider(BaseModel):
     Note that REGIONAL_MANAGED_PROXY is the preferred setting for all regional Envoy load balancers.
     If unspecified, the purpose defaults to PRIVATE_RFC_1918.
     """
-    reservedInternalRange: Optional[str] = None
+    reservedInternalRange: str | None = None
     """
     The ID of the reserved internal range. Must be prefixed with networkconnectivity.googleapis.com
     E.g. networkconnectivity.googleapis.com/projects/{project}/locations/global/internalRanges/{rangeId}
     """
-    role: Optional[str] = None
+    role: str | None = None
     """
     The role of subnetwork.
     Currently, this field is only used when purpose is REGIONAL_MANAGED_PROXY.
@@ -371,7 +370,7 @@ class InitProvider(BaseModel):
     A BACKUP subnetwork is one that is ready to be promoted to ACTIVE or is currently draining.
     Possible values are: ACTIVE, BACKUP.
     """
-    secondaryIpRange: Optional[List[SecondaryIpRangeItem]] = None
+    secondaryIpRange: list[SecondaryIpRangeItem] | None = None
     """
     An array of configurations for secondary IP ranges for VM instances
     contained in this subnetwork. The primary IP of such VM must belong
@@ -384,7 +383,7 @@ class InitProvider(BaseModel):
     For more details about this behavior, see this section.
     Structure is documented below.
     """
-    sendSecondaryIpRangeIfEmpty: Optional[bool] = None
+    sendSecondaryIpRangeIfEmpty: bool | None = None
     """
     Controls the removal behavior of secondary_ip_range.
     When false, removing secondary_ip_range from config will not produce a diff as
@@ -393,7 +392,7 @@ class InitProvider(BaseModel):
     empty list of secondary IP ranges to the API.
     Defaults to false.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this subnet to identify whether the IPv6 feature is enabled or not.
     If not specified IPV4_ONLY will be used.
@@ -406,7 +405,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -424,7 +423,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -435,7 +434,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -448,9 +447,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -463,15 +463,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -481,49 +481,49 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource. Provide this property when
     you create the resource. This field can be set only at resource
     creation time.
     """
-    enableFlowLogs: Optional[bool] = None
+    enableFlowLogs: bool | None = None
     """
     Whether to enable flow logging for this subnetwork. If this field is not explicitly set,
     it will not appear in get listings. If not set the default behavior is determined by the
     org policy, if there is no org policy specified, then it will default to disabled.
     This field isn't supported if the subnet purpose field is set to REGIONAL_MANAGED_PROXY.
     """
-    externalIpv6Prefix: Optional[str] = None
+    externalIpv6Prefix: str | None = None
     """
     The range of external IPv6 addresses that are owned by this subnetwork.
     """
-    fingerprint: Optional[str] = None
-    gatewayAddress: Optional[str] = None
+    fingerprint: str | None = None
+    gatewayAddress: str | None = None
     """
     The gateway address for default routes to reach destination addresses
     outside this subnetwork.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/subnetworks/{{name}}
     """
-    internalIpv6Prefix: Optional[str] = None
+    internalIpv6Prefix: str | None = None
     """
     The internal IPv6 address range that is assigned to this subnetwork.
     """
-    ipCidrRange: Optional[str] = None
+    ipCidrRange: str | None = None
     """
     The range of internal addresses that are owned by this subnetwork.
     Provide this property when you create the subnetwork. For example,
     10.0.0.0/8 or 192.168.0.0/16. Ranges must be unique and
     non-overlapping within a network. Only IPv4 is supported.
     """
-    ipCollection: Optional[str] = None
+    ipCollection: str | None = None
     """
     Resource reference of a PublicDelegatedPrefix. The PDP must be a sub-PDP
     in EXTERNAL_IPV6_SUBNETWORK_CREATION mode.
@@ -531,22 +531,22 @@ class AtProvider(BaseModel):
     IPv6 NetLB forwarding rule using BYOIP:
     Full resource URL, as in:
     """
-    ipv6AccessType: Optional[str] = None
+    ipv6AccessType: str | None = None
     """
     The access type of IPv6 address this subnet holds. It's immutable and can only be specified during creation
     or the first time the subnet is updated into IPV4_IPV6 dual stack. If the ipv6_type is EXTERNAL then this subnet
     cannot enable direct path.
     Possible values are: EXTERNAL, INTERNAL.
     """
-    ipv6CidrRange: Optional[str] = None
+    ipv6CidrRange: str | None = None
     """
     The range of internal IPv6 addresses that are owned by this subnetwork.
     """
-    ipv6GceEndpoint: Optional[str] = None
+    ipv6GceEndpoint: str | None = None
     """
     Possible endpoints of this subnetwork. It can be one of the following:
     """
-    logConfig: Optional[List[LogConfigItem]] = None
+    logConfig: list[LogConfigItem] | None = None
     """
     This field denotes the VPC flow logging options for this subnetwork. If
     logging is enabled, logs are exported to Cloud Logging. Flow logging
@@ -554,31 +554,31 @@ class AtProvider(BaseModel):
     REGIONAL_MANAGED_PROXY or GLOBAL_MANAGED_PROXY.
     Structure is documented below.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The network this subnet belongs to.
     Only networks that are in the distributed mode can have subnetworks.
     """
-    params: Optional[List[Param]] = None
+    params: list[Param] | None = None
     """
     Additional params passed with the request, but not persisted as part of resource payload
     Structure is documented below.
     """
-    privateIpGoogleAccess: Optional[bool] = None
+    privateIpGoogleAccess: bool | None = None
     """
     When enabled, VMs in this subnetwork without external IP addresses can
     access Google APIs and services by using Private Google Access.
     """
-    privateIpv6GoogleAccess: Optional[str] = None
+    privateIpv6GoogleAccess: str | None = None
     """
     The private IPv6 google access type for the VMs in this subnet.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    purpose: Optional[str] = None
+    purpose: str | None = None
     """
     The purpose of the resource. This field can be either PRIVATE_RFC_1918, REGIONAL_MANAGED_PROXY, GLOBAL_MANAGED_PROXY, PRIVATE_SERVICE_CONNECT or PRIVATE_NAT(Beta).
     A subnet with purpose set to REGIONAL_MANAGED_PROXY is a user-created subnetwork that is reserved for regional Envoy-based load balancers.
@@ -588,16 +588,16 @@ class AtProvider(BaseModel):
     Note that REGIONAL_MANAGED_PROXY is the preferred setting for all regional Envoy load balancers.
     If unspecified, the purpose defaults to PRIVATE_RFC_1918.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     The GCP region for this subnetwork.
     """
-    reservedInternalRange: Optional[str] = None
+    reservedInternalRange: str | None = None
     """
     The ID of the reserved internal range. Must be prefixed with networkconnectivity.googleapis.com
     E.g. networkconnectivity.googleapis.com/projects/{project}/locations/global/internalRanges/{rangeId}
     """
-    role: Optional[str] = None
+    role: str | None = None
     """
     The role of subnetwork.
     Currently, this field is only used when purpose is REGIONAL_MANAGED_PROXY.
@@ -606,7 +606,7 @@ class AtProvider(BaseModel):
     A BACKUP subnetwork is one that is ready to be promoted to ACTIVE or is currently draining.
     Possible values are: ACTIVE, BACKUP.
     """
-    secondaryIpRange: Optional[List[SecondaryIpRangeItem]] = None
+    secondaryIpRange: list[SecondaryIpRangeItem] | None = None
     """
     An array of configurations for secondary IP ranges for VM instances
     contained in this subnetwork. The primary IP of such VM must belong
@@ -619,11 +619,11 @@ class AtProvider(BaseModel):
     For more details about this behavior, see this section.
     Structure is documented below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    sendSecondaryIpRangeIfEmpty: Optional[bool] = None
+    sendSecondaryIpRangeIfEmpty: bool | None = None
     """
     Controls the removal behavior of secondary_ip_range.
     When false, removing secondary_ip_range from config will not produce a diff as
@@ -632,37 +632,37 @@ class AtProvider(BaseModel):
     empty list of secondary IP ranges to the API.
     Defaults to false.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this subnet to identify whether the IPv6 feature is enabled or not.
     If not specified IPV4_ONLY will be used.
     Possible values are: IPV4_ONLY, IPV4_IPV6.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
     'The state of the subnetwork, which can be one of the following values:
     READY: Subnetwork is created and ready to use DRAINING: only applicable to subnetworks that have the purpose
     set to INTERNAL_HTTPS_LOAD_BALANCER and indicates that connections to the load balancer are being drained.
     A subnetwork that is draining cannot be used or modified until it reaches a status of READY'
     """
-    subnetworkId: Optional[float] = None
+    subnetworkId: float | None = None
     """
     The unique identifier number for the resource. This identifier is defined by the server.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -684,12 +684,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -698,17 +698,17 @@ class Status(BaseModel):
 
 
 class Subnetwork(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Subnetwork']] = 'Subnetwork'
+    kind: Literal['Subnetwork'] | None = 'Subnetwork'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -716,26 +716,26 @@ class Subnetwork(BaseModel):
     """
     SubnetworkSpec defines the desired state of Subnetwork
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     SubnetworkStatus defines the observed state of Subnetwork.
     """
 
 
 class SubnetworkList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Subnetwork]
+    items: list[Subnetwork]
     """
     List of subnetworks. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

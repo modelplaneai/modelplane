@@ -74,52 +74,52 @@ spec:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-gcp-container
-      version: v2.5.0
+      version: v2.6.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-gcp-compute
-      version: v2.5.0
+      version: v2.6.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-gcp-cloudplatform
-      version: v2.5.0
+      version: v2.6.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-eks
-      version: v2.5.0
+      version: v2.6.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-ec2
-      version: v2.5.0
+      version: v2.6.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-iam
-      version: v2.5.0
+      version: v2.6.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-efs
-      version: v2.5.0
+      version: v2.6.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-helm
-      version: ">=v1.2.0"
+      version: v1.2.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-kubernetes
-      version: ">=v1.2.0"
+      version: v1.2.1

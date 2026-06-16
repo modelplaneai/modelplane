@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,56 +32,56 @@ class NetworkUrlRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkUrlSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ConsumerAcceptList(BaseModel):
-    connectionLimit: Optional[float] = None
+    connectionLimit: float | None = None
     """
     The number of consumer forwarding rules the consumer project can
     create.
     """
-    networkUrl: Optional[str] = None
+    networkUrl: str | None = None
     """
     The network that is allowed to connect to this service attachment.
     Only one of project_id_or_num and network_url may be set.
     """
-    networkUrlRef: Optional[NetworkUrlRef] = None
+    networkUrlRef: NetworkUrlRef | None = None
     """
     Reference to a Network in compute to populate networkUrl.
     """
-    networkUrlSelector: Optional[NetworkUrlSelector] = None
+    networkUrlSelector: NetworkUrlSelector | None = None
     """
     Selector for a Network in compute to populate networkUrl.
     """
-    projectIdOrNum: Optional[str] = None
+    projectIdOrNum: str | None = None
     """
     A project that is allowed to connect to this service attachment.
     Only one of project_id_or_num and network_url may be set.
@@ -94,31 +93,31 @@ class NatSubnetsRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NatSubnetsSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -129,88 +128,88 @@ class TargetServiceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class TargetServiceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    connectionPreference: Optional[str] = None
+    connectionPreference: str | None = None
     """
     The connection preference to use for this service attachment. Valid
     values include "ACCEPT_AUTOMATIC", "ACCEPT_MANUAL".
     """
-    consumerAcceptLists: Optional[List[ConsumerAcceptList]] = None
+    consumerAcceptLists: list[ConsumerAcceptList] | None = None
     """
     An array of projects that are allowed to connect to this service
     attachment.
     Structure is documented below.
     """
-    consumerRejectLists: Optional[List[str]] = None
+    consumerRejectLists: list[str] | None = None
     """
     An array of projects that are not allowed to connect to this service
     attachment.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    domainNames: Optional[List[str]] = None
+    domainNames: list[str] | None = None
     """
     If specified, the domain name will be used during the integration between
     the PSC connected endpoints and the Cloud DNS. For example, this is a
     valid domain name: "p.mycompany.com.". Current max number of domain names
     supported is 1.
     """
-    enableProxyProtocol: Optional[bool] = None
+    enableProxyProtocol: bool | None = None
     """
     If true, enable the proxy protocol which is for supplying client TCP/IP
     address data in TCP connections that traverse proxies on their way to
     destination servers.
     """
-    natSubnets: Optional[List[str]] = None
+    natSubnets: list[str] | None = None
     """
     An array of subnets that is provided for NAT in this service attachment.
     """
-    natSubnetsRefs: Optional[List[NatSubnetsRef]] = None
+    natSubnetsRefs: list[NatSubnetsRef] | None = None
     """
     References to Subnetwork in compute to populate natSubnets.
     """
-    natSubnetsSelector: Optional[NatSubnetsSelector] = None
+    natSubnetsSelector: NatSubnetsSelector | None = None
     """
     Selector for a list of Subnetwork in compute to populate natSubnets.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    propagatedConnectionLimit: Optional[float] = None
+    propagatedConnectionLimit: float | None = None
     """
     The number of consumer spokes that connected Private Service Connect endpoints can be propagated to through Network Connectivity Center.
     This limit lets the service producer limit how many propagated Private Service Connect connections can be established to this service attachment from a single consumer.
@@ -218,7 +217,7 @@ class ForProvider(BaseModel):
     If the connection preference of the service attachment is ACCEPT_AUTOMATIC, the limit applies to each project that contains a connected endpoint.
     If unspecified, the default propagated connection limit is 250. To explicitly send a zero value, set send_propagated_connection_limit_if_zero = true.
     """
-    reconcileConnections: Optional[bool] = None
+    reconcileConnections: bool | None = None
     """
     This flag determines whether a consumer accept/reject list change can reconcile the statuses of existing ACCEPTED or REJECTED PSC endpoints.
     If false, connection policy update will only affect existing PENDING PSC endpoints. Existing ACCEPTED/REJECTED endpoints will remain untouched regardless how the connection policy is modified .
@@ -228,79 +227,79 @@ class ForProvider(BaseModel):
     """
     URL of the region where the resource resides.
     """
-    sendPropagatedConnectionLimitIfZero: Optional[bool] = None
+    sendPropagatedConnectionLimitIfZero: bool | None = None
     """
     Controls the behavior of propagated_connection_limit.
     When false, setting propagated_connection_limit to zero causes the provider to use to the API's default value.
     When true, the provider will set propagated_connection_limit to zero.
     Defaults to false.
     """
-    targetService: Optional[str] = None
+    targetService: str | None = None
     """
     The URL of a service serving the endpoint identified by this service attachment.
     """
-    targetServiceRef: Optional[TargetServiceRef] = None
+    targetServiceRef: TargetServiceRef | None = None
     """
     Reference to a ForwardingRule in compute to populate targetService.
     """
-    targetServiceSelector: Optional[TargetServiceSelector] = None
+    targetServiceSelector: TargetServiceSelector | None = None
     """
     Selector for a ForwardingRule in compute to populate targetService.
     """
 
 
 class InitProvider(BaseModel):
-    connectionPreference: Optional[str] = None
+    connectionPreference: str | None = None
     """
     The connection preference to use for this service attachment. Valid
     values include "ACCEPT_AUTOMATIC", "ACCEPT_MANUAL".
     """
-    consumerAcceptLists: Optional[List[ConsumerAcceptList]] = None
+    consumerAcceptLists: list[ConsumerAcceptList] | None = None
     """
     An array of projects that are allowed to connect to this service
     attachment.
     Structure is documented below.
     """
-    consumerRejectLists: Optional[List[str]] = None
+    consumerRejectLists: list[str] | None = None
     """
     An array of projects that are not allowed to connect to this service
     attachment.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    domainNames: Optional[List[str]] = None
+    domainNames: list[str] | None = None
     """
     If specified, the domain name will be used during the integration between
     the PSC connected endpoints and the Cloud DNS. For example, this is a
     valid domain name: "p.mycompany.com.". Current max number of domain names
     supported is 1.
     """
-    enableProxyProtocol: Optional[bool] = None
+    enableProxyProtocol: bool | None = None
     """
     If true, enable the proxy protocol which is for supplying client TCP/IP
     address data in TCP connections that traverse proxies on their way to
     destination servers.
     """
-    natSubnets: Optional[List[str]] = None
+    natSubnets: list[str] | None = None
     """
     An array of subnets that is provided for NAT in this service attachment.
     """
-    natSubnetsRefs: Optional[List[NatSubnetsRef]] = None
+    natSubnetsRefs: list[NatSubnetsRef] | None = None
     """
     References to Subnetwork in compute to populate natSubnets.
     """
-    natSubnetsSelector: Optional[NatSubnetsSelector] = None
+    natSubnetsSelector: NatSubnetsSelector | None = None
     """
     Selector for a list of Subnetwork in compute to populate natSubnets.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    propagatedConnectionLimit: Optional[float] = None
+    propagatedConnectionLimit: float | None = None
     """
     The number of consumer spokes that connected Private Service Connect endpoints can be propagated to through Network Connectivity Center.
     This limit lets the service producer limit how many propagated Private Service Connect connections can be established to this service attachment from a single consumer.
@@ -308,28 +307,28 @@ class InitProvider(BaseModel):
     If the connection preference of the service attachment is ACCEPT_AUTOMATIC, the limit applies to each project that contains a connected endpoint.
     If unspecified, the default propagated connection limit is 250. To explicitly send a zero value, set send_propagated_connection_limit_if_zero = true.
     """
-    reconcileConnections: Optional[bool] = None
+    reconcileConnections: bool | None = None
     """
     This flag determines whether a consumer accept/reject list change can reconcile the statuses of existing ACCEPTED or REJECTED PSC endpoints.
     If false, connection policy update will only affect existing PENDING PSC endpoints. Existing ACCEPTED/REJECTED endpoints will remain untouched regardless how the connection policy is modified .
     If true, update will affect both PENDING and ACCEPTED/REJECTED PSC endpoints. For example, an ACCEPTED PSC endpoint will be moved to REJECTED if its project is added to the reject list.
     """
-    sendPropagatedConnectionLimitIfZero: Optional[bool] = None
+    sendPropagatedConnectionLimitIfZero: bool | None = None
     """
     Controls the behavior of propagated_connection_limit.
     When false, setting propagated_connection_limit to zero causes the provider to use to the API's default value.
     When true, the provider will set propagated_connection_limit to zero.
     Defaults to false.
     """
-    targetService: Optional[str] = None
+    targetService: str | None = None
     """
     The URL of a service serving the endpoint identified by this service attachment.
     """
-    targetServiceRef: Optional[TargetServiceRef] = None
+    targetServiceRef: TargetServiceRef | None = None
     """
     Reference to a ForwardingRule in compute to populate targetService.
     """
-    targetServiceSelector: Optional[TargetServiceSelector] = None
+    targetServiceSelector: TargetServiceSelector | None = None
     """
     Selector for a ForwardingRule in compute to populate targetService.
     """
@@ -355,7 +354,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -368,9 +367,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -379,17 +379,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -399,27 +397,27 @@ class Spec(BaseModel):
 
 
 class ConnectedEndpoint(BaseModel):
-    consumerNetwork: Optional[str] = None
+    consumerNetwork: str | None = None
     """
     (Output)
     The url of the consumer network.
     """
-    endpoint: Optional[str] = None
+    endpoint: str | None = None
     """
     (Output)
     The URL of the consumer forwarding rule.
     """
-    propagatedConnectionCount: Optional[float] = None
+    propagatedConnectionCount: float | None = None
     """
     (Output)
     The number of consumer Network Connectivity Center spokes that the connected Private Service Connect endpoint has propagated to.
     """
-    pscConnectionId: Optional[str] = None
+    pscConnectionId: str | None = None
     """
     (Output)
     The PSC connection id of the connected endpoint.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     (Output)
     The status of the connection from the consumer forwarding rule to
@@ -428,17 +426,17 @@ class ConnectedEndpoint(BaseModel):
 
 
 class ConsumerAcceptListModel(BaseModel):
-    connectionLimit: Optional[float] = None
+    connectionLimit: float | None = None
     """
     The number of consumer forwarding rules the consumer project can
     create.
     """
-    networkUrl: Optional[str] = None
+    networkUrl: str | None = None
     """
     The network that is allowed to connect to this service attachment.
     Only one of project_id_or_num and network_url may be set.
     """
-    projectIdOrNum: Optional[str] = None
+    projectIdOrNum: str | None = None
     """
     A project that is allowed to connect to this service attachment.
     Only one of project_id_or_num and network_url may be set.
@@ -446,64 +444,64 @@ class ConsumerAcceptListModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    connectedEndpoints: Optional[List[ConnectedEndpoint]] = None
+    connectedEndpoints: list[ConnectedEndpoint] | None = None
     """
     An array of the consumer forwarding rules connected to this service
     attachment.
     Structure is documented below.
     """
-    connectionPreference: Optional[str] = None
+    connectionPreference: str | None = None
     """
     The connection preference to use for this service attachment. Valid
     values include "ACCEPT_AUTOMATIC", "ACCEPT_MANUAL".
     """
-    consumerAcceptLists: Optional[List[ConsumerAcceptListModel]] = None
+    consumerAcceptLists: list[ConsumerAcceptListModel] | None = None
     """
     An array of projects that are allowed to connect to this service
     attachment.
     Structure is documented below.
     """
-    consumerRejectLists: Optional[List[str]] = None
+    consumerRejectLists: list[str] | None = None
     """
     An array of projects that are not allowed to connect to this service
     attachment.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    domainNames: Optional[List[str]] = None
+    domainNames: list[str] | None = None
     """
     If specified, the domain name will be used during the integration between
     the PSC connected endpoints and the Cloud DNS. For example, this is a
     valid domain name: "p.mycompany.com.". Current max number of domain names
     supported is 1.
     """
-    enableProxyProtocol: Optional[bool] = None
+    enableProxyProtocol: bool | None = None
     """
     If true, enable the proxy protocol which is for supplying client TCP/IP
     address data in TCP connections that traverse proxies on their way to
     destination servers.
     """
-    fingerprint: Optional[str] = None
+    fingerprint: str | None = None
     """
     Fingerprint of this resource. This field is used internally during
     updates of this resource.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/serviceAttachments/{{name}}
     """
-    natSubnets: Optional[List[str]] = None
+    natSubnets: list[str] | None = None
     """
     An array of subnets that is provided for NAT in this service attachment.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    propagatedConnectionLimit: Optional[float] = None
+    propagatedConnectionLimit: float | None = None
     """
     The number of consumer spokes that connected Private Service Connect endpoints can be propagated to through Network Connectivity Center.
     This limit lets the service producer limit how many propagated Private Service Connect connections can be established to this service attachment from a single consumer.
@@ -511,45 +509,45 @@ class AtProvider(BaseModel):
     If the connection preference of the service attachment is ACCEPT_AUTOMATIC, the limit applies to each project that contains a connected endpoint.
     If unspecified, the default propagated connection limit is 250. To explicitly send a zero value, set send_propagated_connection_limit_if_zero = true.
     """
-    reconcileConnections: Optional[bool] = None
+    reconcileConnections: bool | None = None
     """
     This flag determines whether a consumer accept/reject list change can reconcile the statuses of existing ACCEPTED or REJECTED PSC endpoints.
     If false, connection policy update will only affect existing PENDING PSC endpoints. Existing ACCEPTED/REJECTED endpoints will remain untouched regardless how the connection policy is modified .
     If true, update will affect both PENDING and ACCEPTED/REJECTED PSC endpoints. For example, an ACCEPTED PSC endpoint will be moved to REJECTED if its project is added to the reject list.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     URL of the region where the resource resides.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    sendPropagatedConnectionLimitIfZero: Optional[bool] = None
+    sendPropagatedConnectionLimitIfZero: bool | None = None
     """
     Controls the behavior of propagated_connection_limit.
     When false, setting propagated_connection_limit to zero causes the provider to use to the API's default value.
     When true, the provider will set propagated_connection_limit to zero.
     Defaults to false.
     """
-    targetService: Optional[str] = None
+    targetService: str | None = None
     """
     The URL of a service serving the endpoint identified by this service attachment.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -571,12 +569,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -585,17 +583,17 @@ class Status(BaseModel):
 
 
 class ServiceAttachment(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ServiceAttachment']] = 'ServiceAttachment'
+    kind: Literal['ServiceAttachment'] | None = 'ServiceAttachment'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -603,26 +601,26 @@ class ServiceAttachment(BaseModel):
     """
     ServiceAttachmentSpec defines the desired state of ServiceAttachment
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ServiceAttachmentStatus defines the observed state of ServiceAttachment.
     """
 
 
 class ServiceAttachmentList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ServiceAttachment]
+    items: list[ServiceAttachment]
     """
     List of serviceattachments. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

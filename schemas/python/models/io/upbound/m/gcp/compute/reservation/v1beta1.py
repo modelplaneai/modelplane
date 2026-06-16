@@ -3,27 +3,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class DeleteAfterDuration(BaseModel):
-    nanos: Optional[float] = None
+    nanos: float | None = None
     """
     Number of nanoseconds for the auto-delete duration.
     """
-    seconds: Optional[str] = None
+    seconds: str | None = None
     """
     Number of seconds for the auto-delete duration.
     """
 
 
 class ReservationSharingPolicy(BaseModel):
-    serviceShareType: Optional[str] = None
+    serviceShareType: str | None = None
     """
     Sharing config for all Google Cloud services.
     Possible values are: ALLOW_ALL, DISALLOW_ALL.
@@ -31,23 +30,23 @@ class ReservationSharingPolicy(BaseModel):
 
 
 class ProjectMapItem(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     The identifier for this object. Format specified above.
     """
-    projectId: Optional[str] = None
+    projectId: str | None = None
     """
     The project id/number, should be same as the key of this project config in the project map.
     """
 
 
 class ShareSettings(BaseModel):
-    projectMap: Optional[List[ProjectMapItem]] = None
+    projectMap: list[ProjectMapItem] | None = None
     """
     A map of project number and project config. This is only valid when shareType's value is SPECIFIC_PROJECTS.
     Structure is documented below.
     """
-    shareType: Optional[str] = None
+    shareType: str | None = None
     """
     Type of sharing for this shared-reservation
     Possible values are: LOCAL, SPECIFIC_PROJECTS.
@@ -55,12 +54,12 @@ class ShareSettings(BaseModel):
 
 
 class GuestAccelerator(BaseModel):
-    acceleratorCount: Optional[float] = None
+    acceleratorCount: float | None = None
     """
     The number of the guest accelerator cards exposed to
     this instance.
     """
-    acceleratorType: Optional[str] = None
+    acceleratorType: str | None = None
     """
     The full or partial URL of the accelerator type to
     attach to this instance. For example:
@@ -70,11 +69,11 @@ class GuestAccelerator(BaseModel):
 
 
 class LocalSsd(BaseModel):
-    diskSizeGb: Optional[float] = None
+    diskSizeGb: float | None = None
     """
     The size of the disk in base-2 GB.
     """
-    interface: Optional[str] = None
+    interface: str | None = None
     """
     The disk interface to use for attaching this disk.
     Default value is SCSI.
@@ -83,22 +82,22 @@ class LocalSsd(BaseModel):
 
 
 class InstanceProperties(BaseModel):
-    guestAccelerators: Optional[List[GuestAccelerator]] = None
+    guestAccelerators: list[GuestAccelerator] | None = None
     """
     Guest accelerator type and count.
     Structure is documented below.
     """
-    localSsds: Optional[List[LocalSsd]] = None
+    localSsds: list[LocalSsd] | None = None
     """
     The amount of local ssd to reserve with each instance. This
     reserves disks of type local-ssd.
     Structure is documented below.
     """
-    machineType: Optional[str] = None
+    machineType: str | None = None
     """
     The name of the machine type to reserve.
     """
-    minCpuPlatform: Optional[str] = None
+    minCpuPlatform: str | None = None
     """
     The minimum CPU platform for the reservation. For example,
     "Intel Skylake". See
@@ -108,14 +107,14 @@ class InstanceProperties(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -129,97 +128,97 @@ class SourceInstanceTemplateRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceInstanceTemplateSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class SpecificReservation(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     The number of resources that are allocated.
     """
-    instanceProperties: Optional[InstanceProperties] = None
+    instanceProperties: InstanceProperties | None = None
     """
     The instance properties for the reservation.
     Structure is documented below.
     """
-    sourceInstanceTemplate: Optional[str] = None
+    sourceInstanceTemplate: str | None = None
     """
     Specifies the instance template to create the reservation. If you use this field, you must exclude the
     instanceProperties field.
     """
-    sourceInstanceTemplateRef: Optional[SourceInstanceTemplateRef] = None
+    sourceInstanceTemplateRef: SourceInstanceTemplateRef | None = None
     """
     Reference to a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
-    sourceInstanceTemplateSelector: Optional[SourceInstanceTemplateSelector] = None
+    sourceInstanceTemplateSelector: SourceInstanceTemplateSelector | None = None
     """
     Selector for a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
 
 
 class ForProvider(BaseModel):
-    deleteAfterDuration: Optional[DeleteAfterDuration] = None
+    deleteAfterDuration: DeleteAfterDuration | None = None
     """
     Duration after which the reservation will be auto-deleted by Compute Engine. Cannot be used with delete_at_time.
     Structure is documented below.
     """
-    deleteAtTime: Optional[str] = None
+    deleteAtTime: str | None = None
     """
     Absolute time in future when the reservation will be auto-deleted by Compute Engine. Timestamp is represented in RFC3339 text format.
     Cannot be used with delete_after_duration.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    reservationSharingPolicy: Optional[ReservationSharingPolicy] = None
+    reservationSharingPolicy: ReservationSharingPolicy | None = None
     """
     Sharing policy for reservations with Google Cloud managed services.
     Structure is documented below.
     """
-    shareSettings: Optional[ShareSettings] = None
+    shareSettings: ShareSettings | None = None
     """
     The share setting for reservations.
     Structure is documented below.
     """
-    specificReservation: Optional[SpecificReservation] = None
+    specificReservation: SpecificReservation | None = None
     """
     Reservation for instances with specific machine shapes.
     Structure is documented below.
     """
-    specificReservationRequired: Optional[bool] = None
+    specificReservationRequired: bool | None = None
     """
     When set to true, only VMs that target this reservation by name can
     consume this reservation. Otherwise, it can be consumed by VMs with
@@ -232,41 +231,41 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    deleteAfterDuration: Optional[DeleteAfterDuration] = None
+    deleteAfterDuration: DeleteAfterDuration | None = None
     """
     Duration after which the reservation will be auto-deleted by Compute Engine. Cannot be used with delete_at_time.
     Structure is documented below.
     """
-    deleteAtTime: Optional[str] = None
+    deleteAtTime: str | None = None
     """
     Absolute time in future when the reservation will be auto-deleted by Compute Engine. Timestamp is represented in RFC3339 text format.
     Cannot be used with delete_after_duration.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    reservationSharingPolicy: Optional[ReservationSharingPolicy] = None
+    reservationSharingPolicy: ReservationSharingPolicy | None = None
     """
     Sharing policy for reservations with Google Cloud managed services.
     Structure is documented below.
     """
-    shareSettings: Optional[ShareSettings] = None
+    shareSettings: ShareSettings | None = None
     """
     The share setting for reservations.
     Structure is documented below.
     """
-    specificReservation: Optional[SpecificReservation] = None
+    specificReservation: SpecificReservation | None = None
     """
     Reservation for instances with specific machine shapes.
     Structure is documented below.
     """
-    specificReservationRequired: Optional[bool] = None
+    specificReservationRequired: bool | None = None
     """
     When set to true, only VMs that target this reservation by name can
     consume this reservation. Otherwise, it can be consumed by VMs with
@@ -294,7 +293,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -307,9 +306,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -318,17 +318,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -338,21 +336,21 @@ class Spec(BaseModel):
 
 
 class SpecificReservationModel(BaseModel):
-    count: Optional[float] = None
+    count: float | None = None
     """
     The number of resources that are allocated.
     """
-    inUseCount: Optional[float] = None
+    inUseCount: float | None = None
     """
     (Output)
     How many instances are in use.
     """
-    instanceProperties: Optional[InstanceProperties] = None
+    instanceProperties: InstanceProperties | None = None
     """
     The instance properties for the reservation.
     Structure is documented below.
     """
-    sourceInstanceTemplate: Optional[str] = None
+    sourceInstanceTemplate: str | None = None
     """
     Specifies the instance template to create the reservation. If you use this field, you must exclude the
     instanceProperties field.
@@ -360,85 +358,85 @@ class SpecificReservationModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    commitment: Optional[str] = None
+    commitment: str | None = None
     """
     Full or partial URL to a parent commitment. This field displays for
     reservations that are tied to a commitment.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    deleteAfterDuration: Optional[DeleteAfterDuration] = None
+    deleteAfterDuration: DeleteAfterDuration | None = None
     """
     Duration after which the reservation will be auto-deleted by Compute Engine. Cannot be used with delete_at_time.
     Structure is documented below.
     """
-    deleteAtTime: Optional[str] = None
+    deleteAtTime: str | None = None
     """
     Absolute time in future when the reservation will be auto-deleted by Compute Engine. Timestamp is represented in RFC3339 text format.
     Cannot be used with delete_after_duration.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/zones/{{zone}}/reservations/{{name}}
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    reservationSharingPolicy: Optional[ReservationSharingPolicy] = None
+    reservationSharingPolicy: ReservationSharingPolicy | None = None
     """
     Sharing policy for reservations with Google Cloud managed services.
     Structure is documented below.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    shareSettings: Optional[ShareSettings] = None
+    shareSettings: ShareSettings | None = None
     """
     The share setting for reservations.
     Structure is documented below.
     """
-    specificReservation: Optional[SpecificReservationModel] = None
+    specificReservation: SpecificReservationModel | None = None
     """
     Reservation for instances with specific machine shapes.
     Structure is documented below.
     """
-    specificReservationRequired: Optional[bool] = None
+    specificReservationRequired: bool | None = None
     """
     When set to true, only VMs that target this reservation by name can
     consume this reservation. Otherwise, it can be consumed by VMs with
     affinity for any reservation. Defaults to false.
     """
-    status: Optional[str] = None
+    status: str | None = None
     """
     The status of the reservation.
     """
-    zone: Optional[str] = None
+    zone: str | None = None
     """
     The zone where the reservation is made.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -460,12 +458,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -474,17 +472,17 @@ class Status(BaseModel):
 
 
 class Reservation(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Reservation']] = 'Reservation'
+    kind: Literal['Reservation'] | None = 'Reservation'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -492,26 +490,26 @@ class Reservation(BaseModel):
     """
     ReservationSpec defines the desired state of Reservation
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ReservationStatus defines the observed state of Reservation.
     """
 
 
 class ReservationList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Reservation]
+    items: list[Reservation]
     """
     List of reservations. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,31 +32,31 @@ class AttachmentTargetRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class AttachmentTargetSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -68,50 +67,50 @@ class FirewallPolicyRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class FirewallPolicySelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    attachmentTarget: Optional[str] = None
+    attachmentTarget: str | None = None
     """
     The target that the firewall policy is attached to.
     """
-    attachmentTargetRef: Optional[AttachmentTargetRef] = None
+    attachmentTargetRef: AttachmentTargetRef | None = None
     """
     Reference to a Folder in cloudplatform to populate attachmentTarget.
     """
-    attachmentTargetSelector: Optional[AttachmentTargetSelector] = None
+    attachmentTargetSelector: AttachmentTargetSelector | None = None
     """
     Selector for a Folder in cloudplatform to populate attachmentTarget.
     """
-    firewallPolicy: Optional[str] = None
+    firewallPolicy: str | None = None
     """
     The firewall policy of the resource.
     This field can be updated to refer to a different Firewall Policy, which will create a new association from that new
@@ -119,34 +118,34 @@ class ForProvider(BaseModel):
     Note Due to potential risks with this operation it is highly recommended to use the create_before_destroy life cycle option
     on your exisiting firewall policy so as to prevent a situation where your attachment target has no associated policy.
     """
-    firewallPolicyRef: Optional[FirewallPolicyRef] = None
+    firewallPolicyRef: FirewallPolicyRef | None = None
     """
     Reference to a FirewallPolicy in compute to populate firewallPolicy.
     """
-    firewallPolicySelector: Optional[FirewallPolicySelector] = None
+    firewallPolicySelector: FirewallPolicySelector | None = None
     """
     Selector for a FirewallPolicy in compute to populate firewallPolicy.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name for an association.
     """
 
 
 class InitProvider(BaseModel):
-    attachmentTarget: Optional[str] = None
+    attachmentTarget: str | None = None
     """
     The target that the firewall policy is attached to.
     """
-    attachmentTargetRef: Optional[AttachmentTargetRef] = None
+    attachmentTargetRef: AttachmentTargetRef | None = None
     """
     Reference to a Folder in cloudplatform to populate attachmentTarget.
     """
-    attachmentTargetSelector: Optional[AttachmentTargetSelector] = None
+    attachmentTargetSelector: AttachmentTargetSelector | None = None
     """
     Selector for a Folder in cloudplatform to populate attachmentTarget.
     """
-    firewallPolicy: Optional[str] = None
+    firewallPolicy: str | None = None
     """
     The firewall policy of the resource.
     This field can be updated to refer to a different Firewall Policy, which will create a new association from that new
@@ -154,15 +153,15 @@ class InitProvider(BaseModel):
     Note Due to potential risks with this operation it is highly recommended to use the create_before_destroy life cycle option
     on your exisiting firewall policy so as to prevent a situation where your attachment target has no associated policy.
     """
-    firewallPolicyRef: Optional[FirewallPolicyRef] = None
+    firewallPolicyRef: FirewallPolicyRef | None = None
     """
     Reference to a FirewallPolicy in compute to populate firewallPolicy.
     """
-    firewallPolicySelector: Optional[FirewallPolicySelector] = None
+    firewallPolicySelector: FirewallPolicySelector | None = None
     """
     Selector for a FirewallPolicy in compute to populate firewallPolicy.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name for an association.
     """
@@ -188,7 +187,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -201,9 +200,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -212,17 +212,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -232,11 +230,11 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    attachmentTarget: Optional[str] = None
+    attachmentTarget: str | None = None
     """
     The target that the firewall policy is attached to.
     """
-    firewallPolicy: Optional[str] = None
+    firewallPolicy: str | None = None
     """
     The firewall policy of the resource.
     This field can be updated to refer to a different Firewall Policy, which will create a new association from that new
@@ -244,32 +242,32 @@ class AtProvider(BaseModel):
     Note Due to potential risks with this operation it is highly recommended to use the create_before_destroy life cycle option
     on your exisiting firewall policy so as to prevent a situation where your attachment target has no associated policy.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format locations/global/firewallPolicies/{{firewall_policy}}/associations/{{name}}
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name for an association.
     """
-    shortName: Optional[str] = None
+    shortName: str | None = None
     """
     The short name of the firewall policy of the association.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -291,12 +289,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -305,17 +303,17 @@ class Status(BaseModel):
 
 
 class FirewallPolicyAssociation(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.m.upbound.io/v1beta1'] | None = (
         'compute.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['FirewallPolicyAssociation']] = 'FirewallPolicyAssociation'
+    kind: Literal['FirewallPolicyAssociation'] | None = 'FirewallPolicyAssociation'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -323,26 +321,26 @@ class FirewallPolicyAssociation(BaseModel):
     """
     FirewallPolicyAssociationSpec defines the desired state of FirewallPolicyAssociation
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     FirewallPolicyAssociationStatus defines the observed state of FirewallPolicyAssociation.
     """
 
 
 class FirewallPolicyAssociationList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[FirewallPolicyAssociation]
+    items: list[FirewallPolicyAssociation]
     """
     List of firewallpolicyassociations. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

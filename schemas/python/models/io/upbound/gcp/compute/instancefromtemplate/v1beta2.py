@@ -3,21 +3,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class AdvancedMachineFeatures(BaseModel):
-    enableNestedVirtualization: Optional[bool] = None
-    enableUefiNetworking: Optional[bool] = None
-    performanceMonitoringUnit: Optional[str] = None
-    threadsPerCore: Optional[float] = None
-    turboMode: Optional[str] = None
-    visibleCoreCount: Optional[float] = None
+    enableNestedVirtualization: bool | None = None
+    enableUefiNetworking: bool | None = None
+    performanceMonitoringUnit: str | None = None
+    threadsPerCore: float | None = None
+    turboMode: str | None = None
+    visibleCoreCount: float | None = None
 
 
 class DiskEncryptionKeyRawSecretRef(BaseModel):
@@ -51,24 +50,24 @@ class DiskEncryptionKeyRsaSecretRef(BaseModel):
 
 
 class AttachedDiskItem(BaseModel):
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    diskEncryptionKeyRawSecretRef: Optional[DiskEncryptionKeyRawSecretRef] = None
+    diskEncryptionKeyRawSecretRef: DiskEncryptionKeyRawSecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
-    diskEncryptionKeyRsaSecretRef: Optional[DiskEncryptionKeyRsaSecretRef] = None
+    diskEncryptionKeyRsaSecretRef: DiskEncryptionKeyRsaSecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
-    diskEncryptionServiceAccount: Optional[str] = None
-    forceAttach: Optional[bool] = None
-    kmsKeySelfLink: Optional[str] = None
-    mode: Optional[str] = None
-    source: Optional[str] = None
+    diskEncryptionServiceAccount: str | None = None
+    forceAttach: bool | None = None
+    kmsKeySelfLink: str | None = None
+    mode: str | None = None
+    source: str | None = None
 
 
 class RawKeySecretRef(BaseModel):
@@ -102,95 +101,95 @@ class RsaEncryptedKeySecretRef(BaseModel):
 
 
 class SourceImageEncryptionKey(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
-    kmsKeyServiceAccount: Optional[str] = None
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    kmsKeySelfLink: str | None = None
+    kmsKeyServiceAccount: str | None = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
 
 
 class SourceSnapshotEncryptionKey(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
-    kmsKeyServiceAccount: Optional[str] = None
-    rawKeySecretRef: Optional[RawKeySecretRef] = None
+    kmsKeySelfLink: str | None = None
+    kmsKeyServiceAccount: str | None = None
+    rawKeySecretRef: RawKeySecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
-    rsaEncryptedKeySecretRef: Optional[RsaEncryptedKeySecretRef] = None
+    rsaEncryptedKeySecretRef: RsaEncryptedKeySecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
 
 
 class InitializeParams(BaseModel):
-    architecture: Optional[str] = None
-    enableConfidentialCompute: Optional[bool] = None
-    image: Optional[str] = None
-    labels: Optional[Dict[str, str]] = None
-    provisionedIops: Optional[float] = None
-    provisionedThroughput: Optional[float] = None
-    resourceManagerTags: Optional[Dict[str, str]] = None
-    resourcePolicies: Optional[List[str]] = None
-    size: Optional[float] = None
-    snapshot: Optional[str] = None
-    sourceImageEncryptionKey: Optional[SourceImageEncryptionKey] = None
-    sourceSnapshotEncryptionKey: Optional[SourceSnapshotEncryptionKey] = None
-    storagePool: Optional[str] = None
-    type: Optional[str] = None
+    architecture: str | None = None
+    enableConfidentialCompute: bool | None = None
+    image: str | None = None
+    labels: dict[str, str] | None = None
+    provisionedIops: float | None = None
+    provisionedThroughput: float | None = None
+    resourceManagerTags: dict[str, str] | None = None
+    resourcePolicies: list[str] | None = None
+    size: float | None = None
+    snapshot: str | None = None
+    sourceImageEncryptionKey: SourceImageEncryptionKey | None = None
+    sourceSnapshotEncryptionKey: SourceSnapshotEncryptionKey | None = None
+    storagePool: str | None = None
+    type: str | None = None
 
 
 class BootDisk(BaseModel):
-    autoDelete: Optional[bool] = None
+    autoDelete: bool | None = None
     """
     Default is 6 minutes.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    diskEncryptionKeyRawSecretRef: Optional[DiskEncryptionKeyRawSecretRef] = None
+    diskEncryptionKeyRawSecretRef: DiskEncryptionKeyRawSecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
-    diskEncryptionKeyRsaSecretRef: Optional[DiskEncryptionKeyRsaSecretRef] = None
+    diskEncryptionKeyRsaSecretRef: DiskEncryptionKeyRsaSecretRef | None = None
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
-    diskEncryptionServiceAccount: Optional[str] = None
-    forceAttach: Optional[bool] = None
-    guestOsFeatures: Optional[List[str]] = None
-    initializeParams: Optional[InitializeParams] = None
-    interface: Optional[str] = None
-    kmsKeySelfLink: Optional[str] = None
-    mode: Optional[str] = None
-    source: Optional[str] = None
+    diskEncryptionServiceAccount: str | None = None
+    forceAttach: bool | None = None
+    guestOsFeatures: list[str] | None = None
+    initializeParams: InitializeParams | None = None
+    interface: str | None = None
+    kmsKeySelfLink: str | None = None
+    mode: str | None = None
+    source: str | None = None
 
 
 class ConfidentialInstanceConfig(BaseModel):
-    confidentialInstanceType: Optional[str] = None
-    enableConfidentialCompute: Optional[bool] = None
+    confidentialInstanceType: str | None = None
+    enableConfidentialCompute: bool | None = None
 
 
 class GuestAcceleratorItem(BaseModel):
-    count: Optional[float] = None
-    type: Optional[str] = None
+    count: float | None = None
+    type: str | None = None
 
 
 class InstanceEncryptionKey(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
-    kmsKeyServiceAccount: Optional[str] = None
+    kmsKeySelfLink: str | None = None
+    kmsKeyServiceAccount: str | None = None
 
 
 class AccessConfigItem(BaseModel):
-    natIp: Optional[str] = None
-    networkTier: Optional[str] = None
-    publicPtrDomainName: Optional[str] = None
+    natIp: str | None = None
+    networkTier: str | None = None
+    publicPtrDomainName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
@@ -198,8 +197,8 @@ class AccessConfigItem(BaseModel):
 
 
 class AliasIpRangeItem(BaseModel):
-    ipCidrRange: Optional[str] = None
-    subnetworkRangeName: Optional[str] = None
+    ipCidrRange: str | None = None
+    subnetworkRangeName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
@@ -207,15 +206,15 @@ class AliasIpRangeItem(BaseModel):
 
 
 class Ipv6AccessConfigItem(BaseModel):
-    externalIpv6: Optional[str] = None
-    externalIpv6PrefixLength: Optional[str] = None
-    name: Optional[str] = None
+    externalIpv6: str | None = None
+    externalIpv6PrefixLength: str | None = None
+    name: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    networkTier: Optional[str] = None
-    publicPtrDomainName: Optional[str] = None
+    networkTier: str | None = None
+    publicPtrDomainName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
@@ -223,14 +222,14 @@ class Ipv6AccessConfigItem(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -244,23 +243,23 @@ class NetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -271,132 +270,132 @@ class SubnetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SubnetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class NetworkInterfaceItem(BaseModel):
-    accessConfig: Optional[List[AccessConfigItem]] = None
-    aliasIpRange: Optional[List[AliasIpRangeItem]] = None
-    internalIpv6PrefixLength: Optional[float] = None
-    ipv6AccessConfig: Optional[List[Ipv6AccessConfigItem]] = None
-    ipv6Address: Optional[str] = None
-    network: Optional[str] = None
-    networkAttachment: Optional[str] = None
-    networkIp: Optional[str] = None
-    networkRef: Optional[NetworkRef] = None
+    accessConfig: list[AccessConfigItem] | None = None
+    aliasIpRange: list[AliasIpRangeItem] | None = None
+    internalIpv6PrefixLength: float | None = None
+    ipv6AccessConfig: list[Ipv6AccessConfigItem] | None = None
+    ipv6Address: str | None = None
+    network: str | None = None
+    networkAttachment: str | None = None
+    networkIp: str | None = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    nicType: Optional[str] = None
-    queueCount: Optional[float] = None
-    stackType: Optional[str] = None
-    subnetwork: Optional[str] = None
-    subnetworkProject: Optional[str] = None
-    subnetworkRef: Optional[SubnetworkRef] = None
+    nicType: str | None = None
+    queueCount: float | None = None
+    stackType: str | None = None
+    subnetwork: str | None = None
+    subnetworkProject: str | None = None
+    subnetworkRef: SubnetworkRef | None = None
     """
     Reference to a Subnetwork in compute to populate subnetwork.
     """
-    subnetworkSelector: Optional[SubnetworkSelector] = None
+    subnetworkSelector: SubnetworkSelector | None = None
     """
     Selector for a Subnetwork in compute to populate subnetwork.
     """
 
 
 class NetworkPerformanceConfig(BaseModel):
-    totalEgressBandwidthTier: Optional[str] = None
+    totalEgressBandwidthTier: str | None = None
 
 
 class Params(BaseModel):
-    resourceManagerTags: Optional[Dict[str, str]] = None
+    resourceManagerTags: dict[str, str] | None = None
 
 
 class SpecificReservation(BaseModel):
-    key: Optional[str] = None
-    values: Optional[List[str]] = None
+    key: str | None = None
+    values: list[str] | None = None
 
 
 class ReservationAffinity(BaseModel):
-    specificReservation: Optional[SpecificReservation] = None
-    type: Optional[str] = None
+    specificReservation: SpecificReservation | None = None
+    type: str | None = None
 
 
 class LocalSsdRecoveryTimeout(BaseModel):
-    nanos: Optional[float] = None
-    seconds: Optional[float] = None
+    nanos: float | None = None
+    seconds: float | None = None
 
 
 class MaxRunDuration(BaseModel):
-    nanos: Optional[float] = None
-    seconds: Optional[float] = None
+    nanos: float | None = None
+    seconds: float | None = None
 
 
 class NodeAffinity(BaseModel):
-    key: Optional[str] = None
-    operator: Optional[str] = None
-    values: Optional[List[str]] = None
+    key: str | None = None
+    operator: str | None = None
+    values: list[str] | None = None
 
 
 class OnInstanceStopAction(BaseModel):
-    discardLocalSsd: Optional[bool] = None
+    discardLocalSsd: bool | None = None
 
 
 class Scheduling(BaseModel):
-    automaticRestart: Optional[bool] = None
-    availabilityDomain: Optional[float] = None
-    instanceTerminationAction: Optional[str] = None
-    localSsdRecoveryTimeout: Optional[LocalSsdRecoveryTimeout] = None
-    maxRunDuration: Optional[MaxRunDuration] = None
-    minNodeCpus: Optional[float] = None
-    nodeAffinities: Optional[List[NodeAffinity]] = None
-    onHostMaintenance: Optional[str] = None
-    onInstanceStopAction: Optional[OnInstanceStopAction] = None
-    preemptible: Optional[bool] = None
-    provisioningModel: Optional[str] = None
-    terminationTime: Optional[str] = None
+    automaticRestart: bool | None = None
+    availabilityDomain: float | None = None
+    instanceTerminationAction: str | None = None
+    localSsdRecoveryTimeout: LocalSsdRecoveryTimeout | None = None
+    maxRunDuration: MaxRunDuration | None = None
+    minNodeCpus: float | None = None
+    nodeAffinities: list[NodeAffinity] | None = None
+    onHostMaintenance: str | None = None
+    onInstanceStopAction: OnInstanceStopAction | None = None
+    preemptible: bool | None = None
+    provisioningModel: str | None = None
+    terminationTime: str | None = None
 
 
 class ScratchDiskItem(BaseModel):
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    interface: Optional[str] = None
-    size: Optional[float] = None
+    interface: str | None = None
+    size: float | None = None
 
 
 class ServiceAccount(BaseModel):
-    email: Optional[str] = None
-    scopes: Optional[List[str]] = None
+    email: str | None = None
+    scopes: list[str] | None = None
 
 
 class ShieldedInstanceConfig(BaseModel):
-    enableIntegrityMonitoring: Optional[bool] = None
-    enableSecureBoot: Optional[bool] = None
-    enableVtpm: Optional[bool] = None
+    enableIntegrityMonitoring: bool | None = None
+    enableSecureBoot: bool | None = None
+    enableVtpm: bool | None = None
 
 
 class SourceInstanceTemplateRef(BaseModel):
@@ -404,86 +403,86 @@ class SourceInstanceTemplateRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class SourceInstanceTemplateSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
-    allowStoppingForUpdate: Optional[bool] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
+    allowStoppingForUpdate: bool | None = None
     """
     Default is 6 minutes.
     """
-    attachedDisk: Optional[List[AttachedDiskItem]] = None
-    bootDisk: Optional[BootDisk] = None
-    canIpForward: Optional[bool] = None
-    confidentialInstanceConfig: Optional[ConfidentialInstanceConfig] = None
-    deletionProtection: Optional[bool] = None
-    description: Optional[str] = None
-    desiredStatus: Optional[str] = None
-    enableDisplay: Optional[bool] = None
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
-    hostname: Optional[str] = None
+    attachedDisk: list[AttachedDiskItem] | None = None
+    bootDisk: BootDisk | None = None
+    canIpForward: bool | None = None
+    confidentialInstanceConfig: ConfidentialInstanceConfig | None = None
+    deletionProtection: bool | None = None
+    description: str | None = None
+    desiredStatus: str | None = None
+    enableDisplay: bool | None = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
+    hostname: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    instanceEncryptionKey: Optional[InstanceEncryptionKey] = None
-    keyRevocationActionType: Optional[str] = None
-    labels: Optional[Dict[str, str]] = None
-    machineType: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
-    metadataStartupScript: Optional[str] = None
-    minCpuPlatform: Optional[str] = None
-    name: Optional[str] = None
+    instanceEncryptionKey: InstanceEncryptionKey | None = None
+    keyRevocationActionType: str | None = None
+    labels: dict[str, str] | None = None
+    machineType: str | None = None
+    metadata: dict[str, str] | None = None
+    metadataStartupScript: str | None = None
+    minCpuPlatform: str | None = None
+    name: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
-    params: Optional[Params] = None
-    project: Optional[str] = None
-    reservationAffinity: Optional[ReservationAffinity] = None
-    resourcePolicies: Optional[List[str]] = None
-    scheduling: Optional[Scheduling] = None
-    scratchDisk: Optional[List[ScratchDiskItem]] = None
-    serviceAccount: Optional[ServiceAccount] = None
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
-    sourceInstanceTemplate: Optional[str] = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
+    params: Params | None = None
+    project: str | None = None
+    reservationAffinity: ReservationAffinity | None = None
+    resourcePolicies: list[str] | None = None
+    scheduling: Scheduling | None = None
+    scratchDisk: list[ScratchDiskItem] | None = None
+    serviceAccount: ServiceAccount | None = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
+    sourceInstanceTemplate: str | None = None
     """
     Name or self link of an instance
     template to create the instance based on. It is recommended to reference
     instance templates through their unique id (self_link_unique attribute).
     """
-    sourceInstanceTemplateRef: Optional[SourceInstanceTemplateRef] = None
+    sourceInstanceTemplateRef: SourceInstanceTemplateRef | None = None
     """
     Reference to a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
-    sourceInstanceTemplateSelector: Optional[SourceInstanceTemplateSelector] = None
+    sourceInstanceTemplateSelector: SourceInstanceTemplateSelector | None = None
     """
     Selector for a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
-    tags: Optional[List[str]] = None
-    zone: Optional[str] = None
+    tags: list[str] | None = None
+    zone: str | None = None
     """
     The zone that the machine should be created in. If not
     set, the provider zone is used.
@@ -491,63 +490,63 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
-    allowStoppingForUpdate: Optional[bool] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
+    allowStoppingForUpdate: bool | None = None
     """
     Default is 6 minutes.
     """
-    attachedDisk: Optional[List[AttachedDiskItem]] = None
-    bootDisk: Optional[BootDisk] = None
-    canIpForward: Optional[bool] = None
-    confidentialInstanceConfig: Optional[ConfidentialInstanceConfig] = None
-    deletionProtection: Optional[bool] = None
-    description: Optional[str] = None
-    desiredStatus: Optional[str] = None
-    enableDisplay: Optional[bool] = None
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
-    hostname: Optional[str] = None
+    attachedDisk: list[AttachedDiskItem] | None = None
+    bootDisk: BootDisk | None = None
+    canIpForward: bool | None = None
+    confidentialInstanceConfig: ConfidentialInstanceConfig | None = None
+    deletionProtection: bool | None = None
+    description: str | None = None
+    desiredStatus: str | None = None
+    enableDisplay: bool | None = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
+    hostname: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    instanceEncryptionKey: Optional[InstanceEncryptionKey] = None
-    keyRevocationActionType: Optional[str] = None
-    labels: Optional[Dict[str, str]] = None
-    machineType: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
-    metadataStartupScript: Optional[str] = None
-    minCpuPlatform: Optional[str] = None
-    name: Optional[str] = None
+    instanceEncryptionKey: InstanceEncryptionKey | None = None
+    keyRevocationActionType: str | None = None
+    labels: dict[str, str] | None = None
+    machineType: str | None = None
+    metadata: dict[str, str] | None = None
+    metadataStartupScript: str | None = None
+    minCpuPlatform: str | None = None
+    name: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    networkInterface: Optional[List[NetworkInterfaceItem]] = None
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
-    params: Optional[Params] = None
-    project: Optional[str] = None
-    reservationAffinity: Optional[ReservationAffinity] = None
-    resourcePolicies: Optional[List[str]] = None
-    scheduling: Optional[Scheduling] = None
-    scratchDisk: Optional[List[ScratchDiskItem]] = None
-    serviceAccount: Optional[ServiceAccount] = None
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
-    sourceInstanceTemplate: Optional[str] = None
+    networkInterface: list[NetworkInterfaceItem] | None = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
+    params: Params | None = None
+    project: str | None = None
+    reservationAffinity: ReservationAffinity | None = None
+    resourcePolicies: list[str] | None = None
+    scheduling: Scheduling | None = None
+    scratchDisk: list[ScratchDiskItem] | None = None
+    serviceAccount: ServiceAccount | None = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
+    sourceInstanceTemplate: str | None = None
     """
     Name or self link of an instance
     template to create the instance based on. It is recommended to reference
     instance templates through their unique id (self_link_unique attribute).
     """
-    sourceInstanceTemplateRef: Optional[SourceInstanceTemplateRef] = None
+    sourceInstanceTemplateRef: SourceInstanceTemplateRef | None = None
     """
     Reference to a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
-    sourceInstanceTemplateSelector: Optional[SourceInstanceTemplateSelector] = None
+    sourceInstanceTemplateSelector: SourceInstanceTemplateSelector | None = None
     """
     Selector for a InstanceTemplate in compute to populate sourceInstanceTemplate.
     """
-    tags: Optional[List[str]] = None
-    zone: Optional[str] = None
+    tags: list[str] | None = None
+    zone: str | None = None
     """
     The zone that the machine should be created in. If not
     set, the provider zone is used.
@@ -559,7 +558,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -577,7 +576,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -588,7 +587,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -601,9 +600,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -616,15 +616,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -634,141 +634,141 @@ class Spec(BaseModel):
 
 
 class AttachedDiskItemModel(BaseModel):
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    diskEncryptionKeySha256: Optional[str] = None
-    diskEncryptionServiceAccount: Optional[str] = None
-    forceAttach: Optional[bool] = None
-    kmsKeySelfLink: Optional[str] = None
-    mode: Optional[str] = None
-    source: Optional[str] = None
+    diskEncryptionKeySha256: str | None = None
+    diskEncryptionServiceAccount: str | None = None
+    forceAttach: bool | None = None
+    kmsKeySelfLink: str | None = None
+    mode: str | None = None
+    source: str | None = None
 
 
 class SourceImageEncryptionKeyModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
-    kmsKeyServiceAccount: Optional[str] = None
-    sha256: Optional[str] = None
+    kmsKeySelfLink: str | None = None
+    kmsKeyServiceAccount: str | None = None
+    sha256: str | None = None
 
 
 class SourceSnapshotEncryptionKeyModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
-    kmsKeyServiceAccount: Optional[str] = None
-    sha256: Optional[str] = None
+    kmsKeySelfLink: str | None = None
+    kmsKeyServiceAccount: str | None = None
+    sha256: str | None = None
 
 
 class BootDiskModel(BaseModel):
-    autoDelete: Optional[bool] = None
+    autoDelete: bool | None = None
     """
     Default is 6 minutes.
     """
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    diskEncryptionKeySha256: Optional[str] = None
-    diskEncryptionServiceAccount: Optional[str] = None
-    forceAttach: Optional[bool] = None
-    guestOsFeatures: Optional[List[str]] = None
-    initializeParams: Optional[InitializeParams] = None
-    interface: Optional[str] = None
-    kmsKeySelfLink: Optional[str] = None
-    mode: Optional[str] = None
-    source: Optional[str] = None
+    diskEncryptionKeySha256: str | None = None
+    diskEncryptionServiceAccount: str | None = None
+    forceAttach: bool | None = None
+    guestOsFeatures: list[str] | None = None
+    initializeParams: InitializeParams | None = None
+    interface: str | None = None
+    kmsKeySelfLink: str | None = None
+    mode: str | None = None
+    source: str | None = None
 
 
 class InstanceEncryptionKeyModel(BaseModel):
-    kmsKeySelfLink: Optional[str] = None
-    kmsKeyServiceAccount: Optional[str] = None
-    sha256: Optional[str] = None
+    kmsKeySelfLink: str | None = None
+    kmsKeyServiceAccount: str | None = None
+    sha256: str | None = None
 
 
 class NetworkInterfaceItemModel(BaseModel):
-    accessConfig: Optional[List[AccessConfigItem]] = None
-    aliasIpRange: Optional[List[AliasIpRangeItem]] = None
-    internalIpv6PrefixLength: Optional[float] = None
-    ipv6AccessConfig: Optional[List[Ipv6AccessConfigItem]] = None
-    ipv6AccessType: Optional[str] = None
-    ipv6Address: Optional[str] = None
-    name: Optional[str] = None
+    accessConfig: list[AccessConfigItem] | None = None
+    aliasIpRange: list[AliasIpRangeItem] | None = None
+    internalIpv6PrefixLength: float | None = None
+    ipv6AccessConfig: list[Ipv6AccessConfigItem] | None = None
+    ipv6AccessType: str | None = None
+    ipv6Address: str | None = None
+    name: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    network: Optional[str] = None
-    networkAttachment: Optional[str] = None
-    networkIp: Optional[str] = None
-    nicType: Optional[str] = None
-    queueCount: Optional[float] = None
-    stackType: Optional[str] = None
-    subnetwork: Optional[str] = None
-    subnetworkProject: Optional[str] = None
+    network: str | None = None
+    networkAttachment: str | None = None
+    networkIp: str | None = None
+    nicType: str | None = None
+    queueCount: float | None = None
+    stackType: str | None = None
+    subnetwork: str | None = None
+    subnetworkProject: str | None = None
 
 
 class AtProvider(BaseModel):
-    advancedMachineFeatures: Optional[AdvancedMachineFeatures] = None
-    allowStoppingForUpdate: Optional[bool] = None
+    advancedMachineFeatures: AdvancedMachineFeatures | None = None
+    allowStoppingForUpdate: bool | None = None
     """
     Default is 6 minutes.
     """
-    attachedDisk: Optional[List[AttachedDiskItemModel]] = None
-    bootDisk: Optional[BootDiskModel] = None
-    canIpForward: Optional[bool] = None
-    confidentialInstanceConfig: Optional[ConfidentialInstanceConfig] = None
-    cpuPlatform: Optional[str] = None
-    creationTimestamp: Optional[str] = None
-    currentStatus: Optional[str] = None
-    deletionProtection: Optional[bool] = None
-    description: Optional[str] = None
-    desiredStatus: Optional[str] = None
-    effectiveLabels: Optional[Dict[str, str]] = None
-    enableDisplay: Optional[bool] = None
-    guestAccelerator: Optional[List[GuestAcceleratorItem]] = None
-    hostname: Optional[str] = None
+    attachedDisk: list[AttachedDiskItemModel] | None = None
+    bootDisk: BootDiskModel | None = None
+    canIpForward: bool | None = None
+    confidentialInstanceConfig: ConfidentialInstanceConfig | None = None
+    cpuPlatform: str | None = None
+    creationTimestamp: str | None = None
+    currentStatus: str | None = None
+    deletionProtection: bool | None = None
+    description: str | None = None
+    desiredStatus: str | None = None
+    effectiveLabels: dict[str, str] | None = None
+    enableDisplay: bool | None = None
+    guestAccelerator: list[GuestAcceleratorItem] | None = None
+    hostname: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    id: Optional[str] = None
-    instanceEncryptionKey: Optional[InstanceEncryptionKeyModel] = None
-    instanceId: Optional[str] = None
-    keyRevocationActionType: Optional[str] = None
-    labelFingerprint: Optional[str] = None
-    labels: Optional[Dict[str, str]] = None
-    machineType: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
-    metadataFingerprint: Optional[str] = None
-    metadataStartupScript: Optional[str] = None
-    minCpuPlatform: Optional[str] = None
-    name: Optional[str] = None
+    id: str | None = None
+    instanceEncryptionKey: InstanceEncryptionKeyModel | None = None
+    instanceId: str | None = None
+    keyRevocationActionType: str | None = None
+    labelFingerprint: str | None = None
+    labels: dict[str, str] | None = None
+    machineType: str | None = None
+    metadata: dict[str, str] | None = None
+    metadataFingerprint: str | None = None
+    metadataStartupScript: str | None = None
+    minCpuPlatform: str | None = None
+    name: str | None = None
     """
     A unique name for the resource, required by GCE.
     Changing this forces a new resource to be created.
     """
-    networkInterface: Optional[List[NetworkInterfaceItemModel]] = None
-    networkPerformanceConfig: Optional[NetworkPerformanceConfig] = None
-    params: Optional[Params] = None
-    project: Optional[str] = None
-    reservationAffinity: Optional[ReservationAffinity] = None
-    resourcePolicies: Optional[List[str]] = None
-    scheduling: Optional[Scheduling] = None
-    scratchDisk: Optional[List[ScratchDiskItem]] = None
-    selfLink: Optional[str] = None
-    serviceAccount: Optional[ServiceAccount] = None
-    shieldedInstanceConfig: Optional[ShieldedInstanceConfig] = None
-    sourceInstanceTemplate: Optional[str] = None
+    networkInterface: list[NetworkInterfaceItemModel] | None = None
+    networkPerformanceConfig: NetworkPerformanceConfig | None = None
+    params: Params | None = None
+    project: str | None = None
+    reservationAffinity: ReservationAffinity | None = None
+    resourcePolicies: list[str] | None = None
+    scheduling: Scheduling | None = None
+    scratchDisk: list[ScratchDiskItem] | None = None
+    selfLink: str | None = None
+    serviceAccount: ServiceAccount | None = None
+    shieldedInstanceConfig: ShieldedInstanceConfig | None = None
+    sourceInstanceTemplate: str | None = None
     """
     Name or self link of an instance
     template to create the instance based on. It is recommended to reference
     instance templates through their unique id (self_link_unique attribute).
     """
-    tags: Optional[List[str]] = None
-    tagsFingerprint: Optional[str] = None
-    terraformLabels: Optional[Dict[str, str]] = None
-    zone: Optional[str] = None
+    tags: list[str] | None = None
+    tagsFingerprint: str | None = None
+    terraformLabels: dict[str, str] | None = None
+    zone: str | None = None
     """
     The zone that the machine should be created in. If not
     set, the provider zone is used.
@@ -776,17 +776,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -808,12 +808,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -822,17 +822,17 @@ class Status(BaseModel):
 
 
 class InstanceFromTemplate(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta2']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta2'] | None = (
         'compute.gcp.upbound.io/v1beta2'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['InstanceFromTemplate']] = 'InstanceFromTemplate'
+    kind: Literal['InstanceFromTemplate'] | None = 'InstanceFromTemplate'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -840,26 +840,26 @@ class InstanceFromTemplate(BaseModel):
     """
     InstanceFromTemplateSpec defines the desired state of InstanceFromTemplate
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     InstanceFromTemplateStatus defines the observed state of InstanceFromTemplate.
     """
 
 
 class InstanceFromTemplateList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[InstanceFromTemplate]
+    items: list[InstanceFromTemplate]
     """
     List of instancefromtemplates. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,23 +32,23 @@ class NetworkRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class NetworkSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -60,34 +59,34 @@ class InterconnectAttachmentRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class InterconnectAttachmentSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class VpnInterface(BaseModel):
-    id: Optional[float] = None
+    id: float | None = None
     """
     The numeric ID of this VPN gateway interface.
     """
-    interconnectAttachment: Optional[str] = None
+    interconnectAttachment: str | None = None
     """
     URL of the interconnect attachment resource. When the value
     of this field is present, the VPN Gateway will be used for
@@ -96,45 +95,45 @@ class VpnInterface(BaseModel):
     specified interconnect attachment resource.
     Not currently available publicly.
     """
-    interconnectAttachmentRef: Optional[InterconnectAttachmentRef] = None
+    interconnectAttachmentRef: InterconnectAttachmentRef | None = None
     """
     Reference to a InterconnectAttachment in compute to populate interconnectAttachment.
     """
-    interconnectAttachmentSelector: Optional[InterconnectAttachmentSelector] = None
+    interconnectAttachmentSelector: InterconnectAttachmentSelector | None = None
     """
     Selector for a InterconnectAttachment in compute to populate interconnectAttachment.
     """
 
 
 class ForProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    gatewayIpVersion: Optional[str] = None
+    gatewayIpVersion: str | None = None
     """
     The IP family of the gateway IPs for the HA-VPN gateway interfaces. If not specified, IPV4 will be used.
     Default value is IPV4.
     Possible values are: IPV4, IPV6.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels method.
     Each label key/value pair must comply with RFC1035. Label values may be empty.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The network this VPN gateway is accepting traffic for.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -143,14 +142,14 @@ class ForProvider(BaseModel):
     """
     The region this gateway should sit in.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this VPN gateway to identify the IP protocols that are enabled.
     If not specified, IPV4_ONLY will be used.
     Default value is IPV4_ONLY.
     Possible values are: IPV4_ONLY, IPV4_IPV6, IPV6_ONLY.
     """
-    vpnInterfaces: Optional[List[VpnInterface]] = None
+    vpnInterfaces: list[VpnInterface] | None = None
     """
     A list of interfaces on this VPN gateway.
     Structure is documented below.
@@ -158,46 +157,46 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    gatewayIpVersion: Optional[str] = None
+    gatewayIpVersion: str | None = None
     """
     The IP family of the gateway IPs for the HA-VPN gateway interfaces. If not specified, IPV4 will be used.
     Default value is IPV4.
     Possible values are: IPV4, IPV6.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels method.
     Each label key/value pair must comply with RFC1035. Label values may be empty.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The network this VPN gateway is accepting traffic for.
     """
-    networkRef: Optional[NetworkRef] = None
+    networkRef: NetworkRef | None = None
     """
     Reference to a Network in compute to populate network.
     """
-    networkSelector: Optional[NetworkSelector] = None
+    networkSelector: NetworkSelector | None = None
     """
     Selector for a Network in compute to populate network.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this VPN gateway to identify the IP protocols that are enabled.
     If not specified, IPV4_ONLY will be used.
     Default value is IPV4_ONLY.
     Possible values are: IPV4_ONLY, IPV4_IPV6, IPV6_ONLY.
     """
-    vpnInterfaces: Optional[List[VpnInterface]] = None
+    vpnInterfaces: list[VpnInterface] | None = None
     """
     A list of interfaces on this VPN gateway.
     Structure is documented below.
@@ -209,7 +208,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -227,7 +226,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -238,7 +237,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -251,9 +250,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -266,15 +266,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -284,11 +284,11 @@ class Spec(BaseModel):
 
 
 class VpnInterfaceModel(BaseModel):
-    id: Optional[float] = None
+    id: float | None = None
     """
     The numeric ID of this VPN gateway interface.
     """
-    interconnectAttachment: Optional[str] = None
+    interconnectAttachment: str | None = None
     """
     URL of the interconnect attachment resource. When the value
     of this field is present, the VPN Gateway will be used for
@@ -297,7 +297,7 @@ class VpnInterfaceModel(BaseModel):
     specified interconnect attachment resource.
     Not currently available publicly.
     """
-    ipAddress: Optional[str] = None
+    ipAddress: str | None = None
     """
     (Output)
     The external IP address for this VPN gateway interface.
@@ -305,25 +305,25 @@ class VpnInterfaceModel(BaseModel):
 
 
 class AtProvider(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
+    effectiveLabels: dict[str, str] | None = None
     """
     for all of the labels present on the resource.
     """
-    gatewayIpVersion: Optional[str] = None
+    gatewayIpVersion: str | None = None
     """
     The IP family of the gateway IPs for the HA-VPN gateway interfaces. If not specified, IPV4 will be used.
     Default value is IPV4.
     Possible values are: IPV4, IPV6.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/vpnGateways/{{name}}
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     A fingerprint for the labels being applied to this VpnGateway, which is essentially a hash
     of the labels set used for optimistic locking. The fingerprint is initially generated by
@@ -331,41 +331,41 @@ class AtProvider(BaseModel):
     You must always provide an up-to-date fingerprint hash in order to update or change labels,
     otherwise the request will fail with error 412 conditionNotMet.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels method.
     Each label key/value pair must comply with RFC1035. Label values may be empty.
     """
-    network: Optional[str] = None
+    network: str | None = None
     """
     The network this VPN gateway is accepting traffic for.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     The region this gateway should sit in.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this VPN gateway to identify the IP protocols that are enabled.
     If not specified, IPV4_ONLY will be used.
     Default value is IPV4_ONLY.
     Possible values are: IPV4_ONLY, IPV4_IPV6, IPV6_ONLY.
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource
     and default labels configured on the provider.
     """
-    vpnInterfaces: Optional[List[VpnInterfaceModel]] = None
+    vpnInterfaces: list[VpnInterfaceModel] | None = None
     """
     A list of interfaces on this VPN gateway.
     Structure is documented below.
@@ -373,17 +373,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -405,12 +405,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -419,17 +419,17 @@ class Status(BaseModel):
 
 
 class HaVPNGateway(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['HaVPNGateway']] = 'HaVPNGateway'
+    kind: Literal['HaVPNGateway'] | None = 'HaVPNGateway'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -437,26 +437,26 @@ class HaVPNGateway(BaseModel):
     """
     HaVPNGatewaySpec defines the desired state of HaVPNGateway
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     HaVPNGatewayStatus defines the observed state of HaVPNGateway.
     """
 
 
 class HaVPNGatewayList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[HaVPNGateway]
+    items: list[HaVPNGateway]
     """
     List of havpngateways. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

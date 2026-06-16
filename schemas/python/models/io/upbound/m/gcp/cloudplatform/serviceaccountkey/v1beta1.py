@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,61 +32,61 @@ class ServiceAccountIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class ServiceAccountIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    keepers: Optional[Dict[str, str]] = None
+    keepers: dict[str, str] | None = None
     """
     Arbitrary map of values that, when changed, will trigger a new key to be generated.
     """
-    keyAlgorithm: Optional[str] = None
+    keyAlgorithm: str | None = None
     """
     The algorithm used to generate the key. KEY_ALG_RSA_2048 is the default algorithm.
     Valid values are listed at
     ServiceAccountPrivateKeyType
     (only used on create)
     """
-    privateKeyType: Optional[str] = None
+    privateKeyType: str | None = None
     """
     The output format of the private key. TYPE_GOOGLE_CREDENTIALS_FILE is the default output format.
     """
-    publicKeyData: Optional[str] = None
+    publicKeyData: str | None = None
     """
     Public key data to create a service account key for given service account. The expected format for this field is a base64 encoded X509_PEM and it conflicts with public_key_type and private_key_type.
     """
-    publicKeyType: Optional[str] = None
+    publicKeyType: str | None = None
     """
     The output format of the public key requested. TYPE_X509_PEM_FILE is the default output format.
     """
-    serviceAccountId: Optional[str] = None
+    serviceAccountId: str | None = None
     """
     The Service account id of the Key. This can be a string in the format
     {ACCOUNT} or projects/{PROJECT_ID}/serviceAccounts/{ACCOUNT}. If the {ACCOUNT}-only syntax is used, either
@@ -96,41 +95,41 @@ class ForProvider(BaseModel):
     syntax is used, the {ACCOUNT} specified can be the full email address of the service account or the service account's
     unique id. Substituting - as a wildcard for the {PROJECT_ID} will infer the project from the account.
     """
-    serviceAccountIdRef: Optional[ServiceAccountIdRef] = None
+    serviceAccountIdRef: ServiceAccountIdRef | None = None
     """
     Reference to a ServiceAccount in cloudplatform to populate serviceAccountId.
     """
-    serviceAccountIdSelector: Optional[ServiceAccountIdSelector] = None
+    serviceAccountIdSelector: ServiceAccountIdSelector | None = None
     """
     Selector for a ServiceAccount in cloudplatform to populate serviceAccountId.
     """
 
 
 class InitProvider(BaseModel):
-    keepers: Optional[Dict[str, str]] = None
+    keepers: dict[str, str] | None = None
     """
     Arbitrary map of values that, when changed, will trigger a new key to be generated.
     """
-    keyAlgorithm: Optional[str] = None
+    keyAlgorithm: str | None = None
     """
     The algorithm used to generate the key. KEY_ALG_RSA_2048 is the default algorithm.
     Valid values are listed at
     ServiceAccountPrivateKeyType
     (only used on create)
     """
-    privateKeyType: Optional[str] = None
+    privateKeyType: str | None = None
     """
     The output format of the private key. TYPE_GOOGLE_CREDENTIALS_FILE is the default output format.
     """
-    publicKeyData: Optional[str] = None
+    publicKeyData: str | None = None
     """
     Public key data to create a service account key for given service account. The expected format for this field is a base64 encoded X509_PEM and it conflicts with public_key_type and private_key_type.
     """
-    publicKeyType: Optional[str] = None
+    publicKeyType: str | None = None
     """
     The output format of the public key requested. TYPE_X509_PEM_FILE is the default output format.
     """
-    serviceAccountId: Optional[str] = None
+    serviceAccountId: str | None = None
     """
     The Service account id of the Key. This can be a string in the format
     {ACCOUNT} or projects/{PROJECT_ID}/serviceAccounts/{ACCOUNT}. If the {ACCOUNT}-only syntax is used, either
@@ -139,11 +138,11 @@ class InitProvider(BaseModel):
     syntax is used, the {ACCOUNT} specified can be the full email address of the service account or the service account's
     unique id. Substituting - as a wildcard for the {PROJECT_ID} will infer the project from the account.
     """
-    serviceAccountIdRef: Optional[ServiceAccountIdRef] = None
+    serviceAccountIdRef: ServiceAccountIdRef | None = None
     """
     Reference to a ServiceAccount in cloudplatform to populate serviceAccountId.
     """
-    serviceAccountIdSelector: Optional[ServiceAccountIdSelector] = None
+    serviceAccountIdSelector: ServiceAccountIdSelector | None = None
     """
     Selector for a ServiceAccount in cloudplatform to populate serviceAccountId.
     """
@@ -169,7 +168,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -182,9 +181,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -193,17 +193,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -213,42 +211,42 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/serviceAccounts/{{account}}/keys/{{key}}
     """
-    keepers: Optional[Dict[str, str]] = None
+    keepers: dict[str, str] | None = None
     """
     Arbitrary map of values that, when changed, will trigger a new key to be generated.
     """
-    keyAlgorithm: Optional[str] = None
+    keyAlgorithm: str | None = None
     """
     The algorithm used to generate the key. KEY_ALG_RSA_2048 is the default algorithm.
     Valid values are listed at
     ServiceAccountPrivateKeyType
     (only used on create)
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name used for this key pair
     """
-    privateKeyType: Optional[str] = None
+    privateKeyType: str | None = None
     """
     The output format of the private key. TYPE_GOOGLE_CREDENTIALS_FILE is the default output format.
     """
-    publicKey: Optional[str] = None
+    publicKey: str | None = None
     """
     The public key, base64 encoded
     """
-    publicKeyData: Optional[str] = None
+    publicKeyData: str | None = None
     """
     Public key data to create a service account key for given service account. The expected format for this field is a base64 encoded X509_PEM and it conflicts with public_key_type and private_key_type.
     """
-    publicKeyType: Optional[str] = None
+    publicKeyType: str | None = None
     """
     The output format of the public key requested. TYPE_X509_PEM_FILE is the default output format.
     """
-    serviceAccountId: Optional[str] = None
+    serviceAccountId: str | None = None
     """
     The Service account id of the Key. This can be a string in the format
     {ACCOUNT} or projects/{PROJECT_ID}/serviceAccounts/{ACCOUNT}. If the {ACCOUNT}-only syntax is used, either
@@ -257,11 +255,11 @@ class AtProvider(BaseModel):
     syntax is used, the {ACCOUNT} specified can be the full email address of the service account or the service account's
     unique id. Substituting - as a wildcard for the {PROJECT_ID} will infer the project from the account.
     """
-    validAfter: Optional[str] = None
+    validAfter: str | None = None
     """
     The key can be used after this timestamp. A timestamp in RFC3339 UTC "Zulu" format, accurate to nanoseconds. Example: "2014-10-02T15:01:23.045123456Z".
     """
-    validBefore: Optional[str] = None
+    validBefore: str | None = None
     """
     The key can be used before this timestamp.
     A timestamp in RFC3339 UTC "Zulu" format, accurate to nanoseconds. Example: "2014-10-02T15:01:23.045123456Z".
@@ -269,17 +267,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -301,12 +299,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -315,17 +313,17 @@ class Status(BaseModel):
 
 
 class ServiceAccountKey(BaseModel):
-    apiVersion: Optional[Literal['cloudplatform.gcp.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['cloudplatform.gcp.m.upbound.io/v1beta1'] | None = (
         'cloudplatform.gcp.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ServiceAccountKey']] = 'ServiceAccountKey'
+    kind: Literal['ServiceAccountKey'] | None = 'ServiceAccountKey'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -333,26 +331,26 @@ class ServiceAccountKey(BaseModel):
     """
     ServiceAccountKeySpec defines the desired state of ServiceAccountKey
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ServiceAccountKeyStatus defines the observed state of ServiceAccountKey.
     """
 
 
 class ServiceAccountKeyList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ServiceAccountKey]
+    items: list[ServiceAccountKey]
     """
     List of serviceaccountkeys. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

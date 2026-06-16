@@ -3,20 +3,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class AdvertisedIpRange(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     User-specified description for the IP range.
     """
-    range: Optional[str] = None
+    range: str | None = None
     """
     The IP range to advertise. The value must be a
     CIDR-formatted string.
@@ -24,7 +23,7 @@ class AdvertisedIpRange(BaseModel):
 
 
 class BfdItem(BaseModel):
-    minReceiveInterval: Optional[float] = None
+    minReceiveInterval: float | None = None
     """
     The minimum interval, in milliseconds, between BFD control packets
     received from the peer router. The actual value is negotiated
@@ -32,7 +31,7 @@ class BfdItem(BaseModel):
     and the transmit interval of the other router. If set, this value
     must be between 1000 and 30000.
     """
-    minTransmitInterval: Optional[float] = None
+    minTransmitInterval: float | None = None
     """
     The minimum interval, in milliseconds, between BFD control packets
     transmitted to the peer router. The actual value is negotiated
@@ -40,13 +39,13 @@ class BfdItem(BaseModel):
     and the corresponding receive interval of the other router. If set,
     this value must be between 1000 and 30000.
     """
-    multiplier: Optional[float] = None
+    multiplier: float | None = None
     """
     The number of consecutive BFD packets that must be missed before
     BFD declares that a peer is unavailable. If set, the value must
     be a value between 5 and 16.
     """
-    sessionInitializationMode: Optional[str] = None
+    sessionInitializationMode: str | None = None
     """
     The BFD session initialization mode for this BGP peer.
     If set to ACTIVE, the Cloud Router will initiate the BFD session
@@ -58,7 +57,7 @@ class BfdItem(BaseModel):
 
 
 class CustomLearnedIpRange(BaseModel):
-    range: Optional[str] = None
+    range: str | None = None
     """
     The IP range to advertise. The value must be a
     CIDR-formatted string.
@@ -66,14 +65,14 @@ class CustomLearnedIpRange(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -87,23 +86,23 @@ class InterfaceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class InterfaceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -129,7 +128,7 @@ class Md5AuthenticationKeyItem(BaseModel):
     """
     A SecretKeySelector is a reference to a secret key in an arbitrary namespace.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of this BGP peer. The name must be 1-63 characters long,
     and comply with RFC1035. Specifically, the name must be 1-63 characters
@@ -145,23 +144,23 @@ class PeerIpAddressRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class PeerIpAddressSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -172,23 +171,23 @@ class RegionRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class RegionSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -199,23 +198,23 @@ class RouterApplianceInstanceRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class RouterApplianceInstanceSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -226,42 +225,42 @@ class RouterRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class RouterSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    advertiseMode: Optional[str] = None
+    advertiseMode: str | None = None
     """
     User-specified flag to indicate which mode to use for advertisement.
     Valid values of this enum field are: DEFAULT, CUSTOM
     Default value is DEFAULT.
     Possible values are: DEFAULT, CUSTOM.
     """
-    advertisedGroups: Optional[List[str]] = None
+    advertisedGroups: list[str] | None = None
     """
     User-specified list of prefix groups to advertise in custom
     mode, which currently supports the following option:
     """
-    advertisedIpRanges: Optional[List[AdvertisedIpRange]] = None
+    advertisedIpRanges: list[AdvertisedIpRange] | None = None
     """
     User-specified list of individual IP ranges to advertise in
     custom mode. This field can only be populated if advertiseMode
@@ -270,153 +269,153 @@ class ForProvider(BaseModel):
     Leave this field blank to advertise no custom IP ranges.
     Structure is documented below.
     """
-    advertisedRoutePriority: Optional[float] = None
+    advertisedRoutePriority: float | None = None
     """
     The priority of routes advertised to this BGP peer.
     Where there is more than one matching route of maximum
     length, the routes with the lowest priority value win.
     """
-    bfd: Optional[List[BfdItem]] = None
+    bfd: list[BfdItem] | None = None
     """
     BFD configuration for the BGP peering.
     Structure is documented below.
     """
-    customLearnedIpRanges: Optional[List[CustomLearnedIpRange]] = None
-    customLearnedRoutePriority: Optional[float] = None
-    enable: Optional[bool] = None
+    customLearnedIpRanges: list[CustomLearnedIpRange] | None = None
+    customLearnedRoutePriority: float | None = None
+    enable: bool | None = None
     """
     The status of the BGP peer connection. If set to false, any active session
     with the peer is terminated and all associated routing information is removed.
     If set to true, the peer connection can be established with routing information.
     The default is true.
     """
-    enableIpv4: Optional[bool] = None
+    enableIpv4: bool | None = None
     """
     Enable IPv4 traffic over BGP Peer. It is enabled by default if the peerIpAddress is version 4.
     """
-    enableIpv6: Optional[bool] = None
+    enableIpv6: bool | None = None
     """
     Enable IPv6 traffic over BGP Peer. If not specified, it is disabled by default.
     """
-    exportPolicies: Optional[List[str]] = None
+    exportPolicies: list[str] | None = None
     """
     routers.list of export policies applied to this peer, in the order they must be evaluated.
     The name must correspond to an existing policy that has ROUTE_POLICY_TYPE_EXPORT type.
     """
-    importPolicies: Optional[List[str]] = None
+    importPolicies: list[str] | None = None
     """
     routers.list of import policies applied to this peer, in the order they must be evaluated.
     The name must correspond to an existing policy that has ROUTE_POLICY_TYPE_IMPORT type.
     """
-    interface: Optional[str] = None
+    interface: str | None = None
     """
     Name of the interface the BGP peer is associated with.
     """
-    interfaceRef: Optional[InterfaceRef] = None
+    interfaceRef: InterfaceRef | None = None
     """
     Reference to a RouterInterface in compute to populate interface.
     """
-    interfaceSelector: Optional[InterfaceSelector] = None
+    interfaceSelector: InterfaceSelector | None = None
     """
     Selector for a RouterInterface in compute to populate interface.
     """
-    ipAddress: Optional[str] = None
+    ipAddress: str | None = None
     """
     IP address of the interface inside Google Cloud Platform.
     Only IPv4 is supported.
     """
-    ipv4NexthopAddress: Optional[str] = None
+    ipv4NexthopAddress: str | None = None
     """
     IPv4 address of the interface inside Google Cloud Platform.
     """
-    ipv6NexthopAddress: Optional[str] = None
+    ipv6NexthopAddress: str | None = None
     """
     IPv6 address of the interface inside Google Cloud Platform.
     The address must be in the range 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64.
     If you do not specify the next hop addresses, Google Cloud automatically
     assigns unused addresses from the 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64 range for you.
     """
-    md5AuthenticationKey: Optional[List[Md5AuthenticationKeyItem]] = None
-    peerAsn: Optional[float] = None
+    md5AuthenticationKey: list[Md5AuthenticationKeyItem] | None = None
+    peerAsn: float | None = None
     """
     Peer BGP Autonomous System Number (ASN).
     Each BGP interface may use a different value.
     """
-    peerIpAddress: Optional[str] = None
+    peerIpAddress: str | None = None
     """
     IP address of the BGP interface outside Google Cloud Platform.
     Only IPv4 is supported. Required if ip_address is set.
     """
-    peerIpAddressRef: Optional[PeerIpAddressRef] = None
+    peerIpAddressRef: PeerIpAddressRef | None = None
     """
     Reference to a Address in compute to populate peerIpAddress.
     """
-    peerIpAddressSelector: Optional[PeerIpAddressSelector] = None
+    peerIpAddressSelector: PeerIpAddressSelector | None = None
     """
     Selector for a Address in compute to populate peerIpAddress.
     """
-    peerIpv4NexthopAddress: Optional[str] = None
+    peerIpv4NexthopAddress: str | None = None
     """
     IPv4 address of the BGP interface outside Google Cloud Platform.
     """
-    peerIpv6NexthopAddress: Optional[str] = None
+    peerIpv6NexthopAddress: str | None = None
     """
     IPv6 address of the BGP interface outside Google Cloud Platform.
     The address must be in the range 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64.
     If you do not specify the next hop addresses, Google Cloud automatically
     assigns unused addresses from the 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64 range for you.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where the router and BgpPeer reside.
     If it is not provided, the provider region is used.
     """
-    regionRef: Optional[RegionRef] = None
+    regionRef: RegionRef | None = None
     """
     Reference to a Router in compute to populate region.
     """
-    regionSelector: Optional[RegionSelector] = None
+    regionSelector: RegionSelector | None = None
     """
     Selector for a Router in compute to populate region.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     The name of the Cloud Router in which this BgpPeer will be configured.
     """
-    routerApplianceInstance: Optional[str] = None
+    routerApplianceInstance: str | None = None
     """
     The URI of the VM instance that is used as third-party router appliances
     such as Next Gen Firewalls, Virtual Routers, or Router Appliances.
     The VM instance must be located in zones contained in the same region as
     this Cloud Router. The VM instance is the peer side of the BGP session.
     """
-    routerApplianceInstanceRef: Optional[RouterApplianceInstanceRef] = None
+    routerApplianceInstanceRef: RouterApplianceInstanceRef | None = None
     """
     Reference to a Instance in compute to populate routerApplianceInstance.
     """
-    routerApplianceInstanceSelector: Optional[RouterApplianceInstanceSelector] = None
+    routerApplianceInstanceSelector: RouterApplianceInstanceSelector | None = None
     """
     Selector for a Instance in compute to populate routerApplianceInstance.
     """
-    routerRef: Optional[RouterRef] = None
+    routerRef: RouterRef | None = None
     """
     Reference to a Router in compute to populate router.
     """
-    routerSelector: Optional[RouterSelector] = None
+    routerSelector: RouterSelector | None = None
     """
     Selector for a Router in compute to populate router.
     """
-    zeroAdvertisedRoutePriority: Optional[bool] = None
+    zeroAdvertisedRoutePriority: bool | None = None
     """
     The user-defined zero-advertised-route-priority for a advertised-route-priority in BGP session.
     This value has to be set true to force the advertised_route_priority to be 0.
     """
-    zeroCustomLearnedRoutePriority: Optional[bool] = None
+    zeroCustomLearnedRoutePriority: bool | None = None
     """
     The user-defined zero-custom-learned-route-priority for a custom-learned-route-priority in BGP session.
     This value has to be set true to force the custom_learned_route_priority to be 0.
@@ -424,7 +423,11 @@ class ForProvider(BaseModel):
 
 
 class Md5AuthenticationKeyItemModel(BaseModel):
-    name: Optional[str] = None
+    keySecretRef: KeySecretRef
+    """
+    The MD5 authentication key for this BGP peer. Maximum length is 80 characters. Can only contain printable ASCII characters
+    """
+    name: str | None = None
     """
     Name of this BGP peer. The name must be 1-63 characters long,
     and comply with RFC1035. Specifically, the name must be 1-63 characters
@@ -436,19 +439,19 @@ class Md5AuthenticationKeyItemModel(BaseModel):
 
 
 class InitProvider(BaseModel):
-    advertiseMode: Optional[str] = None
+    advertiseMode: str | None = None
     """
     User-specified flag to indicate which mode to use for advertisement.
     Valid values of this enum field are: DEFAULT, CUSTOM
     Default value is DEFAULT.
     Possible values are: DEFAULT, CUSTOM.
     """
-    advertisedGroups: Optional[List[str]] = None
+    advertisedGroups: list[str] | None = None
     """
     User-specified list of prefix groups to advertise in custom
     mode, which currently supports the following option:
     """
-    advertisedIpRanges: Optional[List[AdvertisedIpRange]] = None
+    advertisedIpRanges: list[AdvertisedIpRange] | None = None
     """
     User-specified list of individual IP ranges to advertise in
     custom mode. This field can only be populated if advertiseMode
@@ -457,141 +460,141 @@ class InitProvider(BaseModel):
     Leave this field blank to advertise no custom IP ranges.
     Structure is documented below.
     """
-    advertisedRoutePriority: Optional[float] = None
+    advertisedRoutePriority: float | None = None
     """
     The priority of routes advertised to this BGP peer.
     Where there is more than one matching route of maximum
     length, the routes with the lowest priority value win.
     """
-    bfd: Optional[List[BfdItem]] = None
+    bfd: list[BfdItem] | None = None
     """
     BFD configuration for the BGP peering.
     Structure is documented below.
     """
-    customLearnedIpRanges: Optional[List[CustomLearnedIpRange]] = None
-    customLearnedRoutePriority: Optional[float] = None
-    enable: Optional[bool] = None
+    customLearnedIpRanges: list[CustomLearnedIpRange] | None = None
+    customLearnedRoutePriority: float | None = None
+    enable: bool | None = None
     """
     The status of the BGP peer connection. If set to false, any active session
     with the peer is terminated and all associated routing information is removed.
     If set to true, the peer connection can be established with routing information.
     The default is true.
     """
-    enableIpv4: Optional[bool] = None
+    enableIpv4: bool | None = None
     """
     Enable IPv4 traffic over BGP Peer. It is enabled by default if the peerIpAddress is version 4.
     """
-    enableIpv6: Optional[bool] = None
+    enableIpv6: bool | None = None
     """
     Enable IPv6 traffic over BGP Peer. If not specified, it is disabled by default.
     """
-    exportPolicies: Optional[List[str]] = None
+    exportPolicies: list[str] | None = None
     """
     routers.list of export policies applied to this peer, in the order they must be evaluated.
     The name must correspond to an existing policy that has ROUTE_POLICY_TYPE_EXPORT type.
     """
-    importPolicies: Optional[List[str]] = None
+    importPolicies: list[str] | None = None
     """
     routers.list of import policies applied to this peer, in the order they must be evaluated.
     The name must correspond to an existing policy that has ROUTE_POLICY_TYPE_IMPORT type.
     """
-    interface: Optional[str] = None
+    interface: str | None = None
     """
     Name of the interface the BGP peer is associated with.
     """
-    interfaceRef: Optional[InterfaceRef] = None
+    interfaceRef: InterfaceRef | None = None
     """
     Reference to a RouterInterface in compute to populate interface.
     """
-    interfaceSelector: Optional[InterfaceSelector] = None
+    interfaceSelector: InterfaceSelector | None = None
     """
     Selector for a RouterInterface in compute to populate interface.
     """
-    ipAddress: Optional[str] = None
+    ipAddress: str | None = None
     """
     IP address of the interface inside Google Cloud Platform.
     Only IPv4 is supported.
     """
-    ipv4NexthopAddress: Optional[str] = None
+    ipv4NexthopAddress: str | None = None
     """
     IPv4 address of the interface inside Google Cloud Platform.
     """
-    ipv6NexthopAddress: Optional[str] = None
+    ipv6NexthopAddress: str | None = None
     """
     IPv6 address of the interface inside Google Cloud Platform.
     The address must be in the range 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64.
     If you do not specify the next hop addresses, Google Cloud automatically
     assigns unused addresses from the 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64 range for you.
     """
-    md5AuthenticationKey: Optional[List[Md5AuthenticationKeyItemModel]] = None
-    peerAsn: Optional[float] = None
+    md5AuthenticationKey: list[Md5AuthenticationKeyItemModel] | None = None
+    peerAsn: float | None = None
     """
     Peer BGP Autonomous System Number (ASN).
     Each BGP interface may use a different value.
     """
-    peerIpAddress: Optional[str] = None
+    peerIpAddress: str | None = None
     """
     IP address of the BGP interface outside Google Cloud Platform.
     Only IPv4 is supported. Required if ip_address is set.
     """
-    peerIpAddressRef: Optional[PeerIpAddressRef] = None
+    peerIpAddressRef: PeerIpAddressRef | None = None
     """
     Reference to a Address in compute to populate peerIpAddress.
     """
-    peerIpAddressSelector: Optional[PeerIpAddressSelector] = None
+    peerIpAddressSelector: PeerIpAddressSelector | None = None
     """
     Selector for a Address in compute to populate peerIpAddress.
     """
-    peerIpv4NexthopAddress: Optional[str] = None
+    peerIpv4NexthopAddress: str | None = None
     """
     IPv4 address of the BGP interface outside Google Cloud Platform.
     """
-    peerIpv6NexthopAddress: Optional[str] = None
+    peerIpv6NexthopAddress: str | None = None
     """
     IPv6 address of the BGP interface outside Google Cloud Platform.
     The address must be in the range 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64.
     If you do not specify the next hop addresses, Google Cloud automatically
     assigns unused addresses from the 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64 range for you.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where the router and BgpPeer reside.
     If it is not provided, the provider region is used.
     """
-    regionRef: Optional[RegionRef] = None
+    regionRef: RegionRef | None = None
     """
     Reference to a Router in compute to populate region.
     """
-    regionSelector: Optional[RegionSelector] = None
+    regionSelector: RegionSelector | None = None
     """
     Selector for a Router in compute to populate region.
     """
-    routerApplianceInstance: Optional[str] = None
+    routerApplianceInstance: str | None = None
     """
     The URI of the VM instance that is used as third-party router appliances
     such as Next Gen Firewalls, Virtual Routers, or Router Appliances.
     The VM instance must be located in zones contained in the same region as
     this Cloud Router. The VM instance is the peer side of the BGP session.
     """
-    routerApplianceInstanceRef: Optional[RouterApplianceInstanceRef] = None
+    routerApplianceInstanceRef: RouterApplianceInstanceRef | None = None
     """
     Reference to a Instance in compute to populate routerApplianceInstance.
     """
-    routerApplianceInstanceSelector: Optional[RouterApplianceInstanceSelector] = None
+    routerApplianceInstanceSelector: RouterApplianceInstanceSelector | None = None
     """
     Selector for a Instance in compute to populate routerApplianceInstance.
     """
-    zeroAdvertisedRoutePriority: Optional[bool] = None
+    zeroAdvertisedRoutePriority: bool | None = None
     """
     The user-defined zero-advertised-route-priority for a advertised-route-priority in BGP session.
     This value has to be set true to force the advertised_route_priority to be 0.
     """
-    zeroCustomLearnedRoutePriority: Optional[bool] = None
+    zeroCustomLearnedRoutePriority: bool | None = None
     """
     The user-defined zero-custom-learned-route-priority for a custom-learned-route-priority in BGP session.
     This value has to be set true to force the custom_learned_route_priority to be 0.
@@ -603,7 +606,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -621,7 +624,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -632,7 +635,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -645,9 +648,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -660,15 +664,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -677,20 +681,32 @@ class Spec(BaseModel):
     """
 
 
+class Md5AuthenticationKeyItemModel1(BaseModel):
+    name: str | None = None
+    """
+    Name of this BGP peer. The name must be 1-63 characters long,
+    and comply with RFC1035. Specifically, the name must be 1-63 characters
+    long and match the regular expression [a-z]([-a-z0-9]*[a-z0-9])? which
+    means the first character must be a lowercase letter, and all
+    following characters must be a dash, lowercase letter, or digit,
+    except the last character, which cannot be a dash.
+    """
+
+
 class AtProvider(BaseModel):
-    advertiseMode: Optional[str] = None
+    advertiseMode: str | None = None
     """
     User-specified flag to indicate which mode to use for advertisement.
     Valid values of this enum field are: DEFAULT, CUSTOM
     Default value is DEFAULT.
     Possible values are: DEFAULT, CUSTOM.
     """
-    advertisedGroups: Optional[List[str]] = None
+    advertisedGroups: list[str] | None = None
     """
     User-specified list of prefix groups to advertise in custom
     mode, which currently supports the following option:
     """
-    advertisedIpRanges: Optional[List[AdvertisedIpRange]] = None
+    advertisedIpRanges: list[AdvertisedIpRange] | None = None
     """
     User-specified list of individual IP ranges to advertise in
     custom mode. This field can only be populated if advertiseMode
@@ -699,123 +715,123 @@ class AtProvider(BaseModel):
     Leave this field blank to advertise no custom IP ranges.
     Structure is documented below.
     """
-    advertisedRoutePriority: Optional[float] = None
+    advertisedRoutePriority: float | None = None
     """
     The priority of routes advertised to this BGP peer.
     Where there is more than one matching route of maximum
     length, the routes with the lowest priority value win.
     """
-    bfd: Optional[List[BfdItem]] = None
+    bfd: list[BfdItem] | None = None
     """
     BFD configuration for the BGP peering.
     Structure is documented below.
     """
-    customLearnedIpRanges: Optional[List[CustomLearnedIpRange]] = None
-    customLearnedRoutePriority: Optional[float] = None
-    enable: Optional[bool] = None
+    customLearnedIpRanges: list[CustomLearnedIpRange] | None = None
+    customLearnedRoutePriority: float | None = None
+    enable: bool | None = None
     """
     The status of the BGP peer connection. If set to false, any active session
     with the peer is terminated and all associated routing information is removed.
     If set to true, the peer connection can be established with routing information.
     The default is true.
     """
-    enableIpv4: Optional[bool] = None
+    enableIpv4: bool | None = None
     """
     Enable IPv4 traffic over BGP Peer. It is enabled by default if the peerIpAddress is version 4.
     """
-    enableIpv6: Optional[bool] = None
+    enableIpv6: bool | None = None
     """
     Enable IPv6 traffic over BGP Peer. If not specified, it is disabled by default.
     """
-    exportPolicies: Optional[List[str]] = None
+    exportPolicies: list[str] | None = None
     """
     routers.list of export policies applied to this peer, in the order they must be evaluated.
     The name must correspond to an existing policy that has ROUTE_POLICY_TYPE_EXPORT type.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/routers/{{router}}/{{name}}
     """
-    importPolicies: Optional[List[str]] = None
+    importPolicies: list[str] | None = None
     """
     routers.list of import policies applied to this peer, in the order they must be evaluated.
     The name must correspond to an existing policy that has ROUTE_POLICY_TYPE_IMPORT type.
     """
-    interface: Optional[str] = None
+    interface: str | None = None
     """
     Name of the interface the BGP peer is associated with.
     """
-    ipAddress: Optional[str] = None
+    ipAddress: str | None = None
     """
     IP address of the interface inside Google Cloud Platform.
     Only IPv4 is supported.
     """
-    ipv4NexthopAddress: Optional[str] = None
+    ipv4NexthopAddress: str | None = None
     """
     IPv4 address of the interface inside Google Cloud Platform.
     """
-    ipv6NexthopAddress: Optional[str] = None
+    ipv6NexthopAddress: str | None = None
     """
     IPv6 address of the interface inside Google Cloud Platform.
     The address must be in the range 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64.
     If you do not specify the next hop addresses, Google Cloud automatically
     assigns unused addresses from the 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64 range for you.
     """
-    isAdvertisedRoutePrioritySet: Optional[bool] = None
-    isCustomLearnedPrioritySet: Optional[bool] = None
-    managementType: Optional[str] = None
+    isAdvertisedRoutePrioritySet: bool | None = None
+    isCustomLearnedPrioritySet: bool | None = None
+    managementType: str | None = None
     """
     The resource that configures and manages this BGP peer.
     """
-    md5AuthenticationKey: Optional[List[Md5AuthenticationKeyItemModel]] = None
-    peerAsn: Optional[float] = None
+    md5AuthenticationKey: list[Md5AuthenticationKeyItemModel1] | None = None
+    peerAsn: float | None = None
     """
     Peer BGP Autonomous System Number (ASN).
     Each BGP interface may use a different value.
     """
-    peerIpAddress: Optional[str] = None
+    peerIpAddress: str | None = None
     """
     IP address of the BGP interface outside Google Cloud Platform.
     Only IPv4 is supported. Required if ip_address is set.
     """
-    peerIpv4NexthopAddress: Optional[str] = None
+    peerIpv4NexthopAddress: str | None = None
     """
     IPv4 address of the BGP interface outside Google Cloud Platform.
     """
-    peerIpv6NexthopAddress: Optional[str] = None
+    peerIpv6NexthopAddress: str | None = None
     """
     IPv6 address of the BGP interface outside Google Cloud Platform.
     The address must be in the range 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64.
     If you do not specify the next hop addresses, Google Cloud automatically
     assigns unused addresses from the 2600:2d00:0:2::/64 or 2600:2d00:0:3::/64 range for you.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where the router and BgpPeer reside.
     If it is not provided, the provider region is used.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     The name of the Cloud Router in which this BgpPeer will be configured.
     """
-    routerApplianceInstance: Optional[str] = None
+    routerApplianceInstance: str | None = None
     """
     The URI of the VM instance that is used as third-party router appliances
     such as Next Gen Firewalls, Virtual Routers, or Router Appliances.
     The VM instance must be located in zones contained in the same region as
     this Cloud Router. The VM instance is the peer side of the BGP session.
     """
-    zeroAdvertisedRoutePriority: Optional[bool] = None
+    zeroAdvertisedRoutePriority: bool | None = None
     """
     The user-defined zero-advertised-route-priority for a advertised-route-priority in BGP session.
     This value has to be set true to force the advertised_route_priority to be 0.
     """
-    zeroCustomLearnedRoutePriority: Optional[bool] = None
+    zeroCustomLearnedRoutePriority: bool | None = None
     """
     The user-defined zero-custom-learned-route-priority for a custom-learned-route-priority in BGP session.
     This value has to be set true to force the custom_learned_route_priority to be 0.
@@ -823,17 +839,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -855,12 +871,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -869,17 +885,17 @@ class Status(BaseModel):
 
 
 class RouterPeer(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['RouterPeer']] = 'RouterPeer'
+    kind: Literal['RouterPeer'] | None = 'RouterPeer'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -887,26 +903,26 @@ class RouterPeer(BaseModel):
     """
     RouterPeerSpec defines the desired state of RouterPeer
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     RouterPeerStatus defines the observed state of RouterPeer.
     """
 
 
 class RouterPeerList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[RouterPeer]
+    items: list[RouterPeer]
     """
     List of routerpeers. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

@@ -3,55 +3,54 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class EbsBlockDeviceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    deviceName: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    deviceName: str | None = None
     """
     The name of the launch template. Conflicts with id.
     """
-    encrypted: Optional[bool] = None
-    iops: Optional[float] = None
-    kmsKeyId: Optional[str] = None
+    encrypted: bool | None = None
+    iops: float | None = None
+    kmsKeyId: str | None = None
     """
     The ID of the launch template. Conflicts with name.
     """
-    snapshotId: Optional[str] = None
+    snapshotId: str | None = None
     """
     The ID of the launch template. Conflicts with name.
     """
-    throughput: Optional[float] = None
-    volumeSize: Optional[float] = None
-    volumeType: Optional[str] = None
+    throughput: float | None = None
+    volumeSize: float | None = None
+    volumeType: str | None = None
 
 
 class EphemeralBlockDeviceItem(BaseModel):
-    deviceName: Optional[str] = None
+    deviceName: str | None = None
     """
     The name of the launch template. Conflicts with id.
     """
-    virtualName: Optional[str] = None
+    virtualName: str | None = None
     """
     The name of the launch template. Conflicts with id.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -65,91 +64,91 @@ class IamInstanceProfileArnRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class IamInstanceProfileArnSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class RootBlockDeviceItem(BaseModel):
-    deleteOnTermination: Optional[bool] = None
-    encrypted: Optional[bool] = None
-    iops: Optional[float] = None
-    kmsKeyId: Optional[str] = None
+    deleteOnTermination: bool | None = None
+    encrypted: bool | None = None
+    iops: float | None = None
+    kmsKeyId: str | None = None
     """
     The ID of the launch template. Conflicts with name.
     """
-    throughput: Optional[float] = None
-    volumeSize: Optional[float] = None
-    volumeType: Optional[str] = None
+    throughput: float | None = None
+    volumeSize: float | None = None
+    volumeType: str | None = None
 
 
 class LaunchSpecificationItem(BaseModel):
-    ami: Optional[str] = None
-    associatePublicIpAddress: Optional[bool] = None
-    availabilityZone: Optional[str] = None
+    ami: str | None = None
+    associatePublicIpAddress: bool | None = None
+    availabilityZone: str | None = None
     """
     The availability zone in which to place the request.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
-    ebsOptimized: Optional[bool] = None
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
-    iamInstanceProfile: Optional[str] = None
-    iamInstanceProfileArn: Optional[str] = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
+    ebsOptimized: bool | None = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
+    iamInstanceProfile: str | None = None
+    iamInstanceProfileArn: str | None = None
     """
     takes aws_iam_instance_profile attribute arn as input.
     """
-    iamInstanceProfileArnRef: Optional[IamInstanceProfileArnRef] = None
+    iamInstanceProfileArnRef: IamInstanceProfileArnRef | None = None
     """
     Reference to a InstanceProfile in iam to populate iamInstanceProfileArn.
     """
-    iamInstanceProfileArnSelector: Optional[IamInstanceProfileArnSelector] = None
+    iamInstanceProfileArnSelector: IamInstanceProfileArnSelector | None = None
     """
     Selector for a InstanceProfile in iam to populate iamInstanceProfileArn.
     """
-    instanceType: Optional[str] = None
+    instanceType: str | None = None
     """
     The type of instance to request.
     """
-    keyName: Optional[str] = None
+    keyName: str | None = None
     """
     The name of the launch template. Conflicts with id.
     """
-    monitoring: Optional[bool] = None
-    placementGroup: Optional[str] = None
-    placementTenancy: Optional[str] = None
-    rootBlockDevice: Optional[List[RootBlockDeviceItem]] = None
-    spotPrice: Optional[str] = None
+    monitoring: bool | None = None
+    placementGroup: str | None = None
+    placementTenancy: str | None = None
+    rootBlockDevice: list[RootBlockDeviceItem] | None = None
+    spotPrice: str | None = None
     """
     The maximum bid price per unit hour.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The subnet in which to launch the requested instance.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    userData: Optional[str] = None
-    vpcSecurityGroupIds: Optional[List[str]] = None
-    weightedCapacity: Optional[str] = None
+    userData: str | None = None
+    vpcSecurityGroupIds: list[str] | None = None
+    weightedCapacity: str | None = None
     """
     The capacity added to the fleet by a fulfilled request.
     """
@@ -160,23 +159,23 @@ class IdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class IdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -187,374 +186,374 @@ class VersionRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class VersionSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class LaunchTemplateSpecificationItem(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the launch template. Conflicts with name.
     """
-    idRef: Optional[IdRef] = None
+    idRef: IdRef | None = None
     """
     Reference to a LaunchTemplate in ec2 to populate id.
     """
-    idSelector: Optional[IdSelector] = None
+    idSelector: IdSelector | None = None
     """
     Selector for a LaunchTemplate in ec2 to populate id.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the launch template. Conflicts with id.
     """
-    version: Optional[str] = None
+    version: str | None = None
     """
     Template version. Unlike the autoscaling equivalent, does not support $Latest or $Default, so use the launch_template resource's attribute, e.g., "${aws_launch_template.foo.latest_version}". It will use the default version if omitted.
     """
-    versionRef: Optional[VersionRef] = None
+    versionRef: VersionRef | None = None
     """
     Reference to a LaunchTemplate in ec2 to populate version.
     """
-    versionSelector: Optional[VersionSelector] = None
+    versionSelector: VersionSelector | None = None
     """
     Selector for a LaunchTemplate in ec2 to populate version.
     """
 
 
 class AcceleratorCountItem(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class AcceleratorTotalMemoryMibItem(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class BaselineEbsBandwidthMbp(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class MemoryGibPerVcpuItem(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class MemoryMibItem(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class NetworkBandwidthGbp(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class NetworkInterfaceCountItem(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class TotalLocalStorageGbItem(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class VcpuCountItem(BaseModel):
-    max: Optional[float] = None
+    max: float | None = None
     """
     Maximum.
     """
-    min: Optional[float] = None
+    min: float | None = None
     """
     Minimum.
     """
 
 
 class InstanceRequirement(BaseModel):
-    acceleratorCount: Optional[List[AcceleratorCountItem]] = None
+    acceleratorCount: list[AcceleratorCountItem] | None = None
     """
     Block describing the minimum and maximum number of accelerators (GPUs, FPGAs, or AWS Inferentia chips). Default is no minimum or maximum.
     """
-    acceleratorManufacturers: Optional[List[str]] = None
+    acceleratorManufacturers: list[str] | None = None
     """
     List of accelerator manufacturer names. Default is any manufacturer.
     """
-    acceleratorNames: Optional[List[str]] = None
+    acceleratorNames: list[str] | None = None
     """
     List of accelerator names. Default is any acclerator.
     """
-    acceleratorTotalMemoryMib: Optional[List[AcceleratorTotalMemoryMibItem]] = None
+    acceleratorTotalMemoryMib: list[AcceleratorTotalMemoryMibItem] | None = None
     """
     Block describing the minimum and maximum total memory of the accelerators. Default is no minimum or maximum.
     """
-    acceleratorTypes: Optional[List[str]] = None
+    acceleratorTypes: list[str] | None = None
     """
     List of accelerator types. Default is any accelerator type.
     """
-    allowedInstanceTypes: Optional[List[str]] = None
+    allowedInstanceTypes: list[str] | None = None
     """
     List of instance types to apply your specified attributes against. All other instance types are ignored, even if they match your specified attributes. You can use strings with one or more wild cards, represented by an asterisk (*), to allow an instance type, size, or generation. The following are examples: m5.8xlarge, c5*.*, m5a.*, r*, *3*. For example, if you specify c5*, you are allowing the entire C5 instance family, which includes all C5a and C5n instance types. If you specify m5a.*, you are allowing all the M5a instance types, but not the M5n instance types. Maximum of 400 entries in the list; each entry is limited to 30 characters. Default is all instance types.
     """
-    bareMetal: Optional[str] = None
+    bareMetal: str | None = None
     """
     Indicate whether bare metal instace types should be included, excluded, or required. Default is excluded.
     """
-    baselineEbsBandwidthMbps: Optional[List[BaselineEbsBandwidthMbp]] = None
+    baselineEbsBandwidthMbps: list[BaselineEbsBandwidthMbp] | None = None
     """
     Block describing the minimum and maximum baseline EBS bandwidth, in Mbps. Default is no minimum or maximum.
     """
-    burstablePerformance: Optional[str] = None
+    burstablePerformance: str | None = None
     """
     Indicate whether burstable performance instance types should be included, excluded, or required. Default is excluded.
     """
-    cpuManufacturers: Optional[List[str]] = None
+    cpuManufacturers: list[str] | None = None
     """
     List of CPU manufacturer names. Default is any manufacturer.
     """
-    excludedInstanceTypes: Optional[List[str]] = None
+    excludedInstanceTypes: list[str] | None = None
     """
     List of instance types to exclude. You can use strings with one or more wild cards, represented by an asterisk (*), to exclude an instance type, size, or generation. The following are examples: m5.8xlarge, c5*.*, m5a.*, r*, *3*. For example, if you specify c5*, you are excluding the entire C5 instance family, which includes all C5a and C5n instance types. If you specify m5a.*, you are excluding all the M5a instance types, but not the M5n instance types. Maximum of 400 entries in the list; each entry is limited to 30 characters. Default is no excluded instance types.
     """
-    instanceGenerations: Optional[List[str]] = None
+    instanceGenerations: list[str] | None = None
     """
     List of instance generation names. Default is any generation.
     """
-    localStorage: Optional[str] = None
+    localStorage: str | None = None
     """
     Indicate whether instance types with local storage volumes are included, excluded, or required. Default is included.
     """
-    localStorageTypes: Optional[List[str]] = None
+    localStorageTypes: list[str] | None = None
     """
     List of local storage type names. Default any storage type.
     """
-    memoryGibPerVcpu: Optional[List[MemoryGibPerVcpuItem]] = None
+    memoryGibPerVcpu: list[MemoryGibPerVcpuItem] | None = None
     """
     Block describing the minimum and maximum amount of memory (GiB) per vCPU. Default is no minimum or maximum.
     """
-    memoryMib: Optional[List[MemoryMibItem]] = None
+    memoryMib: list[MemoryMibItem] | None = None
     """
     Block describing the minimum and maximum amount of memory (MiB). Default is no maximum.
     """
-    networkBandwidthGbps: Optional[List[NetworkBandwidthGbp]] = None
+    networkBandwidthGbps: list[NetworkBandwidthGbp] | None = None
     """
     Block describing the minimum and maximum amount of network bandwidth, in gigabits per second (Gbps). Default is no minimum or maximum.
     """
-    networkInterfaceCount: Optional[List[NetworkInterfaceCountItem]] = None
+    networkInterfaceCount: list[NetworkInterfaceCountItem] | None = None
     """
     Block describing the minimum and maximum number of network interfaces. Default is no minimum or maximum.
     """
-    onDemandMaxPricePercentageOverLowestPrice: Optional[float] = None
+    onDemandMaxPricePercentageOverLowestPrice: float | None = None
     """
     The price protection threshold for On-Demand Instances. This is the maximum you’ll pay for an On-Demand Instance, expressed as a percentage higher than the cheapest M, C, or R instance type with your specified attributes. When Amazon EC2 Auto Scaling selects instance types with your attributes, we will exclude instance types whose price is higher than your threshold. The parameter accepts an integer, which Amazon EC2 Auto Scaling interprets as a percentage. To turn off price protection, specify a high value, such as 999999. Default is 20.
     """
-    requireHibernateSupport: Optional[bool] = None
+    requireHibernateSupport: bool | None = None
     """
     Indicate whether instance types must support On-Demand Instance Hibernation, either true or false. Default is false.
     """
-    spotMaxPricePercentageOverLowestPrice: Optional[float] = None
+    spotMaxPricePercentageOverLowestPrice: float | None = None
     """
     The price protection threshold for Spot Instances. This is the maximum you’ll pay for a Spot Instance, expressed as a percentage higher than the cheapest M, C, or R instance type with your specified attributes. When Amazon EC2 Auto Scaling selects instance types with your attributes, we will exclude instance types whose price is higher than your threshold. The parameter accepts an integer, which Amazon EC2 Auto Scaling interprets as a percentage. To turn off price protection, specify a high value, such as 999999. Default is 100.
     """
-    totalLocalStorageGb: Optional[List[TotalLocalStorageGbItem]] = None
+    totalLocalStorageGb: list[TotalLocalStorageGbItem] | None = None
     """
     Block describing the minimum and maximum total local storage (GB). Default is no minimum or maximum.
     """
-    vcpuCount: Optional[List[VcpuCountItem]] = None
+    vcpuCount: list[VcpuCountItem] | None = None
     """
     Block describing the minimum and maximum number of vCPUs. Default is no maximum.
     """
 
 
 class Override(BaseModel):
-    availabilityZone: Optional[str] = None
+    availabilityZone: str | None = None
     """
     The availability zone in which to place the request.
     """
-    instanceRequirements: Optional[List[InstanceRequirement]] = None
+    instanceRequirements: list[InstanceRequirement] | None = None
     """
     The instance requirements. See below.
     """
-    instanceType: Optional[str] = None
+    instanceType: str | None = None
     """
     The type of instance to request.
     """
-    priority: Optional[float] = None
+    priority: float | None = None
     """
     The priority for the launch template override. The lower the number, the higher the priority. If no number is set, the launch template override has the lowest priority.
     """
-    spotPrice: Optional[str] = None
+    spotPrice: str | None = None
     """
     The maximum bid price per unit hour.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The subnet in which to launch the requested instance.
     """
-    weightedCapacity: Optional[float] = None
+    weightedCapacity: float | None = None
     """
     The capacity added to the fleet by a fulfilled request.
     """
 
 
 class LaunchTemplateConfigItem(BaseModel):
-    launchTemplateSpecification: Optional[List[LaunchTemplateSpecificationItem]] = None
+    launchTemplateSpecification: list[LaunchTemplateSpecificationItem] | None = None
     """
     Launch template specification. See Launch Template Specification below for more details.
     """
-    overrides: Optional[List[Override]] = None
+    overrides: list[Override] | None = None
     """
     One or more override configurations. See Overrides below for more details.
     """
 
 
 class CapacityRebalanceItem(BaseModel):
-    replacementStrategy: Optional[str] = None
+    replacementStrategy: str | None = None
     """
     The replacement strategy to use. Only available for spot fleets with fleet_type set to maintain. Valid values: launch.
     """
 
 
 class SpotMaintenanceStrategy(BaseModel):
-    capacityRebalance: Optional[List[CapacityRebalanceItem]] = None
+    capacityRebalance: list[CapacityRebalanceItem] | None = None
     """
     Nested argument containing the capacity rebalance for your fleet request. Defined below.
     """
 
 
 class ForProvider(BaseModel):
-    allocationStrategy: Optional[str] = None
+    allocationStrategy: str | None = None
     """
     Indicates how to allocate the target capacity across
     the Spot pools specified by the Spot fleet request. Valid values: lowestPrice, diversified, capacityOptimized, capacityOptimizedPrioritized, and priceCapacityOptimized. The default is
     lowestPrice.
     """
-    context: Optional[str] = None
+    context: str | None = None
     """
     Reserved.
     """
-    excessCapacityTerminationPolicy: Optional[str] = None
+    excessCapacityTerminationPolicy: str | None = None
     """
     Indicates whether running Spot
     instances should be terminated if the target capacity of the Spot fleet
     request is decreased below the current size of the Spot fleet.
     """
-    fleetType: Optional[str] = None
+    fleetType: str | None = None
     """
     The type of fleet request. Indicates whether the Spot Fleet only requests the target
     capacity or also attempts to maintain it. Default is maintain.
     """
-    iamFleetRole: Optional[str] = None
+    iamFleetRole: str | None = None
     """
     Grants the Spot fleet permission to terminate
     Spot instances on your behalf when you cancel its Spot fleet request using
     CancelSpotFleetRequests or when the Spot fleet request expires, if you set
     terminateInstancesWithExpiration.
     """
-    instanceInterruptionBehaviour: Optional[str] = None
+    instanceInterruptionBehaviour: str | None = None
     """
     Indicates whether a Spot
     instance stops or terminates when it is interrupted. Default is
     terminate.
     """
-    instancePoolsToUseCount: Optional[float] = None
+    instancePoolsToUseCount: float | None = None
     """
     The number of Spot pools across which to allocate your target Spot capacity.
     Valid only when allocation_strategy is set to lowestPrice. Spot Fleet selects
     the cheapest Spot pools and evenly allocates your target Spot capacity across
     the number of Spot pools that you specify.
     """
-    launchSpecification: Optional[List[LaunchSpecificationItem]] = None
+    launchSpecification: list[LaunchSpecificationItem] | None = None
     """
     Used to define the launch configuration of the
     spot-fleet request. Can be specified multiple times to define different bids
     across different markets and instance types. Conflicts with launch_template_config. At least one of launch_specification or launch_template_config is required.
     """
-    launchTemplateConfig: Optional[List[LaunchTemplateConfigItem]] = None
+    launchTemplateConfig: list[LaunchTemplateConfigItem] | None = None
     """
     Launch template configuration block. See Launch Template Configs below for more details. Conflicts with launch_specification. At least one of launch_specification or launch_template_config is required.
     """
-    loadBalancers: Optional[List[str]] = None
+    loadBalancers: list[str] | None = None
     """
     A list of elastic load balancer names to add to the Spot fleet.
     """
-    onDemandAllocationStrategy: Optional[str] = None
+    onDemandAllocationStrategy: str | None = None
     """
     The order of the launch template overrides to use in fulfilling On-Demand capacity. the possible values are: lowestPrice and prioritized. the default is lowestPrice.
     """
-    onDemandMaxTotalPrice: Optional[str] = None
+    onDemandMaxTotalPrice: str | None = None
     """
     The maximum amount per hour for On-Demand Instances that you're willing to pay. When the maximum amount you're willing to pay is reached, the fleet stops launching instances even if it hasn’t met the target capacity.
     """
-    onDemandTargetCapacity: Optional[float] = None
+    onDemandTargetCapacity: float | None = None
     """
     The number of On-Demand units to request. If the request type is maintain, you can specify a target capacity of 0 and add capacity later.
     """
@@ -563,176 +562,176 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    replaceUnhealthyInstances: Optional[bool] = None
+    replaceUnhealthyInstances: bool | None = None
     """
     Indicates whether Spot fleet should replace unhealthy instances. Default false.
     """
-    spotMaintenanceStrategies: Optional[List[SpotMaintenanceStrategy]] = None
+    spotMaintenanceStrategies: list[SpotMaintenanceStrategy] | None = None
     """
     Nested argument containing maintenance strategies for managing your Spot Instances that are at an elevated risk of being interrupted. Defined below.
     """
-    spotPrice: Optional[str] = None
+    spotPrice: str | None = None
     """
     The maximum bid price per unit hour.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    targetCapacity: Optional[float] = None
+    targetCapacity: float | None = None
     """
     The number of units to request. You can choose to set the
     target capacity in terms of instances or a performance characteristic that is
     important to your application workload, such as vCPUs, memory, or I/O.
     """
-    targetCapacityUnitType: Optional[str] = None
+    targetCapacityUnitType: str | None = None
     """
     The unit for the target capacity. This can only be done with instance_requirements defined
     """
-    targetGroupArns: Optional[List[str]] = None
+    targetGroupArns: list[str] | None = None
     """
     A list of aws_alb_target_group ARNs, for use with Application Load Balancing.
     """
-    terminateInstancesOnDelete: Optional[str] = None
+    terminateInstancesOnDelete: str | None = None
     """
     Indicates whether running Spot
     instances should be terminated when the resource is deleted (and the Spot fleet request cancelled).
     If no value is specified, the value of the terminate_instances_with_expiration argument is used.
     """
-    terminateInstancesWithExpiration: Optional[bool] = None
+    terminateInstancesWithExpiration: bool | None = None
     """
     Indicates whether running Spot
     instances should be terminated when the Spot fleet request expires.
     """
-    validFrom: Optional[str] = None
+    validFrom: str | None = None
     """
     The start date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). The default is to start fulfilling the request immediately.
     """
-    validUntil: Optional[str] = None
+    validUntil: str | None = None
     """
     The end date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). At this point, no new Spot instance requests are placed or enabled to fulfill the request.
     """
-    waitForFulfillment: Optional[bool] = None
+    waitForFulfillment: bool | None = None
 
 
 class InitProvider(BaseModel):
-    allocationStrategy: Optional[str] = None
+    allocationStrategy: str | None = None
     """
     Indicates how to allocate the target capacity across
     the Spot pools specified by the Spot fleet request. Valid values: lowestPrice, diversified, capacityOptimized, capacityOptimizedPrioritized, and priceCapacityOptimized. The default is
     lowestPrice.
     """
-    context: Optional[str] = None
+    context: str | None = None
     """
     Reserved.
     """
-    excessCapacityTerminationPolicy: Optional[str] = None
+    excessCapacityTerminationPolicy: str | None = None
     """
     Indicates whether running Spot
     instances should be terminated if the target capacity of the Spot fleet
     request is decreased below the current size of the Spot fleet.
     """
-    fleetType: Optional[str] = None
+    fleetType: str | None = None
     """
     The type of fleet request. Indicates whether the Spot Fleet only requests the target
     capacity or also attempts to maintain it. Default is maintain.
     """
-    iamFleetRole: Optional[str] = None
+    iamFleetRole: str | None = None
     """
     Grants the Spot fleet permission to terminate
     Spot instances on your behalf when you cancel its Spot fleet request using
     CancelSpotFleetRequests or when the Spot fleet request expires, if you set
     terminateInstancesWithExpiration.
     """
-    instanceInterruptionBehaviour: Optional[str] = None
+    instanceInterruptionBehaviour: str | None = None
     """
     Indicates whether a Spot
     instance stops or terminates when it is interrupted. Default is
     terminate.
     """
-    instancePoolsToUseCount: Optional[float] = None
+    instancePoolsToUseCount: float | None = None
     """
     The number of Spot pools across which to allocate your target Spot capacity.
     Valid only when allocation_strategy is set to lowestPrice. Spot Fleet selects
     the cheapest Spot pools and evenly allocates your target Spot capacity across
     the number of Spot pools that you specify.
     """
-    launchSpecification: Optional[List[LaunchSpecificationItem]] = None
+    launchSpecification: list[LaunchSpecificationItem] | None = None
     """
     Used to define the launch configuration of the
     spot-fleet request. Can be specified multiple times to define different bids
     across different markets and instance types. Conflicts with launch_template_config. At least one of launch_specification or launch_template_config is required.
     """
-    launchTemplateConfig: Optional[List[LaunchTemplateConfigItem]] = None
+    launchTemplateConfig: list[LaunchTemplateConfigItem] | None = None
     """
     Launch template configuration block. See Launch Template Configs below for more details. Conflicts with launch_specification. At least one of launch_specification or launch_template_config is required.
     """
-    loadBalancers: Optional[List[str]] = None
+    loadBalancers: list[str] | None = None
     """
     A list of elastic load balancer names to add to the Spot fleet.
     """
-    onDemandAllocationStrategy: Optional[str] = None
+    onDemandAllocationStrategy: str | None = None
     """
     The order of the launch template overrides to use in fulfilling On-Demand capacity. the possible values are: lowestPrice and prioritized. the default is lowestPrice.
     """
-    onDemandMaxTotalPrice: Optional[str] = None
+    onDemandMaxTotalPrice: str | None = None
     """
     The maximum amount per hour for On-Demand Instances that you're willing to pay. When the maximum amount you're willing to pay is reached, the fleet stops launching instances even if it hasn’t met the target capacity.
     """
-    onDemandTargetCapacity: Optional[float] = None
+    onDemandTargetCapacity: float | None = None
     """
     The number of On-Demand units to request. If the request type is maintain, you can specify a target capacity of 0 and add capacity later.
     """
-    replaceUnhealthyInstances: Optional[bool] = None
+    replaceUnhealthyInstances: bool | None = None
     """
     Indicates whether Spot fleet should replace unhealthy instances. Default false.
     """
-    spotMaintenanceStrategies: Optional[List[SpotMaintenanceStrategy]] = None
+    spotMaintenanceStrategies: list[SpotMaintenanceStrategy] | None = None
     """
     Nested argument containing maintenance strategies for managing your Spot Instances that are at an elevated risk of being interrupted. Defined below.
     """
-    spotPrice: Optional[str] = None
+    spotPrice: str | None = None
     """
     The maximum bid price per unit hour.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    targetCapacity: Optional[float] = None
+    targetCapacity: float | None = None
     """
     The number of units to request. You can choose to set the
     target capacity in terms of instances or a performance characteristic that is
     important to your application workload, such as vCPUs, memory, or I/O.
     """
-    targetCapacityUnitType: Optional[str] = None
+    targetCapacityUnitType: str | None = None
     """
     The unit for the target capacity. This can only be done with instance_requirements defined
     """
-    targetGroupArns: Optional[List[str]] = None
+    targetGroupArns: list[str] | None = None
     """
     A list of aws_alb_target_group ARNs, for use with Application Load Balancing.
     """
-    terminateInstancesOnDelete: Optional[str] = None
+    terminateInstancesOnDelete: str | None = None
     """
     Indicates whether running Spot
     instances should be terminated when the resource is deleted (and the Spot fleet request cancelled).
     If no value is specified, the value of the terminate_instances_with_expiration argument is used.
     """
-    terminateInstancesWithExpiration: Optional[bool] = None
+    terminateInstancesWithExpiration: bool | None = None
     """
     Indicates whether running Spot
     instances should be terminated when the Spot fleet request expires.
     """
-    validFrom: Optional[str] = None
+    validFrom: str | None = None
     """
     The start date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). The default is to start fulfilling the request immediately.
     """
-    validUntil: Optional[str] = None
+    validUntil: str | None = None
     """
     The end date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). At this point, no new Spot instance requests are placed or enabled to fulfill the request.
     """
-    waitForFulfillment: Optional[bool] = None
+    waitForFulfillment: bool | None = None
 
 
 class ProviderConfigRef(BaseModel):
@@ -740,7 +739,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -758,7 +757,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -769,7 +768,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -782,9 +781,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -797,15 +797,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -815,217 +815,217 @@ class Spec(BaseModel):
 
 
 class LaunchSpecificationItemModel(BaseModel):
-    ami: Optional[str] = None
-    associatePublicIpAddress: Optional[bool] = None
-    availabilityZone: Optional[str] = None
+    ami: str | None = None
+    associatePublicIpAddress: bool | None = None
+    availabilityZone: str | None = None
     """
     The availability zone in which to place the request.
     """
-    ebsBlockDevice: Optional[List[EbsBlockDeviceItem]] = None
-    ebsOptimized: Optional[bool] = None
-    ephemeralBlockDevice: Optional[List[EphemeralBlockDeviceItem]] = None
-    iamInstanceProfile: Optional[str] = None
-    iamInstanceProfileArn: Optional[str] = None
+    ebsBlockDevice: list[EbsBlockDeviceItem] | None = None
+    ebsOptimized: bool | None = None
+    ephemeralBlockDevice: list[EphemeralBlockDeviceItem] | None = None
+    iamInstanceProfile: str | None = None
+    iamInstanceProfileArn: str | None = None
     """
     takes aws_iam_instance_profile attribute arn as input.
     """
-    instanceType: Optional[str] = None
+    instanceType: str | None = None
     """
     The type of instance to request.
     """
-    keyName: Optional[str] = None
+    keyName: str | None = None
     """
     The name of the launch template. Conflicts with id.
     """
-    monitoring: Optional[bool] = None
-    placementGroup: Optional[str] = None
-    placementTenancy: Optional[str] = None
-    rootBlockDevice: Optional[List[RootBlockDeviceItem]] = None
-    spotPrice: Optional[str] = None
+    monitoring: bool | None = None
+    placementGroup: str | None = None
+    placementTenancy: str | None = None
+    rootBlockDevice: list[RootBlockDeviceItem] | None = None
+    spotPrice: str | None = None
     """
     The maximum bid price per unit hour.
     """
-    subnetId: Optional[str] = None
+    subnetId: str | None = None
     """
     The subnet in which to launch the requested instance.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    userData: Optional[str] = None
-    vpcSecurityGroupIds: Optional[List[str]] = None
-    weightedCapacity: Optional[str] = None
+    userData: str | None = None
+    vpcSecurityGroupIds: list[str] | None = None
+    weightedCapacity: str | None = None
     """
     The capacity added to the fleet by a fulfilled request.
     """
 
 
 class LaunchTemplateSpecificationItemModel(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the launch template. Conflicts with name.
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     The name of the launch template. Conflicts with id.
     """
-    version: Optional[str] = None
+    version: str | None = None
     """
     Template version. Unlike the autoscaling equivalent, does not support $Latest or $Default, so use the launch_template resource's attribute, e.g., "${aws_launch_template.foo.latest_version}". It will use the default version if omitted.
     """
 
 
 class AtProvider(BaseModel):
-    allocationStrategy: Optional[str] = None
+    allocationStrategy: str | None = None
     """
     Indicates how to allocate the target capacity across
     the Spot pools specified by the Spot fleet request. Valid values: lowestPrice, diversified, capacityOptimized, capacityOptimizedPrioritized, and priceCapacityOptimized. The default is
     lowestPrice.
     """
-    clientToken: Optional[str] = None
-    context: Optional[str] = None
+    clientToken: str | None = None
+    context: str | None = None
     """
     Reserved.
     """
-    excessCapacityTerminationPolicy: Optional[str] = None
+    excessCapacityTerminationPolicy: str | None = None
     """
     Indicates whether running Spot
     instances should be terminated if the target capacity of the Spot fleet
     request is decreased below the current size of the Spot fleet.
     """
-    fleetType: Optional[str] = None
+    fleetType: str | None = None
     """
     The type of fleet request. Indicates whether the Spot Fleet only requests the target
     capacity or also attempts to maintain it. Default is maintain.
     """
-    iamFleetRole: Optional[str] = None
+    iamFleetRole: str | None = None
     """
     Grants the Spot fleet permission to terminate
     Spot instances on your behalf when you cancel its Spot fleet request using
     CancelSpotFleetRequests or when the Spot fleet request expires, if you set
     terminateInstancesWithExpiration.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The ID of the launch template. Conflicts with name.
     """
-    instanceInterruptionBehaviour: Optional[str] = None
+    instanceInterruptionBehaviour: str | None = None
     """
     Indicates whether a Spot
     instance stops or terminates when it is interrupted. Default is
     terminate.
     """
-    instancePoolsToUseCount: Optional[float] = None
+    instancePoolsToUseCount: float | None = None
     """
     The number of Spot pools across which to allocate your target Spot capacity.
     Valid only when allocation_strategy is set to lowestPrice. Spot Fleet selects
     the cheapest Spot pools and evenly allocates your target Spot capacity across
     the number of Spot pools that you specify.
     """
-    launchSpecification: Optional[List[LaunchSpecificationItemModel]] = None
+    launchSpecification: list[LaunchSpecificationItemModel] | None = None
     """
     Used to define the launch configuration of the
     spot-fleet request. Can be specified multiple times to define different bids
     across different markets and instance types. Conflicts with launch_template_config. At least one of launch_specification or launch_template_config is required.
     """
-    launchTemplateConfig: Optional[List[LaunchTemplateConfigItem]] = None
+    launchTemplateConfig: list[LaunchTemplateConfigItem] | None = None
     """
     Launch template configuration block. See Launch Template Configs below for more details. Conflicts with launch_specification. At least one of launch_specification or launch_template_config is required.
     """
-    loadBalancers: Optional[List[str]] = None
+    loadBalancers: list[str] | None = None
     """
     A list of elastic load balancer names to add to the Spot fleet.
     """
-    onDemandAllocationStrategy: Optional[str] = None
+    onDemandAllocationStrategy: str | None = None
     """
     The order of the launch template overrides to use in fulfilling On-Demand capacity. the possible values are: lowestPrice and prioritized. the default is lowestPrice.
     """
-    onDemandMaxTotalPrice: Optional[str] = None
+    onDemandMaxTotalPrice: str | None = None
     """
     The maximum amount per hour for On-Demand Instances that you're willing to pay. When the maximum amount you're willing to pay is reached, the fleet stops launching instances even if it hasn’t met the target capacity.
     """
-    onDemandTargetCapacity: Optional[float] = None
+    onDemandTargetCapacity: float | None = None
     """
     The number of On-Demand units to request. If the request type is maintain, you can specify a target capacity of 0 and add capacity later.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    replaceUnhealthyInstances: Optional[bool] = None
+    replaceUnhealthyInstances: bool | None = None
     """
     Indicates whether Spot fleet should replace unhealthy instances. Default false.
     """
-    spotMaintenanceStrategies: Optional[List[SpotMaintenanceStrategy]] = None
+    spotMaintenanceStrategies: list[SpotMaintenanceStrategy] | None = None
     """
     Nested argument containing maintenance strategies for managing your Spot Instances that are at an elevated risk of being interrupted. Defined below.
     """
-    spotPrice: Optional[str] = None
+    spotPrice: str | None = None
     """
     The maximum bid price per unit hour.
     """
-    spotRequestState: Optional[str] = None
+    spotRequestState: str | None = None
     """
     The state of the Spot fleet request.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    targetCapacity: Optional[float] = None
+    targetCapacity: float | None = None
     """
     The number of units to request. You can choose to set the
     target capacity in terms of instances or a performance characteristic that is
     important to your application workload, such as vCPUs, memory, or I/O.
     """
-    targetCapacityUnitType: Optional[str] = None
+    targetCapacityUnitType: str | None = None
     """
     The unit for the target capacity. This can only be done with instance_requirements defined
     """
-    targetGroupArns: Optional[List[str]] = None
+    targetGroupArns: list[str] | None = None
     """
     A list of aws_alb_target_group ARNs, for use with Application Load Balancing.
     """
-    terminateInstancesOnDelete: Optional[str] = None
+    terminateInstancesOnDelete: str | None = None
     """
     Indicates whether running Spot
     instances should be terminated when the resource is deleted (and the Spot fleet request cancelled).
     If no value is specified, the value of the terminate_instances_with_expiration argument is used.
     """
-    terminateInstancesWithExpiration: Optional[bool] = None
+    terminateInstancesWithExpiration: bool | None = None
     """
     Indicates whether running Spot
     instances should be terminated when the Spot fleet request expires.
     """
-    validFrom: Optional[str] = None
+    validFrom: str | None = None
     """
     The start date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). The default is to start fulfilling the request immediately.
     """
-    validUntil: Optional[str] = None
+    validUntil: str | None = None
     """
     The end date and time of the request, in UTC RFC3339 format(for example, YYYY-MM-DDTHH:MM:SSZ). At this point, no new Spot instance requests are placed or enabled to fulfill the request.
     """
-    waitForFulfillment: Optional[bool] = None
+    waitForFulfillment: bool | None = None
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -1047,12 +1047,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -1061,17 +1061,17 @@ class Status(BaseModel):
 
 
 class SpotFleetRequest(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.upbound.io/v1beta1'] | None = (
         'ec2.aws.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['SpotFleetRequest']] = 'SpotFleetRequest'
+    kind: Literal['SpotFleetRequest'] | None = 'SpotFleetRequest'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -1079,26 +1079,26 @@ class SpotFleetRequest(BaseModel):
     """
     SpotFleetRequestSpec defines the desired state of SpotFleetRequest
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     SpotFleetRequestStatus defines the observed state of SpotFleetRequest.
     """
 
 
 class SpotFleetRequestList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[SpotFleetRequest]
+    items: list[SpotFleetRequest]
     """
     List of spotfleetrequests. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

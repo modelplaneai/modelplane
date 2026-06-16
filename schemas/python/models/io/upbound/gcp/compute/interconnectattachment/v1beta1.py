@@ -3,23 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -33,23 +32,23 @@ class IpsecInternalAddressesRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class IpsecInternalAddressesSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
@@ -60,35 +59,35 @@ class RouterRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class RouterSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    adminEnabled: Optional[bool] = None
+    adminEnabled: bool | None = None
     """
     Whether the VLAN attachment is enabled or disabled.  When using
     PARTNER type this will Pre-Activate the interconnect attachment
     """
-    bandwidth: Optional[str] = None
+    bandwidth: str | None = None
     """
     Provisioned bandwidth capacity for the interconnect attachment.
     For attachments of type DEDICATED, the user can set the bandwidth.
@@ -97,7 +96,7 @@ class ForProvider(BaseModel):
     Defaults to BPS_10G
     Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G.
     """
-    candidateSubnets: Optional[List[str]] = None
+    candidateSubnets: list[str] | None = None
     """
     Up to 16 candidate prefixes that can be used to restrict the allocation
     of cloudRouterIpAddress and customerRouterIpAddress for this attachment.
@@ -107,11 +106,11 @@ class ForProvider(BaseModel):
     fail if all possible /29s are in use on Google's edge. If not supplied,
     Google will randomly select an unused /29 from all of link-local space.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    edgeAvailabilityDomain: Optional[str] = None
+    edgeAvailabilityDomain: str | None = None
     """
     Desired availability domain for the attachment. Only available for type
     PARTNER, at creation time. For improved reliability, customers should
@@ -120,19 +119,19 @@ class ForProvider(BaseModel):
     pairing key so that the provisioned circuit will lie in the specified
     domain. If not specified, the value will default to AVAILABILITY_DOMAIN_ANY.
     """
-    encryption: Optional[str] = None
+    encryption: str | None = None
     """
     Indicates the user-supplied encryption option of this interconnect
     attachment. Can only be specified at attachment creation for PARTNER or
     DEDICATED attachments.
     """
-    interconnect: Optional[str] = None
+    interconnect: str | None = None
     """
     URL of the underlying Interconnect object that this attachment's
     traffic will traverse through. Required if type is DEDICATED, must not
     be set if type is PARTNER.
     """
-    ipsecInternalAddresses: Optional[List[str]] = None
+    ipsecInternalAddresses: list[str] | None = None
     """
     URL of addresses that have been reserved for the interconnect attachment,
     Used only for interconnect attachment that has the encryption option as
@@ -150,25 +149,25 @@ class ForProvider(BaseModel):
     interconnect attachment, the HA VPN gateway's IP address will be
     allocated from regional external IP address pool.
     """
-    ipsecInternalAddressesRefs: Optional[List[IpsecInternalAddressesRef]] = None
+    ipsecInternalAddressesRefs: list[IpsecInternalAddressesRef] | None = None
     """
     References to Address in compute to populate ipsecInternalAddresses.
     """
-    ipsecInternalAddressesSelector: Optional[IpsecInternalAddressesSelector] = None
+    ipsecInternalAddressesSelector: IpsecInternalAddressesSelector | None = None
     """
     Selector for a list of Address in compute to populate ipsecInternalAddresses.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels
     method. Each label key/value pair must comply with RFC1035. Label values may be empty.
     """
-    mtu: Optional[str] = None
+    mtu: str | None = None
     """
     Maximum Transmission Unit (MTU), in bytes, of packets passing through this interconnect attachment.
     Valid values are 1440, 1460, 1500, and 8896. If not specified, the value will default to 1440.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
@@ -177,22 +176,22 @@ class ForProvider(BaseModel):
     """
     Region where the regional interconnect attachment resides.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     URL of the cloud router to be used for dynamic routing. This router must be in
     the same region as this InterconnectAttachment. The InterconnectAttachment will
     automatically connect the Interconnect to the network & region within which the
     Cloud Router is configured.
     """
-    routerRef: Optional[RouterRef] = None
+    routerRef: RouterRef | None = None
     """
     Reference to a Router in compute to populate router.
     """
-    routerSelector: Optional[RouterSelector] = None
+    routerSelector: RouterSelector | None = None
     """
     Selector for a Router in compute to populate router.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this interconnect attachment to identify whether the IPv6
     feature is enabled or not. If not specified, IPV4_ONLY will be used.
@@ -200,7 +199,7 @@ class ForProvider(BaseModel):
     interconnect attachment operations.
     Possible values are: IPV4_IPV6, IPV4_ONLY.
     """
-    subnetLength: Optional[float] = None
+    subnetLength: float | None = None
     """
     Length of the IPv4 subnet mask. Allowed values: 29 (default), 30. The default value is 29,
     except for Cross-Cloud Interconnect connections that use an InterconnectRemoteLocation with a
@@ -209,13 +208,13 @@ class ForProvider(BaseModel):
     requesting 29 returns an error. Where both 29 and 30 are allowed, 29 is preferred, because it
     gives Google Cloud Support more debugging visibility.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of InterconnectAttachment you wish to create. Defaults to
     DEDICATED.
     Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER.
     """
-    vlanTag8021Q: Optional[float] = None
+    vlanTag8021Q: float | None = None
     """
     The IEEE 802.1Q VLAN tag for this attachment, in the range 2-4094. When
     using PARTNER type this will be managed upstream.
@@ -223,12 +222,12 @@ class ForProvider(BaseModel):
 
 
 class InitProvider(BaseModel):
-    adminEnabled: Optional[bool] = None
+    adminEnabled: bool | None = None
     """
     Whether the VLAN attachment is enabled or disabled.  When using
     PARTNER type this will Pre-Activate the interconnect attachment
     """
-    bandwidth: Optional[str] = None
+    bandwidth: str | None = None
     """
     Provisioned bandwidth capacity for the interconnect attachment.
     For attachments of type DEDICATED, the user can set the bandwidth.
@@ -237,7 +236,7 @@ class InitProvider(BaseModel):
     Defaults to BPS_10G
     Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G.
     """
-    candidateSubnets: Optional[List[str]] = None
+    candidateSubnets: list[str] | None = None
     """
     Up to 16 candidate prefixes that can be used to restrict the allocation
     of cloudRouterIpAddress and customerRouterIpAddress for this attachment.
@@ -247,11 +246,11 @@ class InitProvider(BaseModel):
     fail if all possible /29s are in use on Google's edge. If not supplied,
     Google will randomly select an unused /29 from all of link-local space.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    edgeAvailabilityDomain: Optional[str] = None
+    edgeAvailabilityDomain: str | None = None
     """
     Desired availability domain for the attachment. Only available for type
     PARTNER, at creation time. For improved reliability, customers should
@@ -260,19 +259,19 @@ class InitProvider(BaseModel):
     pairing key so that the provisioned circuit will lie in the specified
     domain. If not specified, the value will default to AVAILABILITY_DOMAIN_ANY.
     """
-    encryption: Optional[str] = None
+    encryption: str | None = None
     """
     Indicates the user-supplied encryption option of this interconnect
     attachment. Can only be specified at attachment creation for PARTNER or
     DEDICATED attachments.
     """
-    interconnect: Optional[str] = None
+    interconnect: str | None = None
     """
     URL of the underlying Interconnect object that this attachment's
     traffic will traverse through. Required if type is DEDICATED, must not
     be set if type is PARTNER.
     """
-    ipsecInternalAddresses: Optional[List[str]] = None
+    ipsecInternalAddresses: list[str] | None = None
     """
     URL of addresses that have been reserved for the interconnect attachment,
     Used only for interconnect attachment that has the encryption option as
@@ -290,45 +289,45 @@ class InitProvider(BaseModel):
     interconnect attachment, the HA VPN gateway's IP address will be
     allocated from regional external IP address pool.
     """
-    ipsecInternalAddressesRefs: Optional[List[IpsecInternalAddressesRef]] = None
+    ipsecInternalAddressesRefs: list[IpsecInternalAddressesRef] | None = None
     """
     References to Address in compute to populate ipsecInternalAddresses.
     """
-    ipsecInternalAddressesSelector: Optional[IpsecInternalAddressesSelector] = None
+    ipsecInternalAddressesSelector: IpsecInternalAddressesSelector | None = None
     """
     Selector for a list of Address in compute to populate ipsecInternalAddresses.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels
     method. Each label key/value pair must comply with RFC1035. Label values may be empty.
     """
-    mtu: Optional[str] = None
+    mtu: str | None = None
     """
     Maximum Transmission Unit (MTU), in bytes, of packets passing through this interconnect attachment.
     Valid values are 1440, 1460, 1500, and 8896. If not specified, the value will default to 1440.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     URL of the cloud router to be used for dynamic routing. This router must be in
     the same region as this InterconnectAttachment. The InterconnectAttachment will
     automatically connect the Interconnect to the network & region within which the
     Cloud Router is configured.
     """
-    routerRef: Optional[RouterRef] = None
+    routerRef: RouterRef | None = None
     """
     Reference to a Router in compute to populate router.
     """
-    routerSelector: Optional[RouterSelector] = None
+    routerSelector: RouterSelector | None = None
     """
     Selector for a Router in compute to populate router.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this interconnect attachment to identify whether the IPv6
     feature is enabled or not. If not specified, IPV4_ONLY will be used.
@@ -336,7 +335,7 @@ class InitProvider(BaseModel):
     interconnect attachment operations.
     Possible values are: IPV4_IPV6, IPV4_ONLY.
     """
-    subnetLength: Optional[float] = None
+    subnetLength: float | None = None
     """
     Length of the IPv4 subnet mask. Allowed values: 29 (default), 30. The default value is 29,
     except for Cross-Cloud Interconnect connections that use an InterconnectRemoteLocation with a
@@ -345,13 +344,13 @@ class InitProvider(BaseModel):
     requesting 29 returns an error. Where both 29 and 30 are allowed, 29 is preferred, because it
     gives Google Cloud Support more debugging visibility.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of InterconnectAttachment you wish to create. Defaults to
     DEDICATED.
     Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER.
     """
-    vlanTag8021Q: Optional[float] = None
+    vlanTag8021Q: float | None = None
     """
     The IEEE 802.1Q VLAN tag for this attachment, in the range 2-4094. When
     using PARTNER type this will be managed upstream.
@@ -363,7 +362,7 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
@@ -381,7 +380,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    deletionPolicy: Optional[Literal['Orphan', 'Delete']] = 'Delete'
+    deletionPolicy: Literal['Orphan', 'Delete'] | None = 'Delete'
     """
     DeletionPolicy specifies what will happen to the underlying external
     when this managed resource is deleted - either "Delete" or "Orphan" the
@@ -392,7 +391,7 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     """
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -405,9 +404,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -420,15 +420,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -438,7 +438,7 @@ class Spec(BaseModel):
 
 
 class PrivateInterconnectInfoItem(BaseModel):
-    tag8021q: Optional[float] = None
+    tag8021q: float | None = None
     """
     (Output)
     802.1q encapsulation tag to be used for traffic between
@@ -447,16 +447,16 @@ class PrivateInterconnectInfoItem(BaseModel):
 
 
 class AtProvider(BaseModel):
-    adminEnabled: Optional[bool] = None
+    adminEnabled: bool | None = None
     """
     Whether the VLAN attachment is enabled or disabled.  When using
     PARTNER type this will Pre-Activate the interconnect attachment
     """
-    attachmentGroup: Optional[str] = None
+    attachmentGroup: str | None = None
     """
     URL of the AttachmentGroup that includes this Attachment.
     """
-    bandwidth: Optional[str] = None
+    bandwidth: str | None = None
     """
     Provisioned bandwidth capacity for the interconnect attachment.
     For attachments of type DEDICATED, the user can set the bandwidth.
@@ -465,7 +465,7 @@ class AtProvider(BaseModel):
     Defaults to BPS_10G
     Possible values are: BPS_50M, BPS_100M, BPS_200M, BPS_300M, BPS_400M, BPS_500M, BPS_1G, BPS_2G, BPS_5G, BPS_10G, BPS_20G, BPS_50G, BPS_100G.
     """
-    candidateSubnets: Optional[List[str]] = None
+    candidateSubnets: list[str] | None = None
     """
     Up to 16 candidate prefixes that can be used to restrict the allocation
     of cloudRouterIpAddress and customerRouterIpAddress for this attachment.
@@ -475,35 +475,35 @@ class AtProvider(BaseModel):
     fail if all possible /29s are in use on Google's edge. If not supplied,
     Google will randomly select an unused /29 from all of link-local space.
     """
-    cloudRouterIpAddress: Optional[str] = None
+    cloudRouterIpAddress: str | None = None
     """
     IPv4 address + prefix length to be configured on Cloud Router
     Interface for this interconnect attachment.
     """
-    cloudRouterIpv6Address: Optional[str] = None
+    cloudRouterIpv6Address: str | None = None
     """
     IPv6 address + prefix length to be configured on Cloud Router
     Interface for this interconnect attachment.
     """
-    creationTimestamp: Optional[str] = None
+    creationTimestamp: str | None = None
     """
     Creation timestamp in RFC3339 text format.
     """
-    customerRouterIpAddress: Optional[str] = None
+    customerRouterIpAddress: str | None = None
     """
     IPv4 address + prefix length to be configured on the customer
     router subinterface for this interconnect attachment.
     """
-    customerRouterIpv6Address: Optional[str] = None
+    customerRouterIpv6Address: str | None = None
     """
     IPv6 address + prefix length to be configured on the customer
     router subinterface for this interconnect attachment.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     An optional description of this resource.
     """
-    edgeAvailabilityDomain: Optional[str] = None
+    edgeAvailabilityDomain: str | None = None
     """
     Desired availability domain for the attachment. Only available for type
     PARTNER, at creation time. For improved reliability, customers should
@@ -512,32 +512,32 @@ class AtProvider(BaseModel):
     pairing key so that the provisioned circuit will lie in the specified
     domain. If not specified, the value will default to AVAILABILITY_DOMAIN_ANY.
     """
-    effectiveLabels: Optional[Dict[str, str]] = None
+    effectiveLabels: dict[str, str] | None = None
     """
     for all of the labels present on the resource.
     """
-    encryption: Optional[str] = None
+    encryption: str | None = None
     """
     Indicates the user-supplied encryption option of this interconnect
     attachment. Can only be specified at attachment creation for PARTNER or
     DEDICATED attachments.
     """
-    googleReferenceId: Optional[str] = None
+    googleReferenceId: str | None = None
     """
     Google reference ID, to be used when raising support tickets with
     Google or otherwise to debug backend connectivity issues.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     an identifier for the resource with format projects/{{project}}/regions/{{region}}/interconnectAttachments/{{name}}
     """
-    interconnect: Optional[str] = None
+    interconnect: str | None = None
     """
     URL of the underlying Interconnect object that this attachment's
     traffic will traverse through. Required if type is DEDICATED, must not
     be set if type is PARTNER.
     """
-    ipsecInternalAddresses: Optional[List[str]] = None
+    ipsecInternalAddresses: list[str] | None = None
     """
     URL of addresses that have been reserved for the interconnect attachment,
     Used only for interconnect attachment that has the encryption option as
@@ -555,7 +555,7 @@ class AtProvider(BaseModel):
     interconnect attachment, the HA VPN gateway's IP address will be
     allocated from regional external IP address pool.
     """
-    labelFingerprint: Optional[str] = None
+    labelFingerprint: str | None = None
     """
     A fingerprint for the labels being applied to this Interconnect, which is essentially a hash
     of the labels set used for optimistic locking. The fingerprint is initially generated by
@@ -563,55 +563,55 @@ class AtProvider(BaseModel):
     You must always provide an up-to-date fingerprint hash in order to update or change labels,
     otherwise the request will fail with error 412 conditionNotMet.
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels for this resource. These can only be added or modified by the setLabels
     method. Each label key/value pair must comply with RFC1035. Label values may be empty.
     """
-    mtu: Optional[str] = None
+    mtu: str | None = None
     """
     Maximum Transmission Unit (MTU), in bytes, of packets passing through this interconnect attachment.
     Valid values are 1440, 1460, 1500, and 8896. If not specified, the value will default to 1440.
     """
-    pairingKey: Optional[str] = None
+    pairingKey: str | None = None
     """
     [Output only for type PARTNER. Not present for DEDICATED]. The opaque
     identifier of an PARTNER attachment used to initiate provisioning with
     a selected partner. Of the form "XXXXX/region/domain"
     """
-    partnerAsn: Optional[str] = None
+    partnerAsn: str | None = None
     """
     [Output only for type PARTNER. Not present for DEDICATED]. Optional
     BGP ASN for the router that should be supplied by a layer 3 Partner if
     they configured BGP on behalf of the customer.
     """
-    privateInterconnectInfo: Optional[List[PrivateInterconnectInfoItem]] = None
+    privateInterconnectInfo: list[PrivateInterconnectInfoItem] | None = None
     """
     Information specific to an InterconnectAttachment. This property
     is populated if the interconnect that this is attached to is of type DEDICATED.
     Structure is documented below.
     """
-    project: Optional[str] = None
+    project: str | None = None
     """
     The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where the regional interconnect attachment resides.
     """
-    router: Optional[str] = None
+    router: str | None = None
     """
     URL of the cloud router to be used for dynamic routing. This router must be in
     the same region as this InterconnectAttachment. The InterconnectAttachment will
     automatically connect the Interconnect to the network & region within which the
     Cloud Router is configured.
     """
-    selfLink: Optional[str] = None
+    selfLink: str | None = None
     """
     The URI of the created resource.
     """
-    stackType: Optional[str] = None
+    stackType: str | None = None
     """
     The stack type for this interconnect attachment to identify whether the IPv6
     feature is enabled or not. If not specified, IPV4_ONLY will be used.
@@ -619,11 +619,11 @@ class AtProvider(BaseModel):
     interconnect attachment operations.
     Possible values are: IPV4_IPV6, IPV4_ONLY.
     """
-    state: Optional[str] = None
+    state: str | None = None
     """
     [Output Only] The current state of this attachment's functionality.
     """
-    subnetLength: Optional[float] = None
+    subnetLength: float | None = None
     """
     Length of the IPv4 subnet mask. Allowed values: 29 (default), 30. The default value is 29,
     except for Cross-Cloud Interconnect connections that use an InterconnectRemoteLocation with a
@@ -632,18 +632,18 @@ class AtProvider(BaseModel):
     requesting 29 returns an error. Where both 29 and 30 are allowed, 29 is preferred, because it
     gives Google Cloud Support more debugging visibility.
     """
-    terraformLabels: Optional[Dict[str, str]] = None
+    terraformLabels: dict[str, str] | None = None
     """
     The combination of labels configured directly on the resource
     and default labels configured on the provider.
     """
-    type: Optional[str] = None
+    type: str | None = None
     """
     The type of InterconnectAttachment you wish to create. Defaults to
     DEDICATED.
     Possible values are: DEDICATED, PARTNER, PARTNER_PROVIDER.
     """
-    vlanTag8021Q: Optional[float] = None
+    vlanTag8021Q: float | None = None
     """
     The IEEE 802.1Q VLAN tag for this attachment, in the range 2-4094. When
     using PARTNER type this will be managed upstream.
@@ -651,17 +651,17 @@ class AtProvider(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -683,12 +683,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -697,17 +697,17 @@ class Status(BaseModel):
 
 
 class InterconnectAttachment(BaseModel):
-    apiVersion: Optional[Literal['compute.gcp.upbound.io/v1beta1']] = (
+    apiVersion: Literal['compute.gcp.upbound.io/v1beta1'] | None = (
         'compute.gcp.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['InterconnectAttachment']] = 'InterconnectAttachment'
+    kind: Literal['InterconnectAttachment'] | None = 'InterconnectAttachment'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -715,26 +715,26 @@ class InterconnectAttachment(BaseModel):
     """
     InterconnectAttachmentSpec defines the desired state of InterconnectAttachment
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     InterconnectAttachmentStatus defines the observed state of InterconnectAttachment.
     """
 
 
 class InterconnectAttachmentList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[InterconnectAttachment]
+    items: list[InterconnectAttachment]
     """
     List of interconnectattachments. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

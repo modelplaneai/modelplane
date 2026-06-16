@@ -3,72 +3,71 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ClientData(BaseModel):
-    comment: Optional[str] = None
+    comment: str | None = None
     """
     A user-defined comment about the disk upload.
     """
-    uploadEnd: Optional[str] = None
+    uploadEnd: str | None = None
     """
     The time that the disk upload ends.
     """
-    uploadSize: Optional[float] = None
+    uploadSize: float | None = None
     """
     The size of the uploaded disk image, in GiB.
     """
-    uploadStart: Optional[str] = None
+    uploadStart: str | None = None
     """
     The time that the disk upload starts.
     """
 
 
 class UserBucket(BaseModel):
-    s3Bucket: Optional[str] = None
+    s3Bucket: str | None = None
     """
     The name of the Amazon S3 bucket where the disk image is located.
     """
-    s3Key: Optional[str] = None
+    s3Key: str | None = None
     """
     The file name of the disk image.
     """
 
 
 class DiskContainer(BaseModel):
-    description: Optional[str] = None
+    description: str | None = None
     """
     The description of the disk image being imported.
     """
-    format: Optional[str] = None
+    format: str | None = None
     """
     The format of the disk image being imported. One of VHD or VMDK.
     """
-    url: Optional[str] = None
+    url: str | None = None
     """
     The URL to the Amazon S3-based disk image being imported. It can either be a https URL (https://..) or an Amazon S3 URL (s3://..). One of url or user_bucket must be set.
     """
-    userBucket: Optional[UserBucket] = None
+    userBucket: UserBucket | None = None
     """
     The Amazon S3 bucket for the disk image. One of url or user_bucket must be set. Detailed below.
     """
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -82,66 +81,66 @@ class KmsKeyIdRef(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class KmsKeyIdSelector(BaseModel):
-    matchControllerRef: Optional[bool] = None
+    matchControllerRef: bool | None = None
     """
     MatchControllerRef ensures an object with the same controller reference
     as the selecting object is selected.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     MatchLabels ensures an object with matching labels is selected.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace for the selector
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for selection.
     """
 
 
 class ForProvider(BaseModel):
-    clientData: Optional[ClientData] = None
+    clientData: ClientData | None = None
     """
     The client-specific data. Detailed below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     The description string for the import snapshot task.
     """
-    diskContainer: Optional[DiskContainer] = None
+    diskContainer: DiskContainer | None = None
     """
     Information about the disk container. Detailed below.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Specifies whether the destination snapshot of the imported image should be encrypted. The default KMS key for EBS is used unless you specify a non-default KMS key using KmsKeyId.
     """
-    kmsKeyId: Optional[str] = None
+    kmsKeyId: str | None = None
     """
     An identifier for the symmetric KMS key to use when creating the encrypted snapshot. This parameter is only required if you want to use a non-default KMS key; if this parameter is not specified, the default KMS key for EBS is used. If a KmsKeyId is specified, the Encrypted flag must also be set.
     """
-    kmsKeyIdRef: Optional[KmsKeyIdRef] = None
+    kmsKeyIdRef: KmsKeyIdRef | None = None
     """
     Reference to a Key in kms to populate kmsKeyId.
     """
-    kmsKeyIdSelector: Optional[KmsKeyIdSelector] = None
+    kmsKeyIdSelector: KmsKeyIdSelector | None = None
     """
     Selector for a Key in kms to populate kmsKeyId.
     """
-    permanentRestore: Optional[bool] = None
+    permanentRestore: bool | None = None
     """
     Indicates whether to permanently restore an archived snapshot.
     """
@@ -150,70 +149,70 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    roleName: Optional[str] = None
+    roleName: str | None = None
     """
     The name of the IAM Role the VM Import/Export service will assume. This role needs certain permissions. See https://docs.aws.amazon.com/vm-import/latest/userguide/vmie_prereqs.html#vmimport-role. Default: vmimport
     """
-    storageTier: Optional[str] = None
+    storageTier: str | None = None
     """
     The name of the storage tier. Valid values are archive and standard. Default value is standard.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    temporaryRestoreDays: Optional[float] = None
+    temporaryRestoreDays: float | None = None
     """
     Specifies the number of days for which to temporarily restore an archived snapshot. Required for temporary restores only. The snapshot will be automatically re-archived after this period.
     """
 
 
 class InitProvider(BaseModel):
-    clientData: Optional[ClientData] = None
+    clientData: ClientData | None = None
     """
     The client-specific data. Detailed below.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     The description string for the import snapshot task.
     """
-    diskContainer: Optional[DiskContainer] = None
+    diskContainer: DiskContainer | None = None
     """
     Information about the disk container. Detailed below.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Specifies whether the destination snapshot of the imported image should be encrypted. The default KMS key for EBS is used unless you specify a non-default KMS key using KmsKeyId.
     """
-    kmsKeyId: Optional[str] = None
+    kmsKeyId: str | None = None
     """
     An identifier for the symmetric KMS key to use when creating the encrypted snapshot. This parameter is only required if you want to use a non-default KMS key; if this parameter is not specified, the default KMS key for EBS is used. If a KmsKeyId is specified, the Encrypted flag must also be set.
     """
-    kmsKeyIdRef: Optional[KmsKeyIdRef] = None
+    kmsKeyIdRef: KmsKeyIdRef | None = None
     """
     Reference to a Key in kms to populate kmsKeyId.
     """
-    kmsKeyIdSelector: Optional[KmsKeyIdSelector] = None
+    kmsKeyIdSelector: KmsKeyIdSelector | None = None
     """
     Selector for a Key in kms to populate kmsKeyId.
     """
-    permanentRestore: Optional[bool] = None
+    permanentRestore: bool | None = None
     """
     Indicates whether to permanently restore an archived snapshot.
     """
-    roleName: Optional[str] = None
+    roleName: str | None = None
     """
     The name of the IAM Role the VM Import/Export service will assume. This role needs certain permissions. See https://docs.aws.amazon.com/vm-import/latest/userguide/vmie_prereqs.html#vmimport-role. Default: vmimport
     """
-    storageTier: Optional[str] = None
+    storageTier: str | None = None
     """
     The name of the storage tier. Valid values are archive and standard. Default value is standard.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    temporaryRestoreDays: Optional[float] = None
+    temporaryRestoreDays: float | None = None
     """
     Specifies the number of days for which to temporarily restore an archived snapshot. Required for temporary restores only. The snapshot will be automatically re-archived after this period.
     """
@@ -239,7 +238,7 @@ class WriteConnectionSecretToRef(BaseModel):
 
 class Spec(BaseModel):
     forProvider: ForProvider
-    initProvider: Optional[InitProvider] = None
+    initProvider: InitProvider | None = None
     """
     THIS IS A BETA FIELD. It will be honored
     unless the Management Policies feature flag is disabled.
@@ -252,9 +251,10 @@ class Spec(BaseModel):
     for example because of an external controller is managing them, like an
     autoscaler.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -263,17 +263,15 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -283,101 +281,101 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    arn: Optional[str] = None
+    arn: str | None = None
     """
     Amazon Resource Name (ARN) of the EBS Snapshot.
     """
-    clientData: Optional[ClientData] = None
+    clientData: ClientData | None = None
     """
     The client-specific data. Detailed below.
     """
-    dataEncryptionKeyId: Optional[str] = None
+    dataEncryptionKeyId: str | None = None
     """
     The data encryption key identifier for the snapshot.
     """
-    description: Optional[str] = None
+    description: str | None = None
     """
     The description string for the import snapshot task.
     """
-    diskContainer: Optional[DiskContainer] = None
+    diskContainer: DiskContainer | None = None
     """
     Information about the disk container. Detailed below.
     """
-    encrypted: Optional[bool] = None
+    encrypted: bool | None = None
     """
     Specifies whether the destination snapshot of the imported image should be encrypted. The default KMS key for EBS is used unless you specify a non-default KMS key using KmsKeyId.
     """
-    id: Optional[str] = None
+    id: str | None = None
     """
     The snapshot ID (e.g., snap-59fcb34e).
     """
-    kmsKeyId: Optional[str] = None
+    kmsKeyId: str | None = None
     """
     An identifier for the symmetric KMS key to use when creating the encrypted snapshot. This parameter is only required if you want to use a non-default KMS key; if this parameter is not specified, the default KMS key for EBS is used. If a KmsKeyId is specified, the Encrypted flag must also be set.
     """
-    outpostArn: Optional[str] = None
+    outpostArn: str | None = None
     """
     Amazon Resource Name (ARN) of the EBS Snapshot.
     """
-    ownerAlias: Optional[str] = None
+    ownerAlias: str | None = None
     """
     Value from an Amazon-maintained list (amazon, aws-marketplace, microsoft) of snapshot owners.
     """
-    ownerId: Optional[str] = None
+    ownerId: str | None = None
     """
     The AWS account ID of the EBS snapshot owner.
     """
-    permanentRestore: Optional[bool] = None
+    permanentRestore: bool | None = None
     """
     Indicates whether to permanently restore an archived snapshot.
     """
-    region: Optional[str] = None
+    region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
-    roleName: Optional[str] = None
+    roleName: str | None = None
     """
     The name of the IAM Role the VM Import/Export service will assume. This role needs certain permissions. See https://docs.aws.amazon.com/vm-import/latest/userguide/vmie_prereqs.html#vmimport-role. Default: vmimport
     """
-    storageTier: Optional[str] = None
+    storageTier: str | None = None
     """
     The name of the storage tier. Valid values are archive and standard. Default value is standard.
     """
-    tags: Optional[Dict[str, str]] = None
+    tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
-    tagsAll: Optional[Dict[str, str]] = None
+    tagsAll: dict[str, str] | None = None
     """
     A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
-    temporaryRestoreDays: Optional[float] = None
+    temporaryRestoreDays: float | None = None
     """
     Specifies the number of days for which to temporarily restore an archived snapshot. Required for temporary restores only. The snapshot will be automatically re-archived after this period.
     """
-    volumeId: Optional[str] = None
+    volumeId: str | None = None
     """
     The snapshot ID (e.g., snap-59fcb34e).
     """
-    volumeSize: Optional[float] = None
+    volumeSize: float | None = None
     """
     The size of the drive in GiBs.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -399,12 +397,12 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
-    conditions: Optional[List[Condition]] = None
+    atProvider: AtProvider | None = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -413,17 +411,17 @@ class Status(BaseModel):
 
 
 class EBSSnapshotImport(BaseModel):
-    apiVersion: Optional[Literal['ec2.aws.m.upbound.io/v1beta1']] = (
+    apiVersion: Literal['ec2.aws.m.upbound.io/v1beta1'] | None = (
         'ec2.aws.m.upbound.io/v1beta1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['EBSSnapshotImport']] = 'EBSSnapshotImport'
+    kind: Literal['EBSSnapshotImport'] | None = 'EBSSnapshotImport'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -431,26 +429,26 @@ class EBSSnapshotImport(BaseModel):
     """
     EBSSnapshotImportSpec defines the desired state of EBSSnapshotImport
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     EBSSnapshotImportStatus defines the observed state of EBSSnapshotImport.
     """
 
 
 class EBSSnapshotImportList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[EBSSnapshotImport]
+    items: list[EBSSnapshotImport]
     """
     List of ebssnapshotimports. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

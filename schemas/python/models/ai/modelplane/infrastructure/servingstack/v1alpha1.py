@@ -122,7 +122,7 @@ class Spec(BaseModel):
     """
     Configuration for the cluster's inference traffic gateway.
     """
-    secrets: list[Secret] = Field(..., min_length=1)
+    secrets: list[Secret] = Field(..., max_length=8, min_length=1)
     """
     Secrets used to authenticate to the target cluster. Typically sourced from a GKECluster's status.secrets. All secrets must be in the same namespace as this ServingStack. A Kubeconfig secret is required. If a cloud-specific credential secret is present (e.g. GCPServiceAccountKey), the ProviderConfigs will use it for identity-based authentication instead of relying on the kubeconfig's embedded credentials.
     """
