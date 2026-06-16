@@ -4,10 +4,11 @@
   color: var(--toc-font-color);
 
   @include media-breakpoint-up(lg) {
+    align-self: start;
     position: sticky;
-    top: 0;
+    top: 4.5rem;
     z-index: 2;
-    height: subtract(100vh, 7rem);
+    max-height: calc(100vh - 4.5rem);
     overflow-y: auto;
     border-left: 1px solid #{$mp-border};
     padding-left: 18px;

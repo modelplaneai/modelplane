@@ -1,0 +1,27 @@
+# A ServingStack installs the serving substrate on a workload cluster.
+# Modelplane composes one automatically for every InferenceCluster it manages.
+# Do not create ServingStacks directly.
+#
+# This example is shown for reference only.
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: ServingStack
+metadata:
+  name: west-gke-stack
+  namespace: platform
+spec:
+  secrets:
+    - type: Kubeconfig
+      name: west-gke-kubeconfig
+      key: kubeconfig
+    - type: GCPServiceAccountKey
+      name: west-gke-sa-key
+      key: private_key
+  versions:
+    gatewayApi: "v1.5.1"
+    certManager: "v1.17.1"
+    envoyGateway: "v1.3.0"
+  gateway:
+    listeners:
+      - name: http
+        port: 80
+        protocol: HTTP

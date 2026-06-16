@@ -1,9 +1,16 @@
+.bd-sidebar {
+  @include media-breakpoint-up(lg) {
+    align-self: start;
+    position: sticky;
+    top: 4.5rem;
+  }
+}
+
 .bd-sidebar-container {
   background-color: var(--body-background) !important;
-  top: 0;
 
   @include media-breakpoint-up(lg) {
-    position: sticky;
+    position: static;
   }
 
   .offcanvas-title{
@@ -55,6 +62,44 @@
       border-left-color: #{$mp-purple};
       background-color: var(--nav-highlight-color) !important;
     }
+  }
+
+  .nav-section {
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--mp-muted, #{$mp-muted}) !important;
+    margin-top: 0.75rem;
+    border-left-color: transparent !important;
+
+    a {
+      color: inherit !important;
+      pointer-events: none;
+    }
+
+    &.active-parent {
+      color: var(--body-font-color) !important;
+      border-left-color: transparent !important;
+    }
+
+    &:hover {
+      background-color: transparent !important;
+      color: var(--body-font-color) !important;
+      border-left-color: transparent !important;
+    }
+  }
+
+  .nav-section-chevron {
+    transition: transform 0.2s ease;
+    color: var(--mp-muted, #{$mp-muted});
+    align-self: center;
+    flex-shrink: 0;
+  }
+
+  [aria-expanded="true"] .nav-section-chevron {
+    transform: rotate(90deg);
   }
 
   .sidebar-icon {

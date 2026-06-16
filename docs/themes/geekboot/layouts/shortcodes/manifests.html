@@ -1,0 +1,40 @@
+{{- /*
+  manifests shortcode
+
+  Renders a manifest file inline with syntax highlighting, plus an optional
+  kubectl apply -f <url> command block pointing to the published file.
+
+  Usage:
+    {{< manifests "platform/inference-gateway.yaml" >}}
+    {{< manifests "platform/inference-gateway.yaml" apply="false" >}}
+    {{< manifests "platform/inference-gateway.yaml" command="kubectl delete -f" >}}
+
+  Required positional arg:
+    [0]  path relative to examples/
+
+  Optional named args:
+    apply="false"              omit the kubectl apply block
+    command="kubectl apply -f" override the kubectl verb
+*/ -}}
+
+{{- $path := .Get 0 -}}
+{{- if not $path -}}
+  {{- errorf "manifests shortcode requires a path argument at %s" .Position -}}
+{{- end -}}
+
+{{- $resource := resources.Get (printf "examples/%s" $path) -}}
+{{- if not $resource -}}
+  {{- errorf "manifests shortcode: examples/%s not found (called from %s)" $path .Position -}}
+{{- end -}}
+
+{{- $apply   := .Get "apply"   | default "true" -}}
+{{- $command := .Get "command" | default "kubectl apply -f" -}}
+{{- $url     := ($resource | resources.Copy (printf "examples/%s" $path)).Permalink -}}
+{{- $applyCmd := printf "%s %s" $command $url -}}
+
+<div class="gdoc-manifest">
+  {{- highlight $resource.Content "yaml" "linenos=false" -}}
+  {{- if not (eq $apply "false") -}}
+    {{- highlight $applyCmd "shell" "" -}}
+  {{- end -}}
+</div>

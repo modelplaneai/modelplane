@@ -180,7 +180,7 @@ DRA
 LWS
 NIC
 NFS
-PVC
+PVCs?
 RWX
 SaaS
 P2P
@@ -359,3 +359,5 @@ the cloud
 disabled?
 [Bb]ackend
 usually
+SKU
+as-is

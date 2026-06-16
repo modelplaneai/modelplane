@@ -200,7 +200,7 @@ The InferenceGateway installs Envoy Gateway and MetalLB on the control plane
 cluster and creates a Gateway that routes traffic to model endpoints.
 
 ```bash
-kubectl apply -f examples/platform/inference-gateway.yaml
+kubectl apply -f manifests/platform/inference-gateway.yaml
 ```
 
 Wait for it to become ready (~3-5 minutes):
@@ -218,13 +218,13 @@ Apply the L4 InferenceClass, then edit the cluster example to set your GCP
 project ID and apply it:
 
 ```bash
-kubectl apply -f examples/platform/inference-class-gke-l4.yaml
+kubectl apply -f manifests/platform/inference-class-gke-l4.yaml
 ```
 
 ```bash
-# Edit examples/platform/inference-cluster-gke.yaml and set
+# Edit manifests/platform/inference-cluster-gke.yaml and set
 # spec.cluster.gke.project to your GCP project ID.
-kubectl apply -f examples/platform/inference-cluster-gke.yaml
+kubectl apply -f manifests/platform/inference-cluster-gke.yaml
 ```
 
 This provisions a GKE cluster with an L4 GPU and installs the inference stack.
@@ -242,7 +242,7 @@ fetches model weights directly from the source (Hugging Face) at pod
 startup. The deployment must supply any required credentials via the engine
 container's `env` (`HF_TOKEN`), and the engine image must support fetching
 from that source. For large models or frequent restarts, a
-[ModelCache]({{< ref "concepts.md#modelcache" >}}) avoids repeated downloads; see `examples/cache/` for
+[ModelCache]({{< ref "models/model-cache.md" >}}) avoids repeated downloads; see `examples/cache/` for
 cached single-pod and multi-node deployments.
 
 Create the `ml-team` namespace, deploy the model, and create a ModelService to
@@ -250,8 +250,8 @@ expose it:
 
 ```bash
 kubectl create namespace ml-team
-kubectl apply -f examples/deployment/model-deployment.yaml
-kubectl apply -f examples/deployment/model-service.yaml
+kubectl apply -f manifests/deployment/model-deployment.yaml
+kubectl apply -f manifests/deployment/model-service.yaml
 ```
 
 The member's `nodeSelector` declares the GPU its model needs as a DRA device
