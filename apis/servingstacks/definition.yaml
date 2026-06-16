@@ -30,6 +30,15 @@ spec:
             description: ServingStackSpec defines the desired state of ServingStack.
             required:
             - secrets
+            # A ServingStack is machine-generated, but the API server still
+            # serves and accepts it, so this lets the compose function trust
+            # that a Kubeconfig secret is present rather than checking in code.
+            # The kubeconfig provides the cluster endpoint and CA cert every
+            # ProviderConfig needs; a cloud-specific credential secret is
+            # optional and only layers identity-based auth on top.
+            x-kubernetes-validations:
+            - rule: "self.secrets.exists(s, s.type == 'Kubeconfig')"
+              message: spec.secrets must include a Kubeconfig entry.
             properties:
               secrets:
                 type: array
@@ -42,6 +51,7 @@ spec:
                   will use it for identity-based authentication instead of
                   relying on the kubeconfig's embedded credentials.
                 minItems: 1
+                maxItems: 8
                 items:
                   type: object
                   required:

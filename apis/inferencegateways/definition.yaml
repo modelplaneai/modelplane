@@ -29,6 +29,9 @@ spec:
           spec:
             type: object
             required: [backend]
+            x-kubernetes-validations:
+            - rule: "self.backend != 'Traefik' || has(self.traefik)"
+              message: spec.traefik is required when spec.backend is Traefik.
             properties:
               backend:
                 type: string
@@ -40,6 +43,9 @@ spec:
                   Traefik Proxy configuration. Required when backend is
                   Traefik.
                 required: [version]
+                x-kubernetes-validations:
+                - rule: "!has(self.loadBalancer) || self.loadBalancer != 'MetalLB' || has(self.metallb)"
+                  message: spec.traefik.metallb is required when spec.traefik.loadBalancer is MetalLB.
                 properties:
                   version:
                     type: string

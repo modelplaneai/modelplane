@@ -95,6 +95,11 @@ spec:
                   - name
                   - role
                   - machineType
+                  x-kubernetes-validations:
+                  - rule: "self.role != 'GPU' || has(self.gpu)"
+                    message: gpu is required when role is GPU.
+                  - rule: "self.role != 'GPU' || has(self.zones)"
+                    message: zones is required when role is GPU.
                   properties:
                     name:
                       type: string

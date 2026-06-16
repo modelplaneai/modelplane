@@ -33,6 +33,11 @@ spec:
                   How to provision a node pool of this class. Omit for
                   classes that describe BYO node pools that already exist.
                 required: [provider]
+                x-kubernetes-validations:
+                - rule: "self.provider != 'GKE' || has(self.gke)"
+                  message: spec.provisioning.gke is required when spec.provisioning.provider is GKE.
+                - rule: "self.provider != 'EKS' || has(self.eks)"
+                  message: spec.provisioning.eks is required when spec.provisioning.provider is EKS.
                 properties:
                   provider:
                     type: string
