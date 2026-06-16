@@ -3,20 +3,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from .....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class ConnectionDetail(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     API version of the referent.
     """
-    fieldPath: Optional[str] = None
+    fieldPath: str | None = None
     """
     If referring to a piece of an object instead of an entire object, this string
     should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
@@ -26,28 +25,28 @@ class ConnectionDetail(BaseModel):
     index 2 in this pod). This syntax is chosen only to have some well-defined way of
     referencing a part of an object.
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind of the referent.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    name: Optional[str] = None
+    name: str | None = None
     """
     Name of the referent.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referent.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
     """
-    resourceVersion: Optional[str] = None
+    resourceVersion: str | None = None
     """
     Specific resourceVersion to which this reference is made, if any.
     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
     """
-    toConnectionSecretKey: Optional[str] = None
-    uid: Optional[str] = None
+    toConnectionSecretKey: str | None = None
+    uid: str | None = None
     """
     UID of the referent.
     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
@@ -55,7 +54,7 @@ class ConnectionDetail(BaseModel):
 
 
 class ForProvider(BaseModel):
-    manifest: Dict[str, Any]
+    manifest: dict[str, Any]
     """
     Raw JSON representation of the kubernetes object to be created.
     """
@@ -73,7 +72,7 @@ class ProviderConfigRef(BaseModel):
 
 
 class Readiness(BaseModel):
-    celQuery: Optional[str] = None
+    celQuery: str | None = None
     """
     CelQuery defines a cel query to evaluate the readiness. The
     observed object is passed to the cel query with the word `object`.
@@ -84,20 +83,21 @@ class Readiness(BaseModel):
      `object.status.conditions.all(x, x.status == "True")` mimics the behavior of the AllTrue readiness policy
      `object.status.conditions.exists(c, c.type == "condition1" && c.status == "True" )` checks just one condition
     """
-    policy: Optional[
+    policy: (
         Literal['SuccessfulCreate', 'DeriveFromObject', 'AllTrue', 'DeriveFromCelQuery']
-    ] = 'SuccessfulCreate'
+        | None
+    ) = 'SuccessfulCreate'
     """
     Policy defines how the Object's readiness condition should be computed.
     """
 
 
 class DependsOn(BaseModel):
-    apiVersion: Optional[str] = 'kubernetes.m.crossplane.io/v1alpha1'
+    apiVersion: str | None = 'kubernetes.m.crossplane.io/v1alpha1'
     """
     APIVersion of the referenced object.
     """
-    kind: Optional[str] = 'Object'
+    kind: str | None = 'Object'
     """
     Kind of the referenced object.
     """
@@ -105,14 +105,14 @@ class DependsOn(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object.
     """
 
 
 class PatchesFrom(BaseModel):
-    apiVersion: Optional[str] = 'kubernetes.m.crossplane.io/v1alpha1'
+    apiVersion: str | None = 'kubernetes.m.crossplane.io/v1alpha1'
     """
     APIVersion of the referenced object.
     """
@@ -121,7 +121,7 @@ class PatchesFrom(BaseModel):
     FieldPath is the path of the field on the resource whose value is to be
     used as input.
     """
-    kind: Optional[str] = 'Object'
+    kind: str | None = 'Object'
     """
     Kind of the referenced object.
     """
@@ -129,24 +129,24 @@ class PatchesFrom(BaseModel):
     """
     Name of the referenced object.
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace of the referenced object.
     """
 
 
 class Reference(BaseModel):
-    dependsOn: Optional[DependsOn] = None
+    dependsOn: DependsOn | None = None
     """
     DependsOn is used to declare dependency on other Object or arbitrary
     Kubernetes resource.
     """
-    patchesFrom: Optional[PatchesFrom] = None
+    patchesFrom: PatchesFrom | None = None
     """
     PatchesFrom is used to declare dependency on other Object or arbitrary
     Kubernetes resource, and also patch fields from this object.
     """
-    toFieldPath: Optional[str] = None
+    toFieldPath: str | None = None
     """
     ToFieldPath is the path of the field on the resource whose value will
     be changed with the result of transforms. Leave empty if you'd like to
@@ -162,14 +162,15 @@ class WriteConnectionSecretToRef(BaseModel):
 
 
 class Spec(BaseModel):
-    connectionDetails: Optional[List[ConnectionDetail]] = None
+    connectionDetails: list[ConnectionDetail] | None = None
     forProvider: ForProvider
     """
     ObjectParameters are the configurable fields of a Object.
     """
-    managementPolicies: Optional[
-        List[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
-    ] = ['*']
+    managementPolicies: (
+        list[Literal['Observe', 'Create', 'Update', 'Delete', 'LateInitialize', '*']]
+        | None
+    ) = ['*']
     """
     THIS IS A BETA FIELD. It is on by default but can be opted out
     through a Crossplane feature flag.
@@ -178,24 +179,22 @@ class Spec(BaseModel):
     See the design doc for more information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
     and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate(
-            {'kind': 'ClusterProviderConfig', 'name': 'default'}
-        )
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'kind': 'ClusterProviderConfig', 'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
     create, observe, update, and delete this managed resource should be
     configured.
     """
-    readiness: Optional[Readiness] = None
+    readiness: Readiness | None = None
     """
     Readiness defines how the object's readiness condition should be computed,
     if not specified it will be considered ready as soon as the underlying external
     resource is considered up-to-date.
     """
-    references: Optional[List[Reference]] = None
-    watch: Optional[bool] = False
+    references: list[Reference] | None = None
+    watch: bool | None = False
     """
     Watch enables watching the referenced or managed kubernetes resources.
 
@@ -203,7 +202,7 @@ class Spec(BaseModel):
     unless "watches" feature gate is enabled, and may be changed or removed
     without notice.
     """
-    writeConnectionSecretToRef: Optional[WriteConnectionSecretToRef] = None
+    writeConnectionSecretToRef: WriteConnectionSecretToRef | None = None
     """
     WriteConnectionSecretToReference specifies the namespace and name of a
     Secret to which any connection details for this managed resource should
@@ -213,24 +212,24 @@ class Spec(BaseModel):
 
 
 class AtProvider(BaseModel):
-    manifest: Optional[Dict[str, Any]] = None
+    manifest: dict[str, Any] | None = None
     """
     Raw JSON representation of the remote object.
     """
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -252,15 +251,15 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    atProvider: Optional[AtProvider] = None
+    atProvider: AtProvider | None = None
     """
     ObjectObservation are the observable fields of a Object.
     """
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -269,17 +268,17 @@ class Status(BaseModel):
 
 
 class Object(BaseModel):
-    apiVersion: Optional[Literal['kubernetes.m.crossplane.io/v1alpha1']] = (
+    apiVersion: Literal['kubernetes.m.crossplane.io/v1alpha1'] | None = (
         'kubernetes.m.crossplane.io/v1alpha1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['Object']] = 'Object'
+    kind: Literal['Object'] | None = 'Object'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -287,26 +286,26 @@ class Object(BaseModel):
     """
     A ObjectSpec defines the desired state of a Object.
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     A ObjectStatus represents the observed state of a Object.
     """
 
 
 class ObjectList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[Object]
+    items: list[Object]
     """
     List of objects. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """

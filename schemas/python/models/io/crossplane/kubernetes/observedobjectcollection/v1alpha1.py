@@ -3,27 +3,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field, constr
+from pydantic import AwareDatetime, BaseModel, Field, constr
 
 from ....k8s.apimachinery.pkg.apis.meta import v1
 
 
 class Metadata(BaseModel):
-    annotations: Optional[Dict[str, str]] = None
+    annotations: dict[str, str] | None = None
     """
     Annotations of an object
     """
-    labels: Optional[Dict[str, str]] = None
+    labels: dict[str, str] | None = None
     """
     Labels of an object
     """
 
 
 class ObjectTemplate(BaseModel):
-    metadata: Optional[Metadata] = None
+    metadata: Metadata | None = None
     """
     Objects metadata
     """
@@ -39,7 +38,7 @@ class MatchExpression(BaseModel):
     operator represents a key's relationship to a set of values.
     Valid operators are In, NotIn, Exists and DoesNotExist.
     """
-    values: Optional[List[str]] = None
+    values: list[str] | None = None
     """
     values is an array of string values. If the operator is In or NotIn,
     the values array must be non-empty. If the operator is Exists or DoesNotExist,
@@ -49,11 +48,11 @@ class MatchExpression(BaseModel):
 
 
 class Selector(BaseModel):
-    matchExpressions: Optional[List[MatchExpression]] = None
+    matchExpressions: list[MatchExpression] | None = None
     """
     matchExpressions is a list of label selector requirements. The requirements are ANDed.
     """
-    matchLabels: Optional[Dict[str, str]] = None
+    matchLabels: dict[str, str] | None = None
     """
     matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
     map is equivalent to an element of matchExpressions, whose key field is "key", the
@@ -70,7 +69,7 @@ class ObserveObjects(BaseModel):
     """
     Kind of objects that should be matched by the selector
     """
-    namespace: Optional[str] = None
+    namespace: str | None = None
     """
     Namespace where to look for objects.
     If omitted, search is performed across all namespaces.
@@ -83,14 +82,14 @@ class ObserveObjects(BaseModel):
 
 
 class Policy(BaseModel):
-    resolution: Optional[Literal['Required', 'Optional']] = 'Required'
+    resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
     Resolution specifies whether resolution of this reference is required.
     The default is 'Required', which means the reconcile will fail if the
     reference cannot be resolved. 'Optional' means this reference will be
     a no-op if it cannot be resolved.
     """
-    resolve: Optional[Literal['Always', 'IfNotPresent']] = None
+    resolve: Literal['Always', 'IfNotPresent'] | None = None
     """
     Resolve specifies when this reference should be resolved. The default
     is 'IfNotPresent', which will attempt to resolve the reference only when
@@ -104,14 +103,14 @@ class ProviderConfigRef(BaseModel):
     """
     Name of the referenced object.
     """
-    policy: Optional[Policy] = None
+    policy: Policy | None = None
     """
     Policies for referencing.
     """
 
 
 class Spec(BaseModel):
-    objectTemplate: Optional[ObjectTemplate] = None
+    objectTemplate: ObjectTemplate | None = None
     """
     Template when defined is used for creating Object instances
     """
@@ -120,8 +119,8 @@ class Spec(BaseModel):
     ObserveObjects declares what criteria object need to fulfil
     to become a member of this collection
     """
-    providerConfigRef: Optional[ProviderConfigRef] = Field(
-        default_factory=lambda: ProviderConfigRef.model_validate({'name': 'default'})
+    providerConfigRef: ProviderConfigRef | None = Field(
+        {'name': 'default'}, validate_default=True
     )
     """
     ProviderConfigReference specifies how the provider that will be used to
@@ -131,17 +130,17 @@ class Spec(BaseModel):
 
 
 class Condition(BaseModel):
-    lastTransitionTime: datetime
+    lastTransitionTime: AwareDatetime
     """
     LastTransitionTime is the last time this condition transitioned from one
     status to another.
     """
-    message: Optional[str] = None
+    message: str | None = None
     """
     A Message containing details about this condition's last transition from
     one status to another, if any.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration represents the .metadata.generation that the condition was set based upon.
     For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
@@ -163,16 +162,16 @@ class Condition(BaseModel):
 
 
 class Status(BaseModel):
-    conditions: Optional[List[Condition]] = None
+    conditions: list[Condition] | None = None
     """
     Conditions of the resource.
     """
-    membershipLabel: Optional[Dict[str, str]] = None
+    membershipLabel: dict[str, str] | None = None
     """
     MembershipLabel is the label set on each member of this collection
     and can be used for fetching them.
     """
-    observedGeneration: Optional[int] = None
+    observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation
     which resulted in either a ready state, or stalled due to error
@@ -181,17 +180,17 @@ class Status(BaseModel):
 
 
 class ObservedObjectCollection(BaseModel):
-    apiVersion: Optional[Literal['kubernetes.crossplane.io/v1alpha1']] = (
+    apiVersion: Literal['kubernetes.crossplane.io/v1alpha1'] | None = (
         'kubernetes.crossplane.io/v1alpha1'
     )
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    kind: Optional[Literal['ObservedObjectCollection']] = 'ObservedObjectCollection'
+    kind: Literal['ObservedObjectCollection'] | None = 'ObservedObjectCollection'
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ObjectMeta] = None
+    metadata: v1.ObjectMeta | None = None
     """
     Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
     """
@@ -199,26 +198,26 @@ class ObservedObjectCollection(BaseModel):
     """
     ObservedObjectCollectionSpec defines the desired state of ObservedObjectCollection
     """
-    status: Optional[Status] = None
+    status: Status | None = None
     """
     ObservedObjectCollectionStatus represents the observed state of a ObservedObjectCollection
     """
 
 
 class ObservedObjectCollectionList(BaseModel):
-    apiVersion: Optional[str] = None
+    apiVersion: str | None = None
     """
     APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
     """
-    items: List[ObservedObjectCollection]
+    items: list[ObservedObjectCollection]
     """
     List of observedobjectcollections. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md
     """
-    kind: Optional[str] = None
+    kind: str | None = None
     """
     Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
-    metadata: Optional[v1.ListMeta] = None
+    metadata: v1.ListMeta | None = None
     """
     Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
     """
