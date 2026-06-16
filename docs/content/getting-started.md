@@ -4,148 +4,126 @@ weight: 10
 description: Get started with Modelplane
 ---
 <!-- vale write-good.Passive = NO -->
-This guide walks through deploying Modelplane on a local kind cluster and using
-it to serve a model on GKE. By the end you'll have a working OpenAI-compatible
-endpoint serving `Qwen 2.5 0.5B`.
+Modelplane is an open source control plane for AI inference. It separates two
+concerns: building a GPU cluster fleet with published hardware capabilities, and
+deploying models against those capabilities. All without hardcoding cluster names
+or cloud SKUs.
 
-The whole process takes about 45 minutes. Most of that time is GKE provisioning
-the GPU cluster and installing the inference stack. The GKE cluster with an L4
-GPU costs roughly $2-3/hr.
+This guide uses a three cluster fleet (one `EU`, two `US`) as a working example,
+then deploys a model to the `US` clusters through a single endpoint. You can
+follow along with any number of clusters in any regions with adequate GPU
+support.
+
+The platform team publishes what hardware is available. The ML team expresses
+what the model needs. Neither team needs to know what the other is doing to
+change their side.
+
+Once the platform is running, the ML team's side looks like this:
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 2
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us       # target both US clusters by label
+  engines:
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("14Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.7.3
+            args:
+            - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+            - "--dtype=half"
+```
+
+`clusterSelector` targets clusters by label;
+the device selector matches against the hardware capacity those clusters
+declare in their `InferenceClass`. Modelplane schedules one replica to each
+matching cluster.
+
+Provisioning three GPU clusters takes around 15-20 minutes.
 
 ## Prerequisites
 
-You need the following tools installed:
+- [kind](https://kind.sigs.k8s.io/), [kubectl](https://kubernetes.io/docs/tasks/tools/),
+  [Helm](https://helm.sh/docs/intro/install/), and [Docker](https://www.docker.com/)
 
-- [kind](https://kind.sigs.k8s.io/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [Helm](https://helm.sh/docs/intro/install/)
-- [Docker](https://www.docker.com/) (or a compatible container runtime) for
-  kind.
+{{< tabs >}}
+{{< tab "GKE" >}}
+- A GCP project with the GKE API enabled
+- A GCP service account key (JSON) with `Editor` permissions (enough for GKE
+  clusters, VPCs, and IAM bindings)
+{{< /tab >}}
+{{< tab "EKS" >}}
+- An AWS account with permissions to create EKS clusters, VPCs, and IAM roles
+- AWS access key ID and secret access key
+{{< /tab >}}
+{{< /tabs >}}
 
-You also need:
+---
 
-- A GCP project with the GKE API enabled.
-- A GCP service account key (JSON) with permissions to create GKE clusters,
-  VPCs, and IAM bindings. The `Editor` role works for trying things out.
+## Part 1: Build your inference platform
 
-## Create a kind cluster
+This section is infrastructure work done once per environment. Deploying,
+updating, and removing models in Part 2 doesn't require touching any of it.
 
-The control plane runs in a local kind cluster. It needs no special
-configuration.
+### Install the control plane
+
+In this guide, you'll use Crossplane in a local kind cluster to run Modelplane's
+control plane. Crossplane gives you a reconciliation engine, package management,
+and infrastructure as code to manage your inference platform.
+
+{{< hint "note" >}}
+You can run your Modelplane control plane anywhere. This guide uses kind for
+illustration.
+{{< /hint >}}
+
+Once you create the control plane, Modelplane can provision GKE and EKS clusters
+and install Helm releases on remote clusters.
 
 ```bash
 kind create cluster --name modelplane
 ```
-
-## Install Crossplane
-
-Modelplane is built on [Crossplane](https://crossplane.io) v2. Install it with
-Helm:
 
 ```bash
 helm repo add crossplane-stable https://charts.crossplane.io/stable
 helm repo update crossplane-stable
 helm install crossplane crossplane-stable/crossplane \
   --namespace crossplane-system --create-namespace \
+  --set "args={--enable-dependency-version-upgrades}" \
   --wait
 ```
 
-## Apply prerequisites
+Apply the bootstrap resources. This grants Crossplane the RBAC it needs for
+Gateway API and MetalLB, and a cluster-admin binding for `provider-helm` so it
+can install Helm charts on remote clusters:
 
-Modelplane needs a few Kubernetes resources that Crossplane can't compose for
-itself: a shared namespace, RBAC for Gateway API and MetalLB resources, and a
-runtime config for provider-helm.
-
-```bash
-kubectl apply -f - <<'EOF'
-# Shared namespace for Modelplane infrastructure.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: modelplane-system
----
-# Grant Crossplane permissions to compose Gateway API, MetalLB, and
-# Service/EndpointSlice routing resources. This ClusterRole is aggregated
-# into Crossplane's role automatically.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: crossplane-compose-modelplane
-  labels:
-    rbac.crossplane.io/aggregate-to-crossplane: "true"
-rules:
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["*"]
-  # Selectorless Service plus EndpointSlice composed by ModelEndpoint to route
-  # the control plane gateway to a remote model endpoint.
-  - apiGroups: [""]
-    resources: ["services"]
-    verbs: ["*"]
-  - apiGroups: ["discovery.k8s.io"]
-    resources: ["endpointslices"]
-    verbs: ["*"]
-  - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["gateways", "gatewayclasses", "httproutes"]
-    verbs: ["*"]
-  - apiGroups: ["gateway.envoyproxy.io"]
-    resources: ["backends"]
-    verbs: ["*"]
-  - apiGroups: ["metallb.io"]
-    resources: ["ipaddresspools", "l2advertisements"]
-    verbs: ["*"]
-  - apiGroups: ["protection.crossplane.io"]
-    resources: ["usages"]
-    verbs: ["*"]
----
-# Give provider-helm a deterministic ServiceAccount name so we can grant it
-# permissions. Without this, the SA name has a random hash.
-apiVersion: pkg.crossplane.io/v1beta1
-kind: DeploymentRuntimeConfig
-metadata:
-  name: provider-helm-modelplane
-spec:
-  serviceAccountTemplate:
-    metadata:
-      name: provider-helm-modelplane
----
-# Grant provider-helm cluster-admin. Helm charts install arbitrary Kubernetes
-# resources and need broad permissions.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: provider-helm-modelplane
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: provider-helm-modelplane
-    namespace: crossplane-system
----
-# Apply the runtime config to provider-helm automatically by matching its OCI
-# image prefix.
-apiVersion: pkg.crossplane.io/v1beta1
-kind: ImageConfig
-metadata:
-  name: provider-helm-modelplane
-spec:
-  matchImages:
-    - type: Prefix
-      prefix: xpkg.upbound.io/upbound/provider-helm
-  runtime:
-    configRef:
-      name: provider-helm-modelplane
-EOF
+```shell 
+kubectl apply -f {{< manifest-url "qwen-demo/00-prerequisites.yaml" >}}
 ```
 
-## Install Modelplane
+{{< expand "Review the prerequisites manifest" >}}
+{{< manifests "qwen-demo/00-prerequisites.yaml" >}}
+{{< /expand >}}
 
-Modelplane is packaged as a Crossplane
-[Configuration](https://docs.crossplane.io/latest/concepts/packages/#configuration-packages).
-Install the Configuration. This pulls the providers and composition functions it
-depends on.
+
+### Install Modelplane
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -154,37 +132,43 @@ kind: Configuration
 metadata:
   name: modelplane
 spec:
-  package: xpkg.upbound.io/modelplane/modelplane:v0.1.0-dev.125.g0cba874
+  package: xpkg.upbound.io/modelplane/modelplane:v0.1.0-rc.0
 EOF
 ```
 
-Wait for the Configuration and all its dependencies to become healthy. This
-pulls several container images and takes a few minutes.
+Wait until the configuration is healthy:
 
 ```bash
-kubectl get configuration modelplane --watch
-# Wait until HEALTHY shows True, then Ctrl-C.
+kubectl wait configuration/modelplane --for=condition=Healthy --timeout=5m
 ```
 
-## Configure GCP credentials
+### Configure cloud credentials
 
-Create a Secret with your GCP service account key, then create a ProviderConfig
-that references it.
+{{< tabs >}}
+{{< tab "GKE" >}}
 
-```bash
+Create a Kubernetes secret:
+
+{{< editCode >}}
+
+```ini
 kubectl create secret generic gcp-creds \
-  --from-file=credentials=/path/to/sa-key.json \
+  --from-file=credentials=$@</path/to/sa-key.json>$@ \
   -n crossplane-system
 ```
 
+{{< /editCode >}}
+
+{{< editCode >}}
 ```bash
+
 kubectl apply -f - <<'EOF'
 apiVersion: gcp.m.upbound.io/v1beta1
 kind: ClusterProviderConfig
 metadata:
   name: default
 spec:
-  projectID: my-gcp-project  # Replace with your GCP project ID.
+  projectID: $@<your-gcp-project>$@ # Update with your GCP Project ID
   credentials:
     source: Secret
     secretRef:
@@ -193,78 +177,408 @@ spec:
       key: credentials
 EOF
 ```
+{{< /editCode >}}
+{{< /tab >}}
+{{< tab "EKS" >}}
+Create an AWS credentials file:
 
-## Create the InferenceGateway
+{{< editCode >}}
+```ini {copy-lines="all"}
+[default]
+aws_access_key_id = $@<aws_access_key>$@
+aws_secret_access_key = $@<aws_secret_key>$@
+```
+{{< /editCode >}}
 
-The InferenceGateway installs Envoy Gateway and MetalLB on the control plane
-cluster and creates a Gateway that routes traffic to model endpoints.
+
+{{< editCode >}}
+
+Create a Kubernetes secret:
+
+```ini
+kubectl create secret generic aws-creds \
+  --from-file=credentials=$@</path/to/aws-credentials>$@ \
+  -n crossplane-system
+```
+
+Apply the `ClusterProviderConfig` referencing your secret:
+
+{{< /editCode >}}
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: aws.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: aws-creds
+      key: credentials
+EOF
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+### Set up the InferenceGateway
+
+The `InferenceGateway` installs Traefik Proxy and MetalLB on the control plane.
+Traefik routes inference traffic to model replicas across the fleet. MetalLB
+assigns Traefik's `LoadBalancer` service an external IP on clusters that don't
+have a cloud load balancer, including the kind cluster this guide uses.
+Create one per control plane, always named `default`.
+
+Set `metallb.addressPool` to a range within your control plane's Docker network.
+If you run the control plane on a cloud cluster with native `LoadBalancer`
+support, omit the `loadBalancer` field entirely.
 
 {{< manifests "platform/inference-gateway.yaml" >}}
 
-Wait for it to become ready (~3-5 minutes):
+Wait until the resources are ready to continue:
 
 ```bash
-kubectl get ig default --watch
+kubectl wait --for=condition=Ready ig/default --timeout=5m
 ```
 
-## Create an InferenceClass and InferenceCluster
+### Publish hardware capabilities and register the fleet
 
-An InferenceClass defines a hardware recipe (GPU type, count, provisioning
-config). An InferenceCluster references it to provision GPU node pools.
+An `InferenceClass` is the capacity contract between platform and ML teams. The
+platform team creates one class per hardware shape. The ML team writes device
+selectors that match against that class's declared capacity. When the platform
+team migrates from an `L4` to an `A10G`, or moves a cluster from GKE to EKS,
+they update the `InferenceClass`. As long as the new hardware satisfies the same
+capability requirements, Modelplane reschedules replicas to the new cluster
+automatically. The ML team's `ModelDeployment` doesn't change.
 
-Apply the L4 InferenceClass:
+An `InferenceCluster` registers a cluster with Modelplane. Each cluster
+references an `InferenceClass` for its GPU node pools and carries labels that
+ML teams target with `clusterSelector`. Modelplane provisions the cluster and
+installs the serving stack automatically.
+<!-- vale write-good.TooWordy = NO -->
+Multiple clusters can share an `InferenceClass`. All three clusters below use
+the same class because they run the same hardware shape. Create a new
+`InferenceClass` only when the hardware shape differs (for example, a T4 pool
+and an A100 pool need separate classes). The EU cluster is available but not
+targeted in Part 2. In the next part, you'll target your deployment by labels,
+not specific clusters.
+<!-- vale write-good.TooWordy  = YES -->
 
-{{< manifests "platform/inference-class-gke-l4.yaml" >}}
+{{< tabs >}}
+{{< tab "GKE" >}}
 
-Edit `spec.cluster.gke.project` in `inference-cluster-gke.yaml` to set your GCP
-project ID, then apply:
+{{< editCode >}}
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: t4-1x-n1
+spec:
+  description: "GKE n1-standard-4, 1x NVIDIA T4"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: n1-standard-4
+      diskSizeGb: 50
+      accelerator:
+        type: nvidia-tesla-t4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Turing }
+    capacity:
+      memory: { value: "16384Mi" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gke-europe-west1
+  labels:
+    modelplane.ai/region: eu
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: $@<your-gcp-project>$@ # Update with your GCP Project ID
+      region: europe-west1
+  nodePools:
+  - name: gpu-t4
+    className: t4-1x-n1
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - europe-west1-b
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gke-us-central1
+  labels:
+    modelplane.ai/region: us
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: $@<your-gcp-project>$@ # Update with your GCP Project ID
+      region: us-central1
+  nodePools:
+  - name: gpu-t4
+    className: t4-1x-n1
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - us-central1-a
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gke-us-east4
+  labels:
+    modelplane.ai/region: us
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: $@<your-gcp-project>$@ # Update with your GCP Project ID
+      region: us-east4
+  nodePools:
+  - name: gpu-t4
+    className: t4-1x-n1
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - us-east4-a
+{{< /editCode >}}
+{{< /tab >}}
 
-{{< manifests "platform/inference-cluster-gke.yaml" >}}
 
-This provisions a GKE cluster with an L4 GPU and installs the inference stack.
-It's the longest step, taking roughly 20-30 minutes.
+{{< tab "EKS" >}}
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: t4-1x-g4dn
+spec:
+  description: "EKS g4dn.xlarge, 1x NVIDIA T4"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: g4dn.xlarge
+      diskSizeGb: 50
+      accelerator:
+        type: nvidia-tesla-t4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Turing }
+    capacity:
+      memory: { value: "16384Mi" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-eu-west
+  labels:
+    modelplane.ai/region: eu
+spec:
+  cluster:
+    source: EKS
+    eks:
+      region: eu-west-1
+  nodePools:
+  - name: gpu-t4
+    className: eks-t4-1x-g4dn
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - eu-west-1b
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-us-east
+  labels:
+    modelplane.ai/region: us
+spec:
+  cluster:
+    source: EKS
+    eks:
+      region: us-east-1
+  nodePools:
+  - name: gpu-t4
+    className: eks-t4-1x-g4dn
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - us-east-1b
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-us-west
+  labels:
+    modelplane.ai/region: us
+spec:
+  cluster:
+    source: EKS
+    eks:
+      region: us-west-2
+  nodePools:
+  - name: gpu-t4
+    className: eks-t4-1x-g4dn
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - us-west-2b
+EOF
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+Modelplane provisions all three clusters in parallel. This takes roughly 20-30
+minutes. Wait until all three are ready to continue:
 
 ```bash
 kubectl get ic --watch
-# Wait until READY shows True, then Ctrl-C.
 ```
 
-## Deploy a model
+Modelplane has registered three clusters and installed the serving stack on
+each. It can now schedule models.
 
-When a ModelDeployment does **not** reference a ModelCache, the inference engine
-fetches model weights directly from the source (Hugging Face) at pod
-startup. The deployment must supply any required credentials via the engine
-container's `env` (`HF_TOKEN`), and the engine image must support fetching
-from that source. For large models or frequent restarts, a
-[ModelCache]({{< ref "models/model-cache.md" >}}) avoids repeated downloads; see `examples/cache/` for
-cached single-pod and multi-node deployments.
+---
 
-Create the `ml-team` namespace, deploy the model, and create a ModelService to
-expose it:
+## Part 2: Deploy and manage models
+
+Labels are the contract between the two sides. The platform team owns cluster
+names, regions, and providers. The ML team only ever sees the label.
+
+```mermaid
+graph LR
+    subgraph pt ["Platform team"]
+        IC1["europe-west1"]
+        IC2["us-central1"]
+        IC3["us-east4"]
+    end
+
+    label["region: us"]
+
+    IC2 -- "region: us" --> label
+    IC3 -- "region: us" --> label
+    IC1 -. "region: eu (not targeted)" .-> label
+
+    subgraph ml ["ML team"]
+        MD["ModelDeployment\nclusterSelector: region=us\nreplicas: 2"]
+        EP["unified endpoint\n/ml-team/qwen/v1/..."]
+    end
+
+    label --> MD
+    MD --> EP
+```
+
+Everything from here is model management. The platform infrastructure above
+doesn't change when you add, update, or remove models.
+
+### Deploy the model
+
+Create a namespace and apply the deployment:
 
 ```bash
 kubectl create namespace ml-team
 ```
 
-{{< manifests "deployment/model-deployment.yaml" >}}
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 2
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us
+  engines:
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("14Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.7.3
+            args:
+            - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+            - "--dtype=half"
+EOF
+```
 
-{{< manifests "deployment/model-service.yaml" >}}
+The `clusterSelector` limits scheduling to `US` clusters. The device selector
+matches against the `InferenceClass` capacity those clusters declare. In this
+example, any T4 GPU node satisfies `>= 14Gi`. Modelplane places one replica on
+each matching cluster.
 
-The member's `nodeSelector` declares the GPU its model needs as a DRA device
-request (here, a GPU with at least 24Gi of memory). The scheduler matches that
-request against each cluster's GPU pools, pins the member to a pool that
-satisfies it, and the same request becomes the DRA ResourceClaim the serving
-pod binds its GPU through. Wait for the deployment to become ready:
+Wait until `REPLICAS` returns `2` to continue:
 
 ```bash
 kubectl get md -n ml-team --watch
-# Wait until REPLICAS shows 1, then Ctrl-C.
 ```
 
-## Talk to the model
+To see which clusters the scheduler chose:
 
-The gateway endpoint is only reachable from inside the kind Docker network.
-Use a pod to send a request:
+```bash
+kubectl get modelreplica -n ml-team
+```
+
+The scheduler placed one replica on each matching cluster:
+
+```shell
+NAME              CLUSTER       SYNCED   READY   COMPOSITION                   AGE
+qwen-demo-7323a   eks-us-west   True     True    modelreplicas.modelplane.ai   29m
+qwen-demo-92535   eks-us-east   True     True    modelreplicas.modelplane.ai   29m
+```
+
+### Expose the model
+
+A `ModelService` selects `ModelEndpoints` by label and creates a Gateway API
+`HTTPRoute` that load-balances across them. Modelplane composes one
+`ModelEndpoint` per replica, labeled with the deployment name:
+
+{{< manifests "deployment/model-service.yaml" >}}
+
+### Send a request
+
+Modelplane creates a Gateway API `HTTPRoute` for each replica and attaches it
+to the Traefik gateway. Requests to the gateway IP are routed by Gateway API.
+The MetalLB IP is the external address of the Traefik `Gateway` resource.
+
+The gateway endpoint is reachable from inside the kind Docker network:
 
 ```bash
 kubectl run -i --rm curl-test \
@@ -279,40 +593,93 @@ kubectl run -i --rm curl-test \
   }'
 ```
 
-You can also get the endpoint URL from the ModelService status:
+You should receive a reply in a few seconds:
 
-```bash
-kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}'
+```json
+{
+  "id": "chatcmpl-217f0efa-4b57-40bb-a7dc-f31047a9ba45",
+  "object": "chat.completion",
+  "created": 1781713612,
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Crossplane is a cross-cloud service orchestration platform designed to facilitate seamless deployment and management of applications and infrastructure across various distributed cloud environments."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 37,
+    "completion_tokens": 28,
+    "total_tokens": 65
+  }
+}
 ```
+
+The EU cluster is registered and available but not targeted by this deployment.
+To add it, change `spec.replicas` to 3 and remove the `clusterSelector`. The
+endpoint stays the same; the gateway picks up the new replica automatically.
+
+---
 
 ## Clean up
 
-Delete the ModelDeployment before the InferenceCluster. If you delete the
-cluster first, the deployment gets stuck reconciling against a cluster
-Crossplane is tearing down.
+Delete the `ModelDeployment` before the `InferenceCluster`. Deleting clusters
+first leaves the deployment trying to reconcile against infrastructure that no
+longer exists.
 
-Delete the InferenceCluster with foreground cascading deletion. The inference
-stack runs on the workload cluster and must uninstall while that cluster's API
-server and kubeconfig still exist. Foreground deletion holds the cluster until
-the stack is uninstalled; the default (background) deletion tears everything
-down at once, which leaves the stack's Helm releases unable to reach the
-cluster and can orphan cloud resources - for example a load balancer's security
-group, which then blocks the VPC from deleting.
+Delete `InferenceCluster` resources with foreground cascading deletion. The
+serving stack runs on each workload cluster and must uninstall while those
+clusters' API servers are still reachable. Foreground deletion holds each
+cluster object until its stack finishes; background deletion can orphan cloud
+resources (load balancer security groups that block VPC deletion).
 
-Wait for the cluster to be fully deprovisioned before deleting the kind
-cluster. If you delete the kind cluster while Crossplane is still cleaning up,
-Crossplane orphans the cloud resources.
+Wait for all three clusters to fully spin down before deleting the kind
+cluster. Crossplane orphans cloud resources if the control plane disappears
+while it's still cleaning up.
 
 ```bash
 kubectl delete md --all -n ml-team
 kubectl delete ms --all -n ml-team
+```
+
+Wait for all model replicas to finish cleaning up before continuing:
+
+```bash
+kubectl get modelreplica -n ml-team --watch
+```
+
+Delete all inference clusters:
+
+```bash
 kubectl delete ic --all --cascade=foreground
+```
 
-# Wait for the InferenceCluster to be fully deleted.
+Wait until all resources are deleted:
+
+```bash
 kubectl get ic --watch
-# Wait until no resources remain, then Ctrl-C.
+```
 
+Finally, delete the kind cluster:
+
+```bash
 kind delete cluster --name modelplane
 ```
 <!-- vale write-good.Passive = YES -->
+
+## Next steps
+
+You just created and deployed an inference stack platform and walked through the
+entire model management lifecycle with Modelplane.
+
+For more information, check out:
+
+* [Build the Inference Stack Platform]({{< ref "platform/" >}})
+* [Deploy and Manage Models]({{< ref "models/" >}})
+
+Star the [Modelplane project on GitHub](https://github.com/modelplaneai/modelplane) and build with us.
 
