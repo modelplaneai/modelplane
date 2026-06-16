@@ -13,9 +13,9 @@
   {{- errorf "manifest-url shortcode requires a path argument at %s" .Position -}}
 {{- end -}}
 
-{{- $resource := resources.Get (printf "manifests/%s" $path) -}}
+{{- $resource := resources.Get (printf "examples/%s" $path) -}}
 {{- if not $resource -}}
-  {{- errorf "manifest-url shortcode: manifests/%s not found (called from %s)" $path .Position -}}
+  {{- errorf "manifest-url shortcode: examples/%s not found (called from %s)" $path .Position -}}
 {{- end -}}
 
-{{- ($resource | resources.Copy (printf "manifests/%s" $path)).Permalink -}}
+{{- ($resource | resources.Copy (printf "examples/%s" $path)).Permalink -}}

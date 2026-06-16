@@ -266,7 +266,7 @@ fetches model weights directly from the source (Hugging Face) at pod
 startup. The deployment must supply any required credentials via the engine
 container's `env` (`HF_TOKEN`), and the engine image must support fetching
 from that source. For large models or frequent restarts, a
-[ModelCache]({{< ref "models/model-cache.md" >}}) avoids repeated downloads; see `manifests/cache/` for
+[ModelCache]({{< ref "models/model-cache.md" >}}) avoids repeated downloads; see `examples/cache/` for
 cached single-pod and multi-node deployments.
 
 Create the `ml-team` namespace, deploy the model, and create a ModelService to

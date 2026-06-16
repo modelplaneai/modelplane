@@ -10,7 +10,7 @@
     {{< manifests "platform/inference-gateway.yaml" command="kubectl delete -f" >}}
 
   Required positional arg:
-    [0]  path relative to docs/manifests/
+    [0]  path relative to examples/
 
   Optional named args:
     apply="false"              omit the kubectl apply block
@@ -22,14 +22,14 @@
   {{- errorf "manifests shortcode requires a path argument at %s" .Position -}}
 {{- end -}}
 
-{{- $resource := resources.Get (printf "manifests/%s" $path) -}}
+{{- $resource := resources.Get (printf "examples/%s" $path) -}}
 {{- if not $resource -}}
-  {{- errorf "manifests shortcode: manifests/%s not found (called from %s)" $path .Position -}}
+  {{- errorf "manifests shortcode: examples/%s not found (called from %s)" $path .Position -}}
 {{- end -}}
 
 {{- $apply   := .Get "apply"   | default "true" -}}
 {{- $command := .Get "command" | default "kubectl apply -f" -}}
-{{- $url     := ($resource | resources.Copy (printf "manifests/%s" $path)).Permalink -}}
+{{- $url     := ($resource | resources.Copy (printf "examples/%s" $path)).Permalink -}}
 {{- $applyCmd := printf "%s %s" $command $url -}}
 
 <div class="gdoc-manifest">
