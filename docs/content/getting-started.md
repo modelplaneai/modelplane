@@ -199,9 +199,7 @@ EOF
 The InferenceGateway installs Envoy Gateway and MetalLB on the control plane
 cluster and creates a Gateway that routes traffic to model endpoints.
 
-```bash
-kubectl apply -f manifests/platform/inference-gateway.yaml
-```
+{{< manifests "platform/inference-gateway.yaml" >}}
 
 Wait for it to become ready (~3-5 minutes):
 
@@ -214,18 +212,14 @@ kubectl get ig default --watch
 An InferenceClass defines a hardware recipe (GPU type, count, provisioning
 config). An InferenceCluster references it to provision GPU node pools.
 
-Apply the L4 InferenceClass, then edit the cluster example to set your GCP
-project ID and apply it:
+Apply the L4 InferenceClass:
 
-```bash
-kubectl apply -f manifests/platform/inference-class-gke-l4.yaml
-```
+{{< manifests "platform/inference-class-gke-l4.yaml" >}}
 
-```bash
-# Edit manifests/platform/inference-cluster-gke.yaml and set
-# spec.cluster.gke.project to your GCP project ID.
-kubectl apply -f manifests/platform/inference-cluster-gke.yaml
-```
+Edit `spec.cluster.gke.project` in `inference-cluster-gke.yaml` to set your GCP
+project ID, then apply:
+
+{{< manifests "platform/inference-cluster-gke.yaml" >}}
 
 This provisions a GKE cluster with an L4 GPU and installs the inference stack.
 It's the longest step, taking roughly 20-30 minutes.
@@ -250,9 +244,11 @@ expose it:
 
 ```bash
 kubectl create namespace ml-team
-kubectl apply -f manifests/deployment/model-deployment.yaml
-kubectl apply -f manifests/deployment/model-service.yaml
 ```
+
+{{< manifests "deployment/model-deployment.yaml" >}}
+
+{{< manifests "deployment/model-service.yaml" >}}
 
 The member's `nodeSelector` declares the GPU its model needs as a DRA device
 request (here, a GPU with at least 24Gi of memory). The scheduler matches that
