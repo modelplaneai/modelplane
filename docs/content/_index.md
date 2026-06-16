@@ -84,7 +84,7 @@ Follow the [getting started guide]({{< ref "getting-started.md" >}}) to deploy M
 on a local kind cluster and serve a model on GKE. The [concepts
 glossary]({{< ref "concepts.md" >}}) defines the key resources and how they relate.
 
-The [`manifests/`][manifests] directory has annotated manifests covering the full
+The [`examples/`][examples] directory has annotated manifests covering the full
 workflow: gateway setup, cluster provisioning, and model deployments.
 
 ## Development
@@ -111,7 +111,7 @@ Modelplane is under the [Apache 2.0 license][license].
 [Envoy Gateway]: https://gateway.envoyproxy.io
 [KServe]: https://kserve.github.io/website/
 [CONTRIBUTING.md]: https://github.com/modelplaneai/modelplane/blob/main/CONTRIBUTING.md
-[manifests]: https://github.com/modelplaneai/modelplane/tree/main/examples
+[examples]: https://github.com/modelplaneai/modelplane/tree/main/examples
 [license]: https://github.com/modelplaneai/modelplane/blob/main/LICENSE
 [Nix]: https://nixos.org
 [issues]: https://github.com/modelplaneai/modelplane/issues
