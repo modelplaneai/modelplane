@@ -179,8 +179,6 @@
           };
           docs-serve = apps.docsServe { };
           docs-generate = apps.docsGenerate { };
-          docs-vale = apps.docsVale { };
-          docs-htmltest = apps.docsHtmltest { };
         }
       );
 

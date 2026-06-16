@@ -42,14 +42,12 @@ let
       runHook postInstall
     '';
   };
-in
-{
-  # The built static site. Runs inside the Nix sandbox, so:
+  # Build the Hugo site inside the Nix sandbox, so:
   #
   #   HUGO_ENABLEGITINFO=false   no .git in the sandbox; git metadata is
   #                              cosmetic (last-modified dates).
   #   HUGO_ENVIRONMENT=production   selects the PostCSS+PurgeCSS CSS pipeline.
-  #   HUGO_BASEURL=…/docs/   the site is served under the /docs path of
+  #   baseURL                    the site is served under the /docs path of
   #                              modelplane.ai (the marketing site proxies
   #                              /docs/* here), so every Permalink, canonical
   #                              tag, asset, and sitemap URL must carry the
@@ -67,8 +65,12 @@ in
   #
   # PostCSS resolves plugins from node_modules via NODE_PATH, and Hugo finds
   # the postcss CLI through the node_modules/.bin on PATH.
-  site =
-    pkgs.runCommand "modelplane-docs"
+  mkSite =
+    {
+      name,
+      baseURL,
+    }:
+    pkgs.runCommand name
       {
         nativeBuildInputs = [
           pkgs.hugo
@@ -77,11 +79,7 @@ in
         env = {
           HUGO_ENABLEGITINFO = "false";
           HUGO_ENVIRONMENT = "production";
-          HUGO_BASEURL =
-            let
-              envBaseURL = builtins.getEnv "HUGO_BASEURL";
-            in
-            if envBaseURL != "" then envBaseURL else "https://modelplane.ai/docs/";
+          HUGO_BASEURL = baseURL;
         };
       }
       ''
@@ -93,5 +91,92 @@ in
         export PATH="$PWD/node_modules/.bin:$PATH"
         export NODE_PATH="$PWD/node_modules"
         hugo --minify --destination "$out"
+      '';
+
+  # Vale lints prose against a set of style packages (Google, Microsoft, etc.)
+  # that it normally downloads with `vale sync`. The sandbox has no network, so
+  # we sync them in a fixed-output derivation instead: it is allowed network
+  # access because its output is verified by hash. The packages resolve to
+  # GitHub "releases/latest" zips, so the hash changes when any package
+  # publishes a new release; rerun the build and update outputHash when Nix
+  # reports a mismatch. Local styles (Modelplane/) and the vocabulary live in
+  # the repo and are merged in at lint time, not here.
+  valeStyles =
+    pkgs.runCommand "modelplane-docs-vale-styles"
+      {
+        nativeBuildInputs = [
+          pkgs.vale
+          pkgs.cacert
+        ];
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+        outputHash = "sha256-Vq7P/K9kQSj21QeKSAVuOM8aWQ1Yrdu4oAuZg1SCUmg=";
+      }
+      ''
+        export HOME=$TMPDIR
+        # .vale.ini's relative "StylesPath = styles" resolves next to the config
+        # file, so copy it here for vale to sync into $PWD/styles.
+        cp ${self}/docs/utils/vale/.vale.ini .vale.ini
+        vale sync --config="$PWD/.vale.ini"
+        mkdir -p $out
+        cp -r styles/* $out/
+      '';
+in
+{
+  # The built static site, served under modelplane.ai/docs/.
+  site = mkSite {
+    name = "modelplane-docs";
+    baseURL =
+      let
+        envBaseURL = builtins.getEnv "HUGO_BASEURL";
+      in
+      if envBaseURL != "" then envBaseURL else "https://modelplane.ai/docs/";
+  };
+
+  # Lint docs prose with Vale. Merges the network-synced style packages with the
+  # repo's local Modelplane style and vocabulary into one StylesPath, then lints
+  # offline.
+  vale =
+    pkgs.runCommand "modelplane-docs-vale"
+      {
+        nativeBuildInputs = [
+          pkgs.vale
+          pkgs.findutils
+        ];
+      }
+      ''
+        export HOME=$TMPDIR
+        # .vale.ini sets a relative "StylesPath = styles", resolved next to the
+        # config file. Assemble the config and a merged styles/ here so vale
+        # picks up both the synced packages and the repo's local styles.
+        cp ${self}/docs/utils/vale/.vale.ini .vale.ini
+        mkdir styles
+        cp -r ${valeStyles}/* styles/
+        cp -r ${self}/docs/utils/vale/styles/* styles/
+        find ${self}/docs/content -name '*.md' -print0 | \
+          xargs -0 --no-run-if-empty \
+            vale --config="$PWD/.vale.ini"
+        mkdir -p $out
+        touch $out/.vale-passed
+      '';
+
+  # Check internal links with htmltest against a site built with the local
+  # baseURL ("/" from hugo.toml). htmltest resolves links relative to the site
+  # root, so it must not run against the production artifact, whose links carry
+  # the /docs prefix. CheckExternal is false in .htmltest.yml, so this needs no
+  # network.
+  htmltest =
+    pkgs.runCommand "modelplane-docs-htmltest"
+      {
+        nativeBuildInputs = [ pkgs.htmltest ];
+      }
+      ''
+        htmltest --conf ${self}/docs/utils/htmltest/.htmltest.yml \
+          ${mkSite {
+            name = "modelplane-docs-local";
+            baseURL = "/";
+          }}
+        mkdir -p $out
+        touch $out/.htmltest-passed
       '';
 }

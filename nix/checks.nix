@@ -45,6 +45,12 @@ in
   # Verify the docs site builds. The build is the check.
   docs = docs.site;
 
+  # Lint docs prose with Vale.
+  docs-vale = docs.vale;
+
+  # Check docs internal links with htmltest.
+  docs-htmltest = docs.htmltest;
+
   python =
     pkgs.runCommand "modelplane-python-checks"
       {

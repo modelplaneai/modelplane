@@ -125,44 +125,24 @@ nix run .#docs-generate
 
 ### Linting and link checking
 
-Docs prose is linted with [Vale](https://vale.sh). Lint docs content:
+Docs prose is linted with [Vale](https://vale.sh) and internal links are checked
+with [htmltest](https://github.com/wjdp/htmltest). Both run as flake checks, so
+run them with the rest of CI:
 
 ```bash
-nix run .#docs-vale
+nix flake check
 ```
 
-Vale downloads its style packages (`Google`, `write-good`) on first run into
-`docs/utils/vale/styles/`. Those directories are gitignored. Custom Modelplane rules
-live in `docs/utils/vale/styles/Modelplane/` and are committed.
+Custom Modelplane rules live in `docs/utils/vale/styles/Modelplane/`.
 
-**Handling suggestions.** CI only fails on warnings and errors. Suggestions are
-informational. Two common ones need judgment:
+Vale flags brand names, acronyms, API types, and technical terms it doesn't
+recognise. Add them to
+`docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` — that is
+the single place for all Vale exceptions. Entries are case-sensitive regular
+expressions, one per line.
 
-- **Passive voice.** If passive voice is genuinely the clearest way to express
-  something (the subject is unknown, irrelevant, or awkward to name), keep it
-  and suppress the suggestion with a Vale ignore comment:
-
-  ```markdown
-  <!-- vale write-good.Passive = NO -->
-  The request is forwarded to the next available replica.
-  <!-- vale write-good.Passive = YES -->
-  ```
-
-- **Unknown words.** Vale flags brand names, acronyms, API types, and
-  technical terms it doesn't recognise. Add them to
-  `docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` — that is
-  the single place for all Vale exceptions. Entries are case-sensitive regular
-  expressions, one per line.
-
-Internal links are checked with [htmltest](https://github.com/wjdp/htmltest)
-against the built Hugo site. Build the site and check links:
-
-```bash
-nix run .#docs-htmltest
-```
-
-Both run automatically on pull requests that touch `docs/` via
-`.github/workflows/docs.yml`.
+Both run automatically on every pull request as part of `nix flake check` (see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ### Deployment
 
