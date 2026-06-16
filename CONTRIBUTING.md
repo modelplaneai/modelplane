@@ -149,7 +149,7 @@ an existing code fence:
 kubectl delete -f {{</* manifest-url "platform/inference-gateway.yaml" */>}}
 ```
 
-Both shortcodes take a path relative to `docs/manifests/` and fail the build
+Both shortcodes take a path relative to `examples/` and fail the build
 with a clear error if the file doesn't exist.
 
 ### Linting and link checking
