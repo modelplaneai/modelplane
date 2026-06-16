@@ -724,9 +724,11 @@ instances. There's no in-cluster pod autoscaling, no KEDA or similar on workload
 clusters.
 
 The ModelDeployment XRD declares a Kubernetes scale subresource
-(`specReplicasPath: .spec.replicas`, `statusReplicasPath: .status.replicas`).
-Autoscaling is opt-in via a separate KEDA `ScaledObject` (or similar), the same
-pattern as Kubernetes Deployment + HPA.
+(`specReplicasPath: .spec.replicas`, `statusReplicasPath: .status.replicas.total`).
+`status.replicas.total` is the count of scheduled replicas, mirroring how
+Deployment and LeaderWorkerSet report `status.replicas` as the observed total and
+keep readiness in a separate field. Autoscaling is opt-in via `kubectl scale` or a
+separate KEDA `ScaledObject` (or similar).
 
 ## Alternatives considered
 

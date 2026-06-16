@@ -18,6 +18,17 @@ spec:
     - name: REPLICAS
       type: string
       jsonPath: .status.replicas.ready
+    # Serve a scale subresource so `kubectl scale` and event-driven autoscalers
+    # (e.g. KEDA) can drive spec.replicas, the deployment's single scaling axis.
+    # statusReplicasPath points at the count of scheduled replicas, mirroring how
+    # Deployment and LeaderWorkerSet report status.replicas as the observed total
+    # and keep readiness separate. No labelSelectorPath: replica pods run on
+    # remote workload clusters, not alongside this XR, so metric-based HPA can't
+    # observe them; scaling is by kubectl or external metrics.
+    subresources:
+      scale:
+        specReplicasPath: .spec.replicas
+        statusReplicasPath: .status.replicas.total
     schema:
       openAPIV3Schema:
         type: object

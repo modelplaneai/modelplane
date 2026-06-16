@@ -8,11 +8,10 @@ spec:
   license: Apache-2.0
   description: An open-source AI inference platform built on Crossplane.
   architectures: [amd64, arm64]
-  # compose-model-deployment and compose-model-cache match all resources of a
-  # kind with a bare ResourceSelector, which Crossplane only honours from
-  # v2.2.1 (https://github.com/crossplane/crossplane/pull/7241).
+  # The ModelDeployment XRD configures the scale subresource, which XRDs only
+  # support from v2.3 (https://github.com/crossplane/crossplane/pull/7004).
   crossplane:
-    version: '>=v2.2.1'
+    version: '>=v2.3.0'
   schemas:
     languages: [python]
   functions:
