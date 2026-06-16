@@ -278,9 +278,23 @@ class Composer:
         traffic at a dead backend. When the cluster recovers and its
         gateway address is observed again the endpoint will be composed
         on the next reconcile.
+
+        For the same reason an endpoint is withheld until its ModelReplica
+        is Ready. The replica's Ready tracks both the engine workloads
+        serving and the remote Service and HTTPRoute that front them - the
+        whole traffic path the endpoint advertises. Composing the endpoint
+        any earlier routes traffic at pods still pulling images or loading
+        weights, returning 503s during deployment and scale-up (#102). The
+        endpoint is composed on the reconcile that first observes the
+        replica Ready, and withdrawn again if the replica later goes
+        not-Ready, pulling a dead backend out of rotation.
         """
         for cluster_info in matched:
             if not cluster_info.gateway_address:
+                continue
+
+            replica_observed = self.req.observed.resources.get(name.replica_key(cluster_info))
+            if resource.get_condition(replica_observed, "Ready").status != "True":
                 continue
 
             # The replica name (== the ModelReplica and the backend's workload

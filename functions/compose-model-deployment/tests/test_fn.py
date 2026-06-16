@@ -168,6 +168,30 @@ def _cluster(name: str, *, ready: bool = True, address: str | None = "10.0.0.1",
 # A ready cluster with a two-node GPU pool. Reused across most cases.
 _CLUSTER_A = _cluster("cluster-a")
 
+
+def _replica_status(replica: dict, *, ready: bool) -> dict:
+    """Return a copy of an observed ModelReplica with a Ready condition.
+
+    compose_endpoints gates each ModelEndpoint on its ModelReplica reporting
+    Ready=True - the replica's engines are serving and its remote Service and
+    HTTPRoute exist - so the endpoint never advertises a backend still warming
+    up (#102). Tests stamp the condition on the observed replica to drive that
+    gate.
+    """
+    replica = dict(replica)
+    replica["status"] = {
+        "conditions": [
+            {
+                "type": "Ready",
+                "status": "True" if ready else "False",
+                "reason": "Available" if ready else "Creating",
+                "lastTransitionTime": "2025-01-01T00:00:00Z",
+            }
+        ]
+    }
+    return replica
+
+
 # An existing ModelReplica pinned to cluster-a, observed across cases 5 and 6.
 _EXISTING_REPLICA = mrv1alpha1.ModelReplica(
     metadata=metav1.ObjectMeta(
@@ -269,7 +293,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         cls.runner = fn.FunctionRunner()
 
     async def test_compose(self) -> None:
-        """The function fans out ModelReplicas and ModelEndpoints."""
+        """The function fans out ModelReplicas and, once they're Ready, ModelEndpoints."""
 
         # A deployment that sets spec.modelCacheRef.
         xr_cached = v1alpha1.ModelDeployment(
@@ -302,7 +326,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
 
         cases = [
             Case(
-                name="one ready cluster composes replica and endpoint",
+                # First reconcile: the replica is composed but not yet observed
+                # Ready, so its endpoint is withheld - routing must not advertise
+                # a backend whose pods are still warming up (#102).
+                name="freshly scheduled replica composes no endpoint until ready",
                 req=_req(_XR, clusters=[_CLUSTER_A]),
                 want=_want(
                     fnv1.RunFunctionResponse(
@@ -333,27 +360,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         }
                                     ),
                                 ),
-                                "endpoint-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                                "rewritePath": "/ml-team/my-model-5ab63/",
-                                            },
-                                        }
-                                    ),
-                                ),
                             },
                         ),
                         conditions=[
@@ -373,6 +379,76 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             fnv1.Result(
                                 severity=fnv1.SEVERITY_NORMAL,
                                 message="Scheduled 1 replicas across 1 clusters: cluster-a",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    )
+                ),
+            ),
+            Case(
+                # A replica that has gone not-Ready (e.g. a crash-loop after
+                # once serving) has its endpoint withdrawn: the previously
+                # observed endpoint is absent from desired, so Crossplane
+                # deletes it and traffic stops routing to the dead backend
+                # (#102). Omitting it from desired - not composing it - is what
+                # drives the deletion.
+                name="not-ready replica withdraws its endpoint",
+                req=_req(
+                    _XR,
+                    clusters=[_CLUSTER_A],
+                    replicas=[_EXISTING_REPLICA],
+                    observed={
+                        "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=False),
+                        "endpoint-cluster-a-0": {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "ModelEndpoint",
+                            "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
+                        },
+                    },
+                ),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-a-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        {
+                                            "apiVersion": "modelplane.ai/v1alpha1",
+                                            "kind": "ModelReplica",
+                                            "metadata": {
+                                                "name": "my-model-5ab63",
+                                                "namespace": "ml-team",
+                                                "labels": {
+                                                    "modelplane.ai/deployment": "my-model",
+                                                    "modelplane.ai/cluster": "cluster-a",
+                                                    "modelplane.ai/replica-index": "0",
+                                                },
+                                            },
+                                            "spec": {
+                                                "clusterName": "cluster-a",
+                                                "engines": _REPLICA_ENGINES,
+                                            },
+                                        }
+                                    ),
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_TRUE,
+                                reason="ReplicasCreated",
+                                message="Scheduled 1 of 1 replicas",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
                             ),
                         ],
                         context=structpb.Struct(),
@@ -430,25 +506,13 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             Case(
-                name="existing replica is preserved with stable scheduling",
+                name="ready replica is preserved and keeps its endpoint",
                 req=_req(
                     _XR,
                     clusters=[_CLUSTER_A],
                     replicas=[_EXISTING_REPLICA],
                     observed={
-                        "replica-cluster-a-0": {
-                            "apiVersion": "modelplane.ai/v1alpha1",
-                            "kind": "ModelReplica",
-                            "metadata": {
-                                "name": "my-model-5ab63",
-                                "namespace": "ml-team",
-                                "labels": {
-                                    "modelplane.ai/deployment": "my-model",
-                                    "modelplane.ai/cluster": "cluster-a",
-                                    "modelplane.ai/replica-index": "0",
-                                },
-                            },
-                        },
+                        "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True),
                         "endpoint-cluster-a-0": {
                             "apiVersion": "modelplane.ai/v1alpha1",
                             "kind": "ModelEndpoint",
@@ -461,7 +525,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
                         desired=fnv1.State(
                             composite=fnv1.Resource(
-                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 1}}}),
                             ),
                             resources={
                                 "replica-cluster-a-0": fnv1.Resource(
@@ -484,6 +548,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             },
                                         }
                                     ),
+                                    ready=fnv1.READY_TRUE,
                                 ),
                                 "endpoint-cluster-a-0": fnv1.Resource(
                                     resource=resource.dict_to_struct(
@@ -517,9 +582,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             ),
                             fnv1.Condition(
                                 type="ReplicasReady",
-                                status=fnv1.STATUS_CONDITION_FALSE,
-                                reason="ModelStarting",
-                                message="0 of 1 ready",
+                                status=fnv1.STATUS_CONDITION_TRUE,
+                                reason="AllReplicasReady",
+                                message="1 of 1 ready",
                             ),
                         ],
                         context=structpb.Struct(),
@@ -589,7 +654,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     _XR,
                     clusters=[_cluster("cluster-b", address="10.0.0.2")],
                     replicas=[_EXISTING_REPLICA],
-                    observed={"replica-cluster-a-0": _EXISTING_REPLICA},
+                    observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
                 ),
                 want=_want(
                     fnv1.RunFunctionResponse(
@@ -616,27 +681,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "spec": {
                                                 "clusterName": "cluster-b",
                                                 "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                                "endpoint-cluster-b-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-f0b76",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-b",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "url": "http://10.0.0.2/ml-team/my-model-f0b76/v1",
-                                                "rewritePath": "/ml-team/my-model-f0b76/",
                                             },
                                         }
                                     ),
@@ -695,27 +739,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "clusterName": "cluster-a",
                                                 "modelCacheRef": {"name": "qwen"},
                                                 "engines": _REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                                "endpoint-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                                "rewritePath": "/ml-team/my-model-5ab63/",
                                             },
                                         }
                                     ),
@@ -798,48 +821,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         }
                                     ),
                                 ),
-                                "endpoint-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                                "rewritePath": "/ml-team/my-model-5ab63/",
-                                            },
-                                        }
-                                    ),
-                                ),
-                                "endpoint-cluster-a-1": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-609c5",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "1",
-                                                },
-                                            },
-                                            "spec": {
-                                                "url": "http://10.0.0.1/ml-team/my-model-609c5/v1",
-                                                "rewritePath": "/ml-team/my-model-609c5/",
-                                            },
-                                        }
-                                    ),
-                                ),
                             },
                         ),
                         conditions=[
@@ -897,27 +878,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "clusterName": "cluster-a",
                                                 "serving": {"mode": "PrefillDecode"},
                                                 "engines": _PD_REPLICA_ENGINES,
-                                            },
-                                        }
-                                    ),
-                                ),
-                                "endpoint-cluster-a-0": fnv1.Resource(
-                                    resource=resource.dict_to_struct(
-                                        {
-                                            "apiVersion": "modelplane.ai/v1alpha1",
-                                            "kind": "ModelEndpoint",
-                                            "metadata": {
-                                                "name": "my-model-5ab63",
-                                                "namespace": "ml-team",
-                                                "labels": {
-                                                    "modelplane.ai/deployment": "my-model",
-                                                    "modelplane.ai/cluster": "cluster-a",
-                                                    "modelplane.ai/replica-index": "0",
-                                                },
-                                            },
-                                            "spec": {
-                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                                "rewritePath": "/ml-team/my-model-5ab63/",
                                             },
                                         }
                                     ),
