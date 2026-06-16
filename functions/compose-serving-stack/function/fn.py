@@ -221,8 +221,7 @@ class Composer:
         self.xr = v1alpha1.ServingStack(**resource.struct_to_dict(req.observed.composite.resource))
 
     def compose(self):
-        if not self.compose_provider_configs():
-            return
+        self.compose_provider_configs()
         self.compose_usages()
         self.compose_cert_manager()
         self.compose_envoy_gateway()
@@ -237,14 +236,13 @@ class Composer:
         self.mark_readiness()
 
     def compose_provider_configs(self):
-        """Build ProviderConfigs from the XR's secrets. Returns False if the
-        kubeconfig secret is missing."""
+        """Build ProviderConfigs from the XR's secrets.
+
+        The XRD requires a Kubeconfig secret, so one is always present.
+        """
         xr_secrets = self.xr.spec.secrets or []
 
-        kubeconfig_secret = next((s for s in xr_secrets if s.type == _SECRET_TYPE_KUBECONFIG), None)
-        if not kubeconfig_secret:
-            response.warning(self.rsp, "spec.secrets must include a Kubeconfig entry")
-            return False
+        kubeconfig_secret = next(s for s in xr_secrets if s.type == _SECRET_TYPE_KUBECONFIG)
 
         # The kubeconfig provides the cluster endpoint and CA cert. If a
         # cloud-specific credential secret is present, it's layered on as an
@@ -310,8 +308,6 @@ class Composer:
                 spec=helm_pc_spec,
             ),
         )
-
-        return True
 
     def compose_usages(self):
         """Compose Usages for deletion ordering.
