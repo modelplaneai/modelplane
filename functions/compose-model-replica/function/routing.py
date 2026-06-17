@@ -207,6 +207,7 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
             "rules": [
                 {
                     "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],
+                    "timeouts": {"request": base.REQUEST_TIMEOUT},
                     "filters": [
                         {
                             "type": "URLRewrite",

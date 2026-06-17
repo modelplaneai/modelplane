@@ -277,6 +277,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                                 },
                                                             },
                                                         ],
+                                                        "timeouts": {"request": "0s"},
                                                         "filters": [
                                                             {
                                                                 "type": "URLRewrite",

@@ -136,6 +136,15 @@ ROUTE_KEY = "model-route"
 _WORKLOAD_KEY = "model-serving"
 _CLAIM_KEY = "resource-claim"
 
+# HTTPRoute request timeout for model traffic. "0s" disables it (Gateway API
+# semantics). Without an explicit timeout the gateway applies its own default
+# (Envoy's is 15s), which severs token streaming mid-generation — any response
+# longer than that dies with an incomplete-body error. LLM generation time is
+# unbounded by design (it scales with output length), so we disable the
+# request timeout and rely on the gateway's stream-idle timeout to reap
+# genuinely stuck connections.
+REQUEST_TIMEOUT = "0s"
+
 
 def workload_key(engine) -> str:
     """Response key for an engine's workload (Deployment or LeaderWorkerSet)."""
@@ -258,6 +267,7 @@ def serving_resources(replica: v1alpha1.ModelReplica, provider_config: str) -> d
             "rules": [
                 {
                     "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],
+                    "timeouts": {"request": REQUEST_TIMEOUT},
                     "filters": [
                         {
                             "type": "URLRewrite",

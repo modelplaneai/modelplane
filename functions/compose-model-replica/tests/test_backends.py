@@ -178,6 +178,7 @@ def _route(name):
             "rules": [
                 {
                     "matches": [{"path": {"type": "PathPrefix", "value": f"/ml-team/{name}/"}}],
+                    "timeouts": {"request": "0s"},
                     "filters": [
                         {
                             "type": "URLRewrite",
@@ -765,9 +766,12 @@ class TestDisaggregated(unittest.TestCase):
 
     def test_route_targets_inference_pool(self):
         route = self._apply()[base.ROUTE_KEY].spec.forProvider.manifest
-        ref = route["spec"]["rules"][0]["backendRefs"][0]
+        rule = route["spec"]["rules"][0]
+        ref = rule["backendRefs"][0]
         self.assertEqual(ref["kind"], "InferencePool")
         self.assertEqual(ref["name"], "r-pool")
+        # Disable the request timeout so long token streams aren't severed.
+        self.assertEqual(rule["timeouts"]["request"], "0s")
 
     def test_selects_engines_by_phase_not_name(self):
         """Roles come from each engine's phase, not its name."""
