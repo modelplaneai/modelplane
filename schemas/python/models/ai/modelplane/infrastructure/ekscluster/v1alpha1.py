@@ -163,6 +163,10 @@ class Status(BaseModel):
     """
     Conditions of the resource.
     """
+    efsFileSystemId: str | None = None
+    """
+    ID of the EFS filesystem auto-provisioned for ModelCache RWX storage. Populated once the filesystem is created; compose-inference-cluster pins the modelplane-rwx-efs StorageClass to it.
+    """
     secrets: list[Secret] | None = None
     """
     Secrets produced by this cluster. Consumers use these to authenticate to the cluster. All secrets are in the same namespace as this EKSCluster.

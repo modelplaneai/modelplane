@@ -159,6 +159,125 @@ def _early_return_guard_case() -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctio
     return req, want
 
 
+def _eks_efs_storage_class_case(req7, want7):
+    """Build the (req, want) for an EKS cluster reporting its EFS filesystem id:
+    Case 7 plus the modelplane-rwx-efs StorageClass pinned to the filesystem."""
+    req = fnv1.RunFunctionRequest()
+    req.CopyFrom(req7)
+    req.observed.resources["eks-cluster"].CopyFrom(
+        fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                    "kind": "EKSCluster",
+                    "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                    "spec": {
+                        "region": "us-west-2",
+                        "nodePools": [
+                            {"name": "l4-pool", "role": "GPU", "instanceType": "g6.xlarge", "nodeCount": 2},
+                        ],
+                    },
+                    "status": {
+                        "conditions": [
+                            {
+                                "type": "Ready",
+                                "status": "True",
+                                "reason": "Available",
+                                "lastTransitionTime": "2024-01-01T00:00:00Z",
+                            },
+                        ],
+                        "secrets": [
+                            {"type": "Kubeconfig", "name": "test-cluster-kubeconfig-abcde", "key": "kubeconfig"},
+                        ],
+                        "efsFileSystemId": "fs-0abc123",
+                    },
+                }
+            ),
+        ),
+    )
+    want = fnv1.RunFunctionResponse()
+    want.CopyFrom(want7)
+    want.desired.resources["storage-class-rwx-efs"].CopyFrom(
+        fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                    "kind": "Object",
+                    "metadata": {"namespace": "modelplane-system"},
+                    "spec": {
+                        "providerConfigRef": {
+                            "kind": "ClusterProviderConfig",
+                            "name": "test-cluster-cluster-kubeconfig-d0f89",
+                        },
+                        "readiness": {"policy": "SuccessfulCreate"},
+                        "forProvider": {
+                            "manifest": {
+                                "apiVersion": "storage.k8s.io/v1",
+                                "kind": "StorageClass",
+                                "metadata": {"name": "modelplane-rwx-efs"},
+                                "provisioner": "efs.csi.aws.com",
+                                "parameters": {
+                                    "provisioningMode": "efs-ap",
+                                    "fileSystemId": "fs-0abc123",
+                                    "directoryPerms": "700",
+                                },
+                                "volumeBindingMode": "Immediate",
+                            },
+                        },
+                    },
+                }
+            ),
+            ready=fnv1.READY_TRUE,
+        ),
+    )
+    return req, want
+
+
+def _eks_efs_admin_class_req(req8):
+    """An EKS cluster reporting its EFS filesystem id, but whose cache pins an
+    admin-provided storageClassName. The function leaves the StorageClass
+    unmanaged, so the expected output is Case 7's (no StorageClass composed)."""
+    req = fnv1.RunFunctionRequest()
+    req.CopyFrom(req8)
+    req.observed.composite.CopyFrom(
+        fnv1.Resource(
+            resource=resource.dict_to_struct(
+                v1alpha1.InferenceCluster(
+                    metadata=metav1.ObjectMeta(name="test-cluster", namespace="modelplane-system"),
+                    spec=v1alpha1.Spec(
+                        cluster=v1alpha1.Cluster(
+                            source="EKS",
+                            eks=v1alpha1.Eks(region="us-west-2", cache=v1alpha1.Cache(storageClassName="my-efs")),
+                        ),
+                        nodePools=[
+                            v1alpha1.NodePool(
+                                name="l4-pool",
+                                className="gpu-l4-eks",
+                                nodeCount=2,
+                                maxNodeCount=4,
+                                zones=["us-west-2a", "us-west-2b"],
+                            ),
+                        ],
+                    ),
+                ).model_dump(exclude_none=True, mode="json"),
+            ),
+        ),
+    )
+    return req
+
+
+def _eks_efs_cases(req7, want7) -> list[Case]:
+    """The two EFS StorageClass cases, built from the ready-EKS case (7): an EKS
+    cluster reporting its filesystem id composes the modelplane-rwx-efs
+    StorageClass, and an admin-pinned storageClassName leaves it unmanaged."""
+    req8, want8 = _eks_efs_storage_class_case(req7, want7)
+    req9 = _eks_efs_admin_class_req(req8)
+    return [
+        Case(name="EKS cluster reporting EFS filesystem composes the RWX StorageClass", req=req8, want=want8),
+        Case(name="EKS admin-provided storageClassName leaves the EFS StorageClass unmanaged", req=req9, want=want7),
+    ]
+
+
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
     """Tests for FunctionRunner.RunFunction."""
 
@@ -1185,7 +1304,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         for want in (want1, want2, want3, want4, want5, want6, want7):
             want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
-        # The guard cases (8-10) reuse case 1's request and response.
+        # The guard cases reuse case 1's request and response.
         guard_cases = [
             Case(
                 "ModelReplicas scheduled to the cluster compose the deletion guard", *_replica_guard_case(req1, want1)
@@ -1202,6 +1321,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             Case(name="EKS cluster not ready re-emits existing CPC unchanged", req=req5, want=want5),
             Case(name="GKE cluster ready composes CPC, backend, usage, and RWX StorageClass", req=req6, want=want6),
             Case(name="EKS cluster ready composes ServingStack and Usage", req=req7, want=want7),
+            *_eks_efs_cases(req7, want7),
             *guard_cases,
         ]
 

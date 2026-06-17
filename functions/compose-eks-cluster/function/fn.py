@@ -26,12 +26,17 @@ from models.io.upbound.m.aws.ec2.internetgateway import v1beta1 as igwv1beta1
 from models.io.upbound.m.aws.ec2.route import v1beta1 as routev1beta1
 from models.io.upbound.m.aws.ec2.routetable import v1beta1 as rtv1beta1
 from models.io.upbound.m.aws.ec2.routetableassociation import v1beta1 as rtav1beta1
+from models.io.upbound.m.aws.ec2.securitygroup import v1beta1 as sgv1beta1
+from models.io.upbound.m.aws.ec2.securitygroupingressrule import v1beta1 as sgrv1beta1
 from models.io.upbound.m.aws.ec2.subnet import v1beta1 as subnetv1beta1
 from models.io.upbound.m.aws.ec2.vpc import v1beta1 as vpcv1beta1
+from models.io.upbound.m.aws.efs.filesystem import v1beta1 as fsv1beta1
+from models.io.upbound.m.aws.efs.mounttarget import v1beta1 as mtv1beta1
 from models.io.upbound.m.aws.eks.addon import v1beta1 as addonv1beta1
 from models.io.upbound.m.aws.eks.cluster import v1beta1 as clusterv1beta1
 from models.io.upbound.m.aws.eks.clusterauth import v1beta1 as clusterauthv1beta1
 from models.io.upbound.m.aws.eks.nodegroup import v1beta1 as ngv1beta1
+from models.io.upbound.m.aws.eks.podidentityassociation import v1beta1 as piav1beta1
 from models.io.upbound.m.aws.iam.role import v1beta1 as rolev1beta1
 from models.io.upbound.m.aws.iam.rolepolicyattachment import v1beta1 as rpav1beta1
 
@@ -82,6 +87,7 @@ _POLICY_CLUSTER = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 _POLICY_NODE_WORKER = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
 _POLICY_NODE_CNI = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 _POLICY_NODE_ECR = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+_POLICY_EFS_CSI = "arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"
 
 # Trust policies for the cluster and node roles. The cluster role is
 # assumed by the EKS service; the node role is assumed by EC2 instances
@@ -96,6 +102,18 @@ _ASSUME_ROLE_NODE = (
     '"Principal":{"Service":"ec2.amazonaws.com"},'
     '"Action":"sts:AssumeRole"}]}'
 )
+# Trust policy for the EFS CSI driver role, assumed through EKS Pod Identity.
+_ASSUME_ROLE_POD_IDENTITY = (
+    '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+    '"Principal":{"Service":"pods.eks.amazonaws.com"},'
+    '"Action":["sts:AssumeRole","sts:TagSession"]}]}'
+)
+
+# The EFS CSI controller runs as efs-csi-controller-sa in kube-system; Pod
+# Identity binds its IAM role (_ROLE_EFS_CSI) to that ServiceAccount.
+_ROLE_EFS_CSI = "efs-csi"
+_EFS_CSI_NAMESPACE = "kube-system"
+_EFS_CSI_SERVICE_ACCOUNT = "efs-csi-controller-sa"
 
 # EKS Addons installed on every cluster. The vpc-cni addon provides pod
 # networking, kube-proxy programs node iptables, and coredns provides
@@ -155,6 +173,7 @@ class Composer:
         self.compose_cluster_auth()
         self.compose_node_groups()
         self.compose_addons()
+        self.compose_efs()
         self.compose_provider_configs()
         self.write_status()
         self.mark_readiness()
@@ -491,6 +510,146 @@ class Composer:
                 ),
             )
 
+    def compose_efs(self):
+        """Provision EFS RWX storage for ModelCache: an Elastic-throughput
+        filesystem, a mount target per node subnet, an NFS security group, and
+        the EFS CSI driver. The driver's IAM role is bound through Pod Identity
+        (the eks-pod-identity-agent addon plus an association), so no OIDC
+        provider is needed. compose-inference-cluster pins the modelplane-rwx-efs
+        StorageClass to this filesystem's id."""
+        region = self.xr.spec.region
+
+        resource.update(
+            self.rsp.desired.resources["efs-filesystem"],
+            fsv1beta1.FileSystem(
+                spec=fsv1beta1.Spec(
+                    forProvider=fsv1beta1.ForProvider(
+                        region=region,
+                        throughputMode="elastic",
+                        encrypted=True,
+                    ),
+                ),
+            ),
+        )
+
+        # An NFS security group on the mount targets, reachable from any node in
+        # the VPC (the nodes have no single stable SG to reference here).
+        resource.update(
+            self.rsp.desired.resources["efs-security-group"],
+            sgv1beta1.SecurityGroup(
+                spec=sgv1beta1.Spec(
+                    forProvider=sgv1beta1.ForProvider(
+                        region=region,
+                        name=f"{self.xr.metadata.name}-efs",
+                        description="NFS access to the ModelCache EFS mount targets",
+                        vpcIdSelector=sgv1beta1.VpcIdSelector(matchControllerRef=True),
+                    ),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["efs-security-group-ingress"],
+            sgrv1beta1.SecurityGroupIngressRule(
+                spec=sgrv1beta1.Spec(
+                    forProvider=sgrv1beta1.ForProvider(
+                        region=region,
+                        ipProtocol="tcp",
+                        fromPort=2049,
+                        toPort=2049,
+                        cidrIpv4=self._networking().vpcCidr,
+                        securityGroupIdSelector=sgrv1beta1.SecurityGroupIdSelector(matchControllerRef=True),
+                    ),
+                ),
+            ),
+        )
+
+        # One mount target per node subnet so any AZ's nodes can mount the share.
+        for i in range(len(self._networking().subnetCidrs)):
+            az = _az(region, i)
+            resource.update(
+                self.rsp.desired.resources[f"efs-mount-target-{i}"],
+                mtv1beta1.MountTarget(
+                    spec=mtv1beta1.Spec(
+                        forProvider=mtv1beta1.ForProvider(
+                            region=region,
+                            fileSystemIdSelector=mtv1beta1.FileSystemIdSelector(matchControllerRef=True),
+                            subnetIdRef=mtv1beta1.SubnetIdRef(name=_subnet_name(self.xr, az)),
+                            securityGroupsSelector=mtv1beta1.SecurityGroupsSelector(matchControllerRef=True),
+                        ),
+                    ),
+                ),
+            )
+
+        # IAM role for the CSI driver, attached to the AWS-managed policy.
+        resource.update(
+            self.rsp.desired.resources["iam-role-efs-csi"],
+            rolev1beta1.Role(
+                metadata=metav1.ObjectMeta(labels={_LABEL_ROLE: _ROLE_EFS_CSI}),
+                spec=rolev1beta1.Spec(
+                    forProvider=rolev1beta1.ForProvider(assumeRolePolicy=_ASSUME_ROLE_POD_IDENTITY),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["iam-attach-efs-csi"],
+            rpav1beta1.RolePolicyAttachment(
+                spec=rpav1beta1.Spec(
+                    forProvider=rpav1beta1.ForProvider(
+                        policyArn=_POLICY_EFS_CSI,
+                        roleSelector=rpav1beta1.RoleSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_ROLE: _ROLE_EFS_CSI},
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        # Pod Identity: the agent addon, then an association binding the CSI
+        # driver's ServiceAccount to the role above.
+        resource.update(
+            self.rsp.desired.resources["addon-eks-pod-identity-agent"],
+            addonv1beta1.Addon(
+                spec=addonv1beta1.Spec(
+                    forProvider=addonv1beta1.ForProvider(
+                        region=region,
+                        addonName="eks-pod-identity-agent",
+                        clusterNameSelector=addonv1beta1.ClusterNameSelector(matchControllerRef=True),
+                    ),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["pod-identity-efs-csi"],
+            piav1beta1.PodIdentityAssociation(
+                spec=piav1beta1.Spec(
+                    forProvider=piav1beta1.ForProvider(
+                        region=region,
+                        namespace=_EFS_CSI_NAMESPACE,
+                        serviceAccount=_EFS_CSI_SERVICE_ACCOUNT,
+                        clusterNameSelector=piav1beta1.ClusterNameSelector(matchControllerRef=True),
+                        roleArnSelector=piav1beta1.RoleArnSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_ROLE: _ROLE_EFS_CSI},
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        resource.update(
+            self.rsp.desired.resources["addon-aws-efs-csi-driver"],
+            addonv1beta1.Addon(
+                spec=addonv1beta1.Spec(
+                    forProvider=addonv1beta1.ForProvider(
+                        region=region,
+                        addonName="aws-efs-csi-driver",
+                        clusterNameSelector=addonv1beta1.ClusterNameSelector(matchControllerRef=True),
+                    ),
+                ),
+            ),
+        )
+
     def compose_provider_configs(self):
         kubeconfig_secret = _kubeconfig_secret_name(self.xr)
         resource.update(
@@ -536,6 +695,7 @@ class Composer:
                     key=_SECRET_KEY_KUBECONFIG,
                 ),
             ],
+            efsFileSystemId=self._observed_efs_filesystem_id(),
         )
         # The XRD marks status.secrets[].type as required, but the generated
         # Secret model gives `type` its only valid enum value as a default.
@@ -546,6 +706,16 @@ class Composer:
             self.rsp.desired.composite,
             status.model_dump(exclude_none=True),
         )
+
+    def _observed_efs_filesystem_id(self):
+        """The composed EFS filesystem's id, from the observed FileSystem MR's
+        external-name annotation (set by the provider once it exists). None on
+        early reconciles before the filesystem is created."""
+        observed = self.req.observed.resources.get("efs-filesystem")
+        if not observed:
+            return None
+        manifest = resource.struct_to_dict(observed.resource)
+        return manifest.get("metadata", {}).get("annotations", {}).get("crossplane.io/external-name")
 
     def mark_readiness(self):
         """Mark composed resources ready based on their observed conditions."""
@@ -563,10 +733,19 @@ class Composer:
             "cluster",
             "cluster-auth",
             f"nodegroup-{_SYSTEM_POOL_NAME}",
+            "efs-filesystem",
+            "efs-security-group",
+            "efs-security-group-ingress",
+            "iam-role-efs-csi",
+            "iam-attach-efs-csi",
+            "addon-eks-pod-identity-agent",
+            "pod-identity-efs-csi",
+            "addon-aws-efs-csi-driver",
         ]
         for i in range(len(self._networking().subnetCidrs)):
             managed_resources.append(f"subnet-{i}")
             managed_resources.append(f"route-table-association-{i}")
+            managed_resources.append(f"efs-mount-target-{i}")
         managed_resources += [f"nodegroup-{p.name}" for p in self.xr.spec.nodePools]
         managed_resources += [f"addon-{a}" for a in _ADDONS]
 

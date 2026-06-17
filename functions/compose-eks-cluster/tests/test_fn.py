@@ -192,6 +192,12 @@ _ASSUME_NODE = (
     '"Principal":{"Service":"ec2.amazonaws.com"},'
     '"Action":"sts:AssumeRole"}]}'
 )
+_ASSUME_POD_IDENTITY = (
+    '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+    '"Principal":{"Service":"pods.eks.amazonaws.com"},'
+    '"Action":["sts:AssumeRole","sts:TagSession"]}]}'
+)
+_POLICY_EFS_CSI = "arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"
 
 
 def _eks_cluster() -> dict:
@@ -303,6 +309,77 @@ def _addon(name: str) -> dict:
     }
 
 
+def _efs_filesystem() -> dict:
+    return {
+        "apiVersion": "efs.aws.m.upbound.io/v1beta1",
+        "kind": "FileSystem",
+        "spec": {"forProvider": {"region": "us-west-2", "throughputMode": "elastic", "encrypted": True}},
+    }
+
+
+def _efs_security_group() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "SecurityGroup",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "name": "test-cluster-efs",
+                "description": "NFS access to the ModelCache EFS mount targets",
+                "vpcIdSelector": {"matchControllerRef": True},
+            },
+        },
+    }
+
+
+def _efs_security_group_ingress() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "SecurityGroupIngressRule",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "ipProtocol": "tcp",
+                "fromPort": 2049,
+                "toPort": 2049,
+                "cidrIpv4": "10.0.0.0/16",
+                "securityGroupIdSelector": {"matchControllerRef": True},
+            },
+        },
+    }
+
+
+def _efs_mount_target(subnet_name: str) -> dict:
+    return {
+        "apiVersion": "efs.aws.m.upbound.io/v1beta1",
+        "kind": "MountTarget",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "fileSystemIdSelector": {"matchControllerRef": True},
+                "subnetIdRef": {"name": subnet_name},
+                "securityGroupsSelector": {"matchControllerRef": True},
+            },
+        },
+    }
+
+
+def _pod_identity_association() -> dict:
+    return {
+        "apiVersion": "eks.aws.m.upbound.io/v1beta1",
+        "kind": "PodIdentityAssociation",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "namespace": "kube-system",
+                "serviceAccount": "efs-csi-controller-sa",
+                "clusterNameSelector": {"matchControllerRef": True},
+                "roleArnSelector": {"matchControllerRef": True, "matchLabels": {"modelplane.ai/iam-role": "efs-csi"}},
+            },
+        },
+    }
+
+
 def _provider_config(api_version: str) -> dict:
     return {
         "apiVersion": api_version,
@@ -321,21 +398,22 @@ def _provider_config(api_version: str) -> dict:
     }
 
 
-def _expected_status() -> dict:
+def _expected_status(efs_filesystem_id: str | None = None) -> dict:
     # `type` is emitted explicitly: the XRD marks it required, so the
     # function writes status as a plain dict rather than a Pydantic model
     # (which would strip the defaulted `type` via exclude_defaults).
-    return {
-        "status": {
-            "secrets": [
-                {
-                    "type": "Kubeconfig",
-                    "name": _KUBECONFIG_SECRET,
-                    "key": "kubeconfig",
-                },
-            ],
-        },
+    status = {
+        "secrets": [
+            {
+                "type": "Kubeconfig",
+                "name": _KUBECONFIG_SECRET,
+                "key": "kubeconfig",
+            },
+        ],
     }
+    if efs_filesystem_id:
+        status["efsFileSystemId"] = efs_filesystem_id
+    return {"status": status}
 
 
 def _expected_resources() -> dict:
@@ -393,6 +471,21 @@ def _expected_resources() -> dict:
         "addon-vpc-cni": fnv1.Resource(resource=resource.dict_to_struct(_addon("vpc-cni"))),
         "addon-kube-proxy": fnv1.Resource(resource=resource.dict_to_struct(_addon("kube-proxy"))),
         "addon-coredns": fnv1.Resource(resource=resource.dict_to_struct(_addon("coredns"))),
+        "efs-filesystem": fnv1.Resource(resource=resource.dict_to_struct(_efs_filesystem())),
+        "efs-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efs_security_group())),
+        "efs-security-group-ingress": fnv1.Resource(resource=resource.dict_to_struct(_efs_security_group_ingress())),
+        "efs-mount-target-0": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_SUBNET_A))),
+        "efs-mount-target-1": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_SUBNET_B))),
+        "efs-mount-target-2": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_SUBNET_C))),
+        "iam-role-efs-csi": fnv1.Resource(resource=resource.dict_to_struct(_role("efs-csi", _ASSUME_POD_IDENTITY))),
+        "iam-attach-efs-csi": fnv1.Resource(
+            resource=resource.dict_to_struct(_role_policy_attachment("efs-csi", _POLICY_EFS_CSI)),
+        ),
+        "addon-eks-pod-identity-agent": fnv1.Resource(
+            resource=resource.dict_to_struct(_addon("eks-pod-identity-agent")),
+        ),
+        "pod-identity-efs-csi": fnv1.Resource(resource=resource.dict_to_struct(_pod_identity_association())),
+        "addon-aws-efs-csi-driver": fnv1.Resource(resource=resource.dict_to_struct(_addon("aws-efs-csi-driver"))),
         "provider-config-kubernetes": fnv1.Resource(
             resource=resource.dict_to_struct(_provider_config("kubernetes.m.crossplane.io/v1alpha1")),
             ready=fnv1.READY_TRUE,
@@ -424,6 +517,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
         ready_resources["cluster-auth"] = fnv1.Resource(
             resource=ready_resources["cluster-auth"].resource,
+            ready=fnv1.READY_TRUE,
+        )
+        ready_resources["efs-filesystem"] = fnv1.Resource(
+            resource=ready_resources["efs-filesystem"].resource,
             ready=fnv1.READY_TRUE,
         )
 
@@ -476,6 +573,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     },
                                 ),
                             ),
+                            "efs-filesystem": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        **_efs_filesystem(),
+                                        "metadata": {"annotations": {"crossplane.io/external-name": "fs-0abc123"}},
+                                        "status": {"conditions": [_ready_condition()]},
+                                    },
+                                ),
+                            ),
                         },
                     ),
                 ),
@@ -483,7 +589,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
                     desired=fnv1.State(
                         composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(_expected_status()),
+                            resource=resource.dict_to_struct(_expected_status("fs-0abc123")),
                         ),
                         resources=ready_resources,
                     ),

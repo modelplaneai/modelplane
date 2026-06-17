@@ -281,6 +281,14 @@ class Composer:
         if eks_ready and kubeconfig:
             self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
 
+            provider_config = self.observed_provider_config_name()
+            # Gate on the real filesystem id: the EKSCluster reports it only once
+            # its EFS filesystem is observed. The StorageClass can't pin to the
+            # bare XR name — the id carries a provider-generated suffix.
+            filesystem_id = self.eks_efs_filesystem_id()
+            if filesystem_id:
+                self.compose_efs_storage_class(eks, provider_config, filesystem_id)
+
         backend_secrets = self.resolve_eks_backend_secrets(eks_ready, backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
@@ -393,6 +401,20 @@ class Composer:
             return gke.status.network.name
         return None
 
+    def eks_efs_filesystem_id(self):
+        """The EFS filesystem id the EKSCluster reports in status, for pinning
+        the modelplane-rwx-efs StorageClass. The id carries a provider-generated
+        suffix, so it cannot be derived from the XR name. None until the
+        EKSCluster observes its filesystem; the StorageClass is gated on it.
+        """
+        observed = self.req.observed.resources.get("eks-cluster")
+        if not observed:
+            return None
+        eks = eksv1alpha1.EKSCluster.model_validate(resource.struct_to_dict(observed.resource))
+        if eks.status and eks.status.efsFileSystemId:
+            return eks.status.efsFileSystemId
+        return None
+
     def compose_rwx_storage_class(self, gke, provider_config: str, network_name: str):
         """Compose a Filestore RWX StorageClass when the GKE cache uses the
         managed default. Filestore CSI defaults to the `default` VPC → PVCs
@@ -426,6 +448,39 @@ class Composer:
             ),
         )
         self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
+
+    def compose_efs_storage_class(self, eks, provider_config: str, filesystem_id: str):
+        """Compose the EFS RWX StorageClass when the EKS cache uses the managed
+        default. EFS dynamic provisioning creates an access point per PVC inside
+        the pre-existing filesystem, pinned by fileSystemId. StorageClass has no
+        Ready condition, so use SuccessfulCreate (DeriveFromObject would hang)."""
+        cache = eks.cache
+        sc_name = cache.storageClassName if (cache and cache.storageClassName) else "modelplane-rwx-efs"
+        if sc_name != "modelplane-rwx-efs":
+            return  # admin-provided class; don't manage it
+        manifest = {
+            "apiVersion": "storage.k8s.io/v1",
+            "kind": "StorageClass",
+            "metadata": {"name": sc_name},
+            "provisioner": "efs.csi.aws.com",
+            "parameters": {"provisioningMode": "efs-ap", "fileSystemId": filesystem_id, "directoryPerms": "700"},
+            "volumeBindingMode": "Immediate",
+        }
+        resource.update(
+            self.rsp.desired.resources["storage-class-rwx-efs"],
+            k8sobjv1alpha1.Object(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=provider_config,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
+                    forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
+                ),
+            ),
+        )
+        self.rsp.desired.resources["storage-class-rwx-efs"].ready = fnv1.READY_TRUE
 
     def write_status(self, gpu_pools):
         """Write the InferenceCluster status."""
