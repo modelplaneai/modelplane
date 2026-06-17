@@ -1,0 +1,30 @@
+# Prefill/Decode disaggregation — CLEAN DEPLOY from PR #175 (zero manual patching)
+# Built+pushed compose-model-replica@sha256:60b0d3a8 from dennis/fix-epp-disagg-config,
+# repointed control-plane Configuration, deleted+reapplied the qwen ModelDeployment cold.
+# Captured: 2026-06-17T19:54:56Z
+
+## EPP config rendered BY THE COMPOSITION (armed; block size derived from engine --block-size=128):
+- type: approx-prefix-cache-producer
+    autoTune: false
+    blockSizeTokens: 128
+- type: prefix-based-pd-decider
+    nonCachedTokens: 16
+      prefill: prefix-based-pd-decider
+
+## Engine NIXL counters after 5 long prompts (5/5 HTTP 200):
+PREFILL (kv_producer):
+vllm:prompt_tokens_total{engine="0",model_name="qwen"} 6825.0
+vllm:generation_tokens_total{engine="0",model_name="qwen"} 5.0
+DECODE pods (kv_consumer) — 5 transfers / ~403MB total across the pool:
+  qwen-2c338-decode-519f4-666b58c895-52gs5:
+    vllm:nixl_xfer_time_seconds_count{engine="0",model_name="qwen"} 3.0
+    vllm:nixl_bytes_transferred_sum{engine="0",model_name="qwen"} 2.42221056e+08
+    vllm:generation_tokens_total{engine="0",model_name="qwen"} 48.0
+  qwen-2c338-decode-519f4-666b58c895-gdm5v:
+    vllm:nixl_xfer_time_seconds_count{engine="0",model_name="qwen"} 1.0
+    vllm:nixl_bytes_transferred_sum{engine="0",model_name="qwen"} 8.0740352e+07
+    vllm:generation_tokens_total{engine="0",model_name="qwen"} 16.0
+  qwen-2c338-decode-519f4-666b58c895-p85ks:
+    vllm:nixl_xfer_time_seconds_count{engine="0",model_name="qwen"} 1.0
+    vllm:nixl_bytes_transferred_sum{engine="0",model_name="qwen"} 8.0740352e+07
+    vllm:generation_tokens_total{engine="0",model_name="qwen"} 21.0

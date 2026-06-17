@@ -1,0 +1,12 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen2.5-14B-Instruct-AWQ   # small, AWQ fits one L4; swap for your model
+    sizeGiB: 40
+  clusterSelector:
+    matchLabels: { demo: pd-guide }

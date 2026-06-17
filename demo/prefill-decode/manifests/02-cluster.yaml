@@ -1,0 +1,25 @@
+# The single staging/test cluster the whole guide runs on. One L4 node pool,
+# sized for the baseline (2) plus the experiment (1 prefill + 1 decode) with
+# headroom to promote (scale P/D up while unified scales down). minNodeCount 0
+# lets it scale to the actual load; maxNodeCount 6 caps it.
+# Set spec.cluster.gke.project to your GCP project; pick a region with L4 quota.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: pd-guide
+  labels:
+    demo: pd-guide
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: crossplane-playground
+      region: us-central1
+  nodePools:
+  - name: gpu-l4
+    className: gke-l4-1x-g2
+    nodeCount: 4
+    minNodeCount: 0
+    maxNodeCount: 6
+    zones:
+    - us-central1-b

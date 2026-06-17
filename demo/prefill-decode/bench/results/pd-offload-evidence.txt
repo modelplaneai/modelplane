@@ -1,0 +1,17 @@
+# Prefill/Decode disaggregation — NIXL offload evidence
+# Cluster: pd-demo-disagg  |  model: qwen (Qwen2.5 AWQ)  |  vLLM v0.19.1 (vanilla, ships NIXL)
+# EPP: armed prefix-based-pd-decider (nonCachedTokens=16) + approx-prefix-cache-producer (block=128)
+# Captured: 2026-06-17T19:17:56Z
+
+## PREFILL engine (kv_producer) — processes prompts, generates ~nothing:
+vllm:prompt_tokens_total{engine="0",model_name="qwen"} 6220.0
+vllm:generation_tokens_total{engine="0",model_name="qwen"} 5.0
+vllm:request_success_total{engine="0",finished_reason="length",model_name="qwen"} 5.0
+
+## DECODE engine (kv_consumer) — pulls KV over NIXL, generates tokens:
+vllm:nixl_xfer_time_seconds_count{engine="0",model_name="qwen"} 5.0
+vllm:nixl_xfer_time_seconds_sum{engine="0",model_name="qwen"} 1.099501
+vllm:nixl_bytes_transferred_count{engine="0",model_name="qwen"} 5.0
+vllm:nixl_bytes_transferred_sum{engine="0",model_name="qwen"} 3.670016e+08
+vllm:prompt_tokens_total{engine="0",model_name="qwen"} 11390.0
+vllm:generation_tokens_total{engine="0",model_name="qwen"} 160.0

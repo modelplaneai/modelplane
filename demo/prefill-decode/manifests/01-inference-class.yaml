@@ -1,0 +1,31 @@
+# GPU class for the guide: GKE g2-standard-8 with one NVIDIA L4. Single-GPU
+# nodes — the fleet scheduler is node-granular, so each engine (a unified copy,
+# or a prefill / a decode) lands on its own node. Both deployments select the
+# same class; isolation between baseline and experiment is by separate
+# deployments/replicas, not a separate pool (a deployment's CEL is DRA-enforced
+# on the workload cluster, so it can only match real driver attributes — see the
+# spike note in the plan).
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-l4-1x-g2
+spec:
+  description: "GKE g2-standard-8, 1x NVIDIA L4"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: g2-standard-8
+      diskSizeGb: 200
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      memory: { value: "23034Mi" }

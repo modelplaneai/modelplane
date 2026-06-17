@@ -1,0 +1,56 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-pd
+  namespace: ml-team
+  labels: { model: qwen }
+spec:
+  replicas: 1
+  modelCacheRef: { name: qwen }
+  serving: { mode: PrefillDecode }
+  engines:
+  - name: prefill
+    phase: Prefill
+    copies: 1
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: docker.io/vllm/vllm-openai:v0.19.1-x86_64-cu130
+            args:
+            - /mnt/models
+            - --served-model-name=qwen
+            - --max-model-len=10240
+            - --block-size=128
+            - '--kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_producer"}'
+  - name: decode
+    phase: Decode
+    copies: 1
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: docker.io/vllm/vllm-openai:v0.19.1-x86_64-cu130
+            args:
+            - /mnt/models
+            - --served-model-name=qwen
+            - --port=8001
+            - --max-model-len=10240
+            - --block-size=128
+            - '--kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_consumer"}'
