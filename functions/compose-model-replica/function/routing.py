@@ -27,6 +27,10 @@ _SIDECAR_IMAGE = "ghcr.io/llm-d/llm-d-routing-sidecar:v0.8.0"
 # The pd-sidecar takes ENGINE_PORT (8000), so the decode engine listens here.
 _DECODE_ENGINE_PORT = 8001
 
+# NIXL KV-transfer plumbing injected onto every disaggregated engine.
+_NIXL_SHM_VOLUME = "nixl-shm"
+_NIXL_SIDE_CHANNEL_PORT = "5557"
+
 # Selector labels shared by both engines' serving pods (the InferencePool
 # matchLabels) and the per-role label the picker partitions on.
 _LABEL_ROLE = "llm-d.ai/role"
@@ -199,10 +203,16 @@ def _disaggregated(
     decode = next(e for e in replica.spec.engines if e.phase == "Decode")
 
     out = dict(composed)
+    prefill_key = base.workload_key(prefill)
     decode_key = base.workload_key(decode)
-    _label_role(out[base.workload_key(prefill)], role="prefill", app=name)
+    _label_role(out[prefill_key], role="prefill", app=name)
     _label_role(out[decode_key], role="decode", app=name)
     _add_sidecar_to_decode(out[decode_key])
+
+    # Both engines need NIXL KV-transfer plumbing the ModelDeployment schema
+    # can't express (no fieldRef env, no volumes). Inject it for them.
+    _inject_nixl_plumbing(out[prefill_key])
+    _inject_nixl_plumbing(out[decode_key])
 
     # The EPP's prefix-cache producer must chunk prefixes at the decode engine's
     # KV block size; derive it from the decode engine's flags (HACK, #179).
@@ -282,6 +292,38 @@ def _add_sidecar_to_decode(obj: k8sobjv1alpha1.Object) -> None:
                 },
             }
         )
+
+
+def _inject_nixl_plumbing(obj: k8sobjv1alpha1.Object) -> None:
+    """Add the NIXL KV-transfer plumbing every disaggregated engine needs but
+    that the ModelDeployment schema can't express (no fieldRef env, no volumes).
+
+    Two pieces, both infra-level and always-correct for PrefillDecode, so we
+    inject them the same way we inject the sidecar rather than asking the user:
+      - a Memory-backed /dev/shm: vLLM's NixlConnector uses shared memory, and
+        the container default (64Mi) is far too small.
+      - VLLM_NIXL_SIDE_CHANNEL_HOST set to the pod IP (+ a fixed port) so peer
+        engines can reach this one's NIXL metadata channel. Without it the
+        engine advertises an unreachable address and cross-pod KV transfer
+        fails — requests get a 500 with no error in the engine logs.
+    """
+    for tmpl in _serving_pod_templates(obj.spec.forProvider.manifest):
+        spec = tmpl["spec"]
+        volumes = spec.setdefault("volumes", [])
+        if not any(v.get("name") == _NIXL_SHM_VOLUME for v in volumes):
+            volumes.append({"name": _NIXL_SHM_VOLUME, "emptyDir": {"medium": "Memory"}})
+        engine = next(c for c in spec["containers"] if c["name"] == "engine")
+        mounts = engine.setdefault("volumeMounts", [])
+        if not any(m.get("mountPath") == "/dev/shm" for m in mounts):
+            mounts.append({"name": _NIXL_SHM_VOLUME, "mountPath": "/dev/shm"})
+        env = engine.setdefault("env", [])
+        existing = {e.get("name") for e in env}
+        if "VLLM_NIXL_SIDE_CHANNEL_HOST" not in existing:
+            env.append(
+                {"name": "VLLM_NIXL_SIDE_CHANNEL_HOST", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}
+            )
+        if "VLLM_NIXL_SIDE_CHANNEL_PORT" not in existing:
+            env.append({"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": _NIXL_SIDE_CHANNEL_PORT})
 
 
 def _inference_pool(name: str) -> dict:

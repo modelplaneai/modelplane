@@ -711,6 +711,23 @@ class TestDisaggregated(unittest.TestCase):
         self.assertEqual(pool["kind"], "InferencePool")
         self.assertEqual(pool["spec"]["endpointPickerRef"]["name"], "r-epp")
 
+    def test_injects_nixl_plumbing(self):
+        """Both disagg engines get the NIXL plumbing the schema can't express:
+        a Memory /dev/shm and VLLM_NIXL_SIDE_CHANNEL_HOST = pod IP."""
+        out = self._apply()
+        for role in ("prefill", "decode"):
+            pod = self._serving_pod(out, role)["spec"]
+            self.assertTrue(
+                any(v.get("emptyDir", {}).get("medium") == "Memory" for v in pod["volumes"]),
+                f"{role} missing Memory /dev/shm volume",
+            )
+            engine = next(c for c in pod["containers"] if c["name"] == "engine")
+            self.assertIn("/dev/shm", [m["mountPath"] for m in engine["volumeMounts"]])
+            host = next((e for e in engine["env"] if e["name"] == "VLLM_NIXL_SIDE_CHANNEL_HOST"), None)
+            self.assertIsNotNone(host, f"{role} missing VLLM_NIXL_SIDE_CHANNEL_HOST")
+            self.assertEqual(host["valueFrom"]["fieldRef"]["fieldPath"], "status.podIP")
+            self.assertIn("VLLM_NIXL_SIDE_CHANNEL_PORT", [e["name"] for e in engine["env"]])
+
     def test_epp_config_arms_the_pd_decider(self):
         """PrefillDecode silently serves decode-only unless the PD decider is armed.
 
