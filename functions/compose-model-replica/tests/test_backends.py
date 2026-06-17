@@ -821,5 +821,29 @@ class TestUnifiedRouting(unittest.TestCase):
         self.assertNotIn("inference-pool", out)
 
 
+class TestKvBlockSize(unittest.TestCase):
+    """The EPP prefix-cache producer's blockSizeTokens is derived best-effort
+    from the engine flags (#179) so it matches the engine's KV block size."""
+
+    def test_defaults_to_16_when_absent(self):
+        self.assertEqual(routing._kv_block_size([]), 16)
+        self.assertEqual(routing._kv_block_size(["--model=/mnt/models"]), 16)
+
+    def test_reads_vllm_block_size(self):
+        self.assertEqual(routing._kv_block_size(["--block-size", "32"]), 32)
+        self.assertEqual(routing._kv_block_size(["--model=/m", "--block-size=8"]), 8)
+
+    def test_reads_sglang_page_size(self):
+        self.assertEqual(routing._kv_block_size(["--page-size=64"]), 64)
+
+    def test_non_integer_falls_back_to_default(self):
+        self.assertEqual(routing._kv_block_size(["--block-size", "auto"]), 16)
+
+    def test_rendered_config_uses_block_size(self):
+        cfg = routing._epp_config_yaml(32)
+        self.assertIn("blockSizeTokens: 32", cfg)
+        self.assertNotIn("BLOCK_SIZE_TOKENS", cfg)
+
+
 if __name__ == "__main__":
     unittest.main()

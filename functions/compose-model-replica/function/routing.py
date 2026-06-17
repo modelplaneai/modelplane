@@ -58,14 +58,18 @@ _LABEL_INFERENCE_SERVING = "llm-d.ai/inference-serving"
 # (Verified live: with this config the prefill engine's request_prefill_time
 # counter increments for long prompts and stays flat for short ones; with the
 # defaults it stayed at zero for everything.)
-_EPP_CONFIG_YAML = """\
+#
+# blockSizeTokens MUST match the engine's KV block size or prefix-cache routing
+# silently degrades (#179). It's derived best-effort from the engine flags via
+# _kv_block_size() (BLOCK_SIZE_TOKENS placeholder), defaulting to vLLM's 16.
+_EPP_CONFIG_TEMPLATE = """\
 apiVersion: inference.networking.x-k8s.io/v1alpha1
 kind: EndpointPickerConfig
 plugins:
 - type: approx-prefix-cache-producer
   parameters:
     autoTune: false
-    blockSizeTokens: 16
+    blockSizeTokens: BLOCK_SIZE_TOKENS
     maxPrefixBlocksToMatch: 256
     lruCapacityPerServer: 31250
 - type: prefix-cache-scorer
@@ -99,6 +103,48 @@ schedulingProfiles:
   - pluginRef: queue-scorer
     weight: 1
 """
+
+_DEFAULT_KV_BLOCK_SIZE = 16
+
+
+def _epp_config_yaml(block_size: int) -> str:
+    """Render the EPP config with the engine's KV block size."""
+    return _EPP_CONFIG_TEMPLATE.replace("BLOCK_SIZE_TOKENS", str(block_size))
+
+
+def _kv_block_size(engine_args: list) -> int:
+    """HACK: best-effort read the engine's KV block size from its flags so the
+    EPP prefix-cache producer chunks prefixes the same way the engine does.
+
+    Engine flags belong to the user (per #137); we peek for the common ones —
+    vLLM's --block-size and SGLang's --page-size — and fall back to vLLM's
+    default of 16. A mismatch silently degrades prefix-cache routing with no
+    error (#179), so deriving it beats hardcoding. The durable fix is a
+    typed/overridable knob on the serving block (#179); until then, this peek.
+    """
+    args = engine_args or []
+    for i, a in enumerate(args):
+        for flag in ("--block-size", "--page-size"):
+            if a == flag and i + 1 < len(args):
+                try:
+                    return int(args[i + 1])
+                except ValueError:
+                    pass
+            elif a.startswith(flag + "="):
+                try:
+                    return int(a.split("=", 1)[1])
+                except ValueError:
+                    pass
+    return _DEFAULT_KV_BLOCK_SIZE
+
+
+def _engine_args(obj: k8sobjv1alpha1.Object) -> list:
+    """The engine container's args from a workload Object (best-effort)."""
+    for tmpl in _serving_pod_templates(obj.spec.forProvider.manifest):
+        for c in tmpl["spec"]["containers"]:
+            if c.get("name") == "engine":
+                return c.get("args", [])
+    return []
 
 
 def apply(
@@ -148,9 +194,12 @@ def _disaggregated(
     _label_role(out[decode_key], role="decode", app=name)
     _add_sidecar_to_decode(out[decode_key])
 
+    # The EPP's prefix-cache producer must chunk prefixes at the decode engine's
+    # KV block size; derive it from the decode engine's flags (HACK, #179).
+    block_size = _kv_block_size(_engine_args(out[decode_key]))
     out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name))
     out[base.ROUTE_KEY] = base.wrap_object(provider_config, _http_route(replica, name))
-    out.update(_epp_objects(name, provider_config))
+    out.update(_epp_objects(name, provider_config, block_size))
     return out
 
 
@@ -263,8 +312,12 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
     }
 
 
-def _epp_objects(name: str, provider_config: str) -> dict[str, k8sobjv1alpha1.Object]:
-    """The hardcoded endpoint picker: ServiceAccount, RBAC, ConfigMap, Deployment, Service."""
+def _epp_objects(name: str, provider_config: str, block_size: int) -> dict[str, k8sobjv1alpha1.Object]:
+    """The endpoint picker: ServiceAccount, RBAC, ConfigMap, Deployment, Service.
+
+    block_size is the engine's KV block size, rendered into the prefix-cache
+    producer so its prefix chunking matches the engine.
+    """
     ns = base.REMOTE_NAMESPACE
     epp = f"{name}-epp"
     sa = {"apiVersion": "v1", "kind": "ServiceAccount", "metadata": {"name": epp, "namespace": ns}}
@@ -299,7 +352,7 @@ def _epp_objects(name: str, provider_config: str) -> dict[str, k8sobjv1alpha1.Ob
         "apiVersion": "v1",
         "kind": "ConfigMap",
         "metadata": {"name": epp, "namespace": ns},
-        "data": {"pd-epp-config.yaml": _EPP_CONFIG_YAML},
+        "data": {"pd-epp-config.yaml": _epp_config_yaml(block_size)},
     }
     deployment = {
         "apiVersion": "apps/v1",
