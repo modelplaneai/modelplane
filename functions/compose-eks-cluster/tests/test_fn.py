@@ -474,6 +474,35 @@ def _pod_identity_association() -> dict:
     }
 
 
+def _storage_class_object(filesystem_id: str) -> dict:
+    return {
+        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+        "kind": "Object",
+        "metadata": {"namespace": "modelplane-system"},
+        "spec": {
+            "providerConfigRef": {
+                "kind": "ProviderConfig",
+                "name": _KUBECONFIG_SECRET,
+            },
+            "readiness": {"policy": "SuccessfulCreate"},
+            "forProvider": {
+                "manifest": {
+                    "apiVersion": "storage.k8s.io/v1",
+                    "kind": "StorageClass",
+                    "metadata": {"name": "modelplane-rwx-efs"},
+                    "provisioner": "efs.csi.aws.com",
+                    "parameters": {
+                        "provisioningMode": "efs-ap",
+                        "fileSystemId": filesystem_id,
+                        "directoryPerms": "700",
+                    },
+                    "volumeBindingMode": "Immediate",
+                },
+            },
+        },
+    }
+
+
 def _provider_config(api_version: str) -> dict:
     return {
         "apiVersion": api_version,
@@ -492,10 +521,10 @@ def _provider_config(api_version: str) -> dict:
     }
 
 
-def _expected_status(efs_filesystem_id: str | None = None) -> dict:
-    # `type` is emitted explicitly: the XRD marks it required, so the
-    # function writes status as a plain dict rather than a Pydantic model
-    # (which would strip the defaulted `type` via exclude_defaults).
+def _expected_status() -> dict:
+    # `type` is emitted because the function sets it explicitly on the Status
+    # model, so update_status (exclude_unset) keeps it rather than dropping it
+    # as an unset field.
     status = {
         "secrets": [
             {
@@ -504,9 +533,10 @@ def _expected_status(efs_filesystem_id: str | None = None) -> dict:
                 "key": "kubeconfig",
             },
         ],
+        # write_status always publishes the effective RWX StorageClass name,
+        # even before the managed class materialises on the workload cluster.
+        "cache": {"storageClassName": "modelplane-rwx-efs"},
     }
-    if efs_filesystem_id:
-        status["efsFileSystemId"] = efs_filesystem_id
     return {"status": status}
 
 
@@ -617,6 +647,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             resource=ready_resources["efs-filesystem"].resource,
             ready=fnv1.READY_TRUE,
         )
+        # Once the EFS filesystem id is observed, the managed StorageClass Object
+        # is composed (and marked ready) against the cluster's own ProviderConfig.
+        ready_resources["storage-class-rwx-efs"] = fnv1.Resource(
+            resource=resource.dict_to_struct(_storage_class_object("fs-0abc123")),
+            ready=fnv1.READY_TRUE,
+        )
 
         cases = [
             Case(
@@ -683,7 +719,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
                     desired=fnv1.State(
                         composite=fnv1.Resource(
-                            resource=resource.dict_to_struct(_expected_status("fs-0abc123")),
+                            resource=resource.dict_to_struct(_expected_status()),
                         ),
                         resources=ready_resources,
                     ),

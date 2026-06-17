@@ -20,6 +20,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.infrastructure.ekscluster import v1alpha1
 from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from models.io.upbound.m.aws.ec2.internetgateway import v1beta1 as igwv1beta1
@@ -132,6 +133,15 @@ _EFS_CSI_SERVICE_ACCOUNT = "efs-csi-controller-sa"
 # in-cluster DNS. All three are required for a functional cluster.
 _ADDONS = ("vpc-cni", "kube-proxy", "coredns")
 
+# Annotation the provider sets on a managed resource with its external name
+# (the cloud-assigned id). Read from the EFS FileSystem to learn its id.
+_ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
+
+# Name of the RWX StorageClass Modelplane composes for ModelCache when the
+# user doesn't bring their own. EFS dynamic provisioning creates an access
+# point per PVC inside the auto-provisioned filesystem.
+_MANAGED_STORAGE_CLASS = "modelplane-rwx-efs"
+
 
 def _kubeconfig_secret_name(xr):
     """Derive the kubeconfig secret name from the XR."""
@@ -187,6 +197,7 @@ class Composer:
         self.compose_addons()
         self.compose_efs()
         self.compose_provider_configs()
+        self.compose_storage_class()
         self.write_status()
         self.mark_readiness()
 
@@ -582,7 +593,7 @@ class Composer:
         filesystem, a mount target per node subnet, an NFS security group, and
         the EFS CSI driver. The driver's IAM role is bound through Pod Identity
         (the eks-pod-identity-agent addon plus an association), so no OIDC
-        provider is needed. compose-inference-cluster pins the modelplane-rwx-efs
+        provider is needed. compose_storage_class pins the modelplane-rwx-efs
         StorageClass to this filesystem's id."""
         region = self.xr.spec.region
 
@@ -717,6 +728,40 @@ class Composer:
             ),
         )
 
+    def compose_storage_class(self):
+        """Compose the EFS RWX StorageClass on the workload cluster. Gated on
+        the filesystem id: the StorageClass pins to it, and the id is known
+        only once the FileSystem is observed. The Object is applied through the
+        cluster's own provider-kubernetes ProviderConfig. StorageClass has no
+        Ready condition, so use SuccessfulCreate (DeriveFromObject would
+        hang)."""
+        filesystem_id = self._observed_efs_filesystem_id()
+        if not filesystem_id:
+            return
+        manifest = {
+            "apiVersion": "storage.k8s.io/v1",
+            "kind": "StorageClass",
+            "metadata": {"name": _MANAGED_STORAGE_CLASS},
+            "provisioner": "efs.csi.aws.com",
+            "parameters": {"provisioningMode": "efs-ap", "fileSystemId": filesystem_id, "directoryPerms": "700"},
+            "volumeBindingMode": "Immediate",
+        }
+        resource.update(
+            self.rsp.desired.resources["storage-class-rwx-efs"],
+            k8sobjv1alpha1.Object(
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ProviderConfig",
+                        name=_kubeconfig_secret_name(self.xr),
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
+                    forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
+                ),
+            ),
+        )
+        self.rsp.desired.resources["storage-class-rwx-efs"].ready = fnv1.READY_TRUE
+
     def compose_provider_configs(self):
         kubeconfig_secret = _kubeconfig_secret_name(self.xr)
         resource.update(
@@ -762,17 +807,12 @@ class Composer:
                     key=_SECRET_KEY_KUBECONFIG,
                 ),
             ],
-            efsFileSystemId=self._observed_efs_filesystem_id(),
+            # The RWX StorageClass Modelplane composes for ModelCache.
+            # Published immediately so ModelCache can target it; the class may
+            # still be materialising on the workload cluster.
+            cache=v1alpha1.Cache(storageClassName=_MANAGED_STORAGE_CLASS),
         )
-        # The XRD marks status.secrets[].type as required, but the generated
-        # Secret model gives `type` its only valid enum value as a default.
-        # resource.update_status strips defaults (exclude_defaults=True),
-        # which would drop `type` and fail XRD validation. Dump the model
-        # ourselves keeping defaults so every required field is emitted.
-        resource.update_status(
-            self.rsp.desired.composite,
-            status.model_dump(exclude_none=True),
-        )
+        resource.update_status(self.rsp.desired.composite, status)
 
     def _observed_efs_filesystem_id(self):
         """The composed EFS filesystem's id, from the observed FileSystem MR's
@@ -781,8 +821,10 @@ class Composer:
         observed = self.req.observed.resources.get("efs-filesystem")
         if not observed:
             return None
-        manifest = resource.struct_to_dict(observed.resource)
-        return manifest.get("metadata", {}).get("annotations", {}).get("crossplane.io/external-name")
+        fs = fsv1beta1.FileSystem.model_validate(resource.struct_to_dict(observed.resource))
+        if not fs.metadata or not fs.metadata.annotations:
+            return None
+        return fs.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME)
 
     def mark_readiness(self):
         """Mark composed resources ready based on their observed conditions."""

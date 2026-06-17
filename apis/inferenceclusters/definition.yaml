@@ -95,13 +95,14 @@ spec:
                         properties:
                           storageClassName:
                             type: string
-                            default: modelplane-rwx
                             description: >-
-                              Name of the RWX StorageClass for ModelCache
-                              PVCs. The admin creates the StorageClass on
-                              the workload cluster (must support
+                              Name of an existing ReadWriteMany StorageClass
+                              for ModelCache PVCs. Modelplane doesn't provision
+                              storage on an existing cluster, so the admin must
+                              create the StorageClass (it must support
                               ReadWriteMany dynamic provisioning).
                             minLength: 1
+                            maxLength: 253
                   gke:
                     type: object
                     description: >-
@@ -119,22 +120,6 @@ spec:
                       kubernetesVersion:
                         type: string
                         default: "1.35"
-                      cache:
-                        type: object
-                        description: >-
-                          ModelCache configuration for this cluster.
-                        properties:
-                          storageClassName:
-                            type: string
-                            default: modelplane-rwx
-                            description: >-
-                              Name of the RWX StorageClass for ModelCache
-                              PVCs. At the default value, Modelplane
-                              provisions Filestore Enterprise via the
-                              Filestore CSI addon and composes the
-                              StorageClass; set this to a different name to
-                              use one the admin has already created.
-                            minLength: 1
                   eks:
                     type: object
                     description: >-
@@ -154,21 +139,6 @@ spec:
                           EKS cluster Kubernetes version. Defaults to a
                           version where Dynamic Resource Allocation (how GPUs
                           bind to pods) is generally available.
-                      cache:
-                        type: object
-                        description: >-
-                          ModelCache configuration for this cluster.
-                        properties:
-                          storageClassName:
-                            type: string
-                            default: modelplane-rwx-efs
-                            description: >-
-                              Name of the RWX StorageClass for ModelCache
-                              PVCs. Modelplane does not currently provision
-                              EFS automatically; the admin must create an
-                              EFS file system and the EFS CSI
-                              StorageClass on the cluster.
-                            minLength: 1
               nodePools:
                 type: array
                 description: >-
@@ -258,6 +228,18 @@ spec:
                     description: >-
                       External IP of the inference gateway on the remote cluster.
                       Used by ModelDeployment for unified endpoint routing.
+              cache:
+                type: object
+                description: >-
+                  Observed ModelCache RWX storage state.
+                properties:
+                  storageClassName:
+                    type: string
+                    description: >-
+                      Effective ReadWriteMany StorageClass name for ModelCache
+                      PVCs on this cluster. ModelCache reads this to target
+                      the cache PVC.
+                    maxLength: 253
               gpuPools:
                 type: array
                 description: >-

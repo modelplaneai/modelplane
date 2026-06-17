@@ -137,6 +137,13 @@ class Spec(BaseModel):
     """
 
 
+class Cache(BaseModel):
+    storageClassName: constr(max_length=253) | None = None
+    """
+    Name of the Modelplane-managed ReadWriteMany StorageClass composed on this cluster for ModelCache PVCs. ModelCache reads this to target the cache PVC.
+    """
+
+
 class Condition(BaseModel):
     lastTransitionTime: AwareDatetime
     message: str | None = None
@@ -144,13 +151,6 @@ class Condition(BaseModel):
     reason: str
     status: str
     type: str
-
-
-class Network(BaseModel):
-    name: str | None = None
-    """
-    Name of the composed VPC network.
-    """
 
 
 class Secret(BaseModel):
@@ -169,13 +169,13 @@ class Secret(BaseModel):
 
 
 class Status(BaseModel):
+    cache: Cache | None = None
+    """
+    Observed ModelCache RWX storage state.
+    """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
-    """
-    network: Network | None = None
-    """
-    The VPC network this cluster runs in. Consumers pin network-scoped resources (e.g. the ModelCache Filestore StorageClass) to this name. Populated once the composed Network is observed; the name carries the provider's generated suffix, so it can't be derived from the XR name.
     """
     secrets: list[Secret] | None = None
     """

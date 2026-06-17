@@ -10,18 +10,7 @@ from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
 
-class Cache(BaseModel):
-    storageClassName: constr(min_length=1) | None = 'modelplane-rwx-efs'
-    """
-    Name of the RWX StorageClass for ModelCache PVCs. Modelplane does not currently provision EFS automatically; the admin must create an EFS file system and the EFS CSI StorageClass on the cluster.
-    """
-
-
 class Eks(BaseModel):
-    cache: Cache | None = None
-    """
-    ModelCache configuration for this cluster.
-    """
     kubernetesVersion: str | None = '1.36'
     """
     EKS cluster Kubernetes version. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
@@ -32,10 +21,10 @@ class Eks(BaseModel):
     """
 
 
-class CacheModel(BaseModel):
-    storageClassName: constr(min_length=1) | None = 'modelplane-rwx'
+class Cache(BaseModel):
+    storageClassName: constr(min_length=1, max_length=253) | None = None
     """
-    Name of the RWX StorageClass for ModelCache PVCs. The admin creates the StorageClass on the workload cluster (must support ReadWriteMany dynamic provisioning).
+    Name of an existing ReadWriteMany StorageClass for ModelCache PVCs. Modelplane doesn't provision storage on an existing cluster, so the admin must create the StorageClass (it must support ReadWriteMany dynamic provisioning).
     """
 
 
@@ -50,7 +39,7 @@ class SecretRef(BaseModel):
 
 
 class Existing(BaseModel):
-    cache: CacheModel | None = None
+    cache: Cache | None = None
     """
     ModelCache configuration for this cluster.
     """
@@ -64,18 +53,7 @@ class Existing(BaseModel):
     """
 
 
-class CacheModel1(BaseModel):
-    storageClassName: constr(min_length=1) | None = 'modelplane-rwx'
-    """
-    Name of the RWX StorageClass for ModelCache PVCs. At the default value, Modelplane provisions Filestore Enterprise via the Filestore CSI addon and composes the StorageClass; set this to a different name to use one the admin has already created.
-    """
-
-
 class Gke(BaseModel):
-    cache: CacheModel1 | None = None
-    """
-    ModelCache configuration for this cluster.
-    """
     kubernetesVersion: str | None = '1.35'
     project: constr(min_length=6, max_length=30)
     region: constr(min_length=1, max_length=32)
@@ -175,6 +153,13 @@ class Spec(BaseModel):
     """
 
 
+class CacheModel(BaseModel):
+    storageClassName: constr(max_length=253) | None = None
+    """
+    Effective ReadWriteMany StorageClass name for ModelCache PVCs on this cluster. ModelCache reads this to target the cache PVC.
+    """
+
+
 class Condition(BaseModel):
     lastTransitionTime: AwareDatetime
     message: str | None = None
@@ -235,6 +220,10 @@ class ProviderConfigRef(BaseModel):
 
 
 class Status(BaseModel):
+    cache: CacheModel | None = None
+    """
+    Observed ModelCache RWX storage state.
+    """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
