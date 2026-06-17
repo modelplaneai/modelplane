@@ -91,6 +91,19 @@ max-jobs = auto
 
 # Sandbox builds to prevent access to undeclared dependencies. Requires --privileged.
 sandbox = true
+
+# The nixos/nix image ships build-users-group = nixbld but has no such group,
+# which breaks any local build (nix tries to drop to a build user that doesn't
+# exist). We run nix as root in single-user mode, so clear it to build
+# in-process. Builds that fetch from the cache don't hit this; ones that build
+# derivations locally - like crossplane project build - do.
+build-users-group =
+
+# Function images are built for both Linux architectures. The build references
+# the non-host arch's interpreter and wheels - all prebuilt data, no foreign
+# code runs (see nix/functions.nix) - but those derivations carry the foreign
+# system, so Nix needs both Linux platforms enabled to realise them.
+extra-platforms = x86_64-linux aarch64-linux
 "
 
 # Only allocate a TTY if stdout is a terminal. TTY mode corrupts binary output
