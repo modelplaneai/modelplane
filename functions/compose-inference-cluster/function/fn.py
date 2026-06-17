@@ -254,7 +254,9 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "GKE cluster ready, composing backend")
 
-        self.write_status(self.gpu_pools())
+        # The GKE node pools we compose autoscale via GKE's managed cluster
+        # autoscaler, so maxNodeCount is reachable headroom.
+        self.write_status(self.gpu_pools(autoscaled=True))
         self.derive_conditions(cluster_ready=gke_ready)
 
     def compose_eks(self, eks):
@@ -292,7 +294,10 @@ class Composer:
             if not backend_exists:
                 response.normal(self.rsp, "EKS cluster ready, composing backend")
 
-        self.write_status(self.gpu_pools())
+        # The EKS nodegroup carries a scalingConfig, but we install no cluster
+        # autoscaler on EKS, so it never grows past its realized size (#166).
+        # Publish the realized nodeCount, not maxNodeCount.
+        self.write_status(self.gpu_pools(autoscaled=False))
         self.derive_conditions(cluster_ready=eks_ready)
 
     def compose_existing(self, existing):
@@ -315,7 +320,10 @@ class Composer:
             )
         self.compose_serving_stack(backend_secrets)
 
-        self.write_status(self.gpu_pools())
+        # A user-supplied cluster may or may not run an autoscaler, and we don't
+        # control it either way, so we can't promise maxNodeCount will be there.
+        # Publish the realized nodeCount.
+        self.write_status(self.gpu_pools(autoscaled=False))
         self.derive_conditions(cluster_ready=True)
 
     def compose_serving_stack(self, backend_secrets: list[ssv1alpha1.Secret]):
@@ -689,13 +697,21 @@ class Composer:
 
         return None
 
-    def gpu_pools(self):
+    def gpu_pools(self, autoscaled):
         """Derive status.gpuPools from each node pool's class.
 
         The class declares the node's devices (DRA-style); the pool declares how
         many nodes. We copy the class's devices verbatim so
         ModelDeployment.nodeSelector can match against them, and record the node
         count for the scheduler's available-node gate.
+
+        ``autoscaled`` says whether this cluster has a working autoscaler that
+        Modelplane wired up — the caller knows, because it's the same compose
+        path that does (or doesn't) provision one. When it does, we publish each
+        pool's maxNodeCount as the headroom the scheduler may grow into. When it
+        doesn't, maxNodeCount never materializes, so we publish the realized
+        nodeCount — otherwise the scheduler places replicas onto nodes that will
+        never exist and they hang Pending.
         """
         gpu_pools = []
         for pool in self.xr.spec.nodePools or []:
@@ -711,7 +727,7 @@ class Composer:
             gpu_pools.append(
                 {
                     "name": pool.name,
-                    "nodes": pool.maxNodeCount or pool.nodeCount,
+                    "nodes": (pool.maxNodeCount or pool.nodeCount) if autoscaled else pool.nodeCount,
                     "devices": devices,
                 }
             )

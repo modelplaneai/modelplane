@@ -257,8 +257,11 @@ spec:
                     nodes:
                       type: integer
                       description: >-
-                        Number of nodes in this pool. Derived from
-                        maxNodeCount (if autoscaling) or nodeCount.
+                        Node headroom the scheduler may place replicas against.
+                        On sources Modelplane provisions with a cluster
+                        autoscaler (GKE) this is maxNodeCount, since the pool
+                        grows on demand. On sources with no autoscaler we
+                        control (EKS, Existing) it is the realized nodeCount.
                     devices:
                       type: array
                       description: >-

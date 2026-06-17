@@ -256,7 +256,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "gpuPools": [
                                     {
                                         "name": "l4-pool",
-                                        "nodes": 4,
+                                        "nodes": 2,
                                         "devices": [
                                             {
                                                 "name": "gpu",
@@ -517,7 +517,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "gpuPools": [
                                     {
                                         "name": "l4-pool",
-                                        "nodes": 4,
+                                        "nodes": 2,
                                         "devices": [
                                             {
                                                 "name": "gpu",
@@ -675,7 +675,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 "gpuPools": [
                                     {
                                         "name": "l4-pool",
-                                        "nodes": 4,
+                                        "nodes": 2,
                                         "devices": [
                                             {
                                                 "name": "gpu",
