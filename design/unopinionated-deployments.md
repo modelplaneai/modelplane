@@ -308,13 +308,12 @@ their configured connector. Modelplane injects the sidecar, labels the pods as
 either prefill or decode, and configures the endpoint picker accordingly.
 
 Because the engines transfer the KV cache over their connector (e.g. vLLM's
-`NixlConnector`), the engine image must ship that connector's runtime — the NIXL
-library. The base `vllm/vllm-openai` image does **not** include it, so a
-disaggregated deployment must supply a kv-connector-enabled image (build vLLM
-with `INSTALL_KV_CONNECTORS=true`, or use a pre-built one such as
-`lmcache/vllm-openai`). Since the engine image and flags are the user's, this is
-a deployment prerequisite Modelplane does not provide; failing it surfaces as
-engines crashlooping with `NIXL is not available`.
+`NixlConnector`), the engine image must ship that connector's runtime: the NIXL
+library. Recent vanilla `vllm/vllm-openai` images include it, so a disaggregated
+deployment pins a current tag rather than an old one. Since the engine image and
+flags are the user's, this is a deployment prerequisite Modelplane does not
+provide; failing it surfaces as engines crashlooping with `NIXL is not
+available`.
 
 ### Scheduling
 
