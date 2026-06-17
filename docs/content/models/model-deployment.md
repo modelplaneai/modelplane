@@ -74,6 +74,13 @@ and long context. For small models or low traffic the KV-transfer overhead
 outweighs the benefit, so aggregated serving (optionally with chunked prefill) is
 the default.
 
+Disaggregation requires the **engine image to provide the NIXL KV-transfer
+runtime**. vLLM's `NixlConnector` (and SGLang's prefill/decode transfer) import
+the `nixl` package, so disaggregated engines crash at startup with `NIXL is not
+available` on an image that lacks it. Recent vanilla `vllm/vllm-openai` images
+ship NIXL, so pin a current tag rather than an old one. The engine image is
+yours to choose, so this is a prerequisite Modelplane does not bundle for you.
+
 ## Examples
 
 {{< tabs >}}

@@ -98,6 +98,8 @@ NVIDIA
 Envoy
 Traefik
 MetalLB
+NIXL
+NixlConnector
 Prometheus
 ArgoCD
 FluxCD

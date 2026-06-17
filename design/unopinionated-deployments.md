@@ -307,6 +307,14 @@ prefill to the chosen worker; the engines themselves transfer the KV cache over
 their configured connector. Modelplane injects the sidecar, labels the pods as
 either prefill or decode, and configures the endpoint picker accordingly.
 
+Because the engines transfer the KV cache over their connector (e.g. vLLM's
+`NixlConnector`), the engine image must ship that connector's runtime: the NIXL
+library. Recent vanilla `vllm/vllm-openai` images include it, so a disaggregated
+deployment pins a current tag rather than an old one. Since the engine image and
+flags are the user's, this is a deployment prerequisite Modelplane does not
+provide; failing it surfaces as engines crashlooping with `NIXL is not
+available`.
+
 ### Scheduling
 
 The fleet scheduler places each ModelReplica on one InferenceCluster. However

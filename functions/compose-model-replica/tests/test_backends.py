@@ -712,6 +712,40 @@ class TestDisaggregated(unittest.TestCase):
         self.assertEqual(pool["kind"], "InferencePool")
         self.assertEqual(pool["spec"]["endpointPickerRef"]["name"], "r-epp")
 
+    def test_injects_nixl_plumbing(self):
+        """Both disagg engines get the NIXL plumbing the schema can't express:
+        a Memory /dev/shm and VLLM_NIXL_SIDE_CHANNEL_HOST = pod IP."""
+        out = self._apply()
+        for role in ("prefill", "decode"):
+            pod = self._serving_pod(out, role)["spec"]
+            self.assertTrue(
+                any(v.get("emptyDir", {}).get("medium") == "Memory" for v in pod["volumes"]),
+                f"{role} missing Memory /dev/shm volume",
+            )
+            engine = next(c for c in pod["containers"] if c["name"] == "engine")
+            self.assertIn("/dev/shm", [m["mountPath"] for m in engine["volumeMounts"]])
+            host = next((e for e in engine["env"] if e["name"] == "VLLM_NIXL_SIDE_CHANNEL_HOST"), None)
+            self.assertIsNotNone(host, f"{role} missing VLLM_NIXL_SIDE_CHANNEL_HOST")
+            self.assertEqual(host["valueFrom"]["fieldRef"]["fieldPath"], "status.podIP")
+            self.assertIn("VLLM_NIXL_SIDE_CHANNEL_PORT", [e["name"] for e in engine["env"]])
+
+    def test_epp_config_arms_the_pd_decider(self):
+        """PrefillDecode silently serves decode-only unless the PD decider is armed.
+
+        Selective prefix-based-pd-decider needs all of: nonCachedTokens > 0 (0 =
+        disabled), the approx-prefix-cache-producer plugin that populates the
+        attribute it reads, and that producer pinned to autoTune: false (the
+        true default never populates). And it must NOT carry the prepareDataPlugins
+        feature gate, which the v0.8.0 EPP image rejects and crashloops on.
+        """
+        cfg = self._apply()["epp-config"].spec.forProvider.manifest["data"]["pd-epp-config.yaml"]
+        self.assertIn("prefix-based-pd-decider", cfg)
+        self.assertIn("nonCachedTokens: 16", cfg)
+        self.assertIn("approx-prefix-cache-producer", cfg)
+        self.assertIn("autoTune: false", cfg)
+        self.assertNotIn("nonCachedTokens: 0", cfg)
+        self.assertNotIn("prepareDataPlugins", cfg)
+
     def test_epp_role_watches_inferenceobjectives(self):
         """The picker watches InferenceObjectives (GIE x-k8s.io group); the Role must allow it."""
         rules = self._apply()["epp-role"].spec.forProvider.manifest["rules"]
@@ -806,6 +840,30 @@ class TestUnifiedRouting(unittest.TestCase):
         self.assertIn(base.SERVICE_KEY, out)
         self.assertIn(base.ROUTE_KEY, out)
         self.assertNotIn("inference-pool", out)
+
+
+class TestKvBlockSize(unittest.TestCase):
+    """The EPP prefix-cache producer's blockSizeTokens is derived best-effort
+    from the engine flags (#179) so it matches the engine's KV block size."""
+
+    def test_defaults_to_16_when_absent(self):
+        self.assertEqual(routing._kv_block_size([]), 16)
+        self.assertEqual(routing._kv_block_size(["--model=/mnt/models"]), 16)
+
+    def test_reads_vllm_block_size(self):
+        self.assertEqual(routing._kv_block_size(["--block-size", "32"]), 32)
+        self.assertEqual(routing._kv_block_size(["--model=/m", "--block-size=8"]), 8)
+
+    def test_reads_sglang_page_size(self):
+        self.assertEqual(routing._kv_block_size(["--page-size=64"]), 64)
+
+    def test_non_integer_falls_back_to_default(self):
+        self.assertEqual(routing._kv_block_size(["--block-size", "auto"]), 16)
+
+    def test_rendered_config_uses_block_size(self):
+        cfg = routing._epp_config_yaml(32)
+        self.assertIn("blockSizeTokens: 32", cfg)
+        self.assertNotIn("BLOCK_SIZE_TOKENS", cfg)
 
 
 if __name__ == "__main__":
