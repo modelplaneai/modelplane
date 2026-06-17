@@ -82,7 +82,7 @@ regenerates them, so regenerate them by building after changing an XRD or
 bumping a dependency:
 
 ```bash
-nix run .#build-crossplane
+nix run .#build
 ```
 
 The build deletes and recreates the whole `schemas/python/` tree, so models for
@@ -101,23 +101,23 @@ to verify they pass.
 
 ### Running locally
 
-`nix run .#dev` builds the project and runs it on a local development control
+`nix run .#run` builds the project and runs it on a local development control
 plane: a [KIND](https://kind.sigs.k8s.io/) cluster with its own OCI registry,
 created and managed by the Crossplane CLI. It builds the functions, loads the
 packages into the local registry, installs the Configuration, and points
 `kubectl` at the cluster. Iterate by editing a function and rerunning it; tear
-down with `kind delete cluster --name crossplane-modelplane`.
+down with `nix run .#stop`.
 
 ```bash
-nix run .#dev
+nix run .#run
 ```
 
 This needs a running Docker-compatible container runtime (for KIND and the local
 registry). It works on Linux and macOS: the function images are Linux images,
 but they're assembled entirely from data — a Python interpreter and dependency
 wheels fetched prebuilt, plus our own source — so they build on any host with no
-cross-compilation or emulation. The same is true of `nix run .#build-crossplane`,
-which builds the project's packages without running them.
+cross-compilation or emulation. The same is true of `nix run .#build`, which
+builds the project's packages without running them.
 
 ## Working on the docs site
 

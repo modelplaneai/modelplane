@@ -68,7 +68,7 @@
   #
   # docker-credential-up remains available for resolving any dependencies that
   # require registry authentication.
-  buildCrossplane =
+  build =
     {
       crossplane,
       dockerCredentialUp,
@@ -79,7 +79,7 @@
       meta.description = "Build the Crossplane project and regenerate schemas";
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
-          name = "modelplane-build-crossplane";
+          name = "modelplane-build";
           runtimeInputs = [
             crossplane
             dockerCredentialUp
@@ -102,7 +102,7 @@
   # with its own OCI registry, managed by `crossplane project run`). This is
   # the fast local iteration loop: no real registry push - the CLI sideloads
   # packages into the local registry itself.
-  dev =
+  run =
     {
       crossplane,
       dockerCredentialUp,
@@ -113,7 +113,7 @@
       meta.description = "Build and run the project in a local dev control plane";
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
-          name = "modelplane-dev";
+          name = "modelplane-run";
           runtimeInputs = [
             crossplane
             dockerCredentialUp
@@ -135,8 +135,8 @@
     };
 
   # Push the Crossplane project to a registry. Uses a dev version tag unless
-  # --tag is passed, e.g.: nix run .#push-crossplane -- --tag v0.1.0
-  pushCrossplane =
+  # --tag is passed, e.g.: nix run .#push -- --tag v0.1.0
+  push =
     {
       crossplane,
       dockerCredentialUp,
@@ -147,7 +147,7 @@
       meta.description = "Push the Crossplane project to a registry";
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
-          name = "modelplane-push-crossplane";
+          name = "modelplane-push";
           runtimeInputs = [
             crossplane
             dockerCredentialUp
@@ -159,6 +159,29 @@
               set -- --tag "${version}" "$@"
             fi
             crossplane project push "$@"
+          '';
+        }
+      );
+    };
+
+  # Tear down the local dev control plane created by `nix run .#run`, removing
+  # its KIND cluster and OCI registry.
+  stop =
+    { crossplane }:
+    {
+      type = "app";
+      meta.description = "Tear down the local dev control plane";
+      program = pkgs.lib.getExe (
+        pkgs.writeShellApplication {
+          name = "modelplane-stop";
+          runtimeInputs = [
+            crossplane
+            pkgs.kind
+            pkgs.docker-client
+          ];
+          inheritPath = false;
+          text = ''
+            crossplane project stop "$@"
           '';
         }
       );

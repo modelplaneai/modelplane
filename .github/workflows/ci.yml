@@ -51,5 +51,5 @@ jobs:
 
       - name: Build and Push
         run: |
-          nix run .#build-crossplane --print-build-logs
-          nix run .#push-crossplane --print-build-logs
+          nix run .#build --print-build-logs
+          nix run .#push --print-build-logs

@@ -164,20 +164,21 @@
         in
         {
           fix = apps.fix { };
-          build-crossplane = apps.buildCrossplane {
+          build = apps.build {
             inherit crossplane functionsPkg;
             dockerCredentialUp = pkgs.upbound;
           };
-          push-crossplane = apps.pushCrossplane {
+          push = apps.push {
             inherit crossplane version;
             dockerCredentialUp = pkgs.upbound;
           };
-          docs-serve = apps.docsServe { };
-          docs-generate = apps.docsGenerate { };
-          dev = apps.dev {
+          run = apps.run {
             inherit crossplane functionsPkg;
             dockerCredentialUp = pkgs.upbound;
           };
+          stop = apps.stop { inherit crossplane; };
+          docs-serve = apps.docsServe { };
+          docs-generate = apps.docsGenerate { };
         }
       );
 
@@ -216,9 +217,9 @@
               echo "Modelplane development shell"
               echo ""
               echo "  nix flake check               nix run .#fix"
-              echo "  nix run .#build-crossplane    nix run .#push-crossplane"
-              echo "  nix run .#dev                 nix run .#docs-serve"
-              echo "  nix run .#docs-generate"
+              echo "  nix run .#build               nix run .#push"
+              echo "  nix run .#run                 nix run .#stop"
+              echo "  nix run .#docs-serve          nix run .#docs-generate"
               echo ""
             '';
           };
