@@ -116,29 +116,37 @@ def _epp_config_yaml(block_size: int) -> str:
     return _EPP_CONFIG_TEMPLATE.replace("BLOCK_SIZE_TOKENS", str(block_size))
 
 
+def _flag_value(args: list, *flags: str) -> str | None:
+    """Best-effort value of a `--flag value` or `--flag=value` engine arg.
+
+    Engine flags belong to the user (per #137); callers only peek. Returns the
+    first match's raw string value, or None if no flag is present.
+    """
+    for i, a in enumerate(args or []):
+        for flag in flags:
+            if a == flag and i + 1 < len(args):
+                return args[i + 1]
+            if a.startswith(flag + "="):
+                return a.split("=", 1)[1]
+    return None
+
+
 def _kv_block_size(engine_args: list) -> int:
     """HACK: best-effort read the engine's KV block size from its flags so the
     EPP prefix-cache producer chunks prefixes the same way the engine does.
 
-    Engine flags belong to the user (per #137); we peek for the common ones —
-    vLLM's --block-size and SGLang's --page-size — and fall back to vLLM's
-    default of 16. A mismatch silently degrades prefix-cache routing with no
-    error (#179), so deriving it beats hardcoding. The durable fix is a
-    typed/overridable knob on the serving block (#179); until then, this peek.
+    We peek for the common flags — vLLM's --block-size and SGLang's --page-size
+    — and fall back to vLLM's default of 16. A mismatch silently degrades
+    prefix-cache routing with no error (#179), so deriving it beats hardcoding.
+    The durable fix is a typed/overridable knob on the serving block (#179);
+    until then, this peek.
     """
-    args = engine_args or []
-    for i, a in enumerate(args):
-        for flag in ("--block-size", "--page-size"):
-            if a == flag and i + 1 < len(args):
-                try:
-                    return int(args[i + 1])
-                except ValueError:
-                    pass
-            elif a.startswith(flag + "="):
-                try:
-                    return int(a.split("=", 1)[1])
-                except ValueError:
-                    pass
+    raw = _flag_value(engine_args, "--block-size", "--page-size")
+    if raw is not None:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
     return _DEFAULT_KV_BLOCK_SIZE
 
 
@@ -190,13 +198,10 @@ def _disaggregated(
 
     Engine-image prerequisite: PrefillDecode needs the engine image to ship the
     NIXL runtime. vLLM's NixlConnector (and SGLang's PD transfer) import the
-    `nixl` package, which the base vllm/vllm-openai image does NOT include —
-    engines crashloop at startup with "NIXL is not available". Use a
-    kv-connector-enabled image: build vLLM with `INSTALL_KV_CONNECTORS=true`
-    (installs nixl + lmcache + mooncake, per vLLM's requirements/kv_connectors.txt)
-    or use a pre-built one such as lmcache/vllm-openai. Engine images are the
-    user's (#137), so Modelplane can't bundle this; it is a deployment
-    prerequisite, not something the composition provides.
+    `nixl` package, so an image without it crashloops at startup with "NIXL is
+    not available". Recent vanilla vllm/vllm-openai images ship NIXL, so pin a
+    current tag. Engine images are the user's (#137), so Modelplane can't bundle
+    this; it is a deployment prerequisite, not something the composition provides.
     """
     name = replica.metadata.name
     prefill = next(e for e in replica.spec.engines if e.phase == "Prefill")
@@ -253,13 +258,8 @@ def _decode_port(engine: dict) -> int:
     expects _DECODE_ENGINE_PORT. The user owns the engine flags (per #137), so we
     also best-effort honor an explicit --port override rather than assume one.
     """
-    args = engine.get("args", [])
-    for i, a in enumerate(args):
-        if a.startswith("--port="):
-            return int(a.split("=", 1)[1])
-        if a == "--port" and i + 1 < len(args):
-            return int(args[i + 1])
-    return _DECODE_ENGINE_PORT
+    raw = _flag_value(engine.get("args", []), "--port")
+    return int(raw) if raw is not None else _DECODE_ENGINE_PORT
 
 
 def _add_sidecar_to_decode(obj: k8sobjv1alpha1.Object) -> None:
