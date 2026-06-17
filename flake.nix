@@ -79,14 +79,6 @@
         "aarch64-darwin"
       ];
 
-      # Function images contain Linux Python interpreters. They can only be
-      # built on Linux hosts. macOS users can still use apps, checks, and the
-      # dev shell.
-      linuxSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-      ];
-
       # Semantic version for packages. Uses buildVersion if set by CI,
       # otherwise generates a dev version from git metadata.
       version =
@@ -133,32 +125,33 @@
 
       # Build the docs site with nix build .#docs.
       #
-      # Function runtime images contain Linux Python interpreters, so they only
-      # build on Linux: build individual images with nix build .#<function>-<arch>,
+      # Function runtime images are Linux images, but they're assembled purely
+      # from data (a cached interpreter, prebuilt wheels, and our source), so
+      # they build on any host - including macOS - with no cross-compilation or
+      # emulation. Build individual images with nix build .#<function>-<arch>,
       # or all of them with nix build .#functions.
       packages = forAllSystems (
-        { pkgs, system, ... }:
+        { pkgs, ... }:
         let
           docs = import ./nix/docs.nix { inherit pkgs self; };
+          functions = import ./nix/functions.nix {
+            inherit
+              pkgs
+              self
+              functionNames
+              pyproject-nix
+              uv2nix
+              pyproject-build-systems
+              ;
+          };
         in
         {
           docs = docs.site;
         }
-        // nixpkgs.lib.optionalAttrs (builtins.elem system linuxSystems) (
-          let
-            functions = import ./nix/functions.nix {
-              inherit
-                pkgs
-                self
-                functionNames
-                pyproject-nix
-                uv2nix
-                pyproject-build-systems
-                ;
-            };
-          in
-          functions.images // { functions = functions.all; }
-        )
+        // functions.images
+        // {
+          functions = functions.all;
+        }
       );
 
       apps = forAllSystems (
@@ -171,14 +164,19 @@
         in
         {
           fix = apps.fix { };
-          build-crossplane = apps.buildCrossplane {
+          build = apps.build {
             inherit crossplane functionsPkg;
             dockerCredentialUp = pkgs.upbound;
           };
-          push-crossplane = apps.pushCrossplane {
+          push = apps.push {
             inherit crossplane version;
             dockerCredentialUp = pkgs.upbound;
           };
+          run = apps.run {
+            inherit crossplane functionsPkg;
+            dockerCredentialUp = pkgs.upbound;
+          };
+          stop = apps.stop { inherit crossplane; };
           docs-serve = apps.docsServe { };
           docs-generate = apps.docsGenerate { };
         }
@@ -219,7 +217,8 @@
               echo "Modelplane development shell"
               echo ""
               echo "  nix flake check               nix run .#fix"
-              echo "  nix run .#build-crossplane    nix run .#push-crossplane"
+              echo "  nix run .#build               nix run .#push"
+              echo "  nix run .#run                 nix run .#stop"
               echo "  nix run .#docs-serve          nix run .#docs-generate"
               echo ""
             '';

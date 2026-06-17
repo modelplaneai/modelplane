@@ -82,7 +82,7 @@ regenerates them, so regenerate them by building after changing an XRD or
 bumping a dependency:
 
 ```bash
-nix run .#build-crossplane
+nix run .#build
 ```
 
 The build deletes and recreates the whole `schemas/python/` tree, so models for
@@ -98,6 +98,26 @@ compare the resulting `RunFunctionResponse` against an expected response via
 
 Add new cases to the function's existing `test_fn.py`. Run `nix flake check`
 to verify they pass.
+
+### Running locally
+
+`nix run .#run` builds the project and runs it on a local development control
+plane: a [KIND](https://kind.sigs.k8s.io/) cluster with its own OCI registry,
+created and managed by the Crossplane CLI. It builds the functions, loads the
+packages into the local registry, installs the Configuration, and points
+`kubectl` at the cluster. Iterate by editing a function and rerunning it; tear
+down with `nix run .#stop`.
+
+```bash
+nix run .#run
+```
+
+This needs a running Docker-compatible container runtime (for KIND and the local
+registry). It works on Linux and macOS: the function images are Linux images,
+but they're assembled entirely from data — a Python interpreter and dependency
+wheels fetched prebuilt, plus our own source — so they build on any host with no
+cross-compilation or emulation. The same is true of `nix run .#build`, which
+builds the project's packages without running them.
 
 ## Working on the docs site
 
@@ -311,6 +331,22 @@ This makes the scheduler skip environments without a `Ready=True` condition. Whe
 
 The pool-fitting logic moves into a `_best_pool_fit` helper to keep `schedule()` under the branch-count lint threshold. A new `test-model-deployment-not-ready-env` case covers the skip behavior.
 ```
+
+## Releasing
+
+Releases are cut from a release branch and published by the `CI` workflow. To
+release a new minor version, e.g. `v0.1.0`:
+
+1. From the GitHub UI, create a `release-0.1` branch from `main`.
+2. Create a GitHub release targeting that branch, and let the release create the
+   tag `v0.1.0`.
+3. Run the `CI` workflow (Actions → CI → Run workflow) against the `v0.1.0` tag,
+   setting the `tag` input to `v0.1.0`.
+
+The `tag` input makes the workflow push the package with that exact version
+rather than the dev version it derives from git metadata on ordinary runs.
+Patch releases (e.g. `v0.1.1`) reuse the existing `release-0.1` branch: cut the
+release from it and run the workflow against the new tag.
 
 ## Reporting issues
 

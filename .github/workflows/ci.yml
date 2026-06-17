@@ -5,7 +5,17 @@ on:
     branches:
       - main
   pull_request: {}
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Version tag to push the package with, e.g. v0.1.0. Leave empty to
+          push a dev version derived from git metadata. To cut a release, run
+          this workflow against the release tag (e.g. v0.1.0) with this set to
+          the same value.
+        type: string
+        required: false
+        default: ""
 
 # Cancel in-progress runs for the same PR. Runs on main are never cancelled.
 concurrency:
@@ -29,8 +39,13 @@ jobs:
       - name: Check
         run: nix flake check --print-build-logs
 
+  # Pushes the package on every push to main and on any manual run. Both push a
+  # dev version derived from git metadata unless the run supplies a tag input,
+  # which is how releases are cut - see CONTRIBUTING.md.
   push-package:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || github.event_name == 'workflow_dispatch'
     needs: [check]
     runs-on: ubuntu-24.04
 
@@ -49,7 +64,15 @@ jobs:
           username: ${{ secrets.UP_ROBOT_ID }}
           password: ${{ secrets.UP_ROBOT_TOKEN }}
 
+      # With a tag input (a release) push that exact version; otherwise push a
+      # dev version the push app derives from git metadata.
       - name: Build and Push
         run: |
-          nix run .#build-crossplane --print-build-logs
-          nix run .#push-crossplane --print-build-logs
+          nix run .#build --print-build-logs
+          if [ -n "${TAG}" ]; then
+            nix run .#push --print-build-logs -- --tag "${TAG}"
+          else
+            nix run .#push --print-build-logs
+          fi
+        env:
+          TAG: ${{ inputs.tag }}

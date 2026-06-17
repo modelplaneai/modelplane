@@ -48,9 +48,9 @@
     );
   };
 
-  # Build the Crossplane project. On Linux, materialises Nix-built function
-  # runtime images into _output/functions/ before invoking the CLI. The CLI
-  # loads them via the Tarball function source in crossplane-project.yaml.
+  # Build the Crossplane project. Materialises the Nix-built function runtime
+  # images into _output/functions/ before invoking the CLI, which loads them
+  # via the Tarball function source in crossplane-project.yaml.
   #
   # This is also the schema generation entrypoint. crossplane project build
   # generates the Pydantic models under schemas/python/ from both the XRDs in
@@ -68,7 +68,7 @@
   #
   # docker-credential-up remains available for resolving any dependencies that
   # require registry authentication.
-  buildCrossplane =
+  build =
     {
       crossplane,
       dockerCredentialUp,
@@ -79,37 +79,64 @@
       meta.description = "Build the Crossplane project and regenerate schemas";
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
-          name = "modelplane-build-crossplane";
+          name = "modelplane-build";
           runtimeInputs = [
             crossplane
             dockerCredentialUp
             pkgs.coreutils
           ];
           inheritPath = false;
-          text =
-            (
-              if functionsPkg != null then
-                ''
-                  mkdir -p _output
-                  rm -f _output/functions
-                  ln -s ${functionsPkg} _output/functions
-                ''
-              else
-                ''
-                  echo "Note: function image builds are only supported on Linux." >&2
-                ''
-            )
-            + ''
-              rm -rf schemas
-              crossplane project build "$@"
-            '';
+          text = ''
+            mkdir -p _output
+            rm -f _output/functions
+            ln -s ${functionsPkg} _output/functions
+
+            rm -rf schemas
+            crossplane project build "$@"
+          '';
+        }
+      );
+    };
+
+  # Build the project and run it in a local dev control plane (a KIND cluster
+  # with its own OCI registry, managed by `crossplane project run`). This is
+  # the fast local iteration loop: no real registry push - the CLI sideloads
+  # packages into the local registry itself.
+  run =
+    {
+      crossplane,
+      dockerCredentialUp,
+      functionsPkg,
+    }:
+    {
+      type = "app";
+      meta.description = "Build and run the project in a local dev control plane";
+      program = pkgs.lib.getExe (
+        pkgs.writeShellApplication {
+          name = "modelplane-run";
+          runtimeInputs = [
+            crossplane
+            dockerCredentialUp
+            pkgs.coreutils
+            pkgs.kind
+            pkgs.kubectl
+            pkgs.docker-client
+          ];
+          inheritPath = false;
+          text = ''
+            mkdir -p _output
+            rm -f _output/functions
+            ln -s ${functionsPkg} _output/functions
+
+            crossplane project run "$@"
+          '';
         }
       );
     };
 
   # Push the Crossplane project to a registry. Uses a dev version tag unless
-  # --tag is passed, e.g.: nix run .#push-crossplane -- --tag v0.1.0
-  pushCrossplane =
+  # --tag is passed, e.g.: nix run .#push -- --tag v0.1.0
+  push =
     {
       crossplane,
       dockerCredentialUp,
@@ -120,7 +147,7 @@
       meta.description = "Push the Crossplane project to a registry";
       program = pkgs.lib.getExe (
         pkgs.writeShellApplication {
-          name = "modelplane-push-crossplane";
+          name = "modelplane-push";
           runtimeInputs = [
             crossplane
             dockerCredentialUp
@@ -132,6 +159,29 @@
               set -- --tag "${version}" "$@"
             fi
             crossplane project push "$@"
+          '';
+        }
+      );
+    };
+
+  # Tear down the local dev control plane created by `nix run .#run`, removing
+  # its KIND cluster and OCI registry.
+  stop =
+    { crossplane }:
+    {
+      type = "app";
+      meta.description = "Tear down the local dev control plane";
+      program = pkgs.lib.getExe (
+        pkgs.writeShellApplication {
+          name = "modelplane-stop";
+          runtimeInputs = [
+            crossplane
+            pkgs.kind
+            pkgs.docker-client
+          ];
+          inheritPath = false;
+          text = ''
+            crossplane project stop "$@"
           '';
         }
       );

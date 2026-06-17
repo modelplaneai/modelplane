@@ -77,8 +77,8 @@ is sufficient — Crossplane sees the new digests and updates the Functions
 automatically:
 
 ```bash
-nix run .#build-crossplane
-nix run .#push-crossplane              # auto-generates v0.1.0-dev.<count>.g<hash>
+nix run .#build
+nix run .#push                         # auto-generates v0.1.0-dev.<count>.g<hash>
 kubectl patch configuration <name> --type=merge \
   -p '{"spec":{"package":"xpkg.upbound.io/<org>/<project>:<tag>"}}'
 ```
