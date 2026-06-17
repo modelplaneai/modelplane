@@ -99,6 +99,26 @@ compare the resulting `RunFunctionResponse` against an expected response via
 Add new cases to the function's existing `test_fn.py`. Run `nix flake check`
 to verify they pass.
 
+### Running locally
+
+`nix run .#dev` builds the project and runs it on a local development control
+plane: a [KIND](https://kind.sigs.k8s.io/) cluster with its own OCI registry,
+created and managed by the Crossplane CLI. It builds the functions, loads the
+packages into the local registry, installs the Configuration, and points
+`kubectl` at the cluster. Iterate by editing a function and rerunning it; tear
+down with `kind delete cluster --name crossplane-modelplane`.
+
+```bash
+nix run .#dev
+```
+
+This needs a running Docker-compatible container runtime (for KIND and the local
+registry). It works on Linux and macOS: the function images are Linux images,
+but they're assembled entirely from data — a Python interpreter and dependency
+wheels fetched prebuilt, plus our own source — so they build on any host with no
+cross-compilation or emulation. The same is true of `nix run .#build-crossplane`,
+which builds the project's packages without running them.
+
 ## Working on the docs site
 
 The documentation site under `docs/` is a [Hugo](https://gohugo.io/) project.

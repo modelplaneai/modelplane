@@ -174,6 +174,10 @@
           };
           docs-serve = apps.docsServe { };
           docs-generate = apps.docsGenerate { };
+          dev = apps.dev {
+            inherit crossplane functionsPkg;
+            dockerCredentialUp = pkgs.upbound;
+          };
         }
       );
 
@@ -213,7 +217,8 @@
               echo ""
               echo "  nix flake check               nix run .#fix"
               echo "  nix run .#build-crossplane    nix run .#push-crossplane"
-              echo "  nix run .#docs-serve          nix run .#docs-generate"
+              echo "  nix run .#dev                 nix run .#docs-serve"
+              echo "  nix run .#docs-generate"
               echo ""
             '';
           };

@@ -98,6 +98,42 @@
       );
     };
 
+  # Build the project and run it in a local dev control plane (a KIND cluster
+  # with its own OCI registry, managed by `crossplane project run`). This is
+  # the fast local iteration loop: no real registry push - the CLI sideloads
+  # packages into the local registry itself.
+  dev =
+    {
+      crossplane,
+      dockerCredentialUp,
+      functionsPkg,
+    }:
+    {
+      type = "app";
+      meta.description = "Build and run the project in a local dev control plane";
+      program = pkgs.lib.getExe (
+        pkgs.writeShellApplication {
+          name = "modelplane-dev";
+          runtimeInputs = [
+            crossplane
+            dockerCredentialUp
+            pkgs.coreutils
+            pkgs.kind
+            pkgs.kubectl
+            pkgs.docker-client
+          ];
+          inheritPath = false;
+          text = ''
+            mkdir -p _output
+            rm -f _output/functions
+            ln -s ${functionsPkg} _output/functions
+
+            crossplane project run "$@"
+          '';
+        }
+      );
+    };
+
   # Push the Crossplane project to a registry. Uses a dev version tag unless
   # --tag is passed, e.g.: nix run .#push-crossplane -- --tag v0.1.0
   pushCrossplane =
