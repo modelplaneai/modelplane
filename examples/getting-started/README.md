@@ -44,9 +44,17 @@ commands (`record.sh` steps through them). Nothing waits on infra on camera.
 
 ### On camera
 
+`record.sh` is a **self-playing screencast** — it types and runs each command
+itself with reading pauses, so you just start it, screen-capture the terminal,
+and **voice over afterward**:
+
 ```bash
-./record.sh        # press Enter between steps; narrate each beat
+./record.sh
 ```
+
+Tune the pacing for your voiceover with env vars: `READ_PAUSE` (seconds after
+each output, default 6), `TYPE_SPEED` (seconds/char, default 0.03). Do a dry run
+with `STEP=1 ./record.sh` to advance on Enter instead.
 
 Beat 3's `kubectl get modelreplica -o wide` is the climax — it shows the 14B
 placed on both A100 clusters and **not** the L4, purely from the capability
