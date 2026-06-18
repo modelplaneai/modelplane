@@ -50,6 +50,19 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      # Building and pushing the package needs more disk than the runner has
+      # free by default, so reclaim space we don't use.
+      - name: Cleanup Disk
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          tool-cache: true
+          swap-storage: false
+          large-packages: false
+          docker-images: false
+
       - name: Checkout
         uses: actions/checkout@v4
 
