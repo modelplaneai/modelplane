@@ -147,6 +147,13 @@ class Spec(BaseModel):
     """
 
 
+class Cache(BaseModel):
+    storageClassName: constr(max_length=253) | None = None
+    """
+    Name of the Modelplane-managed ReadWriteMany StorageClass composed on this cluster for ModelCache PVCs. ModelCache reads this to target the cache PVC.
+    """
+
+
 class Condition(BaseModel):
     lastTransitionTime: AwareDatetime
     message: str | None = None
@@ -172,13 +179,13 @@ class Secret(BaseModel):
 
 
 class Status(BaseModel):
+    cache: Cache | None = None
+    """
+    Observed ModelCache RWX storage state.
+    """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
-    """
-    efsFileSystemId: str | None = None
-    """
-    ID of the EFS filesystem auto-provisioned for ModelCache RWX storage. Populated once the filesystem is created; compose-inference-cluster pins the modelplane-rwx-efs StorageClass to it.
     """
     secrets: list[Secret] | None = None
     """

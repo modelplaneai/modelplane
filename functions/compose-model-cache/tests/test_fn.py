@@ -39,22 +39,30 @@ def _cache_xr(**hf_extra) -> v1alpha1.ModelCache:
     )
 
 
-def _cluster_dict(name: str, pc: str, *, source: str = "GKE") -> dict:
+def _cluster_dict(name: str, pc: str, *, source: str = "GKE", storage_class: str | None = None) -> dict:
     """An InferenceCluster as Crossplane returns it in a required-resource set.
 
-    No cache block, so the function falls back to the source's XRD default
-    storage class (GKE -> modelplane-rwx, EKS -> modelplane-rwx-efs).
+    The cache PVC's StorageClass comes from status.cache.storageClassName, which
+    the InferenceCluster relays from its backing cluster. The match gate requires
+    both providerConfigRef AND status.cache, so every matchable fixture reports
+    one. Defaults to the source's effective class (GKE -> modelplane-rwx,
+    EKS -> modelplane-rwx-efs) unless overridden.
     """
     blocks = {
         "GKE": {"gke": {"project": "my-project", "region": "us-central1"}},
         "EKS": {"eks": {"region": "us-west-2"}},
     }
+    if storage_class is None:
+        storage_class = "modelplane-rwx-efs" if source == "EKS" else "modelplane-rwx"
     return {
         "apiVersion": "modelplane.ai/v1alpha1",
         "kind": "InferenceCluster",
         "metadata": {"name": name},
         "spec": {"cluster": {"source": source, **blocks[source]}},
-        "status": {"providerConfigRef": {"name": pc}},
+        "status": {
+            "providerConfigRef": {"name": pc},
+            "cache": {"storageClassName": storage_class},
+        },
     }
 
 
@@ -293,8 +301,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
         want2.requirements.resources["clusters"].CopyFrom(_CLUSTERS_SELECTOR)
 
-        # --- Case 3: EKS cluster, no cache block. The PVC falls back to the EFS
-        # default storage class (modelplane-rwx-efs), not the GKE/Filestore one. ---
+        # --- Case 3: EKS cluster reporting an EFS RWX class on status.cache. The
+        # PVC sources its storageClassName from status.cache (modelplane-rwx-efs),
+        # not the GKE/Filestore one. ---
         want3 = fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
@@ -542,7 +551,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 want=want2,
             ),
             Case(
-                name="EKS cluster PVC falls back to the EFS default storage class",
+                name="EKS cluster PVC sources the EFS class from status.cache",
                 req=_req(_cache_xr(), [_cluster_dict("eks-a", "eks-a-pc", source="EKS")]),
                 want=want3,
             ),

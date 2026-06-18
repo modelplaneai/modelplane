@@ -86,6 +86,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "key": "private_key",
                                             },
                                         ],
+                                        "cache": {"storageClassName": "modelplane-rwx"},
                                     },
                                 }
                             ),
@@ -386,6 +387,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     {
                                         "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
                                         "kind": "Network",
+                                        # The external-name annotation carries the
+                                        # provider-generated VPC name, which the
+                                        # function pins the Filestore StorageClass to.
+                                        "metadata": {
+                                            "annotations": {"crossplane.io/external-name": "test-cluster-abc12"},
+                                        },
                                         "spec": {
                                             "forProvider": {
                                                 "project": "my-gcp-project",
@@ -427,6 +434,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "key": "private_key",
                                             },
                                         ],
+                                        "cache": {"storageClassName": "modelplane-rwx"},
                                     },
                                 }
                             ),
@@ -461,6 +469,42 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         },
                                     }
                                 ),
+                            ),
+                            # With the network name known, the managed Filestore
+                            # StorageClass is composed against the cluster's own
+                            # provider-kubernetes ProviderConfig, pinned to the
+                            # observed VPC. StorageClass has no Ready condition,
+                            # so readiness is SuccessfulCreate.
+                            "storage-class-rwx": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    {
+                                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                        "kind": "Object",
+                                        "metadata": {"namespace": "modelplane-system"},
+                                        "spec": {
+                                            "providerConfigRef": {
+                                                "kind": "ProviderConfig",
+                                                "name": "test-cluster-kubeconfig-55b57",
+                                            },
+                                            "readiness": {"policy": "SuccessfulCreate"},
+                                            "forProvider": {
+                                                "manifest": {
+                                                    "apiVersion": "storage.k8s.io/v1",
+                                                    "kind": "StorageClass",
+                                                    "metadata": {"name": "modelplane-rwx"},
+                                                    "provisioner": "filestore.csi.storage.gke.io",
+                                                    "parameters": {
+                                                        "tier": "enterprise",
+                                                        "network": "test-cluster-abc12",
+                                                    },
+                                                    "volumeBindingMode": "Immediate",
+                                                    "allowVolumeExpansion": True,
+                                                },
+                                            },
+                                        },
+                                    }
+                                ),
+                                ready=fnv1.READY_TRUE,
                             ),
                             "subnet": fnv1.Resource(
                                 resource=resource.dict_to_struct(
@@ -695,45 +739,3 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(got),
                     "-want, +got",
                 )
-
-    async def test_status_reports_observed_network_name(self) -> None:
-        """status.network.name surfaces the composed Network's external-name
-        (which carries a provider-generated suffix) so network-scoped consumers
-        can pin to the real VPC name rather than guess it from the XR name."""
-        req = fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        v1alpha1.GKECluster(
-                            metadata=metav1.ObjectMeta(name="test-cluster", namespace="modelplane-system"),
-                            spec=v1alpha1.Spec(
-                                project="my-gcp-project",
-                                region="us-central1",
-                                nodePools=[
-                                    v1alpha1.NodePool(
-                                        name="gpu-pool",
-                                        role="GPU",
-                                        machineType="a2-highgpu-8g",
-                                        gpu=v1alpha1.Gpu(acceleratorType="nvidia-tesla-a100", acceleratorCount=8),
-                                    ),
-                                ],
-                            ),
-                        ).model_dump(exclude_none=True, mode="json")
-                    ),
-                ),
-                resources={
-                    "network": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
-                                "kind": "Network",
-                                "metadata": {"annotations": {"crossplane.io/external-name": "test-cluster-abc12"}},
-                            }
-                        ),
-                    ),
-                },
-            ),
-        )
-        got = await self.runner.RunFunction(req, None)
-        status = json_format.MessageToDict(got.desired.composite.resource).get("status", {})
-        self.assertEqual(status.get("network", {}).get("name"), "test-cluster-abc12")

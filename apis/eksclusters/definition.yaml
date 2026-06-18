@@ -241,13 +241,18 @@ spec:
                       description: >-
                         Key within the Secret that holds the credential data.
                       maxLength: 253
-              efsFileSystemId:
-                type: string
+              cache:
+                type: object
                 description: >-
-                  ID of the EFS filesystem auto-provisioned for ModelCache RWX
-                  storage. Populated once the filesystem is created;
-                  compose-inference-cluster pins the modelplane-rwx-efs
-                  StorageClass to it.
+                  Observed ModelCache RWX storage state.
+                properties:
+                  storageClassName:
+                    type: string
+                    description: >-
+                      Name of the Modelplane-managed ReadWriteMany StorageClass
+                      composed on this cluster for ModelCache PVCs. ModelCache
+                      reads this to target the cache PVC.
+                    maxLength: 253
             type: object
         required:
         - spec

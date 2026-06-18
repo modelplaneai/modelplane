@@ -65,28 +65,16 @@ _JOB_TTL_SECONDS = 180
 # managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
 _JOB_MANAGEMENT = ["Observe", "Create", "Update", "LateInitialize"]
 
-# Per-source default RWX storage class, mirroring the InferenceCluster XRD
-# defaults (GKE/Existing -> Filestore-backed modelplane-rwx; EKS -> EFS-backed
-# modelplane-rwx-efs). Used only when a cluster omits its cache block entirely:
-# Pydantic doesn't apply the nested storageClassName default in that case, so a
-# flat "modelplane-rwx" fallback would point an EKS PVC at a non-existent class.
-_DEFAULT_STORAGE_CLASS = {"GKE": "modelplane-rwx", "EKS": "modelplane-rwx-efs", "Existing": "modelplane-rwx"}
 
-
-def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str:
-    """RWX storage class for the cache PVC, from the InferenceCluster's
-    per-source cache config, falling back to the source's XRD default."""
-    c = cluster.spec.cluster
-    cache = None
-    if c.source == "GKE" and c.gke:
-        cache = c.gke.cache
-    elif c.source == "EKS" and c.eks:
-        cache = c.eks.cache
-    elif c.source == "Existing" and c.existing:
-        cache = c.existing.cache
-    if cache and cache.storageClassName:
-        return cache.storageClassName
-    return _DEFAULT_STORAGE_CLASS.get(c.source, "modelplane-rwx")
+def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str | None:
+    """RWX storage class for the cache PVC, from the cluster's
+    status.cache.storageClassName. The InferenceCluster reports the
+    Modelplane-managed class for provisioned (GKE/EKS) clusters and the
+    user-supplied class for Existing clusters. None until the cluster reports
+    it - the cache gates on it, so a PVC never references an undecided class."""
+    if cluster.status and cluster.status.cache and cluster.status.cache.storageClassName:
+        return cluster.status.cache.storageClassName
+    return None
 
 
 # A completion marker written only after a fully successful download. The Job
@@ -200,8 +188,15 @@ class Composer:
         return True
 
     def match_clusters(self) -> list[icv1alpha1.InferenceCluster]:
-        """Clusters that have finished provisioning (providerConfigRef set)."""
-        return [c for c in self.clusters if c.status and c.status.providerConfigRef and c.status.providerConfigRef.name]
+        """Clusters ready to cache onto: provisioned (providerConfigRef set)
+        and reporting an effective RWX StorageClass (status.cache). Gating on
+        the StorageClass means the cache PVC never references a class the
+        cluster hasn't decided on yet."""
+        return [
+            c
+            for c in self.clusters
+            if c.status and c.status.providerConfigRef and c.status.providerConfigRef.name and _storage_class(c)
+        ]
 
     def compose_cluster_resources(self, cluster: icv1alpha1.InferenceCluster, phase: str) -> None:
         """Compose the PVC always, and the hydration Job until the cluster is Ready.

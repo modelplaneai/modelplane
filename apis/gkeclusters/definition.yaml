@@ -221,18 +221,18 @@ spec:
                       description: >-
                         Key within the Secret that holds the credential data.
                       maxLength: 253
-              network:
+              cache:
                 type: object
                 description: >-
-                  The VPC network this cluster runs in. Consumers pin
-                  network-scoped resources (e.g. the ModelCache Filestore
-                  StorageClass) to this name. Populated once the composed
-                  Network is observed; the name carries the provider's
-                  generated suffix, so it can't be derived from the XR name.
+                  Observed ModelCache RWX storage state.
                 properties:
-                  name:
+                  storageClassName:
                     type: string
-                    description: Name of the composed VPC network.
+                    description: >-
+                      Name of the Modelplane-managed ReadWriteMany StorageClass
+                      composed on this cluster for ModelCache PVCs. ModelCache
+                      reads this to target the cache PVC.
+                    maxLength: 253
             type: object
         required:
         - spec

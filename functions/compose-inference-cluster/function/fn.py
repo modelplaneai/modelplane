@@ -27,7 +27,6 @@ from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alp
 from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
-from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.crossplane.protection.clusterusage import v1beta1 as clusterusagev1beta1
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -235,14 +234,6 @@ class Composer:
         if gke_ready and kubeconfig_secret:
             self.compose_cluster_provider_config(kubeconfig_secret.name, kubeconfig_secret.key, sa_key)
 
-            provider_config = self.observed_provider_config_name()
-            # Gate on the real network name: the GKECluster reports it only once
-            # its Network is observed. The StorageClass can't pin to the bare XR
-            # name — the VPC name carries a provider-generated suffix.
-            network_name = self.gke_network_name()
-            if network_name:
-                self.compose_rwx_storage_class(gke, provider_config, network_name)
-
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready, backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
@@ -280,14 +271,6 @@ class Composer:
 
         if eks_ready and kubeconfig:
             self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
-
-            provider_config = self.observed_provider_config_name()
-            # Gate on the real filesystem id: the EKSCluster reports it only once
-            # its EFS filesystem is observed. The StorageClass can't pin to the
-            # bare XR name — the id carries a provider-generated suffix.
-            filesystem_id = self.eks_efs_filesystem_id()
-            if filesystem_id:
-                self.compose_efs_storage_class(eks, provider_config, filesystem_id)
 
         backend_secrets = self.resolve_eks_backend_secrets(eks_ready, backend_exists)
         if backend_secrets or backend_exists:
@@ -371,117 +354,6 @@ class Composer:
         )
         self.rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
 
-    def observed_provider_config_name(self):
-        """The ClusterProviderConfig name to reference from the StorageClass
-        Object. Prefer the observed resource's actual name so it stays correct
-        if the naming scheme ever changes; fall back to the derived name on the
-        first reconcile, before the CPC is observed."""
-        observed = self.req.observed.resources.get("cluster-provider-config-kubernetes")
-        if observed:
-            cpc = k8scpcv1alpha1.ClusterProviderConfig.model_validate(resource.struct_to_dict(observed.resource))
-            if cpc.metadata and cpc.metadata.name:
-                return cpc.metadata.name
-        return resource.child_name(self.xr.metadata.name, "cluster-kubeconfig")
-
-    def gke_network_name(self):
-        """The VPC name the GKECluster reports in status, for pinning the
-        Filestore StorageClass to the right network.
-
-        Read from the observed GKECluster's status.network.name (populated by
-        compose-gke-cluster from the composed Network's external-name). The GCP
-        VPC name carries a provider-generated suffix, so it cannot be derived
-        from the XR name. None until the GKECluster observes its network; the
-        StorageClass is gated on this being present.
-        """
-        observed = self.req.observed.resources.get("gke-cluster")
-        if not observed:
-            return None
-        gke = gkev1alpha1.GKECluster.model_validate(resource.struct_to_dict(observed.resource))
-        if gke.status and gke.status.network and gke.status.network.name:
-            return gke.status.network.name
-        return None
-
-    def eks_efs_filesystem_id(self):
-        """The EFS filesystem id the EKSCluster reports in status, for pinning
-        the modelplane-rwx-efs StorageClass. The id carries a provider-generated
-        suffix, so it cannot be derived from the XR name. None until the
-        EKSCluster observes its filesystem; the StorageClass is gated on it.
-        """
-        observed = self.req.observed.resources.get("eks-cluster")
-        if not observed:
-            return None
-        eks = eksv1alpha1.EKSCluster.model_validate(resource.struct_to_dict(observed.resource))
-        if eks.status and eks.status.efsFileSystemId:
-            return eks.status.efsFileSystemId
-        return None
-
-    def compose_rwx_storage_class(self, gke, provider_config: str, network_name: str):
-        """Compose a Filestore RWX StorageClass when the GKE cache uses the
-        managed default. Filestore CSI defaults to the `default` VPC → PVCs
-        hang; pin parameters.network to our VPC. StorageClass has no Ready
-        condition, so use SuccessfulCreate (DeriveFromObject would hang)."""
-        cache = gke.cache
-        sc_name = cache.storageClassName if (cache and cache.storageClassName) else "modelplane-rwx"
-        if sc_name != "modelplane-rwx":
-            return  # admin-provided class; don't manage it
-        manifest = {
-            "apiVersion": "storage.k8s.io/v1",
-            "kind": "StorageClass",
-            "metadata": {"name": sc_name},
-            "provisioner": "filestore.csi.storage.gke.io",
-            "parameters": {"tier": "enterprise", "network": network_name},
-            "volumeBindingMode": "Immediate",
-            "allowVolumeExpansion": True,
-        }
-        resource.update(
-            self.rsp.desired.resources["storage-class-rwx"],
-            k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=provider_config,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
-                    forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
-                ),
-            ),
-        )
-        self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
-
-    def compose_efs_storage_class(self, eks, provider_config: str, filesystem_id: str):
-        """Compose the EFS RWX StorageClass when the EKS cache uses the managed
-        default. EFS dynamic provisioning creates an access point per PVC inside
-        the pre-existing filesystem, pinned by fileSystemId. StorageClass has no
-        Ready condition, so use SuccessfulCreate (DeriveFromObject would hang)."""
-        cache = eks.cache
-        sc_name = cache.storageClassName if (cache and cache.storageClassName) else "modelplane-rwx-efs"
-        if sc_name != "modelplane-rwx-efs":
-            return  # admin-provided class; don't manage it
-        manifest = {
-            "apiVersion": "storage.k8s.io/v1",
-            "kind": "StorageClass",
-            "metadata": {"name": sc_name},
-            "provisioner": "efs.csi.aws.com",
-            "parameters": {"provisioningMode": "efs-ap", "fileSystemId": filesystem_id, "directoryPerms": "700"},
-            "volumeBindingMode": "Immediate",
-        }
-        resource.update(
-            self.rsp.desired.resources["storage-class-rwx-efs"],
-            k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
-                spec=k8sobjv1alpha1.Spec(
-                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
-                        kind="ClusterProviderConfig",
-                        name=provider_config,
-                    ),
-                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
-                    forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
-                ),
-            ),
-        )
-        self.rsp.desired.resources["storage-class-rwx-efs"].ready = fnv1.READY_TRUE
-
     def write_status(self, gpu_pools):
         """Write the InferenceCluster status."""
         status = v1alpha1.Status(
@@ -491,6 +363,9 @@ class Composer:
             namespace=_NAMESPACE_SYSTEM,
             gpuPools=gpu_pools,
         )
+        cache_storage_class = self.observed_cache_storage_class()
+        if cache_storage_class:
+            status.cache = v1alpha1.CacheModel(storageClassName=cache_storage_class)
         gateway_address = self.observed_gateway_address()
         if gateway_address:
             status.gateway = v1alpha1.Gateway(address=gateway_address)
@@ -804,3 +679,30 @@ class Composer:
             return None
         d = resource.struct_to_dict(observed.resource)
         return d.get("status", {}).get("gateway", {}).get("address")
+
+    def observed_cache_storage_class(self):
+        """The effective ModelCache RWX StorageClass name, relayed up so
+        ModelCache can target it without reaching into the cluster XRs.
+
+        For provisioned (GKE/EKS) clusters it comes from the backing cluster's
+        status.cache.storageClassName, which reports the Modelplane-managed
+        class. For Existing clusters there is no cluster XR, so it's the
+        user-supplied name. None until the cluster XR reports it."""
+        cluster = self.xr.spec.cluster
+        if cluster.source == CLUSTER_SOURCE_GKE:
+            return self._observed_cluster_cache_class("gke-cluster", gkev1alpha1.GKECluster)
+        if cluster.source == CLUSTER_SOURCE_EKS:
+            return self._observed_cluster_cache_class("eks-cluster", eksv1alpha1.EKSCluster)
+        if cluster.source == CLUSTER_SOURCE_EXISTING and cluster.existing and cluster.existing.cache:
+            return cluster.existing.cache.storageClassName
+        return None
+
+    def _observed_cluster_cache_class(self, key, model):
+        """Read status.cache.storageClassName from an observed cluster XR."""
+        observed = self.req.observed.resources.get(key)
+        if not observed:
+            return None
+        cluster = model.model_validate(resource.struct_to_dict(observed.resource))
+        if cluster.status and cluster.status.cache and cluster.status.cache.storageClassName:
+            return cluster.status.cache.storageClassName
+        return None

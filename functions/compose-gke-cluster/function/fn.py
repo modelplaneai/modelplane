@@ -12,6 +12,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1
 from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from models.io.upbound.m.gcp.cloudplatform.projectiammember import v1beta1 as iamv1beta1
@@ -57,6 +58,15 @@ _SECRET_KEY_GCP_SA = "private_key"
 
 # Identity type for GCP service account credentials.
 _IDENTITY_TYPE_GCP = "GoogleApplicationCredentials"
+
+# Annotation the provider sets on a managed resource with its external name
+# (the cloud-assigned name). Read from the Network to learn its VPC name.
+_ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
+
+# Name of the RWX StorageClass Modelplane composes for ModelCache when the
+# user doesn't bring their own. Backed by Filestore Enterprise, pinned to the
+# cluster's VPC (Filestore CSI defaults to the `default` VPC otherwise).
+_MANAGED_STORAGE_CLASS = "modelplane-rwx"
 
 # GKE node configuration.
 _GKE_IMAGE_TYPE = "COS_CONTAINERD"
@@ -106,6 +116,7 @@ class Composer:
         self.compose_service_account()
         self.compose_iam_binding()
         self.compose_provider_configs()
+        self.compose_storage_class()
         self.write_status()
         self.mark_readiness()
 
@@ -393,6 +404,42 @@ class Composer:
             ),
         )
 
+    def compose_storage_class(self):
+        """Compose the Filestore RWX StorageClass on the workload cluster.
+        Gated on the network name: Filestore CSI defaults to the `default` VPC
+        → PVCs hang, so pin parameters.network to our VPC; the VPC name carries
+        a provider-generated suffix, known only once the Network is observed.
+        The Object is applied through the cluster's own provider-kubernetes
+        ProviderConfig. StorageClass has no Ready condition, so use
+        SuccessfulCreate (DeriveFromObject would hang)."""
+        network_name = self._observed_network_name()
+        if not network_name:
+            return
+        manifest = {
+            "apiVersion": "storage.k8s.io/v1",
+            "kind": "StorageClass",
+            "metadata": {"name": _MANAGED_STORAGE_CLASS},
+            "provisioner": "filestore.csi.storage.gke.io",
+            "parameters": {"tier": "enterprise", "network": network_name},
+            "volumeBindingMode": "Immediate",
+            "allowVolumeExpansion": True,
+        }
+        resource.update(
+            self.rsp.desired.resources["storage-class-rwx"],
+            k8sobjv1alpha1.Object(
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ProviderConfig",
+                        name=_kubeconfig_secret_name(self.xr),
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
+                    forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
+                ),
+            ),
+        )
+        self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
+
     def write_status(self):
         status = v1alpha1.Status(
             secrets=[
@@ -407,13 +454,11 @@ class Composer:
                     key=_SECRET_KEY_GCP_SA,
                 ),
             ],
+            # The RWX StorageClass Modelplane composes for ModelCache.
+            # Published immediately so ModelCache can target it; the class may
+            # still be materialising on the workload cluster.
+            cache=v1alpha1.Cache(storageClassName=_MANAGED_STORAGE_CLASS),
         )
-        # Surface the composed VPC's real name so network-scoped consumers (the
-        # ModelCache Filestore StorageClass) can pin to it. The provider-assigned
-        # name carries a generated suffix, so it can't be derived from the XR name.
-        network_name = self._observed_network_name()
-        if network_name:
-            status.network = v1alpha1.Network(name=network_name)
         resource.update_status(self.rsp.desired.composite, status)
 
     def _observed_network_name(self):
@@ -423,9 +468,10 @@ class Composer:
         observed = self.req.observed.resources.get("network")
         if not observed:
             return None
-        manifest = resource.struct_to_dict(observed.resource)
-        annotations = manifest.get("metadata", {}).get("annotations", {}) or {}
-        return annotations.get("crossplane.io/external-name") or None
+        network = networkv1beta1.Network.model_validate(resource.struct_to_dict(observed.resource))
+        if not network.metadata or not network.metadata.annotations:
+            return None
+        return network.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME) or None
 
     def mark_readiness(self):
         """Mark composed resources as ready based on their observed conditions."""
