@@ -1,4 +1,4 @@
-# Stage 0 — Get started on a single cluster.
+# Part 1 — Create your first inference platform and model deployment (GKE).
 #
 # One starter GPU cluster (1x L4), one small model, one endpoint. Apply this,
 # wait for the cluster + deployment to go Ready, and curl the ModelService.
@@ -6,7 +6,8 @@
 #   kubectl apply -f stage0-single-cluster.yaml
 #   kubectl -n ml-team get inferencecluster,modeldeployment,modelservice
 #
-# Set the project to yours.
+# GKE twin of Rae's EKS "first-deployment" guide: same narrative and same small
+# model, just GKE provisioning. Set the project to yours.
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
@@ -54,10 +55,12 @@ spec:
     zones:
     - us-central1-a
 ---
+# The ML team asks for the hardware its model needs (here, room for a small
+# model) and Modelplane places the replica. Any L4 satisfies `>= 20Gi`.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
-  name: qwen-7b
+  name: qwen-demo
   namespace: ml-team
 spec:
   replicas: 1
@@ -70,7 +73,6 @@ spec:
         - name: gpu
           count: 1
           selectors:
-          # "Give me a GPU with room for a 7B model." Fits the L4.
           - cel: |
               device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
       template:
@@ -79,17 +81,20 @@ spec:
           - name: engine
             image: vllm/vllm-openai:v0.11.0
             args:
-            - --model=Qwen/Qwen2.5-7B-Instruct
-            - --served-model-name=qwen-7b
-            - --max-model-len=8192
+            - --model=Qwen/Qwen2.5-0.5B-Instruct
+            - --dtype=half
 ---
+# One front door for the deployment. The path is /<namespace>/<modelservice>/...
+# — here /ml-team/qwen/. The request body's `model` field is the model vLLM
+# serves: the Hugging Face id, since this deployment doesn't set
+# --served-model-name.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:
-  name: qwen-7b
+  name: qwen
   namespace: ml-team
 spec:
   endpoints:
   - selector:
       matchLabels:
-        modelplane.ai/deployment: qwen-7b
+        modelplane.ai/deployment: qwen-demo
