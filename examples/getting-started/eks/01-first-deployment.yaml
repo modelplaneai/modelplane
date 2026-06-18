@@ -47,7 +47,7 @@ spec:
   - name: gpu-l4
     className: l4-1x-g6
     nodeCount: 1
-    minNodeCount: 1
+    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
     maxNodeCount: 1
     zones:
     - us-east-1b

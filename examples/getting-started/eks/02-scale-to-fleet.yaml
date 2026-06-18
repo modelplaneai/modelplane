@@ -65,7 +65,7 @@ spec:
   - name: gpu-l40s
     className: l40s-1x-g6e
     nodeCount: 1
-    minNodeCount: 1
+    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
     maxNodeCount: 1
     zones:
     - us-west-2a
@@ -85,7 +85,7 @@ spec:
   - name: gpu-l40s
     className: l40s-1x-g6e
     nodeCount: 1
-    minNodeCount: 1
+    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
     maxNodeCount: 1
     zones:
     - eu-west-1b

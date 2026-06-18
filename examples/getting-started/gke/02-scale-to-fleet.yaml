@@ -70,8 +70,8 @@ spec:
   - name: gpu-a100
     className: gke-a100-40-1x
     nodeCount: 1
-    minNodeCount: 0
-    maxNodeCount: 2
+    minNodeCount: 1   # keep >=1: the cluster autoscaler can't scale a GPU pool
+    maxNodeCount: 2   # up from 0 for DRA ResourceClaim pods ("cannot allocate all claims")
     zones:
     - us-west1-b
 ---
@@ -91,8 +91,8 @@ spec:
   - name: gpu-a100
     className: gke-a100-40-1x
     nodeCount: 1
-    minNodeCount: 0
-    maxNodeCount: 2
+    minNodeCount: 1   # keep >=1: the cluster autoscaler can't scale a GPU pool
+    maxNodeCount: 2   # up from 0 for DRA ResourceClaim pods ("cannot allocate all claims")
     zones:
     - us-east1-b
 ---
