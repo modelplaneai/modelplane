@@ -48,7 +48,7 @@ spec:
     attributes:
       architecture: { string: Ada Lovelace }
     capacity:
-      memory: { value: "46068Mi" }   # L40S 48GB real reported VRAM — verify on a live ResourceSlice
+      memory: { value: "49152Mi" }   # L40S 48GB (the >=40Gi selector sits below it)
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster

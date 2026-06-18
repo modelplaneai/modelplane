@@ -106,7 +106,7 @@ The ML team doesn't swap models or name clusters. It edits the **same**
 GPU memory. The DRA scheduler finds it fleet-wide.
 
 ```
-            ┌─ starter         L4   · 24Gi ─┐  24Gi — not matched
+            ┌─ starter         L4   · 24Gi ─┐  24Gi · skipped
  memory     ├─ gpu-us-west     A100 · 40Gi ─┤  40Gi ✓
  >= 35Gi    └─ gpu-us-east     A100 · 40Gi ─┘  40Gi ✓
 ```
