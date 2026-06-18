@@ -386,8 +386,12 @@ spec:
                                           type: array
                                           description: >-
                                             Environment variables. Supports
-                                            valueFrom.secretKeyRef for secrets
-                                            like HF_TOKEN.
+                                            valueFrom.secretKeyRef /
+                                            configMapKeyRef for secrets and
+                                            config (like HF_TOKEN), and
+                                            valueFrom.fieldRef for pod fields
+                                            (e.g. status.podIP for vLLM's
+                                            VLLM_HOST_IP on multi-NIC nodes).
                                           items:
                                             type: object
                                             required: [name]
@@ -419,6 +423,19 @@ spec:
                                                         type: string
                                                       optional:
                                                         type: boolean
+                                                  fieldRef:
+                                                    type: object
+                                                    description: >-
+                                                      Reference a pod field via
+                                                      the downward API, e.g.
+                                                      status.podIP, metadata.name,
+                                                      or metadata.namespace.
+                                                    required: [fieldPath]
+                                                    properties:
+                                                      fieldPath:
+                                                        type: string
+                                                      apiVersion:
+                                                        type: string
                                   imagePullSecrets:
                                     type: array
                                     description: >-

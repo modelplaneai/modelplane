@@ -61,6 +61,10 @@ serves; the workers join it, addressing the leader through the
 across the gang (tensor, pipeline, data, or expert parallelism) is up to the
 engine flags you write on each member.
 
+A member's `env` can read pod fields through `valueFrom.fieldRef`: for example,
+setting vLLM's `VLLM_HOST_IP` from `status.podIP`, which multi-NIC RDMA nodes
+need so the engine binds the right interface instead of guessing it.
+
 Multi-node engines require a [ModelCache]({{< ref "model-cache.md" >}}) referenced
 via `spec.modelCacheRef.name`, since every pod in the gang mounts it.
 
