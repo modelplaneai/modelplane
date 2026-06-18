@@ -12,7 +12,7 @@ or cloud SKUs.
 This guide uses a three cluster fleet (one `EU`, two `US`) as a working example,
 then deploys a model to the `US` clusters through a single endpoint. You can
 follow along with any number of clusters in any regions with adequate GPU
-support.
+support. This guide uses AWS EKS, but Modelplane supports GKE as well.
 
 The platform team publishes what hardware is available. The ML team expresses
 what the model needs. Neither team needs to know what the other is doing to
@@ -63,18 +63,8 @@ Provisioning three GPU clusters takes around 15-20 minutes.
 
 - [kind](https://kind.sigs.k8s.io/), [kubectl](https://kubernetes.io/docs/tasks/tools/),
   [Helm](https://helm.sh/docs/intro/install/), and [Docker](https://www.docker.com/)
-
-{{< tabs >}}
-{{< tab "GKE" >}}
-- A GCP project with the GKE API enabled
-- A GCP service account key (JSON) with `Editor` permissions (enough for GKE
-  clusters, VPCs, and IAM bindings)
-{{< /tab >}}
-{{< tab "EKS" >}}
 - An AWS account with permissions to create EKS clusters, VPCs, and IAM roles
 - AWS access key ID and secret access key
-{{< /tab >}}
-{{< /tabs >}}
 
 ---
 
@@ -144,42 +134,6 @@ kubectl wait configuration/modelplane --for=condition=Healthy --timeout=5m
 
 ### Configure cloud credentials
 
-{{< tabs >}}
-{{< tab "GKE" >}}
-
-Create a Kubernetes secret:
-
-{{< editCode >}}
-
-```ini
-kubectl create secret generic gcp-creds \
-  --from-file=credentials=$@</path/to/sa-key.json>$@ \
-  -n crossplane-system
-```
-
-{{< /editCode >}}
-
-{{< editCode >}}
-```bash
-
-kubectl apply -f - <<'EOF'
-apiVersion: gcp.m.upbound.io/v1beta1
-kind: ClusterProviderConfig
-metadata:
-  name: default
-spec:
-  projectID: $@<your-gcp-project>$@ # Update with your GCP Project ID
-  credentials:
-    source: Secret
-    secretRef:
-      namespace: crossplane-system
-      name: gcp-creds
-      key: credentials
-EOF
-```
-{{< /editCode >}}
-{{< /tab >}}
-{{< tab "EKS" >}}
 Create an AWS credentials file:
 
 {{< editCode >}}
@@ -220,8 +174,6 @@ spec:
       key: credentials
 EOF
 ```
-{{< /tab >}}
-{{< /tabs >}}
 
 ### Set up the InferenceGateway
 
@@ -266,103 +218,6 @@ targeted in Part 2. In the next part, you'll target your deployment by labels,
 not specific clusters.
 <!-- vale write-good.TooWordy  = YES -->
 
-{{< tabs >}}
-{{< tab "GKE" >}}
-
-{{< editCode >}}
-```yaml
-apiVersion: modelplane.ai/v1alpha1
-kind: InferenceClass
-metadata:
-  name: t4-1x-n1
-spec:
-  description: "GKE n1-standard-4, 1x NVIDIA T4"
-  provisioning:
-    provider: GKE
-    gke:
-      machineType: n1-standard-4
-      diskSizeGb: 50
-      accelerator:
-        type: nvidia-tesla-t4
-        count: 1
-  devices:
-  - name: gpu
-    claim: DRA
-    driver: gpu.nvidia.com
-    deviceClassName: gpu.nvidia.com
-    count: 1
-    attributes:
-      architecture: { string: Turing }
-    capacity:
-      memory: { value: "16384Mi" }
----
-apiVersion: modelplane.ai/v1alpha1
-kind: InferenceCluster
-metadata:
-  name: gke-europe-west1
-  labels:
-    modelplane.ai/region: eu
-spec:
-  cluster:
-    source: GKE
-    gke:
-      project: $@<your-gcp-project>$@ # Update with your GCP Project ID
-      region: europe-west1
-  nodePools:
-  - name: gpu-t4
-    className: t4-1x-n1
-    nodeCount: 1
-    minNodeCount: 1
-    maxNodeCount: 1
-    zones:
-    - europe-west1-b
----
-apiVersion: modelplane.ai/v1alpha1
-kind: InferenceCluster
-metadata:
-  name: gke-us-central1
-  labels:
-    modelplane.ai/region: us
-spec:
-  cluster:
-    source: GKE
-    gke:
-      project: $@<your-gcp-project>$@ # Update with your GCP Project ID
-      region: us-central1
-  nodePools:
-  - name: gpu-t4
-    className: t4-1x-n1
-    nodeCount: 1
-    minNodeCount: 1
-    maxNodeCount: 1
-    zones:
-    - us-central1-a
----
-apiVersion: modelplane.ai/v1alpha1
-kind: InferenceCluster
-metadata:
-  name: gke-us-east4
-  labels:
-    modelplane.ai/region: us
-spec:
-  cluster:
-    source: GKE
-    gke:
-      project: $@<your-gcp-project>$@ # Update with your GCP Project ID
-      region: us-east4
-  nodePools:
-  - name: gpu-t4
-    className: t4-1x-n1
-    nodeCount: 1
-    minNodeCount: 1
-    maxNodeCount: 1
-    zones:
-    - us-east4-a
-{{< /editCode >}}
-{{< /tab >}}
-
-
-{{< tab "EKS" >}}
 ```bash
 kubectl apply -f - <<'EOF'
 apiVersion: modelplane.ai/v1alpha1
@@ -451,8 +306,6 @@ spec:
     - us-west-2b
 EOF
 ```
-{{< /tab >}}
-{{< /tabs >}}
 
 Modelplane provisions all three clusters in parallel. This takes roughly 20-30
 minutes. Wait until all three are ready to continue:
