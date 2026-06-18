@@ -1,3 +1,8 @@
+# One front door over both deployments. spec.endpoints is a list — one entry per
+# deployment, each selecting the `modelplane.ai/deployment: <name>` label
+# Modelplane stamps on every ModelEndpoint. The HTTPRoute load-balances evenly
+# across all matched endpoints (one per replica), so the unified:P/D traffic
+# split just follows the replica counts.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:
@@ -6,4 +11,6 @@ metadata:
 spec:
   endpoints:
   - selector:
-      matchLabels: { model: qwen }
+      matchLabels: { modelplane.ai/deployment: qwen-unified }
+  - selector:
+      matchLabels: { modelplane.ai/deployment: qwen-pd }

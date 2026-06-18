@@ -134,8 +134,6 @@ kind: ModelDeployment
 metadata:
   name: qwen-unified
   namespace: ml-team
-  labels:
-    model: qwen          # shared label; the ModelService selects on this
 spec:
   replicas: 2
   modelCacheRef:
@@ -166,9 +164,11 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
-      matchLabels:
-        model: qwen      # matches every deployment labelled model: qwen
+  - selector:                         # one entry per deployment Modelplane labels
+      matchLabels:                    # every ModelEndpoint with the deployment name
+        modelplane.ai/deployment: qwen-unified
+  # In Step 1 you add a second entry for qwen-pd — the service then fronts both
+  # and load-balances across all their endpoints.
 ```
 
 </details>
@@ -178,13 +178,13 @@ spec:
 ## Step 1 — stand up a disaggregated variant
 
 You don't touch production. You apply a **second**, independent deployment,
-`qwen-pd`, on the cluster's spare GPU capacity, and turn on disaggregation. It
-carries the same `model: qwen` label, so the moment it's healthy it sits behind
-the shared endpoint as a **small (~1/3) canary** — production's two replicas keep
-serving the rest. (Deployments require at least one replica, so "off" later means
-*removing it from rotation*, not scaling to zero — see Step 4.) The diff from
-unified is tiny: a serving mode, and the single engine becomes a prefill/decode
-pair.
+`qwen-pd`, on the cluster's spare GPU capacity, and turn on disaggregation. You
+add it to the `qwen` `ModelService` as a second endpoint entry, so the moment
+it's healthy it sits behind the shared endpoint as a **small (~1/3) canary** —
+production's two replicas keep serving the rest. (Deployments require at least one
+replica, so "off" later means *removing it from rotation*, not scaling to zero —
+see Step 4.) The diff from unified is tiny: a serving mode, and the single engine
+becomes a prefill/decode pair.
 
 <details>
 <summary><code>qwen-pd.yaml</code> — the disaggregated variant</summary>
@@ -195,8 +195,6 @@ kind: ModelDeployment
 metadata:
   name: qwen-pd
   namespace: ml-team
-  labels:
-    model: qwen          # same shared label — behind the same front door
 spec:
   replicas: 1            # a small canary slice; production keeps serving the rest
   modelCacheRef:
@@ -252,6 +250,15 @@ spec:
 ```
 
 </details>
+
+…and the `qwen` `ModelService` now lists both deployments — one endpoint entry each:
+
+```yaml
+spec:
+  endpoints:
+  - selector: { matchLabels: { modelplane.ai/deployment: qwen-unified } }
+  - selector: { matchLabels: { modelplane.ai/deployment: qwen-pd } }   # added now
+```
 
 ```bash
 demo/prefill-decode/run.sh deploy        # cluster, cache, both deployments, shared ModelService
@@ -349,9 +356,8 @@ Read it like an engineer, not a marketer:
 
 You've decided it earns its place for your latency-sensitive traffic. Take it live
 the way you'd promote any variant — **shift capacity and let traffic follow** —
-not with a big-bang switch. Both deployments already share the `model: qwen`
-label, so the existing `qwen` `ModelService` fronts both; the split is just the
-replica ratio.
+not with a big-bang switch. The `qwen` `ModelService` already lists both
+deployments as endpoints, so it fronts both; the split is just the replica ratio.
 
 **Canary.** `qwen-pd` is at 1 replica from Step 1, unified at 2 — so the moment
 P/D is healthy behind the service, it's already taking **~1/3** of traffic. Watch

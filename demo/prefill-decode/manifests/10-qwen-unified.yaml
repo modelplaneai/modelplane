@@ -3,7 +3,6 @@ kind: ModelDeployment
 metadata:
   name: qwen-unified
   namespace: ml-team
-  labels: { model: qwen }
 spec:
   replicas: 2
   modelCacheRef: { name: qwen }
