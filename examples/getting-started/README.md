@@ -40,10 +40,12 @@ camera.
 ### Pre-flight (off-camera)
 
 1. **Quota:** Part 1 needs L4 in `us-central1`; Part 2 needs A100-40
-   (`a2-highgpu-1g`) in `us-central1` + `us-east1`. A100-80/H100 had **zero**
+   (`a2-highgpu-1g`) in `us-west1` + `us-east1`. A100-80/H100 had **zero**
    quota in `crossplane-playground`. A100 capacity is per-zone — if a zone is
-   stocked out the node pool hangs in `PROVISIONING`; retarget the pool's `zones`
-   to one with capacity (quota is regional and unaffected).
+   stocked out the node pool hangs in `PROVISIONING` with `GCE_STOCKOUT`
+   (`us-central1` was exhausted, which is why Part 2 uses `us-west1`); retarget
+   the pool's `region`/`zones` to one with capacity (quota is regional and
+   unaffected).
 2. **Provision + deploy:**
    ```bash
    CP=gke_crossplane-playground_us-central1-a_modelplane-cp

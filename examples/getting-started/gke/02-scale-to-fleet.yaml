@@ -57,15 +57,15 @@ spec:
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: gpu-us-central
+  name: gpu-us-west
   labels:
-    modelplane.ai/region: us-central
+    modelplane.ai/region: us-west
 spec:
   cluster:
     source: GKE
     gke:
       project: crossplane-playground
-      region: us-central1
+      region: us-west1
   nodePools:
   - name: gpu-a100
     className: gke-a100-40-1x
@@ -73,7 +73,7 @@ spec:
     minNodeCount: 0
     maxNodeCount: 2
     zones:
-    - us-central1-c
+    - us-west1-b
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster

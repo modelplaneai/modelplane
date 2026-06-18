@@ -48,15 +48,15 @@ spec:
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: gpu-us-central
+  name: gpu-us-west
   labels:
-    modelplane.ai/region: us-central
+    modelplane.ai/region: us-west
 spec:
   cluster:
     source: GKE
     gke:
       project: crossplane-playground   # set to your project
-      region: us-central1
+      region: us-west1
   nodePools:
   - name: gpu-a100
     className: gke-a100-40-1x
@@ -64,7 +64,7 @@ spec:
     minNodeCount: 0
     maxNodeCount: 2
     zones:
-    - us-central1-c
+    - us-west1-b
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
@@ -107,7 +107,7 @@ GPU memory. The DRA scheduler finds it fleet-wide.
 
 ```
             ┌─ starter         L4   · 24Gi ─┐  24Gi — not matched
- memory     ├─ gpu-us-central  A100 · 40Gi ─┤  40Gi ✓
+ memory     ├─ gpu-us-west     A100 · 40Gi ─┤  40Gi ✓
  >= 35Gi    └─ gpu-us-east     A100 · 40Gi ─┘  40Gi ✓
 ```
 
@@ -160,7 +160,7 @@ kubectl get modelreplica -n ml-team
 
 ```
 NAME              CLUSTER          SYNCED   READY   COMPOSITION                   AGE
-qwen-demo-7323a   gpu-us-central   True     True    modelreplicas.modelplane.ai    8m
+qwen-demo-7323a   gpu-us-west      True     True    modelreplicas.modelplane.ai    8m
 qwen-demo-92535   gpu-us-east      True     True    modelreplicas.modelplane.ai    8m
 ```
 
