@@ -20,6 +20,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.infrastructure.ekscluster import v1alpha1
 from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -39,8 +40,17 @@ from models.io.upbound.m.aws.eks.cluster import v1beta1 as clusterv1beta1
 from models.io.upbound.m.aws.eks.clusterauth import v1beta1 as clusterauthv1beta1
 from models.io.upbound.m.aws.eks.nodegroup import v1beta1 as ngv1beta1
 from models.io.upbound.m.aws.eks.podidentityassociation import v1beta1 as piav1beta1
+from models.io.upbound.m.aws.iam.policy import v1beta1 as policyv1beta1
 from models.io.upbound.m.aws.iam.role import v1beta1 as rolev1beta1
 from models.io.upbound.m.aws.iam.rolepolicyattachment import v1beta1 as rpav1beta1
+
+# Node group management policies that exclude LateInitialize, so the
+# desiredSize we seed via initProvider is applied only at creation and then
+# left alone. The cluster autoscaler drives the ASG's desired capacity; without
+# this Crossplane would keep reverting desiredSize to nodeCount and fight it.
+# (initProvider is a beta feature gated on enumerating management policies — the
+# default "*" still reconciles forProvider, defeating the purpose.)
+_NODE_GROUP_MANAGEMENT = ["Observe", "Create", "Update", "Delete"]
 
 # System node group injected into every EKS cluster to host control-plane
 # components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
@@ -128,6 +138,42 @@ _ROLE_EFS_CSI = "efs-csi"
 _EFS_CSI_NAMESPACE = "kube-system"
 _EFS_CSI_SERVICE_ACCOUNT = "efs-csi-controller-sa"
 
+# Cluster autoscaler. EKS managed node groups carry a scalingConfig but nothing
+# scales within it on their own — unlike GKE, whose control plane autoscales.
+# We install the Kubernetes cluster autoscaler (DRA rules out Karpenter and EKS
+# Auto Mode) so a pool's maxNodeCount is reachable headroom, matching GKE. The
+# autoscaler runs as cluster-autoscaler in kube-system; Pod Identity binds its
+# IAM role (_ROLE_CLUSTER_AUTOSCALER) to that ServiceAccount, and it discovers
+# node groups by the tags EKS puts on their ASGs.
+_ROLE_CLUSTER_AUTOSCALER = "cluster-autoscaler"
+_AUTOSCALER_NAMESPACE = "kube-system"
+_AUTOSCALER_SERVICE_ACCOUNT = "cluster-autoscaler"
+_AUTOSCALER_CHART_REPO = "https://kubernetes.github.io/autoscaler"
+_AUTOSCALER_CHART_NAME = "cluster-autoscaler"
+_AUTOSCALER_CHART_VERSION = "9.57.0"
+
+# IAM permissions the autoscaler needs to discover node groups and adjust their
+# ASGs' desired capacity. The Full Cluster Autoscaler Features policy from
+# https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md.
+_POLICY_CLUSTER_AUTOSCALER = (
+    '{"Version":"2012-10-17","Statement":['
+    '{"Effect":"Allow","Action":['
+    '"autoscaling:DescribeAutoScalingGroups",'
+    '"autoscaling:DescribeAutoScalingInstances",'
+    '"autoscaling:DescribeLaunchConfigurations",'
+    '"autoscaling:DescribeScalingActivities",'
+    '"ec2:DescribeImages",'
+    '"ec2:DescribeInstanceTypes",'
+    '"ec2:DescribeLaunchTemplateVersions",'
+    '"ec2:GetInstanceTypesFromInstanceRequirements",'
+    '"eks:DescribeNodegroup"'
+    '],"Resource":["*"]},'
+    '{"Effect":"Allow","Action":['
+    '"autoscaling:SetDesiredCapacity",'
+    '"autoscaling:TerminateInstanceInAutoScalingGroup"'
+    '],"Resource":["*"]}]}'
+)
+
 # EKS Addons installed on every cluster. The vpc-cni addon provides pod
 # networking, kube-proxy programs node iptables, and coredns provides
 # in-cluster DNS. All three are required for a functional cluster.
@@ -146,6 +192,22 @@ _MANAGED_STORAGE_CLASS = "modelplane-rwx-efs"
 def _kubeconfig_secret_name(xr):
     """Derive the kubeconfig secret name from the XR."""
     return resource.child_name(xr.metadata.name, "kubeconfig")
+
+
+def _cluster_name(xr):
+    """The EKS cluster's name in AWS.
+
+    Pinned to a deterministic, compose-time-known name (rather than left to a
+    provider-generated external-name) because the cluster autoscaler discovers
+    node groups by the ``k8s.io/cluster-autoscaler/<cluster-name>`` tag EKS puts
+    on their ASGs, so its autoDiscovery.clusterName has to match this exactly.
+
+    The name is derived from the XR's namespace and name. EKSCluster is
+    namespaced but an EKS cluster name is account- and region-global, so the XR
+    name alone would let two clusters in different namespaces collide on one AWS
+    cluster. child_name folds both in and appends a hash for uniqueness.
+    """
+    return resource.child_name(xr.metadata.namespace, xr.metadata.name, "eks")
 
 
 def _subnet_name(xr, az):
@@ -196,6 +258,7 @@ class Composer:
         self.compose_node_groups()
         self.compose_addons()
         self.compose_efs()
+        self.compose_cluster_autoscaler()
         self.compose_provider_configs()
         self.compose_storage_class()
         self.write_status()
@@ -373,6 +436,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["cluster"],
             clusterv1beta1.Cluster(
+                metadata=metav1.ObjectMeta(name=_cluster_name(self.xr)),
                 spec=clusterv1beta1.Spec(
                     forProvider=clusterv1beta1.ForProvider(
                         region=self.xr.spec.region,
@@ -441,8 +505,9 @@ class Composer:
                     matchControllerRef=True,
                     matchLabels={_LABEL_ROLE: _ROLE_NODE},
                 ),
+                # min/max are ours to enforce; desiredSize is seeded via
+                # initProvider below so the autoscaler can move it freely.
                 scalingConfig=ngv1beta1.ScalingConfig(
-                    desiredSize=pool.nodeCount,
                     minSize=pool.minNodeCount,
                     maxSize=pool.maxNodeCount,
                 ),
@@ -483,7 +548,15 @@ class Composer:
 
             resource.update(
                 self.rsp.desired.resources[f"nodegroup-{pool.name}"],
-                ngv1beta1.NodeGroup(spec=ngv1beta1.Spec(forProvider=fp)),
+                ngv1beta1.NodeGroup(
+                    spec=ngv1beta1.Spec(
+                        managementPolicies=_NODE_GROUP_MANAGEMENT,
+                        initProvider=ngv1beta1.InitProvider(
+                            scalingConfig=ngv1beta1.ScalingConfig(desiredSize=pool.nodeCount),
+                        ),
+                        forProvider=fp,
+                    ),
+                ),
             )
 
     def _launch_template_name(self, pool):
@@ -531,6 +604,10 @@ class Composer:
             self.rsp.desired.resources[f"nodegroup-{_SYSTEM_POOL_NAME}"],
             ngv1beta1.NodeGroup(
                 spec=ngv1beta1.Spec(
+                    managementPolicies=_NODE_GROUP_MANAGEMENT,
+                    initProvider=ngv1beta1.InitProvider(
+                        scalingConfig=ngv1beta1.ScalingConfig(desiredSize=_SYSTEM_POOL_NODE_COUNT),
+                    ),
                     forProvider=ngv1beta1.ForProvider(
                         region=self.xr.spec.region,
                         amiType=_AMI_TYPE_SYSTEM,
@@ -545,8 +622,9 @@ class Composer:
                         subnetIdSelector=ngv1beta1.SubnetIdSelector(
                             matchControllerRef=True,
                         ),
+                        # min/max are ours to enforce; desiredSize is seeded via
+                        # initProvider so the autoscaler can move it freely.
                         scalingConfig=ngv1beta1.ScalingConfig(
-                            desiredSize=_SYSTEM_POOL_NODE_COUNT,
                             minSize=_SYSTEM_POOL_MIN_NODE_COUNT,
                             maxSize=_SYSTEM_POOL_MAX_NODE_COUNT,
                         ),
@@ -762,6 +840,116 @@ class Composer:
         )
         self.rsp.desired.resources["storage-class-rwx-efs"].ready = fnv1.READY_TRUE
 
+    def compose_cluster_autoscaler(self):
+        """Provision the Kubernetes cluster autoscaler so GPU pools scale within
+        their min/max, the way GKE's built-in autoscaler does. DRA rules out
+        Karpenter and EKS Auto Mode, so we install the autoscaler ourselves: a
+        custom IAM policy and role bound to its ServiceAccount through Pod
+        Identity (the eks-pod-identity-agent addon, composed for EFS, is reused),
+        and the cluster-autoscaler Helm chart on the cluster's own helm
+        ProviderConfig. The autoscaler auto-discovers node groups by the ASG tags
+        EKS applies (k8s.io/cluster-autoscaler/enabled and .../<cluster-name>)."""
+        region = self.xr.spec.region
+
+        # A custom IAM policy: the autoscaler needs ASG and EC2/EKS describe and
+        # scale permissions that no AWS-managed policy grants.
+        resource.update(
+            self.rsp.desired.resources["iam-policy-cluster-autoscaler"],
+            policyv1beta1.Policy(
+                metadata=metav1.ObjectMeta(labels={_LABEL_ROLE: _ROLE_CLUSTER_AUTOSCALER}),
+                spec=policyv1beta1.Spec(
+                    forProvider=policyv1beta1.ForProvider(policy=_POLICY_CLUSTER_AUTOSCALER),
+                ),
+            ),
+        )
+
+        # The role the autoscaler assumes, and the attachment of the policy
+        # above to it. Both selected by label, matching the EFS CSI pattern.
+        resource.update(
+            self.rsp.desired.resources["iam-role-cluster-autoscaler"],
+            rolev1beta1.Role(
+                metadata=metav1.ObjectMeta(labels={_LABEL_ROLE: _ROLE_CLUSTER_AUTOSCALER}),
+                spec=rolev1beta1.Spec(
+                    forProvider=rolev1beta1.ForProvider(assumeRolePolicy=_ASSUME_ROLE_POD_IDENTITY),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["iam-attach-cluster-autoscaler"],
+            rpav1beta1.RolePolicyAttachment(
+                spec=rpav1beta1.Spec(
+                    forProvider=rpav1beta1.ForProvider(
+                        policyArnSelector=rpav1beta1.PolicyArnSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_ROLE: _ROLE_CLUSTER_AUTOSCALER},
+                        ),
+                        roleSelector=rpav1beta1.RoleSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_ROLE: _ROLE_CLUSTER_AUTOSCALER},
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        # Pod Identity binds the role to the autoscaler's ServiceAccount. The
+        # eks-pod-identity-agent addon is composed by compose_efs.
+        resource.update(
+            self.rsp.desired.resources["pod-identity-cluster-autoscaler"],
+            piav1beta1.PodIdentityAssociation(
+                spec=piav1beta1.Spec(
+                    forProvider=piav1beta1.ForProvider(
+                        region=region,
+                        namespace=_AUTOSCALER_NAMESPACE,
+                        serviceAccount=_AUTOSCALER_SERVICE_ACCOUNT,
+                        clusterNameSelector=piav1beta1.ClusterNameSelector(matchControllerRef=True),
+                        roleArnSelector=piav1beta1.RoleArnSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_ROLE: _ROLE_CLUSTER_AUTOSCALER},
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        # The Helm release runs on the cluster's own helm ProviderConfig. Gate
+        # it on the cluster being observed: until it exists, the ProviderConfig
+        # can't reach a cluster and the release would just error.
+        cluster_observed = "cluster" in self.req.observed.resources
+        release_exists = "release-cluster-autoscaler" in self.req.observed.resources
+        if not (cluster_observed or release_exists):
+            return
+
+        resource.update(
+            self.rsp.desired.resources["release-cluster-autoscaler"],
+            helmv1beta1.Release(
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                spec=helmv1beta1.Spec(
+                    providerConfigRef=helmv1beta1.ProviderConfigRef(
+                        kind="ProviderConfig",
+                        name=_kubeconfig_secret_name(self.xr),
+                    ),
+                    forProvider=helmv1beta1.ForProvider(
+                        chart=helmv1beta1.Chart(
+                            name=_AUTOSCALER_CHART_NAME,
+                            repository=_AUTOSCALER_CHART_REPO,
+                            version=_AUTOSCALER_CHART_VERSION,
+                        ),
+                        namespace=_AUTOSCALER_NAMESPACE,
+                        values={
+                            "cloudProvider": "aws",
+                            "awsRegion": region,
+                            "autoDiscovery": {"clusterName": _cluster_name(self.xr)},
+                            "rbac": {"serviceAccount": {"name": _AUTOSCALER_SERVICE_ACCOUNT}},
+                            # GPU pools span AZs (one ASG per AZ); balance them so
+                            # gang-scheduled replicas don't pile onto one zone.
+                            "extraArgs": {"balance-similar-node-groups": True},
+                        },
+                    ),
+                ),
+            ),
+        )
+
     def compose_provider_configs(self):
         kubeconfig_secret = _kubeconfig_secret_name(self.xr)
         resource.update(
@@ -850,6 +1038,10 @@ class Composer:
             "addon-eks-pod-identity-agent",
             "pod-identity-efs-csi",
             "addon-aws-efs-csi-driver",
+            "iam-policy-cluster-autoscaler",
+            "iam-role-cluster-autoscaler",
+            "iam-attach-cluster-autoscaler",
+            "pod-identity-cluster-autoscaler",
         ]
         for i in range(len(self._networking().subnetCidrs)):
             managed_resources.append(f"subnet-{i}")
@@ -858,6 +1050,11 @@ class Composer:
         managed_resources += [f"nodegroup-{p.name}" for p in self.xr.spec.nodePools]
         managed_resources += [f"launch-template-{p.name}" for p in self.xr.spec.nodePools if p.capacityBlock]
         managed_resources += [f"addon-{a}" for a in _ADDONS]
+        # The autoscaler Helm release is only composed once the cluster is
+        # observed, so only mark it ready when it's actually in desired state —
+        # touching it here otherwise would re-add the resource we gated out.
+        if "release-cluster-autoscaler" in self.rsp.desired.resources:
+            managed_resources.append("release-cluster-autoscaler")
 
         for r in managed_resources:
             if resource.get_condition(self.req.observed.resources.get(r), "Ready").status == "True":

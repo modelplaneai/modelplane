@@ -120,6 +120,8 @@ def _gpu_node_group_capacity_block() -> dict:
         "apiVersion": "eks.aws.m.upbound.io/v1beta1",
         "kind": "NodeGroup",
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+            "initProvider": {"scalingConfig": {"desiredSize": 2}},
             "forProvider": {
                 "region": "us-west-2",
                 "amiType": "AL2023_x86_64_NVIDIA",
@@ -135,7 +137,7 @@ def _gpu_node_group_capacity_block() -> dict:
                     "version": "$Latest",
                 },
                 "subnetIdRefs": [{"name": _SUBNET_A}],
-                "scalingConfig": {"desiredSize": 2, "minSize": 0, "maxSize": 2},
+                "scalingConfig": {"minSize": 0, "maxSize": 2},
                 "labels": {
                     "modelplane.ai/gpu": "nvidia-h200",
                     "modelplane.ai/pool": "gpu-h200",
@@ -292,12 +294,31 @@ _ASSUME_POD_IDENTITY = (
     '"Action":["sts:AssumeRole","sts:TagSession"]}]}'
 )
 _POLICY_EFS_CSI = "arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy"
+_POLICY_CLUSTER_AUTOSCALER = (
+    '{"Version":"2012-10-17","Statement":['
+    '{"Effect":"Allow","Action":['
+    '"autoscaling:DescribeAutoScalingGroups",'
+    '"autoscaling:DescribeAutoScalingInstances",'
+    '"autoscaling:DescribeLaunchConfigurations",'
+    '"autoscaling:DescribeScalingActivities",'
+    '"ec2:DescribeImages",'
+    '"ec2:DescribeInstanceTypes",'
+    '"ec2:DescribeLaunchTemplateVersions",'
+    '"ec2:GetInstanceTypesFromInstanceRequirements",'
+    '"eks:DescribeNodegroup"'
+    '],"Resource":["*"]},'
+    '{"Effect":"Allow","Action":['
+    '"autoscaling:SetDesiredCapacity",'
+    '"autoscaling:TerminateInstanceInAutoScalingGroup"'
+    '],"Resource":["*"]}]}'
+)
 
 
 def _eks_cluster() -> dict:
     return {
         "apiVersion": "eks.aws.m.upbound.io/v1beta1",
         "kind": "Cluster",
+        "metadata": {"name": "modelplane-system-test-cluster-eks-0865f"},
         "spec": {
             "forProvider": {
                 "region": "us-west-2",
@@ -339,6 +360,8 @@ def _system_node_group() -> dict:
         "apiVersion": "eks.aws.m.upbound.io/v1beta1",
         "kind": "NodeGroup",
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+            "initProvider": {"scalingConfig": {"desiredSize": 1}},
             "forProvider": {
                 "region": "us-west-2",
                 "amiType": "AL2023_x86_64_STANDARD",
@@ -349,7 +372,7 @@ def _system_node_group() -> dict:
                     "matchLabels": {"modelplane.ai/iam-role": "node"},
                 },
                 "subnetIdSelector": {"matchControllerRef": True},
-                "scalingConfig": {"desiredSize": 1, "minSize": 1, "maxSize": 2},
+                "scalingConfig": {"minSize": 1, "maxSize": 2},
                 "labels": {"modelplane.ai/pool": "system"},
             },
         },
@@ -361,6 +384,8 @@ def _gpu_node_group() -> dict:
         "apiVersion": "eks.aws.m.upbound.io/v1beta1",
         "kind": "NodeGroup",
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+            "initProvider": {"scalingConfig": {"desiredSize": 1}},
             "forProvider": {
                 "region": "us-west-2",
                 "amiType": "AL2023_x86_64_NVIDIA",
@@ -372,7 +397,7 @@ def _gpu_node_group() -> dict:
                     "matchLabels": {"modelplane.ai/iam-role": "node"},
                 },
                 "subnetIdRefs": [{"name": _SUBNET_A}, {"name": _SUBNET_B}],
-                "scalingConfig": {"desiredSize": 1, "minSize": 0, "maxSize": 4},
+                "scalingConfig": {"minSize": 0, "maxSize": 4},
                 "labels": {
                     "modelplane.ai/gpu": "nvidia-l4",
                     "modelplane.ai/pool": "gpu-l4",
@@ -503,6 +528,79 @@ def _storage_class_object(filesystem_id: str) -> dict:
     }
 
 
+def _autoscaler_policy() -> dict:
+    return {
+        "apiVersion": "iam.aws.m.upbound.io/v1beta1",
+        "kind": "Policy",
+        "metadata": {"labels": {"modelplane.ai/iam-role": "cluster-autoscaler"}},
+        "spec": {"forProvider": {"policy": _POLICY_CLUSTER_AUTOSCALER}},
+    }
+
+
+def _autoscaler_attachment() -> dict:
+    return {
+        "apiVersion": "iam.aws.m.upbound.io/v1beta1",
+        "kind": "RolePolicyAttachment",
+        "spec": {
+            "forProvider": {
+                "policyArnSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/iam-role": "cluster-autoscaler"},
+                },
+                "roleSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/iam-role": "cluster-autoscaler"},
+                },
+            },
+        },
+    }
+
+
+def _autoscaler_pod_identity() -> dict:
+    return {
+        "apiVersion": "eks.aws.m.upbound.io/v1beta1",
+        "kind": "PodIdentityAssociation",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "namespace": "kube-system",
+                "serviceAccount": "cluster-autoscaler",
+                "clusterNameSelector": {"matchControllerRef": True},
+                "roleArnSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/iam-role": "cluster-autoscaler"},
+                },
+            },
+        },
+    }
+
+
+def _autoscaler_release() -> dict:
+    return {
+        "apiVersion": "helm.m.crossplane.io/v1beta1",
+        "kind": "Release",
+        "metadata": {"namespace": "modelplane-system"},
+        "spec": {
+            "providerConfigRef": {"kind": "ProviderConfig", "name": _KUBECONFIG_SECRET},
+            "forProvider": {
+                "chart": {
+                    "name": "cluster-autoscaler",
+                    "repository": "https://kubernetes.github.io/autoscaler",
+                    "version": "9.57.0",
+                },
+                "namespace": "kube-system",
+                "values": {
+                    "cloudProvider": "aws",
+                    "awsRegion": "us-west-2",
+                    "autoDiscovery": {"clusterName": "modelplane-system-test-cluster-eks-0865f"},
+                    "rbac": {"serviceAccount": {"name": "cluster-autoscaler"}},
+                    "extraArgs": {"balance-similar-node-groups": True},
+                },
+            },
+        },
+    }
+
+
 def _provider_config(api_version: str) -> dict:
     return {
         "apiVersion": api_version,
@@ -610,6 +708,14 @@ def _expected_resources() -> dict:
         ),
         "pod-identity-efs-csi": fnv1.Resource(resource=resource.dict_to_struct(_pod_identity_association())),
         "addon-aws-efs-csi-driver": fnv1.Resource(resource=resource.dict_to_struct(_addon("aws-efs-csi-driver"))),
+        "iam-policy-cluster-autoscaler": fnv1.Resource(resource=resource.dict_to_struct(_autoscaler_policy())),
+        "iam-role-cluster-autoscaler": fnv1.Resource(
+            resource=resource.dict_to_struct(_role("cluster-autoscaler", _ASSUME_POD_IDENTITY)),
+        ),
+        "iam-attach-cluster-autoscaler": fnv1.Resource(resource=resource.dict_to_struct(_autoscaler_attachment())),
+        "pod-identity-cluster-autoscaler": fnv1.Resource(
+            resource=resource.dict_to_struct(_autoscaler_pod_identity()),
+        ),
         "provider-config-kubernetes": fnv1.Resource(
             resource=resource.dict_to_struct(_provider_config("kubernetes.m.crossplane.io/v1alpha1")),
             ready=fnv1.READY_TRUE,
@@ -652,6 +758,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         ready_resources["storage-class-rwx-efs"] = fnv1.Resource(
             resource=resource.dict_to_struct(_storage_class_object("fs-0abc123")),
             ready=fnv1.READY_TRUE,
+        )
+        # With the cluster observed, the autoscaler Helm release is composed (it's
+        # gated on the cluster existing so provider-helm can reach it). It carries
+        # no Ready condition yet, so it stays not-ready this pass.
+        ready_resources["release-cluster-autoscaler"] = fnv1.Resource(
+            resource=resource.dict_to_struct(_autoscaler_release()),
         )
 
         cases = [
