@@ -58,6 +58,100 @@ def _xr() -> v1alpha1.EKSCluster:
     )
 
 
+# Launch template name is derived the same way the function derives it, so
+# the test can't drift from the function's child_name hashing.
+_LAUNCH_TEMPLATE_NAME = resource.child_name("test-cluster", "lt-gpu-h200")
+_CAPACITY_RESERVATION_ID = "cr-0123456789abcdef0"
+
+
+def _xr_capacity_block() -> v1alpha1.EKSCluster:
+    return v1alpha1.EKSCluster(
+        metadata=metav1.ObjectMeta(
+            name="test-cluster",
+            namespace="modelplane-system",
+        ),
+        spec=v1alpha1.Spec(
+            region="us-west-2",
+            nodePools=[
+                v1alpha1.NodePool(
+                    name="gpu-h200",
+                    role="GPU",
+                    instanceType="p5en.48xlarge",
+                    nodeCount=2,
+                    minNodeCount=0,
+                    maxNodeCount=2,
+                    diskSizeGb=1024,
+                    gpu=v1alpha1.Gpu(
+                        acceleratorType="nvidia-h200",
+                    ),
+                    capacityBlock=v1alpha1.CapacityBlock(
+                        capacityReservationId=_CAPACITY_RESERVATION_ID,
+                    ),
+                    zones=["us-west-2a"],
+                ),
+            ],
+        ),
+    )
+
+
+def _launch_template() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "LaunchTemplate",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "name": _LAUNCH_TEMPLATE_NAME,
+                "instanceType": "p5en.48xlarge",
+                "instanceMarketOptions": {"marketType": "capacity-block"},
+                "capacityReservationSpecification": {
+                    "capacityReservationPreference": "capacity-reservations-only",
+                    "capacityReservationTarget": {
+                        "capacityReservationId": _CAPACITY_RESERVATION_ID,
+                    },
+                },
+            },
+        },
+    }
+
+
+def _gpu_node_group_capacity_block() -> dict:
+    return {
+        "apiVersion": "eks.aws.m.upbound.io/v1beta1",
+        "kind": "NodeGroup",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "amiType": "AL2023_x86_64_NVIDIA",
+                "diskSize": 1024,
+                "clusterNameSelector": {"matchControllerRef": True},
+                "nodeRoleArnSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/iam-role": "node"},
+                },
+                "capacityType": "CAPACITY_BLOCK",
+                "launchTemplate": {
+                    "name": _LAUNCH_TEMPLATE_NAME,
+                    "version": "$Latest",
+                },
+                "subnetIdRefs": [{"name": _SUBNET_A}],
+                "scalingConfig": {"desiredSize": 2, "minSize": 0, "maxSize": 2},
+                "labels": {
+                    "modelplane.ai/gpu": "nvidia-h200",
+                    "modelplane.ai/pool": "gpu-h200",
+                },
+                "taint": [
+                    {
+                        "key": "nvidia.com/gpu",
+                        "value": "true",
+                        "effect": "NO_SCHEDULE",
+                    },
+                ],
+            },
+        },
+    }
+
+
 def _ready_condition() -> dict:
     return {
         "type": "Ready",
@@ -605,6 +699,41 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(case.want),
                     json_format.MessageToDict(got),
                 )
+
+    async def test_compose_capacity_block(self) -> None:
+        """A Capacity Block pool composes a launch template and a CAPACITY_BLOCK node group.
+
+        The GPU node group must not set instanceTypes (EKS takes the type
+        from the launch template), must set capacityType=CAPACITY_BLOCK, and
+        must reference the launch template. The launch template targets the
+        reservation via the capacity-block market type.
+        """
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        _xr_capacity_block().model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+        resources = got.desired.resources
+
+        # The launch template is composed and targets the reservation.
+        self.assertIn("launch-template-gpu-h200", resources)
+        self.assertEqual(
+            _launch_template(),
+            resource.struct_to_dict(resources["launch-template-gpu-h200"].resource),
+        )
+
+        # The GPU node group uses CAPACITY_BLOCK + the launch template and
+        # carries no instanceTypes.
+        self.assertEqual(
+            _gpu_node_group_capacity_block(),
+            resource.struct_to_dict(resources["nodegroup-gpu-h200"].resource),
+        )
 
 
 if __name__ == "__main__":

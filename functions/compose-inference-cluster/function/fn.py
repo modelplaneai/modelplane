@@ -612,21 +612,27 @@ class Composer:
                 response.warning(self.rsp, msg)
                 return
             prov = cls.spec.provisioning.eks
-            eks_node_pools.append(
-                eksv1alpha1.NodePool(
-                    name=pool.name,
-                    role="GPU",
-                    instanceType=prov.instanceType,
-                    diskSizeGb=prov.diskSizeGb,
-                    nodeCount=pool.nodeCount,
-                    minNodeCount=pool.minNodeCount,
-                    maxNodeCount=pool.maxNodeCount,
-                    gpu=eksv1alpha1.Gpu(
-                        acceleratorType=prov.accelerator.type,
-                    ),
-                    zones=list(pool.zones or []),
-                )
+            node_pool = eksv1alpha1.NodePool(
+                name=pool.name,
+                role="GPU",
+                instanceType=prov.instanceType,
+                diskSizeGb=prov.diskSizeGb,
+                nodeCount=pool.nodeCount,
+                minNodeCount=pool.minNodeCount,
+                maxNodeCount=pool.maxNodeCount,
+                gpu=eksv1alpha1.Gpu(
+                    acceleratorType=prov.accelerator.type,
+                ),
+                zones=list(pool.zones or []),
             )
+            # Only set capacityBlock when the pool has one. resource.update
+            # serializes with exclude_unset, so leaving it unset keeps it out
+            # of the EKSCluster spec rather than emitting capacityBlock: null.
+            if pool.capacityBlock:
+                node_pool.capacityBlock = eksv1alpha1.CapacityBlock(
+                    capacityReservationId=pool.capacityBlock.capacityReservationId,
+                )
+            eks_node_pools.append(node_pool)
 
         resource.update(
             self.rsp.desired.resources["eks-cluster"],

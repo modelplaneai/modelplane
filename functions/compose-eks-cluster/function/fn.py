@@ -23,6 +23,7 @@ from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
 from models.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from models.io.upbound.m.aws.ec2.internetgateway import v1beta1 as igwv1beta1
+from models.io.upbound.m.aws.ec2.launchtemplate import v1beta1 as ltv1beta1
 from models.io.upbound.m.aws.ec2.route import v1beta1 as routev1beta1
 from models.io.upbound.m.aws.ec2.routetable import v1beta1 as rtv1beta1
 from models.io.upbound.m.aws.ec2.routetableassociation import v1beta1 as rtav1beta1
@@ -74,6 +75,17 @@ _SECRET_KEY_KUBECONFIG = "kubeconfig"
 # default Amazon Linux 2023 AMI for non-GPU workloads.
 _AMI_TYPE_SYSTEM = "AL2023_x86_64_STANDARD"
 _AMI_TYPE_GPU = "AL2023_x86_64_NVIDIA"
+
+# Capacity Block backing. Large GPU instances (e.g. p5en.48xlarge) are
+# rarely available on demand; AWS allocates them via Capacity Blocks for
+# ML. A node group backed by a Capacity Block uses the CAPACITY_BLOCK
+# capacity type and a launch template that targets the reservation: it
+# sets the instance market type to "capacity-block" and points at the
+# reservation ID. EKS requires the instance type to come from the launch
+# template (not the node group's instanceTypes) for capacity-block groups.
+_CAPACITY_TYPE_CAPACITY_BLOCK = "CAPACITY_BLOCK"
+_MARKET_TYPE_CAPACITY_BLOCK = "capacity-block"
+_CR_PREFERENCE_ONLY = "capacity-reservations-only"
 
 # GPU taint applied to GPU node groups so non-GPU pods don't land on
 # expensive GPU nodes.
@@ -403,10 +415,13 @@ class Composer:
         """Compose the system and user-declared GPU node groups."""
         self._compose_system_node_group()
         for pool in self.xr.spec.nodePools:
+            capacity_block = pool.capacityBlock
+            if capacity_block:
+                self._compose_launch_template(pool, capacity_block)
+
             fp = ngv1beta1.ForProvider(
                 region=self.xr.spec.region,
                 amiType=_AMI_TYPE_GPU if pool.role == "GPU" else _AMI_TYPE_SYSTEM,
-                instanceTypes=[pool.instanceType],
                 diskSize=pool.diskSizeGb,
                 clusterNameSelector=ngv1beta1.ClusterNameSelector(
                     matchControllerRef=True,
@@ -422,6 +437,19 @@ class Composer:
                 ),
                 labels={_LABEL_POOL: pool.name},
             )
+
+            if capacity_block:
+                # For a Capacity Block node group EKS takes the instance
+                # type from the launch template, so the node group must not
+                # also set instanceTypes. The launch template carries the
+                # instance type and the capacity-block market options.
+                fp.capacityType = _CAPACITY_TYPE_CAPACITY_BLOCK
+                fp.launchTemplate = ngv1beta1.LaunchTemplate(
+                    name=self._launch_template_name(pool),
+                    version="$Latest",
+                )
+            else:
+                fp.instanceTypes = [pool.instanceType]
 
             zone_refs = self._subnet_refs_for_pool(pool)
             if zone_refs:
@@ -446,6 +474,45 @@ class Composer:
                 self.rsp.desired.resources[f"nodegroup-{pool.name}"],
                 ngv1beta1.NodeGroup(spec=ngv1beta1.Spec(forProvider=fp)),
             )
+
+    def _launch_template_name(self, pool):
+        """Derive the EC2 launch template name for a Capacity Block pool.
+
+        The EKS NodeGroup references the launch template by name, so it
+        must be stable and match the launchTemplate.forProvider.name set
+        on the composed EC2 LaunchTemplate.
+        """
+        return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")
+
+    def _compose_launch_template(self, pool, capacity_block):
+        """Compose an EC2 launch template targeting a Capacity Block.
+
+        The launch template carries the instance type and the capacity-block
+        market options. EKS launches the node group's instances from this
+        template into the reservation. The node group references it by name
+        and sets capacityType=CAPACITY_BLOCK.
+        """
+        resource.update(
+            self.rsp.desired.resources[f"launch-template-{pool.name}"],
+            ltv1beta1.LaunchTemplate(
+                spec=ltv1beta1.Spec(
+                    forProvider=ltv1beta1.ForProvider(
+                        region=self.xr.spec.region,
+                        name=self._launch_template_name(pool),
+                        instanceType=pool.instanceType,
+                        instanceMarketOptions=ltv1beta1.InstanceMarketOptions(
+                            marketType=_MARKET_TYPE_CAPACITY_BLOCK,
+                        ),
+                        capacityReservationSpecification=ltv1beta1.CapacityReservationSpecification(
+                            capacityReservationPreference=_CR_PREFERENCE_ONLY,
+                            capacityReservationTarget=ltv1beta1.CapacityReservationTarget(
+                                capacityReservationId=capacity_block.capacityReservationId,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
 
     def _compose_system_node_group(self):
         """Compose the system node group for control-plane components."""
@@ -747,6 +814,7 @@ class Composer:
             managed_resources.append(f"route-table-association-{i}")
             managed_resources.append(f"efs-mount-target-{i}")
         managed_resources += [f"nodegroup-{p.name}" for p in self.xr.spec.nodePools]
+        managed_resources += [f"launch-template-{p.name}" for p in self.xr.spec.nodePools if p.capacityBlock]
         managed_resources += [f"addon-{a}" for a in _ADDONS]
 
         for r in managed_resources:

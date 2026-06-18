@@ -132,7 +132,20 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
+class CapacityBlock(BaseModel):
+    capacityReservationId: constr(
+        pattern=r'^cr-[0-9a-f]+$', min_length=4, max_length=64
+    )
+    """
+    The ID of the Capacity Reservation backing the Capacity Block (e.g. cr-0123456789abcdef0). Purchasing a Capacity Block yields this ID.
+    """
+
+
 class NodePool(BaseModel):
+    capacityBlock: CapacityBlock | None = None
+    """
+    Capacity Block reservation backing this node pool. EKS only. Large GPU instances (e.g. p5en.48xlarge) are rarely available on demand; AWS allocates them via Capacity Blocks for ML. Set this to back the pool with a Capacity Block you have purchased. The pool's zones must match the reservation's Availability Zone, and nodeCount must not exceed the reserved instance count. Omit for on-demand pools.
+    """
     className: constr(min_length=1, max_length=253)
     """
     Name of the InferenceClass describing this pool's hardware.

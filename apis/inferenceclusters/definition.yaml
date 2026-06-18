@@ -216,6 +216,29 @@ spec:
                         region have every GPU type.
                       items:
                         type: string
+                    capacityBlock:
+                      type: object
+                      description: >-
+                        Capacity Block reservation backing this node pool.
+                        EKS only. Large GPU instances (e.g. p5en.48xlarge)
+                        are rarely available on demand; AWS allocates them
+                        via Capacity Blocks for ML. Set this to back the
+                        pool with a Capacity Block you have purchased. The
+                        pool's zones must match the reservation's
+                        Availability Zone, and nodeCount must not exceed the
+                        reserved instance count. Omit for on-demand pools.
+                      required:
+                      - capacityReservationId
+                      properties:
+                        capacityReservationId:
+                          type: string
+                          description: >-
+                            The ID of the Capacity Reservation backing the
+                            Capacity Block (e.g. cr-0123456789abcdef0).
+                            Purchasing a Capacity Block yields this ID.
+                          pattern: "^cr-[0-9a-f]+$"
+                          minLength: 4
+                          maxLength: 64
           status:
             type: object
             properties:
