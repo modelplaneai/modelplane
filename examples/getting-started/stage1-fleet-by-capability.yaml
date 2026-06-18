@@ -71,7 +71,7 @@ spec:
     className: gke-a100-40-1x
     nodeCount: 1
     minNodeCount: 0
-    maxNodeCount: 1
+    maxNodeCount: 2
     zones:
     - us-central1-a
 ---
@@ -93,7 +93,7 @@ spec:
     className: gke-a100-40-1x
     nodeCount: 1
     minNodeCount: 0
-    maxNodeCount: 1
+    maxNodeCount: 2
     zones:
     - us-east1-b
 ---

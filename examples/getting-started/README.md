@@ -1,6 +1,6 @@
 # Getting-started demo — capability scheduling across a fleet
 
-A two-stage story for the getting-started guide and the demo video:
+A three-stage story for the getting-started guide and the demo video:
 
 - **Stage 0** (`stage0-single-cluster.yaml`) — one cheap L4 cluster, a 7B model,
   one OpenAI endpoint.
@@ -9,9 +9,14 @@ A two-stage story for the getting-started guide and the demo video:
   **by GPU capability** (`memory >= 35Gi`), with no `clusterSelector`. It lands on
   the A100 clusters and skips the L4 — the DRA scheduler finding hardware
   fleet-wide.
+- **Stage 2** (`stage2-canary.yaml`) — canary a tuned variant safely: a second
+  deployment joins the **same `ModelService`** as a second `endpoints[]` entry,
+  so the stable:canary split just follows replica counts (2:1). Promote by
+  scaling, roll back by deleting — same address throughout, no traffic weights.
 
-The headline: *the ML team asks for the hardware its model needs, and Modelplane
-finds it across the fleet — no region labels, no tickets.*
+The headline: *the ML team asks for the hardware its model needs, Modelplane finds
+it across the fleet, and a new variant ships behind the same endpoint — no region
+labels, no weights, no tickets.*
 
 ## Recording the 3-minute video
 
@@ -76,4 +81,5 @@ kubectl --context $CP -n ml-team delete modeldeployment,modelservice,modelcache 
 |---|---|
 | `stage0-single-cluster.yaml` | L4 `InferenceClass` + cluster + 7B `ModelDeployment` + `ModelService` |
 | `stage1-fleet-by-capability.yaml` | A100 class + two clusters + 14B `ModelCache`/`ModelDeployment`/`ModelService`, selected by capability CEL |
-| `record.sh` | The on-camera stepper (instant reads + warm curls) |
+| `stage2-canary.yaml` | A canary `ModelDeployment` + the `qwen-14b` `ModelService` widened to front both deployments (per-deployment `endpoints[]`) |
+| `record.sh` | The self-playing screencast (instant reads + warm curls) |
