@@ -886,6 +886,8 @@ def schedule(
     deployment: mdv1alpha1.ModelDeployment,
     clusters: list[icv1alpha1.InferenceCluster],
     all_replicas: list[mrv1alpha1.ModelReplica],
+    *,
+    fill: bool = True,
 ) -> list[Candidate]:
     """Pick clusters for a deployment's ModelReplicas.
 
@@ -893,6 +895,15 @@ def schedule(
     shortfall by spreading new replicas across clusters (packing onto fewer only
     when capacity forces it). Returns up to deployment.spec.replicas candidates,
     fewer if not enough capacity exists.
+
+    Existing replicas are always retained. fill gates only the placement of NEW
+    replicas: with fill=False the schedule is retain-only, holding steady at the
+    current placement and adding nothing. A caller passes fill=False when it
+    can't yet trust the candidate set - for instance when an input that narrows
+    the candidate clusters is unresolved, so placing new replicas now risks
+    landing them on clusters that input would have excluded. Retain never
+    consults fill: a narrowing input only ever shrinks the candidate set, so its
+    absence can't evict a pinned replica.
     """
     desired = int(deployment.spec.replicas)
     clusters_by_name = {c.metadata.name: c for c in clusters}
@@ -915,14 +926,13 @@ def schedule(
     if len(retained) > desired:
         retained = _scale_down(retained, desired)
 
-    # Build the ledger AFTER retain and scale-down: it charges the replicas in
-    # the final `retained` set (plus other deployments' replicas), and must not
-    # charge our dropped or scaled-down replicas, whose nodes are freeing up.
-    # Fill then decrements it only as it places NEW replicas.
-    ledger = _build_ledger(deployment, clusters, retained, all_replicas)
-
     placed: list[Candidate] = []
-    if len(retained) < desired:
+    if fill and len(retained) < desired:
+        # Build the ledger AFTER retain and scale-down: it charges the replicas
+        # in the final `retained` set (plus other deployments' replicas), and
+        # must not charge our dropped or scaled-down replicas, whose nodes are
+        # freeing up. Fill then decrements it only as it places NEW replicas.
+        ledger = _build_ledger(deployment, clusters, retained, all_replicas)
         placed = _fill(engines, clusters, retained, ledger, desired - len(retained))
 
     result = retained + placed

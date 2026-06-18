@@ -29,7 +29,11 @@ Each cache has:
   (`Dragonfly` for P2P distribution, `OCI` for NIM-style bundled artifacts).
 - An optional **clusterSelector** to scope replication. Omitting
   `spec.clusterSelector` stages the cache on every matched cluster; setting
-  `matchLabels` restricts it to clusters carrying those labels.
+  `matchLabels` restricts it to clusters carrying those labels. A
+  `ModelDeployment` that references the cache places *new* replicas only onto
+  clusters within this footprint, so narrowing the selector also narrows where
+  replicas can land - a replica never schedules to a cluster the cache didn't
+  stage to. Replicas already running are left where they are.
 
 The cache mounts at `/mnt/models` on every consuming pod; engine container args
 should reference this path (`--model=/mnt/models` for vLLM).

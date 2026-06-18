@@ -714,6 +714,42 @@ class TestSchedule(unittest.TestCase):
                 got = scheduling.schedule(case.deployment, case.clusters, case.all_replicas)
                 self.assertEqual(case.want, got, f"{case.name}: -want, +got")
 
+    def test_fill_false_is_retain_only(self) -> None:
+        """fill=False retains existing replicas but places no new ones.
+
+        A caller passes fill=False when it can't yet trust the candidate set
+        (for the ModelDeployment, when a referenced ModelCache is unresolved).
+        Retain runs unconditionally; only the placement of new replicas is held.
+        """
+        cases = [
+            Case(
+                name="no replicas yet: nothing is placed",
+                deployment=_deployment(),
+                clusters=[_cluster("cluster-a")],
+                all_replicas=[],
+                want=[],
+            ),
+            Case(
+                name="existing replica is retained despite fill=False",
+                deployment=_deployment(),
+                clusters=[_cluster("cluster-a")],
+                all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+            ),
+            Case(
+                name="scale-up shortfall is not filled, only the retained replica remains",
+                deployment=_deployment(replicas=3),
+                clusters=[_cluster("cluster-a"), _cluster("cluster-b", gateway_address="10.0.0.2")],
+                all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
+                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+            ),
+        ]
+
+        for case in cases:
+            with self.subTest(case.name):
+                got = scheduling.schedule(case.deployment, case.clusters, case.all_replicas, fill=False)
+                self.assertEqual(case.want, got, f"{case.name}: -want, +got")
+
 
 class TestScheduleNodeSelector(unittest.TestCase):
     """Tests for nodeSelector device-request matching and pool pinning."""
