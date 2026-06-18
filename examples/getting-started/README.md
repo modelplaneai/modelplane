@@ -37,10 +37,13 @@ commands (`record.sh` steps through them). Nothing waits on infra on camera.
    so vLLM's first-request latency doesn't show on camera.
 4. **Set up the terminal:** `cd examples/getting-started`, export `CP`, confirm
    `jq` is installed.
-5. **Record soon after provisioning** — the playground project has a reaper that
-   has deleted cluster VPC networks; minimize exposure (or use a non-reaped
-   project). If clusters won't form and you see network create→delete churn,
-   that's the env, not the manifests.
+5. **Check VPC network headroom first.** Each `InferenceCluster` provisions one
+   VPC network, and a GCP project caps at **50 networks** (`gcloud compute
+   project-info describe --format='value(quotas)' | tr ';' '\n' | grep NETWORKS`).
+   `crossplane-playground` sat at 50/50, which made every cluster hang Unready
+   with subnets 404-ing on a network the MR falsely reported `Ready` (provider-gcp
+   doesn't surface the quota rejection). If you hit that, free unused networks or
+   raise the `NETWORKS` quota — it is *not* a manifest problem.
 
 ### On camera
 
