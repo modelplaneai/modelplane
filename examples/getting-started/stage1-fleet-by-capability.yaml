@@ -1,0 +1,160 @@
+# Stage 1 — Take it to the real workload clusters, by capability.
+#
+# The platform has added two "expensive" big-GPU clusters (1x A100 40GB each) in
+# different regions, alongside the Stage-0 L4 starter. The ML team's bigger model
+# (14B, ~28 GB) can't fit the L4's 24 GB — so instead of hand-picking clusters
+# with a region label, it states the hardware it needs and the DRA scheduler
+# finds it fleet-wide:
+#
+#     device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("35Gi")) >= 0
+#
+# That lands on the two A100 clusters (either region), skips the L4. No
+# clusterSelector. Stand up more big-GPU capacity in a new region tomorrow and
+# it's eligible automatically.
+#
+#   kubectl apply -f stage1-fleet-by-capability.yaml
+#   kubectl -n ml-team get modelreplica -o wide   # watch it land on the A100 clusters
+#
+# ── GPU choice & quota ────────────────────────────────────────────────────────
+# PRIMARY (below): A100 40GB — a2-highgpu-1g. Chosen because this project has
+# A100-40 quota (16) but ZERO A100-80GB / H100 quota. Verify your own quota.
+# A100 80GB upgrade: machineType a2-ultragpu-1g, accelerator nvidia-a100-80gb;
+#                    memory ~81920Mi; bump the selector to `>= 70Gi` and you can
+#                    run a 32B+ model.
+# H100 upgrade:      machineType a3-highgpu-8g, accelerator nvidia-h100-80gb
+#                    count 8 (8-GPU node — set the deployment's gpu count to 8
+#                    and add --tensor-parallel-size=8).
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-a100-40-1x
+spec:
+  description: "GKE a2-highgpu-1g, 1x NVIDIA A100 40GB (the powerful workload GPU)"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: a2-highgpu-1g
+      diskSizeGb: 200
+      accelerator:
+        type: nvidia-tesla-a100
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ampere }
+      cudaComputeCapability: { version: "8.0.0" }
+    capacity:
+      # PROVISIONAL: A100 40GB real reported VRAM (verify against a live
+      # ResourceSlice). The selector threshold must sit below it.
+      memory: { value: "40960Mi" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gpu-us-central
+  labels:
+    modelplane.ai/region: us-central
+    modelplane.ai/tier: workload      # platform label — used by the cache, not the deployment
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: crossplane-playground
+      region: us-central1
+  nodePools:
+  - name: gpu-a100
+    className: gke-a100-40-1x
+    nodeCount: 1
+    minNodeCount: 0
+    maxNodeCount: 1
+    zones:
+    - us-central1-a
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gpu-us-east
+  labels:
+    modelplane.ai/region: us-east
+    modelplane.ai/tier: workload
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: crossplane-playground
+      region: us-east1
+  nodePools:
+  - name: gpu-a100
+    className: gke-a100-40-1x
+    nodeCount: 1
+    minNodeCount: 0
+    maxNodeCount: 1
+    zones:
+    - us-east1-b
+---
+# Stage the 14B weights (~28 GB) on the workload-tier clusters once, so pods start
+# fast instead of each re-pulling. The cache footprint is a platform concern
+# (where the big GPUs live); the deployment still selects by capability.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen-14b
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen2.5-14B-Instruct
+    sizeGiB: 60
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/tier: workload
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-14b
+  namespace: ml-team
+spec:
+  replicas: 2                       # one per workload cluster
+  # No clusterSelector — the capability selector below does the targeting.
+  modelCacheRef:
+    name: qwen-14b
+  engines:
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          # "Give me a GPU that fits a 14B model." Only the A100 clusters qualify;
+          # the L4 starter (24 GB) is skipped — across regions, with no label.
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("35Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            args:
+            - --model=/mnt/models
+            - --served-model-name=qwen-14b
+            - --max-model-len=8192
+            - --gpu-memory-utilization=0.90
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen-14b
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-14b
