@@ -8,7 +8,7 @@ and **"declare intent, Modelplane composes the rest."**
 
 **Spine, in one line:** *serve a model (one cluster) → run it on the right
 hardware everywhere (capability scheduling across the fleet) → serve it in
-production (routing, then advanced techniques).*
+production (route traffic and roll out new versions safely).*
 
 > The runnable demo (`stage0`/`stage1`/`stage2` manifests + `record.sh`) uses
 > **A100-40GB** as the "big" GPU because the demo project has no A100-80/H100
@@ -65,24 +65,27 @@ finds it"* — the DRA scheduler story.
 
 ---
 
-## Stage 2 — Serve it in production (advanced guides): route & adopt techniques
+## Stage 2 — Serve it in production: roll out new versions safely
 
-**Scenario:** "It's running on the right hardware — now serve it well: roll out a
-new version safely, then adopt an advanced serving technique."
+**Scenario:** "It's running on the right hardware — now serve it well: ship a new
+model version without downtime or risk."
 
-Two advanced guides, in order:
+**Routing / blue-green upgrade with `ModelService`** — one front door over
+multiple deployments (the `endpoints[]` list); traffic follows replica capacity.
+Ship a new model version (`v2`) behind the **same endpoint**, shift traffic by
+scaling `v2` up and `v1` down, then retire `v1` — or roll back instantly by
+deleting it. Clients never change a line; no traffic weights, no new gateway, the
+address never moves.
 
-1. **Routing / blue-green upgrade with `ModelService`** — one front door over
-   multiple deployments (the `endpoints[]` list); traffic follows replica
-   capacity. Ship a new model version (`v2`) behind the **same endpoint**, shift
-   traffic by scaling `v2` up and `v1` down, retire `v1` — or roll back instantly.
-   Clients never change a line; no traffic weights, no new gateway, the address
-   never moves.
-2. **Prefill/decode disaggregation with capability selection** (e.g. a particular
-   network interconnect) — see the disaggregation PR. *(Can be post-v0.1.)*
-
-**Payoff:** production-grade serving + a template for adopting *any* advanced
+**Payoff:** production-grade serving — and a template for adopting *any* advanced
 technique as a deployment-level change.
+
+### Out of scope (for this arc)
+
+**Prefill/decode disaggregation** — selecting clusters by interconnect/topology
+and composing the disaggregated serving path — is a more advanced technique built
+on the same primitives, but it is **not part of this getting-started arc**. It's
+tracked separately (see the disaggregation PR/demo) and is post-v0.1.
 
 ---
 
