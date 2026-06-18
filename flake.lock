@@ -7,15 +7,16 @@
         "nixpkgs-unstable": "nixpkgs-unstable"
       },
       "locked": {
-        "lastModified": 1781565524,
-        "narHash": "sha256-n9G+G1BPQh1dCTSnYB6Jjqq6jlTnBv//xax24h+R84I=",
-        "owner": "crossplane",
+        "lastModified": 1781759845,
+        "narHash": "sha256-cGTUbtLWeCjziuw9R5Gf6ppP/Ln4tilMK+OYFbmApqE=",
+        "owner": "negz",
         "repo": "cli",
-        "rev": "1a0f22906aa52ae01129513e248d3f22cee495ba",
+        "rev": "5466a88456e3e25d35676af5f74f5e8d4d565f56",
         "type": "github"
       },
       "original": {
-        "owner": "crossplane",
+        "owner": "negz",
+        "ref": "default-to-go",
         "repo": "cli",
         "type": "github"
       }
