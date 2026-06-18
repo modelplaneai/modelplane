@@ -9,15 +9,15 @@ A three-stage story for the getting-started guide and the demo video:
   **by GPU capability** (`memory >= 35Gi`), with no `clusterSelector`. It lands on
   the A100 clusters and skips the L4 — the DRA scheduler finding hardware
   fleet-wide.
-- **Stage 2** (`stage2-blue-green.yaml`) — roll out a new model version behind the
-  **same `ModelService`** (blue/green): a `v2` deployment joins as a second
-  `endpoints[]` entry, so the v1:v2 split follows replica counts (2:1). Shift by
-  scaling, cut over or roll back by deleting — same address throughout, no traffic
-  weights.
+- **Stage 2** (`stage2-ab-config.yaml`) — A/B a serving-config change behind the
+  **same `ModelService`**: a `tuned` deployment (same model, larger context
+  window) joins as a second `endpoints[]` entry, so the baseline:tuned split
+  follows replica counts (2:1). Adopt by scaling, roll back by deleting — same
+  address throughout, no traffic weights.
 
 The headline: *the ML team asks for the hardware its model needs, Modelplane finds
-it across the fleet, and a new version ships behind the same endpoint — no region
-labels, no weights, no tickets.*
+it across the fleet, and a config change is A/B'd behind the same endpoint — no
+region labels, no weights, no tickets.*
 
 ## Recording the 3-minute video
 
@@ -82,6 +82,6 @@ kubectl --context $CP -n ml-team delete modeldeployment,modelservice,modelcache 
 |---|---|
 | `stage0-single-cluster.yaml` | L4 `InferenceClass` + cluster + 7B `ModelDeployment` + `ModelService` |
 | `stage1-fleet-by-capability.yaml` | A100 class + two clusters + 14B `ModelCache`/`ModelDeployment`/`ModelService`, selected by capability CEL |
-| `stage2-blue-green.yaml` | A `v2` `ModelDeployment` + the `qwen-14b` `ModelService` widened to front both versions (per-deployment `endpoints[]`) |
+| `stage2-ab-config.yaml` | A `tuned` `ModelDeployment` + the `qwen-14b` `ModelService` widened to front both configs (per-deployment `endpoints[]`) |
 | `STORY_ARC.md` | The three-stage narrative for the getting-started guide |
 | `record.sh` | The self-playing screencast (instant reads + warm curls) |

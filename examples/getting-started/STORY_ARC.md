@@ -8,7 +8,7 @@ and **"declare intent, Modelplane composes the rest."**
 
 **Spine, in one line:** *serve a model (one cluster) → run it on the right
 hardware everywhere (capability scheduling across the fleet) → serve it in
-production (route traffic and roll out new versions safely).*
+production (route traffic and A/B config changes safely).*
 
 > The runnable demo (`stage0`/`stage1`/`stage2` manifests + `record.sh`) uses
 > **A100-40GB** as the "big" GPU because the demo project has no A100-80/H100
@@ -65,17 +65,18 @@ finds it"* — the DRA scheduler story.
 
 ---
 
-## Stage 2 — Serve it in production: roll out new versions safely
+## Stage 2 — Serve it in production: A/B a config change safely
 
-**Scenario:** "It's running on the right hardware — now serve it well: ship a new
-model version without downtime or risk."
+**Scenario:** "It's running on the right hardware — now serve it well: try a
+serving-config change (a larger context window) and prove it on real traffic
+before flipping it for everyone."
 
-**Routing / blue-green upgrade with `ModelService`** — one front door over
-multiple deployments (the `endpoints[]` list); traffic follows replica capacity.
-Ship a new model version (`v2`) behind the **same endpoint**, shift traffic by
-scaling `v2` up and `v1` down, then retire `v1` — or roll back instantly by
-deleting it. Clients never change a line; no traffic weights, no new gateway, the
-address never moves.
+**Routing / config A/B with `ModelService`** — one front door over multiple
+deployments (the `endpoints[]` list); traffic follows replica capacity. Run the
+new config (`tuned`, same model with a bigger `--max-model-len`) as a second
+deployment behind the **same endpoint**, send it a slice of traffic, compare, then
+adopt it (scale `tuned` up, baseline down) or roll back by deleting it. Same model
+and address throughout; no traffic weights, no new gateway.
 
 **Payoff:** production-grade serving — and a template for adopting *any* advanced
 technique as a deployment-level change.

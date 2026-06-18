@@ -63,13 +63,13 @@ run 'kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployme
 banner "Same endpoint contract — now served from the A100 clusters."
 run "curl -s \$WORKLOAD/v1/completions -H 'content-type: application/json' -d '{\"model\":\"qwen-14b\",\"prompt\":\"Reverse a linked list in Python:\",\"max_tokens\":60}' | jq -r '.choices[0].text'"
 
-banner "Stage 2 — roll out a new version (v2) behind the same endpoint."
-run "grep 'modelplane.ai/deployment:' stage2-blue-green.yaml"
-run 'kubectl --context $CP apply -f stage2-blue-green.yaml'
+banner "Stage 2 — A/B a serving-config change behind the same endpoint."
+run "grep 'modelplane.ai/deployment:' stage2-ab-config.yaml"
+run 'kubectl --context $CP apply -f stage2-ab-config.yaml'
 run 'kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployment,modelplane.ai/cluster'
 
-banner "v1 : v2 = 2 : 1 behind one front door — traffic just follows replica count."
-run 'echo "shift:    kubectl -n ml-team scale modeldeployment qwen-14b-v2 --replicas=2"; echo "cut over: kubectl -n ml-team delete modeldeployment qwen-14b"; echo "rollback: kubectl -n ml-team delete modeldeployment qwen-14b-v2"'
+banner "baseline : tuned = 2 : 1 behind one front door — traffic just follows replica count."
+run 'echo "adopt:    kubectl -n ml-team scale modeldeployment qwen-14b-tuned --replicas=2; kubectl -n ml-team scale modeldeployment qwen-14b --replicas=1"; echo "rollback: kubectl -n ml-team delete modeldeployment qwen-14b-tuned"'
 
-banner "Right hardware fleet-wide, and a new version shipped behind one endpoint — no labels, no weights, no tickets."
+banner "Right hardware fleet-wide, and a config change A/B'd behind one endpoint — no labels, no weights, no tickets."
 pause 3
