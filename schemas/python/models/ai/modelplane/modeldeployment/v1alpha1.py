@@ -85,6 +85,11 @@ class ConfigMapKeyRef(BaseModel):
     optional: bool | None = None
 
 
+class FieldRef(BaseModel):
+    apiVersion: str | None = None
+    fieldPath: str
+
+
 class SecretKeyRef(BaseModel):
     key: str
     name: str
@@ -93,6 +98,10 @@ class SecretKeyRef(BaseModel):
 
 class ValueFrom(BaseModel):
     configMapKeyRef: ConfigMapKeyRef | None = None
+    fieldRef: FieldRef | None = None
+    """
+    Reference a pod field via the downward API, e.g. status.podIP, metadata.name, or metadata.namespace.
+    """
     secretKeyRef: SecretKeyRef | None = None
 
 
@@ -113,7 +122,7 @@ class Container(BaseModel):
     """
     env: list[EnvItem] | None = None
     """
-    Environment variables. Supports valueFrom.secretKeyRef for secrets like HF_TOKEN.
+    Environment variables. Supports valueFrom.secretKeyRef / configMapKeyRef for secrets and config (like HF_TOKEN), and valueFrom.fieldRef for pod fields (e.g. status.podIP for vLLM's VLLM_HOST_IP on multi-NIC nodes).
     """
     image: constr(min_length=1)
     """

@@ -321,6 +321,19 @@ spec:
                                                         type: string
                                                       optional:
                                                         type: boolean
+                                                  fieldRef:
+                                                    type: object
+                                                    description: >-
+                                                      Reference a pod field via
+                                                      the downward API, e.g.
+                                                      status.podIP, metadata.name,
+                                                      or metadata.namespace.
+                                                    required: [fieldPath]
+                                                    properties:
+                                                      fieldPath:
+                                                        type: string
+                                                      apiVersion:
+                                                        type: string
                                   imagePullSecrets:
                                     type: array
                                     items:

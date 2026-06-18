@@ -75,6 +75,11 @@ class ConfigMapKeyRef(BaseModel):
     optional: bool | None = None
 
 
+class FieldRef(BaseModel):
+    apiVersion: str | None = None
+    fieldPath: str
+
+
 class SecretKeyRef(BaseModel):
     key: str
     name: str
@@ -83,6 +88,10 @@ class SecretKeyRef(BaseModel):
 
 class ValueFrom(BaseModel):
     configMapKeyRef: ConfigMapKeyRef | None = None
+    fieldRef: FieldRef | None = None
+    """
+    Reference a pod field via the downward API, e.g. status.podIP, metadata.name, or metadata.namespace.
+    """
     secretKeyRef: SecretKeyRef | None = None
 
 

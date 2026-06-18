@@ -397,6 +397,26 @@ class TestBackendManifests(unittest.TestCase):
         env = leader["spec"]["containers"][0]["env"]
         self.assertEqual(env, [_LEADER_ENV, {"name": "HF_TOKEN", "value": "x"}])
 
+    def test_fieldref_env_passes_through(self):
+        # A pod-field env (e.g. VLLM_HOST_IP from status.podIP, which multi-NIC
+        # RDMA nodes need so the engine binds the right interface — #141) survives
+        # model_dump into the composed manifest alongside the injected leader env.
+        engine = _gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD)
+        engine.members[0].template.spec.containers[0].env = [
+            v1alpha1.EnvItem(
+                name="VLLM_HOST_IP",
+                valueFrom=v1alpha1.ValueFrom(fieldRef=v1alpha1.FieldRef(fieldPath="status.podIP")),
+            )
+        ]
+        replica = _replica(engines=[engine])
+        out = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
+        leader = out["model-serving-main"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]["leaderTemplate"]
+        env = leader["spec"]["containers"][0]["env"]
+        self.assertEqual(
+            env,
+            [_LEADER_ENV, {"name": "VLLM_HOST_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}],
+        )
+
     @staticmethod
     def _names(out):
         return {o.spec.forProvider.manifest["metadata"]["name"] for o in out.values()}
