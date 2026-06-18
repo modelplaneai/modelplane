@@ -44,6 +44,14 @@ from models.io.upbound.m.aws.iam.policy import v1beta1 as policyv1beta1
 from models.io.upbound.m.aws.iam.role import v1beta1 as rolev1beta1
 from models.io.upbound.m.aws.iam.rolepolicyattachment import v1beta1 as rpav1beta1
 
+# Node group management policies that exclude LateInitialize, so the
+# desiredSize we seed via initProvider is applied only at creation and then
+# left alone. The cluster autoscaler drives the ASG's desired capacity; without
+# this Crossplane would keep reverting desiredSize to nodeCount and fight it.
+# (initProvider is a beta feature gated on enumerating management policies — the
+# default "*" still reconciles forProvider, defeating the purpose.)
+_NODE_GROUP_MANAGEMENT = ["Observe", "Create", "Update", "Delete"]
+
 # System node group injected into every EKS cluster to host control-plane
 # components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
 # the user-facing API — compose-inference-cluster only passes GPU groups.
@@ -497,8 +505,9 @@ class Composer:
                     matchControllerRef=True,
                     matchLabels={_LABEL_ROLE: _ROLE_NODE},
                 ),
+                # min/max are ours to enforce; desiredSize is seeded via
+                # initProvider below so the autoscaler can move it freely.
                 scalingConfig=ngv1beta1.ScalingConfig(
-                    desiredSize=pool.nodeCount,
                     minSize=pool.minNodeCount,
                     maxSize=pool.maxNodeCount,
                 ),
@@ -539,7 +548,15 @@ class Composer:
 
             resource.update(
                 self.rsp.desired.resources[f"nodegroup-{pool.name}"],
-                ngv1beta1.NodeGroup(spec=ngv1beta1.Spec(forProvider=fp)),
+                ngv1beta1.NodeGroup(
+                    spec=ngv1beta1.Spec(
+                        managementPolicies=_NODE_GROUP_MANAGEMENT,
+                        initProvider=ngv1beta1.InitProvider(
+                            scalingConfig=ngv1beta1.ScalingConfig(desiredSize=pool.nodeCount),
+                        ),
+                        forProvider=fp,
+                    ),
+                ),
             )
 
     def _launch_template_name(self, pool):
@@ -587,6 +604,10 @@ class Composer:
             self.rsp.desired.resources[f"nodegroup-{_SYSTEM_POOL_NAME}"],
             ngv1beta1.NodeGroup(
                 spec=ngv1beta1.Spec(
+                    managementPolicies=_NODE_GROUP_MANAGEMENT,
+                    initProvider=ngv1beta1.InitProvider(
+                        scalingConfig=ngv1beta1.ScalingConfig(desiredSize=_SYSTEM_POOL_NODE_COUNT),
+                    ),
                     forProvider=ngv1beta1.ForProvider(
                         region=self.xr.spec.region,
                         amiType=_AMI_TYPE_SYSTEM,
@@ -601,8 +622,9 @@ class Composer:
                         subnetIdSelector=ngv1beta1.SubnetIdSelector(
                             matchControllerRef=True,
                         ),
+                        # min/max are ours to enforce; desiredSize is seeded via
+                        # initProvider so the autoscaler can move it freely.
                         scalingConfig=ngv1beta1.ScalingConfig(
-                            desiredSize=_SYSTEM_POOL_NODE_COUNT,
                             minSize=_SYSTEM_POOL_MIN_NODE_COUNT,
                             maxSize=_SYSTEM_POOL_MAX_NODE_COUNT,
                         ),

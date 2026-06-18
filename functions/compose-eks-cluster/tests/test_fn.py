@@ -120,6 +120,8 @@ def _gpu_node_group_capacity_block() -> dict:
         "apiVersion": "eks.aws.m.upbound.io/v1beta1",
         "kind": "NodeGroup",
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+            "initProvider": {"scalingConfig": {"desiredSize": 2}},
             "forProvider": {
                 "region": "us-west-2",
                 "amiType": "AL2023_x86_64_NVIDIA",
@@ -135,7 +137,7 @@ def _gpu_node_group_capacity_block() -> dict:
                     "version": "$Latest",
                 },
                 "subnetIdRefs": [{"name": _SUBNET_A}],
-                "scalingConfig": {"desiredSize": 2, "minSize": 0, "maxSize": 2},
+                "scalingConfig": {"minSize": 0, "maxSize": 2},
                 "labels": {
                     "modelplane.ai/gpu": "nvidia-h200",
                     "modelplane.ai/pool": "gpu-h200",
@@ -358,6 +360,8 @@ def _system_node_group() -> dict:
         "apiVersion": "eks.aws.m.upbound.io/v1beta1",
         "kind": "NodeGroup",
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+            "initProvider": {"scalingConfig": {"desiredSize": 1}},
             "forProvider": {
                 "region": "us-west-2",
                 "amiType": "AL2023_x86_64_STANDARD",
@@ -368,7 +372,7 @@ def _system_node_group() -> dict:
                     "matchLabels": {"modelplane.ai/iam-role": "node"},
                 },
                 "subnetIdSelector": {"matchControllerRef": True},
-                "scalingConfig": {"desiredSize": 1, "minSize": 1, "maxSize": 2},
+                "scalingConfig": {"minSize": 1, "maxSize": 2},
                 "labels": {"modelplane.ai/pool": "system"},
             },
         },
@@ -380,6 +384,8 @@ def _gpu_node_group() -> dict:
         "apiVersion": "eks.aws.m.upbound.io/v1beta1",
         "kind": "NodeGroup",
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+            "initProvider": {"scalingConfig": {"desiredSize": 1}},
             "forProvider": {
                 "region": "us-west-2",
                 "amiType": "AL2023_x86_64_NVIDIA",
@@ -391,7 +397,7 @@ def _gpu_node_group() -> dict:
                     "matchLabels": {"modelplane.ai/iam-role": "node"},
                 },
                 "subnetIdRefs": [{"name": _SUBNET_A}, {"name": _SUBNET_B}],
-                "scalingConfig": {"desiredSize": 1, "minSize": 0, "maxSize": 4},
+                "scalingConfig": {"minSize": 0, "maxSize": 4},
                 "labels": {
                     "modelplane.ai/gpu": "nvidia-l4",
                     "modelplane.ai/pool": "gpu-l4",
