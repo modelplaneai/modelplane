@@ -68,7 +68,7 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
 [params]
   docs = true
   description = "Modelplane documentation."
-  version = "v0.1.0-rc.0"
+  version = "v0.1.0-rc.1"
   [params.anchors]
     min = 2
     max = 5
