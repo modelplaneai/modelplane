@@ -36,6 +36,14 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@v31
 
+      # Cache Nix store paths in the GitHub Actions cache so builds reuse work
+      # across runs. use-flakehub is off so artifacts stay in the Actions cache
+      # rather than going to a third party, which matters for a private repo.
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+        with:
+          use-flakehub: false
+
       - name: Check
         run: nix flake check --print-build-logs
 
@@ -68,6 +76,12 @@ jobs:
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
+
+      # See the check job for why use-flakehub is off.
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+        with:
+          use-flakehub: false
 
       # The Crossplane CLI uses Docker's credential store for OCI pushes.
       - name: Login to registry
