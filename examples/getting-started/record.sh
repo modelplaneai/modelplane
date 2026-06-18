@@ -63,13 +63,13 @@ run 'kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployme
 banner "Same endpoint contract — now served from the A100 clusters."
 run "curl -s \$WORKLOAD/v1/completions -H 'content-type: application/json' -d '{\"model\":\"qwen-14b\",\"prompt\":\"Reverse a linked list in Python:\",\"max_tokens\":60}' | jq -r '.choices[0].text'"
 
-banner "Stage 2 — canary a tuned variant safely, behind the same endpoint."
-run "grep 'modelplane.ai/deployment:' stage2-canary.yaml"
-run 'kubectl --context $CP apply -f stage2-canary.yaml'
+banner "Stage 2 — roll out a new version (v2) behind the same endpoint."
+run "grep 'modelplane.ai/deployment:' stage2-blue-green.yaml"
+run 'kubectl --context $CP apply -f stage2-blue-green.yaml'
 run 'kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployment,modelplane.ai/cluster'
 
-banner "2 stable : 1 canary, one front door — traffic just follows replica count."
-run 'echo "promote:  kubectl -n ml-team scale modeldeployment qwen-14b-canary --replicas=2"; echo "rollback: kubectl -n ml-team delete modeldeployment qwen-14b-canary"'
+banner "v1 : v2 = 2 : 1 behind one front door — traffic just follows replica count."
+run 'echo "shift:    kubectl -n ml-team scale modeldeployment qwen-14b-v2 --replicas=2"; echo "cut over: kubectl -n ml-team delete modeldeployment qwen-14b"; echo "rollback: kubectl -n ml-team delete modeldeployment qwen-14b-v2"'
 
-banner "Ask for the hardware the model needs, canary changes behind one endpoint — no labels, no weights, no tickets."
+banner "Right hardware fleet-wide, and a new version shipped behind one endpoint — no labels, no weights, no tickets."
 pause 3
