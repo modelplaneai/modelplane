@@ -36,6 +36,10 @@ CLUSTER_SOURCE_GKE = "GKE"
 CLUSTER_SOURCE_EKS = "EKS"
 CLUSTER_SOURCE_EXISTING = "Existing"
 
+# GKE installs the NVIDIA driver here rather than at the default / root; the
+# ServingStack passes it to the DRA driver so its kubelet plugin starts.
+_GKE_NVIDIA_DRIVER_ROOT = "/home/kubernetes/bin/nvidia"
+
 # Condition types and reasons for the InferenceCluster XR.
 CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
 CONDITION_TYPE_BACKEND_READY = "BackendReady"
@@ -237,7 +241,7 @@ class Composer:
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready, backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, nvidia_driver_root=_GKE_NVIDIA_DRIVER_ROOT)
             self.compose_gke_usage()
 
         if gke_ready:
@@ -309,8 +313,21 @@ class Composer:
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=True)
 
-    def compose_serving_stack(self, backend_secrets: list[ssv1alpha1.Secret]):
-        """Compose a ServingStack XR with the given secrets."""
+    def compose_serving_stack(
+        self,
+        backend_secrets: list[ssv1alpha1.Secret],
+        nvidia_driver_root: str | None = None,
+    ):
+        """Compose a ServingStack XR with the given secrets.
+
+        nvidia_driver_root is set for provisioned GKE clusters, where the NVIDIA
+        driver lives off the default / path; the serving stack consumes it
+        without inspecting its own cloud. Left None for EKS / existing clusters,
+        which keep the ServingStack's default root.
+        """
+        spec = ssv1alpha1.Spec(secrets=backend_secrets)
+        if nvidia_driver_root is not None:
+            spec.nvidiaDriverRoot = nvidia_driver_root
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(
@@ -318,7 +335,7 @@ class Composer:
                     name=resource.child_name(self.xr.metadata.name, "serving-stack"),
                     namespace=_NAMESPACE_SYSTEM,
                 ),
-                spec=ssv1alpha1.Spec(secrets=backend_secrets),
+                spec=spec,
             ),
         )
 

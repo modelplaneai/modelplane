@@ -122,6 +122,10 @@ class Spec(BaseModel):
     """
     Configuration for the cluster's inference traffic gateway.
     """
+    nvidiaDriverRoot: constr(max_length=512) | None = '/'
+    """
+    Host path where the NVIDIA driver is installed, passed to the DRA driver as nvidiaDriverRoot. Defaults to / (the upstream default), which suits EKS and self-managed clusters. Set it for platforms that install the driver elsewhere — GKE uses /home/kubernetes/bin/nvidia. A non-default value also makes the serving stack compose a ResourceQuota permitting the DRA driver's system-critical pods, which GKE requires. The cluster composition sets this; the serving stack never inspects its own cloud.
+    """
     secrets: list[Secret] = Field(..., max_length=8, min_length=1)
     """
     Secrets used to authenticate to the target cluster. Typically sourced from a GKECluster's status.secrets. All secrets must be in the same namespace as this ServingStack. A Kubeconfig secret is required. If a cloud-specific credential secret is present (e.g. GCPServiceAccountKey), the ProviderConfigs will use it for identity-based authentication instead of relying on the kubeconfig's embedded credentials.

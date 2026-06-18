@@ -404,6 +404,43 @@ _DRA_DRIVER = {
             "values": {
                 "gpuResourcesEnabledOverride": True,
                 "resources": {"computeDomains": {"enabled": False}},
+                "nvidiaDriverRoot": "/home/kubernetes/bin/nvidia",
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+_DRA_DRIVER_QUOTA = {
+    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+    "kind": "Object",
+    "spec": {
+        "forProvider": {
+            "manifest": {
+                "apiVersion": "v1",
+                "kind": "ResourceQuota",
+                "metadata": {
+                    "name": "allow-critical-pods",
+                    "namespace": "dra-driver-nvidia-gpu",
+                },
+                "spec": {
+                    "hard": {"pods": "1000"},
+                    "scopeSelector": {
+                        "matchExpressions": [
+                            {
+                                "operator": "In",
+                                "scopeName": "PriorityClass",
+                                "values": [
+                                    "system-node-critical",
+                                    "system-cluster-critical",
+                                ],
+                            },
+                        ],
+                    },
+                },
             },
         },
         "providerConfigRef": {
@@ -474,8 +511,12 @@ _PROMETHEUS = {
 }
 
 
-def _base_request() -> fnv1.RunFunctionRequest:
-    """Build the base RunFunctionRequest used by all test cases."""
+def _base_request(nvidia_driver_root: str = "/home/kubernetes/bin/nvidia") -> fnv1.RunFunctionRequest:
+    """Build the base RunFunctionRequest used by all test cases.
+
+    Defaults to the GKE driver root, which drives the DRA driver's
+    nvidiaDriverRoot override and the critical-pods quota.
+    """
     return fnv1.RunFunctionRequest(
         observed=fnv1.State(
             composite=fnv1.Resource(
@@ -490,6 +531,7 @@ def _base_request() -> fnv1.RunFunctionRequest:
                                 v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                                 v1alpha1.Secret(type="GCPServiceAccountKey", name="sa-secret", key="private_key"),
                             ],
+                            nvidiaDriverRoot=nvidia_driver_root,
                         ),
                     ).model_dump(exclude_none=True, mode="json")
                 ),
@@ -600,6 +642,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     "dra-driver": fnv1.Resource(
                         resource=resource.dict_to_struct(_DRA_DRIVER),
                     ),
+                    "dra-driver-critical-pods-quota": fnv1.Resource(
+                        resource=resource.dict_to_struct(_DRA_DRIVER_QUOTA),
+                    ),
                     "prometheus": fnv1.Resource(
                         resource=resource.dict_to_struct(_PROMETHEUS),
                     ),
@@ -630,6 +675,34 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             json_format.MessageToDict(got),
             "-want, +got",
         )
+
+    async def test_default_driver_root_skips_override_keeps_quota(self) -> None:
+        """With the default driver root (/), e.g. EKS, the DRA driver gets no
+        nvidiaDriverRoot override, but the critical-pods quota is still composed
+        (it's laid down everywhere — harmless where priority isn't restricted)."""
+        req = _base_request(nvidia_driver_root="/")
+        req.observed.resources["provider-config-helm"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+        req.observed.resources["provider-config-kubernetes"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
+                ),
+            ),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertIn("dra-driver-critical-pods-quota", got.desired.resources)
+        dra_values = resource.struct_to_dict(got.desired.resources["dra-driver"].resource)["spec"]["forProvider"][
+            "values"
+        ]
+        self.assertNotIn("nvidiaDriverRoot", dra_values)
 
     async def test_gateway_gated_on_address(self) -> None:
         """The Gateway Object carries the DeriveFromCelQuery readiness, and is
@@ -804,6 +877,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                     "dra-driver": fnv1.Resource(
                         resource=resource.dict_to_struct(_DRA_DRIVER),
+                    ),
+                    "dra-driver-critical-pods-quota": fnv1.Resource(
+                        resource=resource.dict_to_struct(_DRA_DRIVER_QUOTA),
                     ),
                     "prometheus": fnv1.Resource(
                         resource=resource.dict_to_struct(_PROMETHEUS),

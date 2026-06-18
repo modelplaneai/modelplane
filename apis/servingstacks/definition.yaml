@@ -76,6 +76,20 @@ spec:
                       type: string
                       description: Key within the Secret that holds the credential data.
                       maxLength: 253
+              nvidiaDriverRoot:
+                type: string
+                default: "/"
+                description: >-
+                  Host path where the NVIDIA driver is installed, passed to the
+                  DRA driver as nvidiaDriverRoot. Defaults to / (the upstream
+                  default), which suits EKS and self-managed clusters. Set it for
+                  platforms that install the driver elsewhere — GKE uses
+                  /home/kubernetes/bin/nvidia. A non-default value also makes the
+                  serving stack compose a ResourceQuota permitting the DRA
+                  driver's system-critical pods, which GKE requires. The cluster
+                  composition sets this; the serving stack never inspects its own
+                  cloud.
+                maxLength: 512
               versions:
                 type: object
                 description: >-

@@ -61,6 +61,12 @@ _PROMETHEUS_URL = f"http://{_PROMETHEUS_FULLNAME_OVERRIDE}-prometheus.{_PROMETHE
 _PROMETHEUS_CHART = "kube-prometheus-stack"
 _PROMETHEUS_REPO = "https://prometheus-community.github.io/helm-charts"
 
+_DRA_DRIVER_NAMESPACE = "dra-driver-nvidia-gpu"
+# Upstream default for the DRA driver's NVIDIA_DRIVER_ROOT. A ServingStack whose
+# nvidiaDriverRoot differs from this is on a platform (GKE) that relocates the
+# driver and restricts system-critical pods, which needs both DRA accommodations.
+_DEFAULT_NVIDIA_DRIVER_ROOT = "/"
+
 # Envoy AI Gateway constants. The AI Gateway controller supplies the ext-proc
 # extension server that Envoy Gateway delegates InferencePool backend resolution
 # to, so HTTPRoute -> InferencePool backendRefs (disaggregated serving) route.
@@ -610,17 +616,65 @@ class Composer:
             return
 
         v = self.xr.spec.versions or v1alpha1.Versions()
+        # nvidiaDriverRoot is set by the cluster composition for platforms that
+        # install the NVIDIA driver off the upstream default (/) — GKE uses
+        # /home/kubernetes/bin/nvidia. Without it the kubelet plugin's init
+        # container can't find nvidia-smi / libnvidia-ml and never starts. A
+        # non-default value is the serving stack's signal that it's on such a
+        # platform; the serving stack never inspects its own cloud.
+        driver_root = self.xr.spec.nvidiaDriverRoot or _DEFAULT_NVIDIA_DRIVER_ROOT
+        dra_values = {
+            "gpuResourcesEnabledOverride": True,
+            "resources": {"computeDomains": {"enabled": False}},
+        }
+        if driver_root != _DEFAULT_NVIDIA_DRIVER_ROOT:
+            dra_values["nvidiaDriverRoot"] = driver_root
         resource.update(
             self.rsp.desired.resources["dra-driver"],
             _helm_release(
                 chart="dra-driver-nvidia-gpu",
                 repo="oci://registry.k8s.io/dra-driver-nvidia/charts",
                 version=v.nvidiaDraDriver,
-                namespace="dra-driver-nvidia-gpu",
+                namespace=_DRA_DRIVER_NAMESPACE,
                 provider_config=_pc_name(self.xr),
-                values={
-                    "gpuResourcesEnabledOverride": True,
-                    "resources": {"computeDomains": {"enabled": False}},
+                values=dra_values,
+            ),
+        )
+
+        # The DRA driver's kubelet plugin runs at system-node-critical priority.
+        # GKE only admits system-node-critical / system-cluster-critical pods in a
+        # namespace that has a ResourceQuota permitting those priority classes, so
+        # without this the daemonset gets FailedCreate ("insufficient quota to
+        # match these scopes") and never publishes ResourceSlices. Lay it down
+        # everywhere: we only know GKE needs it, but it only *grants* headroom for
+        # those two priority classes (it constrains nothing), so it's harmless on
+        # clusters that don't restrict them (EKS, self-managed).
+        resource.update(
+            self.rsp.desired.resources["dra-driver-critical-pods-quota"],
+            _k8s_object(
+                _pc_name(self.xr),
+                {
+                    "apiVersion": "v1",
+                    "kind": "ResourceQuota",
+                    "metadata": {
+                        "name": "allow-critical-pods",
+                        "namespace": _DRA_DRIVER_NAMESPACE,
+                    },
+                    "spec": {
+                        "hard": {"pods": "1000"},
+                        "scopeSelector": {
+                            "matchExpressions": [
+                                {
+                                    "operator": "In",
+                                    "scopeName": "PriorityClass",
+                                    "values": [
+                                        "system-node-critical",
+                                        "system-cluster-critical",
+                                    ],
+                                },
+                            ],
+                        },
+                    },
                 },
             ),
         )
@@ -745,6 +799,7 @@ class Composer:
             "leader-worker-set",
             "node-feature-discovery",
             "dra-driver",
+            "dra-driver-critical-pods-quota",
             "gateway-namespace",
             "gateway-class",
             "gateway",
