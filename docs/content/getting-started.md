@@ -101,7 +101,7 @@ helm install crossplane crossplane-stable/crossplane \
 ```
 
 Apply the bootstrap resources. This grants Crossplane the RBAC it needs for
-Gateway API and MetalLB, and a cluster-admin binding for `provider-helm` so it
+Gateway API and MetalLB (required for kind), and a cluster-admin binding for `provider-helm` so it
 can install Helm charts on remote clusters:
 
 ```shell 
@@ -429,10 +429,8 @@ A `ModelService` selects `ModelEndpoints` by label and creates a Gateway API
 
 Modelplane creates a Gateway API `HTTPRoute` for each replica and attaches it
 to the Traefik gateway. Requests to the gateway IP are routed by Gateway API.
-The MetalLB IP is the external address of the Traefik `Gateway` resource.
 
-The gateway endpoint is reachable from inside the kind Docker network:
-
+Send a request to the endpoint:
 ```bash
 kubectl run -i --rm curl-test \
   --image=curlimages/curl \
@@ -459,8 +457,10 @@ You should receive a reply in a few seconds:
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "Crossplane is a cross-cloud service orchestration platform designed to facilitate seamless deployment and management of applications and infrastructure across various distributed cloud environments."
-      },
+        "content": "Crossplane is a cross-cloud service orchestration platform
+        designed to facilitate seamless deployment and management of
+        applications and infrastructure across various distributed cloud
+        environments." },
       "finish_reason": "stop"
     }
   ],
