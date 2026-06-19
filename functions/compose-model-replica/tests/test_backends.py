@@ -224,6 +224,7 @@ _NATIVE_WANT = {
                                 "httpGet": {"path": "/health", "port": 8000},
                                 "initialDelaySeconds": 30,
                                 "periodSeconds": 10,
+                                "timeoutSeconds": 5,
                             },
                         }
                     ],
@@ -308,6 +309,7 @@ def _engine(*, serving, args=None, command=None, env=None):
             "httpGet": {"path": "/health", "port": 8000},
             "initialDelaySeconds": 30,
             "periodSeconds": 10,
+            "timeoutSeconds": 5,
         }
     return c
 
@@ -790,8 +792,10 @@ class TestDisaggregated(unittest.TestCase):
         self.assertEqual(names, ["engine", "pd-sidecar"])
         engine = next(c for c in containers if c["name"] == "engine")
         self.assertEqual(engine["ports"][0]["containerPort"], 8001)
+        self.assertEqual(engine["readinessProbe"]["timeoutSeconds"], 5)
         sidecar = next(c for c in containers if c["name"] == "pd-sidecar")
         self.assertEqual(sidecar["ports"][0]["containerPort"], 8000)
+        self.assertEqual(sidecar["readinessProbe"]["timeoutSeconds"], 5)
         self.assertIn("--secure-proxy=false", sidecar["args"])
 
     def test_prefill_has_no_sidecar(self):

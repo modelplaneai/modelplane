@@ -89,6 +89,9 @@ class LLMDBackend:
                     "httpGet": {"path": "/health", "port": base.ENGINE_PORT},
                     "initialDelaySeconds": 30,
                     "periodSeconds": 10,
+                    # A slow /health (e.g. SGLang's ~1s) flaps the probe under the
+                    # 1s Kubernetes default; 5s gives it room.
+                    "timeoutSeconds": 5,
                 }
             return c
 

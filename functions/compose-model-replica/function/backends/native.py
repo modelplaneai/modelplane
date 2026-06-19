@@ -48,6 +48,11 @@ class NativeBackend:
                 "httpGet": {"path": "/health", "port": base.ENGINE_PORT},
                 "initialDelaySeconds": 30,
                 "periodSeconds": 10,
+                # Kubernetes defaults the probe timeout to 1s. Some engines'
+                # /health isn't instant - SGLang's sits right at ~1s - so a 1s
+                # timeout flaps the probe and the pod never goes Ready. 5s gives
+                # a slow /health room without masking a real hang.
+                "timeoutSeconds": 5,
             },
         }
         # GPUs bind via DRA: the container references the pod-level claim

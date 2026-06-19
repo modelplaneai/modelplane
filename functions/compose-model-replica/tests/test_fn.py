@@ -181,6 +181,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                                     "httpGet": {"path": "/health", "port": 8000},
                                                                     "initialDelaySeconds": 30,
                                                                     "periodSeconds": 10,
+                                                                    "timeoutSeconds": 5,
                                                                 },
                                                             },
                                                         ],

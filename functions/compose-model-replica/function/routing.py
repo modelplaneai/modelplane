@@ -278,6 +278,9 @@ def _add_sidecar_to_decode(obj: k8sobjv1alpha1.Object) -> None:
             "httpGet": {"path": "/health", "port": port},
             "initialDelaySeconds": 30,
             "periodSeconds": 10,
+            # Match the timeout the backends set on the standalone probe: a slow
+            # but healthy /health (SGLang's sits at ~1s) flaps the 1s default.
+            "timeoutSeconds": 5,
         }
         containers.append(
             {
@@ -286,9 +289,12 @@ def _add_sidecar_to_decode(obj: k8sobjv1alpha1.Object) -> None:
                 "args": ["--secure-proxy=false", "--kv-connector=nixlv2", f"--vllm-port={port}"],
                 "ports": [{"containerPort": base.ENGINE_PORT}],
                 "readinessProbe": {
+                    # The sidecar proxies /health to the same engine, so it's
+                    # just as slow; give it the same 5s timeout.
                     "httpGet": {"path": "/health", "port": base.ENGINE_PORT},
                     "initialDelaySeconds": 30,
                     "periodSeconds": 10,
+                    "timeoutSeconds": 5,
                 },
             }
         )
