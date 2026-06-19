@@ -90,6 +90,10 @@ class NodePool(BaseModel):
     """
     Root volume size in GB.
     """
+    fabric: Literal['None', 'EFA'] | None = 'None'
+    """
+    High-performance node-to-node fabric for multi-node engines. None uses standard VPC networking (ENA/TCP). EFA attaches Elastic Fabric Adapter interfaces to each node via the launch template and an all-self-traffic security group, for GPUDirect RDMA across nodes. EFA is only useful on EFA-capable instance types (e.g. p5en.48xlarge) and needs the EFA DRA driver on the cluster, which Modelplane installs when any pool sets EFA.
+    """
     gpu: Gpu | None = None
     """
     GPU configuration. Required when role is GPU.

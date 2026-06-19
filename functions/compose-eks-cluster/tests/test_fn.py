@@ -30,6 +30,9 @@ _KUBECONFIG_SECRET = "test-cluster-kubeconfig-55b57"
 _SUBNET_A = "test-cluster-subnet-us-west-2a-952dc"
 _SUBNET_B = "test-cluster-subnet-us-west-2b-2b80f"
 _SUBNET_C = "test-cluster-subnet-us-west-2c-03273"
+_PRIVATE_SUBNET_A = "test-cluster-private-subnet-us-west-2a-6a89f"
+_PRIVATE_SUBNET_B = "test-cluster-private-subnet-us-west-2b-b7832"
+_PRIVATE_SUBNET_C = "test-cluster-private-subnet-us-west-2c-ef57d"
 
 
 def _xr() -> v1alpha1.EKSCluster:
@@ -103,6 +106,9 @@ def _launch_template() -> dict:
                 "region": "us-west-2",
                 "name": _LAUNCH_TEMPLATE_NAME,
                 "instanceType": "p5en.48xlarge",
+                "blockDeviceMappings": [
+                    {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 1024}},
+                ],
                 "instanceMarketOptions": {"marketType": "capacity-block"},
                 "capacityReservationSpecification": {
                     "capacityReservationPreference": "capacity-reservations-only",
@@ -125,7 +131,6 @@ def _gpu_node_group_capacity_block() -> dict:
             "forProvider": {
                 "region": "us-west-2",
                 "amiType": "AL2023_x86_64_NVIDIA",
-                "diskSize": 1024,
                 "clusterNameSelector": {"matchControllerRef": True},
                 "nodeRoleArnSelector": {
                     "matchControllerRef": True,
@@ -136,7 +141,169 @@ def _gpu_node_group_capacity_block() -> dict:
                     "name": _LAUNCH_TEMPLATE_NAME,
                     "version": "$Latest",
                 },
-                "subnetIdRefs": [{"name": _SUBNET_A}],
+                "subnetIdRefs": [{"name": _PRIVATE_SUBNET_A}],
+                "scalingConfig": {"minSize": 0, "maxSize": 2},
+                "labels": {
+                    "modelplane.ai/gpu": "nvidia-h200",
+                    "modelplane.ai/pool": "gpu-h200",
+                },
+                "taint": [
+                    {
+                        "key": "nvidia.com/gpu",
+                        "value": "true",
+                        "effect": "NO_SCHEDULE",
+                    },
+                ],
+            },
+        },
+    }
+
+
+# EFA launch template and security-group object names, derived the same way the
+# function derives them, so the test can't drift from the child_name hashing.
+_EFA_LAUNCH_TEMPLATE_NAME = resource.child_name("test-cluster", "lt-gpu-h200")
+_EFA_SECURITY_GROUP_NAME = resource.child_name("test-cluster", "efa-sg")
+
+
+def _xr_efa() -> v1alpha1.EKSCluster:
+    return v1alpha1.EKSCluster(
+        metadata=metav1.ObjectMeta(
+            name="test-cluster",
+            namespace="modelplane-system",
+        ),
+        spec=v1alpha1.Spec(
+            region="us-west-2",
+            nodePools=[
+                v1alpha1.NodePool(
+                    name="gpu-h200",
+                    role="GPU",
+                    instanceType="p5en.48xlarge",
+                    nodeCount=2,
+                    minNodeCount=0,
+                    maxNodeCount=2,
+                    diskSizeGb=1024,
+                    gpu=v1alpha1.Gpu(
+                        acceleratorType="nvidia-h200",
+                    ),
+                    fabric="EFA",
+                    zones=["us-west-2a"],
+                ),
+            ],
+        ),
+    )
+
+
+def _efa_network_interface(card: int, security_groups: list[str] | None = None) -> dict:
+    ni = {
+        "networkCardIndex": card,
+        "deviceIndex": 0 if card == 0 else 1,
+        "interfaceType": "efa" if card == 0 else "efa-only",
+    }
+    if security_groups:
+        ni["securityGroups"] = security_groups
+    return ni
+
+
+def _launch_template_efa() -> dict:
+    # p5en.48xlarge has 16 network cards; one EFA interface per card.
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "LaunchTemplate",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "name": _EFA_LAUNCH_TEMPLATE_NAME,
+                "instanceType": "p5en.48xlarge",
+                "blockDeviceMappings": [
+                    {"deviceName": "/dev/xvda", "ebs": {"volumeSize": 1024}},
+                ],
+                "networkInterfaces": [_efa_network_interface(card) for card in range(16)],
+            },
+        },
+    }
+
+
+def _efa_security_group() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "SecurityGroup",
+        "metadata": {
+            "name": _EFA_SECURITY_GROUP_NAME,
+            "labels": {"modelplane.ai/fabric": "EFA"},
+        },
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "name": "test-cluster-efa",
+                "description": "EFA OS-bypass traffic between gang nodes",
+                "vpcIdSelector": {"matchControllerRef": True},
+            },
+        },
+    }
+
+
+def _efa_security_group_ingress() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "SecurityGroupIngressRule",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "ipProtocol": "-1",
+                "referencedSecurityGroupIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/fabric": "EFA"},
+                },
+                "securityGroupIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/fabric": "EFA"},
+                },
+            },
+        },
+    }
+
+
+def _efa_security_group_egress() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "SecurityGroupEgressRule",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "ipProtocol": "-1",
+                "referencedSecurityGroupIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/fabric": "EFA"},
+                },
+                "securityGroupIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/fabric": "EFA"},
+                },
+            },
+        },
+    }
+
+
+def _gpu_node_group_efa() -> dict:
+    return {
+        "apiVersion": "eks.aws.m.upbound.io/v1beta1",
+        "kind": "NodeGroup",
+        "spec": {
+            "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+            "initProvider": {"scalingConfig": {"desiredSize": 2}},
+            "forProvider": {
+                "region": "us-west-2",
+                "amiType": "AL2023_x86_64_NVIDIA",
+                "clusterNameSelector": {"matchControllerRef": True},
+                "nodeRoleArnSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/iam-role": "node"},
+                },
+                "launchTemplate": {
+                    "name": _EFA_LAUNCH_TEMPLATE_NAME,
+                    "version": "$Latest",
+                },
+                "subnetIdRefs": [{"name": _PRIVATE_SUBNET_A}],
                 "scalingConfig": {"minSize": 0, "maxSize": 2},
                 "labels": {
                     "modelplane.ai/gpu": "nvidia-h200",
@@ -182,13 +349,37 @@ def _subnet(name: str, az: str, cidr: str) -> dict:
     return {
         "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
         "kind": "Subnet",
-        "metadata": {"name": name, "labels": {"modelplane.ai/zone": az}},
+        "metadata": {
+            "name": name,
+            "labels": {"modelplane.ai/zone": az, "modelplane.ai/subnet-tier": "public"},
+        },
         "spec": {
             "forProvider": {
                 "region": "us-west-2",
                 "availabilityZone": az,
                 "cidrBlock": cidr,
                 "mapPublicIpOnLaunch": True,
+                "tags": {"kubernetes.io/role/elb": "1"},
+                "vpcIdSelector": {"matchControllerRef": True},
+            },
+        },
+    }
+
+
+def _private_subnet(name: str, az: str, cidr: str) -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "Subnet",
+        "metadata": {
+            "name": name,
+            "labels": {"modelplane.ai/zone": az, "modelplane.ai/subnet-tier": "private"},
+        },
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "availabilityZone": az,
+                "cidrBlock": cidr,
+                "mapPublicIpOnLaunch": False,
                 "vpcIdSelector": {"matchControllerRef": True},
             },
         },
@@ -212,6 +403,7 @@ def _route_table() -> dict:
     return {
         "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
         "kind": "RouteTable",
+        "metadata": {"labels": {"modelplane.ai/subnet-tier": "public"}},
         "spec": {
             "forProvider": {
                 "region": "us-west-2",
@@ -230,7 +422,75 @@ def _route_default() -> dict:
                 "region": "us-west-2",
                 "destinationCidrBlock": "0.0.0.0/0",
                 "gatewayIdSelector": {"matchControllerRef": True},
-                "routeTableIdSelector": {"matchControllerRef": True},
+                "routeTableIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/subnet-tier": "public"},
+                },
+            },
+        },
+    }
+
+
+def _nat_eip() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "EIP",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "domain": "vpc",
+            },
+        },
+    }
+
+
+def _nat_gateway(az: str) -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "NATGateway",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "allocationIdSelector": {"matchControllerRef": True},
+                "subnetIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {
+                        "modelplane.ai/zone": az,
+                        "modelplane.ai/subnet-tier": "public",
+                    },
+                },
+            },
+        },
+    }
+
+
+def _private_route_table() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "RouteTable",
+        "metadata": {"labels": {"modelplane.ai/subnet-tier": "private"}},
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "vpcIdSelector": {"matchControllerRef": True},
+            },
+        },
+    }
+
+
+def _private_route_default() -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "Route",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "destinationCidrBlock": "0.0.0.0/0",
+                "natGatewayIdSelector": {"matchControllerRef": True},
+                "routeTableIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/subnet-tier": "private"},
+                },
             },
         },
     }
@@ -243,10 +503,39 @@ def _route_table_association(az: str) -> dict:
         "spec": {
             "forProvider": {
                 "region": "us-west-2",
-                "routeTableIdSelector": {"matchControllerRef": True},
+                "routeTableIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/subnet-tier": "public"},
+                },
                 "subnetIdSelector": {
                     "matchControllerRef": True,
-                    "matchLabels": {"modelplane.ai/zone": az},
+                    "matchLabels": {
+                        "modelplane.ai/zone": az,
+                        "modelplane.ai/subnet-tier": "public",
+                    },
+                },
+            },
+        },
+    }
+
+
+def _private_route_table_association(az: str) -> dict:
+    return {
+        "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
+        "kind": "RouteTableAssociation",
+        "spec": {
+            "forProvider": {
+                "region": "us-west-2",
+                "routeTableIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/subnet-tier": "private"},
+                },
+                "subnetIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {
+                        "modelplane.ai/zone": az,
+                        "modelplane.ai/subnet-tier": "private",
+                    },
                 },
             },
         },
@@ -371,7 +660,10 @@ def _system_node_group() -> dict:
                     "matchControllerRef": True,
                     "matchLabels": {"modelplane.ai/iam-role": "node"},
                 },
-                "subnetIdSelector": {"matchControllerRef": True},
+                "subnetIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/subnet-tier": "private"},
+                },
                 "scalingConfig": {"minSize": 1, "maxSize": 2},
                 "labels": {"modelplane.ai/pool": "system"},
             },
@@ -396,7 +688,7 @@ def _gpu_node_group() -> dict:
                     "matchControllerRef": True,
                     "matchLabels": {"modelplane.ai/iam-role": "node"},
                 },
-                "subnetIdRefs": [{"name": _SUBNET_A}, {"name": _SUBNET_B}],
+                "subnetIdRefs": [{"name": _PRIVATE_SUBNET_A}, {"name": _PRIVATE_SUBNET_B}],
                 "scalingConfig": {"minSize": 0, "maxSize": 4},
                 "labels": {
                     "modelplane.ai/gpu": "nvidia-l4",
@@ -440,6 +732,7 @@ def _efs_security_group() -> dict:
     return {
         "apiVersion": "ec2.aws.m.upbound.io/v1beta1",
         "kind": "SecurityGroup",
+        "metadata": {"labels": {"modelplane.ai/sg-role": "efs"}},
         "spec": {
             "forProvider": {
                 "region": "us-west-2",
@@ -462,7 +755,10 @@ def _efs_security_group_ingress() -> dict:
                 "fromPort": 2049,
                 "toPort": 2049,
                 "cidrIpv4": "10.0.0.0/16",
-                "securityGroupIdSelector": {"matchControllerRef": True},
+                "securityGroupIdSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/sg-role": "efs"},
+                },
             },
         },
     }
@@ -477,7 +773,10 @@ def _efs_mount_target(subnet_name: str) -> dict:
                 "region": "us-west-2",
                 "fileSystemIdSelector": {"matchControllerRef": True},
                 "subnetIdRef": {"name": subnet_name},
-                "securityGroupsSelector": {"matchControllerRef": True},
+                "securityGroupsSelector": {
+                    "matchControllerRef": True,
+                    "matchLabels": {"modelplane.ai/sg-role": "efs"},
+                },
             },
         },
     }
@@ -601,6 +900,30 @@ def _autoscaler_release() -> dict:
     }
 
 
+def _efa_dra_driver_release() -> dict:
+    return {
+        "apiVersion": "helm.m.crossplane.io/v1beta1",
+        "kind": "Release",
+        "metadata": {"namespace": "modelplane-system"},
+        "spec": {
+            "providerConfigRef": {"kind": "ProviderConfig", "name": _KUBECONFIG_SECRET},
+            "forProvider": {
+                "chart": {
+                    "name": "aws-dranet",
+                    "repository": "https://aws.github.io/eks-charts",
+                    "version": "1.0.0",
+                },
+                "namespace": "kube-system",
+                "values": {
+                    "tolerations": [
+                        {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    ],
+                },
+            },
+        },
+    }
+
+
 def _provider_config(api_version: str) -> dict:
     return {
         "apiVersion": api_version,
@@ -650,9 +973,22 @@ def _expected_resources() -> dict:
         "subnet-2": fnv1.Resource(
             resource=resource.dict_to_struct(_subnet(_SUBNET_C, "us-west-2c", "10.0.32.0/20")),
         ),
+        "private-subnet-0": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_A, "us-west-2a", "10.0.48.0/20")),
+        ),
+        "private-subnet-1": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_B, "us-west-2b", "10.0.64.0/20")),
+        ),
+        "private-subnet-2": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_C, "us-west-2c", "10.0.80.0/20")),
+        ),
         "internet-gateway": fnv1.Resource(resource=resource.dict_to_struct(_internet_gateway())),
+        "nat-eip": fnv1.Resource(resource=resource.dict_to_struct(_nat_eip())),
+        "nat-gateway": fnv1.Resource(resource=resource.dict_to_struct(_nat_gateway("us-west-2a"))),
         "route-table": fnv1.Resource(resource=resource.dict_to_struct(_route_table())),
         "route-default": fnv1.Resource(resource=resource.dict_to_struct(_route_default())),
+        "private-route-table": fnv1.Resource(resource=resource.dict_to_struct(_private_route_table())),
+        "private-route-default": fnv1.Resource(resource=resource.dict_to_struct(_private_route_default())),
         "route-table-association-0": fnv1.Resource(
             resource=resource.dict_to_struct(_route_table_association("us-west-2a")),
         ),
@@ -661,6 +997,15 @@ def _expected_resources() -> dict:
         ),
         "route-table-association-2": fnv1.Resource(
             resource=resource.dict_to_struct(_route_table_association("us-west-2c")),
+        ),
+        "private-route-table-association-0": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_route_table_association("us-west-2a")),
+        ),
+        "private-route-table-association-1": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_route_table_association("us-west-2b")),
+        ),
+        "private-route-table-association-2": fnv1.Resource(
+            resource=resource.dict_to_struct(_private_route_table_association("us-west-2c")),
         ),
         "iam-role-cluster": fnv1.Resource(
             resource=resource.dict_to_struct(_role("cluster", _ASSUME_CLUSTER)),
@@ -696,9 +1041,9 @@ def _expected_resources() -> dict:
         "efs-filesystem": fnv1.Resource(resource=resource.dict_to_struct(_efs_filesystem())),
         "efs-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efs_security_group())),
         "efs-security-group-ingress": fnv1.Resource(resource=resource.dict_to_struct(_efs_security_group_ingress())),
-        "efs-mount-target-0": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_SUBNET_A))),
-        "efs-mount-target-1": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_SUBNET_B))),
-        "efs-mount-target-2": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_SUBNET_C))),
+        "efs-mount-target-0": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_A))),
+        "efs-mount-target-1": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_B))),
+        "efs-mount-target-2": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_C))),
         "iam-role-efs-csi": fnv1.Resource(resource=resource.dict_to_struct(_role("efs-csi", _ASSUME_POD_IDENTITY))),
         "iam-attach-efs-csi": fnv1.Resource(
             resource=resource.dict_to_struct(_role_policy_attachment("efs-csi", _POLICY_EFS_CSI)),
@@ -882,6 +1227,276 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             _gpu_node_group_capacity_block(),
             resource.struct_to_dict(resources["nodegroup-gpu-h200"].resource),
         )
+
+    async def test_compose_efa(self) -> None:
+        """An EFA GPU pool composes EFA infrastructure end to end.
+
+        The node group's launch template carries one EFA interface per network
+        card (card 0 keeps device index 0 for the node's IP traffic, the rest
+        device index 1 for RDMA), the cluster gets an EFA security group with
+        self-referencing all-traffic ingress and egress rules, and the node
+        group references the launch template instead of setting instanceTypes.
+        """
+        want_resources = {
+            "vpc": fnv1.Resource(resource=resource.dict_to_struct(_vpc())),
+            "subnet-0": fnv1.Resource(
+                resource=resource.dict_to_struct(_subnet(_SUBNET_A, "us-west-2a", "10.0.0.0/20")),
+            ),
+            "subnet-1": fnv1.Resource(
+                resource=resource.dict_to_struct(_subnet(_SUBNET_B, "us-west-2b", "10.0.16.0/20")),
+            ),
+            "subnet-2": fnv1.Resource(
+                resource=resource.dict_to_struct(_subnet(_SUBNET_C, "us-west-2c", "10.0.32.0/20")),
+            ),
+            "private-subnet-0": fnv1.Resource(
+                resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_A, "us-west-2a", "10.0.48.0/20")),
+            ),
+            "private-subnet-1": fnv1.Resource(
+                resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_B, "us-west-2b", "10.0.64.0/20")),
+            ),
+            "private-subnet-2": fnv1.Resource(
+                resource=resource.dict_to_struct(_private_subnet(_PRIVATE_SUBNET_C, "us-west-2c", "10.0.80.0/20")),
+            ),
+            "internet-gateway": fnv1.Resource(resource=resource.dict_to_struct(_internet_gateway())),
+            "nat-eip": fnv1.Resource(resource=resource.dict_to_struct(_nat_eip())),
+            "nat-gateway": fnv1.Resource(resource=resource.dict_to_struct(_nat_gateway("us-west-2a"))),
+            "route-table": fnv1.Resource(resource=resource.dict_to_struct(_route_table())),
+            "route-default": fnv1.Resource(resource=resource.dict_to_struct(_route_default())),
+            "private-route-table": fnv1.Resource(resource=resource.dict_to_struct(_private_route_table())),
+            "private-route-default": fnv1.Resource(resource=resource.dict_to_struct(_private_route_default())),
+            "route-table-association-0": fnv1.Resource(
+                resource=resource.dict_to_struct(_route_table_association("us-west-2a")),
+            ),
+            "route-table-association-1": fnv1.Resource(
+                resource=resource.dict_to_struct(_route_table_association("us-west-2b")),
+            ),
+            "route-table-association-2": fnv1.Resource(
+                resource=resource.dict_to_struct(_route_table_association("us-west-2c")),
+            ),
+            "private-route-table-association-0": fnv1.Resource(
+                resource=resource.dict_to_struct(_private_route_table_association("us-west-2a")),
+            ),
+            "private-route-table-association-1": fnv1.Resource(
+                resource=resource.dict_to_struct(_private_route_table_association("us-west-2b")),
+            ),
+            "private-route-table-association-2": fnv1.Resource(
+                resource=resource.dict_to_struct(_private_route_table_association("us-west-2c")),
+            ),
+            "iam-role-cluster": fnv1.Resource(
+                resource=resource.dict_to_struct(_role("cluster", _ASSUME_CLUSTER)),
+            ),
+            "iam-attach-cluster-policy": fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    _role_policy_attachment("cluster", "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"),
+                ),
+            ),
+            "iam-role-node": fnv1.Resource(resource=resource.dict_to_struct(_role("node", _ASSUME_NODE))),
+            "iam-attach-node-worker": fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"),
+                ),
+            ),
+            "iam-attach-node-cni": fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"),
+                ),
+            ),
+            "iam-attach-node-ecr": fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    _role_policy_attachment("node", "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"),
+                ),
+            ),
+            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_eks_cluster())),
+            "cluster-auth": fnv1.Resource(resource=resource.dict_to_struct(_cluster_auth())),
+            "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_system_node_group())),
+            "launch-template-gpu-h200": fnv1.Resource(resource=resource.dict_to_struct(_launch_template_efa())),
+            "efa-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efa_security_group())),
+            "efa-security-group-ingress": fnv1.Resource(
+                resource=resource.dict_to_struct(_efa_security_group_ingress()),
+            ),
+            "efa-security-group-egress": fnv1.Resource(
+                resource=resource.dict_to_struct(_efa_security_group_egress()),
+            ),
+            "nodegroup-gpu-h200": fnv1.Resource(resource=resource.dict_to_struct(_gpu_node_group_efa())),
+            "addon-vpc-cni": fnv1.Resource(resource=resource.dict_to_struct(_addon("vpc-cni"))),
+            "addon-kube-proxy": fnv1.Resource(resource=resource.dict_to_struct(_addon("kube-proxy"))),
+            "addon-coredns": fnv1.Resource(resource=resource.dict_to_struct(_addon("coredns"))),
+            "efs-filesystem": fnv1.Resource(resource=resource.dict_to_struct(_efs_filesystem())),
+            "efs-security-group": fnv1.Resource(resource=resource.dict_to_struct(_efs_security_group())),
+            "efs-security-group-ingress": fnv1.Resource(
+                resource=resource.dict_to_struct(_efs_security_group_ingress()),
+            ),
+            "efs-mount-target-0": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_A))),
+            "efs-mount-target-1": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_B))),
+            "efs-mount-target-2": fnv1.Resource(resource=resource.dict_to_struct(_efs_mount_target(_PRIVATE_SUBNET_C))),
+            "iam-role-efs-csi": fnv1.Resource(
+                resource=resource.dict_to_struct(_role("efs-csi", _ASSUME_POD_IDENTITY)),
+            ),
+            "iam-attach-efs-csi": fnv1.Resource(
+                resource=resource.dict_to_struct(_role_policy_attachment("efs-csi", _POLICY_EFS_CSI)),
+            ),
+            "addon-eks-pod-identity-agent": fnv1.Resource(
+                resource=resource.dict_to_struct(_addon("eks-pod-identity-agent")),
+            ),
+            "pod-identity-efs-csi": fnv1.Resource(resource=resource.dict_to_struct(_pod_identity_association())),
+            "addon-aws-efs-csi-driver": fnv1.Resource(
+                resource=resource.dict_to_struct(_addon("aws-efs-csi-driver")),
+            ),
+            "iam-policy-cluster-autoscaler": fnv1.Resource(resource=resource.dict_to_struct(_autoscaler_policy())),
+            "iam-role-cluster-autoscaler": fnv1.Resource(
+                resource=resource.dict_to_struct(_role("cluster-autoscaler", _ASSUME_POD_IDENTITY)),
+            ),
+            "iam-attach-cluster-autoscaler": fnv1.Resource(
+                resource=resource.dict_to_struct(_autoscaler_attachment()),
+            ),
+            "pod-identity-cluster-autoscaler": fnv1.Resource(
+                resource=resource.dict_to_struct(_autoscaler_pod_identity()),
+            ),
+            "provider-config-kubernetes": fnv1.Resource(
+                resource=resource.dict_to_struct(_provider_config("kubernetes.m.crossplane.io/v1alpha1")),
+                ready=fnv1.READY_TRUE,
+            ),
+            "provider-config-helm": fnv1.Resource(
+                resource=resource.dict_to_struct(_provider_config("helm.m.crossplane.io/v1beta1")),
+                ready=fnv1.READY_TRUE,
+            ),
+        }
+
+        case = Case(
+            name="an EFA pool composes EFA launch template, security group, and rules",
+            req=fnv1.RunFunctionRequest(
+                observed=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _xr_efa().model_dump(exclude_none=True, mode="json"),
+                        ),
+                    ),
+                ),
+            ),
+            want=fnv1.RunFunctionResponse(
+                meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                desired=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct(_expected_status()),
+                    ),
+                    resources=want_resources,
+                ),
+                context=structpb.Struct(),
+            ),
+        )
+
+        got = await self.runner.RunFunction(case.req, None)
+        self.assertEqual(
+            json_format.MessageToDict(case.want),
+            json_format.MessageToDict(got),
+        )
+
+    async def test_compose_efa_cluster_security_group(self) -> None:
+        """Once both security groups are observed, every interface carries them.
+
+        A launch template with networkInterfaces makes its security groups
+        authoritative, so the interfaces must carry both the EFA security group
+        and the EKS cluster security group or the node never joins. Both are set
+        as raw IDs in securityGroups (not securityGroupRefs): the provider's
+        reference resolver no-ops once that field is populated, so a ref mixed
+        with a literal would be dropped. The EFA group's ID comes from its
+        observed external name, the cluster group's from the observed cluster's
+        status, so both appear only once their resources report them.
+        """
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        _xr_efa().model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+                resources={
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                **_eks_cluster(),
+                                "status": {
+                                    "atProvider": {
+                                        "vpcConfig": {"clusterSecurityGroupId": "sg-0cluster"},
+                                    },
+                                },
+                            },
+                        ),
+                    ),
+                    "efa-security-group": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                **_efa_security_group(),
+                                "metadata": {
+                                    **_efa_security_group()["metadata"],
+                                    "annotations": {"crossplane.io/external-name": "sg-0efa"},
+                                },
+                            },
+                        ),
+                    ),
+                },
+            ),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+        lt = resource.struct_to_dict(got.desired.resources["launch-template-gpu-h200"].resource)
+        interfaces = lt["spec"]["forProvider"]["networkInterfaces"]
+
+        # Every interface carries both SGs as raw IDs (EFA first, then cluster)
+        # and no securityGroupRefs; no interface requests a public IP (nodes are
+        # in private subnets).
+        self.assertEqual("efa", interfaces[0]["interfaceType"])
+        for ni in interfaces:
+            self.assertNotIn("securityGroupRefs", ni)
+            self.assertEqual(["sg-0efa", "sg-0cluster"], ni["securityGroups"])
+            self.assertNotIn("associatePublicIpAddress", ni)
+        for ni in interfaces[1:]:
+            self.assertEqual("efa-only", ni["interfaceType"])
+
+    async def test_compose_efa_dra_driver(self) -> None:
+        """An EFA pool installs the EFA DRA driver Helm release.
+
+        Like the autoscaler, the release is gated on the cluster being observed
+        so provider-helm can reach it. A pool without the EFA fabric installs no
+        driver even once the cluster is observed.
+        """
+        observed_cluster = {
+            "cluster": fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {**_eks_cluster(), "status": {"conditions": [_ready_condition()]}},
+                ),
+            ),
+        }
+
+        got_efa = await self.runner.RunFunction(
+            fnv1.RunFunctionRequest(
+                observed=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct(_xr_efa().model_dump(exclude_none=True, mode="json")),
+                    ),
+                    resources=observed_cluster,
+                ),
+            ),
+            None,
+        )
+        self.assertIn("release-efa-dra-driver", got_efa.desired.resources)
+        self.assertEqual(
+            _efa_dra_driver_release(),
+            resource.struct_to_dict(got_efa.desired.resources["release-efa-dra-driver"].resource),
+        )
+
+        got_none = await self.runner.RunFunction(
+            fnv1.RunFunctionRequest(
+                observed=fnv1.State(
+                    composite=fnv1.Resource(
+                        resource=resource.dict_to_struct(_xr().model_dump(exclude_none=True, mode="json")),
+                    ),
+                    resources=observed_cluster,
+                ),
+            ),
+            None,
+        )
+        self.assertNotIn("release-efa-dra-driver", got_none.desired.resources)
 
 
 if __name__ == "__main__":

@@ -524,6 +524,10 @@ class Composer:
                 node_pool.capacityBlock = eksv1alpha1.CapacityBlock(
                     capacityReservationId=pool.capacityBlock.capacityReservationId,
                 )
+            # Likewise only set fabric when the pool opts into one, so an
+            # on-demand pool's EKSCluster spec stays free of fabric: None.
+            if pool.fabric and pool.fabric != "None":
+                node_pool.fabric = pool.fabric
             eks_node_pools.append(node_pool)
 
         resource.update(
