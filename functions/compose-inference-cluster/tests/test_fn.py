@@ -879,6 +879,125 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
         want8.requirements.resources["class-gpu-l4-eks"].CopyFrom(class_selector_eks)
 
+        # --- Case 9: EKS first pass with a node pool that opts into the EFA
+        # fabric. fabric flows through to the EKSCluster node pool, which
+        # compose-eks-cluster turns into EFA launch-template interfaces. ---
+        req9 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="EKS",
+                                    eks=v1alpha1.Eks(region="us-west-2"),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="l4-pool",
+                                        className="gpu-l4-eks",
+                                        nodeCount=2,
+                                        maxNodeCount=4,
+                                        zones=["us-west-2a"],
+                                        fabric="EFA",
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req9.required_resources["class-gpu-l4-eks"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_l4_eks)),
+        )
+
+        want9 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "providerConfigRef": {
+                                    "name": "test-cluster-cluster-kubeconfig-d0f89",
+                                },
+                                "namespace": "modelplane-system",
+                                "gpuPools": [
+                                    {
+                                        "name": "l4-pool",
+                                        "nodes": 4,
+                                        "devices": [
+                                            {
+                                                "name": "gpu",
+                                                "claim": "DRA",
+                                                "driver": "gpu.nvidia.com",
+                                                "deviceClassName": "gpu.nvidia.com",
+                                                "count": 1,
+                                                "capacity": {"memory": {"value": "24Gi"}},
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ),
+                ),
+                resources={
+                    "eks-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "EKSCluster",
+                                "metadata": {
+                                    "name": "test-cluster",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "region": "us-west-2",
+                                    "kubernetesVersion": "1.36",
+                                    "nodePools": [
+                                        {
+                                            "name": "l4-pool",
+                                            "role": "GPU",
+                                            "instanceType": "g6.xlarge",
+                                            "nodeCount": 2,
+                                            "minNodeCount": None,
+                                            "maxNodeCount": 4,
+                                            "diskSizeGb": 100,
+                                            "gpu": {
+                                                "acceleratorType": "nvidia-l4",
+                                            },
+                                            "zones": ["us-west-2a"],
+                                            "fabric": "EFA",
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCluster",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want9.requirements.resources["class-gpu-l4-eks"].CopyFrom(class_selector_eks)
+
         # --- Case 5: EKS cluster not yet ready (no kubeconfig observed) but a
         # ClusterProviderConfig already exists from a prior reconcile. The CPC
         # is built only from the kubeconfig, so without one it's simply omitted
@@ -1295,7 +1414,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
 
         # Every compose path emits the ModelReplica guard requirement.
-        for want in (want1, want2, want3, want4, want5, want6, want7, want8):
+        for want in (want1, want2, want3, want4, want5, want6, want7, want8, want9):
             want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         # The guard cases reuse case 1's request and response.
@@ -1319,6 +1438,11 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="EKS node pool with a Capacity Block sets capacityBlock on the EKSCluster pool",
                 req=req8,
                 want=want8,
+            ),
+            Case(
+                name="EKS node pool with fabric EFA sets fabric on the EKSCluster pool",
+                req=req9,
+                want=want9,
             ),
             *guard_cases,
         ]

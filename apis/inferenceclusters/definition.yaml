@@ -209,6 +209,22 @@ spec:
                           pattern: "^cr-[0-9a-f]+$"
                           minLength: 4
                           maxLength: 64
+                    fabric:
+                      type: string
+                      default: None
+                      description: >-
+                        High-performance node-to-node fabric for multi-node
+                        engines. None uses standard VPC networking (ENA/TCP).
+                        EFA attaches Elastic Fabric Adapter interfaces to each
+                        node for GPUDirect RDMA across nodes, so a gang's
+                        tensor-parallel traffic isn't capped by TCP. EKS only.
+                        Only useful on EFA-capable instance types (e.g.
+                        p5en.48xlarge). When any pool sets EFA, Modelplane
+                        installs the EFA DRA driver on the cluster and the
+                        gang's pods claim EFA devices alongside their GPUs.
+                      enum:
+                      - None
+                      - EFA
           status:
             type: object
             properties:

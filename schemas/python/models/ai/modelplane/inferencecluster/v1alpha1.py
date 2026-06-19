@@ -128,6 +128,10 @@ class NodePool(BaseModel):
     """
     Name of the InferenceClass describing this pool's hardware.
     """
+    fabric: Literal['None', 'EFA'] | None = 'None'
+    """
+    High-performance node-to-node fabric for multi-node engines. None uses standard VPC networking (ENA/TCP). EFA attaches Elastic Fabric Adapter interfaces to each node for GPUDirect RDMA across nodes, so a gang's tensor-parallel traffic isn't capped by TCP. EKS only. Only useful on EFA-capable instance types (e.g. p5en.48xlarge). When any pool sets EFA, Modelplane installs the EFA DRA driver on the cluster and the gang's pods claim EFA devices alongside their GPUs.
+    """
     maxNodeCount: conint(ge=1) | None = None
     """
     Maximum node count for autoscaling. Omit for fixed-size pools.

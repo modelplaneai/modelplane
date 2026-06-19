@@ -24,12 +24,15 @@ from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.crossplane.m.kubernetes.providerconfig import v1alpha1 as k8spcv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+from models.io.upbound.m.aws.ec2.eip import v1beta1 as eipv1beta1
 from models.io.upbound.m.aws.ec2.internetgateway import v1beta1 as igwv1beta1
 from models.io.upbound.m.aws.ec2.launchtemplate import v1beta1 as ltv1beta1
+from models.io.upbound.m.aws.ec2.natgateway import v1beta1 as natv1beta1
 from models.io.upbound.m.aws.ec2.route import v1beta1 as routev1beta1
 from models.io.upbound.m.aws.ec2.routetable import v1beta1 as rtv1beta1
 from models.io.upbound.m.aws.ec2.routetableassociation import v1beta1 as rtav1beta1
 from models.io.upbound.m.aws.ec2.securitygroup import v1beta1 as sgv1beta1
+from models.io.upbound.m.aws.ec2.securitygroupegressrule import v1beta1 as sgev1beta1
 from models.io.upbound.m.aws.ec2.securitygroupingressrule import v1beta1 as sgrv1beta1
 from models.io.upbound.m.aws.ec2.subnet import v1beta1 as subnetv1beta1
 from models.io.upbound.m.aws.ec2.vpc import v1beta1 as vpcv1beta1
@@ -65,6 +68,17 @@ _SYSTEM_POOL_MAX_NODE_COUNT = 2
 # these labels for GPU scheduling.
 _LABEL_GPU = "modelplane.ai/gpu"
 _LABEL_POOL = "modelplane.ai/pool"
+# Tags the EFA security group so its self-referencing ingress/egress rules and
+# the launch template's EFA interfaces can select it - distinct from the EFS
+# security group, which also matches the controller ref.
+_LABEL_FABRIC = "modelplane.ai/fabric"
+
+# Distinguishes the controller's security groups from each other. A cluster has
+# the EFS security group, and an EFA pool adds the EFA one; a bare
+# matchControllerRef selector can't tell them apart, so each rule filters on the
+# role of the group it targets.
+_LABEL_SG_ROLE = "modelplane.ai/sg-role"
+_SG_ROLE_EFS = "efs"
 
 # Internal labels written on composed AWS resources so other resources
 # can select them. _LABEL_ROLE distinguishes the cluster IAM role from
@@ -72,6 +86,19 @@ _LABEL_POOL = "modelplane.ai/pool"
 # Zone so NodeGroup subnetIdSelector can pick the right subnets.
 _LABEL_ROLE = "modelplane.ai/iam-role"
 _LABEL_AZ = "modelplane.ai/zone"
+
+# Tags a subnet with its network tier. Public subnets (IGW route) host the NAT
+# gateway and load balancers; private subnets (NAT route) host the nodes. Node
+# groups select private subnets by this label; the public route table and NAT
+# gateway select public ones.
+_LABEL_TIER = "modelplane.ai/subnet-tier"
+_TIER_PUBLIC = "public"
+_TIER_PRIVATE = "private"
+
+# EKS discovers which subnets to place internet-facing load balancers in by this
+# tag. Nodes run in private subnets, so the serving gateway's ELB would have no
+# public subnet to land in without tagging the public ones.
+_TAG_ELB_ROLE = "kubernetes.io/role/elb"
 
 _ROLE_CLUSTER = "cluster"
 _ROLE_NODE = "node"
@@ -87,6 +114,11 @@ _SECRET_KEY_KUBECONFIG = "kubeconfig"
 _AMI_TYPE_SYSTEM = "AL2023_x86_64_STANDARD"
 _AMI_TYPE_GPU = "AL2023_x86_64_NVIDIA"
 
+# Root EBS device name on the AL2023 EKS-optimised AMIs. A launch-template node
+# group sizes its root volume through a block device mapping on this device,
+# since EKS won't accept the node group's diskSize when a template is set.
+_ROOT_DEVICE_NAME = "/dev/xvda"
+
 # Capacity Block backing. Large GPU instances (e.g. p5en.48xlarge) are
 # rarely available on demand; AWS allocates them via Capacity Blocks for
 # ML. A node group backed by a Capacity Block uses the CAPACITY_BLOCK
@@ -98,11 +130,60 @@ _CAPACITY_TYPE_CAPACITY_BLOCK = "CAPACITY_BLOCK"
 _MARKET_TYPE_CAPACITY_BLOCK = "capacity-block"
 _CR_PREFERENCE_ONLY = "capacity-reservations-only"
 
+# Elastic Fabric Adapter. A pool with fabric: EFA attaches EFA network
+# interfaces to each node so cross-node NCCL runs over GPUDirect RDMA
+# rather than TCP. The interfaces are configured in the node group's
+# launch template: the primary (network card 0) stays a normal interface
+# for IP traffic, and the remaining network cards each carry one efa
+# interface. EFA OS-bypass requires the interfaces to sit in a security
+# group that allows all traffic to and from itself, so we compose a
+# dedicated EFA security group with self-referencing ingress and egress.
+_FABRIC_EFA = "EFA"
+# Card 0 is EFA-with-ENA: it carries the node's IP traffic and EFA. The
+# secondary cards are efa-only - dedicated RDMA with no IP, which nodeadm leaves
+# unmanaged. Marking the secondaries plain "efa" makes nodeadm try to manage
+# them as IP interfaces and its primary-ENI-only setup times out, so the node
+# never joins.
+_INTERFACE_TYPE_EFA = "efa"
+_INTERFACE_TYPE_EFA_ONLY = "efa-only"
+
+# EFA network cards per instance type. An instance gets the most fabric
+# bandwidth when every network card carries an EFA interface, so the launch
+# template configures one interface per card. The count is instance-type
+# specific; this table covers the EFA-capable GPU types Modelplane targets.
+# A type that's absent but still sets fabric: EFA falls back to a single EFA
+# interface (_EFA_CARDS_DEFAULT) - correct, just not maximal bandwidth.
+_EFA_NETWORK_CARDS = {
+    "p5.48xlarge": 32,
+    "p5e.48xlarge": 32,
+    "p5en.48xlarge": 16,
+    "p4d.24xlarge": 4,
+    "p4de.24xlarge": 4,
+}
+_EFA_CARDS_DEFAULT = 1
+
+# EFA DRA driver (DRANET). When any pool uses the EFA fabric we install it as a
+# Helm release on the cluster, the same way the autoscaler is installed. It runs
+# as a DaemonSet that discovers each node's EFA interfaces, publishes them as DRA
+# ResourceSlices, and registers the efa.networking.k8s.aws DeviceClass a
+# multi-node gang's ResourceClaims request alongside their GPUs. EKS defaults to
+# a Kubernetes version where DRANET is supported; we use it rather than the EFA
+# device plugin so EFA allocation matches the DRA model the GPU driver uses.
+_EFA_DRA_DRIVER_NAMESPACE = "kube-system"
+_EFA_DRA_DRIVER_CHART_REPO = "https://aws.github.io/eks-charts"
+_EFA_DRA_DRIVER_CHART_NAME = "aws-dranet"
+_EFA_DRA_DRIVER_CHART_VERSION = "1.0.0"
+
 # GPU taint applied to GPU node groups so non-GPU pods don't land on
 # expensive GPU nodes.
 _GPU_TAINT_KEY = "nvidia.com/gpu"
 _GPU_TAINT_VALUE = "true"
 _GPU_TAINT_EFFECT = "NO_SCHEDULE"
+
+# Kubernetes-API taint effect (as a toleration value, not the EC2 NO_SCHEDULE
+# form). The EFA DRA driver's DaemonSet must tolerate the GPU taint to run on
+# the GPU nodes, like the NVIDIA GPU DRA driver does.
+_GPU_TAINT_EFFECT_K8S = "NoSchedule"
 
 # IAM policies attached to the cluster and node roles. These are
 # AWS-managed policies; their ARNs are stable.
@@ -211,8 +292,28 @@ def _cluster_name(xr):
 
 
 def _subnet_name(xr, az):
-    """Derive a stable Crossplane resource name for the subnet in az."""
+    """Derive a stable Crossplane resource name for the public subnet in az."""
     return resource.child_name(xr.metadata.name, f"subnet-{az}")
+
+
+def _private_subnet_name(xr, az):
+    """Derive a stable Crossplane resource name for the private subnet in az."""
+    return resource.child_name(xr.metadata.name, f"private-subnet-{az}")
+
+
+def _private_cidr(public_cidr):
+    """Derive a private subnet CIDR from its AZ's public one.
+
+    The VPC is a /16 split into /20s. The public subnets take the low /20s
+    (10.0.0.0/20, .16, .32); the private subnets mirror them in the high half
+    by adding 48 to the third octet (10.0.48.0/20, .64, .80), so the two tiers
+    never overlap and each private subnet shares its AZ with a public one.
+    """
+    cidr_str = public_cidr.root if hasattr(public_cidr, "root") else public_cidr
+    network, mask = cidr_str.split("/")
+    octets = network.split(".")
+    octets[2] = str(int(octets[2]) + 48)
+    return f"{'.'.join(octets)}/{mask}"
 
 
 def _az(region, index):
@@ -259,13 +360,24 @@ class Composer:
         self.compose_addons()
         self.compose_efs()
         self.compose_cluster_autoscaler()
+        self.compose_efa_dra_driver()
         self.compose_provider_configs()
         self.compose_storage_class()
         self.write_status()
         self.mark_readiness()
 
     def compose_network(self):
-        """Compose the VPC, subnets, and internet routing."""
+        """Compose the VPC, its two subnet tiers, and internet routing.
+
+        The VPC has a public and a private subnet per AZ. Public subnets route
+        to the internet gateway and host the NAT gateway and the serving
+        gateway's load balancer; they're tagged for ELB discovery. Private
+        subnets route outbound through the NAT gateway and host the nodes, which
+        have no public IP. This is the standard EKS topology: a node group that
+        defines its own network interfaces (for EFA) can't be assigned a public
+        IP, so nodes must reach the internet through NAT, while inbound traffic
+        still arrives through a load balancer in the public subnets.
+        """
         resource.update(
             self.rsp.desired.resources["vpc"],
             vpcv1beta1.VPC(
@@ -283,12 +395,13 @@ class Composer:
         for i, cidr in enumerate(self._networking().subnetCidrs):
             az = _az(self.xr.spec.region, i)
             cidr_str = cidr.root if hasattr(cidr, "root") else cidr
+            # Public subnet: IGW route, auto-assigned public IPs, ELB-tagged.
             resource.update(
                 self.rsp.desired.resources[f"subnet-{i}"],
                 subnetv1beta1.Subnet(
                     metadata=metav1.ObjectMeta(
                         name=_subnet_name(self.xr, az),
-                        labels={_LABEL_AZ: az},
+                        labels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PUBLIC},
                     ),
                     spec=subnetv1beta1.Spec(
                         forProvider=subnetv1beta1.ForProvider(
@@ -296,6 +409,28 @@ class Composer:
                             availabilityZone=az,
                             cidrBlock=cidr_str,
                             mapPublicIpOnLaunch=True,
+                            tags={_TAG_ELB_ROLE: "1"},
+                            vpcIdSelector=subnetv1beta1.VpcIdSelector(
+                                matchControllerRef=True,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            # Private subnet: NAT route, no public IPs, hosts the nodes.
+            resource.update(
+                self.rsp.desired.resources[f"private-subnet-{i}"],
+                subnetv1beta1.Subnet(
+                    metadata=metav1.ObjectMeta(
+                        name=_private_subnet_name(self.xr, az),
+                        labels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PRIVATE},
+                    ),
+                    spec=subnetv1beta1.Spec(
+                        forProvider=subnetv1beta1.ForProvider(
+                            region=self.xr.spec.region,
+                            availabilityZone=az,
+                            cidrBlock=_private_cidr(cidr),
+                            mapPublicIpOnLaunch=False,
                             vpcIdSelector=subnetv1beta1.VpcIdSelector(
                                 matchControllerRef=True,
                             ),
@@ -318,9 +453,44 @@ class Composer:
             ),
         )
 
+        # A single NAT gateway in the first public subnet gives the private
+        # subnets outbound internet. One NAT (not one per AZ) keeps cost down;
+        # cross-AZ NAT traffic is acceptable for this workload.
+        resource.update(
+            self.rsp.desired.resources["nat-eip"],
+            eipv1beta1.EIP(
+                spec=eipv1beta1.Spec(
+                    forProvider=eipv1beta1.ForProvider(
+                        region=self.xr.spec.region,
+                        domain="vpc",
+                    ),
+                ),
+            ),
+        )
+        nat_az = _az(self.xr.spec.region, 0)
+        resource.update(
+            self.rsp.desired.resources["nat-gateway"],
+            natv1beta1.NATGateway(
+                spec=natv1beta1.Spec(
+                    forProvider=natv1beta1.ForProvider(
+                        region=self.xr.spec.region,
+                        allocationIdSelector=natv1beta1.AllocationIdSelector(
+                            matchControllerRef=True,
+                        ),
+                        subnetIdSelector=natv1beta1.SubnetIdSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_AZ: nat_az, _LABEL_TIER: _TIER_PUBLIC},
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        # Public route table: 0.0.0.0/0 -> IGW, associated with public subnets.
         resource.update(
             self.rsp.desired.resources["route-table"],
             rtv1beta1.RouteTable(
+                metadata=metav1.ObjectMeta(labels={_LABEL_TIER: _TIER_PUBLIC}),
                 spec=rtv1beta1.Spec(
                     forProvider=rtv1beta1.ForProvider(
                         region=self.xr.spec.region,
@@ -331,7 +501,6 @@ class Composer:
                 ),
             ),
         )
-
         resource.update(
             self.rsp.desired.resources["route-default"],
             routev1beta1.Route(
@@ -344,6 +513,41 @@ class Composer:
                         ),
                         routeTableIdSelector=routev1beta1.RouteTableIdSelector(
                             matchControllerRef=True,
+                            matchLabels={_LABEL_TIER: _TIER_PUBLIC},
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        # Private route table: 0.0.0.0/0 -> NAT, associated with private subnets.
+        resource.update(
+            self.rsp.desired.resources["private-route-table"],
+            rtv1beta1.RouteTable(
+                metadata=metav1.ObjectMeta(labels={_LABEL_TIER: _TIER_PRIVATE}),
+                spec=rtv1beta1.Spec(
+                    forProvider=rtv1beta1.ForProvider(
+                        region=self.xr.spec.region,
+                        vpcIdSelector=rtv1beta1.VpcIdSelector(
+                            matchControllerRef=True,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["private-route-default"],
+            routev1beta1.Route(
+                spec=routev1beta1.Spec(
+                    forProvider=routev1beta1.ForProvider(
+                        region=self.xr.spec.region,
+                        destinationCidrBlock="0.0.0.0/0",
+                        natGatewayIdSelector=routev1beta1.NatGatewayIdSelector(
+                            matchControllerRef=True,
+                        ),
+                        routeTableIdSelector=routev1beta1.RouteTableIdSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_TIER: _TIER_PRIVATE},
                         ),
                     ),
                 ),
@@ -360,10 +564,29 @@ class Composer:
                             region=self.xr.spec.region,
                             routeTableIdSelector=rtav1beta1.RouteTableIdSelector(
                                 matchControllerRef=True,
+                                matchLabels={_LABEL_TIER: _TIER_PUBLIC},
                             ),
                             subnetIdSelector=rtav1beta1.SubnetIdSelector(
                                 matchControllerRef=True,
-                                matchLabels={_LABEL_AZ: az},
+                                matchLabels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PUBLIC},
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            resource.update(
+                self.rsp.desired.resources[f"private-route-table-association-{i}"],
+                rtav1beta1.RouteTableAssociation(
+                    spec=rtav1beta1.Spec(
+                        forProvider=rtav1beta1.ForProvider(
+                            region=self.xr.spec.region,
+                            routeTableIdSelector=rtav1beta1.RouteTableIdSelector(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_TIER: _TIER_PRIVATE},
+                            ),
+                            subnetIdSelector=rtav1beta1.SubnetIdSelector(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_AZ: az, _LABEL_TIER: _TIER_PRIVATE},
                             ),
                         ),
                     ),
@@ -491,13 +714,20 @@ class Composer:
         self._compose_system_node_group()
         for pool in self.xr.spec.nodePools:
             capacity_block = pool.capacityBlock
-            if capacity_block:
-                self._compose_launch_template(pool, capacity_block)
+            efa = pool.fabric == _FABRIC_EFA
+            # A launch template is needed to carry the capacity-block market
+            # options, the EFA interfaces, or both. EKS takes the instance type
+            # from the launch template whenever one is set, so the node group
+            # must not also set instanceTypes in that case.
+            uses_launch_template = bool(capacity_block) or efa
+            if uses_launch_template:
+                self._compose_launch_template(pool, capacity_block, efa)
+            if efa:
+                self._compose_efa_security_group()
 
             fp = ngv1beta1.ForProvider(
                 region=self.xr.spec.region,
                 amiType=_AMI_TYPE_GPU if pool.role == "GPU" else _AMI_TYPE_SYSTEM,
-                diskSize=pool.diskSizeGb,
                 clusterNameSelector=ngv1beta1.ClusterNameSelector(
                     matchControllerRef=True,
                 ),
@@ -514,24 +744,31 @@ class Composer:
                 labels={_LABEL_POOL: pool.name},
             )
 
-            if capacity_block:
-                # For a Capacity Block node group EKS takes the instance
-                # type from the launch template, so the node group must not
-                # also set instanceTypes. The launch template carries the
-                # instance type and the capacity-block market options.
-                fp.capacityType = _CAPACITY_TYPE_CAPACITY_BLOCK
+            if uses_launch_template:
+                # EKS takes the instance type from the launch template, so the
+                # node group must not also set instanceTypes. The template
+                # carries the instance type, the disk size, any capacity-block
+                # market options, and any EFA interfaces. EKS rejects a node
+                # group that sets diskSize alongside a launch template, so the
+                # disk size lives only in the template in this case.
                 fp.launchTemplate = ngv1beta1.LaunchTemplate(
                     name=self._launch_template_name(pool),
                     version="$Latest",
                 )
+                if capacity_block:
+                    fp.capacityType = _CAPACITY_TYPE_CAPACITY_BLOCK
             else:
                 fp.instanceTypes = [pool.instanceType]
+                fp.diskSize = pool.diskSizeGb
 
             zone_refs = self._subnet_refs_for_pool(pool)
             if zone_refs:
                 fp.subnetIdRefs = zone_refs
             else:
-                fp.subnetIdSelector = ngv1beta1.SubnetIdSelector(matchControllerRef=True)
+                fp.subnetIdSelector = ngv1beta1.SubnetIdSelector(
+                    matchControllerRef=True,
+                    matchLabels={_LABEL_TIER: _TIER_PRIVATE},
+                )
 
             if pool.role == "GPU" and pool.gpu:
                 fp.labels = {
@@ -568,30 +805,193 @@ class Composer:
         """
         return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")
 
-    def _compose_launch_template(self, pool, capacity_block):
-        """Compose an EC2 launch template targeting a Capacity Block.
+    def _compose_launch_template(self, pool, capacity_block, efa):
+        """Compose an EC2 launch template for a node group.
 
-        The launch template carries the instance type and the capacity-block
-        market options. EKS launches the node group's instances from this
-        template into the reservation. The node group references it by name
-        and sets capacityType=CAPACITY_BLOCK.
+        EKS launches the node group's instances from this template. It carries
+        the instance type and, depending on the pool, the capacity-block market
+        options (so instances come from the reservation) and/or EFA network
+        interfaces (so nodes get GPUDirect RDMA). The node group references it
+        by name; for a capacity-block pool it also sets capacityType.
+
+        The template must not set subnets - EKS rejects a launch template with
+        subnet configuration for managed node groups and takes the subnets from
+        the node group API instead. It must carry the disk size, because EKS
+        rejects a node group that sets diskSize alongside a launch template and
+        requires the size to come from the template instead.
         """
+        fp = ltv1beta1.ForProvider(
+            region=self.xr.spec.region,
+            name=self._launch_template_name(pool),
+            instanceType=pool.instanceType,
+            blockDeviceMappings=[
+                ltv1beta1.BlockDeviceMapping(
+                    deviceName=_ROOT_DEVICE_NAME,
+                    ebs=ltv1beta1.Ebs(volumeSize=pool.diskSizeGb),
+                ),
+            ],
+        )
+
+        if capacity_block:
+            fp.instanceMarketOptions = ltv1beta1.InstanceMarketOptions(
+                marketType=_MARKET_TYPE_CAPACITY_BLOCK,
+            )
+            fp.capacityReservationSpecification = ltv1beta1.CapacityReservationSpecification(
+                capacityReservationPreference=_CR_PREFERENCE_ONLY,
+                capacityReservationTarget=ltv1beta1.CapacityReservationTarget(
+                    capacityReservationId=capacity_block.capacityReservationId,
+                ),
+            )
+
+        if efa:
+            fp.networkInterfaces = self._efa_network_interfaces(pool)
+
         resource.update(
             self.rsp.desired.resources[f"launch-template-{pool.name}"],
-            ltv1beta1.LaunchTemplate(
-                spec=ltv1beta1.Spec(
-                    forProvider=ltv1beta1.ForProvider(
-                        region=self.xr.spec.region,
-                        name=self._launch_template_name(pool),
-                        instanceType=pool.instanceType,
-                        instanceMarketOptions=ltv1beta1.InstanceMarketOptions(
-                            marketType=_MARKET_TYPE_CAPACITY_BLOCK,
+            ltv1beta1.LaunchTemplate(spec=ltv1beta1.Spec(forProvider=fp)),
+        )
+
+    def _efa_network_interfaces(self, pool):
+        """Build the launch template's EFA network interfaces for a pool.
+
+        Every network card carries an EFA interface for maximum fabric
+        bandwidth: card 0 is interfaceType efa (EFA-with-ENA, the primary that
+        also carries IP traffic), cards 1..N are efa-only (dedicated RDMA, no
+        IP, which nodeadm leaves unmanaged). Card 0 takes device index 0, the
+        rest device index 1 on their own network card. No interface requests a
+        public IP - EKS rejects associate_public_ip_address with multiple
+        interfaces, and the nodes are in private subnets reaching the internet
+        through the NAT gateway.
+
+        Every interface carries both the EFA security group (for the
+        self-referencing all-traffic rules EFA OS-bypass needs) and the cluster
+        security group (for node <-> control plane traffic). Defining
+        networkInterfaces makes these authoritative; EKS no longer attaches the
+        cluster security group itself, so a missing cluster SG leaves the node
+        unable to reach the API server.
+
+        Both groups are set as raw IDs in securityGroups, not as
+        securityGroupRefs. The provider resolves securityGroupRefs into the same
+        securityGroups field, but its multi-reference resolver is a no-op once
+        that field is already populated (it caches resolved values). Mixing a
+        ref for the EFA group with a literal cluster-group ID would make the
+        resolver skip the ref, dropping the EFA group from every interface the
+        moment the cluster reports its SG. So we resolve the EFA group's own ID
+        ourselves from its observed external name and set both as literals. Both
+        IDs are absent on the first reconcile (the EFA SG isn't created and the
+        cluster hasn't reported its SG yet); securityGroups stays unset until
+        each lands, so the template gains them over the next reconciles.
+
+        The card count is instance-type specific.
+        """
+        cards = _EFA_NETWORK_CARDS.get(pool.instanceType, _EFA_CARDS_DEFAULT)
+        observed_sgs = (self._observed_efa_security_group_id(), self._observed_cluster_security_group_id())
+        security_groups = [sg for sg in observed_sgs if sg]
+        interfaces = []
+        for card in range(cards):
+            ni = ltv1beta1.NetworkInterface(
+                networkCardIndex=card,
+                deviceIndex=0 if card == 0 else 1,
+                interfaceType=_INTERFACE_TYPE_EFA if card == 0 else _INTERFACE_TYPE_EFA_ONLY,
+            )
+            if security_groups:
+                ni.securityGroups = security_groups
+            interfaces.append(ni)
+        return interfaces
+
+    def _observed_efa_security_group_id(self):
+        """The composed EFA security group's ID, from its observed MR's
+        external-name annotation (the sg-xxxx ID the provider sets once it
+        exists). None before the group is created, so the launch template is
+        composed without it on the first reconcile and gains it once observed.
+        """
+        observed = self.req.observed.resources.get("efa-security-group")
+        if not observed:
+            return None
+        sg = sgv1beta1.SecurityGroup.model_validate(resource.struct_to_dict(observed.resource))
+        if not sg.metadata or not sg.metadata.annotations:
+            return None
+        return sg.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME)
+
+    def _observed_cluster_security_group_id(self):
+        """The EKS-managed cluster security group ID, from the observed cluster.
+
+        EKS creates this group and reports it on the cluster's status; it's
+        absent until the cluster exists. Returns None before then, so the launch
+        template is composed without it on the first reconcile and gains it once
+        the cluster reports it.
+        """
+        observed = self.req.observed.resources.get("cluster")
+        if not observed:
+            return None
+        cluster = clusterv1beta1.Cluster.model_validate(resource.struct_to_dict(observed.resource))
+        if not cluster.status or not cluster.status.atProvider or not cluster.status.atProvider.vpcConfig:
+            return None
+        return cluster.status.atProvider.vpcConfig.clusterSecurityGroupId
+
+    def _efa_security_group_resource_name(self):
+        """Object (metadata.name) of the shared EFA security group."""
+        return resource.child_name(self.xr.metadata.name, "efa-sg")
+
+    def _compose_efa_security_group(self):
+        """Compose the EFA security group and its self-referencing rules.
+
+        EFA's OS-bypass transport requires every EFA interface to sit in a
+        security group that allows all traffic to and from itself. One group
+        serves every EFA pool in the cluster; the function composes it once even
+        if several pools set fabric: EFA (resource.update is idempotent by key).
+        """
+        region = self.xr.spec.region
+        resource.update(
+            self.rsp.desired.resources["efa-security-group"],
+            sgv1beta1.SecurityGroup(
+                metadata=metav1.ObjectMeta(
+                    name=self._efa_security_group_resource_name(),
+                    labels={_LABEL_FABRIC: _FABRIC_EFA},
+                ),
+                spec=sgv1beta1.Spec(
+                    forProvider=sgv1beta1.ForProvider(
+                        region=region,
+                        name=f"{self.xr.metadata.name}-efa",
+                        description="EFA OS-bypass traffic between gang nodes",
+                        vpcIdSelector=sgv1beta1.VpcIdSelector(matchControllerRef=True),
+                    ),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["efa-security-group-ingress"],
+            sgrv1beta1.SecurityGroupIngressRule(
+                spec=sgrv1beta1.Spec(
+                    forProvider=sgrv1beta1.ForProvider(
+                        region=region,
+                        ipProtocol="-1",
+                        referencedSecurityGroupIdSelector=sgrv1beta1.ReferencedSecurityGroupIdSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_FABRIC: _FABRIC_EFA},
                         ),
-                        capacityReservationSpecification=ltv1beta1.CapacityReservationSpecification(
-                            capacityReservationPreference=_CR_PREFERENCE_ONLY,
-                            capacityReservationTarget=ltv1beta1.CapacityReservationTarget(
-                                capacityReservationId=capacity_block.capacityReservationId,
-                            ),
+                        securityGroupIdSelector=sgrv1beta1.SecurityGroupIdSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_FABRIC: _FABRIC_EFA},
+                        ),
+                    ),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["efa-security-group-egress"],
+            sgev1beta1.SecurityGroupEgressRule(
+                spec=sgev1beta1.Spec(
+                    forProvider=sgev1beta1.ForProvider(
+                        region=region,
+                        ipProtocol="-1",
+                        referencedSecurityGroupIdSelector=sgev1beta1.ReferencedSecurityGroupIdSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_FABRIC: _FABRIC_EFA},
+                        ),
+                        securityGroupIdSelector=sgev1beta1.SecurityGroupIdSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_FABRIC: _FABRIC_EFA},
                         ),
                     ),
                 ),
@@ -621,6 +1021,7 @@ class Composer:
                         ),
                         subnetIdSelector=ngv1beta1.SubnetIdSelector(
                             matchControllerRef=True,
+                            matchLabels={_LABEL_TIER: _TIER_PRIVATE},
                         ),
                         # min/max are ours to enforce; desiredSize is seeded via
                         # initProvider so the autoscaler can move it freely.
@@ -635,18 +1036,18 @@ class Composer:
         )
 
     def _subnet_refs_for_pool(self, pool):
-        """Resolve a pool's zones to a list of Crossplane Subnet refs.
+        """Resolve a pool's zones to a list of private Crossplane Subnet refs.
 
-        Subnets are composed with deterministic names derived from the
-        XR name and the AZ. Pools that pin to specific zones reference
-        them by name. Pools without explicit zones return None so the
-        NodeGroup's subnetIdSelector picks up all controller-owned
-        subnets via matchControllerRef.
+        Nodes run in the private subnets (NAT egress, no public IP), so a pool
+        references its AZs' private subnets by name. Pools without explicit
+        zones return None so the NodeGroup's subnetIdSelector picks up the
+        private subnets by tier label.
         """
         if not pool.zones:
             return None
         return [
-            ngv1beta1.SubnetIdRef(name=_subnet_name(self.xr, z.root if hasattr(z, "root") else z)) for z in pool.zones
+            ngv1beta1.SubnetIdRef(name=_private_subnet_name(self.xr, z.root if hasattr(z, "root") else z))
+            for z in pool.zones
         ]
 
     def compose_addons(self):
@@ -689,10 +1090,15 @@ class Composer:
         )
 
         # An NFS security group on the mount targets, reachable from any node in
-        # the VPC (the nodes have no single stable SG to reference here).
+        # the VPC (the nodes have no single stable SG to reference here). It
+        # carries _LABEL_SG_ROLE so its ingress rule and the mount targets
+        # select it specifically: an EFA pool composes a second controller-owned
+        # SecurityGroup, and a bare matchControllerRef selector would match
+        # either one.
         resource.update(
             self.rsp.desired.resources["efs-security-group"],
             sgv1beta1.SecurityGroup(
+                metadata=metav1.ObjectMeta(labels={_LABEL_SG_ROLE: _SG_ROLE_EFS}),
                 spec=sgv1beta1.Spec(
                     forProvider=sgv1beta1.ForProvider(
                         region=region,
@@ -713,7 +1119,10 @@ class Composer:
                         fromPort=2049,
                         toPort=2049,
                         cidrIpv4=self._networking().vpcCidr,
-                        securityGroupIdSelector=sgrv1beta1.SecurityGroupIdSelector(matchControllerRef=True),
+                        securityGroupIdSelector=sgrv1beta1.SecurityGroupIdSelector(
+                            matchControllerRef=True,
+                            matchLabels={_LABEL_SG_ROLE: _SG_ROLE_EFS},
+                        ),
                     ),
                 ),
             ),
@@ -729,8 +1138,13 @@ class Composer:
                         forProvider=mtv1beta1.ForProvider(
                             region=region,
                             fileSystemIdSelector=mtv1beta1.FileSystemIdSelector(matchControllerRef=True),
-                            subnetIdRef=mtv1beta1.SubnetIdRef(name=_subnet_name(self.xr, az)),
-                            securityGroupsSelector=mtv1beta1.SecurityGroupsSelector(matchControllerRef=True),
+                            # Mount targets live in the private subnets, where the
+                            # nodes that mount them run.
+                            subnetIdRef=mtv1beta1.SubnetIdRef(name=_private_subnet_name(self.xr, az)),
+                            securityGroupsSelector=mtv1beta1.SecurityGroupsSelector(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_SG_ROLE: _SG_ROLE_EFS},
+                            ),
                         ),
                     ),
                 ),
@@ -950,6 +1364,55 @@ class Composer:
             ),
         )
 
+    def compose_efa_dra_driver(self):
+        """Compose the EFA DRA driver (DRANET), only when a pool uses the EFA
+        fabric. Installed as a Helm release on the cluster's own helm
+        ProviderConfig, like the autoscaler, and gated the same way: until the
+        cluster is observed the ProviderConfig can't reach it and the release
+        would just error.
+        """
+        if not any(p.fabric == _FABRIC_EFA for p in self.xr.spec.nodePools):
+            return
+
+        cluster_observed = "cluster" in self.req.observed.resources
+        release_exists = "release-efa-dra-driver" in self.req.observed.resources
+        if not (cluster_observed or release_exists):
+            return
+
+        resource.update(
+            self.rsp.desired.resources["release-efa-dra-driver"],
+            helmv1beta1.Release(
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                spec=helmv1beta1.Spec(
+                    providerConfigRef=helmv1beta1.ProviderConfigRef(
+                        kind="ProviderConfig",
+                        name=_kubeconfig_secret_name(self.xr),
+                    ),
+                    forProvider=helmv1beta1.ForProvider(
+                        chart=helmv1beta1.Chart(
+                            name=_EFA_DRA_DRIVER_CHART_NAME,
+                            repository=_EFA_DRA_DRIVER_CHART_REPO,
+                            version=_EFA_DRA_DRIVER_CHART_VERSION,
+                        ),
+                        namespace=_EFA_DRA_DRIVER_NAMESPACE,
+                        # The driver's DaemonSet must run on the GPU nodes, which
+                        # carry the nvidia.com/gpu taint. The chart tolerates only
+                        # CriticalAddonsOnly by default, so without this it never
+                        # schedules and no EFA ResourceSlices are published.
+                        values={
+                            "tolerations": [
+                                {
+                                    "key": _GPU_TAINT_KEY,
+                                    "operator": "Exists",
+                                    "effect": _GPU_TAINT_EFFECT_K8S,
+                                },
+                            ],
+                        },
+                    ),
+                ),
+            ),
+        )
+
     def compose_provider_configs(self):
         kubeconfig_secret = _kubeconfig_secret_name(self.xr)
         resource.update(
@@ -1021,6 +1484,10 @@ class Composer:
             "internet-gateway",
             "route-table",
             "route-default",
+            "nat-eip",
+            "nat-gateway",
+            "private-route-table",
+            "private-route-default",
             "iam-role-cluster",
             "iam-attach-cluster-policy",
             "iam-role-node",
@@ -1045,16 +1512,29 @@ class Composer:
         ]
         for i in range(len(self._networking().subnetCidrs)):
             managed_resources.append(f"subnet-{i}")
+            managed_resources.append(f"private-subnet-{i}")
             managed_resources.append(f"route-table-association-{i}")
+            managed_resources.append(f"private-route-table-association-{i}")
             managed_resources.append(f"efs-mount-target-{i}")
         managed_resources += [f"nodegroup-{p.name}" for p in self.xr.spec.nodePools]
-        managed_resources += [f"launch-template-{p.name}" for p in self.xr.spec.nodePools if p.capacityBlock]
+        managed_resources += [
+            f"launch-template-{p.name}" for p in self.xr.spec.nodePools if p.capacityBlock or p.fabric == _FABRIC_EFA
+        ]
+        if any(p.fabric == _FABRIC_EFA for p in self.xr.spec.nodePools):
+            managed_resources += [
+                "efa-security-group",
+                "efa-security-group-ingress",
+                "efa-security-group-egress",
+            ]
         managed_resources += [f"addon-{a}" for a in _ADDONS]
-        # The autoscaler Helm release is only composed once the cluster is
-        # observed, so only mark it ready when it's actually in desired state —
-        # touching it here otherwise would re-add the resource we gated out.
+        # The autoscaler and EFA driver Helm releases are only composed once the
+        # cluster is observed, so only mark them ready when they're actually in
+        # desired state — touching them here otherwise would re-add a resource we
+        # gated out.
         if "release-cluster-autoscaler" in self.rsp.desired.resources:
             managed_resources.append("release-cluster-autoscaler")
+        if "release-efa-dra-driver" in self.rsp.desired.resources:
+            managed_resources.append("release-efa-dra-driver")
 
         for r in managed_resources:
             if resource.get_condition(self.req.observed.resources.get(r), "Ready").status == "True":
