@@ -44,9 +44,9 @@ opening a PR.
 ## Working on composition functions
 
 Modelplane is a [Crossplane](https://crossplane.io/) project. The core logic
-lives in Python composition functions under `functions/`. See
-[`skills/crossplane-python-functions/SKILL.md`](skills/crossplane-python-functions/SKILL.md)
-for a detailed guide.
+lives in Python composition functions under `functions/`.
+`compose-inference-gateway/function/fn.py` is a good reference implementation to
+model new functions on.
 
 Each function is a self-contained Python package, built as a hatch project and
 managed in the workspace `uv.lock`:
@@ -90,14 +90,65 @@ XRDs or dependencies you've removed don't linger.
 
 ### Tests
 
-Every function has tests under `functions/<name>/tests/test_fn.py`. Tests are
-`unittest.IsolatedAsyncioTestCase` cases that build a typed `RunFunctionRequest`
-from generated Pydantic models, call `FunctionRunner.RunFunction()`, and
-compare the resulting `RunFunctionResponse` against an expected response via
-`json_format.MessageToDict`.
+Every function has tests under `functions/<name>/tests/test_fn.py`. The
+canonical form is a table of `Case`s, each running the function on a
+`RunFunctionRequest` and comparing the whole `RunFunctionResponse` against an
+expected one — not asserting on individual fields. `compose-usages` is a clean
+example; `compose-model-cache` shows the same form scaled up to a multi-pass
+reconcile. The skeleton:
 
-Add new cases to the function's existing `test_fn.py`. Run `nix flake check`
-to verify they pass.
+```python
+@dataclasses.dataclass
+class Case:
+    name: str
+    req: fnv1.RunFunctionRequest
+    want: fnv1.RunFunctionResponse
+
+
+def setUpModule() -> None:
+    logging.configure(level=logging.Level.DISABLED)
+
+
+class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
+    maxDiff = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
+
+    async def test_compose(self) -> None:
+        cases = [
+            Case(
+                name="describes what this case exercises",
+                req=fnv1.RunFunctionRequest(...),
+                want=fnv1.RunFunctionResponse(...),
+            ),
+        ]
+        for case in cases:
+            with self.subTest(case.name):
+                got = await self.runner.RunFunction(case.req, None)
+                self.assertEqual(
+                    json_format.MessageToDict(case.want),
+                    json_format.MessageToDict(got),
+                    "-want, +got",
+                )
+```
+
+Build the XR with
+`resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json"))` from a
+generated Pydantic model; build other observed, desired, and required resources
+as plain dicts. Because `want` is the whole response, it must include the parts
+the function always emits: `meta.ttl` (60s), an empty `context`, and any
+conditions, results, and requirements. Give observed conditions a fixed
+`lastTransitionTime` so the input is deterministic. Protobuf maps
+(`desired.resources`, `requirements.resources`) compare order-independently, but
+repeated fields (`conditions`, `results`, status arrays) must match the order
+the function emits.
+
+Some existing tests (`compose-serving-stack`, the second method in
+`compose-eks-cluster`) predate this form and assert on individual fields. Don't
+model new tests on them. Add new cases to the function's `test_fn.py` and run
+`nix flake check` to verify they pass.
 
 ### Running locally
 
