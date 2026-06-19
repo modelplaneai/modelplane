@@ -1,0 +1,27 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 2
+  engines:
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          # L40S (46068Mi) qualifies; L4 (23034Mi) does not.
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("40Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            args:
+            - --model=Qwen/Qwen2.5-0.5B-Instruct
+            - --dtype=half

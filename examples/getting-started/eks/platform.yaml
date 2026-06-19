@@ -1,0 +1,44 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: l4-1x-g6
+spec:
+  description: "EKS g6.xlarge, 1x NVIDIA L4"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: g6.xlarge
+      diskSizeGb: 50
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      memory: { value: "23034Mi" }   # L4's real reported VRAM (not the nominal 24GB)
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-us-east
+  labels:
+    modelplane.ai/region: us-east
+spec:
+  cluster:
+    source: EKS
+    eks:
+      region: us-east-1
+  nodePools:
+  - name: gpu-l4
+    className: l4-1x-g6
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - us-east-1b

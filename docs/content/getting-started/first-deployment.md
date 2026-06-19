@@ -11,8 +11,6 @@ deploying models against those capabilities.
 In this guide, you'll provision one GPU cluster and serve a small model. You'll
 send a request to your model endpoint and get a response.
 
-This guide uses AWS EKS, but Modelplane supports GKE as well.
-
 Provisioning one GPU cluster takes about 15 minutes.
 
 ## Prerequisites
@@ -21,20 +19,23 @@ You need:
 
 - [kind](https://kind.sigs.k8s.io/), [kubectl](https://kubernetes.io/docs/tasks/tools/),
   [Helm](https://helm.sh/docs/intro/install/) installed on your machine
+
+{{< tabs >}}
+{{< tab "EKS" >}}
 - An AWS account with permissions to create EKS clusters, VPCs, and IAM roles
 - AWS access key ID and secret access key
+{{< /tab >}}
+{{< tab "GKE" >}}
+- A GCP account with permissions to create GKE clusters, VPCs, and IAM roles
+- A GCP service account JSON key
+{{< /tab >}}
+{{< /tabs >}}
 
 ## Build your inference platform
 
-This section sets up the inference platform. This includes creating a control
-plane to manage your clusters, creating cluster networking, and publishing
-hardware capabilities.
-
 ### Install the control plane
 
-You'll run Modelplane's control plane in a local kind cluster. Crossplane
-provides the reconciliation engine, package management, and
-infrastructure as code layer.
+You'll run Modelplane's control plane in a local kind cluster. Crossplane provides the reconciliation engine and package management.
 
 {{< hint "note" >}}
 You can run your Modelplane control plane anywhere. This guide uses kind for
@@ -60,11 +61,11 @@ Apply the bootstrap resources. This grants Crossplane the permissions necessary
 to manage your cluster:
 
 ```shell
-kubectl apply -f {{< manifest-url "qwen-demo/00-prerequisites.yaml" >}}
+kubectl apply -f {{< manifest-url "getting-started/prerequisites.yaml" >}}
 ```
 
 {{< expand "Review the prerequisites manifest" >}}
-{{< manifests "qwen-demo/00-prerequisites.yaml" >}}
+{{< manifests "getting-started/prerequisites.yaml" >}}
 {{< /expand >}}
 
 ### Install Modelplane
@@ -90,6 +91,9 @@ kubectl wait configuration/modelplane --for=condition=Healthy --timeout=5m
 
 ### Configure cloud credentials
 
+
+{{<tabs>}}
+{{< tab "EKS" >}}
 Create an AWS credentials file:
 
 {{< editCode >}}
@@ -129,7 +133,44 @@ spec:
       key: credentials
 EOF
 ```
+{{< /tab >}}
 
+{{<tab "GKE" >}}
+
+
+Create a Kubernetes secret:
+{{< editCode >}}
+
+```ini
+kubectl create secret generic gcp-creds \
+  --from-file=credentials=$@<path/to/gcp-key>$@.json \
+  -n crossplane-system
+```
+
+Apply the `ClusterProviderConfig` referencing your secret:
+
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: gcp.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  projectID: $@<Your_GCP_Project_ID>$@
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: gcp-creds
+      key: credentials
+EOF
+```
+{{< /editCode >}}
+
+{{< /tab >}}
+
+{{</tabs>}}
 ### Set up the InferenceGateway
 
 The `InferenceGateway` installs Traefik Proxy and MetalLB on the control plane.
@@ -138,7 +179,7 @@ Traefik routes inference traffic to model replicas. MetalLB assigns Traefik's
 balancer. You need one per control plane, always named `default`.
 
 If you run the control plane on a cloud cluster with native `LoadBalancer`
-support, omit the `loadBalancer` field entirely.
+support, omit the `loadBalancer` field.
 
 {{< manifests "platform/inference-gateway.yaml" >}}
 
@@ -152,62 +193,29 @@ kubectl wait --for=condition=Ready ig/default --timeout=5m
 
 <!--- TODO(tr0njavolta): explain the DRA claim use hovercode --->
 
+{{< tabs >}}
 
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: modelplane.ai/v1alpha1
-kind: InferenceClass
-metadata:
-  name: l4-1x-g6
-spec:
-  description: "EKS g6.xlarge, 1x NVIDIA L4"
-  provisioning:
-    provider: EKS
-    eks:
-      instanceType: g6.xlarge
-      diskSizeGb: 50
-      accelerator:
-        type: nvidia-l4
-        count: 1
-  devices:
-  - name: gpu
-    claim: DRA
-    driver: gpu.nvidia.com
-    deviceClassName: gpu.nvidia.com
-    count: 1
-    attributes:
-      architecture: { string: Ada Lovelace }
-    capacity:
-      memory: { value: "23034Mi" }
----
-apiVersion: modelplane.ai/v1alpha1
-kind: InferenceCluster
-metadata:
-  name: eks-us-east
-  labels:
-    modelplane.ai/region: us-east
-spec:
-  cluster:
-    source: EKS
-    eks:
-      region: us-east-1
-  nodePools:
-  - name: gpu-l4
-    className: l4-1x-g6
-    nodeCount: 1
-    minNodeCount: 1
-    maxNodeCount: 1
-    zones:
-    - us-east-1b
-EOF
-```
+{{< tab "EKS">}}
+{{< manifests "getting-started/eks/platform.yaml" >}}
 
 Modelplane provisions the cluster. This takes about 15 minutes:
 
 ```bash
 kubectl wait --for=condition=Ready ic/eks-us-east --timeout=20m
 ```
+{{< /tab >}}
 
+{{< tab "GKE" >}}
+{{< manifests "getting-started/gke/platform.yaml" >}}
+
+Modelplane provisions the cluster. This takes about 15 minutes:
+
+```bash
+kubectl wait --for=condition=Ready ic/starter --timeout=20m
+```
+{{< /tab >}}
+
+{{< /tabs >}}
 Modelplane registers the cluster and installs the serving stack. Now you're ready to deploy a model.
 
 
@@ -226,40 +234,8 @@ kubectl create namespace ml-team
 The `ModelDeployment` allows you to declare what the model needs; Modelplane
 finds the cluster that satisfies it. The device selector matches against the
 capacity declared in the `InferenceClass`. Any L4 node satisfies `>= 20Gi`.
-Modelplane places the replica on the cluster.
 
-Apply the deployment:
-
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: modelplane.ai/v1alpha1
-kind: ModelDeployment
-metadata:
-  name: qwen-demo
-  namespace: ml-team
-spec:
-  replicas: 1
-  engines:
-  - name: qwen
-    members:
-    - role: Standalone
-      nodeSelector:
-        devices:
-        - name: gpu
-          count: 1
-          selectors:
-          - cel: |
-              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
-      template:
-        spec:
-          containers:
-          - name: engine
-            image: vllm/vllm-openai:v0.11.0
-            args:
-            - "--model=Qwen/Qwen2.5-0.5B-Instruct"
-            - "--dtype=half"
-EOF
-```
+{{< manifests "getting-started/eks/model-deployment.yaml" >}}
 
 Wait until `REPLICAS` shows `1`:
 
@@ -293,8 +269,6 @@ the request body is the Hugging Face id `Qwen/Qwen2.5-0.5B-Instruct`, since this
 deployment doesn't set `--served-model-name`.
 
 ### Send a request
-
-Send a request to the endpoint:
 
 ```bash
 kubectl run -i --rm curl-test \
