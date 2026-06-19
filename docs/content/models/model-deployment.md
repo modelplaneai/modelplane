@@ -26,7 +26,16 @@ injected by Modelplane.
 When you create a `ModelDeployment`, the scheduler:
 
 1. Discovers all ready `InferenceClusters` (filtered by `clusterSelector` labels
-   if set).
+   if set). When the deployment references a [ModelCache]({{< ref "model-cache.md" >}})
+   via `spec.modelCacheRef`, the candidate clusters for *new* replicas are
+   further narrowed to the cache's own `clusterSelector` footprint, so a replica
+   never lands on a cluster the cache didn't stage to (where its PVC wouldn't
+   exist). Existing replicas are always retained where they're pinned. If the
+   referenced cache can't be read yet, the deployment reports
+   `ModelCacheResolved=False` and holds off placing new replicas until it
+   resolves, but keeps the replicas it already has - deleting a cache out from
+   under a running deployment doesn't tear it down, since the cache is only read
+   when weights are first staged.
 2. Derives each member's node cost: a Standalone or Leader is one pod, Workers
    are `worker.nodes` worker pods, times the engine's `copies`. A member that
    claims no devices costs no nodes.

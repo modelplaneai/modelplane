@@ -6,11 +6,14 @@ selected cluster, and creates one ModelEndpoint per replica for
 ModelService to route to.
 """
 
+import enum
+
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.ai.modelplane.modeldeployment import v1alpha1
 from models.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
@@ -21,8 +24,15 @@ from function import cel, name, scheduling
 # Condition types and reasons for the ModelDeployment XR.
 CONDITION_TYPE_REPLICAS_SCHEDULED = "ReplicasScheduled"
 CONDITION_TYPE_REPLICAS_READY = "ReplicasReady"
+# ModelCacheResolved reports whether the referenced ModelCache could be read.
+# It's independent of ReplicasScheduled: a deployment can hold retained replicas
+# (scheduled) while its cache is momentarily unresolved (not resolved).
+CONDITION_TYPE_MODEL_CACHE_RESOLVED = "ModelCacheResolved"
 
 CONDITION_REASON_NO_CLUSTERS = "NoClusters"
+CONDITION_REASON_CACHE_RESOLVED = "ModelCacheResolved"
+CONDITION_REASON_CACHE_UNRESOLVED = "ModelCacheUnresolved"
+CONDITION_REASON_CACHE_NOT_FOUND = "ModelCacheNotFound"
 CONDITION_REASON_INSUFFICIENT_CAPACITY = "InsufficientCapacity"
 CONDITION_REASON_INVALID_NODE_SELECTOR = "InvalidNodeSelector"
 CONDITION_REASON_REPLICAS_CREATED = "ReplicasCreated"
@@ -44,6 +54,38 @@ _LABEL_INDEX = "modelplane.ai/replica-index"
 # Scheme for gateway-facing URLs. Traffic between the control plane gateway
 # and remote cluster gateways uses plain HTTP; TLS terminates at the edge.
 _GATEWAY_SCHEME = "http"
+
+
+# TODO(https://github.com/crossplane/function-sdk-python/issues/217): Replace
+# Resolution and resolve_required with the SDK helper once it lands upstream.
+class Resolution(enum.Enum):
+    """The state of a required resource the function asked Crossplane to fetch.
+
+    request.get_required_resource returns None both before Crossplane has
+    resolved a requirement and after it resolved one to nothing; only the
+    requirement key's presence in the request tells them apart (see the
+    crossplane.function.request docstring). This makes that distinction
+    explicit so callers can treat "not fetched yet" (transient, self-clearing)
+    differently from "fetched, doesn't exist" (a deleted resource or a typo).
+    """
+
+    UNRESOLVED = "unresolved"  # Crossplane hasn't fetched the requirement yet.
+    ABSENT = "absent"  # Resolved, but no resource matched.
+    PRESENT = "present"  # Resolved and found.
+
+
+def resolve_required(req, name: str) -> tuple[Resolution, dict | None]:
+    """Classify a required resource into a Resolution and its value.
+
+    Returns (PRESENT, resource) when one was found, (ABSENT, None) when the
+    requirement resolved but matched nothing, and (UNRESOLVED, None) when
+    Crossplane hasn't fetched it yet. The caller declares the requirement with
+    response.require_resources; this only reads the result back.
+    """
+    if name not in req.required_resources:
+        return Resolution.UNRESOLVED, None
+    got = request.get_required_resource(req, name)
+    return (Resolution.PRESENT, got) if got is not None else (Resolution.ABSENT, None)
 
 
 def _inference_cluster(
@@ -86,6 +128,12 @@ class Composer:
         self.clusters = []
         self.all_replicas = []
 
+        # Whether the scheduler may place NEW replicas this reconcile. Cleared
+        # when a referenced ModelCache can't be resolved: we keep retained
+        # replicas but don't spread new ones onto clusters that might be outside
+        # the (then-unknown) cache footprint. Set by resolve_inputs.
+        self.fill = True
+
     def compose(self):
         if not self.resolve_inputs():
             return
@@ -114,12 +162,36 @@ class Composer:
     def resolve_inputs(self):
         """Declare and fetch required resources. Returns False if critical
         inputs are missing."""
-        # Match all InferenceClusters by default — require_resources with no
-        # match field matches every resource of the kind — narrowing only when
-        # the user sets a clusterSelector.
+        # Candidate clusters are those matching the deployment's own
+        # clusterSelector, narrowed further to where the referenced ModelCache
+        # stages its weights. Both selectors are matchLabels (AND semantics), so
+        # the candidate set is their intersection. Constraining placement to the
+        # cache's footprint keeps a replica from landing on a cluster the cache
+        # never staged to, where its PVC wouldn't exist and the pod would be
+        # stuck on a volume mount (#186).
         clusters_match_labels = None
         if self.xr.spec.clusterSelector and self.xr.spec.clusterSelector.matchLabels:
             clusters_match_labels = dict(self.xr.spec.clusterSelector.matchLabels)
+
+        if self.xr.spec.modelCacheRef:
+            resolution, cache_match_labels = self.resolve_cache_footprint(self.xr.spec.modelCacheRef)
+            if resolution is Resolution.PRESENT:
+                # The cache resolved, so its footprint is known; merge its labels
+                # so new replicas land only where it stages. Empty labels (the
+                # cache stages everywhere) add no constraint.
+                if cache_match_labels:
+                    clusters_match_labels = {**(clusters_match_labels or {}), **cache_match_labels}
+            else:
+                # A referenced cache we couldn't read leaves the footprint
+                # unknown. Keep retained replicas where they are (retain ignores
+                # fill) but don't place new ones onto clusters the cache might
+                # not stage to; we'd risk pinning a replica outside the footprint
+                # that retain then holds. resolve_cache_footprint surfaced why;
+                # placement resumes once the cache resolves.
+                self.fill = False
+
+        # require_resources with no match field matches every resource of the
+        # kind, so an unset selector leaves all clusters as candidates.
         response.require_resources(
             self.rsp,
             name="clusters",
@@ -156,9 +228,83 @@ class Composer:
 
         return True
 
+    def resolve_cache_footprint(self, ref) -> tuple[Resolution, dict[str, str] | None]:
+        """Resolve the cluster footprint of the ModelCache named by ref.
+
+        Returns a (Resolution, matchLabels) pair:
+
+        * PRESENT - the referenced cache was read. matchLabels is its
+          clusterSelector labels, possibly empty (the cache stages everywhere).
+          New replicas may be placed.
+        * UNRESOLVED / ABSENT - the cache couldn't be read, either because
+          Crossplane hasn't fetched it yet (UNRESOLVED) or because it doesn't
+          exist (ABSENT). matchLabels is None and the footprint is unknown, so
+          the caller holds off placing new replicas.
+
+        Requires the cache by name in the deployment's own namespace, since
+        modelCacheRef points at a cache there, and sets the ModelCacheResolved
+        condition describing the outcome.
+        """
+        response.require_resources(
+            self.rsp,
+            name="cache",
+            api_version="modelplane.ai/v1alpha1",
+            kind="ModelCache",
+            match_name=ref.name,
+            namespace=self.xr.metadata.namespace,
+        )
+
+        resolution, cache_dict = resolve_required(self.req, "cache")
+        if resolution is Resolution.UNRESOLVED:
+            # Transient: Crossplane will re-call once it fetches the cache. A
+            # condition records the wait; no event, since it self-clears and one
+            # every reconcile would just be noise.
+            response.set_conditions(
+                self.rsp,
+                resource.Condition(
+                    typ=CONDITION_TYPE_MODEL_CACHE_RESOLVED,
+                    status="False",
+                    reason=CONDITION_REASON_CACHE_UNRESOLVED,
+                    message=f"Waiting for ModelCache {ref.name}",
+                ),
+            )
+            return resolution, None
+
+        if resolution is Resolution.ABSENT:
+            # The cache doesn't exist - a deleted cache, or a typo in the ref.
+            # User-actionable and persistent, so warn as well as condition.
+            response.set_conditions(
+                self.rsp,
+                resource.Condition(
+                    typ=CONDITION_TYPE_MODEL_CACHE_RESOLVED,
+                    status="False",
+                    reason=CONDITION_REASON_CACHE_NOT_FOUND,
+                    message=f"ModelCache {ref.name} not found; holding replica placement",
+                ),
+            )
+            response.warning(self.rsp, f"ModelCache {ref.name} not found; holding replica placement")
+            return resolution, None
+
+        response.set_conditions(
+            self.rsp,
+            resource.Condition(
+                typ=CONDITION_TYPE_MODEL_CACHE_RESOLVED,
+                status="True",
+                reason=CONDITION_REASON_CACHE_RESOLVED,
+            ),
+        )
+
+        cache = mcv1alpha1.ModelCache.model_validate(cache_dict)
+        if cache.spec.clusterSelector and cache.spec.clusterSelector.matchLabels:
+            return resolution, dict(cache.spec.clusterSelector.matchLabels)
+
+        # A cache with no selector stages to every cluster, so it adds no
+        # constraint beyond the deployment's own selector.
+        return resolution, {}
+
     def schedule(self):
         """Match the deployment's engines against available clusters."""
-        matched = scheduling.schedule(self.xr, self.clusters, self.all_replicas)
+        matched = scheduling.schedule(self.xr, self.clusters, self.all_replicas, fill=self.fill)
 
         # Transition: emit which clusters were matched (first time only). A
         # cluster can host several replicas, so report it once.
