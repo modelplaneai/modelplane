@@ -1,30 +1,3 @@
-# Part 2 — Scale to a multi-cluster fleet, scheduled by capability (EKS).
-#
-# The platform adds two "bigger" GPU clusters (1x L40S 48GB each) in different
-# regions, alongside the Part-1 L4 starter. The ML team edits the SAME qwen-demo
-# deployment in place: more replicas, and a selector that asks for more GPU
-# memory. The DRA scheduler finds the hardware fleet-wide.
-#
-#     device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("40Gi")) >= 0
-#
-# That lands the replicas on the two L40S clusters and skips the L4 (24 GB). The
-# endpoint URL never changes — the same `qwen` ModelService picks up the new
-# replicas.
-#
-#   kubectl apply -f 02-scale-to-fleet.yaml
-#   kubectl -n ml-team get modelreplica -o wide
-#
-# Note: the 0.5B model doesn't need 48 GB — we're showing the selection
-# mechanism. Size the threshold to your model.
-#
-# ── GPU choice & cost ─────────────────────────────────────────────────────────
-# L40S — g6e.xlarge, a single-GPU node (~$2/hr on-demand, us-east-1). There is no
-# single-H100 EC2 instance (p5.48xlarge is 8x H100, ~$98/hr), so L40S is the
-# right "bigger" single-GPU tier for a getting-started guide. Delete the clusters
-# when you're done (see the docs' Clean up).
-# Verify the `nvidia-l40s` accelerator enum and the L40S memory against a live
-# ResourceSlice; keep the selector threshold below the reported value.
----
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
@@ -48,7 +21,7 @@ spec:
     attributes:
       architecture: { string: Ada Lovelace }
     capacity:
-      memory: { value: "49152Mi" }   # L40S 48GB (the >=40Gi selector sits below it)
+      memory: { value: "49152Mi" }
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
@@ -65,7 +38,7 @@ spec:
   - name: gpu-l40s
     className: l40s-1x-g6e
     nodeCount: 1
-    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
+    minNodeCount: 1
     maxNodeCount: 1
     zones:
     - us-west-2a
@@ -85,20 +58,18 @@ spec:
   - name: gpu-l40s
     className: l40s-1x-g6e
     nodeCount: 1
-    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
+    minNodeCount: 1
     maxNodeCount: 1
     zones:
     - eu-west-1b
 ---
-# The in-place edit: same model, same name, same ModelService — only the replica
-# count and the capability selector change.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: qwen-demo
   namespace: ml-team
 spec:
-  replicas: 2                       # one per L40S cluster
+  replicas: 2
   engines:
   - name: qwen
     members:

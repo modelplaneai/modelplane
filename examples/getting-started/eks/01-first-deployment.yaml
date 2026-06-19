@@ -1,12 +1,3 @@
-# Part 1 — Create your first inference platform and model deployment (EKS).
-#
-# One starter GPU cluster (1x L4), one small model, one endpoint.
-#
-#   kubectl apply -f 01-first-deployment.yaml
-#   kubectl -n ml-team get inferencecluster,modeldeployment,modelservice
-#
-# EKS twin of the GKE track in ../gke/. Same narrative, same small model.
----
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
@@ -30,7 +21,7 @@ spec:
     attributes:
       architecture: { string: Ada Lovelace }
     capacity:
-      memory: { value: "23034Mi" }   # L4's real reported VRAM (not the nominal 24GB)
+      memory: { value: "23034Mi" }
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
@@ -47,7 +38,7 @@ spec:
   - name: gpu-l4
     className: l4-1x-g6
     nodeCount: 1
-    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
+    minNodeCount: 1
     maxNodeCount: 1
     zones:
     - us-east-1b
@@ -79,8 +70,6 @@ spec:
             - --model=Qwen/Qwen2.5-0.5B-Instruct
             - --dtype=half
 ---
-# Path is /<namespace>/<modelservice>/... — here /ml-team/qwen/. The request
-# body's `model` field is the Hugging Face id (no --served-model-name override).
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:

@@ -37,7 +37,7 @@ run 'cat ../../qwen-demo/01-gateway.yaml'
 run 'kubectl --context $CP apply -f ../../qwen-demo/01-gateway.yaml'
 run 'kubectl --context $CP get inferencegateway default'
 
-banner "PLATFORM TEAM publishes a hardware class (machine type, accelerator, capacity) and a cluster that offers it:"
+banner "PLATFORM TEAM publishes a hardware class — machine type, accelerator, and the GPU's usable memory — plus a cluster that offers it. That published capacity is what the ML team's selectors match against:"
 run "manifest 01-first-deployment.yaml 'InferenceClass|InferenceCluster'"
 
 banner "Both are live — Modelplane provisioned the GKE cluster from that declaration:"

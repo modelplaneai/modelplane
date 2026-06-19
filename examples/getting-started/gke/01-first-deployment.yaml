@@ -1,14 +1,3 @@
-# Part 1 — Create your first inference platform and model deployment (GKE).
-#
-# One starter GPU cluster (1x L4), one small model, one endpoint. Apply this,
-# wait for the cluster + deployment to go Ready, and curl the ModelService.
-#
-#   kubectl apply -f stage0-single-cluster.yaml
-#   kubectl -n ml-team get inferencecluster,modeldeployment,modelservice
-#
-# GKE twin of Rae's EKS "first-deployment" guide: same narrative and same small
-# model, just GKE provisioning. Set the project to yours.
----
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
@@ -32,7 +21,7 @@ spec:
     attributes:
       architecture: { string: Ada Lovelace }
     capacity:
-      memory: { value: "23034Mi" }   # L4's real reported VRAM (not the nominal 24GB)
+      memory: { value: "23034Mi" }
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
@@ -50,13 +39,11 @@ spec:
   - name: gpu-l4
     className: gke-l4-1x-g2
     nodeCount: 1
-    minNodeCount: 1   # keep >=1: the cluster autoscaler can't scale a GPU pool
-    maxNodeCount: 2   # up from 0 for DRA ResourceClaim pods ("cannot allocate all claims")
+    minNodeCount: 1
+    maxNodeCount: 2
     zones:
     - us-central1-a
 ---
-# The ML team asks for the hardware its model needs (here, room for a small
-# model) and Modelplane places the replica. Any L4 satisfies `>= 20Gi`.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -84,10 +71,6 @@ spec:
             - --model=Qwen/Qwen2.5-0.5B-Instruct
             - --dtype=half
 ---
-# One front door for the deployment. The path is /<namespace>/<modelservice>/...
-# — here /ml-team/qwen/. The request body's `model` field is the model vLLM
-# serves: the Hugging Face id, since this deployment doesn't set
-# --served-model-name.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:

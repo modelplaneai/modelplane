@@ -25,9 +25,9 @@ $ kubectl --context $CP apply -f ../../qwen-demo/01-gateway.yaml
 inferencegateway.modelplane.ai/default unchanged
 $ kubectl --context $CP get inferencegateway default
 NAME      GATEWAY   ADDRESS          SYNCED   READY   COMPOSITION                       AGE
-default   Traefik   172.18.255.200   True     True    inferencegateways.modelplane.ai   18m
+default   Traefik   172.18.255.200   True     True    inferencegateways.modelplane.ai   66m
 
-# PLATFORM TEAM publishes a hardware class (machine type, accelerator, capacity) and a cluster that offers it:
+# PLATFORM TEAM publishes a hardware class — machine type, accelerator, and the GPU's usable memory — plus a cluster that offers it. That published capacity is what the ML team's selectors match against:
 $ manifest 01-first-deployment.yaml 'InferenceClass|InferenceCluster'
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
@@ -52,7 +52,7 @@ spec:
     attributes:
       architecture: { string: Ada Lovelace }
     capacity:
-      memory: { value: "23034Mi" }   # L4's real reported VRAM (not the nominal 24GB)
+      memory: { value: "23034Mi" }
 ---
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
@@ -70,8 +70,8 @@ spec:
   - name: gpu-l4
     className: gke-l4-1x-g2
     nodeCount: 1
-    minNodeCount: 1   # keep >=1: the cluster autoscaler can't scale a GPU pool
-    maxNodeCount: 2   # up from 0 for DRA ResourceClaim pods ("cannot allocate all claims")
+    minNodeCount: 1
+    maxNodeCount: 2
     zones:
     - us-central1-a
 ---
@@ -79,15 +79,13 @@ spec:
 # Both are live — Modelplane provisioned the GKE cluster from that declaration:
 $ kubectl --context $CP get inferenceclass gke-l4-1x-g2
 NAME           SYNCED   READY   COMPOSITION                      AGE
-gke-l4-1x-g2   True     True    inferenceclasses.modelplane.ai   11h
+gke-l4-1x-g2   True     True    inferenceclasses.modelplane.ai   12h
 $ kubectl --context $CP get inferencecluster starter -L modelplane.ai/region
 NAME      SOURCE   GATEWAY       SYNCED   READY   COMPOSITION                       AGE    REGION
-starter   GKE      34.46.25.59   True     True    inferenceclusters.modelplane.ai   102m   us-central
+starter   GKE      34.46.25.59   True     True    inferenceclusters.modelplane.ai   150m   us-central
 
 # ML TEAM declares a model and one endpoint — the selector asks for GPU memory (>= 20Gi), never a cluster name:
 $ manifest 01-first-deployment.yaml 'ModelDeployment|ModelService'
-# The ML team asks for the hardware its model needs (here, room for a small
-# model) and Modelplane places the replica. Any L4 satisfies `>= 20Gi`.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -115,10 +113,6 @@ spec:
             - --model=Qwen/Qwen2.5-0.5B-Instruct
             - --dtype=half
 ---
-# One front door for the deployment. The path is /<namespace>/<modelservice>/...
-# — here /ml-team/qwen/. The request body's `model` field is the model vLLM
-# serves: the Hugging Face id, since this deployment doesn't set
-# --served-model-name.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:
@@ -134,17 +128,17 @@ spec:
 # Both live; the ModelService exposes one OpenAI endpoint at /ml-team/qwen:
 $ kubectl --context $CP -n ml-team get modeldeployment qwen-demo
 NAME        REPLICAS   SYNCED   READY   COMPOSITION                      AGE
-qwen-demo   2          True     True    modeldeployments.modelplane.ai   11h
+qwen-demo   2          True     True    modeldeployments.modelplane.ai   12h
 $ kubectl --context $CP -n ml-team get modelservice qwen
 NAME   ADDRESS                              SYNCED   READY   COMPOSITION                   AGE
-qwen   http://172.18.255.200/ml-team/qwen   True     True    modelservices.modelplane.ai   11h
+qwen   http://172.18.255.200/ml-team/qwen   True     True    modelservices.modelplane.ai   12h
 
 # That address (172.18.x) is a kind MetalLB IP — not routable from the host. Port-forward the gateway, then it's a plain OpenAI call:
 $ kubectl --context $CP -n traefik-system port-forward svc/traefik 8080:80 >/tmp/qwen-pf.log 2>&1 &
 $ curl -s http://localhost:8080/ml-team/qwen/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"What is Crossplane in one sentence?"}],"max_tokens":60}' | jq -r '.choices[0].message.content'
-Crossplane is an open-source container orchestration platform that simplifies the deployment and management of microservices on Kubernetes clusters, enabling organizations to easily scale and manage their applications across multiple cloud environments.
+Crossplane is a software-defined data center (SDC) platform that enables users to deploy and manage virtualized infrastructure across multiple cloud providers with minimal management overhead.
 
 # Part 2 (scale-to-fleet.md) — the model needs more GPU. The platform grows; the ML team edits the same deployment. No model swap, no cluster names.
 
@@ -174,8 +168,6 @@ spec:
       architecture: { string: Ampere }
       cudaComputeCapability: { version: "8.0.0" }
     capacity:
-      # A100 40GB real reported VRAM (verify against a live ResourceSlice). The
-      # selector threshold must sit below it.
       memory: { value: "40960Mi" }
 ---
 apiVersion: modelplane.ai/v1alpha1
@@ -194,8 +186,8 @@ spec:
   - name: gpu-a100
     className: gke-a100-40-1x
     nodeCount: 1
-    minNodeCount: 1   # keep >=1: the cluster autoscaler can't scale a GPU pool
-    maxNodeCount: 2   # up from 0 for DRA ResourceClaim pods ("cannot allocate all claims")
+    minNodeCount: 1
+    maxNodeCount: 2
     zones:
     - us-west1-b
 ---
@@ -215,8 +207,8 @@ spec:
   - name: gpu-a100
     className: gke-a100-40-1x
     nodeCount: 1
-    minNodeCount: 1   # keep >=1: the cluster autoscaler can't scale a GPU pool
-    maxNodeCount: 2   # up from 0 for DRA ResourceClaim pods ("cannot allocate all claims")
+    minNodeCount: 1
+    maxNodeCount: 2
     zones:
     - us-east1-b
 ---
@@ -224,22 +216,19 @@ spec:
 # The fleet now spans three regions, alongside the Part-1 L4 starter:
 $ kubectl --context $CP get inferencecluster -L modelplane.ai/region
 NAME          SOURCE   GATEWAY          SYNCED   READY   COMPOSITION                       AGE    REGION
-gpu-us-east   GKE      34.118.250.189   True     True    inferenceclusters.modelplane.ai   103m   us-east
-gpu-us-west   GKE      34.53.45.218     True     True    inferenceclusters.modelplane.ai   103m   us-west
-starter       GKE      34.46.25.59      True     True    inferenceclusters.modelplane.ai   103m   us-central
+gpu-us-east   GKE      34.118.250.189   True     True    inferenceclusters.modelplane.ai   151m   us-east
+gpu-us-west   GKE      34.53.45.218     True     True    inferenceclusters.modelplane.ai   151m   us-west
+starter       GKE      34.46.25.59      True     True    inferenceclusters.modelplane.ai   151m   us-central
 
 # ML TEAM edits the SAME qwen-demo — more replicas and a selector asking for >= 35Gi. The L4 (24Gi) no longer qualifies:
 $ manifest 02-scale-to-fleet.yaml 'ModelDeployment'
-# The in-place edit: same model, same name, same ModelService — only the replica
-# count and the capability selector change. Re-applying qwen-demo moves it off
-# the L4 and onto the two A100 clusters.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: qwen-demo
   namespace: ml-team
 spec:
-  replicas: 2                       # one per A100 cluster
+  replicas: 2
   engines:
   - name: qwen
     members:
@@ -249,8 +238,6 @@ spec:
         - name: gpu
           count: 1
           selectors:
-          # "Give me a GPU with >= 35 GB." Only the A100 clusters qualify; the L4
-          # starter (24 GB) is skipped — across regions, with no cluster name.
           - cel: |
               device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("35Gi")) >= 0
       template:
@@ -270,20 +257,23 @@ modeldeployment.modelplane.ai/qwen-demo configured
 
 # Scheduled by capability — the replicas land on A100 capacity, the L4 starter skipped:
 $ kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployment,modelplane.ai/cluster
-NAME              CLUSTER       SYNCED   READY   COMPOSITION                   AGE   DEPLOYMENT   CLUSTER
-qwen-demo-57691   gpu-us-west   True     True    modelreplicas.modelplane.ai   75m   qwen-demo    gpu-us-west
-qwen-demo-c1176   gpu-us-west   True     True    modelreplicas.modelplane.ai   58m   qwen-demo    gpu-us-west
+NAME              CLUSTER       SYNCED   READY   COMPOSITION                   AGE    DEPLOYMENT   CLUSTER
+qwen-demo-57691   gpu-us-west   True     True    modelreplicas.modelplane.ai   123m   qwen-demo    gpu-us-west
+qwen-demo-c1176   gpu-us-west   True     True    modelreplicas.modelplane.ai   106m   qwen-demo    gpu-us-west
 
 # The endpoint URL never changed — same call, same /ml-team/qwen path, now served from the A100s:
 $ curl -s http://localhost:8080/ml-team/qwen/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Reverse a linked list in Python:"}],"max_tokens":60}' | jq -r '.choices[0].message.content'
-Certainly! In Python, you can reverse a linked list using a simple iterative approach without needing to use recursion. Here's how you can do it:
+Certainly! Here's how you can reverse a singly-linked list in Python:
 
 ```python
 class ListNode:
     def __init__(self, value=0, next=None):
         self.value = value
-        self.next =
+        self.next = next
+
+def reverse_linked_list(head):
+    prev = None  # Pointer
 
 # Platform team publishes capabilities. ML team requests them. Modelplane schedules and serves — one endpoint throughout, no cluster names.
