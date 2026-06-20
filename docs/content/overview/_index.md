@@ -129,10 +129,7 @@ what Modelplane is and how it works, with the rest of the docs a click away.
 The problem it solves, and how it compares to building inference yourself or buying it as a service.
 {{< /card >}}
 {{< card title="How Modelplane works" href="/overview/how-it-works/" >}}
-The architecture, the two-team boundary, and what happens when you deploy a model.
-{{< /card >}}
-{{< card title="Concepts" href="/overview/concepts/" >}}
-Every resource in the API and how they relate.
+The architecture, the resources, and what happens when you deploy a model.
 {{< /card >}}
 {{< card title="FAQ" href="/overview/faq/" >}}
 Short answers to the questions practitioners ask first.

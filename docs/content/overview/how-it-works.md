@@ -1,7 +1,10 @@
 ---
 title: How Modelplane works
 weight: 20
-description: The architecture, the two-team boundary, and what happens when you deploy a model.
+description: The architecture, the resources, and what happens when you deploy a model.
+aliases:
+  - /concepts/
+  - /overview/concepts/
 ---
 <!-- vale write-good.Passive = NO -->
 Modelplane runs as a control plane on its own cluster, the **control cluster**,
@@ -9,8 +12,8 @@ above the **inference clusters** that actually serve models. It's built on
 [Crossplane](https://crossplane.io): platform teams and developers describe what
 they want as Kubernetes resources, and Modelplane continuously reconciles the
 fleet to match, composing the clusters, scheduling replicas, and exposing
-endpoints. This page is the high-altitude tour. The
-[Concepts]({{< ref "/overview/concepts" >}}) page defines each resource in full.
+endpoints. This page is the full tour: the architecture, the resources, and what
+happens when you deploy a model.
 
 ## The two-team boundary
 
@@ -28,44 +31,30 @@ between filled in for you.
 - **Modelplane** composes the rest: a `ModelReplica` per cluster a model lands
   on, and a `ModelEndpoint` per replica for routing.
 
-```mermaid
-graph TD
-    subgraph "Platform team"
-        IG[InferenceGateway]
-        ICL[InferenceClass<br><i>gke-l4-1x-g2</i>]
-        IC1[InferenceCluster<br><i>prod-gke-us-central</i>]
-        IC2[InferenceCluster<br><i>prod-byo-us-east</i>]
-    end
+<div class="mp-lanes">
+  <div class="mp-lane mp-lane--platform">
+    <div class="mp-lane-title">Platform team creates</div>
+    <div class="mp-chip">InferenceGateway</div>
+    <div class="mp-chip">InferenceClass</div>
+    <div class="mp-chip">InferenceCluster</div>
+  </div>
+  <div class="mp-lane mp-lane--ml">
+    <div class="mp-lane-title">ML team creates</div>
+    <div class="mp-chip">ModelDeployment</div>
+    <div class="mp-chip">ModelService</div>
+    <div class="mp-chip">ModelCache</div>
+  </div>
+  <div class="mp-lane mp-lane--composed">
+    <div class="mp-lane-title">Modelplane composes</div>
+    <div class="mp-chip">ModelReplica</div>
+    <div class="mp-chip">ModelEndpoint</div>
+  </div>
+</div>
 
-    subgraph "ML team"
-        MC[ModelCache<br><i>kimi-k2</i>]
-        MD[ModelDeployment<br><i>qwen-demo</i>]
-        MS[ModelService<br><i>qwen</i>]
-    end
-
-    subgraph "Created by Modelplane"
-        MR1[ModelReplica<br><i>qwen-demo-prod-gke-us-central</i>]
-        MR2[ModelReplica<br><i>qwen-demo-prod-byo-us-east</i>]
-        ME1[ModelEndpoint<br><i>qwen-demo-prod-gke-us-central</i>]
-        ME2[ModelEndpoint<br><i>qwen-demo-prod-byo-us-east</i>]
-    end
-
-    IC1 -- "references" --> ICL
-    MD -- "references" --> MC
-    MD -. "creates" .-> MR1
-    MD -. "creates" .-> MR2
-    MD -. "creates" .-> ME1
-    MD -. "creates" .-> ME2
-    MR1 -- "deploys to" --> IC1
-    MR2 -- "deploys to" --> IC2
-    MS -- "selects" --> ME1
-    MS -- "selects" --> ME2
-    MS -. "routing" .-> IG
-```
-
-The resource hierarchy deliberately mirrors Kubernetes core: ModelDeployment →
-ModelReplica → ModelService → ModelEndpoint parallels Deployment → Pod → Service
-→ Endpoint, one scope up, across a fleet instead of within a cluster.
+The two teams create the resources on the outside; Modelplane fills in the
+middle, composing one `ModelReplica` per cluster a model lands on and one
+`ModelEndpoint` per replica. Each resource is defined in
+[the resources](#the-resources) below.
 
 ## What the control plane reconciles
 
@@ -148,15 +137,33 @@ cache between them. Modelplane wires up the cluster-edge routing that pairs each
 request's prefill and decode; the engines carry the KV-transfer flags. Both are
 described in full in the [model deployment docs]({{< ref "/models/model-deployment" >}}).
 
+## The resources
+
+The API is eight resources. The hierarchy mirrors Kubernetes core one scope up:
+ModelDeployment → ModelReplica → ModelService → ModelEndpoint parallels
+Deployment → Pod → Service → Endpoint, across a fleet instead of within a single
+cluster. The platform and model docs cover each one in full.
+
+| Resource | Created by | What it is |
+|---|---|---|
+| [InferenceGateway]({{< ref "/platform/inference-gateway" >}}) | Platform team | The unified, OpenAI-compatible entry point on the control cluster. |
+| [InferenceClass]({{< ref "/platform/inference-class" >}}) | Platform team | A tested hardware recipe for a node pool: the devices it offers and how to provision it. |
+| [InferenceCluster]({{< ref "/platform/inference-cluster" >}}) | Platform team | A Kubernetes cluster in the fleet, provisioned by Modelplane or brought as-is. |
+| [ModelDeployment]({{< ref "/models/model-deployment" >}}) | ML team | A model to serve: its engine(s), replica count, and an optional cache. |
+| [ModelService]({{< ref "/models/model-service" >}}) | ML team | One OpenAI-compatible endpoint, weighted across the endpoints it selects. |
+| [ModelCache]({{< ref "/models/model-cache" >}}) | ML team | Model weights staged once per cluster on shared storage. |
+| [ModelReplica]({{< ref "/models/model-replica" >}}) | Modelplane | One complete serving instance on a specific cluster. |
+| [ModelEndpoint]({{< ref "/models/model-endpoint" >}}) | Modelplane | A reachable endpoint; one per replica, or created manually for an external provider. |
+
 {{< cardgroup cols="2" >}}
-{{< card title="Concepts" href="/overview/concepts/" >}}
-Every resource in the API, defined, with how they relate.
-{{< /card >}}
 {{< card title="Platform docs" href="/platform/" accent="platform" >}}
 Provision clusters, define hardware classes, and set up the gateway.
 {{< /card >}}
 {{< card title="Model docs" href="/models/" accent="developer" >}}
 Deploy models, cache weights, and route to one endpoint.
+{{< /card >}}
+{{< card title="FAQ" href="/overview/faq/" >}}
+Quick answers on how Modelplane compares and what it requires.
 {{< /card >}}
 {{< card title="Get started" href="/getting-started/" >}}
 Put it together: deploy Modelplane and serve a model.
