@@ -58,6 +58,8 @@ max-args = 8
 "**/tests/**" = ["E501", "PLR2004", "PLR0913", "FBT001"]
 # fn.py uses gRPC's required PascalCase method name.
 "functions/*/function/fn.py" = ["N802"]
+# The docs manifest validator is a CLI script; print is its output.
+"docs/utils/validate/**" = ["T201"]
 # main.py is the click CLI entrypoint: boolean flags are idiomatic, and it
 # catches Exception at the top level to report startup failures cleanly.
 "functions/*/function/main.py" = ["FBT001", "BLE001"]
