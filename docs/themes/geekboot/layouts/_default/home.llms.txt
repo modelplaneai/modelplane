@@ -11,5 +11,5 @@
 ## Resources
 
 - Full documentation as one file: {{ with .OutputFormats.Get "llmsfull" }}{{ .Permalink }}{{ end }}
-- Connect an AI assistant (MCP, Markdown): {{ .Site.Home.Permalink }}ai-tools/
+{{ with .Site.GetPage "/overview/ai-tools" }}- Connect an AI assistant (MCP, Markdown): {{ .Permalink }}{{ end }}
 - GitHub: https://github.com/modelplaneai/modelplane

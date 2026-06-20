@@ -64,64 +64,130 @@ nav.site-nav a {
   letter-spacing: -0.02em;
 }
 
-// ── For AI agents — sidebar tools (content pages) ────────────
+// ── For AI agents — "Copy page" split control next to the page title ─────────
 
-.mp-page-ai-tools {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--toc-mobile-menu-outline);
+.mp-page-ai {
+  display: inline-flex;
+  align-items: stretch;
 }
 
-.mp-page-ai-label {
-  font-size: 0.7rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--toc-font-color);
-  margin-bottom: 0.5rem;
-}
-
-.mp-page-ai-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.mp-llm-badge {
-  font-family: #{$font-family-monospace};
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: #{$mp-cyan};
-  background: rgba(0,220,232,0.08);
-  border: 1px solid rgba(0,220,232,0.25);
-  border-radius: 4px;
-  padding: 2px 7px;
-  text-decoration: none;
-  transition: background 150ms;
-
-  &:hover {
-    background: rgba(0,220,232,0.16);
-    color: #{$mp-cyan};
-    text-decoration: none;
-  }
-}
-[color-theme="light"] .mp-llm-badge { color: #{$aqua-700}; }
-
-.mp-copy-page-btn {
+// Shared look for the two halves of the split button.
+.mp-page-ai-copy,
+.mp-page-ai-caret {
   font-family: inherit;
-  font-size: 0.75rem;
   color: var(--toc-font-color);
   background: none;
   border: 1px solid var(--toc-mobile-menu-outline);
-  border-radius: 4px;
-  padding: 2px 8px;
   cursor: pointer;
-  transition: color 150ms, border-color 150ms;
+  transition: color 150ms, border-color 150ms, background 150ms;
 
-  &:hover {
+  &:hover,
+  &:focus-visible {
     color: #{$mp-muted-hi};
-    border-color: rgba(154,94,252,0.3);
+    border-color: rgba(154,94,252,0.45);
+  }
+}
+
+.mp-page-ai-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 5px 0 0 5px;
+
+  svg { opacity: 0.85; }
+}
+
+.mp-page-ai-caret {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px;
+  border-left: 0;
+  border-radius: 0 5px 5px 0;
+
+  &[aria-expanded="true"] {
+    color: #{$mp-purple-hi};
+    border-color: rgba(154,94,252,0.45);
+  }
+}
+
+// Position deterministically: below the control, right edge aligned. We use
+// data-bs-display="static" (Popper disabled) and place it ourselves, because
+// Bootstrap's right-alignment reads a --bs-position custom property that
+// PurgeCSS strips from the production build (it's only read by JS).
+.mp-page-ai .mp-page-ai-menu {
+  position: absolute;
+  inset: auto 0 auto auto;
+  top: calc(100% + 0.4rem);
+  transform: none;
+}
+
+.mp-page-ai-menu {
+  --bs-dropdown-min-width: 18rem;
+  padding: 0.4rem;
+  background: var(--dropdown-background);
+  border: 1px solid var(--dropdown-border-color);
+  color: var(--body-font-color);
+
+  .mp-ai-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.5rem;
+    white-space: normal;
+    text-align: left;
+    cursor: pointer;
+    color: var(--body-font-color);
+
+    &:hover,
+    &:focus,
+    &:focus-visible,
+    &:active {
+      background: var(--dropdown-highlight);
+      color: var(--body-font-color);
+    }
+  }
+
+  .mp-ai-ico {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--dropdown-border-color);
+    border-radius: 0.45rem;
+    color: var(--body-font-color);
+  }
+
+  .mp-ai-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .mp-ai-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--body-font-color);
+  }
+
+  .mp-ai-desc {
+    font-size: 0.76rem;
+    line-height: 1.3;
+    color: var(--mp-muted, #{$mp-muted});
+  }
+
+  .mp-ai-ext {
+    flex: 0 0 auto;
+    color: var(--mp-muted, #{$mp-muted});
   }
 }
 

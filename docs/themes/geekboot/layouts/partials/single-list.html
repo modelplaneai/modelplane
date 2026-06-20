@@ -45,6 +45,72 @@
       <div class="bd-intro-inner">
       <div class="d-md-flex flex-md-row-reverse align-items-center justify-content-between">
         <div class="mb-3 mb-md-0 d-flex">
+          {{ $md := "" }}{{ with .OutputFormats.Get "markdown" }}{{ $md = .Permalink }}{{ end }}
+          {{ $mcp := "https://docs.modelplane.ai/mcp" }}
+          {{ $cursorURL := printf "cursor://anysphere.cursor-deeplink/mcp/install?name=modelplane-docs&config=%s" (printf "{\"url\":\"%s\"}" $mcp | base64Encode | urlquery) | safeURL }}
+          {{ $vscodeURL := printf "vscode:mcp/install?%s" (printf "{\"name\":\"modelplane-docs\",\"type\":\"http\",\"url\":\"%s\"}" $mcp | urlquery) | safeURL }}
+          <div class="mp-page-ai dropdown">
+            <button type="button" class="mp-page-ai-copy" onclick="mpCopyPage(this)">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2"/><path d="M10.5 5.5V3.2A1.2 1.2 0 0 0 9.3 2H3.2A1.2 1.2 0 0 0 2 3.2v6.1a1.2 1.2 0 0 0 1.2 1.2h2.3"/></svg>
+              <span>Copy page</span>
+            </button>
+            <button type="button" class="mp-page-ai-caret" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" aria-label="More tools for AI agents">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>
+            </button>
+            <ul class="dropdown-menu mp-page-ai-menu">
+              <li>
+                <button type="button" class="dropdown-item mp-ai-item" onclick="mpCopyPage(this)">
+                  <span class="mp-ai-ico"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4"/><path d="M10.5 5.5V3.4A1.4 1.4 0 0 0 9.1 2H3.4A1.4 1.4 0 0 0 2 3.4v5.7A1.4 1.4 0 0 0 3.4 10.5h2.1"/></svg></span>
+                  <span class="mp-ai-text"><span class="mp-ai-title">Copy page</span><span class="mp-ai-desc">Copy page as Markdown for LLMs</span></span>
+                </button>
+              </li>
+              {{ with $md }}
+              <li>
+                <a class="dropdown-item mp-ai-item" href="{{ . }}" target="_blank" rel="noopener">
+                  <span class="mp-ai-ico"><svg width="17" height="11" viewBox="0 0 208 128" fill="none" aria-hidden="true"><rect x="5" y="5" width="198" height="118" rx="16" stroke="currentColor" stroke-width="14"/><path fill="currentColor" d="M30 98V30h20l20 25 20-25h20v68H90V59L70 84 50 59v39zm125 0l-30-33h20V30h20v35h20z"/></svg></span>
+                  <span class="mp-ai-text"><span class="mp-ai-title">View as Markdown {{ partial "ai-ext-arrow.html" }}</span><span class="mp-ai-desc">View this page as plain text</span></span>
+                </a>
+              </li>
+              {{ end }}
+              <li>
+                <button type="button" class="dropdown-item mp-ai-item" onclick="mpCopyText(this, '{{ $mcp }}')">
+                  <span class="mp-ai-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12 11.1 3.9a3 3 0 1 1 4.3 4.3L7.3 16.3"/><path d="M7.3 16.3 15.4 8.2a3 3 0 1 1 4.3 4.3l-8.1 8"/></svg></span>
+                  <span class="mp-ai-text"><span class="mp-ai-title">Copy MCP Server</span><span class="mp-ai-desc">Copy MCP Server URL to clipboard</span></span>
+                </button>
+              </li>
+              <li>
+                <a class="dropdown-item mp-ai-item" href="{{ $cursorURL }}">
+                  <span class="mp-ai-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7z"/><path d="M3.5 7 12 11.5 20.5 7M12 11.5V21.5"/></svg></span>
+                  <span class="mp-ai-text"><span class="mp-ai-title">Connect to Cursor {{ partial "ai-ext-arrow.html" }}</span><span class="mp-ai-desc">Install MCP Server on Cursor</span></span>
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item mp-ai-item" href="{{ $vscodeURL }}">
+                  <span class="mp-ai-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 19.645V3.876a1.5 1.5 0 0 0-.85-1.29zm-5.146 14.861L10.826 12l7.178-5.448z"/></svg></span>
+                  <span class="mp-ai-text"><span class="mp-ai-title">Connect to VS Code {{ partial "ai-ext-arrow.html" }}</span><span class="mp-ai-desc">Install MCP Server on VS Code</span></span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <template id="mp-raw-md">{{ .RawContent | htmlEscape }}</template>
+          <script>
+          function mpFlash(btn, msg) {
+            var label = btn.querySelector('.mp-ai-title') || btn.querySelector('span') || btn;
+            var original = label.textContent;
+            label.textContent = msg;
+            setTimeout(function () { label.textContent = original; }, 2000);
+          }
+          function mpCopyPage(btn) {
+            var tmpl = document.getElementById('mp-raw-md');
+            if (!tmpl) return;
+            var ta = document.createElement('textarea');
+            ta.innerHTML = tmpl.innerHTML;
+            navigator.clipboard.writeText(ta.value).then(function () { mpFlash(btn, 'Copied!'); });
+          }
+          function mpCopyText(btn, text) {
+            navigator.clipboard.writeText(text).then(function () { mpFlash(btn, 'Copied!'); });
+          }
+          </script>
         </div>
         <h1 class="bd-title mb-0" id="content">{{ .Title | markdownify }}
           {{ if eq .Page.Title "Release Notes" }}
@@ -89,28 +155,6 @@
           </nav>
         {{ end }}
         {{ end }}
-
-        <div class="mp-page-ai-tools">
-          <div class="mp-page-ai-label">For AI agents and LLM tools</div>
-          <div class="mp-page-ai-row">
-            <a href="{{ "llms.txt" | relURL }}" class="mp-llm-badge" target="_blank" rel="noopener">llms.txt</a>
-            <button class="mp-copy-page-btn" onclick="mpCopyPage(this)">Copy
-                           Markdown</button>
-          </div>
-          <template id="mp-raw-md">{{ .RawContent | htmlEscape }}</template>
-          <script>
-          function mpCopyPage(btn) {
-            var tmpl = document.getElementById('mp-raw-md');
-            if (!tmpl) return;
-            var ta = document.createElement('textarea');
-            ta.innerHTML = tmpl.innerHTML;
-            navigator.clipboard.writeText(ta.value).then(function () {
-              btn.textContent = 'Copied!';
-              setTimeout(function () { btn.textContent = 'Copy Markdown'; }, 2000);
-            });
-          }
-          </script>
-        </div>
       </div>
 
       <div class="bd-content ps-lg-2 DocSearch-content">
