@@ -12,7 +12,7 @@ You'll add two larger GPU clusters in different regions and raise the memory
 threshold in the `qwen-demo` deployment. Modelplane moves the replicas to the
 qualifying hardware.
 
-By the end, one `ModelDeployment` will run replicas across two `L40S` clusters,
+By the end, one `ModelDeployment` will run replicas across two larger-GPU clusters,
 routed through the same endpoint you curled in Part 1. The `L4` cluster will
 still be present but skipped because it no longer meets the selector.
 
@@ -23,11 +23,32 @@ Provisioning two more clusters takes about 10–15 minutes.
 
 <!-- vale write-good.TooWordy = NO -->
 
+{{< tabs >}}
+{{< tab "EKS" >}}
 Register two more clusters with a bigger hardware class: `L40S` (`48 Gi`):
 
-<!-- vale write-good.TooWordy  = YES -->
-
 {{< manifests "getting-started/eks/platform-scale.yaml" >}}
+
+{{< hint "note" >}}
+`g6e.xlarge` runs ~$2/hr on demand. Two of them plus the `L4` from Part 1 is a
+few dollars for this guide. Delete the clusters when you're done (see [Clean
+up](#clean-up)).
+{{< /hint >}}
+{{< /tab >}}
+{{< tab "GKE" >}}
+Register two more clusters with a bigger hardware class: `A100` (`40 Gi`):
+
+{{< manifests "getting-started/gke/platform-scale.yaml" >}}
+
+{{< hint "note" >}}
+`a2-highgpu-1g` runs ~$3.50/hr on demand. Two of them plus the `L4` from Part 1 is a
+few dollars for this guide. Delete the clusters when you're done (see [Clean
+up](#clean-up)).
+{{< /hint >}}
+{{< /tab >}}
+{{< /tabs >}}
+
+<!-- vale write-good.TooWordy  = YES -->
 
 Modelplane provisions both clusters in parallel:
 
@@ -35,30 +56,24 @@ Modelplane provisions both clusters in parallel:
 kubectl wait --for=condition=Ready ic --all --timeout=20m
 ```
 
-{{< hint "note" >}}
-`g6e.xlarge` runs ~$2/hr on demand. Two of them plus the `L4` from Part 1 is a
-few dollars for this guide. Delete the clusters when you're done (see [Clean
-up](#clean-up)). 
-{{< /hint >}}
-
 ## Request new hardware for your model
 
 ```mermaid
 graph LR
     subgraph pt ["Platform team"]
-        IC1["eks-us-east\nL4 · 24Gi"]
-        IC2["eks-us-west\nL40S · 48Gi"]
-        IC3["eks-eu-central\nL40S · 48Gi"]
+        IC1["starter cluster\nL4 · 24Gi"]
+        IC2["scale cluster 1\nlarger GPU · 40+ Gi"]
+        IC3["scale cluster 2\nlarger GPU · 40+ Gi"]
     end
 
-    sel["memory >= 40Gi"]
+    sel["memory > L4 threshold"]
 
-    IC2 -- "48Gi ✓" --> sel
-    IC3 -- "48Gi ✓" --> sel
+    IC2 -- "40+ Gi ✓" --> sel
+    IC3 -- "40+ Gi ✓" --> sel
     IC1 -. "24Gi · skipped" .-> sel
 
     subgraph ml ["ML team"]
-        MD["ModelDeployment\nmemory >= 40Gi\nreplicas: 2"]
+        MD["ModelDeployment\nhigher memory threshold\nreplicas: 2"]
         EP["unified endpoint\n/ml-team/qwen/v1/..."]
     end
 
@@ -67,7 +82,14 @@ graph LR
 ```
 Update the `qwen-demo` deployment with a higher memory threshold and two replicas:
 
+{{< tabs >}}
+{{< tab "EKS" >}}
 {{< manifests "getting-started/eks/model-deployment-scale.yaml" >}}
+{{< /tab >}}
+{{< tab "GKE" >}}
+{{< manifests "getting-started/gke/model-deployment-scale.yaml" >}}
+{{< /tab >}}
+{{< /tabs >}}
 
 Wait until `REPLICAS` shows `2`:
 
@@ -81,19 +103,29 @@ Check replica placement:
 kubectl get modelreplica -n ml-team
 ```
 
+{{< tabs >}}
+{{< tab "EKS" >}}
 ```shell
 NAME              CLUSTER        SYNCED   READY   COMPOSITION                   AGE
 qwen-demo-7323a   eks-us-west      True     True    modelreplicas.modelplane.ai   8m
 qwen-demo-92535   eks-eu-central   True     True    modelreplicas.modelplane.ai   29m
 ```
+{{< /tab >}}
+{{< tab "GKE" >}}
+```shell
+NAME              CLUSTER        SYNCED   READY   COMPOSITION                   AGE
+qwen-demo-7323a   gpu-us-west   True     True    modelreplicas.modelplane.ai   8m
+qwen-demo-92535   gpu-us-east   True     True    modelreplicas.modelplane.ai   29m
+```
+{{< /tab >}}
+{{< /tabs >}}
 
 The endpoint URL doesn't change. The gateway picks up the new replicas
 automatically.
 
-Any new `L40S` cluster that becomes `Ready` is eligible automatically. The same
+Any new qualifying cluster that becomes `Ready` is eligible automatically. The same
 `ModelService` fronts both regions, so losing one cluster keeps the other
-serving. Any new `L40S` cluster in any region becomes
-eligible automatically.
+serving.
 
 ## Clean up
 
