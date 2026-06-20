@@ -3,25 +3,30 @@
 .bd-toc {
   color: var(--toc-font-color);
 
-  @include media-breakpoint-up(lg) {
+  // Only shown once the viewport is wide enough for sidebar + comfortable
+  // content + this rail; otherwise content keeps the space.
+  display: none;
+
+  @media (min-width: 1280px) {
+    display: block;
     align-self: start;
     position: sticky;
-    top: 4.5rem;
+    top: 3.5rem;
     z-index: 2;
-    max-height: calc(100vh - 4.5rem);
+    max-height: calc(100dvh - 5rem);
     overflow-y: auto;
-    border-left: 1px solid #{$mp-border};
+    border-left: 1px solid var(--dropdown-border-color);
     padding-left: 18px;
   }
 
   // "On this page" heading — matches website .toc summary exactly
   strong.h6 {
     font-family: #{$font-family-monospace} !important;
-    font-size: 11px !important;
+    font-size: 12px !important;
     font-weight: 500 !important;
     text-transform: uppercase;
     letter-spacing: 0.16em;
-    color: #{$mp-muted};
+    color: var(--toc-font-color);
     display: block;
     margin-bottom: 14px;
     // reset Bootstrap h6 overrides
@@ -42,17 +47,27 @@
       list-style: none;
       margin-bottom: 0;
 
-      ul { padding-left: 0; margin-top: 0; }
+      // Nested headings (H3+ under an H2) indent and step down a size so the
+      // on-this-page hierarchy is legible.
+      ul {
+        padding-left: 0;
+        margin-top: 0;
+
+        a {
+          padding-left: 30px;
+          font-size: 13px;
+        }
+      }
     }
 
     li { margin-bottom: 0; }
 
     // Matches website .toc a exactly — scoped to list items only
     ul a {
-      color: #{$mp-muted};
+      color: var(--toc-font-color);
       text-decoration: none;
-      font-size: 13px;
-      line-height: 1.4;
+      font-size: 14px;
+      line-height: 1.45;
       display: block;
       border-left: 2px solid transparent;
       margin-left: -20px;
@@ -60,18 +75,18 @@
       transition: color 0.18s ease, border-color 0.18s ease;
 
       &:hover {
-        color: #{$mp-muted-hi};
+        color: var(--body-font-color);
         text-decoration: none !important;
       }
 
       &.active {
-        color: #{$mp-purple-hi};
-        font-weight: 400;
+        color: var(--content-link-color);
+        font-weight: 500;
         letter-spacing: normal;
-        border-left-color: #{$mp-purple};
+        border-left-color: var(--content-link-color);
 
         &:hover {
-          color: #{$mp-purple-hi};
+          color: var(--content-link-color);
           text-decoration: none !important;
         }
       }
@@ -89,11 +104,11 @@
 }
 
 .bd-toc nav.pt-3 a {
-  color: #{$mp-muted};
+  color: var(--toc-font-color);
   font-size: 0.8125rem;
   text-decoration: none;
 
-  &:hover { color: #ffffff; text-decoration: none !important; }
+  &:hover { color: var(--body-font-color); text-decoration: none !important; }
 }
 
 .bd-toc-toggle {

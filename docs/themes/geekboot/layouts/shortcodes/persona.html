@@ -1,0 +1,6 @@
+{{/*
+  Inline persona badge. Usage: {{< persona platform >}} or {{< persona developer >}}
+*/}}
+{{ $p := .Get 0 | lower }}
+{{ $labels := dict "platform" "Platform" "developer" "Developer" }}
+<span class="mp-badge mp-badge--{{ $p }}">{{ index $labels $p | default ($p | humanize) }}</span>

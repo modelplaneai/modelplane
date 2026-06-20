@@ -28,8 +28,8 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
   [markup.highlight]
     codeFences = true
     noClasses = false
-    linenos = true
-    anchorLineNos = true
+    linenos = false
+    anchorLineNos = false
     lineNumbersInTable = false
 
 [module]

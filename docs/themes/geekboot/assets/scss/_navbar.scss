@@ -5,8 +5,8 @@ nav.site-nav {
   position: sticky; top: 0; z-index: 100;
   margin: 0;
   padding: 0;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
-  background: rgba(7,7,20,0.85);
+  border-bottom: 1px solid #{$mp-border};
+  background: rgba(0,29,47,0.85);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
@@ -40,7 +40,7 @@ nav.site-nav .wrap {
 .nav-links a {
   font-size: 14px;
   font-weight: 400;
-  color: #8b8aae;
+  color: #{$mp-muted};
   text-decoration: none;
   transition: color 0.2s;
 }
@@ -49,17 +49,102 @@ nav.site-nav .wrap {
 .nav-cta {
   font-size: 14px;
   font-weight: 500;
-  color: #070714 !important;
-  background: #AD7BFC;
+  color: #{$mp-bg} !important;
+  background: #{$mp-purple};
   padding: 8px 20px;
   border-radius: 6px;
   text-decoration: none;
   transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
 }
 .nav-cta:hover {
-  background: #C39EFD;
+  background: #{$mp-purple-hi};
   transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(173,123,252,0.4);
+  box-shadow: 0 4px 20px rgba(154,94,252,0.4);
+}
+
+// Light/dark theme toggle button
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mp-muted);
+  padding: 5px;
+  border-radius: 6px;
+  transition: color 0.2s, background 0.2s;
+
+  svg { display: block; }
+  &:hover { color: var(--body-font-color); background: var(--nav-highlight-color); }
+}
+
+// Mobile-only top bar (the sidebar is a drawer on small screens)
+.docs-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--body-background);
+  border-bottom: 1px solid var(--dropdown-border-color);
+}
+.docs-topbar-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mp-muted);
+  padding: 4px;
+  &:hover { color: var(--body-font-color); }
+}
+.docs-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  text-decoration: none;
+  color: var(--body-font-color);
+
+  &:hover { color: var(--body-font-color); text-decoration: none; }
+}
+.docs-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.docs-topbar-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mp-muted);
+  padding: 4px;
+
+  &:hover { color: var(--body-font-color); }
+}
+// Show the sun in dark mode (click → light) and the moon in light mode
+// (click → dark). Default both hidden, then reveal per theme.
+.theme-toggle .icon-sun,
+.theme-toggle .icon-moon { display: none; }
+[color-theme="dark"]  .theme-toggle .icon-sun  { display: block; }
+[color-theme="light"] .theme-toggle .icon-moon { display: block; }
+
+// Mobile dropdown variant — full-width row matching the dropdown links
+.theme-toggle--mobile {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  font-size: 16px;
+  padding: 10px 0;
+  border-radius: 0;
+
+  &:hover { background: none; color: #ffffff; }
 }
 
 .nav-hamburger {
@@ -77,7 +162,7 @@ nav.site-nav .wrap {
 .nav-hamburger span {
   display: block;
   height: 2px;
-  background: #b0afcc;
+  background: #{$mp-muted-hi};
   border-radius: 2px;
   transition: transform 0.2s, opacity 0.2s;
 }
@@ -88,18 +173,18 @@ nav.site-nav .wrap {
 .nav-dropdown {
   display: flex;
   flex-direction: column;
-  background: rgba(7,7,20,0.97);
-  border-top: 1px solid rgba(255,255,255,0.07);
+  background: rgba(0,29,47,0.97);
+  border-top: 1px solid #{$mp-border};
   padding: 16px 20px 24px;
   gap: 4px;
 }
 .nav-dropdown a {
   font-size: 16px;
   font-weight: 400;
-  color: #8b8aae;
+  color: #{$mp-muted};
   text-decoration: none;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid #{$mp-border};
   transition: color 0.2s;
 }
 .nav-dropdown a:last-child { border-bottom: none; }
@@ -107,7 +192,7 @@ nav.site-nav .wrap {
 
 .nav-cta-mobile {
   margin-top: 8px;
-  color: #C39EFD !important;
+  color: #{$mp-purple-hi} !important;
   font-weight: 600 !important;
   border-bottom: none !important;
 }
@@ -126,7 +211,7 @@ nav.site-nav .wrap {
   background: none;
   border: none;
   cursor: pointer;
-  color: #8b8aae;
+  color: #{$mp-muted};
   padding: 4px;
   border-radius: 4px;
   transition: color 0.2s;

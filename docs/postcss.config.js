@@ -23,7 +23,10 @@ const purgecss = require("@fullhuman/postcss-purgecss")({
       ...(els.ids || []),
     ];
   },
-  safelist: [],
+  // Classes added/injected by JS at runtime never appear in hugo_stats.json,
+  // so keep their rules from being purged: the floating copy button we hide
+  // (bd-clipboard/btn-clipboard) and the code-card copy "copied" state.
+  safelist: ["bd-clipboard", "btn-clipboard", "copied"],
 });
 
 // PostCSS Media sort

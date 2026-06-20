@@ -2,9 +2,9 @@
     // body and content
     --body-background: #{$fog-0};
     --body-font-color: #{$fog-1000};
-    --content-link-color: #{$aqua-700};
+    --content-link-color: #{$mp-purple-dark};
     --anchor-link-color: #{$fog-600};
-    --rss-icon-fill: #{$aqua-600};
+    --rss-icon-fill: #{$mp-purple-dark};
 
     // Add underline to light mode small font links due to being similar color to main text
     p > a, .admonition-content > a, li > a, td > a, .home-link-description > a {
@@ -14,18 +14,22 @@
         text-decoration: none;
     }
 
-    // Single code lines inside text. Code blocks are in _code_theme_light.scss
-    --code-background: #{$fog-1000}20;
-    --code-color: #{$fog-1000};
-    --code-line-number-color: #{$aqua-700};
+    // Inline code within text: purple text, no background.
+    --code-background: transparent;
+    --code-color: #{$mp-purple-dark};
+    --code-line-number-color: #{$mp-purple-dark};
 
     //Tabs
     --nav-tab-background-color: var(--body-background);
-    --active-tab-color: #{$aqua-700};
+    --active-tab-color: #{$mp-purple-dark};
     --inactive-tab-hover-color: #{$fog-1000};
 
+    // Muted text (sidebar section headers, chevrons, etc.)
+    --mp-muted: #{$fog-700};
+    --mp-muted-hi: #{$fog-800};
+
     // Sidebar nav
-    --nav-highlight-color: #{$aqua-50};
+    --nav-highlight-color: #f1ebfe;
     --btn-close-color: #{$fog-1000};
 
     //Version dropdown
@@ -37,7 +41,7 @@
     --dropdown-border-color: #{$fog-100};
 
     //Right-side table of contents
-    --toc-font-color: #{$fog-600};
+    --toc-font-color: #{$fog-700};
     --toc-mobile-menu-outline: #{$fog-200};
     --toc-mobile-menu-background: #{$fog-0};
 
@@ -147,8 +151,8 @@
 
         // Active tab style
         .active, .active:hover {
-            color: #{$aqua-600} !important;
-            border-bottom: 2px solid #{$aqua-600} !important;
+            color: #{$mp-purple-dark} !important;
+            border-bottom: 2px solid #{$mp-purple-dark} !important;
         }
 
         // Dim the text of non-active tabs

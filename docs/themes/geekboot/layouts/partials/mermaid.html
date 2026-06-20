@@ -1,47 +1,53 @@
 {{ if .Page.Store.Get "hasMermaid" }}
-<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
 <script type="module">
-
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs';
-  document.addEventListener("DOMContentLoaded", setMermaidStyle());
-  document.addEventListener("DOMContentLoaded", colorModeListener());
 
-  function getMermaidConfig(){
-    var style = getComputedStyle(document.body)
-    var font = style.getPropertyValue("font-family")
-    var fontColor = style.getPropertyValue('--body-font-color')
-    var backgroundColor = style.getPropertyValue('--body-background')
+  // Hugo renders ```mermaid fences as <pre class="mermaid">. Stash each
+  // diagram's source up front: once mermaid processes a block it replaces the
+  // source with an <svg>, so we need the original text to re-render when the
+  // theme changes.
+  var blocks = Array.prototype.map.call(
+    document.querySelectorAll('pre.mermaid, .mermaid'),
+    function (el) { return { el: el, src: el.textContent }; }
+  );
 
-    var config = {
-      "theme": "base",
-      "fontFamily": font,
-      "themeVariables": {
-        "background": backgroundColor,
-        "textColor": fontColor,
-        }
+  function mermaidConfig() {
+    var style = getComputedStyle(document.body);
+    return {
+      startOnLoad: false,
+      theme: 'base',
+      fontFamily: style.getPropertyValue('font-family'),
+      themeVariables: {
+        background: style.getPropertyValue('--body-background'),
+        textColor: style.getPropertyValue('--body-font-color'),
+      },
+    };
+  }
+
+  async function render() {
+    if (!blocks.length) return;
+    mermaid.initialize(mermaidConfig());
+    blocks.forEach(function (b) {
+      b.el.removeAttribute('data-processed');
+      b.el.innerHTML = b.src;
+    });
+    await mermaid.run({ nodes: blocks.map(function (b) { return b.el; }) });
+  }
+
+  render();
+
+  // Re-render with theme-matched colors whenever the toggle flips
+  // <html color-theme> (from any switch on the page).
+  var current = document.documentElement.getAttribute('color-theme');
+  new MutationObserver(function () {
+    var next = document.documentElement.getAttribute('color-theme');
+    if (next !== current) {
+      current = next;
+      render();
     }
-
-    return config
-  }
-
-  function setMermaidStyle(){
-    var config = getMermaidConfig()
-    mermaid.initialize( config )
-  }
-
-  function colorModeListener(){
-    darkSwitch.addEventListener("click", resetMermaidStyle())
-  }
-
-  function resetMermaidStyle(){
-    console.log("resetting")
-
-    var config = getMermaidConfig()
-    console.log(config)
-    mermaid.mermaidAPI.setConfig( config )
-    mermaid.mermaidAPI.reset()
-
-  }
-
+  }).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['color-theme'],
+  });
 </script>
 {{ end }}

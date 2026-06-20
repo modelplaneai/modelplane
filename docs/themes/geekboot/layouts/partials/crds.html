@@ -85,7 +85,7 @@
                id="pane-{{ $kindSlug }}-example"
                role="tabpanel"
                aria-labelledby="tab-{{ $kindSlug }}-example">
-            <pre class="api-ref__example"><code>{{ $manifest | htmlEscape }}</code></pre>
+            <div class="api-ref__example">{{ highlight $manifest "yaml" "linenos=false" }}</div>
           </div>
           {{ end }}
 

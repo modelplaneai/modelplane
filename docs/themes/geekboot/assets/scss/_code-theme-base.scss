@@ -4,15 +4,20 @@
       content: "$ "
   }
 
-  // Style for highlighted lines when hovering over copy button
+  // Style for highlighted lines when hovering over copy button. Theme-aware so
+  // it stays a subtle tint (not a dark block) in light mode.
   .copyHover {
-    background-color: #{$fog-800};
+    background-color: var(--nav-highlight-color);
   }
 
   // Code box div
   .highlight {
     overflow-x: auto;
     width: 100% !important;
+    // Allow the flex box to shrink below its content so long code lines scroll
+    // inside the block instead of widening it past its column (which pushed
+    // content off-centre and into the "On this page" rail).
+    min-width: 0;
     background-color: var(--code-block-background-color);
     display: flex !important;
     margin-top: 1rem; // prevent boxes from running together
@@ -59,6 +64,7 @@
     // code pre elements.
     .chroma {
       width: 100%;
+      min-width: 0;
       font-size: .95rem !important;
       line-height: 1.45em;
       display: flex !important;
@@ -68,6 +74,7 @@
       padding-top: .5rem;
 
       code {
+        min-width: 0;
         color: #f8f9fa;   // Code color if there is no defined highlighter style
         background-color: var(--code-block-background-color);
 
@@ -88,7 +95,7 @@
             scroll-margin-top: 90px;
             &:hover{
               // text-decoration: none !important;
-              color: #fff;
+              color: var(--body-font-color);
               font-weight: 800;
               text-decoration: none !important;
             }

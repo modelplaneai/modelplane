@@ -5,12 +5,11 @@ color-theme="dark">
   <head>
     {{ partial "header" . }}
   </head>
-  {{ block "body_override" . }}<body>{{ end }}
+  {{ block "body_override" . }}<body class="docs-app">{{ end }}
     {{ partialCached "icons" . }}
-    {{ partialCached "docs-navbar" . .IsHome }}
+    {{ partialCached "docs-topbar" . }}
     {{ block "main" . }}
     {{ end }}
-    {{ partialCached "footer" . }}
     {{ partialCached "scripts" . }}
   </body>
 </html>

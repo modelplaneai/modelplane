@@ -14,27 +14,7 @@ nav.site-nav a {
   vertical-align: baseline;
 }
 
-// Grid-line background — matches website globals.css body::after exactly
-body::after {
-  content: '';
-  position: fixed; inset: 0; z-index: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px);
-  background-size: 80px 80px;
-  pointer-events: none;
-  opacity: 0.5;
-}
-
-// Lift layout and footer above the grid (z-index:0).
-// docs-navbar is NOT here — _navbar.scss owns position:sticky + z-index:100
-// and _modelplane.scss loads after _navbar.scss, so adding docs-navbar here
-// would silently override sticky with relative.
-.bd-layout,
-.bd-footer {
-  position: relative;
-  z-index: 1;
-}
+// Plain background (Dark Spruce in dark mode) — no grid overlay.
 
 // Sidebar active border uses purple
 .bd-links-nav {
@@ -79,7 +59,8 @@ body::after {
 
 // Page title
 .bd-title {
-  font-weight: 800;
+  font-family: #{$font-family-headings};
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
@@ -112,19 +93,20 @@ body::after {
   font-weight: 600;
   letter-spacing: 0.03em;
   color: #{$mp-cyan};
-  background: rgba(34,211,238,0.07);
-  border: 1px solid rgba(34,211,238,0.2);
+  background: rgba(0,220,232,0.08);
+  border: 1px solid rgba(0,220,232,0.25);
   border-radius: 4px;
   padding: 2px 7px;
   text-decoration: none;
   transition: background 150ms;
 
   &:hover {
-    background: rgba(34,211,238,0.14);
+    background: rgba(0,220,232,0.16);
     color: #{$mp-cyan};
     text-decoration: none;
   }
 }
+[color-theme="light"] .mp-llm-badge { color: #{$aqua-700}; }
 
 .mp-copy-page-btn {
   font-family: inherit;
@@ -139,7 +121,7 @@ body::after {
 
   &:hover {
     color: #{$mp-muted-hi};
-    border-color: rgba(173,123,252,0.3);
+    border-color: rgba(154,94,252,0.3);
   }
 }
 
@@ -217,11 +199,11 @@ body::after {
   .footer-by {
     font-family: #{$font-family-monospace};
     font-size: 12px;
-    color: #3a3a55;
+    color: #2E4A5B;
     letter-spacing: 0.06em;
     margin-top: 24px;
 
-    a { color: #4a4a68; text-decoration: none; }
+    a { color: #3E5A6B; text-decoration: none; }
     a:hover { color: #{$mp-muted}; }
   }
 

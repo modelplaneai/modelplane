@@ -1,26 +1,39 @@
 @mixin code-theme-light {
 
-  --code-block-background-color: #{$fog-900};
-  --code-line-number-color: #{$fog-300};
+  --code-block-background-color: #{$fog-0};
+  --code-line-number-color: #{$fog-500};
 
-  /* Theme: Colors customized for Crossplane. Was originally Dracula */
+  /* Light code theme — dark text on a white surface, brand-coordinated tokens. */
+
+  // White code blocks need a border to read against the white page. The default
+  // code colour from the base mixin is near-white, so force dark text here at a
+  // matching specificity (kubectl/shell lines are plain, uncoloured text).
+  .highlight {
+    border: 1px solid #{$fog-150};
+    .chroma,
+    .chroma code { color: #{$fog-1000}; }
+  }
 
   /* Background */
   .bg {
-    color: #f8f8f2;
-    background-color: #1b1c16;
+    color: #{$fog-1000};
+    background-color: #{$fog-0};
   }
   /* PreWrapper */
   .chroma {
-    color: #f8f8f2;
-    //background-color: #1b1c16;
+    color: #{$fog-1000};
+    //background-color: #{$fog-0};
+
+    // Override the base mixin's near-white default code colour so unhighlighted
+    // tokens (plain names, punctuation) stay legible on the light surface.
+    code { color: #{$fog-1000}; }
   }
   /* Other */
   .chroma .x {
   }
   /* Error */
   .chroma .err {
-    border-color: #{$salmon-300};
+    border-color: #{$salmon-700};
   }
   /* CodeLine */
   .chroma .cl {
@@ -41,7 +54,7 @@
   }
   /* LineHighlight */
   .chroma .hl {
-    background-color: #{$fog-800};
+    background-color: #{$fog-100};
   }
   /* LineNumbersTable */
   .chroma .lnt {
@@ -49,7 +62,7 @@
     user-select: none;
     margin-right: 0.4em;
     padding: 0 0.4em 0 0.4em;
-    color: #{$fog-300};
+    color: #{$fog-500};
   }
   /* LineNumbers */
   .chroma .ln {
@@ -57,11 +70,11 @@
     user-select: none;
     margin-right: 0.4em;
     padding: 0 0.4em 0 0.4em;
-    color: #{$fog-300};
+    color: #{$fog-500};
   }
   /* LineNumber Right Border */
   .highlight .chroma code .ln {
-    border-right: 1px solid #{$fog-700};
+    border-right: 1px solid #{$fog-200};
   }
   /* Line */
   .chroma .line {
@@ -69,30 +82,31 @@
   }
   /* Keyword, KeywordDeclaration, KeywordCosntant, KeywordPseudo, KeywordReserved, KeywordType, NameConstant, GenericOutput */
   .chroma .k, .chroma .kd, .chroma .kc, .chroma .kp, .chroma .kr, .chroma .kt, .chroma .no, .chroma .go {
-    color: #{$tangerine-300};
+    color: #{$mp-purple-dark};
   }
   /* KeywordNamespace, NameTag, Operator, OperatorWord */
   .chroma .kn, .chroma .nt, .chroma .o, .chroma .ow {
-    color: #{$aqua-300};
+    color: #{$aqua-700};
   }
   /* Name, NameBuiltin, NameBuiltinPseudo, NameEntity, NameFunctionMagic, NameLabel, NameNamespace, NameProperty, NameVariable, NameVariableClass, NameVariableGlobal, NameVariableInstance, NameVariableMagic, Punctuation, Generic, GenericHeading, GenericError, GenericPrompt, GenericTraceback, GenericUnderline, TextWhitespace */
   .chroma .n, .chroma .nb, .chroma .bp, .chroma .ni, .chroma .fm, .chroma .nl, .chroma .nn, .chroma .py, .chroma .nv, .chroma .vc, .chroma .vg, .chroma .vi, .chroma .vm, .chroma .p, .chroma .g, .chroma .gh, .chroma .gr, .chroma .gp, .chroma .gt, .chroma .gl, .chroma .w {
   }
   /* NameAttribute, NameClass, NameDecorator, NameException, NameFunction, NameOther, GenericInserted, Unsure what GH is */
   .chroma .na, .chroma .nc, .chroma .nd, .chroma .ne, .chroma .nf, .chroma .nx, .chroma .gi, .chroma .gh {
-    color: #{$grass-300};
+    color: #{$grass-800};
   }
   /* Literal, LiteralStringEscape, LiteralNumber, LiteralNumberBin, LiteralNumberFloat, LiteralNumberHex, LiteralNumberInteger, LiteralNumberIntegerLong, LiteralNumberOct, GenericDeleted */
   .chroma .l, .chroma .se, .chroma .m, .chroma .mb, .chroma .mf, .chroma .mh, .chroma .mi, .chroma .il, .chroma .mo, .chroma .gd {
-    color: #{$salmon-300};
+    color: #{$salmon-700};
   }
   /* LiteralDate, LiteralString, LiteralStringAffix, LiteralStringBacktick, LiteralStringChar, LiteralStringDelimiter, LiteralStringDoc, LiteralStringDouble, LiteralStringHeredoc, LiteralStringInterpol, LiteralStringOther, LiteralStringRegex, LiteralStringSingle, LiteralStringSymbol */
   .chroma .ld, .chroma .s, .chroma .sa, .chroma .sb, .chroma .sc, .chroma .dl, .chroma .sd, .chroma .s2, .chroma .sh, .chroma .si, .chroma .sx, .chroma .sr, .chroma .s1, .chroma .ss {
-    color: #{$sun-300};
+    color: #{$sun-800};
   }
   /* Comment, CommentHashbang, CommentMultiline, CommentSingle, CommentSpecial, CommentPreproc, CommentPreprocFile, GenericSubheading */
   .chroma .c, .chroma .ch, .chroma .cm, .chroma .c1, .chroma .cs, .chroma .cp, .chroma .cpf, .chroma .gu {
-    color: #{$fog-300};
+    color: #{$fog-600};
+    font-style: italic;
   }
   /* GenericEmph */
   .chroma .ge {
@@ -105,5 +119,15 @@
   // Add custom border radius
   .highlight {
     border-radius: 0.375rem;
+  }
+
+  // The base mixin colours the clipboard/edit affordances for a dark surface;
+  // darken them so they read on the light code block.
+  .highlight {
+    .text-white { fill: #{$fog-500}; }
+    .bd-clipboard .btn-clipboard {
+      color: #{$fog-500};
+      &:hover { color: #{$fog-1000}; }
+    }
   }
 }

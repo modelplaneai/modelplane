@@ -50,24 +50,12 @@
 
   // ── Example code block ────────────────────────────────────────────────────
 
+  // Wrapper around Hugo's highlighted output (.highlight > .chroma); the code
+  // theme supplies the background and syntax colours for both light and dark.
   .api-ref__example {
-    background-color: var(--code-background);
-    border-radius: 0;
-    padding: 1.25rem 1.5rem;
-    font-family: var(--bs-font-monospace);
-    font-size: 0.8125rem;
-    line-height: 1.65;
-    overflow-x: auto;
     margin: 0;
-    white-space: pre;
 
-    code {
-      background: none !important;
-      color: var(--body-font-color) !important;
-      padding: 0;
-      border-radius: 0;
-      font-size: inherit;
-    }
+    .highlight { margin: 0; }
   }
 
   // ── Field list ────────────────────────────────────────────────────────────

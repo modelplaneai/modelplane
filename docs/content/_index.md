@@ -82,7 +82,7 @@ See [issues labeled `enhancement`][enhancements] for what's planned.
 
 Follow the [getting started guide]({{< ref "getting-started.md" >}}) to deploy Modelplane
 on a local kind cluster and serve a model on GKE. The [concepts
-glossary]({{< ref "concepts.md" >}}) defines the key resources and how they relate.
+glossary]({{< ref "/overview/concepts.md" >}}) defines the key resources and how they relate.
 
 The [`examples/`][examples] directory has annotated manifests covering the full
 workflow: gateway setup, cluster provisioning, and model deployments.

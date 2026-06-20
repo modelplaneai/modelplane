@@ -1,0 +1,18 @@
+{{/*
+  Two persona path cards routing each audience to its guide track.
+  Usage: {{< personas >}}
+*/}}
+{{ $platform := "/platform/" | relLangURL }}
+{{ $models := "/models/" | relLangURL }}
+<div class="mp-personas">
+  <a class="mp-persona mp-persona--platform" href="{{ $platform }}">
+    <span class="mp-persona-role">I run the platform</span>
+    <span class="mp-persona-desc">Provision clusters across clouds, define hardware classes, and set the capacity and policy the fleet runs within.</span>
+    <span class="mp-persona-cta">Platform docs &rarr;</span>
+  </a>
+  <a class="mp-persona mp-persona--developer" href="{{ $models }}">
+    <span class="mp-persona-role">I deploy models</span>
+    <span class="mp-persona-desc">Declare a model, expose it as one OpenAI-compatible service, and route traffic across replicas and endpoints.</span>
+    <span class="mp-persona-cta">Model docs &rarr;</span>
+  </a>
+</div>

@@ -1,7 +1,10 @@
 @mixin code-theme-dark {
 
-  --code-block-background-color: #{$fog-900};
+  --code-block-background-color: #{$mp-bg-card};
   --code-line-number-color: #{$fog-300};
+
+  // Subtle border so code blocks read as elevated panels on the dark spruce bg.
+  .highlight { border: 1px solid #{$mp-border}; }
 
   /* Theme: Colors customized for Crossplane. Was originally Dracula */
 

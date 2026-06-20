@@ -247,7 +247,7 @@ subnets?
 tolerations
 pipeline
 parallelism
-autoscaling
+[Aa]utoscaling
 config
 args
 env
@@ -353,6 +353,21 @@ top-level
 user-defined
 user-provided
 workload-cluster
+
+# Industry and deployment terms.
+# First letter is a character class so sentence-initial capitals match the same
+# entry (avoids Vale.Terms flagging a case the literal entry doesn't cover).
+[Hh]yperscalers?
+[Nn]eoclouds?
+[Oo]n-prem
+[Oo]n-premises?
+[Ll]ock-in
+[Rr]ollouts?
+[Tt]wo-team
+[Tt]wo-level
+[Hh]igh-altitude
+[Rr]e-download(s|ing)?
+[Rr]e-converge[sd]?
 
 # Style exceptions
 several

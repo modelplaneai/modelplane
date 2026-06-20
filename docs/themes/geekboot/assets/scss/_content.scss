@@ -6,14 +6,30 @@ body {
   scroll-behavior: smooth;
 }
 
+// Caps the readable measure and centres it within the (full-width) content
+// column. Block margin:auto centres without shrink-to-fit, so wide children
+// (code, mermaid) scroll within rather than overflowing into the rail.
+.bd-content-inner,
+.bd-intro-inner {
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
 .bd-content {
   font-size: $body-font-size;
   line-height: 1.6;
+  // The grid item fills its track (do NOT cap/margin-auto it here — that would
+  // size it to its content and overflow the track into the rail). The inner
+  // wrapper caps and centres the measure instead.
+  min-width: 0;
+  overflow-wrap: break-word;
+
+  img { max-width: 100%; height: auto; }
 
   code {
     background-color: var(--code-background);
     color: var(--code-color);
-    padding: 0.2em 0.4em;
+    padding: 0;
   }
 
   a {
@@ -31,19 +47,36 @@ body {
 
   }
 
-  // Offset content from fixed navbar when jumping to headings
-  & :target {
-    padding-top: 5rem;
-    margin-top: -5rem;
+  // When jumping to an anchor, leave room above it for the sticky header —
+  // via scroll-margin (offsets the scroll position) instead of padding, so no
+  // visible spacing is added before the section.
+  [id] { scroll-margin-top: 4.5rem; }
+
+  // Vertical rhythm
+  p, ul, ol, dl, pre, blockquote,
+  .table-responsive, .mp-cards, .mp-personas, .mp-matrix-group, .code-card {
+    margin-bottom: 0.75rem;
   }
+  ul, ol { padding-left: 1.5rem; }
+  li { margin-bottom: 0.25rem; }
+  li > ul, li > ol { margin-top: 0.25rem; margin-bottom: 0; }
 
+  // Code blocks match the body text size.
+  .chroma { font-size: 1rem !important; }
 
+  // The first block sits flush under the page title.
+  > :first-child {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+  }
 }
 
 .bd-title {
   font-size: 2rem;
   font-weight: 600;
-  line-height: 2.75rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   margin-top: 0;
 }
 
@@ -62,9 +95,15 @@ blockquote {
   font-size: 1rem
 }
 
-h1,h2,h3,h4,h5,h6 {
-  padding-top: 1rem;
-  font-weight: 900;
+.bd-content h1,
+.bd-content h2,
+.bd-content h3,
+.bd-content h4,
+.bd-content h5,
+.bd-content h6 {
+  font-family: #{$font-family-headings};
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 1.25;
 
   &.accordion-header {
@@ -72,26 +111,33 @@ h1,h2,h3,h4,h5,h6 {
   }
 }
 // H1s when manually added
-h1 {
+.bd-content h1 {
   margin-top: 3rem;
-  margin-bottom: 1.5rem !important;
-  font-size: 2rem !important;
+  margin-bottom: 1rem !important;
+  font-size: 1.9rem !important;
 }
 // Section titles
-h2 {
-  margin-top: 3rem !important;
-  margin-bottom: 1.5rem !important;
-  font-size: 1.5rem !important;
+.bd-content h2 {
+  margin-top: 2.25rem !important;
+  margin-bottom: 0.85rem !important;
+  font-size: 1.55rem !important;
 }
-h2.accordion-header {
-  margin-top: 0px !important;
-  margin-bottom: 0px !important;
+.bd-content h2.accordion-header {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
 // Subhead titles
-h3, h4, h5, h6 {
-  margin-top: 2.5rem !important;
-  margin-bottom: 1.25rem !important;
-  font-size: 1.25rem !important;
+.bd-content h3 {
+  margin-top: 2rem !important;
+  margin-bottom: 0.6rem !important;
+  font-size: 1.2rem !important;
+}
+.bd-content h4,
+.bd-content h5,
+.bd-content h6 {
+  margin-top: 1.75rem !important;
+  margin-bottom: 0.5rem !important;
+  font-size: 1.05rem !important;
 }
 .d-none.d-md-block.h6.my-2 {
   margin-top: 0px !important;
@@ -111,35 +157,34 @@ h3, h4, h5, h6 {
 
 // Tables
 .table {
-  border-radius: 6px;
   border-collapse: separate;
-  border-spacing: 0px;
-  margin-bottom: 0px !important;
+  border-spacing: 0;
+  margin-bottom: 0 !important;
+  color: var(--body-font-color);
 }
 
 .table-responsive {
-  margin-bottom: 1rem;
-  border: 1px solid #{$fog-200};
+  margin-bottom: 1.1rem;
+  border: 1px solid var(--dropdown-border-color);
+  border-radius: 8px;
+  overflow: hidden;
   background-color: var(--body-background) !important;
   color: var(--body-font-color);
 }
 
-// Hide bottom borders and wider padding for header items
+// Header row: subtle surface + emphasis so columns read clearly.
 .table th {
-  border-bottom: none;
-  padding-left: 24px;
-  padding-right: 24px;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  background-color: var(--expand-box-background);
+  font-weight: 600;
+  border-bottom: 1px solid var(--dropdown-border-color);
+  padding: 11px 20px;
 }
-// Add only top borders and wider padding for content items
+// Body rows: hairline separators in the theme border colour.
 .table td {
   border-bottom: none;
-  padding-left: 24px;
-  padding-right: 24px;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  border-top: 1px solid #{$fog-300};
+  padding: 11px 20px;
+  border-top: 1px solid var(--dropdown-border-color);
+  vertical-align: top;
 }
 // Decrease padding for small tables
 .table.table-sm th {

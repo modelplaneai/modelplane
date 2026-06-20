@@ -6,8 +6,8 @@
     --anchor-link-color: #{$mp-muted};
     --rss-icon-fill: #{$mp-purple};
 
-    // Single code lines inside text. Code blocks are in _code_theme_dark.scss
-    --code-background: rgba(255,255,255,0.07);
+    // Inline code within text: purple text, no background.
+    --code-background: transparent;
     --code-color: #{$mp-purple-hi};
     --code-line-number-color: #{$mp-cyan};
 
@@ -16,15 +16,19 @@
     --active-tab-color: #{$mp-purple};
     --inactive-tab-hover-color: #ffffff;
 
+    // Muted text (sidebar section headers, chevrons, etc.)
+    --mp-muted: #{$mp-muted};
+    --mp-muted-hi: #{$mp-muted-hi};
+
     // Sidebar nav
-    --nav-highlight-color: rgba(173,123,252,0.08);
+    --nav-highlight-color: rgba(154,94,252,0.12);
     --btn-close-color: #ffffff;
     --btn-close-filter: invert(1);
 
     //Dropdown
     --dropdown-highlight: #{$mp-bg-mid};
     --dropdown-background: #{$mp-bg-card};
-    --latest-pill-background: rgba(173,123,252,0.15);
+    --latest-pill-background: rgba(154,94,252,0.18);
     --latest-pill-color: #{$mp-purple-hi};
     --dropdown-color: var(--body-font-color);
     --dropdown-border-color: #{$mp-border};
@@ -82,7 +86,7 @@
     --integer-border-color: #{$salmon-300};
 
     --enumDefault-color: #{$fog-400};
-    --tree-line-color: rgba(173,123,252,0.45);  /* mp-purple at 45% — subtle purple tree line */
+    --tree-line-color: rgba(154,94,252,0.45);  /* mp-purple at 45% — subtle purple tree line */
 
     // Override Bootstrap accordion colors — use brand palette instead of
     // $fog-1000 (#0A1111) which has a grey-green cast that conflicts with
@@ -92,7 +96,7 @@
         --bs-accordion-active-bg: #{$mp-bg-card};
         --bs-accordion-btn-focus-border-color: #{$mp-purple};
         --bs-accordion-button-focus-border-color: #{$mp-purple};
-        --bs-accordion-btn-focus-box-shadow: 0 0 0 2px rgba(173,123,252,0.35);
+        --bs-accordion-btn-focus-box-shadow: 0 0 0 2px rgba(154,94,252,0.35);
     }
     // Accordion body sits on the card background; a subtle purple-tinted
     // border-top separates it from the header instead of the thick grey line.

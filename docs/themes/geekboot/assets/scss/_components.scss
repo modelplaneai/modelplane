@@ -1,0 +1,338 @@
+// Modelplane docs components: support matrix, catalog cards, example blocks,
+// persona path cards, and badges. Brand palette comes from _variables.scss.
+//
+// Tuned for the dark default (matching the website). Light-mode overrides at the
+// end keep them legible when the theme toggle is set to light.
+
+// Per-component tokens, dark by default.
+.bd-content {
+  --mp-card-bg: #{$mp-bg-card};
+  --mp-card-border: #{$mp-border};
+  --mp-card-border-hi: #{$mp-border-hi};
+  --mp-card-muted: #{$mp-muted};
+}
+
+// ── Support matrix ────────────────────────────────────────────
+.mp-matrix-group { margin: 1.5rem 0 2rem; }
+
+.mp-matrix-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.25rem;
+}
+
+.mp-matrix-desc {
+  color: var(--mp-card-muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.75rem;
+}
+
+.mp-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+
+  th, td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--mp-card-border);
+    vertical-align: top;
+  }
+  th[scope="row"] { font-weight: 600; white-space: nowrap; }
+  .mp-matrix-status { width: 1%; white-space: nowrap; }
+  .mp-matrix-note { color: var(--mp-card-muted); }
+}
+
+// ── Status pills ──────────────────────────────────────────────
+.mp-status {
+  display: inline-block;
+  font-family: #{$font-family-monospace};
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.mp-status--available {
+  color: #{$mp-green};
+  background: rgba(52, 211, 153, 0.08);
+  border-color: rgba(52, 211, 153, 0.25);
+}
+.mp-status--preview {
+  color: #{$mp-cyan};
+  background: rgba(0, 220, 232, 0.10);
+  border-color: rgba(0, 220, 232, 0.30);
+}
+.mp-status--planned {
+  color: #{$mp-muted-hi};
+  background: rgba(139, 138, 174, 0.08);
+  border-color: rgba(139, 138, 174, 0.25);
+}
+
+// ── Catalog cards (models, recipes) ───────────────────────────
+.mp-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 1.5rem 0;
+}
+
+.mp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 8px;
+  transition: border-color 0.2s;
+
+  &:hover { border-color: var(--mp-card-border-hi); }
+}
+
+.mp-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mp-card-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  &.mp-card-title--mono { font-family: #{$font-family-monospace}; font-size: 0.95rem; }
+}
+
+.mp-card-tag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--mp-card-muted);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 4px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  &.mp-card-tag--ok { color: #{$mp-green}; border-color: rgba(52, 211, 153, 0.3); }
+}
+
+.mp-card-meta {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  div { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; }
+  dt { color: var(--mp-card-muted); margin: 0; font-weight: 400; }
+  dd { margin: 0; text-align: right; }
+}
+
+.mp-card-note {
+  font-size: 0.82rem;
+  color: var(--mp-card-muted);
+  margin: 0;
+}
+
+.mp-card-link {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: auto;
+  color: #{$mp-purple-hi};
+  text-decoration: none;
+  &:hover { color: #{$mp-purple}; text-decoration: none; }
+}
+
+// ── Example-from-source block ─────────────────────────────────
+.mp-example {
+  margin: 1.25rem 0;
+  border: 1px solid var(--mp-card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mp-example-cap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  font-family: #{$font-family-monospace};
+  font-size: 0.75rem;
+  color: var(--mp-card-muted);
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--mp-card-border);
+}
+
+.mp-copy-code-btn {
+  font-family: inherit;
+  font-size: 0.72rem;
+  color: var(--mp-card-muted);
+  background: none;
+  border: 1px solid var(--mp-card-border);
+  border-radius: 4px;
+  padding: 1px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  &:hover { color: #{$mp-muted-hi}; border-color: #{$mp-border-hi}; }
+}
+
+.mp-example-code pre { margin: 0; border-radius: 0; }
+
+// ── Persona path cards ────────────────────────────────────────
+.mp-personas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin: 1.5rem 0;
+}
+
+.mp-persona {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 10px;
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+
+  &:hover { border-color: var(--mp-card-border-hi); transform: translateY(-2px); text-decoration: none; }
+}
+
+.mp-persona-role {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--bs-body-color, inherit);
+}
+.mp-persona--platform .mp-persona-role { color: #{$mp-cyan}; }
+.mp-persona--developer .mp-persona-role { color: #{$mp-purple-hi}; }
+
+.mp-persona-desc { font-size: 0.9rem; color: var(--mp-card-muted); }
+
+.mp-persona-cta { font-size: 0.85rem; font-weight: 600; margin-top: auto; }
+.mp-persona--platform .mp-persona-cta { color: #{$mp-cyan}; }
+.mp-persona--developer .mp-persona-cta { color: #{$mp-purple-hi}; }
+
+// ── Inline persona badge ──────────────────────────────────────
+.mp-badge {
+  display: inline-block;
+  font-family: #{$font-family-monospace};
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  vertical-align: middle;
+}
+.mp-badge--platform {
+  color: #{$mp-cyan};
+  background: rgba(0, 220, 232, 0.08);
+  border-color: rgba(0, 220, 232, 0.30);
+}
+.mp-badge--developer {
+  color: #{$mp-purple-hi};
+  background: rgba(154, 94, 252, 0.08);
+  border-color: rgba(154, 94, 252, 0.30);
+}
+
+// ── Light-mode overrides ──────────────────────────────────────
+[color-theme="light"] .bd-content {
+  --mp-card-bg: #{$fog-25};
+  --mp-card-border: #{$fog-150};
+  --mp-card-border-hi: rgba(154, 94, 252, 0.4);
+  --mp-card-muted: #{$fog-600};
+}
+[color-theme="light"] {
+  // Brand accents need darker shades to stay legible on white (the dark-mode
+  // purple/sky/green wash out at WCAG-AA contrast).
+  .mp-persona--developer .mp-persona-role,
+  .mp-persona--developer .mp-persona-cta,
+  .mp-badge--developer,
+  .mp-card-link { color: #{$mp-purple-dark}; }
+
+  .mp-persona--platform .mp-persona-role,
+  .mp-persona--platform .mp-persona-cta,
+  .mp-badge--platform,
+  .mp-status--preview { color: #{$aqua-700}; }
+
+  .mp-status--available { color: #{$grass-800}; }
+  .mp-status--planned { color: #{$fog-700}; }
+
+  .mp-example-cap { background: #{$fog-50}; }
+}
+
+// ── Code card: a code block with a filename header + copy button ────────────
+.code-card {
+  margin: 1.1rem 0;
+  border: 1px solid var(--dropdown-border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.code-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 12px;
+  background: #{$mp-purple}; // Purple from the stylescape
+}
+.code-card__name {
+  font-family: #{$font-family-monospace};
+  font-size: 0.8rem;
+  color: #ffffff;
+}
+.code-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.code-card__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 4px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease, transform 0.08s ease;
+
+  svg { display: block; }
+  .icon-check { display: none; }
+
+  &:hover { color: #ffffff; background: rgba(255, 255, 255, 0.18); }
+  // Pressed state — visibly depresses on click.
+  &:active { transform: scale(0.88); background: rgba(255, 255, 255, 0.28); }
+
+  // Copied — swap the main icon for a checkmark.
+  &.copied {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.22);
+    .icon-main { display: none; }
+    .icon-check { display: block; }
+  }
+}
+// Code sits flush under the header — no gap, no separate border/radius/margin.
+.code-card__body {
+  .highlight, .chroma, pre { margin: 0 !important; }
+  .highlight { border: none; border-radius: 0; }
+}
+
+// Copy lives in the card header (and we don't want it on plain blocks either) —
+// hide the JS-injected floating copy button everywhere. The base rule lives
+// inside :root[color-theme="…"], so the override has to match that specificity.
+// `.bd-clipboard` is injected by JS at runtime, so it isn't in hugo_stats.json;
+// the purgecss-ignore guard keeps this rule from being stripped in production
+// (which is why the button reappeared on Vercel but not in `hugo server`).
+/* purgecss start ignore */
+:root[color-theme="light"] .highlight .bd-clipboard,
+:root[color-theme="dark"] .highlight .bd-clipboard {
+  display: none !important;
+}
+/* purgecss end ignore */

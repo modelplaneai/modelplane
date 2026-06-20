@@ -7,9 +7,24 @@
   @include media-breakpoint-up(lg) {
     display: grid;
     grid-template-areas: "sidebar main";
-    grid-template-columns: 1fr 5fr;
-    gap: $grid-gutter-width;
+    grid-template-columns: 17rem minmax(0, 1fr);
+    gap: 0;
   }
+}
+
+// App shell: on large screens the page itself does not scroll — the sidebar and
+// the main content each scroll independently within the viewport height.
+@include media-breakpoint-up(lg) {
+  html, body { height: 100%; }
+  body.docs-app { overflow: hidden; }
+  .bd-layout.docs-container { height: 100dvh; }
+  .bd-sidebar { height: 100dvh; overflow: hidden; }
+  // Reserve the scrollbar gutter always, so tall (scrolling) pages and short
+  // pages compute the same content width — otherwise the scrollbar that only
+  // appears on long pages narrows the area and the "On this page" rail can
+  // overlap the content.
+  .bd-main { height: 100dvh; overflow-y: auto; scrollbar-gutter: stable; }
+  .bd-sidebar-scroll { scrollbar-gutter: stable; }
 }
 
 .bd-sidebar {
@@ -18,10 +33,36 @@
 
 .bd-main {
   grid-area: main;
-  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// Static header nav (Documentation / Reference tabs) at the top of the content
+// column. Sticky on desktop so it stays put while the content scrolls.
+.doc-content-nav {
+  flex: 0 0 auto;
+  background: var(--body-background);
+  border-bottom: 1px solid var(--dropdown-border-color);
+  padding: 0 18px;
+
+  // On phones the Documentation/Reference switch moves into the sidebar drawer.
+  @include media-breakpoint-down(lg) { display: none; }
+
+  @include media-breakpoint-up(lg) {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+}
+
+.bd-main-grid {
+  padding: 0.4rem 18px 24px;
+
   @include media-breakpoint-down(lg) {
     max-width: 760px;
     margin-inline: auto;
+    width: 100%;
   }
 
   @include media-breakpoint-up(md) {
@@ -34,28 +75,40 @@
     gap: inherit;
   }
 
+  // lg–1280: sidebar + content only. The "On this page" rail is dropped here so
+  // the content stays comfortably wide (favour content over the rails).
   @include media-breakpoint-up(lg) {
+    grid-template-areas:
+      "intro"
+      "content";
+    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  // Wide screens: bring back the "On this page" rail, pinned to the right edge.
+  @media (min-width: 1280px) {
     grid-template-areas:
       "intro   toc"
       "content toc";
-    grid-template-rows: auto 1fr;
-    grid-template-columns: 4fr 1fr;
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    column-gap: 2.5rem;
   }
 
-  &.no-toc{
-
-    @include media-breakpoint-up(lg) {
-      grid-template-areas:
-        "intro   toc"
-        "content content" !important;
-      grid-template-rows: auto 1fr;
-      grid-template-columns: 4fr 1fr;
+  // Pages with no "On this page" rail: never reserve the right column, so the
+  // content centres across the full width instead of being shifted left.
+  &.no-toc {
+    @media (min-width: 1280px) {
+      grid-template-areas: "intro" "content";
+      grid-template-columns: minmax(0, 1fr);
     }
+    .bd-toc { display: none; }
   }
 }
 
 .bd-intro {
   grid-area: intro;
+  padding-bottom: 1.5rem;
+  min-width: 0;
 }
 
 .bd-toc {

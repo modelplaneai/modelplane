@@ -12,7 +12,7 @@
 
 <div class="gdoc-include">
   {{- if (.Get "language") -}}
-    {{- highlight ($file | readFile) $language (default "linenos=table" $options) -}}
+    {{- highlight ($file | readFile) $language (default "linenos=false" $options) -}}
   {{- else if eq $type "html" -}}
     {{- $file | readFile | safeHTML -}}
   {{- else if eq $type "page" -}}

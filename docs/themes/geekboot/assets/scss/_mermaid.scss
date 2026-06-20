@@ -1,5 +1,11 @@
 .mermaid{
     fill: var(--body-font-color) !important;
+    // Keep diagrams inside the content column (scale/scroll) rather than
+    // spilling into the "On this page" rail.
+    max-width: 100%;
+    overflow-x: auto;
+
+    svg { max-width: 100% !important; height: auto; }
 
     .messageText, .loopText>tspan, .marker, .marker.cross{
         color: var(--body-font-color) !important;
