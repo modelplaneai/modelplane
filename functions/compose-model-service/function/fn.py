@@ -154,7 +154,7 @@ class Composer:
         for i in range(len(self.xr.spec.endpoints)):
             for d in request.get_required_resources(self.req, f"endpoints-{i}") or []:
                 ep = mev1alpha1.ModelEndpoint.model_validate(d)
-                key = f"{ep.metadata.namespace}/{ep.metadata.name}"
+                key = f"{ep.metadata.namespace}/{ep.metadata.name}"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                 if key in seen_names:
                     continue
                 seen_names.add(key)
@@ -200,7 +200,7 @@ class Composer:
         correctly per-backend. This is a Gateway API Extended feature
         supported by Traefik Proxy.
         """
-        match_prefix = f"/{self.xr.metadata.namespace}/{self.xr.metadata.name}/"
+        match_prefix = f"/{self.xr.metadata.namespace}/{self.xr.metadata.name}/"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         match = {"path": {"type": "PathPrefix", "value": match_prefix}}
 
         backend_refs = []
@@ -238,7 +238,7 @@ class Composer:
             {
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "HTTPRoute",
-                "metadata": {"namespace": self.xr.metadata.namespace},
+                "metadata": {"namespace": self.xr.metadata.namespace},  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                 "spec": {
                     "parentRefs": [{"name": _GATEWAY_NAME, "namespace": _NAMESPACE_SYSTEM}],
                     "rules": [rule],
@@ -250,7 +250,7 @@ class Composer:
         status = v1alpha1.Status()
         gateway_ip = self.gateway.status.address if self.gateway else None
         if gateway_ip:
-            status.address = f"{_GATEWAY_SCHEME}://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}"
+            status.address = f"{_GATEWAY_SCHEME}://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         resource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self):

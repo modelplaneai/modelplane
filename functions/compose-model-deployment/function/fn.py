@@ -265,7 +265,7 @@ class Composer:
             api_version="modelplane.ai/v1alpha1",
             kind="ModelCache",
             match_name=ref.name,
-            namespace=self.xr.metadata.namespace,
+            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         )
 
         resolution, cache_dict = resolve_required(self.req, "cache")
@@ -352,10 +352,10 @@ class Composer:
 
             replica = mrv1alpha1.ModelReplica(
                 metadata=metav1.ObjectMeta(
-                    name=name.replica(self.xr.metadata.name, cluster_info),
-                    namespace=self.xr.metadata.namespace,
+                    name=name.replica(self.xr.metadata.name, cluster_info),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                    namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     labels={
-                        _LABEL_DEPLOYMENT: self.xr.metadata.name,
+                        _LABEL_DEPLOYMENT: self.xr.metadata.name,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                         _LABEL_CLUSTER: cluster_info.name,
                         _LABEL_INDEX: str(cluster_info.index),
                     },
@@ -460,8 +460,8 @@ class Composer:
             # The replica name (== the ModelReplica and the backend's workload
             # resources) is the per-placement routing key. Must match the name
             # composed in compose_replicas so routing lands on this replica.
-            replica_name = name.replica(self.xr.metadata.name, cluster_info)
-            rewrite_path = f"/{self.xr.metadata.namespace}/{replica_name}/"
+            replica_name = name.replica(self.xr.metadata.name, cluster_info)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+            rewrite_path = f"/{self.xr.metadata.namespace}/{replica_name}/"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
             endpoint_key = name.endpoint_key(cluster_info)
             url = f"{_GATEWAY_SCHEME}://{cluster_info.gateway_address}{rewrite_path}v1"
 
@@ -470,9 +470,9 @@ class Composer:
                 mev1alpha1.ModelEndpoint(
                     metadata=metav1.ObjectMeta(
                         name=replica_name,
-                        namespace=self.xr.metadata.namespace,
+                        namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                         labels={
-                            _LABEL_DEPLOYMENT: self.xr.metadata.name,
+                            _LABEL_DEPLOYMENT: self.xr.metadata.name,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                             _LABEL_CLUSTER: cluster_info.name,
                             _LABEL_INDEX: str(cluster_info.index),
                         },

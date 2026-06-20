@@ -217,7 +217,7 @@ def _disaggregated(
     current tag. Engine images are the user's (#137), so Modelplane can't bundle
     this; it is a deployment prerequisite, not something the composition provides.
     """
-    name = replica.metadata.name
+    name = replica.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
     prefill = next(e for e in replica.spec.engines if e.phase == "Prefill")
     decode = next(e for e in replica.spec.engines if e.phase == "Decode")
 
@@ -368,7 +368,7 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
             "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
             "rules": [
                 {
-                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],
+                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     "timeouts": {"request": base.REQUEST_TIMEOUT},
                     "filters": [
                         {

@@ -246,7 +246,7 @@ class Composer:
                     ),
                     writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
                         name=_kubeconfig_secret_name(self.xr),
-                        namespace=self.xr.metadata.namespace,
+                        namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     ),
                 ),
             ),
@@ -344,7 +344,7 @@ class Composer:
                 spec=sav1beta1.Spec(
                     forProvider=sav1beta1.ForProvider(
                         project=self.xr.spec.project,
-                        displayName=f"Crossplane GKECluster {self.xr.metadata.name}",
+                        displayName=f"Crossplane GKECluster {self.xr.metadata.name}",  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     ),
                 ),
             ),
@@ -361,7 +361,7 @@ class Composer:
                     ),
                     writeConnectionSecretToRef=sakeyv1beta1.WriteConnectionSecretToRef(
                         name=_sa_key_secret_name(self.xr),
-                        namespace=self.xr.metadata.namespace,
+                        namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     ),
                 ),
             ),
@@ -397,7 +397,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -406,7 +406,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
@@ -423,7 +423,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -432,7 +432,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
@@ -463,7 +463,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["storage-class-rwx"],
             k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                 spec=k8sobjv1alpha1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(

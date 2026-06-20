@@ -120,7 +120,7 @@ class Composer:
         Traefik's Gateway API provider explicitly rejects them. See
         https://github.com/traefik/traefik/blob/fa49e2bcad7ffd8a80accdf1fae1ae480913d93d/pkg/provider/kubernetes/gateway/kubernetes.go#L890.
         """
-        ns = self.xr.metadata.namespace
+        ns = self.xr.metadata.namespace  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
         resource.update(
             self.rsp.desired.resources[SERVICE_RESOURCE_KEY],

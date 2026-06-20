@@ -178,10 +178,10 @@ class Composer:
         # Derive each cluster's phase first (from observed state), then compose:
         # a hydrated cluster's Job is composed Observe-only so Crossplane doesn't
         # recreate it after the TTL controller cleans it.
-        per_cluster_phase = [(c.metadata.name, self.derive_cluster_phase(c.metadata.name)) for c in matched]
+        per_cluster_phase = [(c.metadata.name, self.derive_cluster_phase(c.metadata.name)) for c in matched]  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         phase_by_name = dict(per_cluster_phase)
         for cluster in matched:
-            self.compose_cluster_resources(cluster, phase_by_name[cluster.metadata.name])
+            self.compose_cluster_resources(cluster, phase_by_name[cluster.metadata.name])  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         self.mark_ready_resources(per_cluster_phase)
         self.write_status(matched, per_cluster_phase)
         self.derive_conditions(matched, per_cluster_phase)
@@ -223,7 +223,7 @@ class Composer:
                 api_version="v1",
                 kind="Secret",
                 match_name=auth.name,
-                namespace=self.xr.metadata.namespace,
+                namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
             )
 
         # get_required_resources returns [] both when unresolved AND when
@@ -284,7 +284,7 @@ class Composer:
         status, so dropping the Job doesn't regress it, and a flap that re-adds
         it is a cheap idempotent skip."""
         pc = cluster.status.providerConfigRef.name
-        name = cluster.metadata.name
+        name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         resource.update(
             self.rsp.desired.resources[self._pvc_key(name)],
             self._wrap_remote(pc, self._pvc_manifest(cluster), _PVC_READY_CEL),
@@ -370,13 +370,13 @@ class Composer:
     # Namespace-qualified so same-named caches from different Modelplane
     # namespaces don't collide in the workload cluster's `default` namespace.
     def _pvc_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name)
+        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
     def _job_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "hydrate")
+        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "hydrate")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
     def _auth_secret_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "auth")
+        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "auth")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
     def _pvc_key(self, cluster_name: str) -> str:
         return f"pvc-{cluster_name}"
@@ -388,7 +388,7 @@ class Composer:
         return f"auth-{cluster_name}"
 
     def _labels(self) -> dict[str, str]:
-        return {"modelplane.ai/modelcache": self.xr.metadata.name}
+        return {"modelplane.ai/modelcache": self.xr.metadata.name}  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
     def _job_manifest(self) -> dict:
         env, command = _hf_hydration(self.xr.spec.huggingFace, self._auth_secret_name())
@@ -536,7 +536,7 @@ class Composer:
             )
             response.warning(
                 self.rsp,
-                f"authSecret {self.xr.metadata.namespace}/{auth.name} is missing or has no key {key!r}",
+                f"authSecret {self.xr.metadata.namespace}/{auth.name} is missing or has no key {key!r}",  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
             )
         elif any(p == PHASE_FAILED for _, p in per_cluster_phase):
             response.set_conditions(

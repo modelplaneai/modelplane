@@ -831,7 +831,7 @@ class Composer:
         must be stable and match the launchTemplate.forProvider.name set
         on the composed EC2 LaunchTemplate.
         """
-        return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")
+        return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
     def _compose_launch_template(self, pool, capacity_block, efa):
         """Compose an EC2 launch template for a node group.
@@ -959,7 +959,7 @@ class Composer:
 
     def _efa_security_group_resource_name(self):
         """Object (metadata.name) of the shared EFA security group."""
-        return resource.child_name(self.xr.metadata.name, "efa-sg")
+        return resource.child_name(self.xr.metadata.name, "efa-sg")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
     def _compose_efa_security_group(self):
         """Compose the EFA security group and its self-referencing rules.
@@ -980,7 +980,7 @@ class Composer:
                 spec=sgv1beta1.Spec(
                     forProvider=sgv1beta1.ForProvider(
                         region=region,
-                        name=f"{self.xr.metadata.name}-efa",
+                        name=f"{self.xr.metadata.name}-efa",  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                         description="EFA OS-bypass traffic between gang nodes",
                         vpcIdSelector=sgv1beta1.VpcIdSelector(matchControllerRef=True),
                     ),
@@ -1130,7 +1130,7 @@ class Composer:
                 spec=sgv1beta1.Spec(
                     forProvider=sgv1beta1.ForProvider(
                         region=region,
-                        name=f"{self.xr.metadata.name}-efs",
+                        name=f"{self.xr.metadata.name}-efs",  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                         description="NFS access to the ModelCache EFS mount targets",
                         vpcIdSelector=sgv1beta1.VpcIdSelector(matchControllerRef=True),
                     ),
@@ -1269,7 +1269,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["storage-class-rwx-efs"],
             k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                 spec=k8sobjv1alpha1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
@@ -1366,7 +1366,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-cluster-autoscaler"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -1412,7 +1412,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-efa-dra-driver"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -1455,7 +1455,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=kubeconfig_secret,
-                            namespace=self.xr.metadata.namespace,
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -1472,7 +1472,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=kubeconfig_secret,
-                            namespace=self.xr.metadata.namespace,
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),

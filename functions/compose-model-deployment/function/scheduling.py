@@ -393,7 +393,7 @@ def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str) -> icv1a
 
 def _is_ours(replica: mrv1alpha1.ModelReplica, deployment: mdv1alpha1.ModelDeployment) -> bool:
     """Whether a replica belongs to this deployment."""
-    return (replica.metadata.labels or {}).get(_LABEL_DEPLOYMENT) == deployment.metadata.name
+    return (replica.metadata.labels or {}).get(_LABEL_DEPLOYMENT) == deployment.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
 
 def _replica_index(replica: mrv1alpha1.ModelReplica) -> int:
@@ -403,7 +403,7 @@ def _replica_index(replica: mrv1alpha1.ModelReplica) -> int:
     label existed (or with a malformed value) is treated as index 0; that's the
     natural single-replica-per-cluster case those replicas came from.
     """
-    raw = (replica.metadata.labels or {}).get(_LABEL_INDEX)
+    raw = (replica.metadata.labels or {}).get(_LABEL_INDEX)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
     try:
         return int(raw)
     except (TypeError, ValueError):
@@ -478,7 +478,7 @@ def _build_ledger(
     """
     free: dict[tuple[str, str], int] = {}
     for cluster in clusters:
-        name = cluster.metadata.name
+        name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         for pool in cluster.status.gpuPools or []:
             free[(name, pool.name or "")] = _published_count(pool.nodes)
 
@@ -677,7 +677,7 @@ def _place_engines(
     (disjoint pools). Overlapping selectors across engines of one replica are the
     case that can false-reject.
     """
-    cluster_name = cluster.metadata.name
+    cluster_name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
     # Trial free counts for this cluster's pools, decremented as we place each
     # member so a later member sees capacity an earlier one took. Discarded
     # wholesale when any member fails to place, so partial placement never
@@ -802,7 +802,7 @@ def _fill(
         if choice is None:
             break
         cluster, placements = choice
-        name = cluster.metadata.name
+        name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         index = _lowest_free_index(used_indices.setdefault(name, set()))
 
         placed.append(
@@ -852,7 +852,7 @@ def _pick_cluster(
         placements = _place_engines(cluster, engines, ledger)
         if placements is None:
             continue
-        key = (load.get(cluster.metadata.name, 0), cluster.metadata.name)
+        key = (load.get(cluster.metadata.name, 0), cluster.metadata.name)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         if best_key is None or key < best_key:
             best_key = key
             best = (cluster, placements)
@@ -920,7 +920,7 @@ def schedule(
     absence can't evict a pinned replica.
     """
     desired = int(deployment.spec.replicas)
-    clusters_by_name = {c.metadata.name: c for c in clusters}
+    clusters_by_name = {c.metadata.name: c for c in clusters}  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
     # Sort observed replicas by name (unique per object) so the schedule is a
     # deterministic function of state, not of the order Crossplane happened to

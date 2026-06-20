@@ -172,7 +172,7 @@ class Composer:
             name="model-replicas",
             api_version="modelplane.ai/v1alpha1",
             kind="ModelReplica",
-            match_labels={_LABEL_CLUSTER: self.xr.metadata.name},
+            match_labels={_LABEL_CLUSTER: self.xr.metadata.name},  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         )
 
         replicas = request.get_required_resources(self.req, "model-replicas")
@@ -186,7 +186,7 @@ class Composer:
                     of=clusterusagev1beta1.Of(
                         apiVersion="modelplane.ai/v1alpha1",
                         kind="InferenceCluster",
-                        resourceRef=clusterusagev1beta1.ResourceRef(name=self.xr.metadata.name),
+                        resourceRef=clusterusagev1beta1.ResourceRef(name=self.xr.metadata.name),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     ),
                     reason="ModelReplicas are scheduled to this InferenceCluster",
                     replayDeletion=True,
@@ -346,7 +346,7 @@ class Composer:
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(
                 metadata=metav1.ObjectMeta(
-                    name=resource.child_name(self.xr.metadata.name, "serving-stack"),
+                    name=resource.child_name(self.xr.metadata.name, "serving-stack"),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     namespace=_NAMESPACE_SYSTEM,
                 ),
                 spec=spec,
@@ -357,7 +357,7 @@ class Composer:
         """Compose a ClusterProviderConfig for provider-kubernetes so that
         ModelReplicas can create Objects on the remote cluster."""
         cpc = k8scpcv1alpha1.ClusterProviderConfig(
-            metadata=metav1.ObjectMeta(name=resource.child_name(self.xr.metadata.name, "cluster-kubeconfig")),
+            metadata=metav1.ObjectMeta(name=resource.child_name(self.xr.metadata.name, "cluster-kubeconfig")),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
             spec=k8scpcv1alpha1.Spec(
                 credentials=k8scpcv1alpha1.Credentials(
                     source="Secret",
@@ -389,7 +389,7 @@ class Composer:
         """Write the InferenceCluster status."""
         status = v1alpha1.Status(
             providerConfigRef=v1alpha1.ProviderConfigRef(
-                name=resource.child_name(self.xr.metadata.name, "cluster-kubeconfig"),
+                name=resource.child_name(self.xr.metadata.name, "cluster-kubeconfig"),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
             ),
             namespace=_NAMESPACE_SYSTEM,
             gpuPools=gpu_pools,
@@ -481,7 +481,7 @@ class Composer:
             self.rsp.desired.resources["gke-cluster"],
             gkev1alpha1.GKECluster(
                 metadata=metav1.ObjectMeta(
-                    name=self.xr.metadata.name,
+                    name=self.xr.metadata.name,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     namespace=_NAMESPACE_SYSTEM,
                 ),
                 spec=gkev1alpha1.Spec(
@@ -548,7 +548,7 @@ class Composer:
             self.rsp.desired.resources["eks-cluster"],
             eksv1alpha1.EKSCluster(
                 metadata=metav1.ObjectMeta(
-                    name=self.xr.metadata.name,
+                    name=self.xr.metadata.name,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
                     namespace=_NAMESPACE_SYSTEM,
                 ),
                 spec=eksv1alpha1.Spec(
