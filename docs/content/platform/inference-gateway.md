@@ -22,5 +22,5 @@ kubectl get ig default
 ```
 ## Example
 
-{{< manifests "platform/inference-gateway.yaml" >}}
+{{< manifests "concepts/inference-gateway.yaml" >}}
 <!-- vale write-good.Passive = YES -->

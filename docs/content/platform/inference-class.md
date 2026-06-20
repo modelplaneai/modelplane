@@ -26,13 +26,13 @@ Different clouds and GPU types imply different classes. A GKE L4 pool is
 
 {{< tabs >}}
 {{< tab "GKE L4" >}}
-{{< manifests "platform/inference-class-gke-l4.yaml" >}}
+{{< manifests "concepts/inference-class-gke-l4.yaml" >}}
 {{< /tab >}}
 {{< tab "EKS L4" >}}
-{{< manifests "platform/inference-class-eks-l4.yaml" >}}
+{{< manifests "concepts/inference-class-eks-l4.yaml" >}}
 {{< /tab >}}
 {{< tab "H100 bare-metal" >}}
-{{< manifests "platform/inference-class-h100-byo.yaml" >}}
+{{< manifests "concepts/inference-class-h100-byo.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 <!-- vale write-good.Passive = YES -->

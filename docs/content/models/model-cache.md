@@ -84,5 +84,5 @@ to per-node local caches, for example) will be added natively as new types under
 
 ## Example
 
-{{< manifests "cache/qwen-cached.yaml" >}}
+{{< manifests "concepts/model-cache.yaml" >}}
 <!-- vale write-good.Passive = YES -->
