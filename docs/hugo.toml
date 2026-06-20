@@ -67,22 +67,17 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
     source = "content"
     target = "assets/content"
     includeFiles = ["**/**.png", "**/**.jpg", "**/**.jpeg", "**/**.gif"]
-  # Re-include the project's own data directory — required because defining
-  # any module mount switches Hugo to a virtual filesystem that excludes
-  # unmounted local directories.
-  [[module.mounts]]
-    source = "data"
-    target = "data"
   # Mount the APIs directory as Hugo data so the built-in crds partial can
   # read definition.yaml files without a separate generation step.
   # Accessible as site.Data.apis.crds.<plural>.definition
   [[module.mounts]]
     source = "../apis"
     target = "data/apis/crds"
-  # Mount the repo-root examples directory as assets so the manifests shortcode
-  # can read raw YAML (preserving comments) via resources.Get "manifests/<path>.yaml".
+  # Mount the manifests directory as assets so the manifests shortcode can read
+  # raw YAML (preserving comments) via resources.Get "examples/<path>.yaml". The
+  # files live under docs/manifests/<section>/, one subtree per docs section.
   [[module.mounts]]
-    source = "../examples"
+    source = "manifests"
     target = "assets/examples"
 
 [security]
@@ -92,7 +87,6 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
 [params]
   docs = true
   description = "Modelplane documentation."
-  version = "v0.1.0-rc.1"
   [params.anchors]
     min = 2
     max = 5

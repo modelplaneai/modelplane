@@ -147,10 +147,18 @@ llms-full\.txt
 
 # ML and AI
 Qwen
+Qwen3-8B
+Qwen3-Coder
+Kimi-K2
+Kimi
 Llama
 NIM
 GGUF
 LoRA
+MoE
+SGLang
+# Parameter counts: 8B, 35B, 480B, 1T, etc.
+[0-9]+[BMT]
 [Vv][Rr][Aa][Mm]
 tensor
 tokenizer
@@ -204,6 +212,11 @@ SaaS
 P2P
 L4
 H100
+H200
+EFA
+BF16
+FP8
+INT4
 InfiniBand
 CEL
 CLI

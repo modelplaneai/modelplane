@@ -72,16 +72,7 @@ kubectl apply -f {{< manifest-url "getting-started/prerequisites.yaml" >}}
 
 <!--- TODO(tr0njavolta): explain the Modelplane configuration via Crossplane --->
 
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: pkg.crossplane.io/v1
-kind: Configuration
-metadata:
-  name: modelplane
-spec:
-  package: xpkg.upbound.io/modelplane/modelplane:{{<version>}}
-EOF
-```
+{{< manifests "getting-started/configuration.yaml" >}}
 
 Wait until the configuration is healthy:
 
@@ -97,74 +88,50 @@ kubectl wait configuration/modelplane --for=condition=Healthy --timeout=5m
 Create an AWS credentials file:
 
 {{< editCode >}}
-```ini {copy-lines="all"}
+```ini
 [default]
 aws_access_key_id = $@<aws_access_key>$@
 aws_secret_access_key = $@<aws_secret_key>$@
 ```
 {{< /editCode >}}
 
-{{< editCode >}}
-
 Create a Kubernetes secret:
 
-```ini
+{{< editCode >}}
+```bash
 kubectl create secret generic aws-creds \
   --from-file=credentials=$@</path/to/aws-credentials>$@ \
   -n crossplane-system
 ```
+{{< /editCode >}}
 
 Apply the `ClusterProviderConfig` referencing your secret:
 
-{{< /editCode >}}
-
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: aws.m.upbound.io/v1beta1
-kind: ClusterProviderConfig
-metadata:
-  name: default
-spec:
-  credentials:
-    source: Secret
-    secretRef:
-      namespace: crossplane-system
-      name: aws-creds
-      key: credentials
-EOF
-```
+{{< manifests "getting-started/clusterproviderconfig-aws.yaml" >}}
 {{< /tab >}}
 
 {{<tab "GKE" >}}
 
 
 Create a Kubernetes secret:
-{{< editCode >}}
 
-```ini
+{{< editCode >}}
+```bash
 kubectl create secret generic gcp-creds \
   --from-file=credentials=$@<path/to/gcp-key>$@.json \
   -n crossplane-system
 ```
+{{< /editCode >}}
 
-Apply the `ClusterProviderConfig` referencing your secret:
+Apply the `ClusterProviderConfig`, setting `projectID` to your GCP project:
 
+{{< manifests path="getting-started/clusterproviderconfig-gke.yaml" apply="false" >}}
 
+{{< editCode >}}
 ```bash
-kubectl apply -f - <<'EOF'
-apiVersion: gcp.m.upbound.io/v1beta1
-kind: ClusterProviderConfig
-metadata:
-  name: default
-spec:
-  projectID: $@<Your_GCP_Project_ID>$@
-  credentials:
-    source: Secret
-    secretRef:
-      namespace: crossplane-system
-      name: gcp-creds
-      key: credentials
-EOF
+curl -fsSL {{< manifest-url "getting-started/clusterproviderconfig-gke.yaml" >}} \
+  | sed 's/my-gcp-project/$@<your-gcp-project>$@/' \
+  | kubectl apply -f -
 ```
 {{< /editCode >}}
 
@@ -181,7 +148,7 @@ balancer. You need one per control plane, always named `default`.
 If you run the control plane on a cloud cluster with native `LoadBalancer`
 support, omit the `loadBalancer` field.
 
-{{< manifests "platform/inference-gateway.yaml" >}}
+{{< manifests "getting-started/inference-gateway.yaml" >}}
 
 Wait until the gateway is ready:
 
@@ -206,7 +173,17 @@ kubectl wait --for=condition=Ready ic/eks-us-east --timeout=20m
 {{< /tab >}}
 
 {{< tab "GKE" >}}
-{{< manifests "getting-started/gke/platform.yaml" >}}
+Apply the manifest, setting the cluster's `project` to your GCP project:
+
+{{< manifests path="getting-started/gke/platform.yaml" apply="false" >}}
+
+{{< editCode >}}
+```bash
+curl -fsSL {{< manifest-url "getting-started/gke/platform.yaml" >}} \
+  | sed 's/my-gcp-project/$@<your-gcp-project>$@/' \
+  | kubectl apply -f -
+```
+{{< /editCode >}}
 
 Modelplane provisions the cluster. This takes about 15 minutes:
 
@@ -260,7 +237,7 @@ A `ModelService` selects `ModelEndpoints` by label and creates a Gateway API
 `HTTPRoute` that routes to them. Modelplane creates one `ModelEndpoint` per
 replica, labeled with the deployment name:
 
-{{< manifests "deployment/model-service.yaml" >}}
+{{< manifests "getting-started/model-service.yaml" >}}
 
 The path is `/<namespace>/<modelservice-name>/...`(`/ml-team/qwen/`) in this
 example, from

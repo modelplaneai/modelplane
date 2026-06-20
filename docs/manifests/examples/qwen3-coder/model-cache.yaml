@@ -1,0 +1,19 @@
+# The shared, read-write-many cache the multi-node gang serves from. Hydrated
+# once per matched cluster from the gated Hugging Face repo; every gang pod
+# mounts it at /mnt/models. ~960 GB of BF16 weights, so sizeGiB leaves headroom.
+#
+# The repo is gated, so it needs a Hugging Face token. The authSecret must exist
+# on every matched workload cluster.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen3-coder
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen3-Coder-480B-A35B-Instruct
+    authSecret:
+      name: hf-token
+      key: HF_TOKEN
+    sizeGiB: 1100

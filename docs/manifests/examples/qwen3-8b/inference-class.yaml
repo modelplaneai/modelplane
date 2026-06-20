@@ -1,0 +1,31 @@
+# InferenceClass for the L4 shape, validated serving Qwen3-8B on EKS.
+#
+# One NVIDIA L4 on an EKS g6.xlarge. The single GPU is a claim: DRA device;
+# the scheduler matches a ModelDeployment's nodeSelector against its declared
+# capacity and DRA binds it to the serving pod.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: eks-l4-1x-g6
+spec:
+  description: "EKS g6.xlarge, 1x NVIDIA L4"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: g6.xlarge
+      diskSizeGb: 100
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      # The L4's real usable VRAM as the NVIDIA DRA driver reports it, not the
+      # nominal 24GB.
+      memory: { value: "23034Mi" }

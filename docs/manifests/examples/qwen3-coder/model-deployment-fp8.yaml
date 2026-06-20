@@ -1,0 +1,59 @@
+# Qwen3-Coder-480B served FP8 on a single 8x H200 node with SGLang, validated
+# end to end on EKS. The FP8 checkpoint (~480 GB) fits one node, so this is a
+# single Standalone engine: no second node, no EFA, no ModelCache. The engine
+# pulls the public FP8 repo straight to the node's local disk.
+#
+# SGLang-specific notes:
+#   --ep-size 8 is required, not optional. Pure --tp-size 8 fails at FP8 weight
+#     creation ("output_size ... not divisible by ... block_n = 128"): the
+#     block-FP8 MoE doesn't shard evenly across 8 tensor-parallel ranks. Expert
+#     parallelism shards whole experts and gets past it.
+#   --tool-call-parser qwen3_coder is SGLang's parser name for this model
+#     (vLLM's is qwen3_xml). The model is non-thinking, so no reasoning parser.
+#   Image tag matters: lmsysorg/sglang v0.5.11-v0.5.13(.post1) -runtime images
+#     are broken (ModuleNotFoundError: distro). v0.5.10.post1-runtime is the
+#     most recent clean tag with Qwen3-Coder support.
+#   --host 0.0.0.0 --port 8000: SGLang defaults to 127.0.0.1:30000, but
+#     Modelplane's contract is 0.0.0.0:8000 with a /health probe. Args pass
+#     through verbatim - Modelplane injects nothing for a non-vLLM engine.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen3-coder-sgl
+  namespace: ml-team
+spec:
+  replicas: 1
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us
+  engines:
+  - name: qwen3-coder-sgl
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 8
+          selectors:
+          - cel: |
+              device.driver == "gpu.nvidia.com" && device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("120Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: lmsysorg/sglang:v0.5.10.post1-runtime
+            command:
+            - /bin/sh
+            - -c
+            - >-
+              exec python3 -m sglang.launch_server
+              --model-path Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+              --served-model-name qwen3-coder
+              --tp-size 8
+              --ep-size 8
+              --context-length 32768
+              --page-size 32
+              --trust-remote-code
+              --tool-call-parser qwen3_coder
+              --host 0.0.0.0
+              --port 8000

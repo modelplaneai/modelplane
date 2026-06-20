@@ -1,0 +1,29 @@
+# InferenceClass for the H200 shape without EFA, validated serving the FP8
+# Qwen3-Coder-480B checkpoint single-node on SGLang.
+#
+# The FP8 weights (~480 GB) fit on one 8x H200 node, so this needs no second
+# node, no fabric, and no ModelCache - the GPU is the only device.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: eks-h200-8x-p5en
+spec:
+  description: "EKS p5en.48xlarge, 8x NVIDIA H200"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: p5en.48xlarge
+      diskSizeGb: 1024
+      accelerator:
+        type: nvidia-h200
+        count: 8
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 8
+    attributes:
+      architecture: { string: Hopper }
+    capacity:
+      memory: { value: "140Gi" }   # advertised below the ~141 GiB the driver reports

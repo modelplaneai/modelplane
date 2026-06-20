@@ -17,4 +17,4 @@ Each endpoint composes an Envoy Gateway `Backend` on the control plane.
 
 ## Example
 
-{{< manifests "deployment/model-endpoint.yaml" >}}
+{{< manifests "concepts/model-endpoint.yaml" >}}

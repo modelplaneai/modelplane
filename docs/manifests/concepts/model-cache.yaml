@@ -1,0 +1,27 @@
+# A ModelCache stages a model artifact on workload-cluster storage as a
+# first-class resource. Modelplane composes a ReadWriteMany PVC on each matched
+# cluster and hydrates it once from the configured source. A ModelDeployment
+# references it via spec.modelCacheRef; the PVC mounts at /mnt/models read-write
+# into every serving pod, so the engine reads weights locally instead of
+# fetching them at boot.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen3-coder
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen3-Coder-480B-A35B-Instruct
+    # Gated repo, so a Hugging Face token is needed. The Secret must exist on
+    # every matched workload cluster.
+    authSecret:
+      name: hf-token
+      key: HF_TOKEN
+    sizeGiB: 1100
+  # Optional: stage only on clusters matching these labels. Omit to stage on
+  # every matched cluster. Narrowing this also narrows where a referencing
+  # ModelDeployment can place new replicas.
+  # clusterSelector:
+  #   matchLabels:
+  #     modelplane.ai/tier: frontier

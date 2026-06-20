@@ -1,0 +1,14 @@
+# Points the GCP provider at the credentials Secret you created. Named default,
+# so InferenceClusters with a GKE source use it without further configuration.
+apiVersion: gcp.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  projectID: my-gcp-project  # replace with your GCP project
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: gcp-creds
+      key: credentials

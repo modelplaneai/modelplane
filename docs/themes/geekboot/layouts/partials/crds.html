@@ -1,13 +1,14 @@
 {{/*
   Renders the API reference using definition.yaml files mounted at
-  data/apis/crds/<plural>/definition.yaml and example manifests from
-  data/apis/examples/<plural>.yaml.
+  data/apis/crds/<plural>/definition.yaml and example manifests mounted as
+  assets at examples/reference/<plural>.yaml (from docs/manifests/reference/).
 
-  Each CRD becomes an .api-ref block with Example / spec / status tabs.
+  Each CRD becomes an .api-ref block with Example / spec / status tabs. The
+  example is a real, syntax-highlighted manifest validated by the docs-manifests
+  flake check, so it can't drift from the schema rendered in the spec tab.
 */}}
 
 {{ $crdFiles := $.Site.Data.apis.crds }}
-{{ $examples  := $.Site.Data.apis.examples }}
 
 {{ range $plural, $dirContents := $crdFiles }}
   {{ $crd := $dirContents.definition }}
@@ -26,9 +27,9 @@
       {{ $specSchema   := index $schema.properties "spec" }}
       {{ $statusSchema := index $schema.properties "status" }}
       {{ $kindSlug     := $kind | lower }}
-      {{ $exampleData  := index $examples $plural }}
+      {{ $exampleRes   := resources.Get (printf "examples/reference/%s.yaml" $plural) }}
       {{ $manifest     := "" }}
-      {{ with $exampleData }}{{ $manifest = .manifest }}{{ end }}
+      {{ with $exampleRes }}{{ $manifest = .Content }}{{ end }}
 
       <div class="api-ref">
         <h2 id="crd-{{ $kindSlug }}">{{ $kind }}</h2>

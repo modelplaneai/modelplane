@@ -1,0 +1,26 @@
+# ModelReplicas are composed automatically by ModelDeployment, with the
+# scheduler's placement resolved onto each member (nodePoolName, deviceRequests).
+# Avoid creating them directly.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelReplica
+metadata:
+  name: qwen3-8b-eks-l4-0
+  namespace: ml-team
+spec:
+  clusterName: eks-l4
+  engines:
+    - name: qwen3-8b
+      members:
+        - role: Standalone
+          nodePoolName: gpu-l4
+          deviceRequests:
+            - name: gpu
+              count: 1
+              deviceClassName: gpu.nvidia.com
+          template:
+            spec:
+              containers:
+                - name: engine
+                  image: vllm/vllm-openai:v0.23.0
+                  args:
+                    - --model=Qwen/Qwen3-8B

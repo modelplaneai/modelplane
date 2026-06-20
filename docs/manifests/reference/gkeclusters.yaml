@@ -1,0 +1,23 @@
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: GKECluster
+metadata:
+  name: inference-us-central
+  namespace: platform
+spec:
+  project: my-gcp-project
+  region: us-central1
+  nodePools:
+    - name: system
+      role: System
+      machineType: e2-standard-4
+      nodeCount: 2
+    - name: gpu-h100
+      role: GPU
+      machineType: a3-highgpu-8g
+      diskSizeGb: 500
+      nodeCount: 0
+      maxNodeCount: 4
+      zones: [us-central1-a]
+      gpu:
+        acceleratorType: nvidia-h100-80gb
+        acceleratorCount: 8

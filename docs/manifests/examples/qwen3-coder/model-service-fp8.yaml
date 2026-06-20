@@ -1,0 +1,13 @@
+# Exposes the single-node FP8 qwen3-coder-sgl deployment as a single
+# OpenAI-compatible URL. Read the public address from status.address:
+#   kubectl get ms qwen3-coder-sgl -n ml-team -o jsonpath='{.status.address}'
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen3-coder-sgl
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen3-coder-sgl

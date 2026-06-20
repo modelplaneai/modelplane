@@ -1,0 +1,11 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceGateway
+metadata:
+  name: default
+spec:
+  backend: Traefik
+  traefik:
+    version: "40.2.0"
+    loadBalancer: MetalLB
+    metallb:
+      addressPool: "172.18.255.200-172.18.255.250"

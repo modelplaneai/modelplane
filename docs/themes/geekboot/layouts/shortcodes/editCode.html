@@ -1,1 +1,50 @@
-{{ replaceRE `\$\@(.*)\$\@` "<span class=\"pe-2 editable\" data-default=\"$1\" contentEditable=\"true\"></span><svg class=\"bi text-white\" width=\"1em\" height=\"1em\"><use xlink:href=\"#pencil-square\"/></svg>" (.Inner | markdownify) | safeHTML }}
+{{- /*
+  editCode shortcode
+
+  Decorates a fenced code block, turning each $@placeholder$@ inside it into an
+  inline, editable field (a contentEditable span with a pencil icon). Write a
+  normal fenced block inside, with its usual language tag:
+
+    {{< editCode >}}
+    ```bash
+    curl -fsSL https://example.com/x.yaml | sed 's/old/$@<new>$@/' | kubectl apply -f -
+    ```
+    {{< /editCode >}}
+
+  The code is rendered from raw text, not run through Goldmark/Chroma: syntax
+  highlighting wraps tokens in their own spans, which splits the $@...$@ markers
+  and double-escapes the angle brackets inside them, so the replacement can't
+  match. The language tag is kept as a language-<lang> class for styling, but
+  tokens aren't coloured.
+*/ -}}
+{{- $raw := trim .Inner "\n" -}}
+{{- $lang := "" -}}
+{{- $code := $raw -}}
+{{- /* Strip a leading ```lang fence and the trailing ``` fence, if present. */ -}}
+{{- if hasPrefix $raw "```" -}}
+  {{- $lines := split $raw "\n" -}}
+  {{- $first := index $lines 0 -}}
+  {{- $lang = trim (strings.TrimPrefix "```" $first) " " -}}
+  {{- $body := after 1 $lines -}}
+  {{- $last := sub (len $body) 1 -}}
+  {{- if and (ge $last 0) (hasPrefix (index $body $last) "```") -}}
+    {{- $body = first $last $body -}}
+  {{- end -}}
+  {{- $code = delimit $body "\n" -}}
+{{- end -}}
+{{- $codeTag := cond (ne $lang "") (printf "<code class=\"language-%s\">" $lang) "<code>" -}}
+{{- $escaped := htmlEscape $code -}}
+{{- $editable := `<span class="pe-2 editable" data-default="$1" contentEditable="true"></span><svg class="bi text-white" width="1em" height="1em"><use xlink:href="#pencil-square"/></svg>` -}}
+{{- $replaced := replaceRE `\$\@([^$]*)\$\@` $editable $escaped -}}
+<div class="code-card">
+  <div class="code-card__header">
+    {{ with $lang }}<span class="code-card__name">{{ . }}</span>{{ end }}
+    <div class="code-card__actions">
+      <button class="code-card__btn code-card__copy" type="button" aria-label="Copy contents" title="Copy contents">
+        <svg class="icon-main" width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0z"/></svg>
+        <svg class="icon-check" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M13.485 1.929a.75.75 0 0 1 .086 1.057l-7 8.5a.75.75 0 0 1-1.117.063l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.92 2.92 6.494-7.894a.75.75 0 0 1 1.057-.086z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="code-card__body"><div class="highlight"><pre tabindex="0" class="chroma">{{ $codeTag | safeHTML }}{{ $replaced | safeHTML }}</code></pre></div></div>
+</div>

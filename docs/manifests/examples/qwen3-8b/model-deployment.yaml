@@ -1,0 +1,53 @@
+# Qwen3-8B served on a single NVIDIA L4, validated end to end on EKS.
+#
+# An 8.2B dense model is a single Standalone engine: one self-contained vLLM
+# pod, no ModelCache, weights pulled straight from Hugging Face. The flags carry
+# real meaning beyond fit:
+#
+#   --tool-call-parser=hermes        the parser for Qwen3 dense (qwen3_xml is
+#                                    for Qwen3-Coder, not this model). Qwen3's
+#                                    tool-use template ships in the tokenizer,
+#                                    so no --chat-template is needed.
+#   --reasoning-parser=qwen3 with
+#   --default-chat-template-kwargs   turns thinking off. Qwen3 thinks by
+#                                    default, burying a one-line answer under a
+#                                    <think> block and forbidding greedy decode.
+#   --max-model-len / --gpu-memory-utilization  L4 fit, not correctness.
+#
+# No --port or --host: Modelplane's routing expects the engine on its default
+# :8000 with a /health probe, and passes args through verbatim.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen3-8b
+  namespace: ml-team
+spec:
+  replicas: 1
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us
+  engines:
+  - name: qwen3-8b
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            args:
+            - "--model=Qwen/Qwen3-8B"
+            - "--served-model-name=qwen"
+            - "--max-model-len=16384"
+            - "--gpu-memory-utilization=0.92"
+            - "--reasoning-parser=qwen3"
+            - "--default-chat-template-kwargs={\"enable_thinking\": false}"
+            - "--enable-auto-tool-choice"
+            - "--tool-call-parser=hermes"

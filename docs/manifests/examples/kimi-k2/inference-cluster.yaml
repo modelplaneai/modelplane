@@ -1,0 +1,25 @@
+# An EKS InferenceCluster with a two-node H200 pool over EFA, validated serving
+# Kimi-K2 as a prefill/decode pair (one engine per node). The H200 nodes come
+# from an EC2 Capacity Block reserved for ML.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-kimi
+  labels:
+    modelplane.ai/region: us
+spec:
+  cluster:
+    source: EKS
+    eks:
+      region: us-east-2
+  nodePools:
+  - name: gpu-h200
+    className: eks-h200-8x-p5en
+    nodeCount: 2
+    minNodeCount: 2
+    maxNodeCount: 2
+    zones:
+    - us-east-2b
+    fabric: EFA
+    capacityBlock:
+      capacityReservationId: cr-0123456789abcdef0  # replace with your reservation ID

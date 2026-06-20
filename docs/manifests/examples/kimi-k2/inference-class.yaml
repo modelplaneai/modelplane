@@ -1,0 +1,35 @@
+# InferenceClass for the H200 shape, validated serving Kimi-K2 prefill/decode
+# disaggregated on EKS. 8x NVIDIA H200 on an EKS p5en.48xlarge, with EFA.
+#
+# Both the GPU and the EFA fabric are claim: DRA devices. The two P/D engines
+# each request 8 GPUs + 16 EFA interfaces, and the scheduler places one on each
+# H200 node; NIXL ships KV cache between them over EFA.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: eks-h200-8x-p5en
+spec:
+  description: "EKS p5en.48xlarge, 8x NVIDIA H200, EFA"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: p5en.48xlarge
+      diskSizeGb: 1024
+      accelerator:
+        type: nvidia-h200
+        count: 8
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 8
+    attributes:
+      architecture: { string: Hopper }
+    capacity:
+      memory: { value: "140Gi" }   # advertised below the ~141 GiB the driver reports
+  - name: efa
+    claim: DRA
+    driver: dra.net
+    deviceClassName: efa.networking.k8s.aws
+    count: 16

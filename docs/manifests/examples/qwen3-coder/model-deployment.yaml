@@ -1,0 +1,116 @@
+# Qwen3-Coder-480B served BF16 across two H200 nodes, validated end to end on
+# EKS over EFA. A 480B MoE doesn't fit one node, so the engine is a Leader +
+# Worker gang spanning two nodes via LeaderWorkerSet, both pods mounting the
+# shared ModelCache at /mnt/models.
+#
+# Each member requests 8 GPUs + 16 EFA interfaces per node; the scheduler
+# co-schedules the gang on the H200 pool. The worker joins the leader through
+# $(MODELPLANE_LEADER_ADDRESS), which Modelplane injects.
+#
+# Notes on the engine flags:
+#   --distributed-executor-backend=mp with --nnodes/--node-rank/--master-addr/
+#     --headless is vLLM's native multiprocessing multi-node path.
+#     vllm/vllm-openai:v0.23.0 no longer ships Ray, so the Ray-based
+#     multi-node-serving.sh helper doesn't work on this image; the MP backend
+#     needs nothing extra.
+#   TP8 x PP2: tensor-parallel within a node over NVLink, pipeline-parallel
+#     across the two nodes. tensor-parallel-size = GPUs per node,
+#     pipeline-parallel-size = nodes.
+#   --tool-call-parser=qwen3_xml is the parser for Qwen3-Coder specifically
+#     (the dense Qwen3 models use hermes). The model is non-thinking, so there's
+#     no reasoning parser.
+#   --max-model-len=32768 caps context to fit; the native 256K isn't needed.
+#   FI_PROVIDER=efa / NCCL_DEBUG=INFO point NCCL at the EFA fabric.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen3-coder
+  namespace: ml-team
+spec:
+  replicas: 1
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us
+  modelCacheRef:
+    name: qwen3-coder
+  engines:
+  - name: qwen3-coder
+    members:
+    - role: Leader
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 8
+          selectors:
+          - cel: |
+              device.driver == "gpu.nvidia.com" && device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("120Gi")) >= 0
+        - name: efa
+          count: 16
+          selectors:
+          - cel: |
+              device.driver == "dra.net"
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            env:
+            - name: NCCL_DEBUG
+              value: "INFO"
+            - name: FI_PROVIDER
+              value: "efa"
+            command:
+            - /bin/sh
+            - -c
+            - >-
+              exec vllm serve /mnt/models
+              --served-model-name=qwen3-coder
+              --tensor-parallel-size=8
+              --pipeline-parallel-size=2
+              --distributed-executor-backend=mp
+              --nnodes=2 --node-rank=0
+              --master-addr=$(MODELPLANE_LEADER_ADDRESS)
+              --max-model-len=32768
+              --gpu-memory-utilization=0.92
+              --enable-auto-tool-choice
+              --tool-call-parser=qwen3_xml
+              --port=8000
+    - role: Worker
+      worker:
+        nodes: 1
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 8
+          selectors:
+          - cel: |
+              device.driver == "gpu.nvidia.com" && device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("120Gi")) >= 0
+        - name: efa
+          count: 16
+          selectors:
+          - cel: |
+              device.driver == "dra.net"
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            env:
+            - name: NCCL_DEBUG
+              value: "INFO"
+            - name: FI_PROVIDER
+              value: "efa"
+            command:
+            - /bin/sh
+            - -c
+            - >-
+              exec vllm serve /mnt/models
+              --served-model-name=qwen3-coder
+              --tensor-parallel-size=8
+              --pipeline-parallel-size=2
+              --distributed-executor-backend=mp
+              --nnodes=2 --node-rank=1
+              --master-addr=$(MODELPLANE_LEADER_ADDRESS)
+              --headless
+              --max-model-len=32768
+              --gpu-memory-utilization=0.92

@@ -77,7 +77,7 @@ ReadWriteMany PVC per cluster and hydrates it once from the configured source
 (HuggingFace today). Required for multi-node deployments; optional for
 single-node cold-start optimization.
 
-**[ModelReplica]({{< ref "/models/model-replica.md" >}})**
+**ModelReplica**
 One instance of a `ModelDeployment` placed on a specific cluster. Created
 automatically by Modelplane. Don't create these directly.
 

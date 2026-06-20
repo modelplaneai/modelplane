@@ -22,5 +22,5 @@ kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}'
 
 ## Example
 
-{{< manifests "deployment/model-service.yaml" >}}
+{{< manifests "concepts/model-service.yaml" >}}
 <!-- vale write-good.Passive = YES -->

@@ -98,10 +98,10 @@ yours to choose, so this is a prerequisite Modelplane does not bundle for you.
 
 {{< tabs >}}
 {{< tab "Single-node" >}}
-{{< manifests "deployment/model-deployment.yaml" >}}
+{{< manifests "concepts/model-deployment.yaml" >}}
 {{< /tab >}}
 {{< tab "Multi-node" >}}
-{{< manifests "deployment/model-deployment-multinode.yaml" >}}
+{{< manifests "concepts/model-deployment-multinode.yaml" >}}
 {{< /tab >}}
 {{< /tabs >}}
 <!-- vale write-good.Passive = YES -->

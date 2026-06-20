@@ -51,6 +51,26 @@ in
   # Check docs internal links with htmltest.
   docs-htmltest = docs.htmltest;
 
+  # Validate the example manifests the docs show against the generated Pydantic
+  # models, so an example that drifts from the live API schema fails CI. Covers
+  # everything under docs/manifests/, including the API-reference examples under
+  # docs/manifests/reference/. Reuses compose-inference-gateway's venv, which
+  # already provides crossplane-models, pydantic, and pyyaml.
+  docs-manifests =
+    let
+      venv = pythonSet.mkVirtualEnv "docs-manifests-validate-env" {
+        compose-inference-gateway = [ ];
+      };
+    in
+    pkgs.runCommand "modelplane-docs-manifests" { } ''
+      cp -r ${self} src
+      chmod -R u+w src
+      cd src
+      ${venv}/bin/python docs/utils/validate/validate_manifests.py
+      mkdir -p $out
+      touch $out/.docs-manifests-validated
+    '';
+
   python =
     pkgs.runCommand "modelplane-python-checks"
       {
@@ -60,8 +80,8 @@ in
         cp -r ${self} src
         chmod -R u+w src
         cd src
-        ruff format --check functions/
-        ruff check functions/
+        ruff format --check functions/ docs/utils/validate/
+        ruff check functions/ docs/utils/validate/
         mkdir -p $out
         touch $out/.python-checks-passed
       '';

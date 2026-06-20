@@ -6,18 +6,22 @@
 
   Usage:
     {{< manifests "platform/inference-gateway.yaml" >}}
-    {{< manifests "platform/inference-gateway.yaml" apply="false" >}}
-    {{< manifests "platform/inference-gateway.yaml" command="kubectl delete -f" >}}
+    {{< manifests path="platform/inference-gateway.yaml" apply="false" >}}
+    {{< manifests path="platform/inference-gateway.yaml" command="kubectl delete -f" >}}
 
-  Required positional arg:
-    [0]  path relative to examples/
+  Hugo forbids mixing positional and named arguments in one call, so a call that
+  needs apply= or command= must pass the path as path= too.
+
+  Path argument (one of):
+    [0]            path relative to examples/ (when no named args are used)
+    path="..."     path relative to examples/ (use with apply= or command=)
 
   Optional named args:
     apply="false"              omit the kubectl apply block
     command="kubectl apply -f" override the kubectl verb
 */ -}}
 
-{{- $path := .Get 0 -}}
+{{- $path := .Get "path" | default (.Get 0) -}}
 {{- if not $path -}}
   {{- errorf "manifests shortcode requires a path argument at %s" .Position -}}
 {{- end -}}

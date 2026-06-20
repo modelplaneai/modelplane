@@ -200,14 +200,17 @@ nix run .#docs-generate
 
 ### Manifest shortcodes
 
-Annotated YAML manifests live under `docs/manifests/`. Two shortcodes render
-them in content pages.
+Annotated YAML manifests live under `docs/manifests/`, one subtree per docs
+section: `getting-started/` backs the getting started guide, `concepts/` backs
+the platform and model concept pages, and `examples/` backs the Examples page.
+A page references only manifests from its own section's subtree. Two shortcodes
+render them in content pages.
 
 **`manifests`** — renders the file inline with syntax highlighting, followed by
 a `kubectl apply -f <url>` block pointing to the published file:
 
 ```markdown
-{{</* manifests "platform/inference-gateway.yaml" */>}}
+{{</* manifests "concepts/inference-gateway.yaml" */>}}
 ```
 
 Optional named args:
@@ -217,15 +220,33 @@ Optional named args:
 | `apply="false"` | — | omit the kubectl block |
 | `command="kubectl delete -f"` | `kubectl apply -f` | override the verb |
 
+Hugo forbids mixing positional and named arguments in one shortcode call, so a
+call that passes `apply=` or `command=` must pass the path as `path=` too:
+
+```markdown
+{{</* manifests path="concepts/inference-gateway.yaml" apply="false" */>}}
+```
+
 **`manifest-url`** — emits just the absolute URL of the file, for use inside
 an existing code fence:
 
 ```markdown
-kubectl delete -f {{</* manifest-url "platform/inference-gateway.yaml" */>}}
+kubectl delete -f {{</* manifest-url "concepts/inference-gateway.yaml" */>}}
 ```
 
-Both shortcodes take a path relative to `examples/` and fail the build
+Both shortcodes take a path relative to `docs/manifests/` and fail the build
 with a clear error if the file doesn't exist.
+
+The `docs-manifests` flake check validates every Modelplane manifest the docs
+show — all the files under `docs/manifests/`, including the API-reference
+examples under `docs/manifests/reference/` — against the generated Pydantic
+models in `schemas/python/`. It runs the models with `extra="forbid"` at every
+level, so an example that drifts from the live API schema fails CI: a missing
+required field, a wrong type, a bad enum, or any field the schema doesn't define
+(a typo, or a field the API renamed or dropped). The docs can't show a manifest
+the current API would reject. Resources from other API groups (provider configs,
+core Kubernetes, Crossplane packages) have no model and are skipped. The
+validator is `docs/utils/validate/validate_manifests.py`.
 
 ### Linting and link checking
 

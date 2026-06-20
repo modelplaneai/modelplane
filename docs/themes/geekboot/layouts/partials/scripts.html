@@ -64,11 +64,31 @@
         flashCopied(btn);
       }).catch(function () {});
     }
+    // Read a code-card body as text. Editable placeholders ($@…$@ rendered by
+    // the editCode shortcode) show their default through a CSS ::before, which
+    // isn't in innerText. So for an empty field, fill in its data-default for the
+    // read and restore it after — synchronously, so the page never flickers — and
+    // a field the user has typed into copies as typed. With no editable fields
+    // this is just body.innerText.
+    function codeCardText(body) {
+      var fields = body.querySelectorAll('.editable');
+      if (!fields.length) return body.innerText;
+      var filled = [];
+      fields.forEach(function (span) {
+        if (!span.textContent) {
+          span.textContent = span.getAttribute('data-default') || '';
+          filled.push(span);
+        }
+      });
+      var text = body.innerText;
+      filled.forEach(function (span) { span.textContent = ''; });
+      return text;
+    }
     document.querySelectorAll('.code-card__copy').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var body = btn.closest('.code-card').querySelector('.code-card__body');
         if (!body) return;
-        copyToClipboard(body.innerText, btn);
+        copyToClipboard(codeCardText(body), btn);
       });
     });
     document.querySelectorAll('.code-card__apply').forEach(function (btn) {

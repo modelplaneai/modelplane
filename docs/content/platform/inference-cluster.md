@@ -26,13 +26,13 @@ which Modelplane assumes are solely for its use.
 
 {{< tabs >}}
 {{< tab "GKE" >}}
-{{< manifests "platform/inference-cluster-gke.yaml" >}}
+{{< manifests path="concepts/inference-cluster-gke.yaml" apply="false" >}}
 {{< /tab >}}
 {{< tab "EKS" >}}
-{{< manifests "platform/inference-cluster-eks.yaml" >}}
+{{< manifests path="concepts/inference-cluster-eks.yaml" apply="false" >}}
 {{< /tab >}}
 {{< tab "Existing" >}}
-{{< manifests "platform/inference-cluster-existing.yaml" >}}
+{{< manifests path="concepts/inference-cluster-existing.yaml" apply="false" >}}
 {{< /tab >}}
 {{< /tabs >}}
 
