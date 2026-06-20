@@ -207,6 +207,16 @@ class Composer:
                         workloadIdentityConfig=clusterv1beta1.WorkloadIdentityConfig(
                             workloadPool=f"{self.xr.spec.project}.svc.id.goog",
                         ),
+                        # Enable the Filestore CSI driver addon so the
+                        # modelplane-rwx StorageClass has a provisioner. Without
+                        # it the ModelCache RWX PVC stays Pending forever (we
+                        # enable file.googleapis.com and compose the
+                        # StorageClass, but nothing runs the provisioner).
+                        addonsConfig=clusterv1beta1.AddonsConfig(
+                            gcpFilestoreCsiDriverConfig=clusterv1beta1.GcpFilestoreCsiDriverConfig(
+                                enabled=True,
+                            ),
+                        ),
                     ),
                     writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
                         name=_kubeconfig_secret_name(self.xr),

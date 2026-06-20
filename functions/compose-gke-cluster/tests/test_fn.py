@@ -164,6 +164,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "workloadIdentityConfig": {
                                                     "workloadPool": "my-gcp-project.svc.id.goog",
                                                 },
+                                                "addonsConfig": {
+                                                    "gcpFilestoreCsiDriverConfig": {"enabled": True},
+                                                },
                                             },
                                             "writeConnectionSecretToRef": {
                                                 "name": "test-cluster-kubeconfig-55b57",
@@ -548,6 +551,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "releaseChannel": {"channel": "REGULAR"},
                                                 "workloadIdentityConfig": {
                                                     "workloadPool": "my-gcp-project.svc.id.goog",
+                                                },
+                                                "addonsConfig": {
+                                                    "gcpFilestoreCsiDriverConfig": {"enabled": True},
                                                 },
                                             },
                                             "writeConnectionSecretToRef": {
