@@ -1,0 +1,117 @@
+name: Docs Preview
+
+# Deploy a docs preview to Vercel on demand, when a maintainer comments
+# /preview on a pull request. Vercel's GitHub integration is disconnected (see
+# CONTRIBUTING.md), so PRs get no automatic preview; this is how you ask for one.
+#
+# issue_comment runs in the context of the default branch, not the PR branch, so
+# this workflow's code is always the trusted version from main and has access to
+# secrets even when the PR comes from a fork. We check out the PR's head to build
+# it, but never run code from the PR, so a fork can't exfiltrate VERCEL_TOKEN.
+on:
+  issue_comment:
+    types: [created]
+
+# Don't deploy the same PR twice at once; a newer /preview supersedes an older
+# in-flight one.
+concurrency:
+  group: docs-preview-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    # Only on pull request comments whose body starts with /preview, and only
+    # from someone with write access (author_association is OWNER for the repo
+    # owner, MEMBER for org members, COLLABORATOR for invited collaborators).
+    # Anyone else commenting /preview is ignored, so a fork contributor can't
+    # trigger a deploy with our token. GitHub expressions can't trim or regex, so
+    # this is a prefix match; a maintainer typing /preview as the command works,
+    # and the worst a loose match does is deploy a preview they can ignore.
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/preview') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-24.04
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    permissions:
+      contents: read
+      # React to the triggering comment and post the preview URL back.
+      pull-requests: write
+
+    steps:
+      # Acknowledge the command immediately with an :eyes: reaction, so the
+      # maintainer sees it was picked up before the build finishes.
+      - name: Acknowledge command
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=eyes
+
+      # The comment payload doesn't carry the PR's head ref, so resolve it from
+      # the PR. For a fork PR this is the fork's repo and branch.
+      - name: Resolve PR head
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr view "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --json headRepositoryOwner,headRepository,headRefOid \
+            --jq '"repo=\(.headRepositoryOwner.login)/\(.headRepository.name)\nsha=\(.headRefOid)"' \
+            >>"$GITHUB_OUTPUT"
+
+      # Check out the PR's head commit by SHA. We build this code on Vercel but
+      # never execute it here, so checking out fork code is safe.
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pr.outputs.repo }}
+          ref: ${{ steps.pr.outputs.sha }}
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@54.14.2
+
+      # Pull project settings (including the vercel.json build config) so the
+      # deploy uses the same build as production.
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=preview --token="${{ secrets.VERCEL_TOKEN }}"
+
+      # Deploy without --prebuilt: Vercel runs docs/vercel-build.sh, where
+      # VERCEL_URL is set, so the preview's baseURL points at the preview itself.
+      # stdout is the deployment URL.
+      - name: Deploy preview
+        id: deploy
+        run: |
+          url=$(vercel deploy --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=${url}" >>"$GITHUB_OUTPUT"
+
+      # Post the preview URL back on the PR. The deployment is built from the
+      # head SHA we resolved, so name it to make stale previews obvious after
+      # new pushes.
+      - name: Comment preview URL
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "Docs preview for ${{ steps.pr.outputs.sha }}: ${{ steps.deploy.outputs.url }}"
+
+      # If anything above failed, tell the maintainer rather than leaving the
+      # :eyes: reaction as the only signal.
+      - name: Comment on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "Docs preview failed. See the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."

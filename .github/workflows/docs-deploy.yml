@@ -1,0 +1,43 @@
+name: Docs Deploy
+
+# Deploy the docs site to Vercel production when docs change land on main.
+# Vercel's GitHub integration is disconnected (see CONTRIBUTING.md), so this
+# workflow is what ships the site. The paths filter keeps it from running on
+# code-only merges.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'examples/**'
+      - 'vercel.json'
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@54.14.2
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+
+      # Deploy without --prebuilt: Vercel runs docs/vercel-build.sh, which uses
+      # the canonical baseURL baked into nix/docs.nix for production builds.
+      - name: Deploy production
+        run: vercel deploy --prod --token="${{ secrets.VERCEL_TOKEN }}"

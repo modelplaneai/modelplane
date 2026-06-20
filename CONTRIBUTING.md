@@ -255,8 +255,28 @@ same `nix build .#docs` derivation that `nix flake check` verifies, so what
 ships matches what CI checks. `vercel.json` points the build at
 [`docs/vercel-build.sh`](docs/vercel-build.sh), which installs Nix into
 Vercel's build image, runs the build, and writes the static site to `public/`.
-Vercel's GitHub app drives deploys as usual: preview URLs on pull requests
-(including from forks) and production on merge to `main`.
+
+GitHub Actions drives deploys, not Vercel's GitHub app, which is disconnected.
+The app deployed every PR, commented on each one, and gated fork PRs behind a
+manual approval that showed as a failing check even on PRs that didn't touch the
+docs. Two workflows replace it:
+
+- [`docs-deploy.yml`](.github/workflows/docs-deploy.yml) deploys production when
+  a change under `docs/`, `examples/`, or `vercel.json` lands on `main`.
+- [`docs-preview.yml`](.github/workflows/docs-preview.yml) deploys a preview
+  when a maintainer comments `/preview` on a pull request, and replies with the
+  URL. It's opt-in, so PRs that don't touch the docs stay quiet. Because it runs
+  on `issue_comment` it executes from `main` with access to the deploy token,
+  so it works for fork PRs too; it builds the PR's code on Vercel but never runs
+  it, so a fork can't reach the token.
+
+Both run `vercel deploy` and let Vercel run the build (no `--prebuilt`), so
+`docs/vercel-build.sh` sees `VERCEL_URL` and a preview's links resolve against
+the preview itself rather than production.
+
+The workflows need three repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+and `VERCEL_PROJECT_ID`. Get the org and project IDs by running `vercel link` in
+a checkout and reading `.vercel/project.json`.
 
 ## Submitting changes
 
