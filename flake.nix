@@ -12,21 +12,22 @@
     # tracking the latest uv_build releases.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # Pinned to negz/cli's default-to-go branch rather than a released version,
-    # because we depend on several CLI changes that aren't in a release yet:
+    # Pinned to crossplane/cli main rather than a released version, because we
+    # depend on several CLI changes that aren't in a release yet:
     #
     #   * #24, #64: a datamodel-code-generator bump that fixes Python model
     #     generation for fields named int/bool.
     #   * #119: stops an XRD's scale subresource from clobbering the generated
     #     model with the autoscaling Scale type.
-    #   * #126 (unmerged): makes the flake's default package the host-native CLI
-    #     binary instead of the full multi-platform release bundle. Building one
-    #     platform instead of seven cuts the CLI build from ~55 minutes to ~8 on
-    #     a cold machine.
+    #   * #126: makes the flake's default package the host-native CLI binary
+    #     instead of the full multi-platform release bundle. Building one platform
+    #     instead of seven cuts the CLI build from ~55 minutes to ~8 on a cold
+    #     machine.
+    #   * #127: decompresses function runtime tarballs once when loading them,
+    #     rather than once per layer.
     #
-    # #24, #64, and #119 are merged; the branch is based on them. Repin to
-    # crossplane/cli main once #126 merges, then to a tag once they all release.
-    crossplane-cli.url = "github:negz/cli/default-to-go";
+    # Repin to a tag once these all release.
+    crossplane-cli.url = "github:crossplane/cli";
 
     # uv2nix reads a uv workspace's uv.lock and generates Nix derivations
     # for each Python package, using pyproject.nix's build infrastructure.
