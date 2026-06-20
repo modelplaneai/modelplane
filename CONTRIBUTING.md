@@ -217,6 +217,13 @@ Optional named args:
 | `apply="false"` | — | omit the kubectl block |
 | `command="kubectl delete -f"` | `kubectl apply -f` | override the verb |
 
+Hugo forbids mixing positional and named arguments in one shortcode call, so a
+call that passes `apply=` or `command=` must pass the path as `path=` too:
+
+```markdown
+{{</* manifests path="platform/inference-gateway.yaml" apply="false" */>}}
+```
+
 **`manifest-url`** — emits just the absolute URL of the file, for use inside
 an existing code fence:
 
