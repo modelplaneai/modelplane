@@ -804,6 +804,7 @@ def _storage_class_object(filesystem_id: str) -> dict:
         "kind": "Object",
         "metadata": {"namespace": "modelplane-system"},
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update"],
             "providerConfigRef": {
                 "kind": "ProviderConfig",
                 "name": _KUBECONFIG_SECRET,
@@ -880,6 +881,7 @@ def _autoscaler_release() -> dict:
         "kind": "Release",
         "metadata": {"namespace": "modelplane-system"},
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update"],
             "providerConfigRef": {"kind": "ProviderConfig", "name": _KUBECONFIG_SECRET},
             "forProvider": {
                 "chart": {
@@ -906,6 +908,7 @@ def _efa_dra_driver_release() -> dict:
         "kind": "Release",
         "metadata": {"namespace": "modelplane-system"},
         "spec": {
+            "managementPolicies": ["Observe", "Create", "Update"],
             "providerConfigRef": {"kind": "ProviderConfig", "name": _KUBECONFIG_SECRET},
             "forProvider": {
                 "chart": {

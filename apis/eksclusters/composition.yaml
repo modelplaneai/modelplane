@@ -11,6 +11,3 @@ spec:
   - functionRef:
       name: modelplane-modelplanecompose-eks-cluster
     step: compose-eks-cluster
-  - functionRef:
-      name: modelplane-modelplanecompose-usages
-    step: compose-usages

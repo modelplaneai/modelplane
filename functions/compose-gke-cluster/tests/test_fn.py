@@ -474,7 +474,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             # StorageClass is composed against the cluster's own
                             # provider-kubernetes ProviderConfig, pinned to the
                             # observed VPC. StorageClass has no Ready condition,
-                            # so readiness is SuccessfulCreate.
+                            # so readiness is SuccessfulCreate. It's orphaned (no
+                            # Delete policy) so it dies with the cluster instead of
+                            # wedging on a deleted kubeconfig Secret during teardown.
                             "storage-class-rwx": fnv1.Resource(
                                 resource=resource.dict_to_struct(
                                     {
@@ -482,6 +484,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         "kind": "Object",
                                         "metadata": {"namespace": "modelplane-system"},
                                         "spec": {
+                                            "managementPolicies": ["Observe", "Create", "Update"],
                                             "providerConfigRef": {
                                                 "kind": "ProviderConfig",
                                                 "name": "test-cluster-kubeconfig-55b57",

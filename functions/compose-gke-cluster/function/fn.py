@@ -68,6 +68,18 @@ _ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
 # cluster's VPC (Filestore CSI defaults to the `default` VPC otherwise).
 _MANAGED_STORAGE_CLASS = "modelplane-rwx"
 
+# Management policies that exclude Delete, used for the RWX StorageClass Object
+# installed on the workload cluster. It exists only to configure the cluster and
+# is only ever deleted because the whole GKECluster - and the cluster itself - is
+# being torn down. Deleting it then means asking provider-kubernetes to reach a
+# cluster whose kubeconfig Secret has already been deleted, which wedges its
+# finalizer and hangs the composite. Orphaning it sidesteps that: the in-cluster
+# StorageClass dies with the cluster. Crossplane names composed resources
+# deterministically from the owner XR's UID and the composition resource name, so
+# if this MR is ever deleted out of band the recomposed MR takes the same name
+# and provider-kubernetes adopts the existing StorageClass rather than erroring.
+_ORPHAN_MANAGEMENT = ["Observe", "Create", "Update"]
+
 # GKE node configuration.
 _GKE_IMAGE_TYPE = "COS_CONTAINERD"
 _GKE_OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
@@ -429,6 +441,7 @@ class Composer:
             k8sobjv1alpha1.Object(
                 metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
                 spec=k8sobjv1alpha1.Spec(
+                    managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                         kind="ProviderConfig",
                         name=_kubeconfig_secret_name(self.xr),

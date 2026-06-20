@@ -55,6 +55,20 @@ from models.io.upbound.m.aws.iam.rolepolicyattachment import v1beta1 as rpav1bet
 # default "*" still reconciles forProvider, defeating the purpose.)
 _NODE_GROUP_MANAGEMENT = ["Observe", "Create", "Update", "Delete"]
 
+# Management policies that exclude Delete, used for resources installed on the
+# workload cluster (the RWX StorageClass Object, the autoscaler and EFA DRA
+# Helm Releases). These exist only to configure the cluster and are only ever
+# deleted because the whole EKSCluster - and the cluster itself - is being torn
+# down. Deleting them then means asking provider-helm / provider-kubernetes to
+# reach a cluster whose kubeconfig Secret has already been deleted, which wedges
+# their finalizers and hangs the composite. Orphaning them sidesteps that: the
+# in-cluster resources die with the cluster. Crossplane names composed resources
+# deterministically from the owner XR's UID and the composition resource name,
+# so if one of these MRs is ever deleted out of band the recomposed MR takes the
+# same name and provider-helm / provider-kubernetes adopt the existing release
+# or object rather than erroring.
+_ORPHAN_MANAGEMENT = ["Observe", "Create", "Update"]
+
 # System node group injected into every EKS cluster to host control-plane
 # components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
 # the user-facing API — compose-inference-cluster only passes GPU groups.
@@ -1243,6 +1257,7 @@ class Composer:
             k8sobjv1alpha1.Object(
                 metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
                 spec=k8sobjv1alpha1.Spec(
+                    managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
                         kind="ProviderConfig",
                         name=_kubeconfig_secret_name(self.xr),
@@ -1339,6 +1354,7 @@ class Composer:
             helmv1beta1.Release(
                 metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
                 spec=helmv1beta1.Spec(
+                    managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
                         kind="ProviderConfig",
                         name=_kubeconfig_secret_name(self.xr),
@@ -1384,6 +1400,7 @@ class Composer:
             helmv1beta1.Release(
                 metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
                 spec=helmv1beta1.Spec(
+                    managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
                         kind="ProviderConfig",
                         name=_kubeconfig_secret_name(self.xr),
