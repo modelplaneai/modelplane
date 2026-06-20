@@ -130,6 +130,21 @@ WekaIO
 NetApp
 minikube
 
+# AI assistants and agent tooling
+MCP
+Claude
+Cursor
+ChatGPT
+VS
+VS Code
+Markdown
+JSON
+streamable
+llms
+txt
+llms\.txt
+llms-full\.txt
+
 # ML and AI
 Qwen
 Llama

@@ -42,6 +42,15 @@ rm -f "$installer"
 
 export PATH="/nix/var/nix/profiles/default/bin:$PATH"
 
+# The Vercel project's Root Directory is docs/, so the api/ serverless functions
+# live under the docs site rather than polluting the repo root. The build runs
+# with the working directory at docs/, but the flake that defines .#docs is at
+# the repo root, so build from there. This needs the project's "Include source
+# files outside of the Root Directory in the Build Step" setting enabled, which
+# checks out the parent into the build container.
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$repo_root"
+
 # Build the site. result is a symlink into the read-only store; dereference it
 # into a plain, writable directory Vercel can serve.
 #
@@ -62,6 +71,8 @@ else
 	export HUGO_BASEURL="/"
 	nix build .#docs --impure --print-build-logs
 fi
-rm -rf public
-cp -rL --no-preserve=mode result public
+# outputDirectory in docs/vercel.json is "public", resolved against the docs/
+# Root Directory, so the served site goes to docs/public.
+rm -rf docs/public
+cp -rL --no-preserve=mode result docs/public
 rm -f result

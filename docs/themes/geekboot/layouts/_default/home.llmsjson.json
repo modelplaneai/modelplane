@@ -1,0 +1,22 @@
+{{- /* llms.json: the structured corpus the docs MCP server searches.
+       One entry per content page; the MCP server chunks by heading at load time. */ -}}
+{{- $pages := slice -}}
+{{- range (where .Site.Pages "Kind" "in" (slice "home" "page" "section")).ByWeight -}}
+  {{- if .RawContent -}}
+    {{- $md := "" -}}
+    {{- with .OutputFormats.Get "markdown" }}{{ $md = .Permalink }}{{ end -}}
+    {{- $pages = $pages | append (dict
+        "title" .Title
+        "description" (.Description | default "")
+        "url" .Permalink
+        "path" .RelPermalink
+        "markdown_url" $md
+        "content" .RawContent) -}}
+  {{- end -}}
+{{- end -}}
+{{- dict
+    "name" "Modelplane Documentation"
+    "description" "Open source control plane for AI model serving on a fleet of GPU clusters."
+    "homepage" .Site.Home.Permalink
+    "pages" $pages
+  | jsonify (dict "indent" "  ") -}}

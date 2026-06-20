@@ -9,8 +9,32 @@ disableKinds = ["taxonomy", "term"]
 ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
 
 [outputs]
-  home = ["html"]
-  section = ["html", "rss"]
+  home = ["html", "llms", "llmsfull", "llmsjson"]
+  section = ["html", "rss", "markdown"]
+  page = ["html", "markdown"]
+
+# Machine-readable variants for AI agents and LLM tools. The markdown format
+# emits a raw-Markdown sibling of every page (page/index.md); the home page also
+# emits llms.txt (an index), llms-full.txt (every page concatenated), and
+# llms.json (the corpus the docs MCP server searches). See content/ai-tools.md.
+[outputFormats]
+  [outputFormats.markdown]
+    mediaType = "text/markdown"
+    isPlainText = true
+    isHTML = false
+    permalinkable = true
+  [outputFormats.llms]
+    mediaType = "text/plain"
+    baseName = "llms"
+    isPlainText = true
+  [outputFormats.llmsfull]
+    mediaType = "text/plain"
+    baseName = "llms-full"
+    isPlainText = true
+  [outputFormats.llmsjson]
+    mediaType = "application/json"
+    baseName = "llms"
+    isPlainText = true
 
 
 [build]

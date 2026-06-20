@@ -1,0 +1,15 @@
+{{- /* llms.txt: a concise index of the docs for LLM tools, per https://llmstxt.org. */ -}}
+# Modelplane Documentation
+
+> Modelplane is the open source control plane for AI model serving. It extends Crossplane to manage AI inference across a fleet of GPU clusters.
+
+## Documentation
+{{ range (where .Site.Pages "Kind" "in" (slice "page" "section")).ByWeight }}{{ if .RawContent }}
+- [{{ .Title }}]({{ .Permalink }}){{ with .Description }}: {{ . }}{{ end }}
+{{- end }}{{ end }}
+
+## Resources
+
+- Full documentation as one file: {{ with .OutputFormats.Get "llmsfull" }}{{ .Permalink }}{{ end }}
+{{ with .Site.GetPage "/overview/ai-tools" }}- Connect an AI assistant (MCP, Markdown): {{ .Permalink }}{{ end }}
+- GitHub: https://github.com/modelplaneai/modelplane
