@@ -3,10 +3,12 @@
 .bd-toc {
   color: var(--toc-font-color);
 
-  // Drop the "On this page" navigation on phones/tablets.
-  @include media-breakpoint-down(lg) { display: none; }
+  // Only shown once the viewport is wide enough for sidebar + comfortable
+  // content + this rail; otherwise content keeps the space.
+  display: none;
 
-  @include media-breakpoint-up(lg) {
+  @media (min-width: 1280px) {
+    display: block;
     align-self: start;
     position: sticky;
     top: 3.5rem;

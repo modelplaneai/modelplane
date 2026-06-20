@@ -14,6 +14,10 @@
   .highlight {
     overflow-x: auto;
     width: 100% !important;
+    // Allow the flex box to shrink below its content so long code lines scroll
+    // inside the block instead of widening it past its column (which pushed
+    // content off-centre and into the "On this page" rail).
+    min-width: 0;
     background-color: var(--code-block-background-color);
     display: flex !important;
     margin-top: 1rem; // prevent boxes from running together
@@ -60,6 +64,7 @@
     // code pre elements.
     .chroma {
       width: 100%;
+      min-width: 0;
       font-size: .95rem !important;
       line-height: 1.45em;
       display: flex !important;
@@ -69,6 +74,7 @@
       padding-top: .5rem;
 
       code {
+        min-width: 0;
         color: #f8f9fa;   // Code color if there is no defined highlighter style
         background-color: var(--code-block-background-color);
 

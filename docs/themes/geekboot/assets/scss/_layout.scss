@@ -19,7 +19,12 @@
   body.docs-app { overflow: hidden; }
   .bd-layout.docs-container { height: 100dvh; }
   .bd-sidebar { height: 100dvh; overflow: hidden; }
-  .bd-main { height: 100dvh; overflow-y: auto; }
+  // Reserve the scrollbar gutter always, so tall (scrolling) pages and short
+  // pages compute the same content width — otherwise the scrollbar that only
+  // appears on long pages narrows the area and the "On this page" rail can
+  // overlap the content.
+  .bd-main { height: 100dvh; overflow-y: auto; scrollbar-gutter: stable; }
+  .bd-sidebar-scroll { scrollbar-gutter: stable; }
 }
 
 .bd-sidebar {
@@ -70,34 +75,40 @@
     gap: inherit;
   }
 
+  // lg–1280: sidebar + content only. The "On this page" rail is dropped here so
+  // the content stays comfortably wide (favour content over the rails).
   @include media-breakpoint-up(lg) {
+    grid-template-areas:
+      "intro"
+      "content";
+    grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  // Wide screens: bring back the "On this page" rail, pinned to the right edge.
+  @media (min-width: 1280px) {
     grid-template-areas:
       "intro   toc"
       "content toc";
-    grid-template-rows: auto 1fr;
-    // Content capped near its measure; the "On this page" rail sits right
-    // alongside it. Centre the content+rail group in the main area so the
-    // whitespace is balanced between the left nav and the right edge.
-    grid-template-columns: minmax(0, 52rem) 17rem;
+    grid-template-columns: minmax(0, 1fr) 17rem;
     column-gap: 2.5rem;
-    justify-content: center;
   }
 
-  &.no-toc{
-
-    @include media-breakpoint-up(lg) {
-      grid-template-areas:
-        "intro   toc"
-        "content content" !important;
-      grid-template-rows: auto 1fr;
-      grid-template-columns: 4fr 1fr;
+  // Pages with no "On this page" rail: never reserve the right column, so the
+  // content centres across the full width instead of being shifted left.
+  &.no-toc {
+    @media (min-width: 1280px) {
+      grid-template-areas: "intro" "content";
+      grid-template-columns: minmax(0, 1fr);
     }
+    .bd-toc { display: none; }
   }
 }
 
 .bd-intro {
   grid-area: intro;
   padding-bottom: 1.5rem;
+  min-width: 0;
 }
 
 .bd-toc {

@@ -14,27 +14,7 @@ nav.site-nav a {
   vertical-align: baseline;
 }
 
-// Grid-line background — matches website globals.css body::after exactly
-body::after {
-  content: '';
-  position: fixed; inset: 0; z-index: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
-  background-size: 80px 80px;
-  pointer-events: none;
-  opacity: 0.5;
-}
-
-// Lift layout and footer above the grid (z-index:0).
-// docs-navbar is NOT here — _navbar.scss owns position:sticky + z-index:100
-// and _modelplane.scss loads after _navbar.scss, so adding docs-navbar here
-// would silently override sticky with relative.
-.bd-layout,
-.bd-footer {
-  position: relative;
-  z-index: 1;
-}
+// Plain background (Dark Spruce in dark mode) — no grid overlay.
 
 // Sidebar active border uses purple
 .bd-links-nav {

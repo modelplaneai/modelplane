@@ -6,12 +6,25 @@ body {
   scroll-behavior: smooth;
 }
 
+// Caps the readable measure and centres it within the (full-width) content
+// column. Block margin:auto centres without shrink-to-fit, so wide children
+// (code, mermaid) scroll within rather than overflowing into the rail.
+.bd-content-inner,
+.bd-intro-inner {
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
 .bd-content {
   font-size: $body-font-size;
   line-height: 1.6;
-  // Cap the measure for readability on wide screens; wide elements (tables,
-  // mermaid, code) scroll within their own containers.
-  max-width: 52rem;
+  // The grid item fills its track (do NOT cap/margin-auto it here — that would
+  // size it to its content and overflow the track into the rail). The inner
+  // wrapper caps and centres the measure instead.
+  min-width: 0;
+  overflow-wrap: break-word;
+
+  img { max-width: 100%; height: auto; }
 
   code {
     background-color: var(--code-background);
