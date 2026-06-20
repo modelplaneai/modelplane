@@ -15,7 +15,7 @@ The documentation MCP server lets an assistant search these docs and read any pa
 
 The server URL is:
 
-```
+```plaintext
 https://docs.modelplane.ai/mcp
 ```
 
@@ -66,7 +66,7 @@ The **Copy page** menu on every page also has **Connect to Cursor** and **Connec
 
 Every page is also published as raw Markdown. Add `index.md` to any page URL:
 
-```
+```plaintext
 https://docs.modelplane.ai/models/model-deployment/index.md
 ```
 
