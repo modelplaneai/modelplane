@@ -15,7 +15,7 @@ fleet to match, composing the clusters, scheduling replicas, and exposing
 endpoints. This page is the full tour: the architecture, the resources, and what
 happens when you deploy a model.
 
-## The two-team boundary
+## Modelplane API
 
 Modelplane's API is two sets of resources, one per team, with everything in
 between filled in for you. Platform teams describe the fleet, ML teams describe a
@@ -65,17 +65,17 @@ model, and Modelplane composes the rest.
   </div>
 </div>
 
-The hierarchy mirrors Kubernetes core one scope up: ModelDeployment →
-ModelReplica → ModelService → ModelEndpoint parallels Deployment → Pod → Service →
-Endpoint, across a fleet instead of within a single cluster.
+The hierarchy mirrors Kubernetes core one scope up: `ModelDeployment` →
+`ModelReplica` → `ModelService` → `ModelEndpoint` parallels `Deployment` → `Pod` → `Service` →
+`Endpoint`, across a fleet instead of within a single cluster.
 
 ## What the control plane reconciles
 
 Once the resources exist, Modelplane keeps the fleet matching them. Five concerns
 run continuously:
 
-1. **Provisioning.** From an `InferenceCluster`, Modelplane creates a full GKE or
-   EKS cluster and its GPU node pools, or brings in a cluster you already run on
+1. **Provisioning.** From an `InferenceCluster`, Modelplane creates a full cluster 
+   and its GPU node pools, or brings in a cluster you already run on
    any Kubernetes, and installs the serving stack on each.
 2. **Scheduling.** A two-level scheduler places work: it pins each `ModelReplica`
    to a cluster and pool whose hardware meets the model's requirements, then the
@@ -86,11 +86,12 @@ run continuously:
    out of the box.
 4. **Routing.** A `ModelService` exposes one OpenAI-compatible endpoint through
    the gateway and load-balances across the deployment's `ModelEndpoints`, with
-   weights for canary and A/B rollouts.
+   weights for canary and A/B rollouts. `ModelEndpoints` can also fall back to
+   external inference services.
 5. **Caching.** A `ModelCache` stages model weights on cluster storage once, so
    serving pods read them locally instead of re-downloading on every start.
 
-## You describe the shape. You bring the engine.
+## Universal compatibility
 
 Modelplane is deliberately unopinionated about the engine. A `ModelDeployment`
 describes the *shape* of a deployment, how many pods, on how many nodes, with
@@ -102,11 +103,11 @@ This is what lets one API serve any container-based engine and any topology
 without special cases. Modelplane composes the engine onto the right cluster
 resource and injects almost nothing, just the address a multi-node leader is
 reachable at, so a worker can join it. New engines and new parallelism strategies
-work without a change to Modelplane. The docs ship recipes (worked, copyable
+work without a change to Modelplane. The community ships recipes (worked, copyable
 manifests) to bridge the gap that flexibility leaves, rather than hard-coding
 choices into the API.
 
-## How the fleet scheduler places work
+## Fleet scheduler
 
 For each replica, the scheduler picks a `(cluster, pool)` in two steps:
 
@@ -114,8 +115,8 @@ For each replica, the scheduler picks a `(cluster, pool)` in two steps:
    Kubernetes labels on each `InferenceCluster`, the organizational metadata:
    tier, region, provider, compliance posture.
 2. **Filter pools** by matching each device request in the deployment's
-   `nodeSelector.devices` against the pool's `InferenceClass`. A request is real
-   DRA: a `count` and CEL selectors over a device's attributes and capacity, like
+   `nodeSelector.devices` against the pool's `InferenceClass`. A request is based
+   on DRA: a `count` and CEL selectors over a device's attributes and capacity, like
    "a GPU with at least 141Gi of memory." A pool fits when it has the devices the
    model asks for and enough free nodes to hold a replica.
 
@@ -124,7 +125,7 @@ overcommits a pool. Replicas are pinned to their cluster once placed and stay
 there across reconciles; if a cluster is deleted, the scheduler re-places its
 replicas elsewhere.
 
-## What happens when you deploy a model
+## Deploying a model
 
 Creating a `ModelDeployment` kicks off the loop end to end. The scheduler
 discovers the ready clusters (filtered by your label selector if you set one),
@@ -135,7 +136,7 @@ per replica, and your `ModelService` routes traffic across them through one stab
 endpoint on the gateway. Scale the deployment up or down and the same loop
 re-converges.
 
-## Multi-node and disaggregation
+## Single-node, multi-node, and disaggregation
 
 A single-node deployment composes to a Kubernetes Deployment fronted by a
 service. When a model is too large for one node, an engine becomes a gang: a
@@ -150,7 +151,7 @@ cache between them. Modelplane wires up the cluster-edge routing that pairs each
 request's prefill and decode; the engines carry the KV-transfer flags. Both are
 described in full in the [model deployment docs]({{< ref "/models/model-deployment" >}}).
 
-## Next Steps
+## Next steps
 
 {{< cardgroup cols="2" >}}
 {{< card title="FAQ" href="/overview/faq/" >}}
