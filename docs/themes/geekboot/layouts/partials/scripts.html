@@ -21,21 +21,16 @@
 </script>
 
 <script>
-  // Segmented light/dark switch. Each segment sets a specific theme and writes
-  // the same `darkSwitch` localStorage key the early theme bootstrap
-  // (stylesheet-cached) reads, so the choice persists and applies before first
-  // paint on the next load. The active segment is shown via CSS keyed off
-  // <html color-theme>, so no JS class toggling is needed.
+  // Light/dark switch. A click anywhere on the control toggles between the two
+  // themes and writes the same `darkSwitch` localStorage key the early theme
+  // bootstrap (stylesheet-cached) reads, so the choice persists and applies
+  // before first paint on the next load. The active segment is shown via CSS
+  // keyed off <html color-theme>, so no JS class toggling is needed.
   (function () {
-    // Clicking a segment selects that theme explicitly; clicking the track
-    // between segments falls back to toggling.
     document.querySelectorAll('.theme-switch').forEach(function (sw) {
-      sw.addEventListener('click', function (event) {
+      sw.addEventListener('click', function () {
         var root = document.documentElement;
-        var opt = event.target.closest('.theme-switch-opt[data-theme]');
-        var next = opt
-          ? opt.getAttribute('data-theme')
-          : (root.getAttribute('color-theme') === 'dark' ? 'light' : 'dark');
+        var next = root.getAttribute('color-theme') === 'dark' ? 'light' : 'dark';
         root.setAttribute('color-theme', next);
         try { localStorage.setItem('darkSwitch', next); } catch (e) {}
       });
