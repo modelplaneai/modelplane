@@ -354,6 +354,22 @@ user-defined
 user-provided
 workload-cluster
 
+# Industry and deployment terms
+[Hh]yperscalers?
+[Nn]eoclouds?
+on-prem
+on-premises?
+lock-in
+rollouts?
+two-team
+two-level
+high-altitude
+re-download(s|ing)?
+re-converge[sd]?
+disaggregat(ion|ed)
+Autoscaling
+Dynamo
+
 # Style exceptions
 several
 above

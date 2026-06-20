@@ -12,7 +12,7 @@ them with demand, routing traffic to a stable endpoint, and staging weights so
 pods don't re-download them on every restart. Every team that serves models ends
 up building the same control plane to do it.
 
-There are two usual ways out, and each costs something.
+Most teams take one of two paths, and each costs something.
 
 - **Build it yourself on Kubernetes.** You keep full control, but you own all the
   glue: cluster provisioning, GPU scheduling, autoscaling, gateways, and caching,
@@ -38,7 +38,7 @@ Modelplane reconciles the rest.
   developers deploy against it without filing tickets for infrastructure.
 - **Yours, end to end.** The models, the data, and the clusters stay under your
   control. Modelplane is [Apache 2.0](https://github.com/modelplaneai/modelplane/blob/main/LICENSE)
-  and builds on the open [Crossplane](https://crossplane.io) ecosystem, so there's
+  and builds on open [Crossplane](https://crossplane.io), so there's
   no proprietary control plane to lock into.
 
 ## Where it is today
