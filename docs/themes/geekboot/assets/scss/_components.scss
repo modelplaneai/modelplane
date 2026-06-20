@@ -205,6 +205,49 @@ a.mp-card,
   .mp-pagination-next { margin-left: 0; }
 }
 
+// ── Lane diagram (who creates what) ───────────────────────────
+.mp-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 1.5rem 0;
+}
+
+@media (max-width: 700px) {
+  .mp-lanes { grid-template-columns: 1fr; }
+}
+
+.mp-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 10px;
+}
+
+.mp-lane-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mp-card-muted);
+}
+.mp-lane--platform .mp-lane-title { color: #{$mp-cyan}; }
+.mp-lane--ml .mp-lane-title { color: #{$mp-purple-hi}; }
+
+.mp-chip {
+  font-family: #{$font-family-monospace};
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--mp-card-border);
+  border-radius: 6px;
+}
+.mp-lane--platform .mp-chip { border-color: rgba(0, 220, 232, 0.30); }
+.mp-lane--ml .mp-chip { border-color: rgba(154, 94, 252, 0.30); }
+
 // ── Example-from-source block ─────────────────────────────────
 .mp-example {
   margin: 1.25rem 0;
@@ -281,11 +324,13 @@ a.mp-card,
   // Brand accents need darker shades to stay legible on white (the dark-mode
   // purple/sky/green wash out at WCAG-AA contrast).
   .mp-card--developer .mp-card-title,
+  .mp-lane--ml .mp-lane-title,
   .mp-badge--developer,
   .mp-card-link { color: #{$mp-purple-dark}; }
 
   .mp-card--platform .mp-card-title,
   .mp-card--platform .mp-card-link,
+  .mp-lane--platform .mp-lane-title,
   .mp-badge--platform,
   .mp-status--preview { color: #{$aqua-700}; }
 
