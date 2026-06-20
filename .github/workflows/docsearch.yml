@@ -1,0 +1,38 @@
+name: DocSearch index
+
+# Crawls the live docs site (docs.modelplane.ai) with Algolia's open-source
+# DocSearch scraper and pushes the records into the `modelplane` index that the
+# docs search box queries. Modelplane owns this Algolia app (it is not shared
+# with Crossplane), so the only secret needed is the admin (write) API key.
+#
+# Runs on a daily schedule to pick up deployed content changes, and on demand
+# (run it right after a docs deploy for an immediate refresh). The crawler reads
+# the production site over HTTP, so it does not depend on the build here.
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docsearch
+  cancel-in-progress: true
+
+jobs:
+  crawl:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Crawl docs.modelplane.ai into Algolia
+        env:
+          ALGOLIA_ADMIN_KEY: ${{ secrets.ALGOLIA_ADMIN_KEY }}
+        run: |
+          docker run --rm \
+            -e APPLICATION_ID=CQDMTRM1TJ \
+            -e API_KEY="$ALGOLIA_ADMIN_KEY" \
+            -e "CONFIG=$(jq -r tostring docs/utils/docsearch/config.json)" \
+            algolia/docsearch-scraper
