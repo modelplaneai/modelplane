@@ -1,0 +1,66 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: l40s-1x-g6e
+spec:
+  description: "EKS g6e.xlarge, 1x NVIDIA L40S"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: g6e.xlarge
+      diskSizeGb: 100
+      accelerator:
+        type: nvidia-l40s
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      memory: { value: "46068Mi" }
+---
+# g6e.xlarge is available in us-east-1, us-west-2, and eu-central-1.
+# eu-west-1 does NOT have g6e.xlarge.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-us-west
+  labels:
+    modelplane.ai/region: us-west
+spec:
+  cluster:
+    source: EKS
+    eks:
+      region: us-west-2
+  nodePools:
+  - name: gpu-l40s
+    className: l40s-1x-g6e
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - us-west-2a
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-eu-central
+  labels:
+    modelplane.ai/region: eu-central
+spec:
+  cluster:
+    source: EKS
+    eks:
+      region: eu-central-1
+  nodePools:
+  - name: gpu-l40s
+    className: l40s-1x-g6e
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - eu-central-1a

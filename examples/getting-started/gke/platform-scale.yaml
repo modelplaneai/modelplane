@@ -1,0 +1,69 @@
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-a100-40-1x
+spec:
+  description: "GKE a2-highgpu-1g, 1x NVIDIA A100 40GB"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: a2-highgpu-1g
+      diskSizeGb: 200
+      accelerator:
+        type: nvidia-tesla-a100
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ampere }
+      cudaComputeCapability: { version: "8.0.0" }
+    capacity:
+      # A100 40GB real reported VRAM. Keep the selector at >= 35Gi (not >= 40Gi)
+      # so it reliably clears the L4 (24Gi) without hitting the boundary.
+      memory: { value: "40960Mi" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gpu-us-west
+  labels:
+    modelplane.ai/region: us-west
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: crossplane-playground
+      region: us-west1
+  nodePools:
+  - name: gpu-a100
+    className: gke-a100-40-1x
+    nodeCount: 1
+    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
+    maxNodeCount: 2
+    zones:
+    - us-west1-b
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gpu-us-east
+  labels:
+    modelplane.ai/region: us-east
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: crossplane-playground
+      region: us-east1
+  nodePools:
+  - name: gpu-a100
+    className: gke-a100-40-1x
+    nodeCount: 1
+    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
+    maxNodeCount: 2
+    zones:
+    - us-east1-b
