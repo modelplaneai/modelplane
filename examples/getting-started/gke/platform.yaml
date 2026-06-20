@@ -33,7 +33,7 @@ spec:
   cluster:
     source: GKE
     gke:
-      project: crossplane-playground
+      project: my-gcp-project
       region: us-central1
   nodePools:
   - name: gpu-l4

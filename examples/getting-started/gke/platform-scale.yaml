@@ -36,7 +36,7 @@ spec:
   cluster:
     source: GKE
     gke:
-      project: crossplane-playground
+      project: my-gcp-project
       region: us-west1
   nodePools:
   - name: gpu-a100
@@ -57,7 +57,7 @@ spec:
   cluster:
     source: GKE
     gke:
-      project: crossplane-playground
+      project: my-gcp-project
       region: us-east1
   nodePools:
   - name: gpu-a100
