@@ -70,13 +70,63 @@ nav.site-nav .wrap {
   background: none;
   border: none;
   cursor: pointer;
-  color: #{$mp-muted};
+  color: var(--mp-muted);
   padding: 5px;
   border-radius: 6px;
   transition: color 0.2s, background 0.2s;
 
   svg { display: block; }
-  &:hover { color: #ffffff; background: rgba(255,255,255,0.06); }
+  &:hover { color: var(--body-font-color); background: var(--nav-highlight-color); }
+}
+
+// Mobile-only top bar (the sidebar is a drawer on small screens)
+.docs-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--body-background);
+  border-bottom: 1px solid var(--dropdown-border-color);
+}
+.docs-topbar-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mp-muted);
+  padding: 4px;
+  &:hover { color: var(--body-font-color); }
+}
+.docs-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  text-decoration: none;
+  color: var(--body-font-color);
+
+  &:hover { color: var(--body-font-color); text-decoration: none; }
+}
+.docs-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.docs-topbar-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--mp-muted);
+  padding: 4px;
+
+  &:hover { color: var(--body-font-color); }
 }
 // Show the sun in dark mode (click → light) and the moon in light mode
 // (click → dark). Default both hidden, then reveal per theme.

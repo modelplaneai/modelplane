@@ -1,8 +1,6 @@
 .bd-sidebar {
   @include media-breakpoint-up(lg) {
-    align-self: start;
-    position: sticky;
-    top: 4.5rem;
+    grid-area: sidebar;
   }
 }
 
@@ -10,146 +8,257 @@
   background-color: var(--body-background) !important;
 
   @include media-breakpoint-up(lg) {
-    position: static;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    border-right: 1px solid var(--dropdown-border-color);
   }
-
-  .offcanvas-title{
-    color: var(--body-font-color) !important;
-  }
-
-  .btn-close{
-    filter: var(--btn-close-filter) !important;
-    opacity: 1;
-  }
-
 }
 
-.bd-links-nav {
-  font-size: .95rem !important;
+// ── Brand header (logo + "docs" + theme toggle) ─────────────────
+.bd-sidebar-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 1rem 0.85rem 0.75rem;
+}
 
-  a.bd-links{
-    text-decoration: none !important;
-    color: var(--body-font-color) !important;
+.bd-sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-decoration: none;
+  &:hover { text-decoration: none; }
+}
+
+.brand-mark {
+  display: block;
+  height: 20px;
+  width: auto;
+  flex-shrink: 0;
+}
+.brand-name {
+  font-family: #{$font-family-headings};
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--body-font-color);
+}
+.brand-docs {
+  font-family: #{$font-family-headings};
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--content-link-color);
+  margin-left: -3px;
+}
+
+.bd-sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+// ── Segmented light/dark switch ─────────────────────────────────
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  background: var(--expand-box-background);
+  border: 1px solid var(--dropdown-border-color);
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.theme-switch-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 999px;
+  color: var(--mp-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  svg { display: block; width: 12px; height: 12px; }
+  &:hover { color: var(--body-font-color); }
+}
+// Highlight the segment matching the active theme.
+[color-theme="light"] .theme-switch-opt[data-theme="light"],
+[color-theme="dark"]  .theme-switch-opt[data-theme="dark"] {
+  background: var(--nav-highlight-color);
+  color: var(--content-link-color);
+}
+
+// ── Documentation / Reference tabs (static header in the content column) ──
+.doc-tabs {
+  display: flex;
+  gap: 20px;
+}
+.doc-tab {
+  padding: 13px 2px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mp-muted) !important;
+  text-decoration: none !important;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+
+  &:hover { color: var(--body-font-color) !important; }
+  &.active {
+    color: var(--content-link-color) !important;
+    border-bottom-color: var(--content-link-color);
   }
+}
 
-  @include media-breakpoint-down(lg) {
-    margin-top: 0 !important;
-    font-size: 1rem !important;
-  }
+// ── Search ──────────────────────────────────────────────────────
+.search-container {
+  flex: 0 0 auto;
+  padding: 0 1rem 0.85rem;
 
-  .nav-container, .bd-links {
-    margin: 0.35rem 0;
-    border-left-width: 3px;
-    border-left-style: solid;
-    border-left-color: transparent;
-    padding-left: 10px;
+  #docSearch { width: 100%; }
 
-    @include media-breakpoint-down(lg) {
-      margin: .7rem 0 !important;
-    }
+  // On phones, search moves to the top bar (the DocSearch button stays in the
+  // DOM here, just hidden, so the modal still initialises).
+  @include media-breakpoint-down(lg) { display: none; }
+}
 
-    a {
-      text-decoration: none !important;
-      color: var(--body-font-color) !important;
-    }
+// ── Mobile Documentation/Reference switcher (sidebar drawer) ─────
+// A dropdown whose toggle always shows the current section.
+.doc-switch {
+  flex: 0 0 auto;
+  margin: 0 1rem 0.85rem;
+}
+.doc-switch-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--body-font-color);
+  background: var(--expand-box-background);
+  border: 1px solid var(--dropdown-border-color);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.doc-switch-caret {
+  flex-shrink: 0;
+  color: var(--mp-muted);
+  transition: transform 0.15s ease;
+}
+.doc-switch-toggle[aria-expanded="true"] .doc-switch-caret { transform: rotate(180deg); }
 
-    &.active-parent {
-      border-left-color: #{$mp-purple} !important;
+.doc-switch-menu.dropdown-menu {
+  width: 100%;
+  padding: 4px;
+  background: var(--dropdown-background);
+  border: 1px solid var(--dropdown-border-color);
+  border-radius: 8px;
 
-    }
-    &:hover, &.active {
-      color: var(--body-color);
-      border-left-color: #{$mp-purple};
-      background-color: var(--nav-highlight-color) !important;
-    }
-  }
-
-  .nav-section {
-    cursor: pointer;
-    font-size: 0.75rem;
+  .dropdown-item {
+    padding: 7px 10px;
+    font-size: 0.9rem;
     font-weight: 600;
-    letter-spacing: 0.06em;
+    border-radius: 6px;
+    color: var(--body-font-color);
+
+    &:hover, &:focus {
+      background: var(--nav-highlight-color);
+      color: var(--body-font-color);
+    }
+    &.active {
+      background: var(--nav-highlight-color);
+      color: var(--content-link-color) !important;
+    }
+  }
+}
+
+// ── Scrolling nav area ──────────────────────────────────────────
+.bd-sidebar-scroll {
+  padding: 1rem 0.75rem 2.5rem;
+
+  @include media-breakpoint-up(lg) {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+// ── Nav tree ────────────────────────────────────────────────────
+.bd-links-nav {
+  font-size: 0.9rem;
+
+  a { text-decoration: none !important; }
+
+  .nav-group { margin-bottom: 1.5rem; }
+
+  .nav-group-label {
+    font-size: 0.7rem;
+    font-weight: 600;
     text-transform: uppercase;
-    color: var(--mp-muted, #{$mp-muted}) !important;
-    margin-top: 0.75rem;
-    border-left-color: transparent !important;
+    letter-spacing: 0.08em;
+    color: var(--mp-muted);
+    margin-bottom: 0.4rem;
+    padding-left: 10px;
+  }
 
-    a {
-      color: inherit !important;
-      pointer-events: none;
-    }
+  // Section header, and top-level pages (Concepts, API Reference)
+  .nav-section-link {
+    display: block;
+    color: var(--body-font-color) !important;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 6px;
+    margin-top: 0.15rem;
 
-    &.active-parent {
-      color: var(--body-font-color) !important;
-      border-left-color: transparent !important;
-    }
+    &:hover { color: var(--content-link-color) !important; }
+    &.active { color: var(--content-link-color) !important; }
+  }
+
+  // Child page links, nested under a section header
+  .nav-children {
+    display: flex;
+    flex-direction: column;
+    margin: 2px 0 6px;
+  }
+
+  .bd-links {
+    display: block;
+    color: var(--mp-muted) !important;
+    padding: 4px 10px 4px 16px;
+    margin-left: 10px;
+    border-left: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
 
     &:hover {
-      background-color: transparent !important;
       color: var(--body-font-color) !important;
-      border-left-color: transparent !important;
+      border-left-color: var(--mp-muted);
+    }
+    &.active {
+      color: var(--content-link-color) !important;
+      border-left-color: var(--content-link-color);
+      font-weight: 500;
     }
   }
+}
 
-  .nav-section-chevron {
-    transition: transform 0.2s ease;
-    color: var(--mp-muted, #{$mp-muted});
-    align-self: center;
-    flex-shrink: 0;
-  }
-
-  [aria-expanded="true"] .nav-section-chevron {
-    transform: rotate(90deg);
-  }
-
-  // Nest child page links beneath their uppercase section header so the
-  // section/page hierarchy reads at a glance.
-  .collapse {
-    margin-left: 5px;
-
-    .bd-links {
-      padding-left: 16px;
-      font-size: 0.9rem;
-    }
-  }
-
-  .sidebar-icon {
-    display: none !important;
-  }
-
-  .sidebar-control-container {
-
-    .sidebar-checkbox{
-      display: none !important;
-    }
-
-    .sidebar-label {
-      &.collapsed{
-
-        svg.sidebar-icon.plus {
-          display: block !important;
-          color: var(--body-font-color);
-          opacity: 1;
-        }
-        svg.sidebar-icon.x {
-          display: none !important;
-          color: var(--body-font-color);
-          opacity: 1;
-        }
-      }
-      &:not(.collapsed){
-
-        svg.sidebar-icon.plus {
-          display: none !important;
-          color: var(--body-font-color);
-          opacity: 1;
-        }
-        svg.sidebar-icon.x {
-          display: block !important;
-          color: var(--body-font-color);
-          opacity: 1;
-        }
-      }
-    }
+// ── Mobile drawer ───────────────────────────────────────────────
+@include media-breakpoint-down(lg) {
+  .bd-sidebar-container.offcanvas-lg {
+    background-color: var(--body-background);
+    width: 320px;
   }
 }

@@ -3,12 +3,15 @@
 .bd-toc {
   color: var(--toc-font-color);
 
+  // Drop the "On this page" navigation on phones/tablets.
+  @include media-breakpoint-down(lg) { display: none; }
+
   @include media-breakpoint-up(lg) {
     align-self: start;
     position: sticky;
-    top: 4.5rem;
+    top: 3.5rem;
     z-index: 2;
-    max-height: calc(100vh - 4.5rem);
+    max-height: calc(100dvh - 5rem);
     overflow-y: auto;
     border-left: 1px solid var(--dropdown-border-color);
     padding-left: 18px;

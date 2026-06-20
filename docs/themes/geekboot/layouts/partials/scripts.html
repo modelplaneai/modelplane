@@ -19,3 +19,28 @@
     });
 
 </script>
+
+<script>
+  // Segmented light/dark switch. Each segment sets a specific theme and writes
+  // the same `darkSwitch` localStorage key the early theme bootstrap
+  // (stylesheet-cached) reads, so the choice persists and applies before first
+  // paint on the next load. The active segment is shown via CSS keyed off
+  // <html color-theme>, so no JS class toggling is needed.
+  (function () {
+    document.querySelectorAll('.theme-switch-opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var theme = btn.getAttribute('data-theme');
+        document.documentElement.setAttribute('color-theme', theme);
+        try { localStorage.setItem('darkSwitch', theme); } catch (e) {}
+      });
+    });
+
+    // Mobile search icon (top bar) opens the DocSearch modal.
+    document.querySelectorAll('.docs-topbar-search').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var b = document.querySelector('.DocSearch-Button');
+        if (b) b.click();
+      });
+    });
+  })();
+</script>

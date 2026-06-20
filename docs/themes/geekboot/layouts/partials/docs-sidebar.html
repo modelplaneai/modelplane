@@ -1,50 +1,56 @@
 {{ $current := . }}
+{{ $root := .Site.Home }}
+{{ $isRef := eq $current.Params.product "crds" }}
+
+{{/* Home + top-level regular pages + sections, ordered by weight. The home page
+     itself is excluded from the list (the sidebar brand links to it). */}}
+{{ $allItems := (slice $root | append $root.RegularPages | append $root.Sections).ByWeight }}
 
 <nav class="bd-links-nav w-100" aria-label="Docs navigation">
-  {{ $root := .Site.Home }}
-  {{ $allItems := (slice $root | append $root.RegularPages | append $root.Sections).ByWeight }}
 
-  {{ range $allItems }}
-    {{ $id := substr (sha1 .Permalink) 0 8 }}
-    {{ $isSection := .IsSection }}
-    {{ $expand := or (eq $current .) (eq $current.FirstSection .) }}
-
-    {{ if not .Page.Params.tocHidden }}
-      <div class="section-container container pe-0 pt-1">
-        {{ if $isSection }}
-          <div class="container nav-container nav-section pe-0 d-flex w-100 {{if $expand}}active-parent{{end}}"
-               data-bs-toggle="collapse" data-bs-target="#collapse-{{$id}}"
-               aria-expanded="{{if $expand}}true{{else}}false{{end}}"
-               role="button">
-            <a class="d-flex w-100 border-0" href="{{.Permalink}}">{{ .Title }}</a>
-            <svg class="nav-section-chevron bi flex-shrink-0 ms-1" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
-            </svg>
-          </div>
-        {{ else }}
-          <div class="container nav-container pe-0 d-flex w-100 {{if eq . $current}}active{{end}}">
-            <a class="d-flex w-100 border-0" href="{{.Permalink}}">{{ .Title }}</a>
-          </div>
+  {{ if $isRef }}
+    {{/* ── Reference tab: the API reference and its CRD kinds ── */}}
+    {{ range $allItems }}
+      {{ if eq .Params.product "crds" }}
+        {{ $ref := . }}
+        {{ $kinds := slice }}
+        {{ range $plural, $dir := $.Site.Data.apis.crds }}
+          {{ if $dir.definition }}{{ $kinds = $kinds | append $dir.definition.spec.names.kind }}{{ end }}
         {{ end }}
-
-        {{ if $isSection }}
-          <div class="collapse {{if $expand}}show{{end}}" id="collapse-{{$id}}">
-            {{ range .Pages.ByWeight }}
-              {{ if not .Page.Params.tocHidden }}
-                <div class="container flex-row">
-                  <div class="d-flex flex-column">
-                    <a class="bd-links d-flex {{if eq $current .}}active{{end}}" href="{{.Permalink}}">{{.Title}}</a>
-                  </div>
-                </div>
+        <div class="nav-group">
+          <a class="nav-section-link nav-top-link{{ if eq . $current }} active{{ end }}" href="{{ $ref.Permalink }}">{{ $ref.Title }}</a>
+          {{ with $kinds }}
+            <div class="nav-children">
+              {{ range (sort .) }}
+                <a class="bd-links d-flex" href="{{ $ref.Permalink }}#crd-{{ . | lower }}">{{ . }}</a>
               {{ end }}
-            {{ end }}
+            </div>
+          {{ end }}
+        </div>
+      {{ end }}
+    {{ end }}
+  {{ else }}
+    {{/* ── Documentation tab: every non-reference section and page ── */}}
+    {{ range $allItems }}
+      {{ if and (ne . $root) (ne .Params.product "crds") (not .Params.tocHidden) }}
+        {{ if .IsSection }}
+          <div class="nav-section-static">
+            <a class="nav-section-link{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
           </div>
+          {{ with .Pages.ByWeight }}
+            <div class="nav-children">
+              {{ range . }}
+                {{ if not .Params.tocHidden }}
+                  <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
+                {{ end }}
+              {{ end }}
+            </div>
+          {{ end }}
+        {{ else }}
+          <a class="nav-section-link nav-top-link{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
         {{ end }}
-      </div>
+      {{ end }}
     {{ end }}
   {{ end }}
 
-  {{ if not ($.Param "docs") }}
-    {{ partialCached "sidebar/user-docs" . }}
-  {{ end }}
 </nav>

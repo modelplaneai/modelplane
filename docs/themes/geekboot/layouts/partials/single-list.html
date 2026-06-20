@@ -1,16 +1,44 @@
+{{ $ref := index (where .Site.RegularPages "Params.product" "crds") 0 }}
+{{ $isRef := eq .Params.product "crds" }}
 <div class="bd-layout docs-container" data-bs-spy="scroll" data-bs-target="#TableOfContents" data-bs-threshold="0,1" data-bs-root-margin="0% 0% -75%">
   <aside class="bd-sidebar">
-    <div class="offcanvas-lg offcanvas-start bd-sidebar-container" tabindex="-1" id="bdSidebar" aria-labelledby="bdSidebarOffcanvasLabel">
-      <div class="offcanvas-header pb-4 border-bottom">
-        <div class="d-flex offcanvas-title fw-bold" id="bdNavbarOffcanvasLabel">
-          Documentation
+    <div class="offcanvas-lg offcanvas-start bd-sidebar-container" tabindex="-1" id="bdSidebar" aria-labelledby="bdSidebarLabel">
+      <div class="bd-sidebar-header">
+        {{ partial "brand" (dict "ctx" . "class" "bd-sidebar-brand") }}
+        <div class="bd-sidebar-actions">
+          {{ partial "theme-switch" (dict "withId" true) }}
+          <button type="button" class="btn-close d-lg-none" data-bs-dismiss="offcanvas" data-bs-target="#bdSidebar" aria-label="Close navigation"></button>
         </div>
-        <div class="d-flex"><button type="button" class="btn-close bi align-self-center p-0" data-bs-dismiss="offcanvas" aria-label="Close" data-bs-target="#bdSidebar"></button></div>
       </div>
-      {{ partial "left-nav" . }}
+      {{ partialCached "search-button" . }}
+      {{ if $ref }}
+        <div class="doc-switch dropdown d-lg-none">
+          <button class="doc-switch-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Switch documentation section">
+            <span>{{ if $isRef }}Reference{{ else }}Documentation{{ end }}</span>
+            <svg class="doc-switch-caret" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>
+          </button>
+          <ul class="dropdown-menu doc-switch-menu">
+            <li><a class="dropdown-item{{ if not $isRef }} active{{ end }}" href="{{ .Site.Home.Permalink }}">Documentation</a></li>
+            <li><a class="dropdown-item{{ if $isRef }} active{{ end }}" href="{{ $ref.Permalink }}">Reference</a></li>
+          </ul>
+        </div>
+      {{ end }}
+      <div class="offcanvas-body bd-sidebar-scroll">
+        {{ partial "docs-sidebar" . }}
+      </div>
+    </div>
   </aside>
 
   <main class="bd-main order-1">
+    {{ if $ref }}
+    <header class="doc-content-nav">
+      <nav class="doc-tabs" aria-label="Documentation sections">
+        <a class="doc-tab{{ if not $isRef }} active{{ end }}" href="{{ .Site.Home.Permalink }}">Documentation</a>
+        <a class="doc-tab{{ if $isRef }} active{{ end }}" href="{{ $ref.Permalink }}">Reference</a>
+      </nav>
+    </header>
+    {{ end }}
+    <div class="bd-main-grid">
     <div class="bd-intro pt-2 ps-lg-2">
       <div class="d-md-flex flex-md-row-reverse align-items-center justify-content-between">
         <div class="mb-3 mb-md-0 d-flex">
@@ -91,6 +119,7 @@
           {{ .Content }}
         {{ end }}
       </div>
+    </div>
   </main>
 </div>
 

@@ -1,19 +1,28 @@
 @mixin code-theme-light {
 
-  --code-block-background-color: #{$fog-50};
+  --code-block-background-color: #{$fog-0};
   --code-line-number-color: #{$fog-500};
 
-  /* Light code theme — dark text on a light surface, brand-coordinated tokens. */
+  /* Light code theme — dark text on a white surface, brand-coordinated tokens. */
+
+  // White code blocks need a border to read against the white page. The default
+  // code colour from the base mixin is near-white, so force dark text here at a
+  // matching specificity (kubectl/shell lines are plain, uncoloured text).
+  .highlight {
+    border: 1px solid #{$fog-150};
+    .chroma,
+    .chroma code { color: #{$fog-1000}; }
+  }
 
   /* Background */
   .bg {
     color: #{$fog-1000};
-    background-color: #{$fog-50};
+    background-color: #{$fog-0};
   }
   /* PreWrapper */
   .chroma {
     color: #{$fog-1000};
-    //background-color: #{$fog-50};
+    //background-color: #{$fog-0};
 
     // Override the base mixin's near-white default code colour so unhighlighted
     // tokens (plain names, punctuation) stay legible on the light surface.
