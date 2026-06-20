@@ -35,6 +35,8 @@ jobs:
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: log-lines = 500
 
       # Cache Nix store paths in the GitHub Actions cache so builds reuse work
       # across runs. use-flakehub is off so artifacts stay in the Actions cache
@@ -76,6 +78,8 @@ jobs:
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: log-lines = 500
 
       # See the check job for why use-flakehub is off.
       - name: Cache Nix store
