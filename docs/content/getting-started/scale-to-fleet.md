@@ -105,14 +105,14 @@ kubectl get modelreplica -n ml-team
 
 {{< tabs >}}
 {{< tab "EKS" >}}
-```shell
+```shell {nocopy=true}
 NAME              CLUSTER        SYNCED   READY   COMPOSITION                   AGE
 qwen-demo-7323a   eks-us-west      True     True    modelreplicas.modelplane.ai   8m
 qwen-demo-92535   eks-eu-central   True     True    modelreplicas.modelplane.ai   29m
 ```
 {{< /tab >}}
 {{< tab "GKE" >}}
-```shell
+```shell {nocopy=true}
 NAME              CLUSTER        SYNCED   READY   COMPOSITION                   AGE
 qwen-demo-7323a   gpu-us-west   True     True    modelreplicas.modelplane.ai   8m
 qwen-demo-92535   gpu-us-east   True     True    modelreplicas.modelplane.ai   29m

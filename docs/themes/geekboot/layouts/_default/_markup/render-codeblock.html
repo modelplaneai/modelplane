@@ -1,0 +1,16 @@
+{{ if .Attributes.nocopy }}
+  {{ highlight .Inner .Type "linenos=false" }}
+{{ else }}
+<div class="code-card">
+  <div class="code-card__header">
+    {{ with .Type }}<span class="code-card__name">{{ . }}</span>{{ end }}
+    <div class="code-card__actions">
+      <button class="code-card__btn code-card__copy" type="button" aria-label="Copy contents" title="Copy contents">
+        <svg class="icon-main" width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0z"/></svg>
+        <svg class="icon-check" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M13.485 1.929a.75.75 0 0 1 .086 1.057l-7 8.5a.75.75 0 0 1-1.117.063l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.92 2.92 6.494-7.894a.75.75 0 0 1 1.057-.086z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="code-card__body">{{ highlight .Inner .Type "linenos=false" }}</div>
+</div>
+{{ end }}

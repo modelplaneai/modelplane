@@ -249,7 +249,7 @@ To see which cluster the scheduler chose:
 kubectl get modelreplica -n ml-team
 ```
 
-```shell
+```shell{nocopy=true}
 NAME              CLUSTER       SYNCED   READY   COMPOSITION                   AGE
 qwen-demo-7323a   eks-us-east   True     True    modelreplicas.modelplane.ai   12m
 ```
@@ -285,7 +285,7 @@ kubectl run -i --rm curl-test \
 
 You should get a response in a few seconds:
 
-```json
+```json {nocopy=true}
 {
   "id": "chatcmpl-217f0efa-4b57-40bb-a7dc-f31047a9ba45",
   "object": "chat.completion",
