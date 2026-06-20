@@ -102,6 +102,17 @@
     transform: rotate(90deg);
   }
 
+  // Nest child page links beneath their uppercase section header so the
+  // section/page hierarchy reads at a glance.
+  .collapse {
+    margin-left: 5px;
+
+    .bd-links {
+      padding-left: 16px;
+      font-size: 0.9rem;
+    }
+  }
+
   .sidebar-icon {
     display: none !important;
   }

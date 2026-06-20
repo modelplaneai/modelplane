@@ -124,14 +124,14 @@ let
       '';
 in
 {
-  # The built static site, served under modelplane.ai/docs/.
+  # The built static site, served at docs.modelplane.ai.
   site = mkSite {
     name = "modelplane-docs";
     baseURL =
       let
         envBaseURL = builtins.getEnv "HUGO_BASEURL";
       in
-      if envBaseURL != "" then envBaseURL else "https://modelplane.ai/docs/";
+      if envBaseURL != "" then envBaseURL else "https://docs.modelplane.ai/";
   };
 
   # Lint docs prose with Vale. Merges the network-synced style packages with the

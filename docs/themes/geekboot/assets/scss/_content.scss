@@ -9,6 +9,9 @@ body {
 .bd-content {
   font-size: $body-font-size;
   line-height: 1.6;
+  // Cap the measure for readability on wide screens; wide elements (tables,
+  // mermaid, code) scroll within their own containers.
+  max-width: 52rem;
 
   code {
     background-color: var(--code-background);
@@ -64,8 +67,10 @@ blockquote {
 
 h1,h2,h3,h4,h5,h6 {
   padding-top: 1rem;
-  font-weight: 900;
-  line-height: 1.25;
+  font-family: #{$font-family-headings};
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 
   &.accordion-header {
     padding-top: 0 !important;
