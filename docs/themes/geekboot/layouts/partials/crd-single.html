@@ -1,0 +1,133 @@
+{{/*
+  Renders one CRD type page (product: crd). The page's plural param selects the
+  definition from site.Data.apis.crds; the example comes from the validated
+  manifest at examples/reference/<plural>.yaml. The header leads with the kind,
+  a description and a link to its concept doc, then an apiVersion/kind/scope
+  strip; spec and status follow, with deep objects promoted to their own named
+  sections (apiBuilder/collectTypes + fieldList). The H1 is in single-list.html.
+*/}}
+{{ $plural := .Params.plural }}
+{{ $crd := "" }}
+{{ with index site.Data.apis.crds $plural }}{{ $crd = .definition }}{{ end }}
+
+{{ with $crd }}
+  {{ $kind   := .spec.names.kind }}
+  {{ $group  := .spec.group }}
+  {{ $scope  := .spec.scope }}
+  {{ $shorts := .spec.names.shortNames }}
+
+  {{ range $versionItem := .spec.versions }}
+    {{ if $versionItem.served }}
+      {{ $version      := $versionItem.name }}
+      {{ $schema       := $versionItem.schema.openAPIV3Schema }}
+      {{ $specSchema   := index $schema.properties "spec" }}
+      {{ $statusSchema := index $schema.properties "status" }}
+      {{ $exampleRes   := resources.Get (printf "examples/reference/%s.yaml" $plural) }}
+
+      <div class="api-ref">
+
+        {{/* Lead description (schema, else the concept doc's) + link to it. */}}
+        {{ $concept := "" }}
+        {{ with index site.Data.apigroups.concepts $kind }}{{ $concept = site.GetPage . }}{{ end }}
+        {{ $lead := $.Params.description }}
+        {{ if not $lead }}{{ with $concept }}{{ $lead = .Description }}{{ end }}{{ end }}
+        {{ with $lead }}<p class="api-ref__lead">{{ . | markdownify }}</p>{{ end }}
+        {{ with $concept }}
+          <p class="api-ref__concept"><a href="{{ .Permalink }}">Concept guide: {{ .Title }} &rarr;</a></p>
+        {{ end }}
+
+        {{/* The CRD's own subsections (Metadata / Example / Spec / Status) are
+             lighter headings so they read as nested under the resource above,
+             distinct from the embedded-object sections below. */}}
+        <h3 class="api-ref__section api-ref__subsection" id="metadata"><a class="api-ref__heading-anchor" href="#metadata" aria-label="Link to Metadata">#</a>Metadata</h3>
+        <dl class="api-ref__meta">
+          <div><dt>API version</dt><dd><code>{{ $group }}/{{ $version }}</code></dd></div>
+          <div><dt>Kind</dt><dd><code>{{ $kind }}</code></dd></div>
+          <div><dt>Scope</dt><dd>{{ $scope }}</dd></div>
+          {{ with $shorts }}<div><dt>Short names</dt><dd>{{ range . }}<code>{{ . }}</code> {{ end }}</dd></div>{{ end }}
+        </dl>
+
+        {{ with $exampleRes }}
+          <h3 class="api-ref__section api-ref__subsection" id="example"><a class="api-ref__heading-anchor" href="#example" aria-label="Link to Example">#</a>Example</h3>
+          <details class="api-ref__example-wrap" open>
+            <summary class="api-ref__example-summary">Manifest</summary>
+            <div class="api-ref__example">{{ highlight .Content "yaml" "linenos=false" }}</div>
+          </details>
+        {{ end }}
+
+        {{/* Collect the promoted types reachable from spec/status (deduped, in
+             reference order) so we can render one named section per type. */}}
+        {{ $types := newScratch }}
+        {{ with $specSchema }}{{ partial "apiBuilder/collectTypes" (dict "props" .properties "path" "spec" "kind" $kind "scratch" $types) }}{{ end }}
+        {{ with $statusSchema }}{{ partial "apiBuilder/collectTypes" (dict "props" .properties "path" "status" "kind" $kind "scratch" $types) }}{{ end }}
+
+        {{ with $specSchema }}
+          <h3 class="api-ref__section api-ref__subsection" id="spec"><a class="api-ref__heading-anchor" href="#spec" aria-label="Link to Spec">#</a>Spec</h3>
+          {{ with .description }}<p class="api-block__desc">{{ . | markdownify }}</p>{{ end }}
+          {{ partial "apiBuilder/fieldList" (dict "props" .properties "required" .required "path" "spec" "kind" $kind) }}
+        {{ end }}
+
+        {{ with $statusSchema }}{{ if .properties }}
+          <h3 class="api-ref__section api-ref__subsection" id="status"><a class="api-ref__heading-anchor" href="#status" aria-label="Link to Status">#</a>Status</h3>
+          {{ partial "apiBuilder/fieldList" (dict "props" .properties "required" .required "path" "status" "kind" $kind) }}
+        {{ end }}{{ end }}
+
+        {{/* Subresources the API server exposes for this kind (scale, status). */}}
+        {{ with $versionItem.subresources }}
+          <h3 class="api-ref__section api-ref__subsection" id="subresources"><a class="api-ref__heading-anchor" href="#subresources" aria-label="Link to Subresources">#</a>Subresources</h3>
+          <div class="api-field-list">
+            {{ range $sub, $cfg := . }}
+              <div class="api-field" id="subresource-{{ $sub }}">
+                <div class="api-field__header">
+                  <a class="api-field__anchor" href="#subresource-{{ $sub }}" aria-label="Link to {{ $sub }}">#</a>
+                  <span class="api-field__name">{{ $sub }}</span>
+                  <span class="api-field__badges"><span class="dataType object">subresource</span></span>
+                </div>
+                <div class="api-field__body">
+                  {{ if eq $sub "scale" }}
+                    <p class="api-field__desc">A scale subresource, so <code>kubectl scale</code> and replica-based autoscalers can drive it.</p>
+                  {{ else if eq $sub "status" }}
+                    <p class="api-field__desc">The status subresource is enabled; status is updated independently of spec.</p>
+                  {{ end }}
+                </div>
+                {{ if eq $sub "scale" }}
+                  <div class="api-field-list api-field-list--nested">
+                    <div class="api-field" id="subresource-scale.specReplicasPath">
+                      <div class="api-field__header">
+                        <a class="api-field__anchor" href="#subresource-scale.specReplicasPath" aria-label="Link to specReplicasPath">#</a>
+                        <span class="api-field__name">specReplicasPath</span>
+                        <span class="api-field__badges"><span class="dataType string">{{ $cfg.specReplicasPath }}</span></span>
+                      </div>
+                      <div class="api-field__body"><p class="api-field__desc">JSONPath to the desired replica count in spec.</p></div>
+                    </div>
+                    <div class="api-field" id="subresource-scale.statusReplicasPath">
+                      <div class="api-field__header">
+                        <a class="api-field__anchor" href="#subresource-scale.statusReplicasPath" aria-label="Link to statusReplicasPath">#</a>
+                        <span class="api-field__name">statusReplicasPath</span>
+                        <span class="api-field__badges"><span class="dataType string">{{ $cfg.statusReplicasPath }}</span></span>
+                      </div>
+                      <div class="api-field__body"><p class="api-field__desc">JSONPath to the observed replica count in status.</p></div>
+                    </div>
+                  </div>
+                {{ end }}
+              </div>
+            {{ end }}
+          </div>
+        {{ end }}
+
+        {{/* Embedded objects, each its own top-level object section (peers of the
+             CRD), tagged and set off by a rule above so they don't read as
+             subsections of the resource. Fields keep their original path so
+             nested promoted refs still resolve. */}}
+        {{ range $name := $types.Get "order" }}
+          {{ $node := index ($types.Get "nodes") $name }}
+          <hr class="api-ref__object-divider">
+          <h2 class="api-ref__section api-ref__object-section" id="{{ anchorize $name }}"><a class="api-ref__heading-anchor" href="#{{ anchorize $name }}" aria-label="Link to {{ $name }}">#</a>{{ $name }} <span class="api-ref__type-tag">object</span></h2>
+          {{ with $node.desc }}<p class="api-block__desc">{{ . | markdownify }}</p>{{ end }}
+          {{ partial "apiBuilder/fieldList" (dict "props" $node.props "required" $node.required "path" $node.path "kind" $kind) }}
+        {{ end }}
+
+      </div>{{/* .api-ref */}}
+    {{ end }}
+  {{ end }}
+{{ end }}

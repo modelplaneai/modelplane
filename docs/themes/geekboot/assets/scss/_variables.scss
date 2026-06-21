@@ -4,8 +4,8 @@
 $bd-callout-variants: info, warning, danger !default;
 $font-family-sans-serif:      "Inter", -apple-system, BlinkMacSystemFont, sans-serif !default;
 $font-family-monospace:       "DM Mono", "Fira Code", monospace !default;
-// Display/heading face from the Modelplane stylescape.
-$font-family-headings:        "Outfit", "Inter", -apple-system, BlinkMacSystemFont, sans-serif !default;
+// Headings use the same face as body (Inter); no separate display face.
+$font-family-headings:        "Inter", -apple-system, BlinkMacSystemFont, sans-serif !default;
 // These three are set by Bootstrap before _variables.scss runs (Bootstrap
 // is imported first in docs.scss), so !default has no effect on Bootstrap's
 // output. The actual overrides live in _modelplane.scss body { font-size; line-height }.

@@ -1,0 +1,17 @@
+{{/*
+  Returns the promoted type ({name, description?}) from
+  site.Data.apigroups.promotedTypes that applies to the current CRD and field
+  path, or false. An entry matches when the current `kind` is in its `kinds`
+  list (or it has no `kinds`, meaning any) AND the field's dotted `path` ends
+  with its `matchSuffix`.
+
+  Parameters: path (dotted field path), kind (current CRD kind)
+*/}}
+{{ $match := false }}
+{{ $kind := .kind }}
+{{ $path := .path }}
+{{ range site.Data.apigroups.promotedTypes }}
+  {{ $kindOK := or (not .kinds) (in .kinds $kind) }}
+  {{ if and $kindOK (hasSuffix $path .matchSuffix) }}{{ $match = . }}{{ end }}
+{{ end }}
+{{ return $match }}

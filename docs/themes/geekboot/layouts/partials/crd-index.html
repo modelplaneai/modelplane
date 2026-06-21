@@ -1,0 +1,34 @@
+{{/*
+  Reference landing (product: reference). Renders the page body, then a card per
+  CRD grouped by site.Data.apigroups. Cards link to the generated per-type pages
+  and pull their summary from the page Description, so new CRDs appear here once
+  they're added to a group.
+*/}}
+{{ .Content }}
+
+{{ range site.Data.apigroups.groups }}
+  <section class="api-index-group">
+    <h2 id="{{ .id }}">{{ .title }}</h2>
+    {{ with .description }}<p>{{ . }}</p>{{ end }}
+    <div class="mp-cards mp-cards--2">
+      {{ $group := . }}
+      {{ range $group.kinds }}
+        {{ $k := . }}
+        {{ range $plural, $dir := site.Data.apis.crds }}
+          {{ $crd := $dir.definition }}
+          {{ if and $crd (eq $crd.spec.names.kind $k) }}
+            {{ $page := site.GetPage (printf "/reference/%s" $plural) }}
+            {{ with $page }}
+              <a class="mp-card mp-card--link" href="{{ .Permalink }}">
+                <span class="mp-card-head"><span class="mp-card-title">{{ $k }}</span></span>
+                {{ with .Description }}<span class="mp-card-note">{{ . }}</span>{{ end }}
+                <span class="mp-card-link">&rarr;</span>
+              </a>
+            {{ end }}
+          {{ end }}
+        {{ end }}
+      {{ end }}
+    </div>
+  </section>
+{{ end }}
+

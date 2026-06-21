@@ -1,0 +1,20 @@
+{{/*
+  Lists an object's object-typed fields and promoted-type references as a single
+  level of <li>s (scalars and maps are omitted; no recursion). Used in the
+  "On this page" rail under Spec/Status and under each embedded object.
+
+  Parameters: props (properties map), path (this object's dotted/anchor path),
+              kind (CRD kind)
+*/}}
+{{ $path := .path }}
+{{ $kind := .kind }}
+{{ range $k, $v := .props }}
+  {{ $fieldPath := printf "%s.%s" $path $k }}
+  {{ $f := partial "apiBuilder/getSpecFields" $v }}
+  {{ $promoted := and $f.properties (partial "apiBuilder/promotedType" (dict "path" $fieldPath "kind" $kind)) }}
+  {{ if $promoted }}
+    <li><a href="#{{ anchorize $promoted.name }}">{{ $k }}</a></li>
+  {{ else if $f.properties }}
+    <li><a href="#{{ $fieldPath }}">{{ $k }}</a></li>
+  {{ end }}
+{{ end }}

@@ -3,7 +3,7 @@ title: Deploy a Model
 weight: 10
 description: Deploy a model to the fleet with replica count and engine configuration.
 ---
-**API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "reference#crd-modeldeployment" >}})
+**API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "/reference/modeldeployments" >}})
 <!-- vale write-good.Passive = NO -->
 A `ModelDeployment` is the ML team's primary interface. It carries everything
 needed to deploy a model to the fleet: the inference engines, replica count, and

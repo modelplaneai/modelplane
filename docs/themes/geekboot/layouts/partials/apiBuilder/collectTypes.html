@@ -1,0 +1,32 @@
+{{/*
+  Walks an object's properties (depth-first) and records every promoted type it
+  reaches into the passed-in scratch, deduped by name and kept in first-reference
+  order. crd-single uses this to know which named sections to render.
+
+  Scratch keys: "order" (ordered, unique slice of type names) and "nodes" (map
+  name → {props, required, desc}).
+
+  Parameters: props (properties map), path (dotted path), kind (CRD kind),
+              scratch (newScratch)
+*/}}
+{{ $s := .scratch }}
+{{ $path := .path }}
+{{ $kind := .kind }}
+{{ range $k, $v := .props }}
+  {{ $childPath := printf "%s.%s" $path $k }}
+  {{ $f := partial "apiBuilder/getSpecFields" $v }}
+  {{ $props := $f.properties }}
+  {{ if $props }}
+    {{ $promoted := partial "apiBuilder/promotedType" (dict "path" $childPath "kind" $kind) }}
+    {{ if $promoted }}
+      {{ $name := $promoted.name }}
+      {{ if not (in ($s.Get "order") $name) }}
+        {{ $s.Add "order" (slice $name) }}
+        {{ $s.SetInMap "nodes" $name (dict
+            "props" $props "required" $f.required "path" $childPath
+            "desc" (or $f.description $promoted.description)) }}
+      {{ end }}
+    {{ end }}
+    {{ partial "apiBuilder/collectTypes" (dict "props" $props "path" $childPath "kind" $kind "scratch" $s) }}
+  {{ end }}
+{{ end }}

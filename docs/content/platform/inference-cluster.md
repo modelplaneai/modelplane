@@ -3,7 +3,7 @@ title: Register a Cluster
 weight: 30
 description: A Kubernetes cluster registered with Modelplane for model serving.
 ---
-**API:** [`modelplane.ai/v1alpha1` · InferenceCluster]({{< ref "reference#crd-inferencecluster" >}})
+**API:** [`modelplane.ai/v1alpha1` · InferenceCluster]({{< ref "/reference/inferenceclusters" >}})
 <!-- vale write-good.Passive = NO -->
 An `InferenceCluster` represents a Kubernetes cluster configured for model
 serving. Platform teams create these to provide GPU capacity.

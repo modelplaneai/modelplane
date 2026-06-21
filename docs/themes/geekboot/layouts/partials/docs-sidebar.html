@@ -1,6 +1,9 @@
 {{ $current := . }}
 {{ $root := .Site.Home }}
-{{ $isRef := eq $current.Params.product "crds" }}
+{{ $ex := .Site.GetPage "/examples" }}
+{{ $ref := .Site.GetPage "/reference" }}
+{{ $isRef := and $ref (eq $current.Section "reference") }}
+{{ $isExamples := and $ex (eq $current.Section "examples") }}
 
 {{/* Home + top-level regular pages + sections, ordered by weight. The home page
      itself is excluded from the list (the sidebar brand links to it). */}}
@@ -9,30 +12,51 @@
 <nav class="bd-links-nav w-100" aria-label="Docs navigation">
 
   {{ if $isRef }}
-    {{/* ── Reference tab: the API reference and its CRD kinds ── */}}
-    {{ range $allItems }}
-      {{ if eq .Params.product "crds" }}
-        {{ $ref := . }}
-        {{ $kinds := slice }}
-        {{ range $plural, $dir := $.Site.Data.apis.crds }}
-          {{ if $dir.definition }}{{ $kinds = $kinds | append $dir.definition.spec.names.kind }}{{ end }}
-        {{ end }}
-        <div class="nav-group">
-          <a class="nav-section-link nav-top-link{{ if eq . $current }} active{{ end }}" href="{{ $ref.Permalink }}">{{ $ref.Title }}</a>
-          {{ with $kinds }}
-            <div class="nav-children">
-              {{ range (sort .) }}
-                <a class="bd-links d-flex" href="{{ $ref.Permalink }}#crd-{{ . | lower }}">{{ . }}</a>
+    {{/* ── Reference tab: landing, then one page per type grouped by apigroups ── */}}
+    {{ with $ref }}
+      <div class="nav-group">
+        <a class="nav-section-link nav-top-link{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
+      </div>
+    {{ end }}
+    {{ range site.Data.apigroups.groups }}
+      <div class="nav-group">
+        <div class="nav-group-label">{{ .title }}</div>
+        <div class="nav-children">
+          {{ range .kinds }}
+            {{ $k := . }}
+            {{ range $plural, $dir := $.Site.Data.apis.crds }}
+              {{ $crd := $dir.definition }}
+              {{ if and $crd (eq $crd.spec.names.kind $k) }}
+                {{ with site.GetPage (printf "/reference/%s" $plural) }}
+                  <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ $k }}</a>
+                {{ end }}
               {{ end }}
-            </div>
+            {{ end }}
           {{ end }}
         </div>
-      {{ end }}
+      </div>
+    {{ end }}
+  {{ else if $isExamples }}
+    {{/* ── Examples tab: the examples section and its recipes ── */}}
+    {{ with $ex }}
+      <div class="nav-group">
+        <div class="nav-group-label">{{ .Params.navLabel | default .Title }}</div>
+        <div class="nav-children">
+          {{ with .Params.navLanding }}
+            <a class="bd-links d-flex{{ if eq $ex $current }} active{{ end }}" href="{{ $ex.Permalink }}">{{ . }}</a>
+          {{ end }}
+          {{ range .Pages.ByWeight }}
+            {{ if not .Params.tocHidden }}
+              <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
+            {{ end }}
+          {{ end }}
+        </div>
+      </div>
     {{ end }}
   {{ else }}
-    {{/* ── Documentation tab: every non-reference section and page ── */}}
+    {{/* ── Documentation tab: every non-reference, non-examples section and page ── */}}
     {{ range $allItems }}
-      {{ if and (ne . $root) (ne .Params.product "crds") (not .Params.tocHidden) }}
+      {{ if and (ne . $root) (ne . $ref) (ne . $ex) (not .Params.tocHidden) }}
         {{ if .IsSection }}
           {{ $section := . }}
           <div class="nav-group">

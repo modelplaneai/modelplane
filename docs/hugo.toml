@@ -67,8 +67,14 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
     source = "content"
     target = "assets/content"
     includeFiles = ["**/**.png", "**/**.jpg", "**/**.jpeg", "**/**.gif"]
-  # Mount the APIs directory as Hugo data so the built-in crds partial can
-  # read definition.yaml files without a separate generation step.
+  # Defining any data mount below suppresses Hugo's default data mount, so mount
+  # the local data dir explicitly (holds apigroups.yaml, which groups the API
+  # reference). Accessible as site.Data.apigroups.
+  [[module.mounts]]
+    source = "data"
+    target = "data"
+  # Mount the APIs directory as Hugo data so the reference partials can read
+  # definition.yaml files without a separate generation step.
   # Accessible as site.Data.apis.crds.<plural>.definition
   [[module.mounts]]
     source = "../apis"

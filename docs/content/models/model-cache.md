@@ -4,7 +4,7 @@ weight: 30
 description: Stage model weights on cluster storage before serving.
 ---
 <!-- vale write-good.Passive = NO -->
-**API:** [`modelplane.ai/v1alpha1` · ModelCache]({{< ref "reference#crd-modelcache" >}})
+**API:** [`modelplane.ai/v1alpha1` · ModelCache]({{< ref "/reference/modelcaches" >}})
 
 A `ModelCache` stages a model artifact on workload-cluster storage as a
 first-class resource. Modelplane composes a ReadWriteMany PVC on each matched

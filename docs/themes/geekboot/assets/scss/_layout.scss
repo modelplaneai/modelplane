@@ -107,6 +107,8 @@
 
 .bd-intro {
   grid-area: intro;
+  // A bit of breathing room above every page heading.
+  margin-top: 1.75rem;
   padding-bottom: 1.5rem;
   min-width: 0;
 }

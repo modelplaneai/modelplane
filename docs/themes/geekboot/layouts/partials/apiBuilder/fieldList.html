@@ -1,0 +1,15 @@
+{{/*
+  Renders an object's immediate fields as .api-field rows (apiBuilder/field).
+  Used for the Spec/Status sections and each promoted-type section.
+
+  Parameters: props (properties map), required (list), path (dotted path root),
+              kind (CRD kind)
+*/}}
+<div class="api-field-list">
+  {{ $req := .required }}
+  {{ $path := .path }}
+  {{ $kind := .kind }}
+  {{ range $key, $val := .props }}
+    {{ partial "apiBuilder/field" (dict "key" $key "contents" $val "path" $path "kind" $kind "required" (in $req $key)) }}
+  {{ end }}
+</div>

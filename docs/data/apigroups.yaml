@@ -1,0 +1,71 @@
+# Groups the API reference into sections, in display order. Each kind listed
+# here gets its own generated page under /reference/<plural>/ (see
+# content/reference/_content.gotmpl), and the order here drives the sidebar,
+# the landing-page cards, and prev/next pagination. A kind absent from every
+# group still gets a page, but falls under "Other" at the end.
+groups:
+  - id: platform
+    title: Platform
+    description: >-
+      Types platform engineers author to provision GPU clusters and define the
+      hardware classes models run on.
+    kinds:
+      - InferenceGateway
+      - InferenceClass
+      - InferenceCluster
+
+  - id: models
+    title: Models
+    description: >-
+      Types ML teams author to deploy models, register endpoints, and expose
+      them behind a unified, OpenAI-compatible URL.
+    kinds:
+      - ModelDeployment
+      - ModelService
+      - ModelEndpoint
+      - ModelCache
+
+  - id: composed
+    title: Composed
+    description: >-
+      Resources Modelplane composes and manages for you. You don't author these
+      directly; they're created when you deploy models and register clusters.
+    kinds:
+      - ModelReplica
+      - EKSCluster
+      - GKECluster
+      - ServingStack
+
+# Link each kind back to its concept doc in the Documentation tab (by content
+# path). Kinds without an entry (machine-generated / infra) just omit the link.
+concepts:
+  InferenceGateway: /platform/inference-gateway
+  InferenceClass: /platform/inference-class
+  InferenceCluster: /platform/inference-cluster
+  ModelDeployment: /models/model-deployment
+  ModelService: /models/model-service
+  ModelCache: /models/model-cache
+  ModelEndpoint: /models/model-endpoint
+
+# Curated set of embedded objects promoted to their own named section on the
+# resource page (Kubernetes API-reference style). A field is promoted when the
+# current CRD kind is in `kinds` AND the field's dotted path ends with
+# `matchSuffix`; it then renders as a typed reference (`field  Name[] →`) linking
+# to the `Name` section. Objects not listed here render inline. Scoping by kind
+# keeps a suffix like `.template` from matching unrelated CRDs. This is a
+# judgment call — promote the meaningful sub-types, leave incidental nesting inline.
+promotedTypes:
+  - kinds: [ModelDeployment, ModelReplica]
+    matchSuffix: .engines.members
+    name: EngineMember
+    description: One member of an engine's gang — a role (Standalone, Leader, or Worker) with its hardware and pod template.
+  - kinds: [ModelDeployment, ModelReplica]
+    matchSuffix: .engines.members.nodeSelector
+    name: NodeSelector
+    description: The per-node device request — what devices each pod needs from its node.
+  - kinds: [ModelDeployment, ModelReplica]
+    matchSuffix: .engines.members.template
+    name: PodTemplate
+    description: >-
+      A curated subset of the Kubernetes PodTemplateSpec: the pod shape
+      Modelplane uses for a member's engine pods.

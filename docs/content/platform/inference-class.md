@@ -3,7 +3,7 @@ title: Define Hardware Classes
 weight: 20
 description: Hardware recipe defining GPU type, count, and provisioning for a node pool.
 ---
-**API:** [`modelplane.ai/v1alpha1` · InferenceClass]({{< ref "reference#crd-inferenceclass" >}})
+**API:** [`modelplane.ai/v1alpha1` · InferenceClass]({{< ref "/reference/inferenceclasses" >}})
 
 <!-- vale write-good.Passive = NO -->
 An `InferenceClass` is a tested recipe for a GPU node pool. It bundles:

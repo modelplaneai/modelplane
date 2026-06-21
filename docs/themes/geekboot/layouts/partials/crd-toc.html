@@ -1,0 +1,58 @@
+{{/*
+  Right-side "On this page": the type, then Example / Spec / Status (one level of
+  their object fields), then Embedded objects (each type, one level of its
+  fields) — via apiBuilder/tocFields. Mirrors toc.html markup for the mobile
+  dropdown and scrollspy (data-bs-spy targets #TableOfContents).
+*/}}
+<button class="btn btn-link p-md-0 mb-2 mb-md-0 text-decoration-none bd-toc-toggle d-md-none" type="button" data-bs-toggle="collapse" data-bs-target="#tocContents" aria-expanded="false" aria-controls="tocContents">
+  On this page
+  <svg class="bi d-md-none ms-2" aria-hidden="true"><use xlink:href="#chevron-expand"></use></svg>
+</button>
+<strong class="d-none d-md-block h6 my-2">On this page</strong>
+<hr class="d-none d-md-block my-2">
+<div class="collapse bd-toc-collapse" id="tocContents">
+  <nav id="TableOfContents" class="toc-tree">
+    {{ $plural := .Params.plural }}
+    {{ $crd := "" }}
+    {{ with index site.Data.apis.crds $plural }}{{ $crd = .definition }}{{ end }}
+    {{ $hasExample := resources.Get (printf "examples/reference/%s.yaml" $plural) }}
+    {{ with $crd }}
+      {{ $kind := .spec.names.kind }}
+      {{ range $v := .spec.versions }}{{ if $v.served }}
+        {{ $schema := $v.schema.openAPIV3Schema }}
+        {{ $specSchema := index $schema.properties "spec" }}
+        {{ $statusSchema := index $schema.properties "status" }}
+        {{ $types := newScratch }}
+        {{ with $specSchema }}{{ partial "apiBuilder/collectTypes" (dict "props" .properties "path" "spec" "kind" $kind "scratch" $types) }}{{ end }}
+        {{ with $statusSchema }}{{ partial "apiBuilder/collectTypes" (dict "props" .properties "path" "status" "kind" $kind "scratch" $types) }}{{ end }}
+        <ul>
+          {{/* The CRD itself, with its subsections nested under it. */}}
+          <li><a href="#content">{{ $.Title }}</a>
+            <ul>
+              <li><a href="#metadata">Metadata</a></li>
+              {{ with $hasExample }}<li><a href="#example">Example</a></li>{{ end }}
+              {{ with $specSchema }}
+                <li><a href="#spec">Spec</a>
+                  <ul>{{ partial "apiBuilder/tocFields" (dict "props" .properties "path" "spec" "kind" $kind) }}</ul>
+                </li>
+              {{ end }}
+              {{ with $statusSchema }}{{ if .properties }}
+                <li><a href="#status">Status</a>
+                  <ul>{{ partial "apiBuilder/tocFields" (dict "props" .properties "path" "status" "kind" $kind) }}</ul>
+                </li>
+              {{ end }}{{ end }}
+              {{ with $v.subresources }}<li><a href="#subresources">Subresources</a></li>{{ end }}
+            </ul>
+          </li>
+          {{/* Embedded objects: peers of the CRD, each with its own fields. */}}
+          {{ range $name := $types.Get "order" }}
+            {{ $node := index ($types.Get "nodes") $name }}
+            <li><a href="#{{ anchorize $name }}">{{ $name }}</a>
+              <ul>{{ partial "apiBuilder/tocFields" (dict "props" $node.props "path" $node.path "kind" $kind) }}</ul>
+            </li>
+          {{ end }}
+        </ul>
+      {{ end }}{{ end }}
+    {{ end }}
+  </nav>
+</div>

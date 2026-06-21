@@ -10,14 +10,22 @@
 {{/* Special handling for arrays to check if it's a list of 'items' */}}
 {{ if eq .type "array" }}
     {{ if .items }}
-        {{ $dataType = (printf "[ ]%s" .items.type) }}
+        {{ $dataType = (printf "%s[]" .items.type) }}
         {{ $dataTypeStyle = .items.type }}
         {{ $description = .items.description }}
         {{ $properties = .items.properties }}
         {{ $required = .items.required }}
     {{ else }}
-        {{ $dataType = (printf "[ ]%s" .type) }}
+        {{ $dataType = (printf "%s[]" .type) }}
     {{ end }}
+{{ end }}
+
+{{/* A map (object with additionalProperties and no fixed properties) is a leaf:
+     show it as map[string]<value> rather than a bare "object". */}}
+{{ if and (eq .type "object") (not .properties) .additionalProperties }}
+    {{ $valType := or (index .additionalProperties "type") "object" }}
+    {{ $dataType = (printf "map[string]%s" $valType) }}
+    {{ $dataTypeStyle = "object" }}
 {{ end }}
 
 {{ return (dict

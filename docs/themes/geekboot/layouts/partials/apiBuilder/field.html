@@ -1,0 +1,82 @@
+{{/*
+  Renders one schema field as an .api-field row:
+    - a promoted object (matchSuffix in promotedTypes) → a typed reference link
+      (`Name[] →` → `#Name`); its fields live in that named section, not here;
+    - any other object → its type badge plus its children inline, indented
+      (recursing — a nested object may itself be promoted and become a ref);
+    - scalars/maps/enums → a leaf row.
+  Numeric / item / length bounds render as range pills; default as a pill;
+  format / pattern in a small meta line.
+
+  Parameters: key, contents, path (parent dotted path), kind (CRD kind), required (bool)
+*/}}
+
+{{ $c         := .contents }}
+{{ $kind      := .kind }}
+{{ $items     := index $c "items" }}
+{{ $fieldPath := printf "%s.%s" .path .key }}
+{{ $fields    := partial "apiBuilder/getSpecFields" $c }}
+{{ $isEnum    := partial "apiBuilder/isEnum" $c }}
+{{ $props     := $fields.properties }}
+{{ $desc      := $fields.description }}
+{{ $default   := index $c "default" }}
+{{ $isArray   := eq (index $c "type") "array" }}
+{{ $promoted  := and $props (partial "apiBuilder/promotedType" (dict "path" $fieldPath "kind" $kind)) }}
+{{/* Inline (and recurse) only non-promoted, non-enum objects. */}}
+{{ $inline    := and $props (not $promoted) (not $isEnum) }}
+
+{{/* Range bounds. Length bounds fall back to array items (e.g. []string). */}}
+{{ $numMin := index $c "minimum" }}{{ $numMax := index $c "maximum" }}
+{{ $itMin  := index $c "minItems" }}{{ $itMax := index $c "maxItems" }}
+{{ $lenMin := index $c "minLength" }}{{ $lenMax := index $c "maxLength" }}
+{{ if $items }}
+  {{ if not $lenMin }}{{ $lenMin = index $items "minLength" }}{{ end }}
+  {{ if not $lenMax }}{{ $lenMax = index $items "maxLength" }}{{ end }}
+{{ end }}
+
+{{/* format / pattern as a small meta line (rarely present). */}}
+{{ $meta := slice }}
+{{ range $node := (slice $c $items) }}
+  {{ with $node }}
+    {{ with index . "format" }}{{ $meta = $meta | append (printf "format: %v" .) }}{{ end }}
+    {{ with index . "pattern" }}{{ $meta = $meta | append (printf "pattern: %v" .) }}{{ end }}
+  {{ end }}
+{{ end }}
+
+<div class="api-field" id="{{ $fieldPath }}">
+  <div class="api-field__header">
+    <a class="api-field__anchor" href="#{{ $fieldPath }}" aria-label="Link to {{ $fieldPath }}">#</a>
+    <span class="api-field__name">{{ .key }}</span>
+    <span class="api-field__badges">
+      {{/* required/optional, then type (enum / promoted-ref aware), then constraints, then default. */}}
+      {{ if .required }}<span class="api-ref__badge api-ref__badge-required">required</span>{{ else }}<span class="api-ref__badge api-ref__badge-optional">optional</span>{{ end }}
+      {{ if $isEnum }}
+        {{ partial "apiBuilder/enumHandler" $c }}
+      {{ else if $promoted }}
+        <a class="dataType object api-field__drill" href="#{{ anchorize $promoted.name }}">{{ $promoted.name }}{{ if $isArray }}[]{{ end }} &rarr;</a>
+      {{ else }}
+        <span class="dataType {{ $fields.dataTypeStyle }}">{{ $fields.dataType }}</span>
+      {{ end }}
+      {{ if or $numMin $numMax }}<span class="api-range">{{ if and $numMin $numMax }}{{ $numMin }}&ndash;{{ $numMax }}{{ else if $numMin }}&ge;&nbsp;{{ $numMin }}{{ else }}&le;&nbsp;{{ $numMax }}{{ end }}</span>{{ end }}
+      {{ if or $itMin $itMax }}<span class="api-range">{{ if and $itMin $itMax }}{{ $itMin }}&ndash;{{ $itMax }}{{ else if $itMin }}&ge;&nbsp;{{ $itMin }}{{ else }}&le;&nbsp;{{ $itMax }}{{ end }}&nbsp;items</span>{{ end }}
+      {{ if or $lenMin $lenMax }}<span class="api-range">{{ if and $lenMin $lenMax }}{{ $lenMin }}&ndash;{{ $lenMax }}{{ else if $lenMin }}&ge;&nbsp;{{ $lenMin }}{{ else }}&le;&nbsp;{{ $lenMax }}{{ end }}&nbsp;chars</span>{{ end }}
+      {{ with $default }}<span class="api-default">default:&nbsp;{{ . }}</span>{{ end }}
+    </span>
+  </div>
+
+  {{ if or $desc $meta }}
+    <div class="api-field__body">
+      {{ with $desc }}<p class="api-field__desc">{{ . | markdownify }}</p>{{ end }}
+      {{ with $meta }}<p class="api-field__meta"><code>{{ delimit . " · " }}</code></p>{{ end }}
+    </div>
+  {{ end }}
+
+  {{ if $inline }}
+    <div class="api-field-list api-field-list--nested">
+      {{ $req := $fields.required }}
+      {{ range $k, $v := $props }}
+        {{ partial "apiBuilder/field" (dict "key" $k "contents" $v "path" $fieldPath "kind" $kind "required" (in $req $k)) }}
+      {{ end }}
+    </div>
+  {{ end }}
+</div>

@@ -1,126 +1,188 @@
-// Styles for the generated API reference page (docs/content/reference.md).
-// Each .api-ref div is preceded by a markdown ## heading rendered by Hugo,
-// which gives the right-side TOC its entries.
+// Styles for the generated reference pages: per-type CRD pages (product: crd,
+// crd-single.html) and core-type pages (product: crd-core, core-type.html).
+// spec/status render as flat .api-block sections (one per object) of .api-field
+// rows; nested objects link to their own block, large shared sub-objects link
+// to a Core type page. One type scale is shared across every row and depth.
 
 .api-ref {
   margin-bottom: 3.5rem;
 
-  // ── Per-resource metadata row ─────────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────────
 
+  .api-ref__lead {
+    font-size: 1rem;
+    color: var(--body-font-color);
+    margin: 0.25rem 0 0.75rem;
+  }
+
+  .api-ref__concept {
+    font-size: 0.9375rem;
+    margin: 0 0 0.5rem;
+  }
+
+  // apiVersion / kind / scope / short names strip.
   .api-ref__meta {
     display: flex;
-    align-items: center;
-    gap: 0.4rem;
     flex-wrap: wrap;
-    margin-bottom: 0.6rem;
+    gap: 0.6rem 1.75rem;
+    margin: 0.5rem 0 0;
+
+    div { display: flex; flex-direction: column; gap: 0.2rem; }
+
+    dt {
+      margin: 0;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--crd-description-color);
+    }
+
+    dd { margin: 0; font-size: 0.875rem; color: var(--body-font-color); }
   }
 
-  .api-ref__crd-group { font-size: 0.8125rem; }
+  // ── Section headings (Example / Spec / Status) ────────────────────────────
 
-  .api-ref__desc {
-    color: var(--crd-description-color);
-    margin-bottom: 0.75rem;
-    font-size: 0.9375rem;
-  }
-
-  // ── spec / status section headings ───────────────────────────────────────
-
-  .api-ref__section-heading {
-    font-family: var(--bs-font-monospace);
-    font-size: 0.9375rem;
+  // Base for both heading tiers: positioning for the hanging "#" + scroll offset.
+  .api-ref__section {
+    position: relative;
     font-weight: 700;
     color: var(--crd-header-color);
-    text-transform: lowercase;
-    margin: 1.25rem 0 0;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid var(--crd-row-border);
+    scroll-margin-top: 5rem;
   }
 
-  // ── Tab navigation ────────────────────────────────────────────────────────
-
-  .api-ref__tabs {
-    margin-bottom: 0 !important;
-    border-bottom: 1px solid var(--crd-row-border) !important;
+  // Tier 2 — the CRD's own subsections (Metadata / Example / Spec / Status).
+  // Distinguished by size and spacing alone (no underline) to keep lines down.
+  .api-ref__subsection {
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--crd-description-color);
+    margin: 2rem 0 0.5rem;
   }
 
-  .api-ref__tab-content {
-    border: 1px solid var(--crd-row-border);
-    border-top: none;
+  // Tier 1 — embedded objects, peers of the CRD. Larger, and set off by a single
+  // full-width divider (api-ref__object-divider) rendered just before each one.
+  .api-ref__object-section {
+    font-size: 1.3rem;
+    margin: 0 0 0.75rem;
   }
+
+  // The divider before each embedded-object section. margin-top is the space
+  // before the divider; margin-bottom the space between it and the heading.
+  .api-ref__object-divider {
+    border: 0;
+    border-top: 1px solid var(--crd-row-border);
+    margin: 3rem 0 1.5rem;
+    opacity: 1;
+  }
+
+  // Hover "#" link on section headings — hangs in the left margin, matching the
+  // field anchors so every "#" lines up on the same left edge.
+  .api-ref__heading-anchor {
+    position: absolute;
+    left: -1.15rem;
+    top: 0;
+    color: var(--crd-row-border);
+    font-weight: 700;
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+
+  .api-ref__section:hover .api-ref__heading-anchor,
+  .api-ref__heading-anchor:focus { opacity: 1; color: var(--crd-description-color); }
 
   // ── Example code block ────────────────────────────────────────────────────
 
-  // Wrapper around Hugo's highlighted output (.highlight > .chroma); the code
-  // theme supplies the background and syntax colours for both light and dark.
+  .api-ref__example-wrap {
+    border: 1px solid var(--crd-row-border);
+    border-radius: 6px;
+    margin: 1rem 0 0;
+    overflow: hidden;
+  }
+
+  .api-ref__example-summary {
+    cursor: pointer;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--crd-header-color);
+    list-style: none;
+    user-select: none;
+
+    &::-webkit-details-marker { display: none; }
+    &:hover { background-color: var(--nav-highlight-color); }
+  }
+
   .api-ref__example {
     margin: 0;
+    border-top: 1px solid var(--crd-row-border);
 
     .highlight { margin: 0; }
   }
 
-  // ── Field list ────────────────────────────────────────────────────────────
+  // ── Promoted-type sections ────────────────────────────────────────────────
 
-  .api-field-list--nested {
-    // The left border is the tree line for this depth level.
-    // margin-left pushes the entire container right, so each additional level
-    // of nesting stacks another margin — depth indentation compounds naturally
-    // without any depth-specific selectors.
-    border-left: 2px solid var(--tree-line-color);
-    margin-left: 1.25rem;
-    background-color: var(--nav-highlight-color);
-    border-top: 1px solid var(--crd-row-border);
-
-    // No padding-left override — fields keep their normal 1.25rem horizontal
-    // padding; the margin-left on the container handles all depth indentation.
+  // A section description (Spec/Status/type intro) under the heading.
+  .api-block__desc {
+    color: var(--crd-description-color);
+    font-size: 0.875rem;
+    margin: 0.5rem 0 0;
   }
 
-  // ── Individual field block ────────────────────────────────────────────────
+  // ── Field row ─────────────────────────────────────────────────────────────
 
+  // Fields share the section heading's flush-left column. The deep-link anchor
+  // hangs in the left margin (shown on hover) so it never indents the content.
   .api-field {
     border-bottom: 1px solid var(--crd-row-border);
-    padding: 0.6rem 1.25rem;
-
-    &.api-field--object {
-      padding: 0;
-
-      .api-field__body {
-        padding: 0 1.25rem 0.6rem;
-      }
-    }
+    padding: 0.55rem 0;
+    scroll-margin-top: 5rem;
   }
 
-  // ── Field header ──────────────────────────────────────────────────────────
+  // No trailing line at the end of a section's field list (it would sit right
+  // before the next heading and read as an extra divider).
+  .api-field-list > .api-field:last-child { border-bottom: none; }
 
+  // A non-promoted object's children render inline, indented under it with a
+  // tree line. padding-left exceeds the 1.15rem anchor hang so the hover "#"
+  // sits between the tree line and the field name, never on top of the line.
+  .api-field-list--nested {
+    margin: 0.4rem 0 0.1rem 0.3rem;
+    padding-left: 1.5rem;
+    border-left: 2px solid var(--crd-row-border);
+
+    .api-field:last-child { border-bottom: none; padding-bottom: 0; }
+  }
+
+  // position:relative anchors the hanging "#" to this row's first line.
   .api-field__header {
+    position: relative;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.4rem;
   }
 
-  .api-field__toggle {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    padding: 0.6rem 1.25rem;
-    background: none;
-    border: none;
-    text-align: left;
-    color: var(--body-font-color);
-    cursor: pointer;
-
-    &:hover,
-    &[aria-expanded="true"] {
-      background-color: var(--nav-highlight-color);
-      color: var(--body-font-color);
-    }
+  .api-field__anchor {
+    position: absolute;
+    left: -1.15rem;
+    top: 50%;
+    transform: translateY(-50%); // center on the header row, whatever its height
+    color: var(--crd-row-border);
+    font-weight: 700;
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.1s ease;
   }
+
+  .api-field:hover .api-field__anchor,
+  .api-field__anchor:focus { opacity: 1; color: var(--crd-description-color); }
 
   .api-field__name {
     font-family: var(--bs-font-monospace);
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
     font-weight: 600;
     color: var(--body-font-color);
     flex: 0 0 auto;
@@ -129,78 +191,158 @@
   .api-field__badges {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.35rem;
-    flex: 1 1 auto;
   }
 
-  .api-field__chevron {
-    margin-left: auto;
-    font-size: 0.6em;
-    color: var(--crd-description-color);
-    transition: transform 0.15s ease;
-    flex: 0 0 auto;
-  }
-
-  .api-field__toggle[aria-expanded="true"] .api-field__chevron {
-    transform: rotate(90deg);
-  }
-
-  // ── Field body ────────────────────────────────────────────────────────────
-
-  .api-field__body { padding-top: 0.15rem; }
+  .api-field__body { padding-top: 0.25rem; }
 
   .api-field__desc {
     font-size: 0.875rem;
     color: var(--crd-description-color);
-    margin-bottom: 0.15rem;
+    margin: 0;
   }
 
-  // ── Type badges ───────────────────────────────────────────────────────────
+  .api-field__meta {
+    font-size: 0.8125rem;
+    color: var(--crd-description-color);
+    margin: 0.2rem 0 0;
+
+    code { font-size: inherit; }
+  }
+
+  // ── Badges: type, enum values, required/optional — one consistent pill ────
+
+  .dataType,
+  .api-ref__badge {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
 
   .dataType {
-    font-weight: 800;
-    border-radius: 4px;
-    padding: 2px 5px;
     border: 1px solid var(--body-font-color);
     color: var(--body-font-color);
-    font-size: 0.75rem;
-    white-space: nowrap;
 
     &.string  { color: var(--string-color);  border-color: var(--string-color); }
     &.integer { color: var(--integer-color); border-color: var(--integer-color); }
+    &.number  { color: var(--integer-color); border-color: var(--integer-color); }
     &.boolean { color: var(--boolean-color); border-color: var(--boolean-color); }
     &.object  { color: var(--object-color);  border-color: var(--object-color); }
   }
 
-  // ── Required / optional badges ────────────────────────────────────────────
+  // A type badge that links to another block or a Core type page.
+  .api-field__drill {
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
 
   .api-ref__badge-required {
-    display: inline-block;
-    border-radius: 4px;
-    padding: 1px 5px;
-    font-size: 0.6875rem;
-    font-weight: 800;
-    white-space: nowrap;
     color: var(--required-color);
     background-color: var(--required-background);
   }
 
   .api-ref__badge-optional {
-    display: inline-block;
-    border-radius: 4px;
-    padding: 1px 5px;
-    font-size: 0.6875rem;
-    font-weight: 800;
-    white-space: nowrap;
     color: var(--crd-description-color);
     border: 1px solid var(--crd-row-border);
   }
 
-  // ── Constraint annotations ────────────────────────────────────────────────
-
-  .api-ref__constraints {
-    color: var(--crd-description-color);
+  // Enum value chips reuse .dataType; keep the row tidy.
+  .enum {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
     font-size: 0.75rem;
-    margin-bottom: 0;
+    color: var(--crd-description-color);
+  }
+
+  // Range card: numeric / item-count / length bounds (e.g. 1–10, ≥ 1, 1–3 items).
+  .api-range {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+    color: var(--crd-description-color);
+    background-color: var(--nav-highlight-color);
+    border: 1px solid var(--crd-row-border);
+  }
+
+  // Default value: a filled pill.
+  .api-default {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+    color: var(--crd-description-color);
+    background-color: var(--nav-highlight-color);
+  }
+
+  // Enum / type-union pill — a single badge that may wrap if the list is long.
+  .api-enum { white-space: normal; }
+
+  // The "object" tag marking a top-level section as an embedded object of the
+  // CRD (vs the resource's own Spec/Status).
+  .api-ref__type-tag {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--object-color);
+    border: 1px solid var(--object-color);
+    border-radius: 999px;
+    padding: 1px 7px;
+    vertical-align: middle;
+  }
+}
+
+// Hide empty nested lists in the On-this-page rail (leaf-only objects).
+#TableOfContents ul:empty { display: none; }
+
+// Reference "On this page" is a field tree: indent each nesting level so the
+// hierarchy (engines → members → …) is visible, rather than the flat two-level
+// indent the heading-based TOC uses.
+.bd-toc nav#TableOfContents.toc-tree ul ul { padding-left: 0.85rem; }
+
+// "Custom Resource" tag next to the page H1, marking it as the top-level CRD
+// (parallel to the "object" tag on embedded-object sections).
+.api-ref__crd-tag {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--content-link-color);
+  border: 1px solid var(--content-link-color);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+// ── Reference landing: grouped type cards (outside .api-ref) ─────────────────
+
+.api-index-group {
+  margin-bottom: 2.5rem;
+
+  h2 { margin-bottom: 0.35rem; }
+
+  > p {
+    color: var(--crd-description-color);
+    font-size: 0.9375rem;
+    margin-bottom: 1rem;
   }
 }

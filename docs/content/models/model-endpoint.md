@@ -3,7 +3,7 @@ title: Route to External Providers
 weight: 40
 description: A reachable inference endpoint, composed per replica or created manually for external providers.
 ---
-**API:** [`modelplane.ai/v1alpha1` · ModelEndpoint]({{< ref "reference#crd-modelendpoint" >}})
+**API:** [`modelplane.ai/v1alpha1` · ModelEndpoint]({{< ref "/reference/modelendpoints" >}})
 <!-- vale write-good.Passive = NO -->
 A `ModelEndpoint` is a reachable inference endpoint. Modelplane composes one per
 `ModelReplica`, but ML teams can also create them manually for external SaaS

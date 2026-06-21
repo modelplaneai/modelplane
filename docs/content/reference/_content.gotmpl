@@ -1,0 +1,60 @@
+{{/*
+  Generates one reference page per CRD from the definition.yaml files mounted at
+  site.Data.apis.crds.<plural>.definition. Grouping and order come from
+  site.Data.apigroups (see docs/data/apigroups.yaml); a kind not listed in any
+  group still gets a page, sorted last under "Other".
+
+  Each page carries product=crd plus the plural/kind/group it needs; the
+  crd-single partial (via single-list.html) renders the schema. Weight encodes
+  group order (×100) then position within the group, so the section lists pages
+  Platform → Models → Infrastructure in the order authored.
+*/}}
+{{ range $plural, $dir := site.Data.apis.crds }}
+  {{ $crd := $dir.definition }}
+  {{ if $crd }}
+    {{ $kind := $crd.spec.names.kind }}
+
+    {{/* Top-level (then spec) description, for the page summary and search. */}}
+    {{ $desc := "" }}
+    {{ range $crd.spec.versions }}
+      {{ if .served }}
+        {{ $schema := .schema.openAPIV3Schema }}
+        {{ $desc = $schema.description }}
+        {{ if not $desc }}{{ with index $schema.properties "spec" }}{{ $desc = .description }}{{ end }}{{ end }}
+      {{ end }}
+    {{ end }}
+
+    {{/* Find this kind's group and order. Weights start at 1: Hugo treats a 0
+         weight as "unset" and sorts it last, which would wrap the first page. */}}
+    {{ $groupId := "other" }}
+    {{ $groupTitle := "Other" }}
+    {{ $weight := 9999 }}
+    {{ range $gi, $group := site.Data.apigroups.groups }}
+      {{ range $ki, $k := $group.kinds }}
+        {{ if eq $k $kind }}
+          {{ $groupId = $group.id }}
+          {{ $groupTitle = $group.title }}
+          {{ $weight = add (mul (add $gi 1) 100) (add $ki 1) }}
+        {{ end }}
+      {{ end }}
+    {{ end }}
+
+    {{/* path is relative to this section (content/reference/), so just the plural.
+         weight is a top-level field (drives .Pages.ByWeight / pagination order). */}}
+    {{ $.AddPage (dict
+        "path"    $plural
+        "kind"    "page"
+        "title"   $kind
+        "weight"  $weight
+        "content" (dict "mediaType" "text/markdown" "value" $desc)
+        "params"  (dict
+            "product"       "crd"
+            "plural"        $plural
+            "crdKind"       $kind
+            "apiGroup"      $groupId
+            "apiGroupTitle" $groupTitle
+            "description"   $desc
+        )
+    ) }}
+  {{ end }}
+{{ end }}
