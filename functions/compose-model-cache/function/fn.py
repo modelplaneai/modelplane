@@ -34,9 +34,17 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
-    """The object's name, which is always set on resources read from the API server."""
-    assert meta is not None and meta.name is not None
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
     return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
 
 
 # Condition types/reasons for the ModelCache XR.
@@ -239,7 +247,7 @@ class Composer:
                 api_version="v1",
                 kind="Secret",
                 match_name=auth.name,
-                namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                namespace=_namespace(self.xr.metadata),
             )
 
         # get_required_resources returns [] both when unresolved AND when
@@ -305,7 +313,7 @@ class Composer:
         pc = cluster.status.providerConfigRef.name
         name = _name(cluster.metadata)
         resource.update(
-            self.rsp.desired.resources[self._pvc_key(name)],  # ty: ignore[invalid-argument-type]  # metadata name is always set on resources read from the API server
+            self.rsp.desired.resources[self._pvc_key(name)],
             self._wrap_remote(pc, self._pvc_manifest(cluster), _PVC_READY_CEL),
         )
         # The PVC (above) composes regardless of auth: it doesn't depend on the
@@ -325,11 +333,11 @@ class Composer:
             # uses default readiness (Ready once synced).
             if self.auth_data:
                 resource.update(
-                    self.rsp.desired.resources[self._auth_key(name)],  # ty: ignore[invalid-argument-type]  # metadata name is always set on resources read from the API server
+                    self.rsp.desired.resources[self._auth_key(name)],
                     self._wrap_remote(pc, self._auth_secret_manifest()),
                 )
             resource.update(
-                self.rsp.desired.resources[self._job_key(name)],  # ty: ignore[invalid-argument-type]  # metadata name is always set on resources read from the API server
+                self.rsp.desired.resources[self._job_key(name)],
                 self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_MANAGEMENT),
             )
 
@@ -389,13 +397,13 @@ class Composer:
     # Namespace-qualified so same-named caches from different Modelplane
     # namespaces don't collide in the workload cluster's `default` namespace.
     def _pvc_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+        return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata))
 
     def _job_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "hydrate")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+        return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata), "hydrate")
 
     def _auth_secret_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "auth")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+        return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata), "auth")
 
     def _pvc_key(self, cluster_name: str) -> str:
         return f"pvc-{cluster_name}"
@@ -407,7 +415,7 @@ class Composer:
         return f"auth-{cluster_name}"
 
     def _labels(self) -> dict[str, str]:
-        return {"modelplane.ai/modelcache": self.xr.metadata.name}  # ty: ignore[unresolved-attribute, invalid-return-type]  # metadata is always set on resources read from the API server
+        return {"modelplane.ai/modelcache": _name(self.xr.metadata)}
 
     def _job_manifest(self) -> dict:
         env, command = _hf_hydration(self.xr.spec.huggingFace, self._auth_secret_name())  # ty: ignore[invalid-argument-type]  # XRD guarantees huggingFace is set
@@ -561,7 +569,7 @@ class Composer:
             )
             response.warning(
                 self.rsp,
-                f"authSecret {self.xr.metadata.namespace}/{auth.name} is missing or has no key {key!r}",  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                f"authSecret {_namespace(self.xr.metadata)}/{auth.name} is missing or has no key {key!r}",
             )
         elif any(p == PHASE_FAILED for _, p in per_cluster_phase):
             response.set_conditions(

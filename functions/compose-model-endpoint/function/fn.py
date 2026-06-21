@@ -33,6 +33,7 @@ from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.modelendpoint import v1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 SERVICE_RESOURCE_KEY = "service"
 ENDPOINTSLICE_RESOURCE_KEY = "endpointslice"
@@ -43,6 +44,13 @@ CONDITION_TYPE_ROUTING_READY = "RoutingReady"
 CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
 CONDITION_REASON_WAITING_FOR_BACKEND = "WaitingForBackend"
 CONDITION_REASON_INVALID_URL = "InvalidURL"
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
 
 
 def _address_type(host: str) -> str:
@@ -123,7 +131,7 @@ class Composer:
         Traefik's Gateway API provider explicitly rejects them. See
         https://github.com/traefik/traefik/blob/fa49e2bcad7ffd8a80accdf1fae1ae480913d93d/pkg/provider/kubernetes/gateway/kubernetes.go#L890.
         """
-        ns = self.xr.metadata.namespace  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        ns = _namespace(self.xr.metadata)
 
         resource.update(
             self.rsp.desired.resources[SERVICE_RESOURCE_KEY],

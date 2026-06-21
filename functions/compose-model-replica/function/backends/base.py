@@ -24,6 +24,21 @@ from typing import Protocol
 from crossplane.function import resource
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
 
 
 class Backend(Protocol):
@@ -75,7 +90,7 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
     ref = replica.spec.modelCacheRef
     if not ref:
         return [], []
-    pvc = cache_pvc_name(replica.metadata.namespace, ref.name)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+    pvc = cache_pvc_name(_namespace(replica.metadata), ref.name)
     # Mounted read-write (NOT readOnly): engines write into the model dir
     # (tokenizer/compile/lock artifacts), and a readOnly mount hard-fails them.
     # The PVC is ReadWriteMany, so every pod in the gang shares one read-write
@@ -275,7 +290,7 @@ def serving_resources(replica: v1alpha1.ModelReplica, provider_config: str) -> d
     /<ns>/<service>/ prefix to this replica's /<ns>/<replica>/, which the route
     strips to /.
     """
-    name = replica.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    name = _name(replica.metadata)
     service = {
         "apiVersion": "v1",
         "kind": "Service",
@@ -290,7 +305,7 @@ def serving_resources(replica: v1alpha1.ModelReplica, provider_config: str) -> d
             "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
             "rules": [
                 {
-                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{_namespace(replica.metadata)}/{name}/"}}],
                     "timeouts": {"request": REQUEST_TIMEOUT},
                     "filters": [
                         {
@@ -315,7 +330,7 @@ def serving_label(replica: v1alpha1.ModelReplica) -> str:
     The replica name, so the shared Service selects every engine's leader and
     Standalone pods.
     """
-    return replica.metadata.name  # ty: ignore[unresolved-attribute, invalid-return-type]  # metadata is always set on resources read from the API server
+    return _name(replica.metadata)
 
 
 def engine_container(member: v1alpha1.Member) -> v1alpha1.Container:
@@ -370,7 +385,7 @@ def engine_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
     LWS shared the serving Service's name, that headless Service would never be
     created, gang DNS would never resolve, and the gang could never form.
     """
-    return resource.child_name(replica.metadata.name, engine.name)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+    return resource.child_name(_name(replica.metadata), engine.name)
 
 
 def claim_template_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
@@ -384,7 +399,7 @@ def claim_template_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine,
     engine's members may claim different devices, so each claiming member gets
     its own.
     """
-    return resource.child_name(replica.metadata.name, engine.name, member_role(member), _POD_CLAIM_NAME)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+    return resource.child_name(_name(replica.metadata), engine.name, member_role(member), _POD_CLAIM_NAME)
 
 
 def engine_resources() -> dict:

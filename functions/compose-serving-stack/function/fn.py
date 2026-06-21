@@ -102,6 +102,20 @@ _GAIE_CRDS = [
 ]
 
 
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
 def _gaie_crd_key(doc: dict) -> str:
     """Stable composed-resource key for a GAIE CRD."""
     return f"gaie-crd-{doc['metadata']['name']}"
@@ -253,7 +267,7 @@ def _prometheus_release(version: str, provider_config: str) -> helmv1beta1.Relea
 
 def _pc_name(xr: v1alpha1.ServingStack) -> str:
     """Derive the ProviderConfig name from the XR."""
-    return resource.child_name(xr.metadata.name, "cluster")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+    return resource.child_name(_name(xr.metadata), "cluster")
 
 
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
@@ -315,7 +329,7 @@ class Composer:
                 source="Secret",
                 secretRef=k8spcv1alpha1.SecretRef(
                     name=kubeconfig_secret.name,
-                    namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                    namespace=_namespace(self.xr.metadata),
                     key=kubeconfig_secret.key,
                 ),
             ),
@@ -325,7 +339,7 @@ class Composer:
                 source="Secret",
                 secretRef=helmpcv1beta1.SecretRef(
                     name=kubeconfig_secret.name,
-                    namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                    namespace=_namespace(self.xr.metadata),
                     key=kubeconfig_secret.key,
                 ),
             ),
@@ -341,7 +355,7 @@ class Composer:
                 source="Secret",
                 secretRef=k8spcv1alpha1.SecretRef(
                     name=gcp_secret.name,
-                    namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                    namespace=_namespace(self.xr.metadata),
                     key=gcp_secret.key,
                 ),
             )
@@ -350,7 +364,7 @@ class Composer:
                 source="Secret",
                 secretRef=helmpcv1beta1.SecretRef(
                     name=gcp_secret.name,
-                    namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                    namespace=_namespace(self.xr.metadata),
                     key=gcp_secret.key,
                 ),
             )

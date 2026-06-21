@@ -70,6 +70,20 @@ _LABEL_INDEX = "modelplane.ai/replica-index"
 _GATEWAY_SCHEME = "http"
 
 
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
 # TODO(https://github.com/crossplane/function-sdk-python/issues/217): Replace
 # Resolution and resolve_required with the SDK helper once it lands upstream.
 class Resolution(enum.Enum):
@@ -139,10 +153,6 @@ class Composer:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelDeployment(**resource.struct_to_dict(req.observed.composite.resource))
-        # The deployment's name and namespace are always set on the observed
-        # composite read from the API server.
-        assert self.xr.metadata is not None and self.xr.metadata.name is not None
-        self.name: str = self.xr.metadata.name
 
         # Required resources — set by resolve_inputs.
         self.clusters = []
@@ -271,7 +281,7 @@ class Composer:
             api_version="modelplane.ai/v1alpha1",
             kind="ModelCache",
             match_name=ref.name,
-            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+            namespace=_namespace(self.xr.metadata),
         )
 
         resolution, cache_dict = resolve_required(self.req, "cache")
@@ -358,10 +368,10 @@ class Composer:
 
             replica = mrv1alpha1.ModelReplica(
                 metadata=metav1.ObjectMeta(
-                    name=name.replica(self.name, cluster_info),
-                    namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                    name=name.replica(_name(self.xr.metadata), cluster_info),
+                    namespace=_namespace(self.xr.metadata),
                     labels={
-                        _LABEL_DEPLOYMENT: self.name,
+                        _LABEL_DEPLOYMENT: _name(self.xr.metadata),
                         _LABEL_CLUSTER: cluster_info.name,
                         _LABEL_INDEX: str(cluster_info.index),
                     },
@@ -466,8 +476,8 @@ class Composer:
             # The replica name (== the ModelReplica and the backend's workload
             # resources) is the per-placement routing key. Must match the name
             # composed in compose_replicas so routing lands on this replica.
-            replica_name = name.replica(self.name, cluster_info)
-            rewrite_path = f"/{self.xr.metadata.namespace}/{replica_name}/"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+            replica_name = name.replica(_name(self.xr.metadata), cluster_info)
+            rewrite_path = f"/{_namespace(self.xr.metadata)}/{replica_name}/"
             endpoint_key = name.endpoint_key(cluster_info)
             url = f"{_GATEWAY_SCHEME}://{cluster_info.gateway_address}{rewrite_path}v1"
 
@@ -476,9 +486,9 @@ class Composer:
                 mev1alpha1.ModelEndpoint(
                     metadata=metav1.ObjectMeta(
                         name=replica_name,
-                        namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                        namespace=_namespace(self.xr.metadata),
                         labels={
-                            _LABEL_DEPLOYMENT: self.name,
+                            _LABEL_DEPLOYMENT: _name(self.xr.metadata),
                             _LABEL_CLUSTER: cluster_info.name,
                             _LABEL_INDEX: str(cluster_info.index),
                         },

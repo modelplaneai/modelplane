@@ -37,6 +37,7 @@ from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferencegateway import v1alpha1 as igwv1alpha1
 from models.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from models.ai.modelplane.modelservice import v1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 CONDITION_TYPE_ENDPOINTS_RESOLVED = "EndpointsResolved"
 CONDITION_REASON_RESOLVED = "Resolved"
@@ -53,6 +54,20 @@ _NAMESPACE_SYSTEM = "modelplane-system"
 
 # Scheme for user-facing service URLs.
 _GATEWAY_SCHEME = "http"
+
+
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
 
 
 def _port_from_url(url: str) -> int:
@@ -147,7 +162,7 @@ class Composer:
         for i in range(len(self.xr.spec.endpoints)):
             for d in request.get_required_resources(self.req, f"endpoints-{i}") or []:
                 ep = mev1alpha1.ModelEndpoint.model_validate(d)
-                key = f"{ep.metadata.namespace}/{ep.metadata.name}"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                key = f"{_namespace(ep.metadata)}/{_name(ep.metadata)}"
                 if key in seen_names:
                     continue
                 seen_names.add(key)
@@ -193,7 +208,7 @@ class Composer:
         correctly per-backend. This is a Gateway API Extended feature
         supported by Traefik Proxy.
         """
-        match_prefix = f"/{self.xr.metadata.namespace}/{self.xr.metadata.name}/"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        match_prefix = f"/{_namespace(self.xr.metadata)}/{_name(self.xr.metadata)}/"
         match = {"path": {"type": "PathPrefix", "value": match_prefix}}
 
         backend_refs = []
@@ -231,7 +246,7 @@ class Composer:
             {
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "HTTPRoute",
-                "metadata": {"namespace": self.xr.metadata.namespace},  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                "metadata": {"namespace": _namespace(self.xr.metadata)},
                 "spec": {
                     "parentRefs": [{"name": _GATEWAY_NAME, "namespace": _NAMESPACE_SYSTEM}],
                     "rules": [rule],
@@ -243,7 +258,9 @@ class Composer:
         status = v1alpha1.Status()
         gateway_ip = self.gateway.status.address if self.gateway and self.gateway.status else None
         if gateway_ip:
-            status.address = f"{_GATEWAY_SCHEME}://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+            status.address = (
+                f"{_GATEWAY_SCHEME}://{gateway_ip}/{_namespace(self.xr.metadata)}/{_name(self.xr.metadata)}"
+            )
         resource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self) -> None:

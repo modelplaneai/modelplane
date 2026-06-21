@@ -32,8 +32,17 @@ user's; this layer injects none.
 
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 from function.backends import base
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
 
 _EPP_IMAGE = "ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0"
 _SIDECAR_IMAGE = "ghcr.io/llm-d/llm-d-routing-sidecar:v0.8.0"
@@ -371,7 +380,7 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
             "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
             "rules": [
                 {
-                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{_namespace(replica.metadata)}/{name}/"}}],
                     "timeouts": {"request": base.REQUEST_TIMEOUT},
                     "filters": [
                         {

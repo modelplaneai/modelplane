@@ -102,14 +102,28 @@ _GKE_IMAGE_TYPE = "COS_CONTAINERD"
 _GKE_OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
 def _kubeconfig_secret_name(xr: v1alpha1.GKECluster) -> str:
     """Derive the kubeconfig secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "kubeconfig")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+    return resource.child_name(_name(xr.metadata), "kubeconfig")
 
 
 def _sa_key_secret_name(xr: v1alpha1.GKECluster) -> str:
     """Derive the SA key secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "sa-key")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+    return resource.child_name(_name(xr.metadata), "sa-key")
 
 
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
@@ -348,7 +362,7 @@ class Composer:
                 spec=sav1beta1.Spec(
                     forProvider=sav1beta1.ForProvider(
                         project=self.xr.spec.project,
-                        displayName=f"Crossplane GKECluster {self.xr.metadata.name}",  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                        displayName=f"Crossplane GKECluster {_name(self.xr.metadata)}",
                     ),
                 ),
             ),
@@ -400,7 +414,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -409,7 +423,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
@@ -426,7 +440,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -435,7 +449,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
@@ -466,7 +480,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["storage-class-rwx"],
             k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
                 spec=k8sobjv1alpha1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(

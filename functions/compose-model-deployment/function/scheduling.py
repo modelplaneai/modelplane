@@ -85,9 +85,17 @@ from function import cel
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
-    """The object's name, which is always set on resources read from the API server."""
-    assert meta is not None and meta.name is not None
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
     return meta.name
+
+
+def _labels(meta: metav1.ObjectMeta | None) -> dict[str, str]:
+    """The object's labels, empty when it has none."""
+    if meta is None or meta.labels is None:
+        return {}
+    return meta.labels
 
 
 # A deployment Member and a replica Member are distinct generated classes with
@@ -408,7 +416,7 @@ def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str) -> icv1a
 
 def _is_ours(replica: mrv1alpha1.ModelReplica, deployment: mdv1alpha1.ModelDeployment) -> bool:
     """Whether a replica belongs to this deployment."""
-    return (replica.metadata.labels or {}).get(_LABEL_DEPLOYMENT) == _name(deployment.metadata)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    return _labels(replica.metadata).get(_LABEL_DEPLOYMENT) == _name(deployment.metadata)
 
 
 def _replica_index(replica: mrv1alpha1.ModelReplica) -> int:
@@ -418,7 +426,7 @@ def _replica_index(replica: mrv1alpha1.ModelReplica) -> int:
     label existed (or with a malformed value) is treated as index 0; that's the
     natural single-replica-per-cluster case those replicas came from.
     """
-    raw = (replica.metadata.labels or {}).get(_LABEL_INDEX)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    raw = _labels(replica.metadata).get(_LABEL_INDEX)
     if raw is None:
         return 0
     try:
