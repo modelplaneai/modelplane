@@ -20,6 +20,8 @@ account with container.admin IAM, and ProviderConfigs for provider-kubernetes
 and provider-helm to reach the cluster.
 """
 
+from typing import Literal
+
 import grpc
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -92,7 +94,8 @@ _MANAGED_STORAGE_CLASS = "modelplane-rwx"
 # deterministically from the owner XR's UID and the composition resource name, so
 # if this MR is ever deleted out of band the recomposed MR takes the same name
 # and provider-kubernetes adopts the existing StorageClass rather than erroring.
-_ORPHAN_MANAGEMENT = ["Observe", "Create", "Update"]
+_ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
+_ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 
 # GKE node configuration.
 _GKE_IMAGE_TYPE = "COS_CONTAINERD"

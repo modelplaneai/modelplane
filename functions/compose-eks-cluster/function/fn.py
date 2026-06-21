@@ -69,12 +69,8 @@ from models.io.upbound.m.aws.iam.rolepolicyattachment import v1beta1 as rpav1bet
 # this Crossplane would keep reverting desiredSize to nodeCount and fight it.
 # (initProvider is a beta feature gated on enumerating management policies — the
 # default "*" still reconciles forProvider, defeating the purpose.)
-_NODE_GROUP_MANAGEMENT: list[Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]] = [
-    "Observe",
-    "Create",
-    "Update",
-    "Delete",
-]
+_ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
+_NODE_GROUP_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "Delete"]
 
 # Management policies that exclude Delete, used for resources installed on the
 # workload cluster (the RWX StorageClass Object, the autoscaler and EFA DRA
@@ -88,7 +84,7 @@ _NODE_GROUP_MANAGEMENT: list[Literal["Observe", "Create", "Update", "Delete", "L
 # so if one of these MRs is ever deleted out of band the recomposed MR takes the
 # same name and provider-helm / provider-kubernetes adopt the existing release
 # or object rather than erroring.
-_ORPHAN_MANAGEMENT = ["Observe", "Create", "Update"]
+_ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 
 # System node group injected into every EKS cluster to host control-plane
 # components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
