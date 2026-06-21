@@ -174,7 +174,7 @@ class Composer:
             name="model-replicas",
             api_version="modelplane.ai/v1alpha1",
             kind="ModelReplica",
-            match_labels={_LABEL_CLUSTER: self.xr.metadata.name},  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+            match_labels={_LABEL_CLUSTER: self.xr.metadata.name},  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
         )
 
         replicas = request.get_required_resources(self.req, "model-replicas")
@@ -475,7 +475,7 @@ class Composer:
                         acceleratorType=prov.accelerator.type,
                         acceleratorCount=prov.accelerator.count,
                     ),
-                    zones=list(pool.zones or []),
+                    zones=[gkev1alpha1.Zone(z) for z in pool.zones or []],
                 )
             )
 
@@ -531,7 +531,7 @@ class Composer:
                 gpu=eksv1alpha1.Gpu(
                     acceleratorType=prov.accelerator.type,
                 ),
-                zones=list(pool.zones or []),
+                zones=[eksv1alpha1.Zone(z) for z in pool.zones or []],
             )
             # Only set capacityBlock when the pool has one. resource.update
             # serializes with exclude_unset, so leaving it unset keeps it out
