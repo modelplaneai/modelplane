@@ -24,6 +24,7 @@ expressed as a device request's count, not derived from topology.
 """
 
 import dataclasses
+import datetime
 import unittest
 
 from function import cel, scheduling
@@ -31,6 +32,9 @@ from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+# A fixed transition time keeps observed conditions deterministic.
+_TRANSITION_TIME = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
 
 # A GPU memory selector reused across cases.
 _MEM_141 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0'
@@ -192,7 +196,7 @@ def _cluster(
             type="Ready",
             status=status,
             reason=reason,
-            lastTransitionTime="2025-01-01T00:00:00Z",
+            lastTransitionTime=_TRANSITION_TIME,
         )
     ]
 
@@ -315,6 +319,7 @@ def _collision_replica(
     the tiebreak the scheduler sorts on.
     """
     r = _replica_with_pool("my-model", cluster_name, pool=pool, index=index)
+    assert r.metadata is not None
     r.metadata.name = object_name
     return r
 

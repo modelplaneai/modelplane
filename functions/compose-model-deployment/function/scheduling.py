@@ -79,8 +79,16 @@ from dataclasses import dataclass, field
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 from function import cel
+
+
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, which is always set on resources read from the API server."""
+    assert meta is not None and meta.name is not None
+    return meta.name
+
 
 # A deployment Member and a replica Member are distinct generated classes with
 # the same shape (a deployment fans out to identically-shaped replicas).
@@ -297,7 +305,7 @@ def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
     receive routed traffic. Both must be true for the cluster to be
     schedulable for new placements.
     """
-    if not cluster.status.gateway or not cluster.status.gateway.address:
+    if not cluster.status or not cluster.status.gateway or not cluster.status.gateway.address:
         return False
     return any(c.type == "Ready" and c.status == "True" for c in cluster.status.conditions or [])
 
@@ -383,9 +391,16 @@ def _member_cost(member: _CompiledMember, resolved: list[DeviceRequest]) -> int:
     return member.nodes if resolved else 0
 
 
+def _gpu_pools(cluster: icv1alpha1.InferenceCluster) -> list[icv1alpha1.GpuPool]:
+    """The cluster's published GPU pools, empty if it has none yet."""
+    if not cluster.status:
+        return []
+    return cluster.status.gpuPools or []
+
+
 def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str) -> icv1alpha1.GpuPool | None:
     """The cluster's published pool with this name, or None."""
-    for pool in cluster.status.gpuPools or []:
+    for pool in _gpu_pools(cluster):
         if (pool.name or "") == pool_name:
             return pool
     return None
@@ -393,7 +408,7 @@ def _pool_by_name(cluster: icv1alpha1.InferenceCluster, pool_name: str) -> icv1a
 
 def _is_ours(replica: mrv1alpha1.ModelReplica, deployment: mdv1alpha1.ModelDeployment) -> bool:
     """Whether a replica belongs to this deployment."""
-    return (replica.metadata.labels or {}).get(_LABEL_DEPLOYMENT) == deployment.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    return (replica.metadata.labels or {}).get(_LABEL_DEPLOYMENT) == _name(deployment.metadata)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
 
 
 def _replica_index(replica: mrv1alpha1.ModelReplica) -> int:
@@ -404,9 +419,11 @@ def _replica_index(replica: mrv1alpha1.ModelReplica) -> int:
     natural single-replica-per-cluster case those replicas came from.
     """
     raw = (replica.metadata.labels or {}).get(_LABEL_INDEX)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    if raw is None:
+        return 0
     try:
         return int(raw)
-    except (TypeError, ValueError):
+    except ValueError:
         return 0
 
 
@@ -478,8 +495,8 @@ def _build_ledger(
     """
     free: dict[tuple[str, str], int] = {}
     for cluster in clusters:
-        name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
-        for pool in cluster.status.gpuPools or []:
+        name = _name(cluster.metadata)
+        for pool in _gpu_pools(cluster):
             free[(name, pool.name or "")] = _published_count(pool.nodes)
 
     def charge(cluster_name: str, pool_name: str, nodes: int) -> None:
@@ -677,14 +694,12 @@ def _place_engines(
     (disjoint pools). Overlapping selectors across engines of one replica are the
     case that can false-reject.
     """
-    cluster_name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    cluster_name = _name(cluster.metadata)
     # Trial free counts for this cluster's pools, decremented as we place each
     # member so a later member sees capacity an earlier one took. Discarded
     # wholesale when any member fails to place, so partial placement never
     # leaks into the real ledger.
-    trial = {
-        (pool.name or ""): ledger.available(cluster_name, pool.name or "") for pool in cluster.status.gpuPools or []
-    }
+    trial = {(pool.name or ""): ledger.available(cluster_name, pool.name or "") for pool in _gpu_pools(cluster)}
     placements: list[EnginePlacement] = []
     for engine in engines:
         members = _place_engine(cluster, engine, trial)
@@ -726,7 +741,7 @@ def _place_engine(
     Decrements trial as it places; on failure the caller discards the whole
     trial, so partial decrements don't leak.
     """
-    pools = cluster.status.gpuPools or []
+    pools = _gpu_pools(cluster)
     # Whether each member's requests resolve a claimable device on any pool of
     # this cluster, ignoring capacity. Used to refuse a placement that would
     # strand a claim-capable member on a pool where it resolves only synthetic
@@ -802,14 +817,14 @@ def _fill(
         if choice is None:
             break
         cluster, placements = choice
-        name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        name = _name(cluster.metadata)
         index = _lowest_free_index(used_indices.setdefault(name, set()))
 
         placed.append(
             Candidate(
                 name=name,
                 index=index,
-                gateway_address=cluster.status.gateway.address,
+                gateway_address=_gateway_address(cluster),
                 engines=placements,
             )
         )
@@ -852,7 +867,7 @@ def _pick_cluster(
         placements = _place_engines(cluster, engines, ledger)
         if placements is None:
             continue
-        key = (load.get(cluster.metadata.name, 0), cluster.metadata.name)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        key = (load.get(_name(cluster.metadata), 0), _name(cluster.metadata))
         if best_key is None or key < best_key:
             best_key = key
             best = (cluster, placements)
@@ -869,7 +884,9 @@ def _lowest_free_index(used: set[int]) -> int:
 
 def _gateway_address(cluster: icv1alpha1.InferenceCluster) -> str:
     """The cluster's gateway address, or empty when degraded/unset."""
-    return (cluster.status.gateway.address if cluster.status.gateway else "") or ""
+    if not cluster.status or not cluster.status.gateway:
+        return ""
+    return cluster.status.gateway.address or ""
 
 
 def _scale_down(retained: list[Candidate], desired: int) -> list[Candidate]:
@@ -920,7 +937,7 @@ def schedule(
     absence can't evict a pinned replica.
     """
     desired = int(deployment.spec.replicas)
-    clusters_by_name = {c.metadata.name: c for c in clusters}  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    clusters_by_name = {_name(c.metadata): c for c in clusters}
 
     # Sort observed replicas by name (unique per object) so the schedule is a
     # deterministic function of state, not of the order Crossplane happened to
