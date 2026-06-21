@@ -15,7 +15,9 @@
 """Tests for the compose-model-cache function."""
 
 import dataclasses
+import datetime
 import unittest
+from typing import Any
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -25,6 +27,9 @@ from google.protobuf import json_format
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.modelcache import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+# A fixed transition time keeps observed conditions deterministic.
+_TRANSITION_TIME = datetime.datetime(2026, 6, 8, tzinfo=datetime.UTC)
 
 
 @dataclasses.dataclass
@@ -87,14 +92,9 @@ def _observed_object(manifest_status: dict, *, ready: bool = False) -> dict:
     (read by derive_cluster_phase) and, when `ready`, the Object's own Ready
     condition (read by mark_ready_resources, populated by DeriveFromCelQuery).
     """
-    obj = {
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-        "kind": "Object",
-        "spec": {"forProvider": {"manifest": {}}},
-        "status": {"atProvider": {"manifest": {"status": manifest_status}}},
-    }
+    status: dict[str, Any] = {"atProvider": {"manifest": {"status": manifest_status}}}
     if ready:
-        obj["status"]["conditions"] = [
+        status["conditions"] = [
             {
                 "type": "Ready",
                 "status": "True",
@@ -102,7 +102,12 @@ def _observed_object(manifest_status: dict, *, ready: bool = False) -> dict:
                 "lastTransitionTime": "2026-06-08T00:00:00Z",
             },
         ]
-    return obj
+    return {
+        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+        "kind": "Object",
+        "spec": {"forProvider": {"manifest": {}}},
+        "status": status,
+    }
 
 
 def _auth_secret(*, data: dict[str, str] | None = None) -> dict:
@@ -578,7 +583,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     type="Ready",
                     status="True",
                     reason="Available",
-                    lastTransitionTime="2026-06-08T00:00:00Z",
+                    lastTransitionTime=_TRANSITION_TIME,
                 ),
             ],
         )
@@ -725,7 +730,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     type="Ready",
                     status="True",
                     reason="Available",
-                    lastTransitionTime="2026-06-08T00:00:00Z",
+                    lastTransitionTime=_TRANSITION_TIME,
                 ),
             ],
         )

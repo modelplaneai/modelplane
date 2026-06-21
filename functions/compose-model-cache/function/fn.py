@@ -21,6 +21,8 @@ at /mnt/models, so weights are downloaded once per cluster and read N
 times by every pod in an LWS gang.
 """
 
+from typing import Literal
+
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -78,7 +80,8 @@ _JOB_TTL_SECONDS = 180
 # pod that pins the PVC - whereas Crossplane's delete would orphan that pod. (No
 # "all but Delete" shorthand exists, and deletionPolicy: Orphan is ignored once
 # managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
-_JOB_MANAGEMENT = ["Observe", "Create", "Update", "LateInitialize"]
+_ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
+_JOB_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "LateInitialize"]
 
 
 def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str | None:
@@ -171,7 +174,7 @@ class Composer:
         resolved. compose() only runs past resolve_inputs() once the auth
         requirement (if any) is resolved, so an empty auth_data here means the
         Secret was found-but-empty or absent, not merely unresolved."""
-        return self.xr.spec.huggingFace.authSecret is not None and not self.auth_data
+        return self.xr.spec.huggingFace.authSecret is not None and not self.auth_data  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
 
     def compose(self):
         if not self.resolve_inputs():
@@ -217,7 +220,7 @@ class Composer:
         # XR's own namespace on the control plane. Its token is propagated to
         # each workload cluster (compose_cluster_resources) so the hydration Job
         # finds it; without resolving it first we can't materialize it remotely.
-        auth = self.xr.spec.huggingFace.authSecret
+        auth = self.xr.spec.huggingFace.authSecret  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
         if auth:
             response.require_resources(
                 self.rsp,
@@ -285,10 +288,13 @@ class Composer:
         instead of Crossplane orphaning the pod. Readiness is latched in the XR
         status, so dropping the Job doesn't regress it, and a flap that re-adds
         it is a cheap idempotent skip."""
+        # match_clusters only returns clusters whose status.providerConfigRef.name
+        # is set, so this is never None here.
+        assert cluster.status and cluster.status.providerConfigRef and cluster.status.providerConfigRef.name
         pc = cluster.status.providerConfigRef.name
         name = cluster.metadata.name  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         resource.update(
-            self.rsp.desired.resources[self._pvc_key(name)],
+            self.rsp.desired.resources[self._pvc_key(name)],  # ty: ignore[invalid-argument-type]  # metadata name is always set on resources read from the API server
             self._wrap_remote(pc, self._pvc_manifest(cluster), _PVC_READY_CEL),
         )
         # The PVC (above) composes regardless of auth: it doesn't depend on the
@@ -308,17 +314,17 @@ class Composer:
             # uses default readiness (Ready once synced).
             if self.auth_data:
                 resource.update(
-                    self.rsp.desired.resources[self._auth_key(name)],
+                    self.rsp.desired.resources[self._auth_key(name)],  # ty: ignore[invalid-argument-type]  # metadata name is always set on resources read from the API server
                     self._wrap_remote(pc, self._auth_secret_manifest()),
                 )
             resource.update(
-                self.rsp.desired.resources[self._job_key(name)],
+                self.rsp.desired.resources[self._job_key(name)],  # ty: ignore[invalid-argument-type]  # metadata name is always set on resources read from the API server
                 self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_MANAGEMENT),
             )
 
     def _pvc_manifest(self, cluster: icv1alpha1.InferenceCluster) -> dict:
         hf = self.xr.spec.huggingFace
-        size_gib = int(hf.sizeGiB)  # protobuf delivers XRD ints as float
+        size_gib = int(hf.sizeGiB)  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set; protobuf delivers XRD ints as float
         return {
             "apiVersion": "v1",
             "kind": "PersistentVolumeClaim",
@@ -349,7 +355,7 @@ class Composer:
         provider_config: str,
         manifest: dict,
         cel_query: str | None = None,
-        management_policies: list[str] | None = None,
+        management_policies: list[_ManagementPolicy] | None = None,
     ) -> k8sobjv1alpha1.Object:
         spec = k8sobjv1alpha1.Spec(
             providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
@@ -390,7 +396,7 @@ class Composer:
         return f"auth-{cluster_name}"
 
     def _labels(self) -> dict[str, str]:
-        return {"modelplane.ai/modelcache": self.xr.metadata.name}  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        return {"modelplane.ai/modelcache": self.xr.metadata.name}  # ty: ignore[unresolved-attribute, invalid-return-type]  # metadata is always set on resources read from the API server
 
     def _job_manifest(self) -> dict:
         env, command = _hf_hydration(self.xr.spec.huggingFace, self._auth_secret_name())
@@ -526,7 +532,9 @@ class Composer:
         # token rotated away after hydration is neither reported nor warned.
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
         if self._auth_missing() and ready_count != len(matched):
-            auth = self.xr.spec.huggingFace.authSecret
+            # _auth_missing is true only when huggingFace.authSecret is set.
+            auth = self.xr.spec.huggingFace.authSecret  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
+            assert auth is not None
             key = auth.key or "HF_TOKEN"
             response.set_conditions(
                 self.rsp,
@@ -574,7 +582,7 @@ class Composer:
             names = ", ".join(c.metadata.name for c in matched)
             response.normal(
                 self.rsp,
-                f"Staging {self.xr.spec.huggingFace.repo} to {len(matched)} clusters: {names}",
+                f"Staging {self.xr.spec.huggingFace.repo} to {len(matched)} clusters: {names}",  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
             )
         if now_ready and not was_ready:
             response.normal(self.rsp, f"Artifact staged on all {len(matched)} clusters")
