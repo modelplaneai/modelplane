@@ -105,7 +105,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp) -> None:
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelService(**resource.struct_to_dict(req.observed.composite.resource))

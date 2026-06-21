@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
 
@@ -95,7 +96,7 @@ def _harden(module: ModuleType) -> None:
             break
 
 
-def model_for(api_version: str, kind: str):
+def model_for(api_version: str, kind: str) -> type[pydantic.BaseModel] | None:
     """Return the Pydantic model class for a Modelplane kind, or None to skip."""
     group = api_version.rsplit("/", 1)[0] if "/" in api_version else ""
     version = api_version.rsplit("/", 1)[1] if "/" in api_version else api_version
@@ -110,7 +111,7 @@ def model_for(api_version: str, kind: str):
     return getattr(mod, kind)
 
 
-def docs_from_file(path: Path):
+def docs_from_file(path: Path) -> Iterator[dict]:
     """Yield each manifest dict from a (possibly multi-document) YAML file."""
     for doc in yaml.safe_load_all(path.read_text()):
         if doc:

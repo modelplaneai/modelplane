@@ -31,6 +31,7 @@ from function import routing
 from function.backends import base, dynamo, llmd, native
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 _SERVING = "modelplane.ai/serving"
@@ -42,7 +43,7 @@ _LEADER_ENV = {"name": "MODELPLANE_LEADER_ADDRESS", "value": "$(LWS_LEADER_ADDRE
 _GPU_CEL = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
 
 
-def _gpu_request(count):
+def _gpu_request(count: int) -> v1alpha1.DeviceRequest:
     return v1alpha1.DeviceRequest(
         name="gpu",
         deviceClassName="gpu.nvidia.com",
@@ -52,13 +53,13 @@ def _gpu_request(count):
 
 
 def _standalone_engine(
-    name="main",
+    name: str = "main",
     *,
-    copies=1,
-    args=None,
-    command=None,
-    device_requests=None,
-):
+    copies: int = 1,
+    args: list[str] | None = None,
+    command: list[str] | None = None,
+    device_requests: list[v1alpha1.DeviceRequest] | None = None,
+) -> v1alpha1.Engine:
     """A single Standalone-member engine."""
     container = v1alpha1.Container(
         name="engine",
@@ -82,17 +83,17 @@ def _standalone_engine(
 
 
 def _gang_engine(
-    name="main",
+    name: str = "main",
     *,
-    copies=1,
-    nodes=1,
-    leader_args=None,
-    leader_command=None,
-    worker_args=None,
-    worker_command=None,
-    leader_device_requests=None,
-    leader_pool="frontier",
-):
+    copies: int = 1,
+    nodes: int = 1,
+    leader_args: list[str] | None = None,
+    leader_command: list[str] | None = None,
+    worker_args: list[str] | None = None,
+    worker_command: list[str] | None = None,
+    leader_device_requests: list[v1alpha1.DeviceRequest] | None = None,
+    leader_pool: str = "frontier",
+) -> v1alpha1.Engine:
     """A Leader + Worker engine.
 
     The members carry their own pool pins and device requests, defaulting to a
@@ -101,7 +102,14 @@ def _gang_engine(
     pool.
     """
 
-    def member(role, nodes, args, command, device_requests, pool):
+    def member(
+        role: str,
+        nodes: int | None,
+        args: list[str] | None,
+        command: list[str] | None,
+        device_requests: list[v1alpha1.DeviceRequest],
+        pool: str,
+    ) -> v1alpha1.Member:
         container = v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")
         if args is not None:
             container.args = args
@@ -129,7 +137,9 @@ def _gang_engine(
     )
 
 
-def _replica(name="r", *, namespace="ml-team", engines=None):
+def _replica(
+    name: str = "r", *, namespace: str = "ml-team", engines: list[v1alpha1.Engine] | None = None
+) -> v1alpha1.ModelReplica:
     if engines is None:
         engines = [_standalone_engine()]
     return v1alpha1.ModelReplica(
@@ -144,7 +154,7 @@ def _replica(name="r", *, namespace="ml-team", engines=None):
 _WORKLOAD_NAME = resource.child_name("r", "main")
 
 
-def _claim_template(count, *, replica="r", engine="main", role="standalone"):
+def _claim_template(count: int, *, replica: str = "r", engine: str = "main", role: str = "standalone") -> dict:
     """The ResourceClaimTemplate manifest a member's device requests produce."""
     return {
         "apiVersion": "resource.k8s.io/v1",
@@ -182,7 +192,7 @@ _CLUSTER = icv1alpha1.InferenceCluster(
 _PC = "cluster-a-pc"
 
 
-def _route(name):
+def _route(name: str) -> dict:
     """The replica's HTTPRoute — replica-named, prefix-stripped."""
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
@@ -207,7 +217,7 @@ def _route(name):
     }
 
 
-def _service(name):
+def _service(name: str) -> dict:
     return {
         "apiVersion": "v1",
         "kind": "Service",
@@ -260,7 +270,7 @@ _NATIVE_WANT = {
 }
 
 
-def _claims(role):
+def _claims(role: str) -> list[dict]:
     """The pod-level claim referencing a member's ResourceClaimTemplate."""
     return [
         {
@@ -270,7 +280,7 @@ def _claims(role):
     ]
 
 
-def _lws(leader_container, worker_container):
+def _lws(leader_container: dict, worker_container: dict) -> dict:
     node_selector = {"modelplane.ai/pool": "frontier"}
 
     tolerations = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
@@ -306,7 +316,9 @@ def _lws(leader_container, worker_container):
     }
 
 
-def _engine(*, serving, args=None, command=None, env=None):
+def _engine(
+    *, serving: bool, args: list[str] | None = None, command: list[str] | None = None, env: list[dict] | None = None
+) -> dict[str, Any]:
     c: dict[str, Any] = {
         "name": "engine",
         "image": "vllm/vllm-openai:latest",
@@ -353,7 +365,7 @@ _LLMD_WANT = {
 class Case:
     name: str
     backend: base.Backend
-    engine: v1alpha1.Worker
+    engine: v1alpha1.Engine
     want: dict
 
 
@@ -407,7 +419,9 @@ class TestBackendManifests(unittest.TestCase):
             leader_command=_LEADER_CMD,
             worker_command=_WORKER_CMD,
         )
-        engine.members[0].template.spec.containers[0].env = [v1alpha1.EnvItem(name="HF_TOKEN", value="x")]
+        spec = engine.members[0].template.spec
+        assert spec is not None
+        spec.containers[0].env = [v1alpha1.EnvItem(name="HF_TOKEN", value="x")]
         replica = _replica(engines=[engine])
         out = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
         leader = out["model-serving-main"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]["leaderTemplate"]
@@ -419,7 +433,9 @@ class TestBackendManifests(unittest.TestCase):
         # RDMA nodes need so the engine binds the right interface — #141) survives
         # model_dump into the composed manifest alongside the injected leader env.
         engine = _gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD)
-        engine.members[0].template.spec.containers[0].env = [
+        spec = engine.members[0].template.spec
+        assert spec is not None
+        spec.containers[0].env = [
             v1alpha1.EnvItem(
                 name="VLLM_HOST_IP",
                 valueFrom=v1alpha1.ValueFrom(fieldRef=v1alpha1.FieldRef(fieldPath="status.podIP")),
@@ -435,7 +451,7 @@ class TestBackendManifests(unittest.TestCase):
         )
 
     @staticmethod
-    def _names(out):
+    def _names(out: dict[str, k8sobjv1alpha1.Object]) -> set[str]:
         return {o.spec.forProvider.manifest["metadata"]["name"] for o in out.values()}
 
     def test_co_located_replicas_get_distinct_names(self) -> None:
@@ -588,7 +604,9 @@ class TestDynamoStub(unittest.TestCase):
 
 
 class TestCacheMounts(unittest.TestCase):
-    def _replica(self, *, cache=None, args=None, command=None):
+    def _replica(
+        self, *, cache: str | None = None, args: list[str] | None = None, command: list[str] | None = None
+    ) -> v1alpha1.ModelReplica:
         engine = _standalone_engine(args=args or [], command=command)
         modelcache = v1alpha1.ModelCacheRef(name=cache) if cache else None
         return v1alpha1.ModelReplica(
@@ -597,8 +615,10 @@ class TestCacheMounts(unittest.TestCase):
         )
 
     @staticmethod
-    def _engine(replica):
-        return replica.spec.engines[0].members[0].template.spec.containers[0]
+    def _engine(replica: v1alpha1.ModelReplica) -> v1alpha1.Container:
+        spec = replica.spec.engines[0].members[0].template.spec
+        assert spec is not None
+        return spec.containers[0]
 
     def test_no_cache_no_mounts(self) -> None:
         volumes, mounts = base.cache_mounts(self._replica())
@@ -637,7 +657,7 @@ class TestCacheMounts(unittest.TestCase):
 
 
 class TestNativeBackendCache(unittest.TestCase):
-    def _replica(self):
+    def _replica(self) -> v1alpha1.ModelReplica:
         engine = _standalone_engine(args=[])
         return v1alpha1.ModelReplica(
             metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
@@ -661,7 +681,14 @@ class TestNativeBackendCache(unittest.TestCase):
 
 
 class TestLLMDBackendCache(unittest.TestCase):
-    def _replica(self, *, leader_command=None, worker_command=None, leader_args=None, worker_args=None):
+    def _replica(
+        self,
+        *,
+        leader_command: list[str] | None = None,
+        worker_command: list[str] | None = None,
+        leader_args: list[str] | None = None,
+        worker_args: list[str] | None = None,
+    ) -> v1alpha1.ModelReplica:
         engine = _gang_engine(
             leader_command=leader_command,
             worker_command=worker_command,
@@ -732,7 +759,7 @@ class TestDisaggregated(unittest.TestCase):
     picker over two engines, role-labels them, and sidecars decode — no unified
     Service. Mirrors how fn.py composes engines then calls routing.apply."""
 
-    def _apply(self):
+    def _apply(self) -> dict[str, k8sobjv1alpha1.Object]:
         prefill = _standalone_engine(name="prefill")
         prefill.phase = "Prefill"
         decode = _standalone_engine(name="decode")
@@ -744,7 +771,7 @@ class TestDisaggregated(unittest.TestCase):
             composed.update(native.NativeBackend().build(replica, engine, _PC, base.serving_label(replica)))
         return routing.apply(composed, replica, _PC)
 
-    def _serving_pod(self, out, engine_name):
+    def _serving_pod(self, out: dict[str, k8sobjv1alpha1.Object], engine_name: str) -> dict:
         return out[f"model-serving-{engine_name}"].spec.forProvider.manifest["spec"]["template"]
 
     def test_replaces_unified_service_with_pool_and_epp(self) -> None:

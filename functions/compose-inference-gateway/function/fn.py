@@ -180,7 +180,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp) -> None:
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.InferenceGateway(**resource.struct_to_dict(req.observed.composite.resource))
@@ -221,7 +221,7 @@ class Composer:
             if resource.get_condition(self.req.observed.resources.get(key), "Established").status == "True":
                 self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
-    def gateway_api_crds_ready(self):
+    def gateway_api_crds_ready(self) -> bool:
         """True once every composed Gateway API CRD is Established, so Traefik
         can render its resources and watch the Gateway API types."""
         return all(
@@ -439,7 +439,7 @@ class Composer:
         if resource.get_condition(self.req.observed.resources.get("gateway"), "Accepted").status == "True":
             self.rsp.desired.resources["gateway"].ready = fnv1.READY_TRUE
 
-    def compose_pc_usage(self, release_key) -> None:
+    def compose_pc_usage(self, release_key: str) -> None:
         """Compose a Usage protecting the ProviderConfig from deletion until
         the given Helm release is gone."""
         resource.update(

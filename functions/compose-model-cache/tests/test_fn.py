@@ -48,7 +48,7 @@ def setUpModule() -> None:
 # The XR used across cases: a HuggingFace ModelCache in the ml-team namespace.
 # Both the PVC and Job derive their names from
 # resource.child_name("modelcache", "ml-team", "qwen", ...).
-def _cache_xr(**hf_extra) -> v1alpha1.ModelCache:
+def _cache_xr(**hf_extra: Any) -> v1alpha1.ModelCache:
     return v1alpha1.ModelCache(
         metadata=metav1.ObjectMeta(name="qwen", namespace="ml-team"),
         spec=v1alpha1.Spec(

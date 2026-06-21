@@ -284,7 +284,7 @@ def _req(
     observed: dict | None = None,
     cache: dict | None = None,
     cache_resolved_empty: bool = False,
-):
+) -> fnv1.RunFunctionRequest:
     """Build a RunFunctionRequest with the standard required_resources.
 
     clusters and replicas populate the "clusters" and "all-replicas" required

@@ -29,6 +29,10 @@ agree. Two kinds of identifier live here:
 """
 
 import hashlib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from function import scheduling
 
 # DNS label limit and hash suffix length for opaque child names, matching
 # crossplane's resource.child_name so names stay valid 63-char DNS labels.
@@ -54,7 +58,7 @@ def opaque_name(visible: str, *discriminators: str) -> str:
     return f"{prefix}-{h}"
 
 
-def replica(deployment_name: str, candidate) -> str:
+def replica(deployment_name: str, candidate: "scheduling.Candidate") -> str:
     """The opaque, DNS-safe name for a replica's resources.
 
     Hashed from (deployment, cluster, index) so co-located replicas get distinct
@@ -65,7 +69,7 @@ def replica(deployment_name: str, candidate) -> str:
     return opaque_name(deployment_name, candidate.name, str(candidate.index))
 
 
-def replica_key(candidate) -> str:
+def replica_key(candidate: "scheduling.Candidate") -> str:
     """Function-local desired-resource handle for a replica's (cluster, index).
 
     Distinct per co-located replica so two replicas on one cluster don't share a
@@ -75,6 +79,6 @@ def replica_key(candidate) -> str:
     return f"replica-{candidate.name}-{candidate.index}"
 
 
-def endpoint_key(candidate) -> str:
+def endpoint_key(candidate: "scheduling.Candidate") -> str:
     """Function-local desired-resource handle for a replica's ModelEndpoint."""
     return f"endpoint-{candidate.name}-{candidate.index}"

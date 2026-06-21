@@ -26,7 +26,12 @@ import unittest
 from function import cel
 
 
-def _device(driver="gpu.nvidia.com", attributes=None, capacity=None, **extra) -> dict:
+def _device(
+    driver: str = "gpu.nvidia.com",
+    attributes: dict | None = None,
+    capacity: dict | None = None,
+    **extra: object,
+) -> dict:
     """A pool device in the raw dict shape cel.Program.matches expects."""
     return {
         "driver": driver,

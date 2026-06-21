@@ -63,6 +63,13 @@ from models.io.upbound.m.aws.iam.policy import v1beta1 as policyv1beta1
 from models.io.upbound.m.aws.iam.role import v1beta1 as rolev1beta1
 from models.io.upbound.m.aws.iam.rolepolicyattachment import v1beta1 as rpav1beta1
 
+
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, which is always set on resources read from the API server."""
+    assert meta is not None and meta.name is not None
+    return meta.name
+
+
 # Node group management policies that exclude LateInitialize, so the
 # desiredSize we seed via initProvider is applied only at creation and then
 # left alone. The cluster autoscaler drives the ASG's desired capacity; without
@@ -301,12 +308,12 @@ _ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
 _MANAGED_STORAGE_CLASS = "modelplane-rwx-efs"
 
 
-def _kubeconfig_secret_name(xr):
+def _kubeconfig_secret_name(xr: v1alpha1.EKSCluster) -> str:
     """Derive the kubeconfig secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "kubeconfig")
+    return resource.child_name(_name(xr.metadata), "kubeconfig")
 
 
-def _cluster_name(xr):
+def _cluster_name(xr: v1alpha1.EKSCluster) -> str:
     """The EKS cluster's name in AWS.
 
     Pinned to a deterministic, compose-time-known name (rather than left to a
@@ -319,20 +326,20 @@ def _cluster_name(xr):
     name alone would let two clusters in different namespaces collide on one AWS
     cluster. child_name folds both in and appends a hash for uniqueness.
     """
-    return resource.child_name(xr.metadata.namespace, xr.metadata.name, "eks")
+    return resource.child_name(xr.metadata.namespace, _name(xr.metadata), "eks")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
 
-def _subnet_name(xr, az):
+def _subnet_name(xr: v1alpha1.EKSCluster, az: str) -> str:
     """Derive a stable Crossplane resource name for the public subnet in az."""
-    return resource.child_name(xr.metadata.name, f"subnet-{az}")
+    return resource.child_name(_name(xr.metadata), f"subnet-{az}")
 
 
-def _private_subnet_name(xr, az):
+def _private_subnet_name(xr: v1alpha1.EKSCluster, az: str) -> str:
     """Derive a stable Crossplane resource name for the private subnet in az."""
-    return resource.child_name(xr.metadata.name, f"private-subnet-{az}")
+    return resource.child_name(_name(xr.metadata), f"private-subnet-{az}")
 
 
-def _private_cidr(public_cidr) -> str:
+def _private_cidr(public_cidr: v1alpha1.SubnetCidr) -> str:
     """Derive a private subnet CIDR from its AZ's public one.
 
     The VPC is a /16 split into /20s. The public subnets take the low /20s
@@ -347,7 +354,7 @@ def _private_cidr(public_cidr) -> str:
     return f"{'.'.join(octets)}/{mask}"
 
 
-def _az(region, index) -> str:
+def _az(region: str, index: int) -> str:
     """Derive an Availability Zone name from a region and an index.
 
     AWS conventionally names AZs as ``<region><letter>`` where the letter
@@ -379,7 +386,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp) -> None:
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.EKSCluster(**resource.struct_to_dict(req.observed.composite.resource))
@@ -425,7 +432,7 @@ class Composer:
             ),
         )
 
-        for i, cidr in enumerate(self._networking().subnetCidrs):
+        for i, cidr in enumerate(self._networking().subnetCidrs or []):
             az = _az(self.xr.spec.region, i)
             cidr_str = cidr.root if hasattr(cidr, "root") else cidr
             # Public subnet: IGW route, auto-assigned public IPs, ELB-tagged.
@@ -587,7 +594,7 @@ class Composer:
             ),
         )
 
-        for i in range(len(self._networking().subnetCidrs)):
+        for i in range(len(self._networking().subnetCidrs or [])):
             az = _az(self.xr.spec.region, i)
             resource.update(
                 self.rsp.desired.resources[f"route-table-association-{i}"],
@@ -754,7 +761,7 @@ class Composer:
             # must not also set instanceTypes in that case.
             uses_launch_template = bool(capacity_block) or efa
             if uses_launch_template:
-                self._compose_launch_template(pool, capacity_block, efa)
+                self._compose_launch_template(pool, capacity_block, efa=efa)
             if efa:
                 self._compose_efa_security_group()
 
@@ -829,7 +836,7 @@ class Composer:
                 ),
             )
 
-    def _launch_template_name(self, pool):
+    def _launch_template_name(self, pool: v1alpha1.NodePool) -> str:
         """Derive the EC2 launch template name for a Capacity Block pool.
 
         The EKS NodeGroup references the launch template by name, so it
@@ -838,7 +845,9 @@ class Composer:
         """
         return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
-    def _compose_launch_template(self, pool, capacity_block, efa) -> None:
+    def _compose_launch_template(
+        self, pool: v1alpha1.NodePool, capacity_block: v1alpha1.CapacityBlock | None, *, efa: bool
+    ) -> None:
         """Compose an EC2 launch template for a node group.
 
         EKS launches the node group's instances from this template. It carries
@@ -884,7 +893,7 @@ class Composer:
             ltv1beta1.LaunchTemplate(spec=ltv1beta1.Spec(forProvider=fp)),
         )
 
-    def _efa_network_interfaces(self, pool):
+    def _efa_network_interfaces(self, pool: v1alpha1.NodePool) -> list[ltv1beta1.NetworkInterface]:
         """Build the launch template's EFA network interfaces for a pool.
 
         Every network card carries an EFA interface for maximum fabric
@@ -932,7 +941,7 @@ class Composer:
             interfaces.append(ni)
         return interfaces
 
-    def _observed_efa_security_group_id(self):
+    def _observed_efa_security_group_id(self) -> str | None:
         """The composed EFA security group's ID, from its observed MR's
         external-name annotation (the sg-xxxx ID the provider sets once it
         exists). None before the group is created, so the launch template is
@@ -946,7 +955,7 @@ class Composer:
             return None
         return sg.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME)
 
-    def _observed_cluster_security_group_id(self):
+    def _observed_cluster_security_group_id(self) -> str | None:
         """The EKS-managed cluster security group ID, from the observed cluster.
 
         EKS creates this group and reports it on the cluster's status; it's
@@ -962,7 +971,7 @@ class Composer:
             return None
         return cluster.status.atProvider.vpcConfig.clusterSecurityGroupId
 
-    def _efa_security_group_resource_name(self):
+    def _efa_security_group_resource_name(self) -> str:
         """Object (metadata.name) of the shared EFA security group."""
         return resource.child_name(self.xr.metadata.name, "efa-sg")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
@@ -1068,7 +1077,7 @@ class Composer:
             ),
         )
 
-    def _subnet_refs_for_pool(self, pool):
+    def _subnet_refs_for_pool(self, pool: v1alpha1.NodePool) -> list[ngv1beta1.SubnetIdRef] | None:
         """Resolve a pool's zones to a list of private Crossplane Subnet refs.
 
         Nodes run in the private subnets (NAT egress, no public IP), so a pool
@@ -1162,7 +1171,7 @@ class Composer:
         )
 
         # One mount target per node subnet so any AZ's nodes can mount the share.
-        for i in range(len(self._networking().subnetCidrs)):
+        for i in range(len(self._networking().subnetCidrs or [])):
             az = _az(region, i)
             resource.update(
                 self.rsp.desired.resources[f"efs-mount-target-{i}"],
@@ -1501,7 +1510,7 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def _observed_efs_filesystem_id(self):
+    def _observed_efs_filesystem_id(self) -> str | None:
         """The composed EFS filesystem's id, from the observed FileSystem MR's
         external-name annotation (set by the provider once it exists). None on
         early reconciles before the filesystem is created."""
@@ -1546,7 +1555,7 @@ class Composer:
             "iam-attach-cluster-autoscaler",
             "pod-identity-cluster-autoscaler",
         ]
-        for i in range(len(self._networking().subnetCidrs)):
+        for i in range(len(self._networking().subnetCidrs or [])):
             managed_resources.append(f"subnet-{i}")
             managed_resources.append(f"private-subnet-{i}")
             managed_resources.append(f"route-table-association-{i}")
@@ -1579,6 +1588,6 @@ class Composer:
         self.rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
         self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    def _networking(self):
+    def _networking(self) -> v1alpha1.Networking:
         """Return the (defaulted) networking config from the XR."""
         return self.xr.spec.networking or v1alpha1.Networking()

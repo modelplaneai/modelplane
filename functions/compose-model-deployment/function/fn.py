@@ -88,7 +88,7 @@ class Resolution(enum.Enum):
     PRESENT = "present"  # Resolved and found.
 
 
-def resolve_required(req, name: str) -> tuple[Resolution, dict | None]:
+def resolve_required(req: fnv1.RunFunctionRequest, name: str) -> tuple[Resolution, dict | None]:
     """Classify a required resource into a Resolution and its value.
 
     Returns (PRESENT, resource) when one was found, (ABSENT, None) when the
@@ -135,7 +135,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp) -> None:
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelDeployment(**resource.struct_to_dict(req.observed.composite.resource))
@@ -248,7 +248,7 @@ class Composer:
 
         return True
 
-    def resolve_cache_footprint(self, ref) -> tuple[Resolution, dict[str, str] | None]:
+    def resolve_cache_footprint(self, ref: v1alpha1.ModelCacheRef) -> tuple[Resolution, dict[str, str] | None]:
         """Resolve the cluster footprint of the ModelCache named by ref.
 
         Returns a (Resolution, matchLabels) pair:
@@ -322,7 +322,7 @@ class Composer:
         # constraint beyond the deployment's own selector.
         return resolution, {}
 
-    def schedule(self):
+    def schedule(self) -> list[scheduling.Candidate]:
         """Match the deployment's engines against available clusters."""
         matched = scheduling.schedule(self.xr, self.clusters, self.all_replicas, fill=self.fill)
 
@@ -340,7 +340,7 @@ class Composer:
 
         return matched
 
-    def compose_replicas(self, matched) -> None:
+    def compose_replicas(self, matched: list[scheduling.Candidate]) -> None:
         """Compose a ModelReplica per matched cluster.
 
         Each replica mirrors the deployment's engines with the scheduler's
@@ -381,7 +381,7 @@ class Composer:
                 )
             resource.update(self.rsp.desired.resources[replica_key], replica)
 
-    def _replica_engine(self, engine, placement):
+    def _replica_engine(self, engine: v1alpha1.Engine, placement: scheduling.EnginePlacement) -> mrv1alpha1.Engine:
         """Build a ModelReplica engine from a deployment engine + placement.
 
         The engine keeps its name, copies, phase, and member templates verbatim;
@@ -428,7 +428,7 @@ class Composer:
             replica_engine.phase = engine.phase
         return replica_engine
 
-    def compose_endpoints(self, matched) -> None:
+    def compose_endpoints(self, matched: list[scheduling.Candidate]) -> None:
         """Compose one ModelEndpoint per matched replica.
 
         Endpoints are labeled with the deployment name so a ModelService
@@ -490,7 +490,7 @@ class Composer:
                 ),
             )
 
-    def write_status(self, matched) -> None:
+    def write_status(self, matched: list[scheduling.Candidate]) -> None:
         """Write deployment status: replica counts."""
         replicas_ready = sum(
             1
@@ -503,7 +503,7 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self, matched) -> None:
+    def derive_conditions(self, matched: list[scheduling.Candidate]) -> None:
         """Derive ReplicasScheduled and ReplicasReady. Per-resource
         readiness is marked here too."""
         self.derive_replicas_scheduled(matched)
@@ -515,7 +515,7 @@ class Composer:
         if not matched:
             self.rsp.desired.composite.ready = fnv1.READY_FALSE
 
-    def derive_replicas_scheduled(self, matched) -> None:
+    def derive_replicas_scheduled(self, matched: list[scheduling.Candidate]) -> None:
         """ReplicasScheduled: replicas placed and created."""
         any_observed = any(name.replica_key(c) in self.req.observed.resources for c in matched)
         scheduled = len(matched) > 0 and any_observed
@@ -541,7 +541,7 @@ class Composer:
             ),
         )
 
-    def derive_replicas_ready(self, matched) -> None:
+    def derive_replicas_ready(self, matched: list[scheduling.Candidate]) -> None:
         """ReplicasReady: all replicas are serving traffic."""
         replicas_ready = 0
         for c in matched:
@@ -572,7 +572,7 @@ class Composer:
             ),
         )
 
-    def mark_endpoint_readiness(self, matched) -> None:
+    def mark_endpoint_readiness(self, matched: list[scheduling.Candidate]) -> None:
         """Mark each composed ModelEndpoint Ready when observed Ready."""
         for c in matched:
             endpoint_key = name.endpoint_key(c)

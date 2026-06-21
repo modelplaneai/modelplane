@@ -27,7 +27,7 @@ class DynamoBackend:
     def build(
         self,
         replica: v1alpha1.ModelReplica,
-        engine,
+        engine: v1alpha1.Engine,
         provider_config: str,
         serving_label: str,
     ) -> dict[str, k8sobjv1alpha1.Object]:

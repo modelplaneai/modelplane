@@ -103,16 +103,25 @@ class CELCompileError(Exception):
 
 # compareTo/isGreaterThan/isLessThan are shared method names: a CEL selector
 # calls them on either a Quantity or a Semver, so dispatch on the operand type.
-def _compare_to(a, b):
-    return semver.compare_to(a, b) if isinstance(a, semver.Semver) else quantity.compare_to(a, b)
+# Both operands are always the same kind (the selector compares like to like).
+# isinstance narrows only the first operand, so cast the second to match; a
+# mixed-type comparison is a malformed selector that compilation should reject.
+def _compare_to(a: semver.Semver | quantity.Quantity, b: semver.Semver | quantity.Quantity) -> celtypes.IntType:
+    if isinstance(a, semver.Semver):
+        return semver.compare_to(a, typing.cast("semver.Semver", b))
+    return quantity.compare_to(a, typing.cast("quantity.Quantity", b))
 
 
-def _is_greater_than(a, b):
-    return semver.is_greater_than(a, b) if isinstance(a, semver.Semver) else quantity.is_greater_than(a, b)
+def _is_greater_than(a: semver.Semver | quantity.Quantity, b: semver.Semver | quantity.Quantity) -> celtypes.BoolType:
+    if isinstance(a, semver.Semver):
+        return semver.is_greater_than(a, typing.cast("semver.Semver", b))
+    return quantity.is_greater_than(a, typing.cast("quantity.Quantity", b))
 
 
-def _is_less_than(a, b):
-    return semver.is_less_than(a, b) if isinstance(a, semver.Semver) else quantity.is_less_than(a, b)
+def _is_less_than(a: semver.Semver | quantity.Quantity, b: semver.Semver | quantity.Quantity) -> celtypes.BoolType:
+    if isinstance(a, semver.Semver):
+        return semver.is_less_than(a, typing.cast("semver.Semver", b))
+    return quantity.is_less_than(a, typing.cast("quantity.Quantity", b))
 
 
 # Registered into every celpy program. celpy dispatches method-call syntax
@@ -147,7 +156,7 @@ class _DefaultMap(celtypes.MapType):
     errors, because the inner maps are plain MapTypes.
     """
 
-    def __missing__(self, key):
+    def __missing__(self, key: celtypes.MapKeyTypes) -> celtypes.MapType:
         return celtypes.MapType()
 
 
@@ -236,7 +245,8 @@ def _device_activation(device: dict) -> celtypes.MapType:
     for name, raw in device.get("attributes", {}).items():
         domain, ident = _split_qualified(name, driver)
         bucket = typing.cast(celtypes.MapType, attributes.setdefault(celtypes.StringType(domain), celtypes.MapType()))
-        bucket[celtypes.StringType(ident)] = _attribute_value(raw)
+        # celpy's MapType value type excludes the Semver extension type.
+        bucket[celtypes.StringType(ident)] = _attribute_value(raw)  # ty: ignore[invalid-assignment]
     out[celtypes.StringType("attributes")] = attributes
 
     capacity = _DefaultMap()
@@ -253,7 +263,7 @@ def _device_activation(device: dict) -> celtypes.MapType:
     return out
 
 
-def _attribute_value(entry: dict):
+def _attribute_value(entry: dict) -> semver.Semver | celtypes.Value:
     """Convert one typed attribute value object to its CEL value.
 
     A version attribute is pre-parsed to a Semver (strict), matching upstream

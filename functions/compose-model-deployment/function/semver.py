@@ -39,7 +39,7 @@ _ALPHANUM = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789
 _SEMVER_PARTS = 3
 
 
-def _cmp(a, b) -> int:
+def _cmp[T: (int, str)](a: T, b: T) -> int:
     # Three-way compare: -1, 0, or +1, like Go's cmp/blang's Compare. Python has
     # no built-in spaceship operator; (a > b) - (a < b) evaluates the two bools
     # to 0/1 and subtracts, yielding -1/0/+1 without branching.
@@ -157,7 +157,7 @@ class Semver:
     # Equality and hashing are defined together (an object that defines __eq__
     # without __hash__ becomes unhashable) so a Semver can be a dict key / set
     # member, and so == agrees with precedence comparison.
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         # Equal iff precedence-equal. Note this means build metadata doesn't
         # affect equality, consistent with it being ignored for ordering.
         return isinstance(other, Semver) and self.compare(other) == 0
@@ -252,14 +252,14 @@ def _normalize_and_parse(s: str) -> Semver:
     return parse(".".join(parts))
 
 
-def semver(s, normalize=None) -> Semver:
+def semver(s: str, normalize: celtypes.BoolType | None = None) -> Semver:
     """The CEL semver(<string>[, <bool>]) constructor."""
     if normalize is not None and bool(normalize):
         return _normalize_and_parse(s)
     return parse(s)
 
 
-def is_semver(s, normalize=None) -> celtypes.BoolType:
+def is_semver(s: str, normalize: celtypes.BoolType | None = None) -> celtypes.BoolType:
     """The CEL isSemver(<string>[, <bool>]) predicate.
 
     Returns false for any parse failure, mirroring upstream (isSemver is true

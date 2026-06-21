@@ -102,14 +102,14 @@ _GKE_IMAGE_TYPE = "COS_CONTAINERD"
 _GKE_OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 
-def _kubeconfig_secret_name(xr):
+def _kubeconfig_secret_name(xr: v1alpha1.GKECluster) -> str:
     """Derive the kubeconfig secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "kubeconfig")
+    return resource.child_name(xr.metadata.name, "kubeconfig")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
 
-def _sa_key_secret_name(xr):
+def _sa_key_secret_name(xr: v1alpha1.GKECluster) -> str:
     """Derive the SA key secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "sa-key")
+    return resource.child_name(xr.metadata.name, "sa-key")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
 
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
@@ -133,7 +133,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp) -> None:
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.GKECluster(**resource.struct_to_dict(req.observed.composite.resource))
@@ -501,7 +501,7 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def _observed_network_name(self):
+    def _observed_network_name(self) -> str | None:
         """The composed VPC network's GCP name, from the observed Network MR's
         external-name annotation (set by the provider once the network exists).
         None on early reconciles before the network is created."""
@@ -535,7 +535,7 @@ class Composer:
         self.rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
         self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    def observed_sa_email(self):
+    def observed_sa_email(self) -> str | None:
         """Read the service account email from observed state."""
         observed_sa = self.req.observed.resources.get("service-account")
         if not observed_sa:

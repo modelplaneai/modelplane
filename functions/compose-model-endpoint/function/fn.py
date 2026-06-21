@@ -75,23 +75,24 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp) -> None:
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelEndpoint(**resource.struct_to_dict(req.observed.composite.resource))
 
     def compose(self) -> None:
-        host, port = self.parse_url()
-        if host is None:
+        parsed = self.parse_url()
+        if parsed is None:
             return
+        host, port = parsed
 
         self.compose_backend(host, port, _address_type(host))
         self.write_status()
         self.derive_conditions()
 
-    def parse_url(self):
-        """Parse spec.url into (host, port). Returns (None, None) and
-        marks the XR not-ready if the URL is invalid."""
+    def parse_url(self) -> tuple[str, int] | None:
+        """Parse spec.url into (host, port), or None (marking the XR not-ready)
+        if the URL is invalid."""
         parsed = urllib.parse.urlparse(self.xr.spec.url)
         if not parsed.hostname:
             response.set_conditions(
@@ -104,7 +105,7 @@ class Composer:
                 ),
             )
             response.warning(self.rsp, f"Invalid spec.url: {self.xr.spec.url}")
-            return None, None
+            return None
 
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         return parsed.hostname, port

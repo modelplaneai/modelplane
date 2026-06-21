@@ -175,19 +175,19 @@ class Quantity:
     def __init__(self, value: decimal.Decimal) -> None:
         self.value = value
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, Quantity) and self.value == other.value
 
     def __hash__(self) -> int:
         return hash(self.value)
 
 
-def quantity(s) -> Quantity:
+def quantity(s: str) -> Quantity:
     """The CEL quantity(<string>) constructor."""
     return Quantity(parse(s))
 
 
-def is_quantity(s) -> celtypes.BoolType:
+def is_quantity(s: str) -> celtypes.BoolType:
     """The CEL isQuantity(<string>) predicate.
 
     Returns false for any parse failure, mirroring upstream (isQuantity is true
@@ -232,15 +232,15 @@ def as_approximate_float(a: Quantity) -> celtypes.DoubleType:
     return celtypes.DoubleType(float(a.value))
 
 
-def add(a: Quantity, b) -> Quantity:
+def add(a: Quantity, b: Quantity | int) -> Quantity:
     return Quantity(a.value + _operand(b))
 
 
-def sub(a: Quantity, b) -> Quantity:
+def sub(a: Quantity, b: Quantity | int) -> Quantity:
     return Quantity(a.value - _operand(b))
 
 
-def _operand(b) -> decimal.Decimal:
+def _operand(b: Quantity | int) -> decimal.Decimal:
     """add/sub accept a Quantity or an integer (upstream has both overloads)."""
     if isinstance(b, Quantity):
         return b.value

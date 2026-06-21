@@ -251,9 +251,9 @@ def _prometheus_release(version: str, provider_config: str) -> helmv1beta1.Relea
     )
 
 
-def _pc_name(xr):
+def _pc_name(xr: v1alpha1.ServingStack) -> str:
     """Derive the ProviderConfig name from the XR."""
-    return resource.child_name(xr.metadata.name, "cluster")
+    return resource.child_name(xr.metadata.name, "cluster")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
 
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
@@ -277,7 +277,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp) -> None:
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ServingStack(**resource.struct_to_dict(req.observed.composite.resource))
@@ -827,7 +827,7 @@ class Composer:
             ):
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
-    def provider_configs_observed(self):
+    def provider_configs_observed(self) -> bool:
         """Check if both ProviderConfigs have been persisted by Crossplane from
         a previous reconcile. Resources targeting the remote cluster are gated
         on this to avoid transient 'ProviderConfig not found' errors on first
