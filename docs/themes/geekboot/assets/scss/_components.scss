@@ -418,7 +418,7 @@ a.mp-chip:hover { border-color: var(--mp-card-border-hi); text-decoration: none;
   justify-content: space-between;
   gap: 12px;
   padding: 6px 8px 6px 12px;
-  background: #{$mp-purple}; // Purple from the stylescape
+  background: #{$mp-purple-soft}; // lighter, more subtle purple than $mp-purple
 }
 .code-card__name {
   font-family: #{$font-family-monospace};

@@ -1,10 +1,18 @@
+# A second ModelDeployment, pinned to a different region with clusterSelector.
+# It carries its own deployment name, so the ModelService can front it alongside
+# qwen-demo and serve both from one endpoint.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
-  name: qwen-demo
+  name: qwen-west
   namespace: ml-team
 spec:
-  replicas: 2
+  replicas: 1
+  # clusterSelector filters which InferenceClusters this deployment can land on.
+  # This pins the replica to the us-west cluster you added in "Scale the fleet".
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/region: us-west
   engines:
   - name: qwen
     members:

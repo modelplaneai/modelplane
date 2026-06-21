@@ -370,7 +370,7 @@ self-service
 self-signed
 server-side
 serving-stack
-single-node
+[Ss]ingle-node
 single-pod
 source-specific
 step-by-step

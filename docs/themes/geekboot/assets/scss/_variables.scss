@@ -122,15 +122,16 @@ $salmon-950:                   #221C1C !default;
 
 // Modelplane brand colors — aligned to the Modelplane stylescape
 // (Dark Spruce #001D2F, Spruce #183D54, Purple #9A5EFC, Sky #00DCE8, White).
-$mp-bg:           #030724 !default;   // dark purple — page background (dark mode)
-$mp-bg-mid:       #0A0E2E !default;   // lifted surface (dropdown, accordion header)
-$mp-bg-card:      #0E1338 !default;   // card / code-block surface
-$mp-surface:      #1C2452 !default;   // elevated / hover surface
+$mp-bg:           #001D2F !default;   // Dark Spruce — page background (dark mode)
+$mp-bg-mid:       #06293B !default;   // lifted surface (dropdown, accordion header)
+$mp-bg-card:      #0B2D41 !default;   // card / code-block surface
+$mp-surface:      #183D54 !default;   // Spruce — elevated / hover surface
 $mp-border:       rgba(255,255,255,0.10) !default;
 $mp-border-hi:    rgba(154,94,252,0.30) !default;  // Purple tint
 $mp-purple:       #9A5EFC !default;   // Purple — primary accent
 $mp-purple-hi:    #B58BFD !default;   // lighter purple for hover/links on dark
 $mp-purple-dark:  #7C3AED !default;   // darkened purple for links/accents on white (WCAG AA)
+$mp-purple-soft:  #A98CDB !default;   // lighter, less saturated purple — code/manifest header bars
 $mp-cyan:         #00DCE8 !default;   // Sky — secondary accent
 $mp-green:        #34d399 !default;   // semantic success (status: available)
 $mp-muted:        #8FA6B4 !default;   // cool slate — muted text on Dark Spruce

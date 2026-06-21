@@ -38,7 +38,7 @@ Once a platform team has provisioned inference clusters and declared the availab
 GPUs and networking fabric, an ML development team deploys a model with a
 declarative manifest:
 
-```yaml
+```yaml {nocopy=true}
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -68,7 +68,7 @@ Modelplane schedules a model replica onto an inference cluster with free,
 compatible GPUs and memory, and deploys the serving engine. Exposing an
 OpenAI-compatible endpoint can be done by declaring a model service:
 
-```yaml
+```yaml {nocopy=true}
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:
@@ -80,6 +80,7 @@ spec:
       matchLabels:
         modelplane.ai/deployment: qwen-demo
 ```
+
 ## A universal control plane for AI inference
 
 Modelplane is designed to be a universal control plane for inference. It runs
