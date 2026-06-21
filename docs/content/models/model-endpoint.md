@@ -7,7 +7,7 @@ description: A reachable inference endpoint, composed per replica or created man
 <!-- vale write-good.Passive = NO -->
 A `ModelEndpoint` is a reachable inference endpoint. Modelplane composes one per
 `ModelReplica`, but ML teams can also create them manually for external SaaS
-providers (Together, BaseTen).
+providers (Together, Baseten).
 
 
 Each endpoint composes an Envoy Gateway `Backend` on the control plane.

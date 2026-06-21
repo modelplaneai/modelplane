@@ -95,9 +95,9 @@ run continuously:
 
 Modelplane is deliberately unopinionated about the engine. A `ModelDeployment`
 describes the *shape* of a deployment, how many pods, on how many nodes, with
-which devices, and nothing about how the engine runs internally. Parallelism
-(tensor, pipeline, data, expert), quantization, and KV transfer all live in the
-engine flags you write on the container; Modelplane never injects them.
+which devices, and nothing about how the engine runs internally. The engine flags
+you write carry parallelism (tensor, pipeline, data, expert), quantization, and KV
+transfer; Modelplane never injects them.
 
 This is what lets one API serve any container-based engine and any topology
 without special cases. Modelplane composes the engine onto the right cluster
@@ -136,7 +136,7 @@ per replica, and your `ModelService` routes traffic across them through one stab
 endpoint on the gateway. Scale the deployment up or down and the same loop
 re-converges.
 
-## Single-node, multi-node, and disaggregation
+## Serving topologies
 
 A single-node deployment composes to a Kubernetes Deployment fronted by a
 service. When a model is too large for one node, an engine becomes a gang: a

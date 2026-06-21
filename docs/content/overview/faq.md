@@ -11,14 +11,14 @@ and [How Modelplane works]({{< ref "/overview/how-it-works" >}}) first.
 ## What Modelplane is
 
 {{< qa "Is Modelplane a serving engine like vLLM?" >}}
-No. Modelplane is the control plane *above* the engine. It composes serving
+No, Modelplane is the control plane *above* the engine. It composes serving
 engines like vLLM, SGLang, and NVIDIA TensorRT-LLM, and operates them across a
 fleet of clusters; it doesn't serve tokens itself. You bring the engine; Modelplane schedules
 it, routes to it, scales it, and caches its weights across your inference fleet.
 {{< /qa >}}
 
 {{< qa "Does Modelplane replace vLLM or SGLang?" >}}
-No. They run the model; Modelplane runs the fleet. A `ModelDeployment` carries
+No, they run the model; Modelplane runs the fleet. A `ModelDeployment` carries
 your engine container and its flags, and Modelplane composes it onto the right
 cluster. Switching or upgrading engines is a change to your deployment, not to
 Modelplane.
@@ -60,7 +60,7 @@ bring-your-own path means you can run on any Kubernetes now.
 {{< /qa >}}
 
 {{< qa "Can I bring my own cluster, or run on a neocloud or on-premise?" >}}
-Yes. An `InferenceCluster` with `source: Existing` registers a cluster you already
+Yes, an `InferenceCluster` with `source: Existing` registers a cluster you already
 run, through its kubeconfig. Modelplane installs the serving stack it needs but
 doesn't provision the infrastructure. This is how you run on neoclouds and
 on-premise today.
@@ -78,7 +78,7 @@ with other workloads.
 {{< /qa >}}
 
 {{< qa "Do I need Crossplane?" >}}
-Yes. Modelplane is built on [Crossplane](https://crossplane.io) and requires it. If your 
+Yes, Modelplane is built on [Crossplane](https://crossplane.io) and requires it. If your 
 platform team already runs Crossplane to manage cloud infrastructure, Modelplane is the 
 same pattern applied to inference. Modelplane is built using Crossplane's composition 
 function framework, and shares its infrastructure providers.
@@ -91,7 +91,7 @@ function framework, and shares its infrastructure providers.
 Two-level matching. First it filters clusters by their labels (tier, region,
 provider) against your `clusterSelector`. Then it filters node pools by matching
 your device requests, real DRA requests with CEL selectors over GPU memory,
-architecture, and so on, against each pool's `InferenceClass`. It places each
+architecture, and other attributes, against each pool's `InferenceClass`. It places each
 replica on a cluster and pool that fits and has free capacity.
 {{< /qa >}}
 
@@ -102,7 +102,7 @@ weights for canary and A/B rollouts.
 {{< /qa >}}
 
 {{< qa "Can I fall back to a managed provider?" >}}
-Yes. A `ModelService` can send a slice of traffic to a manually created
+Yes, a `ModelService` can send a slice of traffic to a manually created
 `ModelEndpoint` that points at an external SaaS endpoint (for example Together or
 Baseten), alongside your self-hosted replicas. Use it for overflow or break-glass
 routing.
@@ -156,7 +156,7 @@ versus what's planned. We are building it in the open.
 
 {{< qa "What's the license and governance?" >}}
 Modelplane is [Apache 2.0](https://github.com/modelplaneai/modelplane/blob/main/LICENSE),
-with no usage caps or meters, and is developed in the open. It's neutral
+with no usage caps or token metering, and is developed in the open. It's neutral
 across models, engines, accelerators, and clouds, and is intended for donation to
 a neutral open source foundation. It's a project from Upbound, the team behind Rook
 and Crossplane, both CNCF Graduated and widely adopted projects.

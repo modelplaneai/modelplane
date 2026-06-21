@@ -19,20 +19,20 @@ AI workloads, adding device-aware scheduling, multi-node inference, distributed
 serving, and accelerator management. The major open source inference projects are
 converging on it, among them vLLM, SGLang, NVIDIA Dynamo, llm-d, Ray, Slurm,
 KubeAI, and Kueue. Neoclouds like Baseten and CoreWeave have standardized on
-Kubernetes for their own operations. Inside a single cluster, the open ecosystem
-is now strong.
+Kubernetes for their own operations. Inside a single cluster, the open source
+stack is now strong.
 
 ## Inference is a fleet problem
 
-But inference almost always runs across more than one cluster. Accelerator
+Inference, however, almost always runs across more than one cluster. Accelerator
 availability scatters capacity across hardware types, providers, and regions.
 Sovereignty and compliance pin workloads to specific locations. Operators run
-across multiple clouds and on-premise environments. Very large clusters
+across multiple clouds and on-premise environments. Large clusters
 concentrate failure and risk, so fleets of smaller clusters are often preferable,
 and inference workloads don't bin-pack the way other workloads do.
 
-So inference grows into a fleet, and a new set of problems appears above any
-single cluster:
+Inference therefore grows into a fleet, and a new set of problems appears above
+any single cluster:
 
 - Deciding where each model runs across available capacity.
 - Optimizing placement across heterogeneous accelerators.
@@ -57,7 +57,7 @@ manages the infrastructure underneath, caches and distributes model weights, and
 routes inference through one unified gateway with fallback to managed providers.
 It turns "I need this model served" into a stable endpoint for any ML team.
 
-Modelplane composes the ecosystem rather than replacing it, and stays neutral
+Modelplane composes these projects rather than replacing them, and stays neutral
 across models, accelerators, clouds, and serving stacks. It's built on
 [Crossplane](https://crossplane.io) and extends Kubernetes to manage inference
 at the fleet level. Modelplane is open source, Apache 2 licensed, and we plan to
