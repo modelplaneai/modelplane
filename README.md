@@ -78,8 +78,9 @@ Follow the [getting started guide][getting-started] to deploy Modelplane on a
 local kind cluster and serve a model. The [how it works][how-it-works] page
 covers the resources and what happens when you deploy a model.
 
-The [`examples/`](examples/) directory has annotated manifests covering the full
-workflow: gateway setup, cluster provisioning, and model deployments.
+The [example manifests][examples] are validated, end-to-end recipes that serve
+specific models, each covering the full workflow from inference class and cluster
+through model cache, deployment, and service.
 
 ## How it works
 
@@ -131,9 +132,9 @@ Modelplane is under the [Apache 2.0 license](LICENSE).
 <!-- Named links -->
 [Crossplane]: https://crossplane.io
 [CONTRIBUTING.md]: CONTRIBUTING.md
-[Nix]: https://nixos.org
 [getting-started]: https://docs.modelplane.ai/getting-started/
 [how-it-works]: https://docs.modelplane.ai/overview/how-it-works/
+[examples]: docs/manifests/examples/
 [issues]: https://github.com/modelplaneai/modelplane/issues
 [enhancements]: https://github.com/modelplaneai/modelplane/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement
 [discussions]: https://github.com/modelplaneai/modelplane/discussions
