@@ -145,7 +145,7 @@ def _hf_hydration(hf, auth_secret_name: str | None) -> tuple[list[dict], str]:
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.log = logging.get_logger()
 
     async def RunFunction(
@@ -159,7 +159,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelCache(**resource.struct_to_dict(req.observed.composite.resource))
@@ -176,7 +176,7 @@ class Composer:
         Secret was found-but-empty or absent, not merely unresolved."""
         return self.xr.spec.huggingFace.authSecret is not None and not self.auth_data  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
             return
         matched = self.match_clusters()

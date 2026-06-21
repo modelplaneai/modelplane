@@ -63,7 +63,7 @@ def _api_group(api_version: str) -> str:
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -82,11 +82,11 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 class Composer:
     """Composes ProviderConfig-protecting Usages from desired resources."""
 
-    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
 
-    def compose(self):
+    def compose(self) -> None:
         """Compose one Usage per ProviderConfig-referencing consumer.
 
         Iterates the desired resources copied from the request and, for each

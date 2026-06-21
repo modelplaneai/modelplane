@@ -117,7 +117,7 @@ def _inference_cluster(
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -135,7 +135,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelDeployment(**resource.struct_to_dict(req.observed.composite.resource))
@@ -154,7 +154,7 @@ class Composer:
         # the (then-unknown) cache footprint. Set by resolve_inputs.
         self.fill = True
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
             return
         try:
@@ -179,7 +179,7 @@ class Composer:
         self.write_status(matched)
         self.derive_conditions(matched)
 
-    def resolve_inputs(self):
+    def resolve_inputs(self) -> bool:
         """Declare and fetch required resources. Returns False if critical
         inputs are missing."""
         # Candidate clusters are those matching the deployment's own
@@ -340,7 +340,7 @@ class Composer:
 
         return matched
 
-    def compose_replicas(self, matched):
+    def compose_replicas(self, matched) -> None:
         """Compose a ModelReplica per matched cluster.
 
         Each replica mirrors the deployment's engines with the scheduler's
@@ -428,7 +428,7 @@ class Composer:
             replica_engine.phase = engine.phase
         return replica_engine
 
-    def compose_endpoints(self, matched):
+    def compose_endpoints(self, matched) -> None:
         """Compose one ModelEndpoint per matched replica.
 
         Endpoints are labeled with the deployment name so a ModelService
@@ -490,7 +490,7 @@ class Composer:
                 ),
             )
 
-    def write_status(self, matched):
+    def write_status(self, matched) -> None:
         """Write deployment status: replica counts."""
         replicas_ready = sum(
             1
@@ -503,7 +503,7 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self, matched):
+    def derive_conditions(self, matched) -> None:
         """Derive ReplicasScheduled and ReplicasReady. Per-resource
         readiness is marked here too."""
         self.derive_replicas_scheduled(matched)
@@ -515,7 +515,7 @@ class Composer:
         if not matched:
             self.rsp.desired.composite.ready = fnv1.READY_FALSE
 
-    def derive_replicas_scheduled(self, matched):
+    def derive_replicas_scheduled(self, matched) -> None:
         """ReplicasScheduled: replicas placed and created."""
         any_observed = any(name.replica_key(c) in self.req.observed.resources for c in matched)
         scheduled = len(matched) > 0 and any_observed
@@ -541,7 +541,7 @@ class Composer:
             ),
         )
 
-    def derive_replicas_ready(self, matched):
+    def derive_replicas_ready(self, matched) -> None:
         """ReplicasReady: all replicas are serving traffic."""
         replicas_ready = 0
         for c in matched:
@@ -572,7 +572,7 @@ class Composer:
             ),
         )
 
-    def mark_endpoint_readiness(self, matched):
+    def mark_endpoint_readiness(self, matched) -> None:
         """Mark each composed ModelEndpoint Ready when observed Ready."""
         for c in matched:
             endpoint_key = name.endpoint_key(c)

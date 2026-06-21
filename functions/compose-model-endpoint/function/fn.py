@@ -57,7 +57,7 @@ def _address_type(host: str) -> str:
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -75,12 +75,12 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelEndpoint(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
+    def compose(self) -> None:
         host, port = self.parse_url()
         if host is None:
             return
@@ -109,7 +109,7 @@ class Composer:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         return parsed.hostname, port
 
-    def compose_backend(self, host: str, port: int, address_type: str):
+    def compose_backend(self, host: str, port: int, address_type: str) -> None:
         """Compose a selectorless Service and EndpointSlice for the endpoint.
 
         The Service has no selector (Kubernetes will not auto-populate
@@ -166,7 +166,7 @@ class Composer:
                 },
             )
 
-    def write_status(self):
+    def write_status(self) -> None:
         """Surface the composed Service's name in status, but only once the
         EndpointSlice is observed too. ModelService treats backendName as
         routable, so we must not advertise it until the backing endpoint
@@ -183,7 +183,7 @@ class Composer:
 
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self):
+    def derive_conditions(self) -> None:
         """RoutingReady: both the Service and the EndpointSlice have been
         observed on the control plane."""
         svc_exists = SERVICE_RESOURCE_KEY in self.req.observed.resources

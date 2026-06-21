@@ -332,7 +332,7 @@ def _private_subnet_name(xr, az):
     return resource.child_name(xr.metadata.name, f"private-subnet-{az}")
 
 
-def _private_cidr(public_cidr):
+def _private_cidr(public_cidr) -> str:
     """Derive a private subnet CIDR from its AZ's public one.
 
     The VPC is a /16 split into /20s. The public subnets take the low /20s
@@ -347,7 +347,7 @@ def _private_cidr(public_cidr):
     return f"{'.'.join(octets)}/{mask}"
 
 
-def _az(region, index):
+def _az(region, index) -> str:
     """Derive an Availability Zone name from a region and an index.
 
     AWS conventionally names AZs as ``<region><letter>`` where the letter
@@ -361,7 +361,7 @@ def _az(region, index):
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -379,12 +379,12 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.EKSCluster(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
+    def compose(self) -> None:
         self.compose_network()
         self.compose_iam()
         self.compose_cluster()
@@ -399,7 +399,7 @@ class Composer:
         self.write_status()
         self.mark_readiness()
 
-    def compose_network(self):
+    def compose_network(self) -> None:
         """Compose the VPC, its two subnet tiers, and internet routing.
 
         The VPC has a public and a private subnet per AZ. Public subnets route
@@ -626,7 +626,7 @@ class Composer:
                 ),
             )
 
-    def compose_iam(self):
+    def compose_iam(self) -> None:
         """Compose the cluster and node IAM roles."""
         resource.update(
             self.rsp.desired.resources["iam-role-cluster"],
@@ -687,7 +687,7 @@ class Composer:
                 ),
             )
 
-    def compose_cluster(self):
+    def compose_cluster(self) -> None:
         """Compose the EKS cluster."""
         resource.update(
             self.rsp.desired.resources["cluster"],
@@ -717,7 +717,7 @@ class Composer:
             ),
         )
 
-    def compose_cluster_auth(self):
+    def compose_cluster_auth(self) -> None:
         """Compose the ClusterAuth resource that writes a kubeconfig.
 
         ClusterAuth uses the AWS provider's own credentials to mint an
@@ -742,7 +742,7 @@ class Composer:
             ),
         )
 
-    def compose_node_groups(self):
+    def compose_node_groups(self) -> None:
         """Compose the system and user-declared GPU node groups."""
         self._compose_system_node_group()
         for pool in self.xr.spec.nodePools:
@@ -838,7 +838,7 @@ class Composer:
         """
         return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
-    def _compose_launch_template(self, pool, capacity_block, efa):
+    def _compose_launch_template(self, pool, capacity_block, efa) -> None:
         """Compose an EC2 launch template for a node group.
 
         EKS launches the node group's instances from this template. It carries
@@ -966,7 +966,7 @@ class Composer:
         """Object (metadata.name) of the shared EFA security group."""
         return resource.child_name(self.xr.metadata.name, "efa-sg")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
-    def _compose_efa_security_group(self):
+    def _compose_efa_security_group(self) -> None:
         """Compose the EFA security group and its self-referencing rules.
 
         EFA's OS-bypass transport requires every EFA interface to sit in a
@@ -1031,7 +1031,7 @@ class Composer:
             ),
         )
 
-    def _compose_system_node_group(self):
+    def _compose_system_node_group(self) -> None:
         """Compose the system node group for control-plane components."""
         resource.update(
             self.rsp.desired.resources[f"nodegroup-{_SYSTEM_POOL_NAME}"],
@@ -1083,7 +1083,7 @@ class Composer:
             for z in pool.zones
         ]
 
-    def compose_addons(self):
+    def compose_addons(self) -> None:
         for name in _ADDONS:
             resource.update(
                 self.rsp.desired.resources[f"addon-{name}"],
@@ -1100,7 +1100,7 @@ class Composer:
                 ),
             )
 
-    def compose_efs(self):
+    def compose_efs(self) -> None:
         """Provision EFS RWX storage for ModelCache: an Elastic-throughput
         filesystem, a mount target per node subnet, an NFS security group, and
         the EFS CSI driver. The driver's IAM role is bound through Pod Identity
@@ -1253,7 +1253,7 @@ class Composer:
             ),
         )
 
-    def compose_storage_class(self):
+    def compose_storage_class(self) -> None:
         """Compose the EFS RWX StorageClass on the workload cluster. Gated on
         the filesystem id: the StorageClass pins to it, and the id is known
         only once the FileSystem is observed. The Object is applied through the
@@ -1288,7 +1288,7 @@ class Composer:
         )
         self.rsp.desired.resources["storage-class-rwx-efs"].ready = fnv1.READY_TRUE
 
-    def compose_cluster_autoscaler(self):
+    def compose_cluster_autoscaler(self) -> None:
         """Provision the Kubernetes cluster autoscaler so GPU pools scale within
         their min/max, the way GKE's built-in autoscaler does. DRA rules out
         Karpenter and EKS Auto Mode, so we install the autoscaler ourselves: a
@@ -1399,7 +1399,7 @@ class Composer:
             ),
         )
 
-    def compose_efa_dra_driver(self):
+    def compose_efa_dra_driver(self) -> None:
         """Compose the EFA DRA driver (DRANET), only when a pool uses the EFA
         fabric. Installed as a Helm release on the cluster's own helm
         ProviderConfig, like the autoscaler, and gated the same way: until the
@@ -1449,7 +1449,7 @@ class Composer:
             ),
         )
 
-    def compose_provider_configs(self):
+    def compose_provider_configs(self) -> None:
         kubeconfig_secret = _kubeconfig_secret_name(self.xr)
         resource.update(
             self.rsp.desired.resources["provider-config-kubernetes"],
@@ -1485,7 +1485,7 @@ class Composer:
             ),
         )
 
-    def write_status(self):
+    def write_status(self) -> None:
         status = v1alpha1.Status(
             secrets=[
                 v1alpha1.Secret(
@@ -1513,7 +1513,7 @@ class Composer:
             return None
         return fs.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME)
 
-    def mark_readiness(self):
+    def mark_readiness(self) -> None:
         """Mark composed resources ready based on their observed conditions."""
         managed_resources = [
             "vpc",

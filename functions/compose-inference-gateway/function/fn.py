@@ -162,7 +162,7 @@ def _helm_release(
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -180,12 +180,12 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.InferenceGateway(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
+    def compose(self) -> None:
         self.compose_provider_config()
         self.compose_gateway_api_crds()
         self.compose_metallb()
@@ -195,7 +195,7 @@ class Composer:
         self.write_status()
         self.derive_conditions()
 
-    def compose_provider_config(self):
+    def compose_provider_config(self) -> None:
         """Namespaced ProviderConfig for provider-helm targeting the control
         plane using the pod's own service account (in-cluster identity).
         Namespaced (not ClusterProviderConfig) so the Usage can protect it."""
@@ -210,7 +210,7 @@ class Composer:
         )
         self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    def compose_gateway_api_crds(self):
+    def compose_gateway_api_crds(self) -> None:
         """Compose the Gateway API CRDs onto the control plane.
 
         These must exist before the Traefik release renders its resources and
@@ -229,7 +229,7 @@ class Composer:
             for doc in _GATEWAY_API_CRDS
         )
 
-    def compose_metallb(self):
+    def compose_metallb(self) -> None:
         """Optional MetalLB for kind/bare-metal clusters that don't have a
         cloud load balancer controller to assign Gateway addresses."""
         t = self.xr.spec.traefik
@@ -291,7 +291,7 @@ class Composer:
         )
         self.rsp.desired.resources["metallb-l2"].ready = fnv1.READY_TRUE
 
-    def compose_traefik(self):
+    def compose_traefik(self) -> None:
         """Compose Traefik Proxy. Gated on the ProviderConfig being observed
         (so provider-helm can act on the Release) and the Gateway API CRDs
         being established (so the release can render its resources and Traefik
@@ -341,7 +341,7 @@ class Composer:
         )
         self.compose_pc_usage("traefik")
 
-    def compose_gateway(self):
+    def compose_gateway(self) -> None:
         """Compose GatewayClass and Gateway. Gated on Traefik being ready."""
         traefik_ready = resource.get_condition(self.req.observed.resources.get("traefik"), "Ready").status == "True"
 
@@ -384,7 +384,7 @@ class Composer:
                 },
             )
 
-    def write_status(self):
+    def write_status(self) -> None:
         """Surface the gateway's external address. Only the address — no
         gateway-specific fields. This contract works for any routing backend."""
         status = v1alpha1.Status()
@@ -398,7 +398,7 @@ class Composer:
 
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self):
+    def derive_conditions(self) -> None:
         """Derive readiness for all composed resources and set custom
         conditions."""
         # MetalLB readiness.
@@ -439,7 +439,7 @@ class Composer:
         if resource.get_condition(self.req.observed.resources.get("gateway"), "Accepted").status == "True":
             self.rsp.desired.resources["gateway"].ready = fnv1.READY_TRUE
 
-    def compose_pc_usage(self, release_key):
+    def compose_pc_usage(self, release_key) -> None:
         """Compose a Usage protecting the ProviderConfig from deletion until
         the given Helm release is gone."""
         resource.update(
@@ -466,7 +466,7 @@ class Composer:
         )
         self.rsp.desired.resources[f"usage-pc-by-{release_key}"].ready = fnv1.READY_TRUE
 
-    def compose_gateway_usages(self):
+    def compose_gateway_usages(self) -> None:
         """Compose Usages so the Traefik release outlives the GatewayClass and
         Gateway it controls.
 

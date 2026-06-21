@@ -76,7 +76,7 @@ class _PRVersion:
     # attribute-access savings are worth the rigidity.
     __slots__ = ("is_num", "num", "string")
 
-    def __init__(self, s: str):
+    def __init__(self, s: str) -> None:
         # An empty identifier (e.g. from "1.0.0-" or "1.0.0-a..b") is invalid.
         if s == "":
             raise ValueError("prerelease is empty")
@@ -124,7 +124,7 @@ class Semver:
     # a release version with no prerelease.
     __slots__ = ("major", "minor", "patch", "pre")
 
-    def __init__(self, major: int, minor: int, patch: int, pre: list[_PRVersion]):
+    def __init__(self, major: int, minor: int, patch: int, pre: list[_PRVersion]) -> None:
         self.major = major
         self.minor = minor
         self.patch = patch

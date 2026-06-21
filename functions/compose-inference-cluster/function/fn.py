@@ -94,7 +94,7 @@ _IDENTITY_TYPE_GCP = "GoogleApplicationCredentials"
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -112,7 +112,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.InferenceCluster(**resource.struct_to_dict(req.observed.composite.resource))
@@ -120,7 +120,7 @@ class Composer:
         # resolve_classes().
         self.classes: dict[str, iclv1alpha1.InferenceClass] = {}
 
-    def compose(self):
+    def compose(self) -> None:
         # The replica guard runs first, before any early return. It only
         # depends on which ModelReplicas reference this cluster, not on the
         # cluster's source or whether its classes resolve. Gating it behind
@@ -147,7 +147,7 @@ class Composer:
         else:
             response.warning(self.rsp, f"unsupported cluster source: {source}")
 
-    def compose_replica_guard(self):
+    def compose_replica_guard(self) -> None:
         """Block deletion of the InferenceCluster while ModelReplicas use it.
 
         Deleting an InferenceCluster out from under running ModelReplicas
@@ -236,7 +236,7 @@ class Composer:
 
         return True
 
-    def compose_gke(self, gke):
+    def compose_gke(self, gke) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
         GKE cluster. Composes the GKECluster XR, waits for it to be ready,
         then wires its secrets into the backend."""
@@ -268,7 +268,7 @@ class Composer:
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=gke_ready)
 
-    def compose_eks(self, eks):
+    def compose_eks(self, eks) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
         EKS cluster. Composes the EKSCluster XR, waits for it to be ready,
         then wires its kubeconfig into the backend.
@@ -306,7 +306,7 @@ class Composer:
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=eks_ready)
 
-    def compose_existing(self, existing):
+    def compose_existing(self, existing) -> None:
         """Compose an InferenceCluster backed by a user-supplied cluster.
         No gating needed — the kubeconfig secret is provided by the user."""
         if not existing:
@@ -333,7 +333,7 @@ class Composer:
         self,
         backend_secrets: list[ssv1alpha1.Secret],
         nvidia_driver_root: str | None = None,
-    ):
+    ) -> None:
         """Compose a ServingStack XR with the given secrets.
 
         nvidia_driver_root is set for provisioned GKE clusters, where the NVIDIA
@@ -355,7 +355,7 @@ class Composer:
             ),
         )
 
-    def compose_cluster_provider_config(self, kubeconfig_name, kubeconfig_key, sa_key=None):
+    def compose_cluster_provider_config(self, kubeconfig_name, kubeconfig_key, sa_key=None) -> None:
         """Compose a ClusterProviderConfig for provider-kubernetes so that
         ModelReplicas can create Objects on the remote cluster."""
         cpc = k8scpcv1alpha1.ClusterProviderConfig(
@@ -387,7 +387,7 @@ class Composer:
         )
         self.rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
 
-    def write_status(self, gpu_pools):
+    def write_status(self, gpu_pools) -> None:
         """Write the InferenceCluster status."""
         status = v1alpha1.Status(
             providerConfigRef=v1alpha1.ProviderConfigRef(
@@ -404,7 +404,7 @@ class Composer:
             status.gateway = v1alpha1.Gateway(address=gateway_address)
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self, cluster_ready):
+    def derive_conditions(self, cluster_ready) -> None:
         """Derive ClusterReady and BackendReady conditions."""
         backend_ready = (
             resource.get_condition(self.req.observed.resources.get(BACKEND_RESOURCE_KEY), "Ready").status == "True"
@@ -437,7 +437,7 @@ class Composer:
             ),
         )
 
-    def compose_gke_cluster(self, gke):
+    def compose_gke_cluster(self, gke) -> None:
         """Compose a GKECluster XR.
 
         Combines the cluster-level config (project, region) with the
@@ -495,7 +495,7 @@ class Composer:
             ),
         )
 
-    def compose_eks_cluster(self, eks):
+    def compose_eks_cluster(self, eks) -> None:
         """Compose an EKSCluster XR.
 
         Combines the cluster-level config (region) with GPU node pools
@@ -561,7 +561,7 @@ class Composer:
             ),
         )
 
-    def compose_eks_usage(self):
+    def compose_eks_usage(self) -> None:
         """Block EKSCluster deletion until the backend is deleted."""
         resource.update(
             self.rsp.desired.resources["usage-eks-by-backend"],
@@ -620,7 +620,7 @@ class Composer:
             return None
         return next((s for s in eks_secrets if s.type == secret_type), None)
 
-    def compose_gke_usage(self):
+    def compose_gke_usage(self) -> None:
         """Block GKECluster deletion until the backend is deleted."""
         resource.update(
             self.rsp.desired.resources["usage-gke-by-backend"],

@@ -154,7 +154,7 @@ class _DefaultMap(celtypes.MapType):
 class Program:
     """A compiled DRA CEL selector, reusable across devices."""
 
-    def __init__(self, expr: str):
+    def __init__(self, expr: str) -> None:
         env = celpy.Environment()
         # Any compile-time failure is a malformed expression - a user error.
         # celpy raises CELParseError for syntax errors, but we catch broadly so

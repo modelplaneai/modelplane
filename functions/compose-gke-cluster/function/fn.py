@@ -115,7 +115,7 @@ def _sa_key_secret_name(xr):
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -133,12 +133,12 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.GKECluster(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
+    def compose(self) -> None:
         self.compose_network()
         self.compose_filestore_api()
         self.compose_subnet()
@@ -151,7 +151,7 @@ class Composer:
         self.write_status()
         self.mark_readiness()
 
-    def compose_network(self):
+    def compose_network(self) -> None:
         resource.update(
             self.rsp.desired.resources["network"],
             networkv1beta1.Network(
@@ -164,7 +164,7 @@ class Composer:
             ),
         )
 
-    def compose_filestore_api(self):
+    def compose_filestore_api(self) -> None:
         """Enable file.googleapis.com so the Filestore CSI addon can provision
         RWX volumes (fresh projects have it disabled → PVCs Pending with
         SERVICE_DISABLED)."""
@@ -181,7 +181,7 @@ class Composer:
             ),
         )
 
-    def compose_subnet(self):
+    def compose_subnet(self) -> None:
         networking = self.xr.spec.networking or v1alpha1.Networking()
 
         resource.update(
@@ -210,7 +210,7 @@ class Composer:
             ),
         )
 
-    def compose_cluster(self):
+    def compose_cluster(self) -> None:
         resource.update(
             self.rsp.desired.resources["cluster"],
             clusterv1beta1.Cluster(
@@ -256,7 +256,7 @@ class Composer:
             ),
         )
 
-    def compose_node_pools(self):
+    def compose_node_pools(self) -> None:
         self._compose_system_pool()
         for pool in self.xr.spec.nodePools:
             node_config = nodepoolv1beta1.NodeConfig(
@@ -311,7 +311,7 @@ class Composer:
                 np,
             )
 
-    def _compose_system_pool(self):
+    def _compose_system_pool(self) -> None:
         """Compose the system node pool for control-plane components."""
         resource.update(
             self.rsp.desired.resources[f"nodepool-{_SYSTEM_POOL_NAME}"],
@@ -341,7 +341,7 @@ class Composer:
             ),
         )
 
-    def compose_service_account(self):
+    def compose_service_account(self) -> None:
         resource.update(
             self.rsp.desired.resources["service-account"],
             sav1beta1.ServiceAccount(
@@ -370,7 +370,7 @@ class Composer:
             ),
         )
 
-    def compose_iam_binding(self):
+    def compose_iam_binding(self) -> None:
         """Compose the IAM binding for the service account. Gated on the SA
         email being available in observed state."""
         sa_email = self.observed_sa_email()
@@ -390,7 +390,7 @@ class Composer:
             ),
         )
 
-    def compose_provider_configs(self):
+    def compose_provider_configs(self) -> None:
         resource.update(
             self.rsp.desired.resources["provider-config-kubernetes"],
             k8spcv1alpha1.ProviderConfig(
@@ -443,7 +443,7 @@ class Composer:
             ),
         )
 
-    def compose_storage_class(self):
+    def compose_storage_class(self) -> None:
         """Compose the Filestore RWX StorageClass on the workload cluster.
         Gated on the network name: Filestore CSI defaults to the `default` VPC
         → PVCs hang, so pin parameters.network to our VPC; the VPC name carries
@@ -480,7 +480,7 @@ class Composer:
         )
         self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
 
-    def write_status(self):
+    def write_status(self) -> None:
         status = v1alpha1.Status(
             secrets=[
                 v1alpha1.Secret(
@@ -513,7 +513,7 @@ class Composer:
             return None
         return network.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME) or None
 
-    def mark_readiness(self):
+    def mark_readiness(self) -> None:
         """Mark composed resources as ready based on their observed conditions."""
         managed_resources = [
             "network",

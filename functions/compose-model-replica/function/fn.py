@@ -59,7 +59,7 @@ _BACKENDS = {
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -77,19 +77,19 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelReplica(**resource.struct_to_dict(req.observed.composite.resource))
         self.ic = None
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
             return
         self.compose_model_serving()
         self.derive_conditions()
 
-    def resolve_inputs(self):
+    def resolve_inputs(self) -> bool:
         """Declare and fetch the referenced InferenceCluster."""
         response.require_resources(
             self.rsp,
@@ -136,7 +136,7 @@ class Composer:
 
         return True
 
-    def compose_model_serving(self):
+    def compose_model_serving(self) -> None:
         """Compose each engine's workload, then the replica's routing surface.
 
         Every engine composes to a Deployment or LeaderWorkerSet (with its
@@ -158,7 +158,7 @@ class Composer:
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
 
-    def derive_conditions(self):
+    def derive_conditions(self) -> None:
         """Derive ModelAccepted and ModelReady across all of the replica's engines.
 
         A replica is accepted when every engine's workload has been created on the

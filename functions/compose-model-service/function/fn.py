@@ -87,7 +87,7 @@ def _has_parent_condition(req: fnv1.RunFunctionRequest, name: str, cond: str) ->
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
@@ -105,14 +105,14 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req, rsp) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelService(**resource.struct_to_dict(req.observed.composite.resource))
         self.gateway = None
         self.endpoints: list[mev1alpha1.ModelEndpoint] = []
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
             return
         self.compose_httproute()
@@ -183,7 +183,7 @@ class Composer:
         )
         return True
 
-    def compose_httproute(self):
+    def compose_httproute(self) -> None:
         """Compose an HTTPRoute that load-balances across matched endpoints.
 
         A single rule matches the service prefix and fans out to all
@@ -239,14 +239,14 @@ class Composer:
             },
         )
 
-    def write_status(self):
+    def write_status(self) -> None:
         status = v1alpha1.Status()
         gateway_ip = self.gateway.status.address if self.gateway and self.gateway.status else None
         if gateway_ip:
             status.address = f"{_GATEWAY_SCHEME}://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self):
+    def derive_conditions(self) -> None:
         """RoutingReady: HTTPRoute is composed and Accepted with backends."""
         if "httproute" not in self.rsp.desired.resources:
             response.set_conditions(

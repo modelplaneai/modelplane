@@ -172,7 +172,7 @@ class Quantity:
 
     __slots__ = ("value",)
 
-    def __init__(self, value: decimal.Decimal):
+    def __init__(self, value: decimal.Decimal) -> None:
         self.value = value
 
     def __eq__(self, other) -> bool:
