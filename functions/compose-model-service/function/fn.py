@@ -55,15 +55,6 @@ _NAMESPACE_SYSTEM = "modelplane-system"
 _GATEWAY_SCHEME = "http"
 
 
-def _inference_gateway(
-    gw: igwv1alpha1.InferenceGateway,
-) -> igwv1alpha1.InferenceGateway:
-    """Return a copy with status fields defaulted."""
-    gw = gw.model_copy(deep=True)
-    gw.status = gw.status or igwv1alpha1.Status()
-    return gw
-
-
 def _port_from_url(url: str) -> int:
     """Parse the backend port from a ModelEndpoint URL.
 
@@ -149,7 +140,7 @@ class Composer:
             )
 
         gw_dict = request.get_required_resource(self.req, "inference-gateway")
-        self.gateway = _inference_gateway(igwv1alpha1.InferenceGateway.model_validate(gw_dict)) if gw_dict else None
+        self.gateway = igwv1alpha1.InferenceGateway.model_validate(gw_dict) if gw_dict else None
 
         # Gather matched endpoints from every selector entry.
         seen_names: set[str] = set()
@@ -250,7 +241,7 @@ class Composer:
 
     def write_status(self):
         status = v1alpha1.Status()
-        gateway_ip = self.gateway.status.address if self.gateway else None
+        gateway_ip = self.gateway.status.address if self.gateway and self.gateway.status else None
         if gateway_ip:
             status.address = f"{_GATEWAY_SCHEME}://{gateway_ip}/{self.xr.metadata.namespace}/{self.xr.metadata.name}"  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
         resource.update_status(self.rsp.desired.composite, status)
