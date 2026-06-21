@@ -1,6 +1,8 @@
 {{ $current := . }}
 {{ $root := .Site.Home }}
+{{ $ex := .Site.GetPage "/examples" }}
 {{ $isRef := eq $current.Params.product "crds" }}
+{{ $isExamples := and $ex (eq $current.Section "examples") }}
 
 {{/* Home + top-level regular pages + sections, ordered by weight. The home page
      itself is excluded from the list (the sidebar brand links to it). */}}
@@ -29,10 +31,27 @@
         </div>
       {{ end }}
     {{ end }}
+  {{ else if $isExamples }}
+    {{/* ── Examples tab: the examples section and its recipes ── */}}
+    {{ with $ex }}
+      <div class="nav-group">
+        <div class="nav-group-label">{{ .Params.navLabel | default .Title }}</div>
+        <div class="nav-children">
+          {{ with .Params.navLanding }}
+            <a class="bd-links d-flex{{ if eq $ex $current }} active{{ end }}" href="{{ $ex.Permalink }}">{{ . }}</a>
+          {{ end }}
+          {{ range .Pages.ByWeight }}
+            {{ if not .Params.tocHidden }}
+              <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
+            {{ end }}
+          {{ end }}
+        </div>
+      </div>
+    {{ end }}
   {{ else }}
-    {{/* ── Documentation tab: every non-reference section and page ── */}}
+    {{/* ── Documentation tab: every non-reference, non-examples section and page ── */}}
     {{ range $allItems }}
-      {{ if and (ne . $root) (ne .Params.product "crds") (not .Params.tocHidden) }}
+      {{ if and (ne . $root) (ne .Params.product "crds") (ne . $ex) (not .Params.tocHidden) }}
         {{ if .IsSection }}
           {{ $section := . }}
           <div class="nav-group">
