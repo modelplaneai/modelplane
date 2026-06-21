@@ -307,7 +307,7 @@ def _lws(leader_container, worker_container):
 
 
 def _engine(*, serving, args=None, command=None, env=None):
-    c = {
+    c: dict[str, Any] = {
         "name": "engine",
         "image": "vllm/vllm-openai:latest",
         "resources": {"claims": [{"name": "devices"}]},

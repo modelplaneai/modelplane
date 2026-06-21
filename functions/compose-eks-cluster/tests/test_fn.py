@@ -16,6 +16,7 @@
 
 import dataclasses
 import unittest
+from typing import Any
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -208,7 +209,7 @@ def _xr_efa() -> v1alpha1.EKSCluster:
 
 
 def _efa_network_interface(card: int, security_groups: list[str] | None = None) -> dict:
-    ni = {
+    ni: dict[str, Any] = {
         "networkCardIndex": card,
         "deviceIndex": 0 if card == 0 else 1,
         "interfaceType": "efa" if card == 0 else "efa-only",

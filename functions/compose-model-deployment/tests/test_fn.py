@@ -17,6 +17,7 @@
 import dataclasses
 import datetime
 import unittest
+from typing import Any
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -97,7 +98,7 @@ def _replica_engines(*, args: bool = True) -> list:
     args toggles the engine container's --model arg, matching the fixture
     deployment a want is built from.
     """
-    container = {"name": "engine", "image": "vllm/vllm-openai:latest"}
+    container: dict[str, Any] = {"name": "engine", "image": "vllm/vllm-openai:latest"}
     if args:
         container["args"] = ["--model=Qwen/Qwen3-0.6B"]
     return [
