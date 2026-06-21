@@ -4,13 +4,10 @@
 // Tuned for the dark default (matching the website). Light-mode overrides at the
 // end keep them legible when the theme toggle is set to light.
 
-// Per-component tokens, dark by default.
-.bd-content {
-  --mp-card-bg: #{$mp-bg-card};
-  --mp-card-border: #{$mp-border};
-  --mp-card-border-hi: #{$mp-border-hi};
-  --mp-card-muted: #{$mp-muted};
-}
+// Per-component card tokens (--mp-card-bg, --mp-card-border, --mp-card-border-hi,
+// --mp-card-muted) live in the light-mode/dark-mode mixins, not here: defining
+// the light override on a `.bd-content` selector let PurgeCSS drop it in
+// production, leaving the dark surface in light mode.
 
 // ── Support matrix ────────────────────────────────────────────
 .mp-matrix-group { margin: 1.5rem 0 2rem; }
@@ -379,12 +376,6 @@ a.mp-chip:hover { border-color: var(--mp-card-border-hi); text-decoration: none;
 }
 
 // ── Light-mode overrides ──────────────────────────────────────
-[color-theme="light"] .bd-content {
-  --mp-card-bg: #{$fog-25};
-  --mp-card-border: #{$fog-150};
-  --mp-card-border-hi: rgba(154, 94, 252, 0.4);
-  --mp-card-muted: #{$fog-600};
-}
 [color-theme="light"] {
   // Brand accents need darker shades to stay legible on white (the dark-mode
   // purple/sky/green wash out at WCAG-AA contrast).

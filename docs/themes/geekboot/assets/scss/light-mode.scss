@@ -28,6 +28,13 @@
     --mp-muted: #{$fog-700};
     --mp-muted-hi: #{$fog-800};
 
+    // Component card tokens (catalog/persona cards, hints, matrix). Defined here
+    // rather than on .bd-content so this override survives PurgeCSS.
+    --mp-card-bg: #{$fog-25};
+    --mp-card-border: #{$fog-150};
+    --mp-card-border-hi: rgba(154, 94, 252, 0.4);
+    --mp-card-muted: #{$fog-600};
+
     // Sidebar nav
     --nav-highlight-color: #f1ebfe;
     --btn-close-color: #{$fog-1000};
