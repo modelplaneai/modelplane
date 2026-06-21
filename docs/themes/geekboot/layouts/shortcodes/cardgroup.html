@@ -1,0 +1,20 @@
+{{/*
+  A responsive grid wrapping a set of `card` shortcodes.
+
+  Usage:
+    {{< cardgroup cols="2" >}}
+      {{< card title="Why Modelplane" href="/overview/why/" >}}
+      The problem it solves and the alternatives.
+      {{< /card >}}
+      {{< card title="How it works" href="/overview/how-it-works/" >}}
+      The architecture and what happens when you deploy a model.
+      {{< /card >}}
+    {{< /cardgroup >}}
+
+  Params:
+    cols  optional  fixed column count (2, 3, 4). Defaults to an auto-fill grid.
+*/}}
+{{- $cols := .Get "cols" -}}
+<div class="mp-cards{{ with $cols }} mp-cards--{{ . }}{{ end }}">
+{{ .Inner }}
+</div>

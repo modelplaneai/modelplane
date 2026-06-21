@@ -1,0 +1,35 @@
+{{/*
+  A link card: a whole-card anchor with a title, optional icon, optional
+  description, and a trailing arrow. Reuses the .mp-card* styles.
+
+  Usage (paired, description as inner markdown):
+    {{< card title="Why Modelplane" href="/overview/why/" >}}
+    The problem it solves and the alternatives.
+    {{< /card >}}
+
+  Usage (self-closing, with an icon and explicit description):
+    {{< card title="GitHub" href="https://github.com/modelplaneai/modelplane"
+        icon="github" desc="Source, issues, and discussions." />}}
+
+  Params:
+    title  required  card heading
+    href   required  destination (alias: link); external URLs open in a new tab
+    icon   optional  id of a symbol in partials/icons.html (e.g. info, github)
+    desc   optional  description when not using inner content
+    cta    optional  label shown before the arrow (default: just the arrow)
+    accent optional  color the title and arrow (platform = cyan, developer = purple)
+*/}}
+{{- $href := or (.Get "href") (.Get "link") -}}
+{{- $icon := .Get "icon" -}}
+{{- $accent := .Get "accent" -}}
+{{- $ext := strings.HasPrefix $href "http" -}}
+{{- $inner := trim (.Inner | default "") " \n\r\t" -}}
+{{- $desc := or $inner (.Get "desc") -}}
+<a class="mp-card mp-card--link{{ with $accent }} mp-card--{{ . }}{{ end }}" href="{{ $href }}"{{ if $ext }} target="_blank" rel="noopener"{{ end }}>
+  <span class="mp-card-head">
+    {{ with $icon }}<svg class="mp-card-icon bi" role="img" aria-hidden="true"><use xlink:href="#{{ . }}"/></svg>{{ end }}
+    <span class="mp-card-title">{{ .Get "title" }}</span>
+  </span>
+  {{ with $desc }}<span class="mp-card-note">{{ $.Page.RenderString (dict "display" "inline") . }}</span>{{ end }}
+  <span class="mp-card-link">{{ with .Get "cta" }}{{ . }} {{ end }}&rarr;</span>
+</a>

@@ -165,6 +165,7 @@
           {{ partial "crds" . }}
         {{ else }}
           {{ .Content }}
+          {{ partial "page-pagination" . }}
         {{ end }}
         </div>
       </div>

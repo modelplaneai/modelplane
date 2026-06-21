@@ -1,8 +1,7 @@
-{{ $htmlTable := .Inner | markdownify }}
-{{ $old := "<table>" }}
-{{ $class := .Get 0 | default "table"}}
-{{ $new := printf "<table class=\"%s \">" $class }}
-{{ $htmlTable := replace $htmlTable $old $new }}
-<div class="table-responsive border rounded">
-{{ $htmlTable | safeHTML }}
-</div>
+{{- /*
+  The Markdown table render hook (layouts/_default/_markup/render-table.html)
+  wraps and styles every table, so this shortcode only needs to render its inner
+  Markdown. It stays for backward compatibility; wrapping here too would
+  double-wrap the table.
+*/ -}}
+{{ .Inner | markdownify }}

@@ -1,0 +1,53 @@
+{{/*
+  Previous / next links at the foot of a content page. The order mirrors the
+  sidebar (see docs-sidebar.html): home's regular pages and sections by weight,
+  and within each section its landing (if it has one) followed by its pages by
+  weight. Flattening that tree here lets prev/next flow across section
+  boundaries, just like reading top to bottom in the sidebar.
+
+  Opt a page out with `paginationHidden: true` in its front matter.
+*/}}
+{{ $current := . }}
+{{ $root := .Site.Home }}
+{{ $ordered := slice }}
+{{ range (slice $root | append $root.RegularPages | append $root.Sections).ByWeight }}
+  {{ $item := . }}
+  {{ if and (ne $item $root) (ne $item.Params.product "crds") (not $item.Params.tocHidden) }}
+    {{ if $item.IsSection }}
+      {{ if $item.Params.navLanding }}{{ $ordered = $ordered | append $item }}{{ end }}
+      {{ range $item.Pages.ByWeight }}
+        {{ if not .Params.tocHidden }}{{ $ordered = $ordered | append . }}{{ end }}
+      {{ end }}
+    {{ else }}
+      {{ $ordered = $ordered | append $item }}
+    {{ end }}
+  {{ end }}
+{{ end }}
+
+{{ $idx := -1 }}
+{{ range $i, $p := $ordered }}
+  {{ if eq $p $current }}{{ $idx = $i }}{{ end }}
+{{ end }}
+
+{{ if and (ge $idx 0) (not $current.Params.paginationHidden) }}
+  {{ $prev := false }}
+  {{ $next := false }}
+  {{ if gt $idx 0 }}{{ $prev = index $ordered (sub $idx 1) }}{{ end }}
+  {{ if lt $idx (sub (len $ordered) 1) }}{{ $next = index $ordered (add $idx 1) }}{{ end }}
+  {{ if or $prev $next }}
+    <nav class="mp-pagination" aria-label="Page navigation">
+      {{ with $prev }}
+        <a class="mp-pagination-prev" href="{{ .Permalink }}">
+          <span class="mp-pagination-label">&larr; Previous</span>
+          <span class="mp-pagination-title">{{ .Title }}</span>
+        </a>
+      {{ end }}
+      {{ with $next }}
+        <a class="mp-pagination-next" href="{{ .Permalink }}">
+          <span class="mp-pagination-label">Next &rarr;</span>
+          <span class="mp-pagination-title">{{ .Title }}</span>
+        </a>
+      {{ end }}
+    </nav>
+  {{ end }}
+{{ end }}

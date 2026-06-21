@@ -1,0 +1,16 @@
+{{- /*
+  A collapsible FAQ entry: a question that expands to reveal its answer,
+  collapsed by default. Uses native <details> so the answer stays in the DOM
+  (searchable, and present in the Markdown/llms outputs) while hidden.
+
+  Usage:
+    {{< qa "Is Modelplane a serving engine?" >}}
+    No. It is the control plane above the engine.
+    {{< /qa >}}
+*/ -}}
+<details class="mp-faq">
+  <summary class="mp-faq-q">{{ .Get 0 }}</summary>
+  <div class="mp-faq-a">
+    {{ .Inner | .Page.RenderString }}
+  </div>
+</details>

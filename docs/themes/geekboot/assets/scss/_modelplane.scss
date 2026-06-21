@@ -123,6 +123,19 @@ nav.site-nav a {
   transform: none;
 }
 
+// On phones the toolbar stacks and the button sits at the left, so a
+// right-aligned 18rem menu opens off the left edge. Left-align it under the
+// button and cap its width to the viewport so it stays on screen.
+@media (max-width: 767.98px) {
+  .mp-page-ai .mp-page-ai-menu {
+    right: auto;
+    left: 0;
+    --bs-dropdown-min-width: 0;
+    width: max-content;
+    max-width: calc(100vw - 2rem);
+  }
+}
+
 .mp-page-ai-menu {
   --bs-dropdown-min-width: 18rem;
   padding: 0.4rem;

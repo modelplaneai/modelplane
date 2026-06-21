@@ -5,46 +5,112 @@ description: What Modelplane is, why it exists, and how it works.
 navLanding: "Introduction"
 ---
 <!-- vale write-good.Passive = NO -->
-Modelplane is the open source control plane for AI inference. It sits above your
-inference clusters across cloud, neocloud, and on-premise, and turns a fleet of
-GPU clusters into a single place to serve models. Platform teams set policy and
-capacity; developers declare a model and get a serving endpoint. Modelplane
-continuously reconciles the whole fleet: provisioning, scheduling, autoscaling,
-routing, and caching. It all runs under your control.
+Modelplane is the open source control plane for AI inference. It's software you
+install and run in your own environment, and it orchestrates the models, serving
+stack, and infrastructure across cloud, neocloud, and on-premise. Modelplane
+supports running any model and any engine on any infrastructure, with the
+frontier-level serving topologies and performance the largest models demand,
+from a single GPU to disaggregated, multi-node deployments.
 
-This Overview is the place to start. It answers three questions:
+Modelplane operates across the whole fleet: provisioning inference clusters,
+scheduling model deployments on compatible clusters, autoscaling model replicas
+across clusters, caching model weights across clusters, and routing across
+clusters.
 
-- [Why Modelplane]({{< ref "/overview/why" >}}): the problem it solves and how it
-  compares to building inference yourself or buying it as a service.
-- [How Modelplane works]({{< ref "/overview/how-it-works" >}}): the architecture, the
-  two-team boundary, and what happens when you deploy a model.
+It's an active system that is always reconciling the fleet toward the state you
+declare. You install Modelplane on a Kubernetes cluster, which becomes the
+control cluster for your inference fleet. It's built on
+[Crossplane](https://crossplane.io) and fully integrates with your existing
+platform systems.
 
-When you're ready to deploy, [Getting started]({{< ref "/getting-started" >}}) takes
-you from nothing to a live OpenAI-compatible endpoint in about 45 minutes.
+{{< hint warning >}}
+Modelplane is under active development. We have opted to build the project in the
+open, collaborating with the broad AI inference community on integrations and
+capabilities.
+{{< /hint >}}
 
-## Two teams, one control plane
+## Deploy a model
 
-Modelplane draws a clear boundary between the people who run the infrastructure
-and the people who ship models on it.
+Modelplane's API is declarative, designed for platform teams responsible for the
+inference infrastructure and developers deploying models on that infrastructure.
 
-{{< personas >}}
+Once a platform team has provisioned inference clusters and declared the available
+GPUs and networking fabric, an ML development team deploys a model with a
+declarative manifest:
 
-**Platform teams** describe their GPU fleet as resources: which clusters exist,
-what hardware each offers, and the policy and capacity the fleet runs within.
-**Developers** declare a model and replica count, and get back one
-OpenAI-compatible endpoint per service. Neither team has to know the details of
-the other's job.
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 1
+  engines:
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.7.3
+            args: ["--model=Qwen/Qwen2.5-0.5B-Instruct"]
+```
+
+Modelplane schedules a model replica onto an inference cluster with free,
+compatible GPUs and memory, and deploys the serving engine. Exposing an
+OpenAI-compatible endpoint can be done by declaring a model service:
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-demo
+```
+## A universal control plane for AI inference
+
+Modelplane is designed to be a universal control plane for inference. It runs
+inference clusters on any cloud, neocloud, or on-premise environment, or any
+combination of them. Modelplane can provision the clusters for you, or you can
+bring your own.
+
+It supports any serving engine that runs as a container, and can serve
+frontier-quality models using advanced topologies including tensor parallel,
+pipeline parallel, data and expert parallel, and prefill/decode disaggregation.
+Modelplane works across different accelerators and networking fabrics, and
+schedules each model's replicas by matching the model's hardware requirements to
+the hardware available across your clusters.
 
 ## What Modelplane is not
 
-Modelplane is the fleet-level control plane *above* the inference engine. It
-doesn't compete with vLLM or Dynamo; it manages them across clusters. It isn't a
-managed inference service either. Modelplane is open source and runs in your own
-clusters, so the models, the data, and the infrastructure stay yours.
+Modelplane is not a serving engine like vLLM, SGLang, or TensorRT-LLM. Modelplane
+composes serving engines and orchestrates them fleet-wide across cloud, neocloud,
+and on-premise. Modelplane is not a managed inference service like Baseten,
+Together, or Fireworks. These offer cloud services, while Modelplane is
+self-hosted software.
 
-It builds on [Crossplane](https://crossplane.io): platform teams describe their
-GPU fleet as resources, developers describe a deployment, and Modelplane composes
-the clusters, schedules replicas, and exposes one OpenAI-compatible endpoint per
-service. The [Concepts]({{< ref "/overview/concepts" >}}) page covers every resource and
-how they relate.
+## Next steps
+
+{{< cardgroup cols="2" >}}
+{{< card title="Get started" href="/getting-started/" cta="Deploy on a real fleet" >}}
+Go from nothing to a live OpenAI-compatible endpoint in about 45 minutes.
+{{< /card >}}
+{{< card title="Why Modelplane" href="/overview/why/" cta="Learn more" >}}
+Learn more about Modelplane's capabilities and how it works.
+{{< /card >}}
+{{< /cardgroup >}}
+
 <!-- vale write-good.Passive = YES -->

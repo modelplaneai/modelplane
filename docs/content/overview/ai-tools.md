@@ -1,5 +1,5 @@
 ---
-title: Working with AI tools
+title: AI tools
 weight: 40
 description: Connect AI assistants and coding agents to the Modelplane docs through MCP, Markdown, and llms.txt.
 ---

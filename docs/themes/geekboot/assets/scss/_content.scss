@@ -54,7 +54,7 @@ body {
 
   // Vertical rhythm
   p, ul, ol, dl, pre, blockquote,
-  .table-responsive, .mp-cards, .mp-personas, .mp-matrix-group, .code-card {
+  .table-responsive, .mp-cards, .mp-matrix-group, .code-card {
     margin-bottom: 0.75rem;
   }
   ul, ol { padding-left: 1.5rem; }
@@ -165,7 +165,7 @@ blockquote {
 
 .table-responsive {
   margin-bottom: 1.1rem;
-  border: 1px solid var(--dropdown-border-color);
+  border: 1px solid var(--table-divider, var(--dropdown-border-color));
   border-radius: 8px;
   overflow: hidden;
   background-color: var(--body-background) !important;
@@ -176,15 +176,24 @@ blockquote {
 .table th {
   background-color: var(--expand-box-background);
   font-weight: 600;
-  border-bottom: 1px solid var(--dropdown-border-color);
+  border-bottom: 1px solid var(--table-divider, var(--dropdown-border-color));
   padding: 11px 20px;
 }
-// Body rows: hairline separators in the theme border colour.
+// Body rows: separators in the visible table-divider colour.
 .table td {
   border-bottom: none;
   padding: 11px 20px;
-  border-top: 1px solid var(--dropdown-border-color);
+  border-top: 1px solid var(--table-divider, var(--dropdown-border-color));
   vertical-align: top;
+}
+// Column dividers: a left border on every cell after the first.
+.table th + th,
+.table td + td {
+  border-left: 1px solid var(--table-divider, var(--dropdown-border-color));
+}
+// Zebra striping so wide rows stay easy to track across.
+.table tbody tr:nth-child(even) td {
+  background-color: var(--expand-box-background);
 }
 // Decrease padding for small tables
 .table.table-sm th {

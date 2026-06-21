@@ -143,6 +143,176 @@
   &:hover { color: #{$mp-purple}; text-decoration: none; }
 }
 
+// Whole-card link variant (card shortcode): the anchor is the card.
+a.mp-card,
+.mp-card--link {
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+  &:hover { border-color: var(--mp-card-border-hi); transform: translateY(-2px); text-decoration: none; }
+}
+
+.mp-card-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  fill: currentColor;
+  color: #{$mp-purple-hi};
+}
+
+// Fixed-column overrides for cardgroup; collapse to one column on small screens.
+.mp-cards--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mp-cards--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mp-cards--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 600px) {
+  .mp-cards[class*="mp-cards--"] { grid-template-columns: 1fr; }
+}
+
+// ── Prev / next page navigation ───────────────────────────────
+.mp-pagination {
+  display: flex;
+  gap: 16px;
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--mp-card-border);
+
+  a {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 16px;
+    border: 1px solid var(--mp-card-border);
+    border-radius: 8px;
+    text-decoration: none;
+    transition: border-color 0.2s;
+    &:hover { border-color: var(--mp-card-border-hi); text-decoration: none; }
+  }
+}
+
+.mp-pagination-next {
+  text-align: right;
+  align-items: flex-end;
+  margin-left: auto; // keep next right-aligned even when there is no prev
+}
+
+.mp-pagination-label { font-size: 0.75rem; color: var(--mp-card-muted); }
+// Match the standard content link color (purple), without the underline.
+.mp-pagination-title { font-weight: 600; color: var(--content-link-color); }
+
+@media (max-width: 600px) {
+  .mp-pagination { flex-direction: column; }
+  .mp-pagination-next { margin-left: 0; }
+}
+
+// ── Lane diagram (who creates what) ───────────────────────────
+.mp-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 1.5rem 0;
+}
+
+@media (max-width: 700px) {
+  .mp-lanes { grid-template-columns: 1fr; }
+}
+
+.mp-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 10px;
+}
+
+.mp-lane-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mp-card-muted);
+}
+.mp-lane--platform .mp-lane-title { color: #{$mp-cyan}; }
+.mp-lane--ml .mp-lane-title { color: #{$mp-purple-hi}; }
+
+.mp-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  background: transparent;
+  border: 1px solid var(--mp-card-border);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+a.mp-chip:hover { border-color: var(--mp-card-border-hi); text-decoration: none; }
+
+.mp-chip-name {
+  font-family: #{$font-family-monospace};
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--body-font-color, inherit);
+}
+.mp-chip-desc {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--mp-card-muted);
+}
+
+.mp-lane--platform .mp-chip { border-color: rgba(0, 220, 232, 0.30); }
+.mp-lane--ml .mp-chip { border-color: rgba(154, 94, 252, 0.30); }
+
+// ── FAQ disclosure ────────────────────────────────────────────
+.mp-faq {
+  margin: 0.6rem 0;
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mp-faq-q {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  transition: color 0.15s;
+
+  &::-webkit-details-marker { display: none; }
+
+  // Chevron: points down when collapsed, up when open.
+  &::after {
+    content: "";
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-right: 2px solid var(--mp-card-muted);
+    border-bottom: 2px solid var(--mp-card-muted);
+    transform: rotate(45deg);
+    transition: transform 0.2s;
+  }
+
+  &:hover { color: var(--content-link-color); }
+}
+
+.mp-faq[open] > .mp-faq-q { color: var(--content-link-color); }
+.mp-faq[open] > .mp-faq-q::after { transform: rotate(-135deg); }
+
+.mp-faq-a {
+  padding: 0 1rem 0.85rem;
+  color: var(--body-font-color);
+
+  > :first-child { margin-top: 0; }
+  > :last-child { margin-bottom: 0; }
+}
+
 // ── Example-from-source block ─────────────────────────────────
 .mp-example {
   margin: 1.25rem 0;
@@ -179,42 +349,11 @@
 
 .mp-example-code pre { margin: 0; border-radius: 0; }
 
-// ── Persona path cards ────────────────────────────────────────
-.mp-personas {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
-  margin: 1.5rem 0;
-}
-
-.mp-persona {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 20px;
-  background: var(--mp-card-bg);
-  border: 1px solid var(--mp-card-border);
-  border-radius: 10px;
-  text-decoration: none;
-  transition: border-color 0.2s, transform 0.2s;
-
-  &:hover { border-color: var(--mp-card-border-hi); transform: translateY(-2px); text-decoration: none; }
-}
-
-.mp-persona-role {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--bs-body-color, inherit);
-}
-.mp-persona--platform .mp-persona-role { color: #{$mp-cyan}; }
-.mp-persona--developer .mp-persona-role { color: #{$mp-purple-hi}; }
-
-.mp-persona-desc { font-size: 0.9rem; color: var(--mp-card-muted); }
-
-.mp-persona-cta { font-size: 0.85rem; font-weight: 600; margin-top: auto; }
-.mp-persona--platform .mp-persona-cta { color: #{$mp-cyan}; }
-.mp-persona--developer .mp-persona-cta { color: #{$mp-purple-hi}; }
+// Accent variants (card shortcode): color the title and arrow by role.
+.mp-card--platform .mp-card-title,
+.mp-card--platform .mp-card-link { color: #{$mp-cyan}; }
+.mp-card--developer .mp-card-title,
+.mp-card--developer .mp-card-link { color: #{$mp-purple-hi}; }
 
 // ── Inline persona badge ──────────────────────────────────────
 .mp-badge {
@@ -249,13 +388,14 @@
 [color-theme="light"] {
   // Brand accents need darker shades to stay legible on white (the dark-mode
   // purple/sky/green wash out at WCAG-AA contrast).
-  .mp-persona--developer .mp-persona-role,
-  .mp-persona--developer .mp-persona-cta,
+  .mp-card--developer .mp-card-title,
+  .mp-lane--ml .mp-lane-title,
   .mp-badge--developer,
   .mp-card-link { color: #{$mp-purple-dark}; }
 
-  .mp-persona--platform .mp-persona-role,
-  .mp-persona--platform .mp-persona-cta,
+  .mp-card--platform .mp-card-title,
+  .mp-card--platform .mp-card-link,
+  .mp-lane--platform .mp-lane-title,
   .mp-badge--platform,
   .mp-status--preview { color: #{$aqua-700}; }
 

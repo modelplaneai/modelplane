@@ -1,0 +1,27 @@
+{{- /*
+  Give every Markdown table the theme's .table styling inside a scrollable,
+  bordered .table-responsive wrapper, so rows and columns have visible dividers
+  and wide tables scroll instead of overflowing on narrow screens.
+*/ -}}
+<div class="table-responsive">
+  <table class="table">
+    <thead>
+      {{- range .THead }}
+      <tr>
+        {{- range . }}
+        <th{{ with .Alignment }} style="text-align: {{ . }};"{{ end }}>{{ .Text }}</th>
+        {{- end }}
+      </tr>
+      {{- end }}
+    </thead>
+    <tbody>
+      {{- range .TBody }}
+      <tr>
+        {{- range . }}
+        <td{{ with .Alignment }} style="text-align: {{ . }};"{{ end }}>{{ .Text }}</td>
+        {{- end }}
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+</div>
