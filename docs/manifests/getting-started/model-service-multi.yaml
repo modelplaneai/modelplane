@@ -1,0 +1,17 @@
+# The same ModelService as before, now selecting two deployments. Each entry in
+# spec.endpoints adds every ModelEndpoint matching its selector to the same
+# OpenAI-compatible endpoint, so /ml-team/qwen/ load-balances across qwen-demo
+# and qwen-west, wherever their replicas run.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-demo
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-west
