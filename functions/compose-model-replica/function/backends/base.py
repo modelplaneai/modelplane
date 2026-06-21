@@ -65,7 +65,7 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
     ref = replica.spec.modelCacheRef
     if not ref:
         return [], []
-    pvc = cache_pvc_name(replica.metadata.namespace, ref.name)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    pvc = cache_pvc_name(replica.metadata.namespace, ref.name)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
     # Mounted read-write (NOT readOnly): engines write into the model dir
     # (tokenizer/compile/lock artifacts), and a readOnly mount hard-fails them.
     # The PVC is ReadWriteMany, so every pod in the gang shares one read-write
@@ -356,7 +356,7 @@ def engine_name(replica: v1alpha1.ModelReplica, engine) -> str:
     LWS shared the serving Service's name, that headless Service would never be
     created, gang DNS would never resolve, and the gang could never form.
     """
-    return resource.child_name(replica.metadata.name, engine.name)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    return resource.child_name(replica.metadata.name, engine.name)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
 
 def claim_template_name(replica: v1alpha1.ModelReplica, engine, member) -> str:
@@ -370,7 +370,7 @@ def claim_template_name(replica: v1alpha1.ModelReplica, engine, member) -> str:
     engine's members may claim different devices, so each claiming member gets
     its own.
     """
-    return resource.child_name(replica.metadata.name, engine.name, member_role(member), _POD_CLAIM_NAME)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+    return resource.child_name(replica.metadata.name, engine.name, member_role(member), _POD_CLAIM_NAME)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
 
 def engine_resources() -> dict:

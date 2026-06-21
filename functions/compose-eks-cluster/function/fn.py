@@ -833,7 +833,7 @@ class Composer:
         must be stable and match the launchTemplate.forProvider.name set
         on the composed EC2 LaunchTemplate.
         """
-        return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
     def _compose_launch_template(self, pool, capacity_block, efa):
         """Compose an EC2 launch template for a node group.
@@ -961,7 +961,7 @@ class Composer:
 
     def _efa_security_group_resource_name(self):
         """Object (metadata.name) of the shared EFA security group."""
-        return resource.child_name(self.xr.metadata.name, "efa-sg")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        return resource.child_name(self.xr.metadata.name, "efa-sg")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
     def _compose_efa_security_group(self):
         """Compose the EFA security group and its self-referencing rules.
@@ -1457,7 +1457,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=kubeconfig_secret,
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -1474,7 +1474,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=kubeconfig_secret,
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),

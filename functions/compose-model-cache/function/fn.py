@@ -180,7 +180,7 @@ class Composer:
         # Derive each cluster's phase first (from observed state), then compose:
         # a hydrated cluster's Job is composed Observe-only so Crossplane doesn't
         # recreate it after the TTL controller cleans it.
-        per_cluster_phase = [(c.metadata.name, self.derive_cluster_phase(c.metadata.name)) for c in matched]  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        per_cluster_phase = [(c.metadata.name, self.derive_cluster_phase(c.metadata.name)) for c in matched]  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
         phase_by_name = dict(per_cluster_phase)
         for cluster in matched:
             self.compose_cluster_resources(cluster, phase_by_name[cluster.metadata.name])  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
@@ -372,13 +372,13 @@ class Composer:
     # Namespace-qualified so same-named caches from different Modelplane
     # namespaces don't collide in the workload cluster's `default` namespace.
     def _pvc_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name)  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name)  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
     def _job_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "hydrate")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "hydrate")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
     def _auth_secret_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "auth")  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "auth")  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
 
     def _pvc_key(self, cluster_name: str) -> str:
         return f"pvc-{cluster_name}"

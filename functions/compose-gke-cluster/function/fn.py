@@ -399,7 +399,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -408,7 +408,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
@@ -425,7 +425,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -434,7 +434,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute]  # metadata is always set on resources read from the API server
+                            namespace=self.xr.metadata.namespace,  # ty: ignore[unresolved-attribute, invalid-argument-type]  # metadata is always set on resources read from the API server
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
