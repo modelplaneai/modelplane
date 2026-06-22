@@ -4,9 +4,9 @@
 #
 # Run it, screen-capture the terminal, voice over afterward. It types and runs
 # each command itself, with reading pauses between them. Everything is
-# pre-provisioned and Ready (see ../README.md "Pre-flight"), so every command is
-# an instant read, an idempotent re-apply, or a warm curl — nothing waits on
-# infra on camera.
+# pre-provisioned and Ready (see ../README.md "Pre-flight"), so every apply is an
+# idempotent re-apply and every read/curl is instant — nothing waits on infra on
+# camera. Banners carry the time estimates from the guide so the timing is honest.
 #
 # It applies the SAME manifests the getting-started docs ship — straight out of
 # docs/manifests/getting-started/ — so the demo and the guide can never drift.
@@ -19,14 +19,16 @@
 #
 # Requires: kubectl, curl, jq.
 # Tunables (env): TYPE_SPEED (sec/char), READ_PAUSE (sec after each output),
-#   CP (control-plane context), NS, GW_PORT. Set STEP=1 to advance on Enter.
+#   CP (control-plane context), NS, PROJECT (GCP project), GW_PORT.
+#   Set STEP=1 to advance on Enter (dry run).
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1                 # so the relative manifest path always resolves
 
 CP="${CP:-kind-crossplane-modelplane}"
 NS="${NS:-ml-team}"
+PROJECT="${PROJECT:-crossplane-playground}"     # substituted for the my-gcp-project placeholder
 MF="../../../docs/manifests/getting-started"    # the canonical docs manifests
-TYPE_SPEED="${TYPE_SPEED:-0.03}"
+TYPE_SPEED="${TYPE_SPEED:-0.012}"
 READ_PAUSE="${READ_PAUSE:-6}"
 GW_PORT="${GW_PORT:-8080}"
 
@@ -35,7 +37,7 @@ GW_PORT="${GW_PORT:-8080}"
 for t in kubectl curl jq; do
   command -v "$t" >/dev/null || { echo "record.sh: missing required tool '$t'"; exit 1; }
 done
-[ -f "$MF/gke/model-deployment-west.yaml" ] || { echo "record.sh: canonical manifests not found at $MF"; exit 1; }
+[ -f "$MF/gke/platform.yaml" ] || { echo "record.sh: canonical manifests not found at $MF"; exit 1; }
 if [ -z "$(kubectl --context "$CP" -n "$NS" get ms qwen -o jsonpath='{.status.address}' 2>/dev/null)" ]; then
   echo "record.sh: ModelService 'qwen' has no address yet."
   echo "Finish the pre-flight (clusters + deployments Ready, endpoint warmed) first."
@@ -63,14 +65,29 @@ run() {  # type the command like a human, then run it
 
 clear
 
-banner "Part 1 — one cheap L4 cluster, one small model, one OpenAI endpoint."
-run 'kubectl --context $CP get inferencecluster'
-run "curl -s \$QWEN/v1/chat/completions -H 'content-type: application/json' -d '{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Crossplane in one sentence?\"}],\"max_tokens\":80}' | jq -r '.choices[0].message.content'"
+# ---- Part 1: platform team builds one cluster, ML team deploys a model --------
+banner "Platform team — publish the GPU hardware (InferenceClass) and provision a starter cluster."
+run "cat \$MF/gke/platform.yaml"
+run "sed 's/my-gcp-project/\$PROJECT/' \$MF/gke/platform.yaml | kubectl --context \$CP apply -f -"
+banner "Modelplane provisions the GKE cluster + serving stack — about 15 minutes (pre-provisioned here)."
+run 'kubectl --context $CP get inferencecluster starter'
 
-banner "Part 2 — the platform team grew the fleet: two A100 regions next to the L4."
+banner "ML team — declare what the model needs (a GPU >= 20Gi); no cluster details."
+run "cat \$MF/gke/model-deployment.yaml"
+run 'kubectl --context $CP apply -f $MF/gke/model-deployment.yaml'
+run 'kubectl --context $CP apply -f $MF/model-service.yaml'
+run 'kubectl --context $CP -n ml-team get modelreplica -l modelplane.ai/deployment=qwen-demo -L modelplane.ai/cluster'
+
+banner "Call the OpenAI endpoint."
+run "curl -s \$QWEN/v1/chat/completions -H 'content-type: application/json' -d '{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}' | jq -r '.choices[0].message.content'"
+
+# ---- Part 2: platform grows the fleet, ML team scales onto it -----------------
+banner "Platform team — grow the fleet: add two A100 regions."
+run "sed 's/my-gcp-project/\$PROJECT/' \$MF/gke/platform-scale.yaml | kubectl --context \$CP apply -f -"
+banner "Provisioning two more clusters — about 10 to 15 minutes (pre-provisioned here)."
 run 'kubectl --context $CP get inferencecluster -L modelplane.ai/region'
 
-banner "ML team adds a second deployment, pinned to us-west, asking for a bigger GPU."
+banner "ML team — add a second deployment, pinned to us-west, asking for a bigger GPU."
 run "sed -n '/clusterSelector/,/quantity/p' \$MF/gke/model-deployment-west.yaml"
 run 'kubectl --context $CP apply -f $MF/gke/model-deployment-west.yaml'
 
@@ -79,7 +96,7 @@ run 'kubectl --context $CP apply -f $MF/model-service-multi.yaml'
 run 'kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployment,modelplane.ai/cluster'
 
 banner "Same endpoint, same model name — now load-balancing across two regions."
-run "curl -s \$QWEN/v1/chat/completions -H 'content-type: application/json' -d '{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"Reverse a linked list in Python:\"}],\"max_tokens\":80}' | jq -r '.choices[0].message.content'"
+run "curl -s \$QWEN/v1/chat/completions -H 'content-type: application/json' -d '{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}' | jq -r '.choices[0].message.content'"
 
 banner "qwen-demo on the L4, qwen-west on the A100 — one endpoint, two regions, your HA posture too."
 pause 3
