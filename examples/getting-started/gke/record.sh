@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Self-playing screencast for the getting-started demo (GKE track).
+# Self-playing screencast for the getting-started demo (GKE track), recorded
+# against the local kind control plane.
 #
 # Run it, screen-capture the terminal, voice over afterward. It types and runs
 # each command itself, with reading pauses between them. Everything is
@@ -10,20 +11,24 @@
 # It applies the SAME manifests the getting-started docs ship — straight out of
 # docs/manifests/getting-started/ — so the demo and the guide can never drift.
 #
+# The kind control plane's gateway is a MetalLB IP that isn't routable from the
+# host, so the curls reach it through a port-forward to Traefik (set up below).
+#
 #   cd examples/getting-started/gke && ./record.sh
 #   (or from anywhere: examples/getting-started/gke/record.sh — it cd's to its own dir)
 #
 # Requires: kubectl, curl, jq.
 # Tunables (env): TYPE_SPEED (sec/char), READ_PAUSE (sec after each output),
-#   CP (control-plane context), NS. Set STEP=1 to advance on Enter (dry run).
+#   CP (control-plane context), NS, GW_PORT. Set STEP=1 to advance on Enter.
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1                 # so the relative manifest path always resolves
 
-CP="${CP:-gke_crossplane-playground_us-central1-a_modelplane-cp}"
+CP="${CP:-kind-crossplane-modelplane}"
 NS="${NS:-ml-team}"
 MF="../../../docs/manifests/getting-started"    # the canonical docs manifests
 TYPE_SPEED="${TYPE_SPEED:-0.03}"
 READ_PAUSE="${READ_PAUSE:-6}"
+GW_PORT="${GW_PORT:-8080}"
 
 # Pre-flight: tools present, manifests reachable, and the endpoint actually has
 # an address. Exit cleanly with guidance rather than capturing a broken take.
@@ -31,12 +36,17 @@ for t in kubectl curl jq; do
   command -v "$t" >/dev/null || { echo "record.sh: missing required tool '$t'"; exit 1; }
 done
 [ -f "$MF/gke/model-deployment-west.yaml" ] || { echo "record.sh: canonical manifests not found at $MF"; exit 1; }
-QWEN="$(kubectl --context "$CP" -n "$NS" get ms qwen -o jsonpath='{.status.address}' 2>/dev/null)"
-if [ -z "$QWEN" ]; then
+if [ -z "$(kubectl --context "$CP" -n "$NS" get ms qwen -o jsonpath='{.status.address}' 2>/dev/null)" ]; then
   echo "record.sh: ModelService 'qwen' has no address yet."
   echo "Finish the pre-flight (clusters + deployments Ready, endpoint warmed) first."
   exit 1
 fi
+
+# The kind gateway IP isn't routable from the host; reach it via a port-forward.
+kubectl --context "$CP" -n traefik-system port-forward svc/traefik "$GW_PORT:80" >/dev/null 2>&1 &
+PF=$!; trap 'kill "$PF" 2>/dev/null' EXIT
+sleep 3
+QWEN="http://localhost:$GW_PORT/$NS/qwen"
 
 GRN=$'\033[1;32m'; BOLD=$'\033[1m'; DIM=$'\033[2m'; RST=$'\033[0m'
 
