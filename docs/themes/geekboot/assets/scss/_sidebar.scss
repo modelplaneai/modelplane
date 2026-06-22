@@ -193,13 +193,19 @@
 // ── Scrolling nav area ──────────────────────────────────────────
 .bd-sidebar-scroll {
   padding: 1rem 0.75rem 2.5rem;
+}
 
-  @include media-breakpoint-up(lg) {
+// On desktop the nav must scroll within the fixed-height sidebar. This element
+// is also a Bootstrap .offcanvas-body, and at lg+ Bootstrap's offcanvas reset
+// (.offcanvas-lg .offcanvas-body) forces it to flex-grow: 0 and overflow-y:
+// visible, which stopped it scrolling and let the lower nav entries overflow and
+// get clipped (Architecture fell off the bottom in Safari). The descendant
+// selector below matches that specificity and, coming later in the cascade,
+// wins. min-height: 0 lets this flex child shrink below its content height
+// instead of pinning to it.
+@include media-breakpoint-up(lg) {
+  .bd-sidebar-container .bd-sidebar-scroll {
     flex: 1 1 auto;
-    // min-height: 0 lets this flex child shrink below its content height so it
-    // scrolls instead of overflowing the fixed-height container. Without it the
-    // default min-height: auto pins it to full content height and the nav gets
-    // cut off (notably in Safari).
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
