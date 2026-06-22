@@ -445,3 +445,5 @@ Slurm
 KubeAI
 Kueue
 CoreWeave
+agent
+requirement

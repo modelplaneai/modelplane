@@ -3,12 +3,18 @@ title: AI tools
 weight: 40
 description: Connect AI assistants and coding agents to the Modelplane docs through MCP, Markdown, and llms.txt.
 ---
-
-The Modelplane docs are built to be read by AI assistants as well as people. You can connect a coding agent directly to this site, pull any page as Markdown, or point a model at a single index file that lists the whole documentation set. Every page also carries a **Copy page** menu next to its title with the same shortcuts.
+<!-- vale write-good.TooWordy = NO -->
+The Modelplane docs are built to be read by AI assistants as well as people. You
+can connect a coding agent directly to this site, pull any page as Markdown, or
+point a model at a single index file that lists the whole documentation set.
+Every page also carries a **Copy page** menu next to its title with the same
+shortcuts.
 
 ## Connect to the MCP server
 
-The documentation MCP server lets an assistant search these docs and read any page in real time, so its answers track the current content instead of its training data. It exposes two tools:
+The documentation MCP server lets an assistant search these docs and read any
+page in real time, so its answers track the current content instead of its
+training data. It exposes two tools:
 
 - `search_modelplane_docs`: search the docs and get back the most relevant sections with their titles, URLs, and snippets.
 - `get_modelplane_doc`: fetch the full Markdown of a single page.
@@ -29,7 +35,9 @@ claude mcp add --transport http modelplane-docs https://docs.modelplane.ai/mcp
 Open Settings, go to Connectors, and choose **Add custom connector**. Name it `modelplane-docs`, enter the server URL above, and enable the connector when you start a conversation.
 {{< /tab >}}
 {{< tab "Cursor" >}}
+<!-- vale Google.Colons = NO -->
 Open the command palette, run **Cursor Settings: MCP**, and add a server to `mcp.json`:
+<!-- vale Google.Colons = YES -->
 
 ```json
 {
@@ -92,3 +100,5 @@ The **Copy page** menu next to each title has these actions:
 | Connect to Cursor | Installs the MCP server in Cursor. |
 | Connect to VS Code | Installs the MCP server in VS Code. |
 {{< /table >}}
+
+<!-- vale write-good.TooWordy = YES -->

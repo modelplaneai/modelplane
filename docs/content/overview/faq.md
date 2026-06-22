@@ -3,6 +3,7 @@ title: FAQ
 weight: 35
 description: Short answers to the questions practitioners ask about Modelplane first.
 ---
+<!-- vale write-good.TooWordy = NO -->
 <!-- vale write-good.Passive = NO -->
 Short answers to the questions that come up first, with links to the full
 treatment. If you're new here, read the [Introduction]({{< ref "/overview" >}})
@@ -178,4 +179,5 @@ Deploy Modelplane and serve your first model.
 The architecture and the control loop, in one page.
 {{< /card >}}
 {{< /cardgroup >}}
+<!-- vale write-good.TooWordy = YES -->
 <!-- vale write-good.Passive = YES -->

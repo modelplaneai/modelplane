@@ -4,6 +4,7 @@ weight: 5
 description: What Modelplane is, why it exists, and how it works.
 navLanding: "Introduction"
 ---
+<!-- vale write-good.TooWordy = NO -->
 <!-- vale write-good.Passive = NO -->
 Modelplane is the open source control plane for AI inference. It's software you
 install and run in your own environment, and it orchestrates the models, serving
@@ -60,7 +61,7 @@ spec:
         spec:
           containers:
           - name: engine
-            image: vllm/vllm-openai:v0.7.3
+            image: vllm/vllm-openai:v0.23.0
             args: ["--model=Qwen/Qwen2.5-0.5B-Instruct"]
 ```
 
@@ -80,8 +81,9 @@ spec:
       matchLabels:
         modelplane.ai/deployment: qwen-demo
 ```
-
+<!-- vale Microsoft.HeadingAcronyms = NO -->
 ## A universal control plane for AI inference
+<!-- vale Microsoft.HeadingAcronyms = YES -->
 
 Modelplane is designed to be a universal control plane for inference. It runs
 inference clusters on any cloud, neocloud, or on-premise environment, or any
@@ -115,3 +117,4 @@ Learn more about Modelplane's capabilities and how it works.
 {{< /cardgroup >}}
 
 <!-- vale write-good.Passive = YES -->
+<!-- vale write-good.TooWordy = YES -->

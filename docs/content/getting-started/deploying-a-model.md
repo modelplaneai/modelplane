@@ -3,10 +3,10 @@ title: Deploying a model
 weight: 30
 description: Declare what your model needs and serve it behind a unified endpoint.
 ---
-Now the ML team's side. You declare what a model needs in a `ModelDeployment`,
-and Modelplane finds a cluster that satisfies it. You don't pick a cluster; you
-describe the hardware, and the scheduler matches it against the capacity the
-platform team published.
+
+Now that the platform is provisioned, the ML team can declare what a model needs
+with a `ModelDeployment`. Describe the hardware requirements and the scheduler
+schedules against the capacity the platform team published.
 
 ## Create a deployment
 
@@ -46,6 +46,10 @@ NAME              CLUSTER       SYNCED   READY   COMPOSITION                   A
 qwen-demo-7323a   eks-us-east   True     True    modelreplicas.modelplane.ai   12m
 ```
 
+The ML team never named a cluster. The scheduler matched the GPU requirement
+(`>= 20Gi`) against the `InferenceClass` the platform team published and made
+the placement. 
+
 ## Expose the model
 
 A `ModelService` selects `ModelEndpoints` by label and creates a Gateway API
@@ -82,6 +86,7 @@ kubectl run -i --rm curl-test \
   }'
 ```
 
+The request routes to the replica on the cluster Modelplane placed it on.
 You should get a response in a few seconds:
 
 ```json {nocopy=true}
@@ -112,6 +117,8 @@ You should get a response in a few seconds:
 
 ## Next step
 
-One cluster and one replica is enough to see the system work. Next, switch back
-to the platform team and [scale the platform]({{< ref "getting-started/scale-the-platform.md" >}})
-with bigger GPUs in new regions.
+The platform team declared capacity and in this guide the ML team deployed a
+model behind a stable endpoint. Neither team needed to know what the other was doing. Modelplane matched them.
+
+In the next step, the platform team grows the fleet. [Scale the platform]({{< ref "getting-started/scale-the-platform.md" >}}) to add more clusters across regions.
+

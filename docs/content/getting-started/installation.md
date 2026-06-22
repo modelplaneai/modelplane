@@ -3,9 +3,7 @@ title: Installation
 weight: 10
 description: Stand up the Modelplane control plane on a local kind cluster.
 ---
-The control plane is where everything in Modelplane runs. In this step you'll
-install it on a local kind cluster: Crossplane for reconciliation and the
-Modelplane APIs. No cloud yet, that comes next.
+The control plane is where everything in Modelplane runs. In this step you'll install it on a local kind cluster, using Crossplane for reconciliation and the Modelplane APIs. No cloud yet, that comes next.
 
 This step takes about five minutes.
 
@@ -64,6 +62,7 @@ kubectl wait configuration/modelplane --for=condition=Healthy --timeout=5m
 
 ## Next step
 
-Your control plane is running, but it has no hardware to schedule against yet.
-Next, [build the platform]({{< ref "getting-started/build-the-platform.md" >}}):
-register a GPU cluster and set up the gateway that fronts your models.
+The control plane is running but has nothing to schedule against yet. In the
+next step, you'll [build the platform]({{< ref
+"getting-started/build-the-platform.md" >}}) to provision a GPU cluster and
+publish what hardware it offers.

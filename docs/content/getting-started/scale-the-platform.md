@@ -3,9 +3,9 @@ title: Scale the platform
 weight: 40
 description: Grow from one cluster to a multi-region fleet.
 ---
-Back to the platform team. You have one L4 cluster so far; here you add two
-larger-GPU clusters in different regions, growing the fleet the ML team can
-schedule against.
+
+You have one L4 cluster with a running model. In this guide, you'll add two
+larger-GPU clusters in different regions to grow the fleet available to the ML team.
 
 Provisioning two more clusters takes about 10–15 minutes.
 
@@ -55,13 +55,11 @@ kubectl wait --for=condition=Ready ic --all --timeout=20m
 
 ## Your model keeps running
 
-Growing the fleet doesn't disturb anything already deployed. Your `qwen-demo`
-replica stays on its original cluster; the new clusters add capacity, available
-the moment they're `Ready`. A replica only moves if its
-deployment changes in a way that no longer fits where it runs.
+Growing the fleet doesn't disturb anything already deployed. `qwen-demo` stays
+on its original cluster and the two new clusters add capacity the moment
+they're `Ready` with no interruption for the ML team. A replica only moves if
+its deployment changes in a way that no longer fits where it runs. 
 
 ## Next step
 
-The fleet now spans multiple regions. Switch back to the ML team and [scale the
-model]({{< ref "getting-started/scale-the-model.md" >}}) to serve it from two of
-them behind a single endpoint.
+The fleet now spans three clusters across two regions. The ML team is next. [Scale the model]({{< ref "getting-started/scale-the-model.md" >}}) to serve it from two regions behind a single endpoint.

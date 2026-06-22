@@ -6,10 +6,10 @@ description: Set up the gateway, give the control plane cloud credentials, and p
 This is the platform team's side of Modelplane. You set up the gateway that
 fronts your models, give the control plane cloud credentials, and register your
 first GPU cluster: a hardware profile published as an `InferenceClass` and an
-`InferenceCluster` that offers it. Models scheduled later match against the
-capacity you declare here.
+`InferenceCluster` that offers it.
 
-Provisioning one GPU cluster takes about 15 minutes.
+In the next step, the ML team will create a model deployment that schedules
+against this capacity without knowing which cluster it lands on.
 
 ## Prerequisites
 
@@ -136,8 +136,19 @@ kubectl wait --for=condition=Ready ic/starter --timeout=20m
 {{< /tab >}}
 {{< /tabs >}}
 
-Once the cluster is `Ready`, Modelplane has registered it and installed the
-serving stack.
+{{< hint "note" >}}
+Crossplane is reconciling the infrastructure against the source of truth, the
+manifest you just applied.
+
+While you wait, Modelplane is creating the EKS or GKE cluster and its GPU node
+pool, then installing the inference stack with LeaderWorkerSet for multi-node
+serving, llm-d for inference-aware routing, Envoy Gateway for traffic
+management, and the storage class for model weights. This is the same reconciliation loop Crossplane uses to configure other 
+infrastructure, extended to the inference layer.
+{{< /hint >}}
+
+Once the cluster is `Ready` the scheduler can see it and the ML team can deploy
+a model on it.
 
 {{< hint "note" >}}
 A cloud GPU cluster costs money while it runs. To stop the tour and resume
@@ -146,5 +157,5 @@ later, follow [Clean up]({{< ref "getting-started/clean-up.md" >}}).
 
 ## Next step
 
-You have a cluster with published hardware. Now switch hats to the ML team and
-[deploy a model]({{< ref "getting-started/deploying-a-model.md" >}}) onto it.
+Now that the platform is provisioned, the ML team can [deploy a model]({{< ref
+"getting-started/deploying-a-model.md" >}}) by describing what the model needs, not the infrastructure.

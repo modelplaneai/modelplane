@@ -5,7 +5,7 @@ description: Serve the model from two regions behind a single endpoint.
 ---
 A `ModelService` can front more than one `ModelDeployment`. Here you add a second
 deployment, pinned to a different region, and point the same service at both. The
-endpoint you already curled stays the same; behind it, traffic now load-balances
+endpoint you already curled stays the same. Behind it, traffic now load-balances
 across two regions.
 
 ```mermaid
@@ -61,9 +61,9 @@ Update the `ModelService` to select both deployments. Each entry in
 
 {{< manifests "getting-started/model-service-multi.yaml" >}}
 
-The endpoint URL doesn't change. The gateway now load-balances `/ml-team/qwen/`
-across both regions, and losing one region keeps the other serving. Send the same
-request as before to confirm it still answers:
+The endpoint URL doesn't change. Clients that had this URL before still have it;
+they don't know the fleet changed. The gateway load-balances across both regions,
+and losing one region keeps the other serving. Send the same request as before:
 
 ```bash
 ADDRESS=$(kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}')
@@ -82,12 +82,13 @@ kubectl run -i --rm curl-test \
 
 ## That's the tour
 
-You stood up a control plane, built a multi-region GPU fleet, and served one
-model across it behind a single endpoint, separating the platform team's job
-(publishing hardware) from the ML team's job (declaring what a model needs).
+You stood up a control plane, built a multi-region GPU fleet, deployed a model
+across it, and ended with one stable endpoint serving requests. The platform
+team published hardware. The ML team described what the model needs. Modelplane
+placed them and served behind a single endpoint.
 
-When you're done, [clean up]({{< ref "getting-started/clean-up.md" >}}) to tear
-everything down.
+[Clean up]({{< ref "getting-started/clean-up.md" >}}) tears everything down
+when you're done.
 
 For more on the resources you used:
 
@@ -96,4 +97,8 @@ For more on the resources you used:
 * [ModelDeployment]({{< ref "models/model-deployment.md" >}})
 * [ModelService]({{< ref "models/model-service.md" >}})
 
-Star the [Modelplane project on GitHub](https://github.com/modelplaneai/modelplane) and build with us.
+Modelplane is in active development and we're building in the open. If you're
+running your own inference fleet and want to shape where this goes, we'd love to
+hear from you. Star the [repository](https://github.com/modelplaneai/modelplane),
+join us in [Slack](https://slack.crossplane.io), or read the
+[manifesto](https://modelplane.ai).
