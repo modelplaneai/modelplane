@@ -49,7 +49,7 @@ anything that can be downloaded from Hugging Face, NVIDIA NGC, and other registr
 
 {{< qa "Does Modelplane support NVIDIA?" >}}
 Yes, across the stack. NVIDIA is the most widely available accelerator on the
-clouds Modelplane runs on and the primary target today: Modelplane binds NVIDIA
+clouds Modelplane runs on and the primary target today. Modelplane binds NVIDIA
 GPUs to pods through Dynamic Resource Allocation (DRA), matching devices by
 attributes such as GPU memory and architecture with CEL selectors.
 

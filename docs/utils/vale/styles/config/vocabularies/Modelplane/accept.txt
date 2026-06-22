@@ -163,6 +163,7 @@ tensor
 tokenizer
 [Ii]nference
 prefill
+[Cc]loud
 
 # Cloud providers
 AWS

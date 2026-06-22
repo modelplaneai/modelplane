@@ -58,18 +58,21 @@ native provisioning.
 
 {{< hint "note" >}}
 **On-premises and bare metal.** Bring an on-prem cluster the same way as any
-other: stand up Kubernetes on your own hardware (for example NVIDIA DGX BasePOD
+other: stand up Kubernetes on your own hardware (like NVIDIA DGX BasePOD
 or SuperPOD) with NVIDIA Base Command Manager, Run:ai, or your own tooling, then
 register it with `source: Existing`. Provisioning it for you is on the roadmap
-too: Modelplane can drive NVIDIA Base Command Manager or other bare-metal
+too. Modelplane can drive NVIDIA Base Command Manager or other bare-metal
 Kubernetes provisioners through Crossplane, the same pattern it uses in the
 cloud.
-{{< /hint >}}
+<!-- vale ai-tells.ShipOveruse = NO -->
 
+{{< /hint >}}
 Native provisioning expands as more Crossplane providers ship; until then, the
 bring-your-own path runs Modelplane on any conformant Kubernetes cluster today.
 
 {{< hint "tip" >}}
+<!-- vale ai-tells.ShipOveruse = = YES -->
+
 Don't see your cloud or neocloud, or want to be added?
 [Open an issue](https://github.com/modelplaneai/modelplane/issues/new) and we'll
 track it.
