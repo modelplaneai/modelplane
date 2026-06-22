@@ -129,6 +129,9 @@ See [CONTRIBUTING.md] for how to get set up, run checks, and submit changes.
 
 Modelplane is under the [Apache 2.0 license](LICENSE).
 
+Modelplane™ is a trademark. The Apache 2.0 license grants no trademark rights:
+the Modelplane name and logos are not covered by it.
+
 <!-- Named links -->
 [Crossplane]: https://crossplane.io
 [CONTRIBUTING.md]: CONTRIBUTING.md
