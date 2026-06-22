@@ -415,6 +415,23 @@ hardcoding
 hardcodes
 [Bb]ootstrap
 
+# Scheduling and routing compound terms
+FQDN
+autoscaled
+[Cc]o-scheduling
+[Cc]ontrol-plane
+delete-plus-create
+[Dd]evice-level
+fabric-aware
+garbage-collects
+highest-index
+load-balanced
+overcommit
+per-pool
+[Rr]e-placement
+sub-node
+under-count
+
 # Overview rework: compound terms and project/product names
 [Oo]pen-weight
 post-trained

@@ -44,7 +44,7 @@ model, and Modelplane composes the rest.
     </a>
     <a class="mp-chip" href="{{< ref "/models/model-service" >}}">
       <span class="mp-chip-name">ModelService</span>
-      <span class="mp-chip-desc">One OpenAI-compatible endpoint, weighted across the endpoints it selects.</span>
+      <span class="mp-chip-desc">One OpenAI-compatible endpoint, load-balanced across the endpoints it selects.</span>
     </a>
     <a class="mp-chip" href="{{< ref "/models/model-cache" >}}">
       <span class="mp-chip-name">ModelCache</span>
@@ -84,9 +84,9 @@ run continuously:
    Kubernetes scale subresource, so `kubectl scale` or a KEDA `ScaledObject` work
    out of the box.
 4. **Routing.** A `ModelService` exposes one OpenAI-compatible endpoint through
-   the gateway and load-balances across the deployment's `ModelEndpoints`, with
-   weights for canary and A/B rollouts. `ModelEndpoints` can also fall back to
-   external inference services.
+   the gateway and load-balances across the deployment's `ModelEndpoints`,
+   wherever their replicas run. `ModelEndpoints` can also point at external
+   inference services.
 5. **Caching.** A `ModelCache` stages model weights on cluster storage once, so
    serving pods read them locally instead of re-downloading on every start.
 

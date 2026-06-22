@@ -20,7 +20,7 @@ Each cluster has:
 - **Labels** for organizational metadata: tier, region, provider. These are the
   matching surface for `ModelDeployment.clusterSelector`.
 
-Modelplane installs an inference stack (LeaderWorkerSet, llm-d, Dynamo, Envoy
+Modelplane installs an inference stack (LeaderWorkerSet, llm-d, Envoy
 Gateway, etc.) on every cluster it manages. This includes existing clusters,
 which Modelplane assumes are solely for its use.
 
