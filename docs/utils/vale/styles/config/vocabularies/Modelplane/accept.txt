@@ -5,6 +5,12 @@
 # Entries are case-sensitive regular expressions.
 
 # Modelplane API types
+XR
+XRs
+[Cc]omposite
+[Cc]omposition
+required-resources
+provider-kubernetes
 InferenceClass
 InferenceCluster
 InferenceClusters
@@ -289,6 +295,8 @@ conformant
 datastore
 hardcode
 UpperCamelCased?
+reimplementing
+reimplement
 
 # Compound and hyphenated terms
 add-on
@@ -325,6 +333,7 @@ fleet-level
 fleet-managed
 free-form
 GKE-based
+hand-written
 hands-on
 high-churn
 how-to

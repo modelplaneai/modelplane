@@ -51,7 +51,7 @@ The `cluster.source` discriminator picks one of two models:
   capabilities for scheduling only. You're responsible for the cluster meeting
   Modelplane's requirements, including labeling each pool's nodes
   `modelplane.ai/pool=<pool-name>` (see
-  [Fleet scheduling]({{< ref "fleet-scheduling.md#pinning-placement-to-a-pool" >}})).
+  [Fleet scheduling]({{< ref "/architecture/scheduling.md#pinning-placement-to-a-pool" >}})).
 
 ## Examples
 

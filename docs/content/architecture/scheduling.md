@@ -1,6 +1,6 @@
 ---
 title: Fleet Scheduling
-weight: 40
+weight: 20
 description: How Modelplane places a deployment's replicas across the fleet, and the limits of that placement.
 ---
 **API:** [`modelplane.ai/v1alpha1` · ModelDeployment]({{< ref "/reference/modeldeployments" >}})
@@ -9,9 +9,10 @@ When an ML team creates a [ModelDeployment]({{< ref "/models/model-deployment.md
 the fleet scheduler decides which cluster each replica runs on and which node
 pool each engine uses. Platform teams don't drive it directly, but what they
 publish, the clusters, their labels, and each pool's
-[InferenceClass]({{< ref "inference-class.md" >}}), is exactly what the scheduler
-matches against. This page explains how it places work and where it deliberately
-stops short, so you can reason about why a deployment landed where it did.
+[InferenceClass]({{< ref "/platform/inference-class.md" >}}), is exactly what the
+scheduler matches against. This page explains how it places work and where it
+deliberately stops short, so you can reason about why a deployment landed where it
+did.
 
 ## A pure function of observed state
 

@@ -104,7 +104,7 @@ land:
 
 The scheduler reasons about these together. A member costs `pods × copies`
 nodes, where pods is 1 for a `Standalone` or `Leader` and `worker.nodes` for a
-`Worker`. See [Fleet scheduling]({{< ref "/platform/fleet-scheduling.md" >}})
+`Worker`. See [Fleet scheduling]({{< ref "/architecture/scheduling.md" >}})
 for how that cost drives placement.
 
 ## Choosing a topology
