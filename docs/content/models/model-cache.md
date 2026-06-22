@@ -20,7 +20,9 @@ single-node cold-start optimization.
 The required `source` enum names the kind, with the matching source object set
 alongside it. Setting `source: HuggingFace` selects `spec.huggingFace`, which
 carries the `repo` to fetch, an optional `revision` (branch, tag, or commit), and
-`sizeGiB`. `HuggingFace` is the only source today.
+`sizeGiB`, the storage to allocate for the weights on each cluster. Size it to the
+model, since a value below the model's size leaves no room to stage the weights.
+`HuggingFace` is the only source today.
 
 The cache mounts at `/mnt/models` on every consuming pod, so the engine's args
 reference that path (`--model=/mnt/models` for vLLM) rather than the source.
@@ -65,7 +67,7 @@ selector also narrows where replicas can land: a replica never schedules to a
 cluster the cache didn't stage to. Replicas already running are left where they
 are.
 
-## Loading from the cache efficiently
+## Loading from cache
 
 A cache only pays off if the engine reads from it quickly. With its default
 loader an engine can read a large model from shared storage slowly enough that
