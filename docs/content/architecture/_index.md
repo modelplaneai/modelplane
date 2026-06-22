@@ -25,8 +25,9 @@ matter here:
   `ModelService`, is an XR.
 - **Composition functions** are that controller logic. A function is a small gRPC
   service handed the observed XR and the resources it depends on, which returns
-  the desired child resources. Crossplane runs the function every reconcile and
-  reconciles whatever it returns.
+  the desired child resources. An XR runs a pipeline of one or more functions
+  every reconcile; in Modelplane each is typically a single function, so the rest
+  of this section says "the function" for short.
 - **Providers** are controllers that manage external systems through their own
   managed resources: `provider-gcp` and `provider-aws` for cloud APIs,
   `provider-helm` for Helm releases, `provider-kubernetes` for arbitrary objects
@@ -49,21 +50,19 @@ ways: providers and functions.
 **Providers** give us reach. Modelplane has to provision Kubernetes clusters and
 all the infrastructure they need across different clouds, then install software
 onto them. That's an enormous surface, and providers cover it without us rolling
-our own controllers for each cloud API and Helm release. A platform team running
-Crossplane already operates these providers, so Modelplane composes onto the same
-stack rather than introducing a parallel one.
+our own controllers for each cloud API and Helm release.
 
 **Functions** are where Modelplane's own logic lives, and writing it as
 composition functions buys several things:
 
 - **Business logic, not controller plumbing.** A function computes desired state
-  from observed state. Crossplane handles the watches, requeues, finalizers, and
-  drift correction that a hand-written controller gets wrong in a dozen subtle
-  ways.
-- **Testability.** A function is a pure function of its inputs: feed it an XR and
-  its dependencies, assert on the resources it returns. The whole test runs in
-  process, with no API server to stand up. Modelplane's scheduler is tested this
-  way, exhaustively, in isolation.
+  from observed state. Crossplane handles the fiddly Kubernetes controller
+  details, the watches, requeues, finalizers, and drift correction, that a
+  hand-written controller gets wrong in a dozen subtle ways. Less plumbing to
+  write and maintain means we move faster.
+- **Testability.** A function is a pure function of its inputs, so you can test
+  it as a black box: feed it an XR and its dependencies, assert on the resources
+  it returns. The whole test runs in process, with no API server to stand up.
 - **The right language for each job.** Functions can be written in any language.
   Modelplane's are Python, for fast iteration on the serving and scheduling logic
   and because Python is the common language of the ML world, which lowers the bar
@@ -74,56 +73,113 @@ The bet underneath both is that inference infrastructure is the same shape of
 problem as cloud infrastructure, which Crossplane manages well. Building on it
 lets Modelplane spend its effort on the part that's actually inference-specific.
 
-## Two clusters, two scopes
+## The control cluster and the fleet
 
 Modelplane runs on a **control cluster** and manages a fleet of **workload
-clusters** (the `InferenceCluster`s). The split is deliberate: the control plane
+clusters**, the `InferenceCluster`s. The split is deliberate: the control plane
 holds no GPUs and serves no tokens. It schedules, composes, and routes; the
 workload clusters do the serving.
 
-Composing onto a remote workload cluster is a provider-kubernetes `ProviderConfig`
-built from the cluster's kubeconfig. The control plane installs a serving stack on
-every workload cluster it manages, provisioned or existing. The stack includes
-LeaderWorkerSet for multi-node gangs, Envoy Gateway with the Gateway API Inference
-Extension for inference-aware routing, the NVIDIA DRA driver for binding GPUs, and
-supporting components. The contract is that Modelplane owns what runs on the
-cluster.
+The control cluster runs Crossplane, the Modelplane composition functions (one
+per resource, each a pod Crossplane calls per reconcile), the providers, and the
+control-plane gateway. It also holds every Modelplane resource and the
+`ProviderConfig`s that let the providers reach each workload cluster, built from
+that cluster's kubeconfig.
 
-## Two layers of routing
+Crossplane core drives everything. Each reconcile it asks a function what a
+resource should compose and gets back the desired resources. Core then reconciles
+them, applying the provider resources that the providers act on. A function only
+computes desired state. It never reaches a provider or a cluster itself.
 
-Inference requests pass through two gateways. The **control-plane gateway**
-(Traefik) is the front door: one OpenAI-compatible address per `ModelService`,
-routing each request to the right cluster's edge. Modelplane uses Traefik here
-because it supports the `URLRewrite` filter on each `backendRef` that routing to a
-replica's path depends on, which Envoy Gateway doesn't offer. A second gateway
-(Envoy Gateway and the Inference Extension) runs on each cluster and routes from
-the cluster edge to the model engines.
+```mermaid
+flowchart TB
+    subgraph control["Control cluster"]
+        cp["Crossplane core"]
+        fns["Modelplane functions\n(one pod per resource)"]
+        prov["Providers\ngcp · aws · helm · kubernetes"]
+        gw["Control-plane gateway\n(Traefik)"]
+    end
+    subgraph fleet["Fleet"]
+        wc1["Workload cluster A"]
+        wc2["Workload cluster B"]
+    end
+    cp <-->|"desired state (gRPC)"| fns
+    cp -->|applies| prov
+    cp -->|composes| gw
+    prov -->|provision + install via kubeconfig| wc1
+    prov -->|provision + install via kubeconfig| wc2
+```
 
-A `ModelEndpoint` composes a Kubernetes `Service` and an `EndpointSlice` on the
-control plane, with an address type that follows the endpoint's URL (an IP for a
-cluster gateway, an FQDN for an external provider). A `ModelService` builds one
-`HTTPRoute` whose `backendRef`s point at those Services, each with a `URLRewrite`
-filter derived from the endpoint's rewrite path.
+Onto each workload cluster Modelplane installs a serving stack: the components a
+cluster needs to serve models, providing inference-aware routing through Gateway
+API, multi-node serving, GPU binding through DRA, and observability, among others.
+The exact components evolve, but Modelplane composes and owns all of them. For
+provisioned clusters the providers also create the cluster and its node pools
+first.
 
-## How the pieces connect
+## How a deployment is composed
 
-A multi-node engine composes to a LeaderWorkerSet. The leader runs the engine's
-coordination head, and the workers join it through a `MODELPLANE_LEADER_ADDRESS`
-env var Modelplane injects, aliased to the backend's own variable such as
-`LWS_LEADER_ADDRESS`. Modelplane injects almost nothing else into engine
-containers. The engine command and flags are yours.
+A resource composes others, which compose others, until the tree bottoms out in
+provider resources and plain Kubernetes objects. A `ModelDeployment` is the
+clearest example. Its function schedules the replicas, then composes a
+`ModelReplica` for each, and a `ModelEndpoint` for each replica that's ready to
+serve. Each `ModelReplica` function composes the serving workload, a Deployment or
+a LeaderWorkerSet, onto its target workload cluster through provider-kubernetes.
 
-GPUs bind through DRA on every workload cluster. Each `claim: DRA` device request
-in a member's `nodeSelector` becomes a `DeviceRequest` in the `ResourceClaim` the
-serving pods claim through, referencing the driver's `DeviceClass`. A
-`claim: Synthetic` device is matched for scheduling but never claimed.
+```mermaid
+flowchart TD
+    md["ModelDeployment"]
+    mr1["ModelReplica\n(cluster A)"]
+    mr2["ModelReplica\n(cluster B)"]
+    me1["ModelEndpoint\n(cluster A)"]
+    me2["ModelEndpoint\n(cluster B)"]
+    wl1["Deployment / LeaderWorkerSet\non workload cluster A"]
+    wl2["Deployment / LeaderWorkerSet\non workload cluster B"]
 
-## In this section
+    md --> mr1
+    md --> mr2
+    md --> me1
+    md --> me2
+    mr1 --> wl1
+    mr2 --> wl2
+```
 
-- [Fleet Scheduling]({{< ref "scheduling.md" >}}): how the scheduler places
-  replicas across the fleet, capacity accounting, pinning, and its deliberate
-  limits.
+The platform resources compose the same way. An `InferenceCluster` composes a
+`GKECluster` or `EKSCluster` (the cloud infrastructure, via the cloud providers)
+and a `ServingStack` (the per-cluster software install, via provider-helm and
+provider-kubernetes). Engines bind GPUs through DRA: each `claim: DRA` device in a
+member's `nodeSelector` becomes a request in the `ResourceClaim` the serving pods
+claim through.
 
-More architecture topics, including a closer look at individual composition
-functions, are coming as the section grows.
+## The request path
+
+A served request crosses both gateways. The **control-plane gateway** (Traefik)
+is the front door: a `ModelService` composes an `HTTPRoute` on it that matches the
+service's path prefix and forwards to the matched `ModelEndpoint`s, each of which
+is a `Service` pointing at a workload cluster's gateway address. The
+**workload-cluster gateway** (Envoy Gateway) then routes from the cluster edge to
+the engine pods.
+
+```mermaid
+flowchart LR
+    client["Client"]
+    traefik["Control-plane gateway\n(Traefik)"]
+    envoy["Workload-cluster gateway\n(Envoy Gateway)"]
+    engine["Engine pods\n(vLLM, SGLang, ...)"]
+
+    client -->|service path| traefik
+    traefik -->|per-replica path| envoy
+    envoy -->|engine path| engine
+```
+
+Modelplane uses Traefik on the control plane because it supports a `URLRewrite`
+filter on each `backendRef`, which routing to a per-replica path depends on and
+Envoy Gateway doesn't offer. Each hop rewrites the path: the control plane
+rewrites the public prefix to the replica's path, and the workload gateway strips
+that down to what the engine serves.
+
+Which gateway sits at each layer is internal, not part of the API. Traefik and
+Envoy Gateway are today's choices; the `InferenceGateway` `backend` field is an
+enum precisely so the control-plane gateway can grow other options over time.
+Target the `ModelService` URL rather than either gateway directly.
 <!-- vale write-good.Passive = YES -->

@@ -444,6 +444,7 @@ load-balanced
 overcommit
 per-pool
 per-cluster
+per-replica
 [Rr]e-placement
 sub-node
 under-count
