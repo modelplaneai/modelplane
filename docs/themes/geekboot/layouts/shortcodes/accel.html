@@ -1,0 +1,18 @@
+{{- /* Accelerator pill: {{< accel nvidia >}} {{< accel amd >}} {{< accel tpu >}}
+       {{< accel trainium >}} {{< accel ascend >}}. Logo is monochrome and
+       follows the theme via CSS; unknown keys render as a text-only pill. */ -}}
+{{- $key := (.Get 0) | lower -}}
+{{- $logos := dict
+  "nvidia"   "/img/logos/nvidia.svg"
+  "amd"      "/img/logos/amd.svg"
+  "tpu"      "/img/logos/googlecloud.svg"
+  "trainium" "/img/logos/amazonaws.svg" -}}
+{{- $labels := dict
+  "nvidia"   "NVIDIA"
+  "amd"      "AMD"
+  "tpu"      "TPU"
+  "trainium" "Trainium"
+  "ascend"   "Ascend" -}}
+{{- $logo := index $logos $key -}}
+{{- $label := index $labels $key | default (.Get 0) -}}
+{{- with $logo -}}<span class="mp-accel"><img class="mp-accel-logo" src="{{ . }}" alt="{{ $label }}" aria-hidden="true">{{ $label }}</span>{{- else -}}<span class="mp-accel mp-accel--text">{{ $label }}</span>{{- end -}}

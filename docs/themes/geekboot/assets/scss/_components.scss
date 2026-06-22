@@ -375,6 +375,35 @@ a.mp-chip:hover { border-color: var(--mp-card-border-hi); text-decoration: none;
   border-color: rgba(154, 94, 252, 0.30);
 }
 
+// ── Accelerator pills (provider matrix) ───────────────────────
+// Borrowed from the website's .infra-pill: a small mono pill with a monochrome
+// vendor logo. Sits inline in table cells; several can wrap within one cell.
+.mp-accel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: #{$font-family-monospace};
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--mp-card-muted);
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 999px;
+  padding: 1px 9px 1px 6px;
+  white-space: nowrap;
+  margin: 2px 4px 2px 0;
+}
+.mp-accel--text { padding-left: 9px; }
+.mp-accel-logo {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  // Logos ship in brand colors; flatten to a muted monochrome that reads on the
+  // dark default. The light-mode override below darkens them for white surfaces.
+  filter: brightness(0) invert(1);
+  opacity: 0.7;
+}
+
 // ── Light-mode overrides ──────────────────────────────────────
 [color-theme="light"] {
   // Brand accents need darker shades to stay legible on white (the dark-mode
@@ -392,6 +421,9 @@ a.mp-chip:hover { border-color: var(--mp-card-border-hi); text-decoration: none;
 
   .mp-status--available { color: #{$grass-800}; }
   .mp-status--planned { color: #{$fog-700}; }
+
+  // Darken the vendor logos so they read on white surfaces.
+  .mp-accel-logo { filter: brightness(0); opacity: 0.55; }
 
   .mp-example-cap { background: #{$fog-50}; }
 }

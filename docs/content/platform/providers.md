@@ -30,21 +30,23 @@ Listed alphabetically. Each runs a managed Kubernetes service with GPU node
 pools, and most have a Crossplane provider, the path to native provisioning.
 
 <!-- vale Vale.Terms = NO -->
+<!-- vale Modelplane.Spelling = NO -->
 {{< table >}}
-| Cloud / service | Provisioning | Bring your own | Crossplane provider |
-|---|---|---|---|
-| Alibaba Cloud (ACK) | Planned | ✓ | [provider-upjet-alibabacloud](https://github.com/crossplane-contrib/provider-upjet-alibabacloud) |
-| AWS (EKS) | ✓ | ✓ | [provider-upjet-aws](https://github.com/crossplane-contrib/provider-upjet-aws) |
-| Civo (K3s) | Planned | ✓ | [provider-civo](https://github.com/crossplane-contrib/provider-civo) (community) |
-| DigitalOcean (DOKS) | Planned | ✓ | [provider-upjet-digitalocean](https://github.com/crossplane-contrib/provider-upjet-digitalocean) |
-| Google Cloud (GKE) | ✓ | ✓ | [provider-upjet-gcp](https://github.com/crossplane-contrib/provider-upjet-gcp) |
-| Huawei Cloud (CCE) | Planned | ✓ | [provider-huaweicloud](https://github.com/huaweicloud/provider-huaweicloud) (alpha) |
-| IBM Cloud (IKS) | Planned | ✓ | none active |
-| Linode / Akamai (LKE) | Planned | ✓ | [provider-linode](https://github.com/linode/provider-linode) (official) |
-| Microsoft Azure (AKS) | Planned | ✓ | [provider-upjet-azure](https://github.com/crossplane-contrib/provider-upjet-azure) |
-| Oracle Cloud (OKE) | Planned | ✓ | [crossplane-provider-oci](https://github.com/oracle/crossplane-provider-oci) (official) |
-| Tencent Cloud (TKE) | Planned | ✓ | [provider-tencentcloud](https://github.com/crossplane-contrib/provider-tencentcloud) |
+| Cloud / service | Accelerators | Provisioning | Bring your own | Crossplane provider |
+|---|---|---|---|---|
+| Alibaba Cloud (ACK) | {{< accel nvidia >}} | Planned | ✓ | [provider-upjet-alibabacloud](https://github.com/crossplane-contrib/provider-upjet-alibabacloud) |
+| AWS (EKS) | {{< accel nvidia >}} {{< accel trainium >}} | ✓ | ✓ | [provider-upjet-aws](https://github.com/crossplane-contrib/provider-upjet-aws) |
+| Civo (K3s) | {{< accel nvidia >}} | Planned | ✓ | [provider-civo](https://github.com/crossplane-contrib/provider-civo) (community) |
+| DigitalOcean (DOKS) | {{< accel nvidia >}} {{< accel amd >}} | Planned | ✓ | [provider-upjet-digitalocean](https://github.com/crossplane-contrib/provider-upjet-digitalocean) |
+| Google Cloud (GKE) | {{< accel nvidia >}} {{< accel tpu >}} | ✓ | ✓ | [provider-upjet-gcp](https://github.com/crossplane-contrib/provider-upjet-gcp) |
+| Huawei Cloud (CCE) | {{< accel nvidia >}} {{< accel ascend >}} | Planned | ✓ | [provider-huaweicloud](https://github.com/huaweicloud/provider-huaweicloud) (alpha) |
+| IBM Cloud (IKS) | {{< accel nvidia >}} | Planned | ✓ | none active |
+| Linode / Akamai (LKE) | {{< accel nvidia >}} | Planned | ✓ | [provider-linode](https://github.com/linode/provider-linode) (official) |
+| Microsoft Azure (AKS) | {{< accel nvidia >}} | Planned | ✓ | [provider-upjet-azure](https://github.com/crossplane-contrib/provider-upjet-azure) |
+| Oracle Cloud (OKE) | {{< accel nvidia >}} {{< accel amd >}} | Planned | ✓ | [crossplane-provider-oci](https://github.com/oracle/crossplane-provider-oci) (official) |
+| Tencent Cloud (TKE) | {{< accel nvidia >}} | Planned | ✓ | [provider-tencentcloud](https://github.com/crossplane-contrib/provider-tencentcloud) |
 {{< /table >}}
+<!-- vale Modelplane.Spelling = YES -->
 <!-- vale Vale.Terms = YES -->
 
 ## Neoclouds
@@ -55,19 +57,21 @@ have no Crossplane provider yet; where one exists, it points the way to native
 provisioning.
 
 <!-- vale Vale.Terms = NO -->
+<!-- vale Modelplane.Spelling = NO -->
 {{< table >}}
-| Neocloud / service | Provisioning | Bring your own | Crossplane provider |
-|---|---|---|---|
-| CoreWeave (CKS) | Planned | ✓ | none yet |
-| Crusoe (CMK) | Planned | ✓ | none yet |
-| Fluidstack (Managed Kubernetes) | Planned | ✓ | none yet |
-| Lambda (Managed Kubernetes) | Planned | ✓ | none yet |
-| Nebius (Managed Kubernetes) | Planned | ✓ | none yet |
-| OVHcloud (Managed Kubernetes) | Planned | ✓ | [edixos/provider-ovh](https://github.com/edixos/provider-ovh) (community) |
-| Scaleway (Kapsule) | Planned | ✓ | [crossplane-provider-scaleway](https://github.com/scaleway/crossplane-provider-scaleway) (official) |
-| Voltage Park (Managed Kubernetes) | Planned | ✓ | none yet |
-| Vultr (VKE) | Planned | ✓ | [crossplane-provider-vultr](https://github.com/vultr/crossplane-provider-vultr) (official) |
+| Neocloud / service | Accelerators | Provisioning | Bring your own | Crossplane provider |
+|---|---|---|---|---|
+| CoreWeave (CKS) | {{< accel nvidia >}} | Planned | ✓ | none yet |
+| Crusoe (CMK) | {{< accel nvidia >}} {{< accel amd >}} | Planned | ✓ | none yet |
+| Fluidstack (Managed Kubernetes) | {{< accel nvidia >}} | Planned | ✓ | none yet |
+| Lambda (Managed Kubernetes) | {{< accel nvidia >}} | Planned | ✓ | none yet |
+| Nebius (Managed Kubernetes) | {{< accel nvidia >}} | Planned | ✓ | none yet |
+| OVHcloud (Managed Kubernetes) | {{< accel nvidia >}} | Planned | ✓ | [edixos/provider-ovh](https://github.com/edixos/provider-ovh) (community) |
+| Scaleway (Kapsule) | {{< accel nvidia >}} | Planned | ✓ | [crossplane-provider-scaleway](https://github.com/scaleway/crossplane-provider-scaleway) (official) |
+| Voltage Park (Managed Kubernetes) | {{< accel nvidia >}} | Planned | ✓ | none yet |
+| Vultr (VKE) | {{< accel nvidia >}} {{< accel amd >}} | Planned | ✓ | [crossplane-provider-vultr](https://github.com/vultr/crossplane-provider-vultr) (official) |
 {{< /table >}}
+<!-- vale Modelplane.Spelling = YES -->
 <!-- vale Vale.Terms = YES -->
 
 Native provisioning expands as more Crossplane providers ship, and the
