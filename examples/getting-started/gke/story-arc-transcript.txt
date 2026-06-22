@@ -1,21 +1,116 @@
 
-# Part 1 — one cheap L4 cluster, one small model, one OpenAI endpoint.
-$ kubectl --context $CP get inferencecluster
-NAME          SOURCE   GATEWAY        SYNCED   READY   COMPOSITION                       AGE
-gpu-us-east   GKE                     True     False   inferenceclusters.modelplane.ai   84m
-gpu-us-west   GKE      34.53.45.218   True     True    inferenceclusters.modelplane.ai   3d6h
-starter       GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   118m
-$ curl -s $QWEN/v1/chat/completions -H 'content-type: application/json' -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"What is Crossplane in one sentence?"}],"max_tokens":80}' | jq -r '.choices[0].message.content'
-Crossplane is an open-source container orchestration platform that provides a scalable and flexible infrastructure for deploying, managing, and scaling applications across multiple Kubernetes clusters.
+# Platform team — publish the GPU hardware (InferenceClass) and provision a starter cluster.
+$ cat $MF/gke/platform.yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-l4-1x-g2
+spec:
+  description: "GKE g2-standard-8, 1x NVIDIA L4"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: g2-standard-8
+      diskSizeGb: 100
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      memory: { value: "23034Mi" }   # L4's real reported VRAM (not the nominal 24GB)
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: starter
+  labels:
+    modelplane.ai/region: us-central
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: my-gcp-project
+      region: us-central1
+  nodePools:
+  - name: gpu-l4
+    className: gke-l4-1x-g2
+    nodeCount: 1
+    minNodeCount: 1   # keep >=1; the autoscaler can't scale a GPU pool up from 0 for DRA pods
+    maxNodeCount: 2
+    zones:
+    - us-central1-a
+$ sed 's/my-gcp-project/$PROJECT/' $MF/gke/platform.yaml | kubectl --context $CP apply -f -
+inferenceclass.modelplane.ai/gke-l4-1x-g2 unchanged
+inferencecluster.modelplane.ai/starter unchanged
 
-# Part 2 — the platform team grew the fleet: two A100 regions next to the L4.
+# Modelplane provisions the GKE cluster + serving stack — about 15 minutes (pre-provisioned here).
+$ kubectl --context $CP get inferencecluster starter
+NAME      SOURCE   GATEWAY        SYNCED   READY   COMPOSITION                       AGE
+starter   GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   132m
+
+# ML team — declare what the model needs (a GPU >= 20Gi); no cluster details.
+$ cat $MF/gke/model-deployment.yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 1
+  engines:
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          # Any L4 satisfies >= 20Gi. The selector matches against the capacity
+          # declared in the InferenceClass, not the pod's resource requests.
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            args:
+            - --model=Qwen/Qwen2.5-0.5B-Instruct
+            - --dtype=half
+$ kubectl --context $CP apply -f $MF/gke/model-deployment.yaml
+modeldeployment.modelplane.ai/qwen-demo configured
+$ kubectl --context $CP apply -f $MF/model-service.yaml
+modelservice.modelplane.ai/qwen configured
+$ kubectl --context $CP -n ml-team get modelreplica -l modelplane.ai/deployment=qwen-demo -L modelplane.ai/cluster
+NAME              CLUSTER   SYNCED   READY   COMPOSITION                   AGE   CLUSTER
+qwen-demo-92da3   starter   True     True    modelreplicas.modelplane.ai   91m   starter
+
+# Call the OpenAI endpoint.
+$ curl -s $QWEN/v1/chat/completions -H 'content-type: application/json' -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"What is Kubernetes in one sentence?"}],"max_tokens":100}' | jq -r '.choices[0].message.content'
+Kubernetes (k8s) is an open-source platform for deploying and managing containerized applications across multiple nodes.
+
+# Platform team — grow the fleet: add two A100 regions.
+$ sed 's/my-gcp-project/$PROJECT/' $MF/gke/platform-scale.yaml | kubectl --context $CP apply -f -
+inferenceclass.modelplane.ai/gke-a100-40-1x unchanged
+inferencecluster.modelplane.ai/gpu-us-west unchanged
+inferencecluster.modelplane.ai/gpu-us-east unchanged
+
+# Provisioning two more clusters — about 10 to 15 minutes (pre-provisioned here).
 $ kubectl --context $CP get inferencecluster -L modelplane.ai/region
 NAME          SOURCE   GATEWAY        SYNCED   READY   COMPOSITION                       AGE    REGION
-gpu-us-east   GKE                     True     False   inferenceclusters.modelplane.ai   84m    us-east
+gpu-us-east   GKE                     True     False   inferenceclusters.modelplane.ai   99m    us-east
 gpu-us-west   GKE      34.53.45.218   True     True    inferenceclusters.modelplane.ai   3d6h   us-west
-starter       GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   119m   us-central
+starter       GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   134m   us-central
 
-# ML team adds a second deployment, pinned to us-west, asking for a bigger GPU.
+# ML team — add a second deployment, pinned to us-west, asking for a bigger GPU.
 $ sed -n '/clusterSelector/,/quantity/p' $MF/gke/model-deployment-west.yaml
 # A second ModelDeployment, pinned to a different region with clusterSelector.
 # It carries its own deployment name, so the ModelService can front it alongside
@@ -50,24 +145,14 @@ modeldeployment.modelplane.ai/qwen-west configured
 
 # One ModelService fronts both deployments — the endpoint never changes.
 $ kubectl --context $CP apply -f $MF/model-service-multi.yaml
-modelservice.modelplane.ai/qwen unchanged
+modelservice.modelplane.ai/qwen configured
 $ kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployment,modelplane.ai/cluster
 NAME              CLUSTER       SYNCED   READY   COMPOSITION                   AGE    DEPLOYMENT   CLUSTER
-qwen-demo-92da3   starter       True     True    modelreplicas.modelplane.ai   78m    qwen-demo    starter
-qwen-west-b33c3   gpu-us-west   True     True    modelreplicas.modelplane.ai   120m   qwen-west    gpu-us-west
+qwen-demo-92da3   starter       True     True    modelreplicas.modelplane.ai   92m    qwen-demo    starter
+qwen-west-b33c3   gpu-us-west   True     True    modelreplicas.modelplane.ai   134m   qwen-west    gpu-us-west
 
 # Same endpoint, same model name — now load-balancing across two regions.
-$ curl -s $QWEN/v1/chat/completions -H 'content-type: application/json' -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Reverse a linked list in Python:"}],"max_tokens":80}' | jq -r '.choices[0].message.content'
-Certainly! To reverse a linked list in Python, you can use an iterative approach to traverse the list and create a new list that contains all elements from the original list but in reversed order.
-
-Here's how you can do it:
-
-```python
-class ListNode:
-    def __init__(self, value=0, next=None):
-        self.value = value
-        self.next = next
-
-def reverse
+$ curl -s $QWEN/v1/chat/completions -H 'content-type: application/json' -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"What is Kubernetes in one sentence?"}],"max_tokens":100}' | jq -r '.choices[0].message.content'
+Kubernetes (k8s) is an open-source platform for deploying and managing containerized applications across multiple clusters.
 
 # qwen-demo on the L4, qwen-west on the A100 — one endpoint, two regions, your HA posture too.
