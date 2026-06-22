@@ -56,6 +56,15 @@ rm -f "$installer"
 
 export PATH="/nix/var/nix/profiles/default/bin:$PATH"
 
+# Vercel's Amazon Linux 2023 build image doesn't provide /dev/fd, which bash
+# process substitution (< <(...)) needs. patchelf's setup-hook uses it during
+# the fixup phase of any derivation containing ELF files — e.g. the fetchNpmDeps
+# FOD, whose npm cache includes native bindings like lightningcss. Without this
+# symlink, patchelf fails with "/dev/fd/63: No such file or directory" and the
+# entire docs build cascades to failure. See:
+#   https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/patchelf/setup-hook.sh
+[ -e /dev/fd ] || ln -s /proc/self/fd /dev/fd
+
 # The Vercel project's Root Directory is docs/, so the api/ serverless functions
 # live under the docs site rather than polluting the repo root. The build runs
 # with the working directory at docs/, but the flake that defines .#docs is at
