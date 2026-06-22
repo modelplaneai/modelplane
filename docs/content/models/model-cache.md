@@ -20,7 +20,7 @@ single-node cold-start optimization.
 The required `source` enum names the kind, with the matching source object set
 alongside it. Setting `source: HuggingFace` selects `spec.huggingFace`, which
 carries the `repo` to fetch, an optional `revision` (branch, tag, or commit), and
-`sizeGiB`, the storage to allocate for the weights on each cluster. Size it to the
+`sizeGiB`, how much storage the weights get on each cluster. Size it to the
 model, since a value below the model's size leaves no room to stage the weights.
 `HuggingFace` is the only source today.
 
