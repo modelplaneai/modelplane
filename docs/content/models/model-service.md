@@ -12,11 +12,10 @@ across every replica, wherever it runs.
 
 A service selects what to route to by label. Behind the scenes, Modelplane
 creates one `ModelEndpoint`, a single reachable backend, for each replica of a
-deployment and labels it. It stamps three labels you can select on:
+deployment and labels it. Two of those labels carry routing intent:
 
 - `modelplane.ai/deployment`: the deployment the replica belongs to.
 - `modelplane.ai/cluster`: the cluster the replica runs on.
-- `modelplane.ai/replica-index`: which replica on that cluster.
 
 Modelplane creates an endpoint only once its replica is Ready, serving and
 reachable, and withdraws it if the replica later goes unhealthy. A service only
