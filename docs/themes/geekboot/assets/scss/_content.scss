@@ -167,9 +167,21 @@ blockquote {
   margin-bottom: 1.1rem;
   border: 1px solid var(--table-divider, var(--dropdown-border-color));
   border-radius: 8px;
-  overflow: hidden;
+  // Scroll wide tables horizontally instead of clipping them (overflow: hidden
+  // would defeat the .table-responsive contract and crush columns on phones).
+  // overflow-y stays hidden so the rounded corners still clip the table edges.
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   background-color: var(--body-background) !important;
   color: var(--body-font-color);
+}
+
+// Many-column matrices (e.g. the provider support table): keep every cell on a
+// single line so the table keeps its natural width and the wrapper scrolls,
+// rather than wrapping each column into a tall, cramped block on small screens.
+.table-responsive--matrix .table {
+  th, td { white-space: nowrap; }
 }
 
 // Header row: subtle surface + emphasis so columns read clearly.

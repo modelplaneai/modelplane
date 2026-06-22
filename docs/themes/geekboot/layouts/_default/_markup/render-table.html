@@ -1,9 +1,13 @@
 {{- /*
   Give every Markdown table the theme's .table styling inside a scrollable,
   bordered .table-responsive wrapper, so rows and columns have visible dividers
-  and wide tables scroll instead of overflowing on narrow screens.
+  and wide tables scroll instead of overflowing on narrow screens. Many-column
+  matrix tables get --matrix, which keeps cells on one line so the wrapper
+  scrolls horizontally on phones rather than cramming columns together.
 */ -}}
-<div class="table-responsive">
+{{- $cols := 0 -}}
+{{- with .THead -}}{{- $cols = len (index . 0) -}}{{- end -}}
+<div class="table-responsive{{ if ge $cols 5 }} table-responsive--matrix{{ end }}">
   <table class="table">
     <thead>
       {{- range .THead }}
