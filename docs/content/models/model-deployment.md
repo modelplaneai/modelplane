@@ -41,6 +41,61 @@ engines:
   - role: Standalone        # one pod, one node
 ```
 
+## Asking for the GPUs you need
+
+You don't name a cluster or a GPU model. Instead each member's `nodeSelector`
+lists the hardware its pods need, and Modelplane finds a node pool that has it.
+The platform team publishes node pools as `InferenceClass` resources, each
+describing the devices its nodes carry. Your request is matched against them.
+
+A request names a device (`gpu`), how many of it each pod needs (`count`), and
+one or more `selectors` the device must match:
+
+```yaml {nocopy=true}
+nodeSelector:
+  devices:
+  - name: gpu
+    count: 1                # one GPU per pod
+    selectors:
+    - cel: |
+        device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("40Gi")) >= 0
+```
+
+Each selector is a single line of CEL, a small expression language, that returns
+true or false for one device. The part in brackets, `"gpu.nvidia.com"`, is the
+GPU vendor's driver. The fields after it, like `memory` or `architecture`, are
+what the platform team published for that device. You're saying "match a GPU
+whose memory is at least 40Gi."
+
+A few things you can match on:
+
+```yaml {nocopy=true}
+selectors:
+# At least 40Gi of GPU memory. quantity() parses Kubernetes quantities like
+# "40Gi" so they compare numerically; >= 0 means "left is at least right".
+- cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("40Gi")) >= 0
+# A specific GPU architecture.
+- cel: device.attributes["gpu.nvidia.com"].architecture == "Hopper"
+# A minimum CUDA compute capability. semver() compares version strings.
+- cel: device.attributes["gpu.nvidia.com"].cudaComputeCapability.compareTo(semver("9.0.0")) >= 0
+```
+
+A device has to match every selector in the request. Give two selectors to mean
+"Hopper, with at least 80Gi."
+
+To see what's available to match against, list the classes the platform team has
+published and look at the devices each one declares:
+
+```bash
+kubectl get inferenceclass
+kubectl describe inferenceclass gke-l4-1x-g2
+```
+
+The `describe` output shows each device's driver, attributes (like
+`architecture`), and capacity (like `memory`), which are exactly the keys your
+selectors read. If a selector asks for something no published class offers, the
+deployment won't schedule.
+
 ## Multi-node
 
 When a model is too large for one node's GPUs, make the engine a gang: a `Leader`

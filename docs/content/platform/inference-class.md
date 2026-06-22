@@ -20,6 +20,21 @@ An `InferenceClass` is a tested recipe for a GPU node pool. It bundles:
 Different clouds and GPU types imply different classes. A GKE L4 pool is
 `gke-l4-1x-g2`. A bare-metal H100 pool is `h100-8x-byo` (no provisioning).
 
+## Describing devices
+
+A class's `devices` follow Kubernetes
+[Dynamic Resource Allocation](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/)
+(DRA), the mechanism modern Kubernetes uses to match GPUs to pods. Each device
+has a `driver` (the vendor that owns it, such as `gpu.nvidia.com`), a `count`
+(how many a node has), typed `attributes` (such as `architecture`), and
+`capacity` (quantities, such as `memory`). This mirrors the shape the GPU's DRA
+driver publishes on a real node, so what you declare here is what an ML team's
+`nodeSelector` matches against and what DRA binds at runtime.
+
+You author the attribute and capacity keys, and there's no fixed list. Pick the
+ones an ML team would reasonably select on, the GPU memory, the architecture, the
+compute capability, using the same names the driver reports.
+
 ## DRA and synthetic devices
 
 Each device sets a `claim` discriminator:
