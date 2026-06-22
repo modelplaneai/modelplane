@@ -36,21 +36,13 @@
   </aside>
 
   <main class="bd-main order-1">
-    {{ $hasVersions := .Site.Data.versions.versions }}
-    {{ if or $ref $hasVersions }}
+    {{ if $ref }}
     <header class="doc-content-nav">
-      {{ if $ref }}
       <nav class="doc-tabs" aria-label="Documentation sections">
         <a class="doc-tab{{ if and (not $isRef) (not $isExamples) }} active{{ end }}" href="{{ .Site.Home.Permalink }}">Documentation</a>
         {{ with $ex }}<a class="doc-tab{{ if $isExamples }} active{{ end }}" href="{{ .Permalink }}">Examples</a>{{ end }}
         <a class="doc-tab{{ if $isRef }} active{{ end }}" href="{{ $ref.Permalink }}">Reference</a>
       </nav>
-      {{ end }}
-      {{ if $hasVersions }}
-      <div class="doc-content-version">
-        {{ partial "version-dropdown-menu" . }}
-      </div>
-      {{ end }}
     </header>
     {{ end }}
     <div class="bd-main-grid{{ if not $hasToc }} no-toc{{ end }}">

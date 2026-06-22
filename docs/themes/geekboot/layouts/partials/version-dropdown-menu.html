@@ -1,48 +1,49 @@
-{{ $cur := .Site.Params.version }}
-{{ $latest := .Site.Params.latest }}
-{{ $versions := .Site.Data.versions.versions }}
-{{/* Only render on release branches — main content redirects to latest,
-     so there's nothing to switch between from the root. */}}
-{{ if and $versions (ne $cur "main") }}
+{{ $sorted_list := partial "utils/sorted-versions" . }}
+{{ $cur_ver := .Page.Params.version | default .Site.Params.latest }}
 
-{{/* Strip the version path prefix that Hugo bakes into RelPermalink when the
-     site is built with a versioned baseURL (e.g. /v0.1/overview/ → /overview/).
-     main is always built at the root, so nothing to strip there. */}}
-{{ $prefix := cond (ne $cur "main") (printf "/v%s" $cur) "" }}
-{{ $pagePath := .RelPermalink | strings.TrimPrefix $prefix }}
-
-{{/* "Latest" when explicitly marked or when no release exists yet. */}}
-{{ $isLatest := or (not $latest) (eq $cur $latest) }}
-
-<div class="bd-version-wrap">
-  <span class="bd-version-label">Version</span>
-  <div class="dropdown bd-dropdown">
-    <button class="bd-version-selector dropdown-toggle" type="button"
-            data-bs-toggle="dropdown" aria-expanded="false"
-            aria-label="Switch documentation version">
-      {{ if eq $cur "main" }}main{{ else }}v{{ $cur }}{{ end -}}
-      {{ if $isLatest }}&nbsp;<span class="badge rounded-pill latest">Latest</span>{{ end }}
-    </button>
-    <div class="dropdown-menu bd-border-color bd-dropdown">
-      {{ range $versions }}
-        {{ $isActive := eq .version $cur }}
-        {{ $label := cond (ne .version "main") (printf "v%s" .version) "main" }}
-        {{ $href := $.RelPermalink }}
-        {{ if not $isActive }}
-          {{ if .url }}
-            {{ $href = printf "%s%s" .url $pagePath }}
-          {{ else }}
-            {{ $href = $pagePath }}
-          {{ end }}
+<div class="dropdown float-end bd-dropdown">
+    <a class="btn btn-outline-secondary dropdown-toggle bd-dropdown-item text-reset" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        {{ if ne .Page.Params.version "master" }}v{{ end }}{{ $cur_ver }}
+        {{ if eq $cur_ver .Site.Params.latest }}
+        <div class="badge rounded-pill latest">Latest</div>
         {{ end }}
-        <a class="dropdown-item bd-dropdown-item{{- if $isActive }} active{{- end}}"
-           {{- if $isActive }} aria-current="true"{{ end }}
-           href="{{ $href | safeURL }}">
-          {{ $label }}
-          {{ if and $latest (eq .version $latest) }}<span class="badge rounded-pill latest ms-1">Latest</span>{{ end }}
-        </a>
-      {{ end }}
+    </a>
+
+    <div class="dropdown-menu bd-border-color bd-dropdown" aria-labelledby="dropdownMenuLink">
+        {{ $master_url := replaceRE "v[0-9].[0-9]" "master" .Permalink }}
+        {{/*  Iterate over the ordered list of available versions. */}}
+        {{ range $sorted_list }}
+            {{ $matchingTitle := $.Title }}
+            {{ if $.Params.matchTitle }}
+                {{ $matchingTitle = $.Params.matchTitle }}
+            {{ end }}
+            {{/*  For a version, see if there is a page with an identical title to the page we're on. If not use the page at /content/v<version>  */}}
+            {{ $versionPage :=  index (where (where $.Site.Pages "Title" $matchingTitle) ".Page.Params.version" .) 0 | default ($.Site.GetPage (printf "v%s" .)) }}
+            {{/*  If the version is master get the master page since "vmaster" doesn't exist  */}}
+            {{ if not $versionPage }}
+                {{ $versionPage = $.Site.GetPage "master" }}
+            {{ end }}
+                {{ with $versionPage }}
+                    {{ $isLatest := false }}
+                    {{ if or (eq .Page.Params.version "") (eq .Page.Params.version $cur_ver) }}
+                        {{ $isLatest = true }}
+                    {{ end }}
+                    <a class="dropdown-item bd-dropdown-item {{- if $isLatest }} active {{- end}}" {{- if $isLatest }}aria-current="true"{{end}} href="{{ .Permalink }}">
+                        {{ if eq .Page.Params.version "master" }}
+                            master
+                        {{ else }}
+                            {{ if eq .Page.Params.version "" }}
+                                {{ (printf "v%s" .Site.Params.latest) }}
+                            {{ else }}
+                                {{ (printf "v%s" .Page.Params.version) }}
+                            {{ end }}
+                        {{ end }}
+                        {{ if or (eq .Page.Params.version .Site.Params.latest) (eq .Page.Params.version "") }}
+                        <div class="badge rounded-pill latest">Latest</div>
+                        {{ end }}
+                    </a>
+                {{ end }}
+            {{ end }}
     </div>
-  </div>
 </div>
-{{ end }}
+
