@@ -18,7 +18,7 @@ Kubernetes is rapidly becoming the default orchestrator for inference. The broad
 cloud-native community is investing heavily to make it a first-class platform for
 AI workloads, adding device-aware scheduling, multi-node inference, distributed
 serving, and accelerator management. The major open source inference projects are
-converging on it, among them vLLM, SGLang, NVIDIA Dynamo, llm-d, Ray, Slurm,
+converging on it; among them are vLLM, SGLang, NVIDIA Dynamo, llm-d, Ray, Slurm,
 KubeAI, and Kueue. Neoclouds like Baseten and CoreWeave have standardized on
 Kubernetes for their own operations. Inside a single cluster, the open source
 stack is now strong.
