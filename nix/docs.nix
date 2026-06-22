@@ -110,7 +110,7 @@ let
         ];
         outputHashMode = "recursive";
         outputHashAlgo = "sha256";
-        outputHash = "sha256-Vq7P/K9kQSj21QeKSAVuOM8aWQ1Yrdu4oAuZg1SCUmg=";
+        outputHash = "sha256-sWwK8Z5NEpxSbajGd+IjEh+2moQOU2pBUI33c6+gKVY=";
       }
       ''
         export HOME=$TMPDIR
