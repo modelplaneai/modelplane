@@ -1,6 +1,6 @@
 
 # Platform team — publish the GPU hardware (InferenceClass) and provision a starter cluster.
-$ cat $MF/gke/platform.yaml
+$ bat -pp --color=always $MF/gke/platform.yaml
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
@@ -53,10 +53,10 @@ inferencecluster.modelplane.ai/starter unchanged
 # Modelplane provisions the GKE cluster + serving stack — about 15 minutes (pre-provisioned here).
 $ kubectl --context $CP get inferencecluster starter
 NAME      SOURCE   GATEWAY        SYNCED   READY   COMPOSITION                       AGE
-starter   GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   132m
+starter   GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   4h6m
 
 # ML team — declare what the model needs (a GPU >= 20Gi); no cluster details.
-$ cat $MF/gke/model-deployment.yaml
+$ bat -pp --color=always $MF/gke/model-deployment.yaml
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
@@ -90,12 +90,12 @@ modeldeployment.modelplane.ai/qwen-demo configured
 $ kubectl --context $CP apply -f $MF/model-service.yaml
 modelservice.modelplane.ai/qwen configured
 $ kubectl --context $CP -n ml-team get modelreplica -l modelplane.ai/deployment=qwen-demo -L modelplane.ai/cluster
-NAME              CLUSTER   SYNCED   READY   COMPOSITION                   AGE   CLUSTER
-qwen-demo-92da3   starter   True     True    modelreplicas.modelplane.ai   91m   starter
+NAME              CLUSTER   SYNCED   READY   COMPOSITION                   AGE     CLUSTER
+qwen-demo-92da3   starter   True     True    modelreplicas.modelplane.ai   3h24m   starter
 
 # Call the OpenAI endpoint.
 $ curl -s $QWEN/v1/chat/completions -H 'content-type: application/json' -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"What is Kubernetes in one sentence?"}],"max_tokens":100}' | jq -r '.choices[0].message.content'
-Kubernetes (k8s) is an open-source platform for deploying and managing containerized applications across multiple nodes.
+Kubernetes is an open-source platform for automating the deployment, management, and scaling of containerized applications on a cluster of servers.
 
 # Platform team — grow the fleet: add two A100 regions.
 $ sed 's/my-gcp-project/$PROJECT/' $MF/gke/platform-scale.yaml | kubectl --context $CP apply -f -
@@ -105,13 +105,13 @@ inferencecluster.modelplane.ai/gpu-us-east unchanged
 
 # Provisioning two more clusters — about 10 to 15 minutes (pre-provisioned here).
 $ kubectl --context $CP get inferencecluster -L modelplane.ai/region
-NAME          SOURCE   GATEWAY        SYNCED   READY   COMPOSITION                       AGE    REGION
-gpu-us-east   GKE                     True     False   inferenceclusters.modelplane.ai   99m    us-east
-gpu-us-west   GKE      34.53.45.218   True     True    inferenceclusters.modelplane.ai   3d6h   us-west
-starter       GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   134m   us-central
+NAME          SOURCE   GATEWAY        SYNCED   READY   COMPOSITION                       AGE     REGION
+gpu-us-east   GKE                     True     False   inferenceclusters.modelplane.ai   3h32m   us-east
+gpu-us-west   GKE      34.53.45.218   True     True    inferenceclusters.modelplane.ai   3d8h    us-west
+starter       GKE      35.226.9.215   True     True    inferenceclusters.modelplane.ai   4h7m    us-central
 
 # ML team — add a second deployment, pinned to us-west, asking for a bigger GPU.
-$ sed -n '/clusterSelector/,/quantity/p' $MF/gke/model-deployment-west.yaml
+$ sed -n '/clusterSelector/,/quantity/p' $MF/gke/model-deployment-west.yaml | bat -ppl yaml --color=always
 # A second ModelDeployment, pinned to a different region with clusterSelector.
 # It carries its own deployment name, so the ModelService can front it alongside
 # qwen-demo and serve both from one endpoint.
@@ -147,12 +147,12 @@ modeldeployment.modelplane.ai/qwen-west configured
 $ kubectl --context $CP apply -f $MF/model-service-multi.yaml
 modelservice.modelplane.ai/qwen configured
 $ kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployment,modelplane.ai/cluster
-NAME              CLUSTER       SYNCED   READY   COMPOSITION                   AGE    DEPLOYMENT   CLUSTER
-qwen-demo-92da3   starter       True     True    modelreplicas.modelplane.ai   92m    qwen-demo    starter
-qwen-west-b33c3   gpu-us-west   True     True    modelreplicas.modelplane.ai   134m   qwen-west    gpu-us-west
+NAME              CLUSTER       SYNCED   READY   COMPOSITION                   AGE     DEPLOYMENT   CLUSTER
+qwen-demo-92da3   starter       True     True    modelreplicas.modelplane.ai   3h25m   qwen-demo    starter
+qwen-west-b33c3   gpu-us-west   True     True    modelreplicas.modelplane.ai   4h7m    qwen-west    gpu-us-west
 
 # Same endpoint, same model name — now load-balancing across two regions.
 $ curl -s $QWEN/v1/chat/completions -H 'content-type: application/json' -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"What is Kubernetes in one sentence?"}],"max_tokens":100}' | jq -r '.choices[0].message.content'
-Kubernetes (k8s) is an open-source platform for deploying and managing containerized applications across multiple clusters.
+Kubernetes (K8s) is an open-source platform for managing and deploying containerized applications on a cluster of servers.
 
 # qwen-demo on the L4, qwen-west on the A100 — one endpoint, two regions, your HA posture too.

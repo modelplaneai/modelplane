@@ -34,7 +34,7 @@ GW_PORT="${GW_PORT:-8080}"
 
 # Pre-flight: tools present, manifests reachable, and the endpoint actually has
 # an address. Exit cleanly with guidance rather than capturing a broken take.
-for t in kubectl curl jq; do
+for t in kubectl curl jq bat; do
   command -v "$t" >/dev/null || { echo "record.sh: missing required tool '$t'"; exit 1; }
 done
 [ -f "$MF/gke/platform.yaml" ] || { echo "record.sh: canonical manifests not found at $MF"; exit 1; }
@@ -67,13 +67,13 @@ clear
 
 # ---- Part 1: platform team builds one cluster, ML team deploys a model --------
 banner "Platform team — publish the GPU hardware (InferenceClass) and provision a starter cluster."
-run "cat \$MF/gke/platform.yaml"
+run "bat -pp --color=always \$MF/gke/platform.yaml"
 run "sed 's/my-gcp-project/\$PROJECT/' \$MF/gke/platform.yaml | kubectl --context \$CP apply -f -"
 banner "Modelplane provisions the GKE cluster + serving stack — about 15 minutes (pre-provisioned here)."
 run 'kubectl --context $CP get inferencecluster starter'
 
 banner "ML team — declare what the model needs (a GPU >= 20Gi); no cluster details."
-run "cat \$MF/gke/model-deployment.yaml"
+run "bat -pp --color=always \$MF/gke/model-deployment.yaml"
 run 'kubectl --context $CP apply -f $MF/gke/model-deployment.yaml'
 run 'kubectl --context $CP apply -f $MF/model-service.yaml'
 run 'kubectl --context $CP -n ml-team get modelreplica -l modelplane.ai/deployment=qwen-demo -L modelplane.ai/cluster'
@@ -88,7 +88,7 @@ banner "Provisioning two more clusters — about 10 to 15 minutes (pre-provision
 run 'kubectl --context $CP get inferencecluster -L modelplane.ai/region'
 
 banner "ML team — add a second deployment, pinned to us-west, asking for a bigger GPU."
-run "sed -n '/clusterSelector/,/quantity/p' \$MF/gke/model-deployment-west.yaml"
+run "sed -n '/clusterSelector/,/quantity/p' \$MF/gke/model-deployment-west.yaml | bat -ppl yaml --color=always"
 run 'kubectl --context $CP apply -f $MF/gke/model-deployment-west.yaml'
 
 banner "One ModelService fronts both deployments — the endpoint never changes."

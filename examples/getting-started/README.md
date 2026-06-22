@@ -69,7 +69,7 @@ commands — `gke/record.sh` steps through them so nothing waits on infra on cam
    curl -s http://localhost:8080/ml-team/qwen/v1/models >/dev/null
    ```
 4. **Set up the terminal:** `cd examples/getting-started/gke`, export `CP`,
-   confirm `jq` is installed.
+   confirm `jq` and `bat` are installed (`bat` syntax-highlights the manifests).
 
 ### On camera
 
