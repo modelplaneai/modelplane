@@ -181,7 +181,9 @@ blockquote {
 // single line so the table keeps its natural width and the wrapper scrolls,
 // rather than wrapping each column into a tall, cramped block on small screens.
 .table-responsive--matrix .table {
-  th, td { white-space: nowrap; }
+  // Single line per cell, and tighter vertical padding so rows holding pills and
+  // icons don't read as oversized. Middle-align keeps pills centred in the row.
+  th, td { white-space: nowrap; padding-top: 6px; padding-bottom: 6px; vertical-align: middle; }
 }
 
 // Header row: subtle surface + emphasis so columns read clearly.

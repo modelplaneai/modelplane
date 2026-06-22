@@ -391,9 +391,23 @@ a.mp-chip:hover { border-color: var(--mp-card-border-hi); text-decoration: none;
   border-radius: 999px;
   padding: 1px 9px 1px 6px;
   white-space: nowrap;
-  margin: 2px 4px 2px 0;
+  margin: 1px 4px 1px 0;
 }
 .mp-accel--text { padding-left: 9px; }
+
+// ── Crossplane provider repo link ─────────────────────────────
+// A GitHub icon standing in for the (long) repo slug, so the provider matrix
+// stays narrow enough to fit without scrolling on desktop. Repo name and
+// maturity live in the link's title/aria-label.
+.mp-repolink {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+.mp-repolink-icon { width: 15px; height: 15px; fill: currentColor; }
+// Monochrome, not the purple link colour: a muted icon that brightens on hover.
+.bd-content a.mp-repolink { color: var(--mp-card-muted); }
+.bd-content a.mp-repolink:hover { color: var(--body-font-color); text-decoration: none !important; }
 .mp-accel-logo {
   width: 12px;
   height: 12px;
