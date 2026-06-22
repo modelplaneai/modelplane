@@ -24,6 +24,35 @@ Modelplane installs an inference stack (LeaderWorkerSet, llm-d, Envoy
 Gateway, etc.) on every cluster it manages. This includes existing clusters,
 which Modelplane assumes are solely for its use.
 
+## Ownership and requirements
+
+Modelplane assumes exclusive ownership of every `InferenceCluster`. The fleet
+scheduler's capacity accounting relies on Modelplane being the only thing placing
+GPU workloads on the cluster, so dedicate each cluster to Modelplane rather than
+sharing it with other workloads.
+
+Modelplane also has opinions about how a cluster is set up: its Kubernetes
+version, the components it installs, and required features like DRA for binding
+GPUs to pods. On provisioned clusters Modelplane handles this for you. On an
+existing cluster the platform team must meet the requirements.
+
+## Provisioned and existing clusters
+
+The `cluster.source` discriminator picks one of two models:
+
+- **Provisioned (`GKE`, `EKS`).** Modelplane creates the cluster and its GPU node
+  pools from each pool's `InferenceClass`, labels the pool's nodes so the
+  scheduler's placement is enforced, and provisions the storage class for model
+  weights. It also injects a non-GPU **system pool** with opinionated defaults to
+  run the inference stack, so you only declare the GPU pools you want.
+- **Existing (`Existing`).** A kubeconfig `Secret` provides access to a cluster
+  you run yourself. Modelplane installs the serving stack it needs but doesn't
+  provision infrastructure, and each pool's `InferenceClass` provides hardware
+  capabilities for scheduling only. You're responsible for the cluster meeting
+  Modelplane's requirements, including labeling each pool's nodes
+  `modelplane.ai/pool=<pool-name>` (see
+  [Fleet scheduling]({{< ref "fleet-scheduling.md#pinning-placement-to-a-pool" >}})).
+
 ## Examples
 
 {{< tabs >}}

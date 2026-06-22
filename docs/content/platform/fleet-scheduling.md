@@ -7,7 +7,7 @@ description: How Modelplane places a deployment's replicas across the fleet, and
 <!-- vale write-good.Passive = NO -->
 When an ML team creates a [ModelDeployment]({{< ref "/models/model-deployment.md" >}}),
 the fleet scheduler decides which cluster each replica runs on and which node
-pool each engine lands on. Platform teams don't drive it directly, but what they
+pool each engine uses. Platform teams don't drive it directly, but what they
 publish, the clusters, their labels, and each pool's
 [InferenceClass]({{< ref "inference-class.md" >}}), is exactly what the scheduler
 matches against. This page explains how it places work and where it deliberately
@@ -55,11 +55,11 @@ them all.
 
 It works this way because a gang's members coordinate over their pool's
 interconnect fabric, and the scheduler can't reason about fabric. Pool identity
-is the finest grain it has. Splitting an engine across pools could scatter a
-collective across fabrics, where it would silently hang rather than fail
-cleanly. To avoid that, the scheduler never splits an engine: an engine that no
+is the finest grain it has. An engine split across pools risks landing its
+members on different fabrics. The collective then never forms, and the gang hangs
+with no clear error. To avoid that, the scheduler never splits an engine: an engine that no
 single pool satisfies isn't scheduled on that cluster. Different engines of the same replica
-may land on different pools, but all on the same cluster.
+can use different pools, but all on the same cluster.
 
 ```mermaid
 graph TD

@@ -428,6 +428,7 @@ highest-index
 load-balanced
 overcommit
 per-pool
+per-cluster
 [Rr]e-placement
 sub-node
 under-count

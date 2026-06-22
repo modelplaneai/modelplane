@@ -22,6 +22,37 @@ An `InferenceClass` is a tested recipe for a GPU node pool. It bundles:
 Different clouds and GPU types imply different classes. A GKE L4 pool is
 `gke-l4-1x-g2`. A bare-metal H100 pool is `h100-8x-byo` (no provisioning).
 
+## DRA and synthetic devices
+
+Each device sets a `claim` discriminator that says how Modelplane treats it:
+
+- **`DRA`** (the default) emits the device as a request in the `ResourceClaim`
+  the serving pods claim through, and DRA binds a matching device to the pod at
+  admission time. Use it for hardware a real DRA driver exposes, today GPUs. A
+  `DRA` device needs a `deviceClassName`, the cluster-scoped DRA `DeviceClass`
+  the driver install creates.
+- **`Synthetic`** describes a device for fleet scheduling only and never claims
+  it. Use it for hardware that matters for placement but has no DRA driver yet,
+  like an InfiniBand fabric. The scheduler enforces a synthetic device by pool
+  selection alone, so it influences where a replica lands but adds nothing to the
+  `ResourceClaim`.
+
+## The device contract
+
+A class's `driver`, attribute keys, and capacity keys are a contract between the
+platform team who authors classes and the ML team who writes `nodeSelector`. The
+keys are bare names (`architecture`, `memory`); the domain comes from the
+device's `driver`, so a `nodeSelector` reads them back as
+`device.attributes["gpu.nvidia.com"].architecture` and
+`device.capacity["gpu.nvidia.com"].memory`.
+
+For `claim: DRA` devices these should mirror what the DRA driver actually
+publishes in its `ResourceSlice`, so the same `nodeSelector` that matched the
+class at scheduling time also selects the right device at claim time. Publish a
+device's real usable capacity, not its nominal spec: an `80GB` H100 reports about
+`81559Mi` of usable memory, so a class that declares `80Gi` would let a
+`nodeSelector` asking for `>= 80Gi` match the pool but then fail to bind the GPU.
+
 ## Examples
 
 {{< tabs >}}
