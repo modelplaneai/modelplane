@@ -17,7 +17,7 @@ what clusters exist. The control plane resolves it and keeps it current as
 both sides change.
 
 In this tour, you'll switch between provisioning infrastructure and declaring a
-model to see how they interact. By the end you'll have a GPU fleet across two regions and one OpenAI-compatible endpoint routing to a model served across both.
+model to see how they interact. By the end you'll have a GPU fleet across three regions and one OpenAI-compatible endpoint routing to a model served across two of them.
 
 This is not a production setup and takes around 45 minutes to run.
 

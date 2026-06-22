@@ -14,7 +14,7 @@ spec:
   versions:
     gatewayApi: "v1.5.1"
     certManager: "v1.17.1"
-    envoyGateway: "v1.3.0"
+    envoyGateway: "v1.8.1"
   gateway:
     listeners:
       - name: http

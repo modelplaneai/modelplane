@@ -2,8 +2,9 @@
 # once per matched cluster from the gated Hugging Face repo; every gang pod
 # mounts it at /mnt/models. ~960 GB of BF16 weights, so sizeGiB leaves headroom.
 #
-# The repo is gated, so it needs a Hugging Face token. The authSecret must exist
-# on every matched workload cluster.
+# The repo is gated, so it needs a Hugging Face token. Create the authSecret once
+# in the ModelCache's namespace on the control plane; Modelplane propagates it to
+# each matched cluster.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
 metadata:

@@ -13,8 +13,9 @@ spec:
   source: HuggingFace
   huggingFace:
     repo: Qwen/Qwen3-Coder-480B-A35B-Instruct
-    # Gated repo, so a Hugging Face token is needed. The Secret must exist on
-    # every matched workload cluster.
+    # Gated repo, so a Hugging Face token is needed. Create this Secret once in
+    # the ModelCache's namespace on the control plane; Modelplane propagates it
+    # to each matched cluster.
     authSecret:
       name: hf-token
       key: HF_TOKEN

@@ -38,7 +38,7 @@ spec:
       spec:
         containers:
         - name: engine
-          image: vllm/vllm-openai:v0.7.3
+          image: vllm/vllm-openai:v0.23.0
           args:
           - "--model=Qwen/Qwen2.5-0.5B-Instruct"
 ```

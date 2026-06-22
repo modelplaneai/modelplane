@@ -20,7 +20,7 @@ An `InferenceClass` is a tested recipe for a GPU node pool. It bundles:
   the pool already exists.
 
 Different clouds and GPU types imply different classes. A GKE L4 pool is
-`gke-l4-1x-g2`. A bare-metal H100 pool is `h100-8x-ib` (no provisioning).
+`gke-l4-1x-g2`. A bare-metal H100 pool is `h100-8x-byo` (no provisioning).
 
 ## Examples
 

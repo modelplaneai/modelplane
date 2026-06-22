@@ -62,4 +62,4 @@ its deployment changes in a way that no longer fits where it runs.
 
 ## Next step
 
-The fleet now spans three clusters across two regions. The ML team is next. [Scale the model]({{< ref "getting-started/scale-the-model.md" >}}) to serve it from two regions behind a single endpoint.
+The fleet now spans three clusters across three regions. The ML team is next. [Scale the model]({{< ref "getting-started/scale-the-model.md" >}}) to serve it from two regions behind a single endpoint.

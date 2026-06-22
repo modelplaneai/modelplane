@@ -10,7 +10,7 @@ spec:
       region: us-central1
   nodePools:
     - name: h100-pool
-      className: h100-80gb-8
+      className: h100-8x-byo
       nodeCount: 2
       maxNodeCount: 10
       zones: [us-central1-a]

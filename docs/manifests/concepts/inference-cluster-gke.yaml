@@ -29,7 +29,7 @@ spec:
   - name: gpu-l4
     className: gke-l4-1x-g2
     nodeCount: 1
-    minNodeCount: 0
+    minNodeCount: 1
     maxNodeCount: 4
     zones:
     - us-central1-a
