@@ -1,6 +1,18 @@
-// Modelplane visual overrides
+// =============================================================================
+// Modelplane docs theme — handoff integration
+//
+// Applies modelplane-theme.css to the geekboot Hugo theme using the mapping
+// approach from the handoff README: "point their variables at our tokens."
+//
+// - --mp-* tokens      → _variables.scss (:root, always defined)
+// - Dark mode mappings → dark-mode.scss  (docs vars → mp tokens)
+// - Light mode values  → light-mode.scss (unchanged, existing system)
+// - Fonts / @font-face → _fonts.scss
+// =============================================================================
 
-// ── Handoff helpers (from modelplane-theme.css) ───────────────
+
+// ── Handoff helpers ───────────────────────────────────────────
+// Exact copies from modelplane-theme.css. Use these classes in templates.
 
 .mp-gradient-text {
   background: var(--mp-gradient);
@@ -35,19 +47,17 @@
   transition: background 0.2s var(--mp-ease), border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.12s;
   &:hover { text-decoration: none; }
 }
-
 .mp-btn--primary {
   background: var(--mp-purple);
   color: #fff;
-  box-shadow: var(--mp-glow-purple);
+  box-shadow: 0 6px 20px rgba(154, 94, 252, 0.30);
   &:hover {
     background: var(--mp-gradient);
-    box-shadow: var(--mp-glow-sky);
+    box-shadow: 0 8px 28px rgba(0, 220, 232, 0.30);
     transform: translateY(-1px);
     color: #fff;
   }
 }
-
 .mp-btn--secondary {
   background: transparent;
   color: #fff;
@@ -55,7 +65,15 @@
   &:hover {
     color: var(--mp-sky);
     border-color: var(--mp-sky);
+    box-shadow: 0 0 16px rgba(0, 220, 232, 0.15);
   }
+}
+
+.mp-card {
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  border-radius: var(--mp-radius-lg);
+  padding: var(--mp-space-5);
 }
 
 .mp-glass {
@@ -65,8 +83,12 @@
   border-bottom: 1px solid var(--mp-border);
 }
 
-// Match website body exactly — explicit values beat Bootstrap's CSS-var approach
-// since _modelplane.scss loads after bootstrap/bootstrap in docs.scss
+
+// ── Base element styles ───────────────────────────────────────
+// Non-colour properties apply in both modes.
+// Colour properties are set via --body-font-color / --content-link-color
+// in dark-mode.scss / light-mode.scss — not globally here.
+
 body {
   font-size: 16px;
   line-height: 1.6;
@@ -74,67 +96,80 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-// Prevent Bootstrap's vertical-align:middle on svg from shifting nav text
-nav.site-nav a {
-  vertical-align: baseline;
+// Ambient glows — dark canvas only.
+[color-theme="dark"] body {
+  background:
+    radial-gradient(1100px 520px at 50% -180px, rgba(154, 94, 252, 0.10), transparent 70%),
+    radial-gradient(720px 460px at 100% 40px, rgba(0, 220, 232, 0.07), transparent 70%),
+    var(--mp-bg);
+  background-attachment: fixed;
 }
 
-// Plain background (Dark Spruce in dark mode) — no grid overlay.
+small, .mp-muted { color: var(--mp-text-muted); }
 
-// Sidebar active border uses purple
-.bd-links-nav {
-  .nav-container, .bd-links {
-    &.active-parent {
-      border-left-color: #{$mp-purple} !important;
-    }
-    &:hover, &.active {
-      border-left-color: #{$mp-purple} !important;
-    }
+a { text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+::selection { background: rgba(154, 94, 252, 0.40); color: #fff; }
+
+// code/pre/hr use dark-only token values — scope to dark mode so light
+// mode keeps its own styling from _code-theme-light.scss / Bootstrap.
+[color-theme="dark"] {
+  hr { border: none; border-top: 1px solid var(--mp-border); opacity: 1; }
+
+  code {
+    font-size: 0.9em;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--mp-border);
+    border-radius: var(--mp-radius-sm);
+    padding: 0.1em 0.4em;
+  }
+  pre {
+    background: var(--mp-surface);
+    border: 1px solid var(--mp-border);
+    border-radius: var(--mp-radius-md);
+    padding: var(--mp-space-4);
+    overflow: auto;
+    code { background: none; border: none; padding: 0; }
   }
 }
 
-// Inline code: use CSS variables so light/dark modes each get a readable colour.
-// Dark mode keeps the purple tint; light mode uses near-black on a light bg.
+
+// ── Docs-specific mappings ────────────────────────────────────
+// Map geekboot/Bootstrap element classes to --mp-* tokens.
+
+nav.site-nav a { vertical-align: baseline; }
+
+.bd-links-nav {
+  .nav-container, .bd-links {
+    &.active-parent { border-left-color: var(--mp-purple) !important; }
+    &:hover, &.active { border-left-color: var(--mp-purple) !important; }
+  }
+}
+
 .bd-content code {
   background-color: var(--code-background);
   color: var(--code-color, #{$mp-purple-hi});
-  border-radius: 4px;
+  border-radius: var(--mp-radius-sm);
 }
 
-// Heading link anchors
-.bd-content h2,
-.bd-content h3,
-.bd-content h4 {
-  color: inherit;
-}
+.bd-content h2, .bd-content h3, .bd-content h4 { color: inherit; }
 
-// Table border uses mp-border
-.table-responsive {
-  border-color: #{$mp-border} !important;
-}
-.table td {
-  border-top-color: #{$mp-border} !important;
-}
+.table-responsive { border-color: var(--mp-border) !important; }
+.table td         { border-top-color: var(--mp-border) !important; }
 
-// Dark mode color-theme toggle thumb
 .form-check-input:checked {
-  background-color: #{$mp-purple} !important;
-  border-color: #{$mp-purple} !important;
+  background-color: var(--mp-purple) !important;
+  border-color: var(--mp-purple) !important;
 }
 
-// Page title — inherits Outfit Medium 500 from _fonts.scss heading rules.
-.bd-title {
-  font-family: #{$font-family-headings};
-}
+.bd-title { font-family: var(--mp-font-display); }
 
-// ── For AI agents — "Copy page" split control next to the page title ─────────
 
-.mp-page-ai {
-  display: inline-flex;
-  align-items: stretch;
-}
+// ── AI agent tools (Copy page split button) ───────────────────
 
-// Shared look for the two halves of the split button.
+.mp-page-ai { display: inline-flex; align-items: stretch; }
+
 .mp-page-ai-copy,
 .mp-page-ai-caret {
   font-family: inherit;
@@ -142,15 +177,15 @@ nav.site-nav a {
   background: none;
   border: 1px solid var(--toc-mobile-menu-outline);
   cursor: pointer;
-  transition: color 150ms, border-color 150ms, background 150ms;
-
-  &:hover,
-  &:focus-visible {
-    color: #{$mp-muted-hi};
-    border-color: rgba(154,94,252,0.45);
+  transition: color 150ms, border-color 150ms, background 150ms, box-shadow 150ms;
+  text-decoration: none !important;
+  &:hover, &:focus-visible {
+    color: var(--mp-text-secondary);
+    border-color: rgba(154, 94, 252, 0.45);
+    box-shadow: 0 0 12px rgba(154, 94, 252, 0.18);
+    text-decoration: none !important;
   }
 }
-
 .mp-page-ai-copy {
   display: inline-flex;
   align-items: center;
@@ -158,41 +193,29 @@ nav.site-nav a {
   font-size: 0.78rem;
   padding: 3px 10px;
   border-radius: 5px 0 0 5px;
-
   svg { opacity: 0.85; }
 }
-
 .mp-page-ai-caret {
   display: inline-flex;
   align-items: center;
   padding: 3px 6px;
   border-left: 0;
   border-radius: 0 5px 5px 0;
-
   &[aria-expanded="true"] {
-    color: #{$mp-purple-hi};
-    border-color: rgba(154,94,252,0.45);
+    color: var(--mp-purple-light);
+    border-color: rgba(154, 94, 252, 0.45);
   }
 }
 
-// Position deterministically: below the control, right edge aligned. We use
-// data-bs-display="static" (Popper disabled) and place it ourselves, because
-// Bootstrap's right-alignment reads a --bs-position custom property that
-// PurgeCSS strips from the production build (it's only read by JS).
 .mp-page-ai .mp-page-ai-menu {
   position: absolute;
   inset: auto 0 auto auto;
   top: calc(100% + 0.4rem);
   transform: none;
 }
-
-// On phones the toolbar stacks and the button sits at the left, so a
-// right-aligned 18rem menu opens off the left edge. Left-align it under the
-// button and cap its width to the viewport so it stays on screen.
 @media (max-width: 767.98px) {
   .mp-page-ai .mp-page-ai-menu {
-    right: auto;
-    left: 0;
+    right: auto; left: 0;
     --bs-dropdown-min-width: 0;
     width: max-content;
     max-width: calc(100vw - 2rem);
@@ -207,146 +230,75 @@ nav.site-nav a {
   color: var(--body-font-color);
 
   .mp-ai-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    width: 100%;
-    padding: 0.45rem 0.55rem;
-    border-radius: 0.5rem;
-    white-space: normal;
-    text-align: left;
-    cursor: pointer;
+    display: flex; align-items: flex-start; gap: 0.6rem;
+    width: 100%; padding: 0.45rem 0.55rem; border-radius: 0.5rem;
+    white-space: normal; text-align: left; cursor: pointer;
     color: var(--body-font-color);
-
-    &:hover,
-    &:focus,
-    &:focus-visible,
-    &:active {
+    text-decoration: none !important;
+    &:hover, &:focus, &:focus-visible, &:active {
       background: var(--dropdown-highlight);
       color: var(--body-font-color);
+      text-decoration: none !important;
     }
   }
-
   .mp-ai-ico {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border: 1px solid var(--dropdown-border-color);
-    border-radius: 0.45rem;
+    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+    width: 1.75rem; height: 1.75rem;
+    border: 1px solid var(--dropdown-border-color); border-radius: 0.45rem;
     color: var(--body-font-color);
   }
-
-  .mp-ai-text {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-  }
-
+  .mp-ai-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .mp-ai-title {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-weight: 600;
-    font-size: 0.88rem;
-    color: var(--body-font-color);
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-weight: 600; font-size: 0.88rem; color: var(--body-font-color);
   }
-
-  .mp-ai-desc {
-    font-size: 0.76rem;
-    line-height: 1.3;
-    color: var(--mp-muted, #{$mp-muted});
-  }
-
-  .mp-ai-ext {
-    flex: 0 0 auto;
-    color: var(--mp-muted, #{$mp-muted});
-  }
+  .mp-ai-desc  { font-size: 0.76rem; line-height: 1.3; color: var(--mp-text-muted); }
+  .mp-ai-ext   { flex: 0 0 auto; color: var(--mp-text-muted); }
 }
 
-// ── Shared wrapper — matches website .wrap ────────────────────
+
+// ── Shared content wrapper ────────────────────────────────────
 
 .docs-wrap {
-  position: relative;
-  z-index: 1;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 40px;
-
+  position: relative; z-index: 1;
+  max-width: 1200px; margin: 0 auto; padding: 0 40px;
   @media (max-width: 900px) { padding: 0 24px; }
   @media (max-width: 640px) { padding: 0 20px; }
 }
 
-// ── Footer — website globals.css footer rules, verbatim ───────
+
+// ── Footer ────────────────────────────────────────────────────
 
 .bd-footer {
-  background: #{$mp-bg} !important;
-  border-top: 1px solid #{$mp-border};
+  background: var(--mp-bg) !important;
+  border-top: 1px solid var(--mp-border);
   padding: 48px 0;
-  position: relative;
-  z-index: 1;
+  position: relative; z-index: 1;
 
-  // don't dim logos in dark mode
   img { filter: none !important; }
 
   .footer-inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 24px;
   }
-
-  .footer-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .footer-logo {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    text-decoration: none;
-  }
-
-  .footer-tagline {
-    font-size: 13px;
-    color: #{$mp-lavender-dim};
-    line-height: 1.4;
-  }
-
+  .footer-left  { display: flex; align-items: center; gap: 16px; }
+  .footer-logo  { display: flex; align-items: center; flex-shrink: 0; text-decoration: none; }
+  .footer-tagline { font-size: 13px; color: var(--mp-text-muted); line-height: 1.4; }
   .footer-right {
-    display: flex;
-    align-items: center;
-    gap: 32px;
-
+    display: flex; align-items: center; gap: 32px;
     a {
-      font-size: 13px;
-      color: #{$mp-lavender-dim};
-      text-decoration: none;
-      transition: color 0.2s;
-      display: flex;
-      align-items: center;
-
+      font-size: 13px; color: var(--mp-text-muted); text-decoration: none;
+      transition: color 0.2s; display: flex; align-items: center;
       svg { width: 20px; height: 20px; display: block; }
-
-      &:hover { color: #ffffff; }
+      &:hover { color: var(--mp-text); }
     }
   }
-
   .footer-by {
-    font-family: #{$font-family-monospace};
-    font-size: 12px;
-    color: #2E4A5B;
-    letter-spacing: 0.06em;
-    margin-top: 24px;
-
-    a { color: #3E5A6B; text-decoration: none; }
-    a:hover { color: #{$mp-muted}; }
+    font-family: var(--mp-font-mono);
+    font-size: 12px; color: var(--mp-spruce-line);
+    letter-spacing: 0.06em; margin-top: 24px;
+    a { color: var(--mp-spruce-line); text-decoration: none; }
+    a:hover { color: var(--mp-text-muted); }
   }
 
   @media (max-width: 640px) {
@@ -354,4 +306,3 @@ nav.site-nav a {
     .footer-right { flex-wrap: wrap; gap: 20px; }
   }
 }
-

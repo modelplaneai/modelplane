@@ -85,9 +85,13 @@
   background: var(--mp-card-bg);
   border: 1px solid var(--mp-card-border);
   border-radius: 8px;
-  transition: border-color 0.2s;
+  box-shadow: 0 0 0 0 rgba(154, 94, 252, 0), 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s, box-shadow 0.2s;
 
-  &:hover { border-color: var(--mp-card-border-hi); }
+  &:hover {
+    border-color: var(--mp-card-border-hi);
+    box-shadow: 0 0 20px rgba(154, 94, 252, 0.15), 0 4px 16px rgba(0, 0, 0, 0.30);
+  }
 }
 
 .mp-card-head {
@@ -143,9 +147,14 @@
 // Whole-card link variant (card shortcode): the anchor is the card.
 a.mp-card,
 .mp-card--link {
-  text-decoration: none;
-  transition: border-color 0.2s, transform 0.2s;
-  &:hover { border-color: var(--mp-card-border-hi); transform: translateY(-2px); text-decoration: none; }
+  text-decoration: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  &:hover {
+    border-color: var(--mp-card-border-hi);
+    box-shadow: 0 0 24px rgba(154, 94, 252, 0.20), 0 4px 16px rgba(0, 0, 0, 0.30);
+    transform: translateY(-2px);
+    text-decoration: none !important;
+  }
 }
 
 .mp-card-icon {
@@ -242,10 +251,14 @@ a.mp-card,
   background: transparent;
   border: 1px solid var(--mp-card-border);
   border-radius: 8px;
-  text-decoration: none;
-  transition: border-color 0.2s;
+  text-decoration: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-a.mp-chip:hover { border-color: var(--mp-card-border-hi); text-decoration: none; }
+a.mp-chip:hover {
+  border-color: var(--mp-card-border-hi);
+  box-shadow: 0 0 16px rgba(154, 94, 252, 0.15), 0 2px 8px rgba(0, 0, 0, 0.25);
+  text-decoration: none !important;
+}
 
 .mp-chip-name {
   font-family: #{$font-family-monospace};

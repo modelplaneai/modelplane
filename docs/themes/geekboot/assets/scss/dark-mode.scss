@@ -1,50 +1,50 @@
 @mixin dark-mode {
+    // ── Map docs theme variables to --mp-* tokens (handoff README §3) ──
     // body and content
-    --body-background: #{$mp-bg};
-    --body-font-color: #ffffff;
-    --content-link-color: #{$mp-purple-hi};
-    --anchor-link-color: #{$mp-lavender-dim};
-    --rss-icon-fill: #{$mp-purple};
+    --body-background:    var(--mp-bg);
+    --body-font-color:    var(--mp-text);
+    --content-link-color: var(--mp-purple-light);
+    --anchor-link-color:  var(--mp-text-muted);
+    --rss-icon-fill:      var(--mp-purple);
 
-    // Inline code within text: purple text, no background.
-    --code-background: transparent;
-    --code-color: #{$mp-purple-hi};
-    --code-line-number-color: #{$mp-cyan};
+    // Inline code
+    --code-background:       transparent;
+    --code-color:            var(--mp-purple-light);
+    --code-line-number-color: var(--mp-sky);
 
-    //Tabs
+    // Tabs
     --nav-tab-background-color: var(--body-background);
-    --active-tab-color: #{$mp-purple};
-    --inactive-tab-hover-color: #ffffff;
+    --active-tab-color:         var(--mp-purple);
+    --inactive-tab-hover-color: var(--mp-text);
 
-    // Muted text (sidebar section headers, chevrons, etc.)
-    --mp-muted: #{$mp-lavender-dim};
-    --mp-muted-hi: #{$mp-lavender};
+    // Muted text
+    --mp-muted:    var(--mp-text-muted);
+    --mp-muted-hi: var(--mp-text-secondary);
 
-    // Component card tokens (catalog/persona cards, hints, matrix). Defined here
-    // rather than on .bd-content so the light-mode override survives PurgeCSS.
-    --mp-card-bg: #{$mp-bg-card};
-    --mp-card-border: #{$mp-border};
+    // Component card tokens
+    --mp-card-bg:        #{$mp-bg-card};
+    --mp-card-border:    var(--mp-border);
     --mp-card-border-hi: #{$mp-border-hi};
-    --mp-card-muted: #{$mp-muted};
+    --mp-card-muted:     var(--mp-text-muted);
 
     // Sidebar nav
-    --nav-highlight-color: rgba(154,94,252,0.12);
-    --btn-close-color: #ffffff;
-    --btn-close-filter: invert(1);
+    --nav-highlight-color: rgba(154, 94, 252, 0.12);
+    --btn-close-color:     var(--mp-text);
+    --btn-close-filter:    invert(1);
 
-    //Dropdown
-    --dropdown-highlight: #{$mp-bg-mid};
-    --dropdown-background: #{$mp-bg-card};
-    --latest-pill-background: rgba(154,94,252,0.18);
-    --latest-pill-color: #{$mp-purple-hi};
-    --dropdown-color: var(--body-font-color);
-    --dropdown-border-color: #{$mp-border};
-    --table-divider: rgba(255, 255, 255, 0.18);
+    // Dropdown
+    --dropdown-highlight:       #{$mp-bg-mid};
+    --dropdown-background:      #{$mp-bg-card};
+    --latest-pill-background:   rgba(154, 94, 252, 0.18);
+    --latest-pill-color:        var(--mp-purple-light);
+    --dropdown-color:           var(--body-font-color);
+    --dropdown-border-color:    var(--mp-border);
+    --table-divider:            var(--mp-border-strong);
 
-    //Right-side table of contents
-    --toc-font-color: #{$mp-lavender-dim};
-    --toc-mobile-menu-outline: #{$mp-border};
-    --toc-mobile-menu-background: #{$mp-bg};
+    // Table of contents
+    --toc-font-color:           var(--mp-text-muted);
+    --toc-mobile-menu-outline:  var(--mp-border);
+    --toc-mobile-menu-background: var(--mp-bg);
 
     //hint boxes
     --hint-important:       #{$tangerine-600}; //"exclamation",
