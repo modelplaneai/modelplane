@@ -307,6 +307,7 @@ base64-encoded
 bring-your-own
 built-in
 call-outs
+cache-aware
 cloud-native
 cluster-scoped
 cluster-wide

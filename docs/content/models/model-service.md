@@ -133,9 +133,11 @@ Take a vLLM replica that also serves the Anthropic Messages API. It answers on
 through the same way: `.../health` and the Prometheus `.../metrics` are reachable
 on the service URL.
 
-One boundary: the caching and prefill/decode routers parse OpenAI-format request
-bodies to do their work. An endpoint that serves another API shape uses a plain
-`ModelService` with even weighting rather than those routers.
+There's one exception, and it's set by the deployment rather than the service.
+[Disaggregated serving]({{< ref "model-deployment.md#disaggregated-serving" >}})
+reads OpenAI-format request bodies to pick a prefill and decode worker, so a
+request in another API shape still reaches the engine but skips that
+cache-aware routing. Unified serving forwards every API shape the same way.
 
 ## Example
 
