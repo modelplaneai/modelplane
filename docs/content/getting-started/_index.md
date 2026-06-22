@@ -21,6 +21,14 @@ model to see how they interact. By the end you'll have a GPU fleet across three 
 
 This is not a production setup and takes around 45 minutes to run.
 
+## What you'll build
+
+The platform team provisions a starter cluster and grows it to two A100 regions;
+the ML team serves a model on the L4, then scales it onto an A100, all behind one
+endpoint.
+
+{{< asciinema src="what-youll-build.cast" poster="npt:2:13" >}}
+
 ## Before you begin
 
 You'll need [kind](https://kind.sigs.k8s.io/),

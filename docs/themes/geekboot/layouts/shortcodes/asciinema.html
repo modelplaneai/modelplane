@@ -1,0 +1,53 @@
+{{- /*
+  Embed an asciicast (.cast) with the asciinema player: play / pause / seek,
+  crisp selectable text, far smaller than a GIF. The cast is a page resource
+  (a .cast file next to the page's content file).
+
+    {{< asciinema src="what-youll-build.cast" >}}
+
+  Tunable params (all optional):
+    bg        terminal background  (default #001D2F — brand "Dark Spruce")
+    fg        default text color   (default #D7E9EE — soft cyan-tinted white)
+    fontsize  terminalFontSize: "small" | "medium" | "big" | a CSS size
+              like "16px" (default "medium"). NOTE: only takes effect when the
+              player isn't width-fitted; we keep fit:"width" so the terminal
+              fills the column, so to make text bigger re-record at fewer cols.
+    poster    frame shown before play, e.g. "npt:2:13"
+    theme     asciinema palette for the basic 16 colors (default "monokai");
+              bat output is 24-bit truecolor, so this mainly affects bg/fg/prompt.
+*/ -}}
+{{- if not (.Get "src") -}}
+  {{ errorf "\n\nNo src for {{< asciinema >}} tag on %s\n\n" .Position }}
+{{- end -}}
+{{- $cast := .Page.Resources.GetMatch (.Get "src") -}}
+{{- if not $cast -}}
+  {{ warnf "Unable to find cast %q as a page resource on %s" (.Get "src") .Page.File }}
+{{- end -}}
+{{- with $cast -}}
+{{- $id := printf "asciinema-%s" (substr (.Permalink | md5) 0 10) -}}
+{{- $bg := $.Get "bg" | default "#001D2F" -}}
+{{- $fg := $.Get "fg" | default "#D7E9EE" -}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3/dist/bundle/asciinema-player.css">
+<style>
+  /* Scoped to this player; higher specificity than the theme's .ap-player. */
+  #{{ $id }} .ap-player {
+    --term-color-background: {{ $bg }};
+    --term-color-foreground: {{ $fg }};
+  }
+</style>
+<div class="border rounded overflow-hidden shadow-sm my-4">
+  <div id="{{ $id }}"></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/asciinema-player@3/dist/bundle/asciinema-player.min.js"></script>
+<script>
+  AsciinemaPlayer.create({{ .Permalink }}, document.getElementById("{{ $id }}"), {
+    autoPlay: false,
+    controls: true,
+    fit: "width",
+    idleTimeLimit: {{ $.Get "idle" | default 2 }},
+    terminalFontSize: "{{ $.Get "fontsize" | default "medium" }}",
+    poster: "{{ $.Get "poster" | default "npt:0:06" }}",
+    theme: "{{ $.Get "theme" | default "monokai" }}"
+  });
+</script>
+{{- end -}}
