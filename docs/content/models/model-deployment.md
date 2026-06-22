@@ -207,8 +207,9 @@ Three independent numbers control how many pods a deployment runs:
   clusters. This is the scaling axis (see [Scaling](#scaling)).
 - **`engines[].copies`** runs several identical copies of one engine within a
   replica, on the same cluster. It's a fixed number, sized once, never
-  autoscaled. Use it to run many copies of a small engine without one replica
-  each, or to set the prefill-to-decode ratio in disaggregated serving.
+  autoscaled. Copies make a replica more resilient within its cluster: a node
+  failure drops one copy instead of taking the whole replica out of service. In
+  disaggregated serving they also set the prefill-to-decode ratio.
 - **`worker.nodes`** sets how many nodes one gang spans: a `Leader` plus that
   many `Worker` pods. It's how big a single multi-node engine is.
 
