@@ -5,16 +5,31 @@ description: Expose model endpoints via a unified OpenAI-compatible URL.
 ---
 **API:** [`modelplane.ai/v1alpha1` · ModelService]({{< ref "/reference/modelservices" >}})
 <!-- vale write-good.Passive = NO -->
-A `ModelService` exposes one or more `ModelEndpoints` behind a single, unified
-OpenAI-compatible endpoint. It selects endpoints by label and load-balances
-across them, wherever their replicas run.
+A [`ModelDeployment`]({{< ref "model-deployment.md" >}}) serves a model, but its
+replicas are scattered across the fleet with no single address. A `ModelService`
+gives them one: a stable, unified, OpenAI-compatible URL that load-balances
+across every replica, wherever it runs.
 
-Each entry in `spec.endpoints` selects `ModelEndpoints` by label. Modelplane
-labels each endpoint it composes with `modelplane.ai/deployment:
-<deployment-name>`, so selecting that label reaches every replica of a
-deployment. Entries combine: the service routes to every endpoint any entry
-matches, so one service can front several deployments, or mix self-hosted
-replicas with a manually created
+A service selects what to route to by label. Behind the scenes, Modelplane
+creates one `ModelEndpoint`, a single reachable backend, for each replica of a
+deployment and labels it with the deployment's name. It creates an endpoint only
+once the replica is Ready, serving and reachable, and withdraws it if the replica
+later goes unhealthy. A service only ever routes to replicas that can actually
+answer, so a deployment that's still starting or scaling up has fewer endpoints
+behind its URL until those replicas come up. You don't create these; you point a
+service at them. In the common case that's one selector matching one deployment:
+
+```yaml {nocopy=true}
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen3-8b   # every replica of this deployment
+```
+
+`spec.endpoints` is a list, and the entries combine: the service routes to every
+endpoint any entry matches. That's how one service can front several deployments
+at once, or mix a deployment's replicas with a manually created
 [ModelEndpoint]({{< ref "model-endpoint.md" >}}) pointing at an external provider.
 Endpoints with different path layouts coexist behind the one URL.
 
