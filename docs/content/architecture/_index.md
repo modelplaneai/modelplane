@@ -6,39 +6,73 @@ navLanding: "How it's built"
 description: How Modelplane is built, the Crossplane foundation, the composition-function model, and the choices behind them.
 ---
 <!-- vale write-good.Passive = NO -->
-This section is for people who want to know how Modelplane works under the hood:
-contributors, and the curious who want to weigh up its design before they commit
-to it. It assumes you've read [How Modelplane works]({{< ref "/overview/how-it-works.md" >}})
-and are comfortable with Kubernetes and Crossplane. If you're trying to deploy a
-model or run a fleet, the [Models]({{< ref "/models" >}}) and
-[Platform]({{< ref "/platform" >}}) guides are the better starting point.
-
 Modelplane's central design choice is to build the control plane on
 [Crossplane](https://crossplane.io) rather than as a bespoke set of Kubernetes
-controllers. Everything below follows from that.
+controllers. Everything else here follows from that. This section assumes you're
+comfortable with Kubernetes; the rest of the Crossplane vocabulary you need is
+below.
 
-## Resources are composite resources
+## Crossplane in brief
 
-Every Modelplane API, an `InferenceCluster`, a `ModelDeployment`, a
-`ModelService`, is a Crossplane Composite Resource (XR), not a custom resource
-served by a hand-written controller. Each XR has a composition function that acts
-as its controller: it reads the XR's spec, reads other resources in the fleet
-through Crossplane v2's required-resources mechanism, and returns the desired
-child resources Modelplane should create.
+[Crossplane](https://crossplane.io) extends Kubernetes to manage things beyond
+the cluster, cloud infrastructure, SaaS, and in Modelplane's case inference
+fleets, through the same declarative, reconciled API model. Three of its concepts
+matter here:
 
-The API feels like Kubernetes core one scope up. A `ModelDeployment`
-composes a `ModelReplica` per replica; a `ModelReplica` composes the serving
-workload on its target cluster; a `ModelService` composes the routing resources.
-The composition functions are where Modelplane's logic lives, and they're the
-unit a contributor works on. Each is a small gRPC service in `functions/` that
-takes a request (the observed XR and its dependencies) and returns a response
-(the desired children).
+- **Composite Resources (XRs)** are custom resources whose controller, instead of
+  talking to an external API directly, declares a set of other resources that
+  should exist. Every Modelplane API, `InferenceCluster`, `ModelDeployment`,
+  `ModelService`, is an XR.
+- **Composition functions** are that controller logic. A function is a small gRPC
+  service handed the observed XR and the resources it depends on, which returns
+  the desired child resources. Crossplane runs the function every reconcile and
+  reconciles whatever it returns.
+- **Providers** are controllers that manage external systems through their own
+  managed resources: `provider-gcp` and `provider-aws` for cloud APIs,
+  `provider-helm` for Helm releases, `provider-kubernetes` for arbitrary objects
+  on any cluster. A composition function composes these like any other resource.
 
-Building on Crossplane means Modelplane inherits reconciliation, dependency
-tracking, and the providers a platform team already uses for cloud
-infrastructure, rather than reimplementing them. It's the bet that
-inference infrastructure is the same shape of problem as cloud infrastructure,
-which Crossplane already manages well.
+Put together: a Modelplane API is an XR, its logic is a composition function, and
+the function composes a mix of plain Kubernetes objects, other Modelplane XRs, and
+provider resources. The API feels like Kubernetes core one scope up: a
+`ModelDeployment` composes a `ModelReplica` per replica, a `ModelReplica`
+composes the serving workload on its target cluster, and a `ModelService`
+composes the routing resources.
+
+## Why Crossplane?
+
+Modelplane is, at its core, a system that turns declarative resources into
+composed infrastructure spanning cloud accounts, many Kubernetes clusters, and
+the workloads on them. That's the problem Crossplane solves, and it helps in two
+ways: providers and functions.
+
+**Providers** give us reach. Modelplane has to provision Kubernetes clusters and
+all the infrastructure they need across different clouds, then install software
+onto them. That's an enormous surface, and providers cover it without us rolling
+our own controllers for each cloud API and Helm release. A platform team running
+Crossplane already operates these providers, so Modelplane composes onto the same
+stack rather than introducing a parallel one.
+
+**Functions** are where Modelplane's own logic lives, and writing it as
+composition functions buys several things:
+
+- **Business logic, not controller plumbing.** A function computes desired state
+  from observed state. Crossplane handles the watches, requeues, finalizers, and
+  drift correction that a hand-written controller gets wrong in a dozen subtle
+  ways.
+- **Testability.** A function is a pure function of its inputs: feed it an XR and
+  its dependencies, assert on the resources it returns. The whole test runs in
+  process, with no API server to stand up. Modelplane's scheduler is tested this
+  way, exhaustively, in isolation.
+- **The right language for each job.** Functions can be written in any language.
+  Modelplane's are Python, for fast iteration on the serving and scheduling logic
+  and because Python is the common language of the ML world, which lowers the bar
+  for contributors. The performance-sensitive distributed-systems core stays in
+  Go, where Crossplane and its providers already are.
+
+The bet underneath both is that inference infrastructure is the same shape of
+problem as cloud infrastructure, which Crossplane manages well. Building on it
+lets Modelplane spend its effort on the part that's actually inference-specific.
 
 ## Two clusters, two scopes
 

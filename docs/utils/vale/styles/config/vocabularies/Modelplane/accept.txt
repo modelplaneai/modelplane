@@ -63,6 +63,9 @@ llm-d
 Crossplane
 Crossplane's
 CompositeResourceDefinition
+envtest
+finalizers
+requeues
 ProviderConfig
 ProviderConfigs
 CRD
@@ -309,6 +312,8 @@ built-in
 call-outs
 cache-aware
 cloud-native
+distributed-systems
+performance-sensitive
 cluster-scoped
 cluster-wide
 co-schedules
