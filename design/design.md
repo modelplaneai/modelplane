@@ -242,6 +242,7 @@ spec:
   - name: gpu
     claim: DRA                      # default; emitted as a request in the ResourceClaim
     driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com # the DRA DeviceClass to claim through; required for claim: DRA
     count: 8
     attributes:
       # These mirror what the NVIDIA DRA driver publishes per device.
@@ -293,13 +294,13 @@ spec:
       kubernetesVersion: "1.35"
   nodePools:
   - name: frontier
-    class: gke-h200-8x-a3-ib
+    className: gke-h200-8x-a3-ib
     maxNodeCount: 4
     minNodeCount: 0
     nodeCount: 0
 
   - name: dev
-    class: gke-l4-1x-g2
+    className: gke-l4-1x-g2
     maxNodeCount: 4
     nodeCount: 1
 ```
@@ -332,7 +333,7 @@ spec:
         key: kubeconfig
   nodePools:
   - name: frontier
-    class: h200-8x-ib
+    className: h200-8x-ib
     maxNodeCount: 4
 ```
 
@@ -764,7 +765,10 @@ metadata:
     modelplane.ai/cluster: prod-gke-us-east
     modelplane.ai/api: OpenAI
 spec:
-  url: http://10.0.1.50/ml-team/kimi-k2/
+  # url is the full reachable endpoint: cluster gateway + per-replica path + /v1.
+  url: http://10.0.1.50/ml-team/kimi-k2-coreweave-us-east-0/v1
+  # rewritePath is the per-replica path ModelService rewrites requests to.
+  rewritePath: /ml-team/kimi-k2-coreweave-us-east-0/
 
 ---
 # Manual (external SaaS)
@@ -787,8 +791,7 @@ spec:
 
 Configures the control plane's routing infrastructure, the gateway that sits
 between ML teams and inference clusters. Cluster-scoped and singleton in
-practice (one gateway per control plane). The default implementation is Envoy
-Gateway.
+practice (one gateway per control plane).
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -796,19 +799,18 @@ kind: InferenceGateway
 metadata:
   name: default
 spec:
-  type: Envoy
-  envoyGateway:
-    version: v1.3.0
-  gateway:
-    port: 80
+  backend: Traefik
+  traefik:
+    version: "40.2.0"
 status:
   address: 34.56.129.3
 ```
 
+The `backend` discriminator selects the gateway implementation.
+
 The ModelService composition function configures routing rules on the gateway.
 The status contract is minimal: just `status.address`. Gateway implementation
-details (Gateway API resources, Envoy configuration) are composed under the
-hood.
+details are composed under the hood.
 
 ## Fleet scheduling
 
@@ -824,9 +826,9 @@ When an ML team creates a ModelDeployment:
    and composes routing resources on the control plane.
 
 The fleet scheduler places each ModelReplica on one InferenceCluster. It is
-really co-scheduling a set of engine members to a single cluster: the unit of
-pool placement is the member. Each member may have a different (even disjoint)
-nodeSelector, and therefore may need a different node pool.
+really co-scheduling a set of engines to a single cluster: the unit of pool
+placement is the engine. Every member of an engine lands on one pool, but
+different engines in a replica may land on different pools.
 
 A member's cost is counted in nodes:
 
@@ -840,13 +842,13 @@ they don't occupy a node the way a pod that claims all of a node's GPUs does;
 the cluster's scheduler packs them onto the gang's nodes alongside the pods that
 do. At least one engine member must have a nodeSelector.
 
-When placing an engine, the scheduler prefers one pool that satisfies every
-member, with enough free nodes for all of them. A gang's members most likely
-want to talk over the pool's fabric, so splitting a gang across pools can
-silently degrade interconnect. Only when no single pool satisfies all members
-does the scheduler place each member on its own pool. A member with no
-nodeSelector matches every pool, so it always lands with its gang. All of a
-ModelReplica's members must be co-scheduled onto one cluster.
+When placing an engine, the scheduler requires one pool that satisfies every
+member, with enough free nodes for all of them. A gang's members talk over the
+pool's fabric, and pool identity is the finest grain the scheduler has to reason
+about it, so it never splits an engine across pools: an engine that no single
+pool satisfies isn't scheduled on that cluster. A member with no nodeSelector
+matches every pool, so it always lands with its gang. All of a ModelReplica's
+engines must be co-scheduled onto one cluster.
 
 The scheduler's pool choice is enforced, not advisory. Every pod carries a
 Kubernetes nodeSelector on the `modelplane.ai/pool` node label, which Modelplane

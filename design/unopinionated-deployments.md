@@ -11,8 +11,7 @@
 This document proposes a revision to how a `ModelDeployment` describes its
 engines and serving, so the API stays unopinionated about the inference engine
 and the parallelism topology. The API describes a deployment's shape, not how
-the model is run. It iterates on and supersedes parts of the base design in
-[design.md](./design.md).
+the model is run.
 
 ## Summary
 
