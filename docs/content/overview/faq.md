@@ -57,7 +57,9 @@ extend to other accelerators and fabrics.
 {{< qa "Which clouds or neoclouds does Modelplane support?" >}}
 Today Modelplane provisions clusters on a few hyperscalers and neoclouds, and supports
 bringing your own Kubernetes cluster anywhere. More provisioners are on the roadmap; the
-bring-your-own path means you can run on any Kubernetes now.
+bring-your-own path means you can run on any Kubernetes now. See
+[Supported Providers]({{< ref "platform/providers.md" >}}) for the full matrix of clouds,
+neoclouds, and their Crossplane providers.
 {{< /qa >}}
 
 {{< qa "Can I bring my own cluster, or run on a neocloud or on-premise?" >}}

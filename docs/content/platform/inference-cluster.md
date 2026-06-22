@@ -12,7 +12,9 @@ serving. Platform teams create these to provide GPU capacity.
 Each cluster has:
 
 - A **cluster source**: `GKE` or `EKS` (Modelplane provisions the full cluster)
-  or `Existing` (bring a cluster you manage yourself).
+  or `Existing` (bring a cluster you manage yourself). See
+  [Supported Providers]({{< ref "platform/providers.md" >}}) for the clouds and
+  neoclouds Modelplane runs on.
 - One or more **node pools**, each referencing an `InferenceClass` for its
   hardware capabilities and provisioning recipe.
 - **Labels** for organizational metadata: tier, region, provider. These are the
