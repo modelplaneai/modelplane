@@ -30,9 +30,9 @@ How many of each to run is a separate question, covered in
 
 The default, and what the [getting started tour]({{< ref "/getting-started" >}})
 deploys. One `Standalone` member is one pod on one node, claiming that node's
-GPUs through its `nodeSelector`. Use it whenever the model fits on a single node.
-Within a node, tensor parallelism is an engine flag (`--tensor-parallel-size`),
-not a Modelplane concept.
+GPUs through its `nodeSelector`. It's usually the right choice when a model fits
+on a single node. Within a node, tensor parallelism is an engine flag
+(`--tensor-parallel-size`), not a Modelplane concept.
 
 ```yaml {nocopy=true}
 engines:
