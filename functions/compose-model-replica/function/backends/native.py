@@ -33,11 +33,14 @@ class NativeBackend:
     def build(
         self,
         replica: v1alpha1.ModelReplica,
-        engine,
+        engine: v1alpha1.Engine,
         provider_config: str,
         serving_label: str,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         member = base.engine_member(engine, base.ROLE_STANDALONE)
+        # select_backend dispatches the native backend only for an engine with a
+        # Standalone member, so it's always present here.
+        assert member is not None
         engine_container = base.engine_container(member)
         name = base.engine_name(replica, engine)
         # The pod carries two labels: the shared serving label the replica's one
@@ -87,6 +90,9 @@ class NativeBackend:
         # Pin to the member's scheduled pool and claim GPUs via DRA.
         base.place_pod(pod_spec, replica, engine, member)
         tmpl = member.template
+        # The XRD types template.spec as optional, but a member with no spec
+        # defines no pod to serve, so reaching here without one is malformed.
+        assert tmpl.spec is not None
         if tmpl.spec.imagePullSecrets:
             pod_spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in tmpl.spec.imagePullSecrets]
 

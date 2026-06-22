@@ -26,7 +26,12 @@ import unittest
 from function import cel
 
 
-def _device(driver="gpu.nvidia.com", attributes=None, capacity=None, **extra) -> dict:
+def _device(
+    driver: str = "gpu.nvidia.com",
+    attributes: dict | None = None,
+    capacity: dict | None = None,
+    **extra: object,
+) -> dict:
     """A pool device in the raw dict shape cel.Program.matches expects."""
     return {
         "driver": driver,
@@ -307,18 +312,14 @@ class TestMatches(unittest.TestCase):
         ]
         for case in cases:
             with self.subTest(case.name):
-                got = cel.compile_selector(case.expr).matches(case.device)
+                got = cel.Program(case.expr).matches(case.device)
                 self.assertEqual(case.want, got, f"{case.name}: -want, +got")
 
 
 class TestCompile(unittest.TestCase):
-    def test_compile_selector_none(self) -> None:
-        self.assertIsNone(cel.compile_selector(None))
-        self.assertIsNone(cel.compile_selector(""))
-
     def test_invalid_expression_raises(self) -> None:
         with self.assertRaises(cel.CELCompileError):
-            cel.compile_selector("not ) valid (")
+            cel.Program("not ) valid (")
 
 
 if __name__ == "__main__":

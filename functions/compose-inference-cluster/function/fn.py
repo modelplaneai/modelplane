@@ -91,14 +91,23 @@ _NAMESPACE_SYSTEM = "modelplane-system"
 _IDENTITY_TYPE_GCP = "GoogleApplicationCredentials"
 
 
-class FunctionRunner(grpcv1.FunctionRunnerService):
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         """Run the function."""
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
@@ -110,7 +119,7 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.InferenceCluster(**resource.struct_to_dict(req.observed.composite.resource))
@@ -118,7 +127,7 @@ class Composer:
         # resolve_classes().
         self.classes: dict[str, iclv1alpha1.InferenceClass] = {}
 
-    def compose(self):
+    def compose(self) -> None:
         # The replica guard runs first, before any early return. It only
         # depends on which ModelReplicas reference this cluster, not on the
         # cluster's source or whether its classes resolve. Gating it behind
@@ -145,7 +154,7 @@ class Composer:
         else:
             response.warning(self.rsp, f"unsupported cluster source: {source}")
 
-    def compose_replica_guard(self):
+    def compose_replica_guard(self) -> None:
         """Block deletion of the InferenceCluster while ModelReplicas use it.
 
         Deleting an InferenceCluster out from under running ModelReplicas
@@ -172,7 +181,7 @@ class Composer:
             name="model-replicas",
             api_version="modelplane.ai/v1alpha1",
             kind="ModelReplica",
-            match_labels={_LABEL_CLUSTER: self.xr.metadata.name},
+            match_labels={_LABEL_CLUSTER: _name(self.xr.metadata)},
         )
 
         replicas = request.get_required_resources(self.req, "model-replicas")
@@ -186,7 +195,7 @@ class Composer:
                     of=clusterusagev1beta1.Of(
                         apiVersion="modelplane.ai/v1alpha1",
                         kind="InferenceCluster",
-                        resourceRef=clusterusagev1beta1.ResourceRef(name=self.xr.metadata.name),
+                        resourceRef=clusterusagev1beta1.ResourceRef(name=_name(self.xr.metadata)),
                     ),
                     reason="ModelReplicas are scheduled to this InferenceCluster",
                     replayDeletion=True,
@@ -234,7 +243,7 @@ class Composer:
 
         return True
 
-    def compose_gke(self, gke):
+    def compose_gke(self, gke: v1alpha1.Gke | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
         GKE cluster. Composes the GKECluster XR, waits for it to be ready,
         then wires its secrets into the backend."""
@@ -252,7 +261,7 @@ class Composer:
         if gke_ready and kubeconfig_secret:
             self.compose_cluster_provider_config(kubeconfig_secret.name, kubeconfig_secret.key, sa_key)
 
-        backend_secrets = self.resolve_gke_backend_secrets(gke_ready, backend_exists)
+        backend_secrets = self.resolve_gke_backend_secrets(gke_ready=gke_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
                 self.compose_serving_stack(backend_secrets, nvidia_driver_root=_GKE_NVIDIA_DRIVER_ROOT)
@@ -266,7 +275,7 @@ class Composer:
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=gke_ready)
 
-    def compose_eks(self, eks):
+    def compose_eks(self, eks: v1alpha1.Eks | None) -> None:
         """Compose an InferenceCluster backed by a Modelplane-provisioned
         EKS cluster. Composes the EKSCluster XR, waits for it to be ready,
         then wires its kubeconfig into the backend.
@@ -290,7 +299,7 @@ class Composer:
         if eks_ready and kubeconfig:
             self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
 
-        backend_secrets = self.resolve_eks_backend_secrets(eks_ready, backend_exists)
+        backend_secrets = self.resolve_eks_backend_secrets(eks_ready=eks_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
                 self.compose_serving_stack(backend_secrets)
@@ -304,7 +313,7 @@ class Composer:
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=eks_ready)
 
-    def compose_existing(self, existing):
+    def compose_existing(self, existing: v1alpha1.Existing | None) -> None:
         """Compose an InferenceCluster backed by a user-supplied cluster.
         No gating needed — the kubeconfig secret is provided by the user."""
         if not existing:
@@ -331,7 +340,7 @@ class Composer:
         self,
         backend_secrets: list[ssv1alpha1.Secret],
         nvidia_driver_root: str | None = None,
-    ):
+    ) -> None:
         """Compose a ServingStack XR with the given secrets.
 
         nvidia_driver_root is set for provisioned GKE clusters, where the NVIDIA
@@ -346,25 +355,30 @@ class Composer:
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(
                 metadata=metav1.ObjectMeta(
-                    name=resource.child_name(self.xr.metadata.name, "serving-stack"),
+                    name=resource.child_name(_name(self.xr.metadata), "serving-stack"),
                     namespace=_NAMESPACE_SYSTEM,
                 ),
                 spec=spec,
             ),
         )
 
-    def compose_cluster_provider_config(self, kubeconfig_name, kubeconfig_key, sa_key=None):
+    def compose_cluster_provider_config(
+        self,
+        kubeconfig_name: str,
+        kubeconfig_key: str | None,
+        sa_key: gkev1alpha1.Secret | v1alpha1.IdentitySecretRef | None = None,
+    ) -> None:
         """Compose a ClusterProviderConfig for provider-kubernetes so that
         ModelReplicas can create Objects on the remote cluster."""
         cpc = k8scpcv1alpha1.ClusterProviderConfig(
-            metadata=metav1.ObjectMeta(name=resource.child_name(self.xr.metadata.name, "cluster-kubeconfig")),
+            metadata=metav1.ObjectMeta(name=resource.child_name(_name(self.xr.metadata), "cluster-kubeconfig")),
             spec=k8scpcv1alpha1.Spec(
                 credentials=k8scpcv1alpha1.Credentials(
                     source="Secret",
                     secretRef=k8scpcv1alpha1.SecretRef(
                         namespace=_NAMESPACE_SYSTEM,
                         name=kubeconfig_name,
-                        key=kubeconfig_key,
+                        key=kubeconfig_key,  # ty: ignore[invalid-argument-type]  # XRD defaults the secret key
                     ),
                 ),
             ),
@@ -376,7 +390,7 @@ class Composer:
                 secretRef=k8scpcv1alpha1.SecretRef(
                     namespace=_NAMESPACE_SYSTEM,
                     name=sa_key.name,
-                    key=sa_key.key,
+                    key=sa_key.key,  # ty: ignore[invalid-argument-type]  # XRD defaults the secret key
                 ),
             )
         resource.update(
@@ -385,14 +399,14 @@ class Composer:
         )
         self.rsp.desired.resources["cluster-provider-config-kubernetes"].ready = fnv1.READY_TRUE
 
-    def write_status(self, gpu_pools):
+    def write_status(self, gpu_pools: list[dict[str, object]]) -> None:
         """Write the InferenceCluster status."""
         status = v1alpha1.Status(
             providerConfigRef=v1alpha1.ProviderConfigRef(
-                name=resource.child_name(self.xr.metadata.name, "cluster-kubeconfig"),
+                name=resource.child_name(_name(self.xr.metadata), "cluster-kubeconfig"),
             ),
             namespace=_NAMESPACE_SYSTEM,
-            gpuPools=gpu_pools,
+            gpuPools=gpu_pools,  # ty: ignore[invalid-argument-type]  # gpu_pools builds the by-alias wire form; pydantic coerces it to GpuPool
         )
         cache_storage_class = self.observed_cache_storage_class()
         if cache_storage_class:
@@ -402,7 +416,7 @@ class Composer:
             status.gateway = v1alpha1.Gateway(address=gateway_address)
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self, cluster_ready):
+    def derive_conditions(self, *, cluster_ready: bool) -> None:
         """Derive ClusterReady and BackendReady conditions."""
         backend_ready = (
             resource.get_condition(self.req.observed.resources.get(BACKEND_RESOURCE_KEY), "Ready").status == "True"
@@ -435,7 +449,7 @@ class Composer:
             ),
         )
 
-    def compose_gke_cluster(self, gke):
+    def compose_gke_cluster(self, gke: v1alpha1.Gke) -> None:
         """Compose a GKECluster XR.
 
         Combines the cluster-level config (project, region) with the
@@ -473,7 +487,7 @@ class Composer:
                         acceleratorType=prov.accelerator.type,
                         acceleratorCount=prov.accelerator.count,
                     ),
-                    zones=list(pool.zones or []),
+                    zones=[gkev1alpha1.Zone(z) for z in pool.zones or []],
                 )
             )
 
@@ -481,7 +495,7 @@ class Composer:
             self.rsp.desired.resources["gke-cluster"],
             gkev1alpha1.GKECluster(
                 metadata=metav1.ObjectMeta(
-                    name=self.xr.metadata.name,
+                    name=_name(self.xr.metadata),
                     namespace=_NAMESPACE_SYSTEM,
                 ),
                 spec=gkev1alpha1.Spec(
@@ -493,7 +507,7 @@ class Composer:
             ),
         )
 
-    def compose_eks_cluster(self, eks):
+    def compose_eks_cluster(self, eks: v1alpha1.Eks) -> None:
         """Compose an EKSCluster XR.
 
         Combines the cluster-level config (region) with GPU node pools
@@ -529,7 +543,7 @@ class Composer:
                 gpu=eksv1alpha1.Gpu(
                     acceleratorType=prov.accelerator.type,
                 ),
-                zones=list(pool.zones or []),
+                zones=[eksv1alpha1.Zone(z) for z in pool.zones or []],
             )
             # Only set capacityBlock when the pool has one. resource.update
             # serializes with exclude_unset, so leaving it unset keeps it out
@@ -548,7 +562,7 @@ class Composer:
             self.rsp.desired.resources["eks-cluster"],
             eksv1alpha1.EKSCluster(
                 metadata=metav1.ObjectMeta(
-                    name=self.xr.metadata.name,
+                    name=_name(self.xr.metadata),
                     namespace=_NAMESPACE_SYSTEM,
                 ),
                 spec=eksv1alpha1.Spec(
@@ -559,7 +573,7 @@ class Composer:
             ),
         )
 
-    def compose_eks_usage(self):
+    def compose_eks_usage(self) -> None:
         """Block EKSCluster deletion until the backend is deleted."""
         resource.update(
             self.rsp.desired.resources["usage-eks-by-backend"],
@@ -582,7 +596,7 @@ class Composer:
         )
         self.rsp.desired.resources["usage-eks-by-backend"].ready = fnv1.READY_TRUE
 
-    def resolve_eks_backend_secrets(self, eks_ready, backend_exists) -> list[ssv1alpha1.Secret] | None:
+    def resolve_eks_backend_secrets(self, *, eks_ready: bool, backend_exists: bool) -> list[ssv1alpha1.Secret] | None:
         """Resolve secrets for the backend from EKSCluster status. Falls
         back to the observed backend's spec.secrets if EKSCluster secrets
         aren't available but the backend already exists."""
@@ -601,7 +615,7 @@ class Composer:
 
         return None
 
-    def observed_eks_secrets(self):
+    def observed_eks_secrets(self) -> list[eksv1alpha1.Secret] | None:
         """Read the EKSCluster's status.secrets from observed state."""
         eks_observed = self.req.observed.resources.get("eks-cluster")
         if not eks_observed:
@@ -611,14 +625,14 @@ class Composer:
             return None
         return observed_eks.status.secrets
 
-    def observed_eks_secret(self, secret_type):
+    def observed_eks_secret(self, secret_type: str) -> eksv1alpha1.Secret | None:
         """Read a specific secret from the observed EKSCluster status."""
         eks_secrets = self.observed_eks_secrets()
         if not eks_secrets:
             return None
         return next((s for s in eks_secrets if s.type == secret_type), None)
 
-    def compose_gke_usage(self):
+    def compose_gke_usage(self) -> None:
         """Block GKECluster deletion until the backend is deleted."""
         resource.update(
             self.rsp.desired.resources["usage-gke-by-backend"],
@@ -641,7 +655,7 @@ class Composer:
         )
         self.rsp.desired.resources["usage-gke-by-backend"].ready = fnv1.READY_TRUE
 
-    def resolve_gke_backend_secrets(self, gke_ready, backend_exists) -> list[ssv1alpha1.Secret] | None:
+    def resolve_gke_backend_secrets(self, *, gke_ready: bool, backend_exists: bool) -> list[ssv1alpha1.Secret] | None:
         """Resolve secrets for the backend from GKECluster status. Falls
         back to the observed backend's spec.secrets if GKECluster secrets aren't
         available but the backend already exists."""
@@ -660,7 +674,7 @@ class Composer:
 
         return None
 
-    def gpu_pools(self):
+    def gpu_pools(self) -> list[dict[str, object]]:
         """Derive status.gpuPools from each node pool's class.
 
         The class declares the node's devices (DRA-style); the pool declares how
@@ -688,7 +702,7 @@ class Composer:
             )
         return gpu_pools
 
-    def observed_gke_secrets(self):
+    def observed_gke_secrets(self) -> list[gkev1alpha1.Secret] | None:
         """Read the GKECluster's status.secrets from observed state."""
         gke_observed = self.req.observed.resources.get("gke-cluster")
         if not gke_observed:
@@ -698,14 +712,14 @@ class Composer:
             return None
         return observed_gke.status.secrets
 
-    def observed_gke_secret(self, secret_type):
+    def observed_gke_secret(self, secret_type: str) -> gkev1alpha1.Secret | None:
         """Read a specific secret from the observed GKECluster status."""
         gke_secrets = self.observed_gke_secrets()
         if not gke_secrets:
             return None
         return next((s for s in gke_secrets if s.type == secret_type), None)
 
-    def observed_gateway_address(self):
+    def observed_gateway_address(self) -> str | None:
         """Read the backend's gateway address from observed state.
         Uses dict access instead of a typed model so it works for any
         backend that follows the status.gateway.address contract."""
@@ -715,7 +729,7 @@ class Composer:
         d = resource.struct_to_dict(observed.resource)
         return d.get("status", {}).get("gateway", {}).get("address")
 
-    def observed_cache_storage_class(self):
+    def observed_cache_storage_class(self) -> str | None:
         """The effective ModelCache RWX StorageClass name, relayed up so
         ModelCache can target it without reaching into the cluster XRs.
 
@@ -732,7 +746,9 @@ class Composer:
             return cluster.existing.cache.storageClassName
         return None
 
-    def _observed_cluster_cache_class(self, key, model):
+    def _observed_cluster_cache_class(
+        self, key: str, model: type[gkev1alpha1.GKECluster] | type[eksv1alpha1.EKSCluster]
+    ) -> str | None:
         """Read status.cache.storageClassName from an observed cluster XR."""
         observed = self.req.observed.resources.get(key)
         if not observed:

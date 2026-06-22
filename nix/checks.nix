@@ -40,6 +40,37 @@ let
       mkdir -p $out
       touch $out/.tests-passed
     '';
+
+  # Type-check each function with ty. Each function exports its own 'function'
+  # module, so checking all functions at once would let ty resolve one
+  # function's `function.fn` import to another's package. We check each in
+  # isolation against a venv that provides its dependencies, plus the protobuf
+  # type stubs ty needs to resolve the SDK's generated Struct and Duration.
+  #
+  # Unlike mkFunctionTest, which runs the function module from the venv, ty
+  # checks the source, so we copy function/ and tests/ from the tree. We also
+  # copy pyproject.toml: the sandbox has no parent tree for ty to discover the
+  # [tool.ty] config in, where the target Python version is set.
+  mkFunctionTypeCheck =
+    name:
+    let
+      venv = pythonSet.mkVirtualEnv "${name}-ty-env" {
+        ${name} = [ ];
+        types-protobuf = [ ];
+      };
+    in
+    pkgs.runCommand "modelplane-ty-${name}"
+      {
+        nativeBuildInputs = [ pkgs.unstable.ty ];
+      }
+      ''
+        cp -r ${self}/functions/${name}/function function
+        cp -r ${self}/functions/${name}/tests tests
+        cp ${self}/pyproject.toml pyproject.toml
+        ty check function tests --python ${venv}
+        mkdir -p $out
+        touch $out/.ty-passed
+      '';
 in
 {
   # Verify the docs site builds. The build is the check.
@@ -74,7 +105,7 @@ in
   python =
     pkgs.runCommand "modelplane-python-checks"
       {
-        nativeBuildInputs = [ pkgs.ruff ];
+        nativeBuildInputs = [ pkgs.unstable.ruff ];
       }
       ''
         cp -r ${self} src
@@ -177,5 +208,11 @@ in
   map (name: {
     name = "test-${name}";
     value = mkFunctionTest name;
+  }) functionNames
+)
+// builtins.listToAttrs (
+  map (name: {
+    name = "ty-${name}";
+    value = mkFunctionTypeCheck name;
   }) functionNames
 )

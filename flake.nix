@@ -209,7 +209,8 @@
               pkgs.docker-client
               pkgs.unstable.uv
               pkgs.python3
-              pkgs.ruff
+              pkgs.unstable.ruff
+              pkgs.unstable.ty
               pkgs.nixfmt-rfc-style
               pkgs.hugo
               pkgs.nodejs

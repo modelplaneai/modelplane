@@ -20,6 +20,8 @@ account with container.admin IAM, and ProviderConfigs for provider-kubernetes
 and provider-helm to reach the cluster.
 """
 
+from typing import Literal
+
 import grpc
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -92,31 +94,48 @@ _MANAGED_STORAGE_CLASS = "modelplane-rwx"
 # deterministically from the owner XR's UID and the composition resource name, so
 # if this MR is ever deleted out of band the recomposed MR takes the same name
 # and provider-kubernetes adopts the existing StorageClass rather than erroring.
-_ORPHAN_MANAGEMENT = ["Observe", "Create", "Update"]
+_ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
+_ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 
 # GKE node configuration.
 _GKE_IMAGE_TYPE = "COS_CONTAINERD"
 _GKE_OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 
-def _kubeconfig_secret_name(xr):
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
+def _kubeconfig_secret_name(xr: v1alpha1.GKECluster) -> str:
     """Derive the kubeconfig secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "kubeconfig")
+    return resource.child_name(_name(xr.metadata), "kubeconfig")
 
 
-def _sa_key_secret_name(xr):
+def _sa_key_secret_name(xr: v1alpha1.GKECluster) -> str:
     """Derive the SA key secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "sa-key")
+    return resource.child_name(_name(xr.metadata), "sa-key")
 
 
-class FunctionRunner(grpcv1.FunctionRunnerService):
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         """Run the function."""
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
@@ -128,12 +147,12 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.GKECluster(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
+    def compose(self) -> None:
         self.compose_network()
         self.compose_filestore_api()
         self.compose_subnet()
@@ -146,7 +165,7 @@ class Composer:
         self.write_status()
         self.mark_readiness()
 
-    def compose_network(self):
+    def compose_network(self) -> None:
         resource.update(
             self.rsp.desired.resources["network"],
             networkv1beta1.Network(
@@ -159,7 +178,7 @@ class Composer:
             ),
         )
 
-    def compose_filestore_api(self):
+    def compose_filestore_api(self) -> None:
         """Enable file.googleapis.com so the Filestore CSI addon can provision
         RWX volumes (fresh projects have it disabled → PVCs Pending with
         SERVICE_DISABLED)."""
@@ -176,7 +195,7 @@ class Composer:
             ),
         )
 
-    def compose_subnet(self):
+    def compose_subnet(self) -> None:
         networking = self.xr.spec.networking or v1alpha1.Networking()
 
         resource.update(
@@ -205,7 +224,7 @@ class Composer:
             ),
         )
 
-    def compose_cluster(self):
+    def compose_cluster(self) -> None:
         resource.update(
             self.rsp.desired.resources["cluster"],
             clusterv1beta1.Cluster(
@@ -246,13 +265,12 @@ class Composer:
                     ),
                     writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
                         name=_kubeconfig_secret_name(self.xr),
-                        namespace=self.xr.metadata.namespace,
                     ),
                 ),
             ),
         )
 
-    def compose_node_pools(self):
+    def compose_node_pools(self) -> None:
         self._compose_system_pool()
         for pool in self.xr.spec.nodePools:
             node_config = nodepoolv1beta1.NodeConfig(
@@ -300,14 +318,14 @@ class Composer:
             )
 
             if pool.zones:
-                np.spec.forProvider.nodeLocations = pool.zones
+                np.spec.forProvider.nodeLocations = [zone.root for zone in pool.zones]
 
             resource.update(
                 self.rsp.desired.resources[f"nodepool-{pool.name}"],
                 np,
             )
 
-    def _compose_system_pool(self):
+    def _compose_system_pool(self) -> None:
         """Compose the system node pool for control-plane components."""
         resource.update(
             self.rsp.desired.resources[f"nodepool-{_SYSTEM_POOL_NAME}"],
@@ -337,14 +355,14 @@ class Composer:
             ),
         )
 
-    def compose_service_account(self):
+    def compose_service_account(self) -> None:
         resource.update(
             self.rsp.desired.resources["service-account"],
             sav1beta1.ServiceAccount(
                 spec=sav1beta1.Spec(
                     forProvider=sav1beta1.ForProvider(
                         project=self.xr.spec.project,
-                        displayName=f"Crossplane GKECluster {self.xr.metadata.name}",
+                        displayName=f"Crossplane GKECluster {_name(self.xr.metadata)}",
                     ),
                 ),
             ),
@@ -361,13 +379,12 @@ class Composer:
                     ),
                     writeConnectionSecretToRef=sakeyv1beta1.WriteConnectionSecretToRef(
                         name=_sa_key_secret_name(self.xr),
-                        namespace=self.xr.metadata.namespace,
                     ),
                 ),
             ),
         )
 
-    def compose_iam_binding(self):
+    def compose_iam_binding(self) -> None:
         """Compose the IAM binding for the service account. Gated on the SA
         email being available in observed state."""
         sa_email = self.observed_sa_email()
@@ -387,7 +404,7 @@ class Composer:
             ),
         )
 
-    def compose_provider_configs(self):
+    def compose_provider_configs(self) -> None:
         resource.update(
             self.rsp.desired.resources["provider-config-kubernetes"],
             k8spcv1alpha1.ProviderConfig(
@@ -397,7 +414,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -406,7 +423,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
@@ -423,7 +440,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_kubeconfig_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -432,7 +449,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=_sa_key_secret_name(self.xr),
-                            namespace=self.xr.metadata.namespace,
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_GCP_SA,
                         ),
                     ),
@@ -440,7 +457,7 @@ class Composer:
             ),
         )
 
-    def compose_storage_class(self):
+    def compose_storage_class(self) -> None:
         """Compose the Filestore RWX StorageClass on the workload cluster.
         Gated on the network name: Filestore CSI defaults to the `default` VPC
         → PVCs hang, so pin parameters.network to our VPC; the VPC name carries
@@ -463,7 +480,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["storage-class-rwx"],
             k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
                 spec=k8sobjv1alpha1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
@@ -477,7 +494,7 @@ class Composer:
         )
         self.rsp.desired.resources["storage-class-rwx"].ready = fnv1.READY_TRUE
 
-    def write_status(self):
+    def write_status(self) -> None:
         status = v1alpha1.Status(
             secrets=[
                 v1alpha1.Secret(
@@ -498,7 +515,7 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def _observed_network_name(self):
+    def _observed_network_name(self) -> str | None:
         """The composed VPC network's GCP name, from the observed Network MR's
         external-name annotation (set by the provider once the network exists).
         None on early reconciles before the network is created."""
@@ -510,7 +527,7 @@ class Composer:
             return None
         return network.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME) or None
 
-    def mark_readiness(self):
+    def mark_readiness(self) -> None:
         """Mark composed resources as ready based on their observed conditions."""
         managed_resources = [
             "network",
@@ -532,7 +549,7 @@ class Composer:
         self.rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
         self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    def observed_sa_email(self):
+    def observed_sa_email(self) -> str | None:
         """Read the service account email from observed state."""
         observed_sa = self.req.observed.resources.get("service-account")
         if not observed_sa:

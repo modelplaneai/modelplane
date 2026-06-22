@@ -89,6 +89,8 @@ surfaced via CELCompileError.
 
 from __future__ import annotations
 
+import typing
+
 import celpy
 from celpy import celtypes
 
@@ -101,16 +103,25 @@ class CELCompileError(Exception):
 
 # compareTo/isGreaterThan/isLessThan are shared method names: a CEL selector
 # calls them on either a Quantity or a Semver, so dispatch on the operand type.
-def _compare_to(a, b):
-    return semver.compare_to(a, b) if isinstance(a, semver.Semver) else quantity.compare_to(a, b)
+# Both operands are always the same kind (the selector compares like to like).
+# isinstance narrows only the first operand, so cast the second to match; a
+# mixed-type comparison is a malformed selector that compilation should reject.
+def _compare_to(a: semver.Semver | quantity.Quantity, b: semver.Semver | quantity.Quantity) -> celtypes.IntType:
+    if isinstance(a, semver.Semver):
+        return semver.compare_to(a, typing.cast("semver.Semver", b))
+    return quantity.compare_to(a, typing.cast("quantity.Quantity", b))
 
 
-def _is_greater_than(a, b):
-    return semver.is_greater_than(a, b) if isinstance(a, semver.Semver) else quantity.is_greater_than(a, b)
+def _is_greater_than(a: semver.Semver | quantity.Quantity, b: semver.Semver | quantity.Quantity) -> celtypes.BoolType:
+    if isinstance(a, semver.Semver):
+        return semver.is_greater_than(a, typing.cast("semver.Semver", b))
+    return quantity.is_greater_than(a, typing.cast("quantity.Quantity", b))
 
 
-def _is_less_than(a, b):
-    return semver.is_less_than(a, b) if isinstance(a, semver.Semver) else quantity.is_less_than(a, b)
+def _is_less_than(a: semver.Semver | quantity.Quantity, b: semver.Semver | quantity.Quantity) -> celtypes.BoolType:
+    if isinstance(a, semver.Semver):
+        return semver.is_less_than(a, typing.cast("semver.Semver", b))
+    return quantity.is_less_than(a, typing.cast("quantity.Quantity", b))
 
 
 # Registered into every celpy program. celpy dispatches method-call syntax
@@ -145,14 +156,14 @@ class _DefaultMap(celtypes.MapType):
     errors, because the inner maps are plain MapTypes.
     """
 
-    def __missing__(self, key):
+    def __missing__(self, key: celtypes.MapKeyTypes) -> celtypes.MapType:
         return celtypes.MapType()
 
 
 class Program:
     """A compiled DRA CEL selector, reusable across devices."""
 
-    def __init__(self, expr: str):
+    def __init__(self, expr: str) -> None:
         env = celpy.Environment()
         # Any compile-time failure is a malformed expression - a user error.
         # celpy raises CELParseError for syntax errors, but we catch broadly so
@@ -160,7 +171,10 @@ class Program:
         # turns CELCompileError into an InvalidNodeSelector condition.
         try:
             ast = env.compile(expr)
-            self._prgm = env.program(ast, functions=_FUNCTIONS)
+            # celpy types extension functions as returning only its base value
+            # union, which excludes the Quantity and Semver types our functions
+            # return, so it rejects _FUNCTIONS despite celpy supporting them.
+            self._prgm = env.program(ast, functions=_FUNCTIONS)  # ty: ignore[invalid-argument-type]
         except Exception as e:
             raise CELCompileError(str(e)) from e
 
@@ -230,8 +244,9 @@ def _device_activation(device: dict) -> celtypes.MapType:
     attributes = _DefaultMap()
     for name, raw in device.get("attributes", {}).items():
         domain, ident = _split_qualified(name, driver)
-        bucket = attributes.setdefault(celtypes.StringType(domain), celtypes.MapType())
-        bucket[celtypes.StringType(ident)] = _attribute_value(raw)
+        bucket = typing.cast(celtypes.MapType, attributes.setdefault(celtypes.StringType(domain), celtypes.MapType()))
+        # celpy's MapType value type excludes the Semver extension type.
+        bucket[celtypes.StringType(ident)] = _attribute_value(raw)  # ty: ignore[invalid-assignment]
     out[celtypes.StringType("attributes")] = attributes
 
     capacity = _DefaultMap()
@@ -240,14 +255,15 @@ def _device_activation(device: dict) -> celtypes.MapType:
         if value is None:
             continue
         domain, ident = _split_qualified(name, driver)
-        bucket = capacity.setdefault(celtypes.StringType(domain), celtypes.MapType())
-        bucket[celtypes.StringType(ident)] = quantity.quantity(value)
+        bucket = typing.cast(celtypes.MapType, capacity.setdefault(celtypes.StringType(domain), celtypes.MapType()))
+        # celpy's MapType value type excludes the Quantity extension type.
+        bucket[celtypes.StringType(ident)] = quantity.quantity(value)  # ty: ignore[invalid-assignment]
     out[celtypes.StringType("capacity")] = capacity
 
     return out
 
 
-def _attribute_value(entry: dict):
+def _attribute_value(entry: dict) -> semver.Semver | celtypes.Value:
     """Convert one typed attribute value object to its CEL value.
 
     A version attribute is pre-parsed to a Semver (strict), matching upstream
@@ -262,10 +278,3 @@ def _attribute_value(entry: dict):
             return celpy.json_to_cel(entry[field])
     # No supported value: upstream returns "unsupported attribute value" error.
     raise ValueError("unsupported attribute value")
-
-
-def compile_selector(expr: str | None) -> Program | None:
-    """Compile a DRA CEL selector, or None if there is none."""
-    if not expr:
-        return None
-    return Program(expr)

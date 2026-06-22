@@ -15,6 +15,9 @@ members = ["functions/*", "schemas/python"]
 [dependency-groups]
 dev = [
   "crossplane-function-sdk-python>=0.14.0",
+  # Type stubs for the dynamically generated protobuf modules, so ty can
+  # resolve the Struct and Duration types the functions and tests use.
+  "types-protobuf>=4.24",
 ]
 
 [tool.ruff]
@@ -43,12 +46,18 @@ select = [
     "FBT",    # flake8-boolean-trap (no boolean positional args)
     "TID",    # flake8-tidy-imports (no relative imports)
     "BLE",    # flake8-blind-except (no bare except Exception)
+    "ANN",    # flake8-annotations (require type annotations)
     "RUF",    # ruff-specific rules (incl. unused/malformed noqa)
 ]
 
 [tool.ruff.lint.pylint]
 # Builder functions like helm_release use named parameters for clarity.
 max-args = 8
+
+[tool.ruff.lint.flake8-annotations]
+# Variadic **kwargs spread into a Pydantic model constructor are inherently
+# dynamic; allow Any for *args/**kwargs while still flagging it elsewhere.
+allow-star-arg-any = true
 
 [tool.ruff.lint.per-file-ignores]
 # Generated models are not under our control.
@@ -63,3 +72,11 @@ max-args = 8
 # main.py is the click CLI entrypoint: boolean flags are idiomatic, and it
 # catches Exception at the top level to report startup failures cleanly.
 "functions/*/function/main.py" = ["FBT001", "BLE001"]
+
+[tool.ty.environment]
+# The functions target Python 3.12 (see tool.ruff target-version).
+python-version = "3.12"
+
+[tool.ty.src]
+# The generated Pydantic models aren't under our control and aren't checked.
+exclude = ["schemas/python"]

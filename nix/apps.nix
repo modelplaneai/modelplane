@@ -14,7 +14,7 @@
         name = "modelplane-fix";
         runtimeInputs = [
           pkgs.findutils
-          pkgs.ruff
+          pkgs.unstable.ruff
           pkgs.statix
           pkgs.deadnix
           pkgs.nixfmt-rfc-style

@@ -24,12 +24,14 @@ Dynamo stub are dispatch/behaviour tests below the table.
 
 import dataclasses
 import unittest
+from typing import Any
 
 from crossplane.function import resource
 from function import routing
 from function.backends import base, dynamo, llmd, native
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 _SERVING = "modelplane.ai/serving"
@@ -41,7 +43,7 @@ _LEADER_ENV = {"name": "MODELPLANE_LEADER_ADDRESS", "value": "$(LWS_LEADER_ADDRE
 _GPU_CEL = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0'
 
 
-def _gpu_request(count):
+def _gpu_request(count: int) -> v1alpha1.DeviceRequest:
     return v1alpha1.DeviceRequest(
         name="gpu",
         deviceClassName="gpu.nvidia.com",
@@ -51,13 +53,13 @@ def _gpu_request(count):
 
 
 def _standalone_engine(
-    name="main",
+    name: str = "main",
     *,
-    copies=1,
-    args=None,
-    command=None,
-    device_requests=None,
-):
+    copies: int = 1,
+    args: list[str] | None = None,
+    command: list[str] | None = None,
+    device_requests: list[v1alpha1.DeviceRequest] | None = None,
+) -> v1alpha1.Engine:
     """A single Standalone-member engine."""
     container = v1alpha1.Container(
         name="engine",
@@ -81,17 +83,17 @@ def _standalone_engine(
 
 
 def _gang_engine(
-    name="main",
+    name: str = "main",
     *,
-    copies=1,
-    nodes=1,
-    leader_args=None,
-    leader_command=None,
-    worker_args=None,
-    worker_command=None,
-    leader_device_requests=None,
-    leader_pool="frontier",
-):
+    copies: int = 1,
+    nodes: int = 1,
+    leader_args: list[str] | None = None,
+    leader_command: list[str] | None = None,
+    worker_args: list[str] | None = None,
+    worker_command: list[str] | None = None,
+    leader_device_requests: list[v1alpha1.DeviceRequest] | None = None,
+    leader_pool: str = "frontier",
+) -> v1alpha1.Engine:
     """A Leader + Worker engine.
 
     The members carry their own pool pins and device requests, defaulting to a
@@ -100,13 +102,20 @@ def _gang_engine(
     pool.
     """
 
-    def member(role, nodes, args, command, device_requests, pool):
+    def member(
+        role: str,
+        nodes: int | None,
+        args: list[str] | None,
+        command: list[str] | None,
+        device_requests: list[v1alpha1.DeviceRequest],
+        pool: str,
+    ) -> v1alpha1.Member:
         container = v1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")
         if args is not None:
             container.args = args
         if command is not None:
             container.command = command
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "role": role,
             "nodePoolName": pool,
             "template": v1alpha1.Template(spec=v1alpha1.Spec(containers=[container])),
@@ -128,7 +137,9 @@ def _gang_engine(
     )
 
 
-def _replica(name="r", *, namespace="ml-team", engines=None):
+def _replica(
+    name: str = "r", *, namespace: str = "ml-team", engines: list[v1alpha1.Engine] | None = None
+) -> v1alpha1.ModelReplica:
     if engines is None:
         engines = [_standalone_engine()]
     return v1alpha1.ModelReplica(
@@ -143,7 +154,7 @@ def _replica(name="r", *, namespace="ml-team", engines=None):
 _WORKLOAD_NAME = resource.child_name("r", "main")
 
 
-def _claim_template(count, *, replica="r", engine="main", role="standalone"):
+def _claim_template(count: int, *, replica: str = "r", engine: str = "main", role: str = "standalone") -> dict:
     """The ResourceClaimTemplate manifest a member's device requests produce."""
     return {
         "apiVersion": "resource.k8s.io/v1",
@@ -181,7 +192,7 @@ _CLUSTER = icv1alpha1.InferenceCluster(
 _PC = "cluster-a-pc"
 
 
-def _route(name):
+def _route(name: str) -> dict:
     """The replica's HTTPRoute — replica-named, prefix-stripped."""
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
@@ -206,7 +217,7 @@ def _route(name):
     }
 
 
-def _service(name):
+def _service(name: str) -> dict:
     return {
         "apiVersion": "v1",
         "kind": "Service",
@@ -259,7 +270,7 @@ _NATIVE_WANT = {
 }
 
 
-def _claims(role):
+def _claims(role: str) -> list[dict]:
     """The pod-level claim referencing a member's ResourceClaimTemplate."""
     return [
         {
@@ -269,7 +280,7 @@ def _claims(role):
     ]
 
 
-def _lws(leader_container, worker_container):
+def _lws(leader_container: dict, worker_container: dict) -> dict:
     node_selector = {"modelplane.ai/pool": "frontier"}
 
     tolerations = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
@@ -305,8 +316,10 @@ def _lws(leader_container, worker_container):
     }
 
 
-def _engine(*, serving, args=None, command=None, env=None):
-    c = {
+def _engine(
+    *, serving: bool, args: list[str] | None = None, command: list[str] | None = None, env: list[dict] | None = None
+) -> dict[str, Any]:
+    c: dict[str, Any] = {
         "name": "engine",
         "image": "vllm/vllm-openai:latest",
         "resources": {"claims": [{"name": "devices"}]},
@@ -351,8 +364,8 @@ _LLMD_WANT = {
 @dataclasses.dataclass
 class Case:
     name: str
-    backend: object
-    engine: v1alpha1.Worker
+    backend: base.Backend
+    engine: v1alpha1.Engine
     want: dict
 
 
@@ -373,7 +386,7 @@ _CASES = [
 
 
 class TestBackendManifests(unittest.TestCase):
-    def test_manifests(self):
+    def test_manifests(self) -> None:
         for case in _CASES:
             with self.subTest(case.name):
                 replica = _replica(engines=[case.engine])
@@ -381,7 +394,7 @@ class TestBackendManifests(unittest.TestCase):
                 got = {key: obj.spec.forProvider.manifest for key, obj in out.items()}
                 self.assertEqual(case.want, got, "-want, +got")
 
-    def test_serving_resources(self):
+    def test_serving_resources(self) -> None:
         # The shared Service + HTTPRoute front a replica regardless of how many
         # engines it has, named after the replica.
         replica = _replica()
@@ -389,7 +402,7 @@ class TestBackendManifests(unittest.TestCase):
         got = {key: obj.spec.forProvider.manifest for key, obj in out.items()}
         self.assertEqual({"model-service": _service("r"), "model-route": _route("r")}, got)
 
-    def test_leader_address_injected_into_gang_engines(self):
+    def test_leader_address_injected_into_gang_engines(self) -> None:
         # Every engine container in a multi-node gang gets
         # MODELPLANE_LEADER_ADDRESS, aliasing LWS_LEADER_ADDRESS, ahead of the
         # user's own env so commands can reference $(MODELPLANE_LEADER_ADDRESS).
@@ -401,24 +414,28 @@ class TestBackendManifests(unittest.TestCase):
             env = tmpl[role]["spec"]["containers"][0]["env"]
             self.assertEqual(env[0], _LEADER_ENV)
 
-    def test_user_env_preserved_after_leader_address(self):
+    def test_user_env_preserved_after_leader_address(self) -> None:
         engine = _gang_engine(
             leader_command=_LEADER_CMD,
             worker_command=_WORKER_CMD,
         )
-        engine.members[0].template.spec.containers[0].env = [v1alpha1.EnvItem(name="HF_TOKEN", value="x")]
+        spec = engine.members[0].template.spec
+        assert spec is not None
+        spec.containers[0].env = [v1alpha1.EnvItem(name="HF_TOKEN", value="x")]
         replica = _replica(engines=[engine])
         out = llmd.LLMDBackend().build(replica, engine, _PC, base.serving_label(replica))
         leader = out["model-serving-main"].spec.forProvider.manifest["spec"]["leaderWorkerTemplate"]["leaderTemplate"]
         env = leader["spec"]["containers"][0]["env"]
         self.assertEqual(env, [_LEADER_ENV, {"name": "HF_TOKEN", "value": "x"}])
 
-    def test_fieldref_env_passes_through(self):
+    def test_fieldref_env_passes_through(self) -> None:
         # A pod-field env (e.g. VLLM_HOST_IP from status.podIP, which multi-NIC
         # RDMA nodes need so the engine binds the right interface — #141) survives
         # model_dump into the composed manifest alongside the injected leader env.
         engine = _gang_engine(leader_command=_LEADER_CMD, worker_command=_WORKER_CMD)
-        engine.members[0].template.spec.containers[0].env = [
+        spec = engine.members[0].template.spec
+        assert spec is not None
+        spec.containers[0].env = [
             v1alpha1.EnvItem(
                 name="VLLM_HOST_IP",
                 valueFrom=v1alpha1.ValueFrom(fieldRef=v1alpha1.FieldRef(fieldPath="status.podIP")),
@@ -434,10 +451,10 @@ class TestBackendManifests(unittest.TestCase):
         )
 
     @staticmethod
-    def _names(out):
+    def _names(out: dict[str, k8sobjv1alpha1.Object]) -> set[str]:
         return {o.spec.forProvider.manifest["metadata"]["name"] for o in out.values()}
 
-    def test_co_located_replicas_get_distinct_names(self):
+    def test_co_located_replicas_get_distinct_names(self) -> None:
         # Two replicas of one deployment on the same cluster must produce
         # distinct resource names on the remote cluster.
         a = _replica("dep-clusterA")
@@ -446,7 +463,7 @@ class TestBackendManifests(unittest.TestCase):
         out_b = native.NativeBackend().build(b, b.spec.engines[0], _PC, base.serving_label(b))
         self.assertEqual(self._names(out_a) & self._names(out_b), set())
 
-    def test_lws_name_differs_from_serving_service_name(self):
+    def test_lws_name_differs_from_serving_service_name(self) -> None:
         # Regression: LWS's controller creates a headless Service named after
         # the LWS for gang pod DNS - but only if no Service of that name
         # exists. When the LWS shared the serving Service's name (the replica
@@ -461,7 +478,7 @@ class TestBackendManifests(unittest.TestCase):
         service_name = serving["model-service"].spec.forProvider.manifest["metadata"]["name"]
         self.assertNotEqual(lws_name, service_name)
 
-    def test_multi_engine_qualifies_workload_names(self):
+    def test_multi_engine_qualifies_workload_names(self) -> None:
         # A replica with two engines names each engine's workload distinctly so
         # they don't collide on the remote cluster.
         engines = [_standalone_engine("prefill"), _standalone_engine("decode")]
@@ -472,7 +489,7 @@ class TestBackendManifests(unittest.TestCase):
             names |= self._names(out)
         self.assertEqual(len(names), 4)  # 2 deployments + 2 claim templates
 
-    def test_workload_readiness_policies(self):
+    def test_workload_readiness_policies(self) -> None:
         # The workload reports readiness from its Available condition via a CEL
         # query; the claim templates are ready on create.
         for name, backend, engine in (
@@ -483,19 +500,25 @@ class TestBackendManifests(unittest.TestCase):
                 replica = _replica(engines=[engine])
                 out = backend.build(replica, engine, _PC, base.serving_label(replica))
                 serving = out["model-serving-main"].spec.readiness
+                assert serving is not None
                 self.assertEqual(serving.policy, "DeriveFromCelQuery")
                 self.assertEqual(serving.celQuery, base.AVAILABLE_CEL)
                 for key, obj in out.items():
                     if key.startswith("resource-claim"):
-                        self.assertEqual(obj.spec.readiness.policy, "SuccessfulCreate")
+                        readiness = obj.spec.readiness
+                        assert readiness is not None
+                        self.assertEqual(readiness.policy, "SuccessfulCreate")
 
-    def test_serving_readiness_policies(self):
+    def test_serving_readiness_policies(self) -> None:
         replica = _replica()
         out = base.serving_resources(replica, _PC)
-        self.assertEqual(out["model-service"].spec.readiness.policy, "SuccessfulCreate")
-        self.assertEqual(out["model-route"].spec.readiness.policy, "SuccessfulCreate")
+        service_readiness = out["model-service"].spec.readiness
+        route_readiness = out["model-route"].spec.readiness
+        assert service_readiness is not None and route_readiness is not None
+        self.assertEqual(service_readiness.policy, "SuccessfulCreate")
+        self.assertEqual(route_readiness.policy, "SuccessfulCreate")
 
-    def test_multiple_device_requests_single_container_claim(self):
+    def test_multiple_device_requests_single_container_claim(self) -> None:
         # resources.claims is a list-map keyed on name alone, so N device
         # requests must NOT produce N container claims all named "devices". The
         # container references the whole pod claim once; the template carries all
@@ -515,9 +538,11 @@ class TestBackendManifests(unittest.TestCase):
         template = out["resource-claim-main-standalone"].spec.forProvider.manifest
         template_requests = template["spec"]["spec"]["devices"]["requests"]
         self.assertEqual([r["name"] for r in template_requests], ["gpu", "nic"])
-        self.assertEqual(out["resource-claim-main-standalone"].spec.readiness.policy, "SuccessfulCreate")
+        claim_readiness = out["resource-claim-main-standalone"].spec.readiness
+        assert claim_readiness is not None
+        self.assertEqual(claim_readiness.policy, "SuccessfulCreate")
 
-    def test_claimless_leader_gets_no_claim(self):
+    def test_claimless_leader_gets_no_claim(self) -> None:
         # A coordinator-only leader (e.g. a vLLM DP head running
         # --data-parallel-size-local=0) carries no deviceRequests. Its pod must
         # get no resourceClaims, its container no resources.claims, and no
@@ -547,7 +572,7 @@ class TestBackendManifests(unittest.TestCase):
         self.assertEqual(worker["resourceClaims"], _claims("worker"))
         self.assertEqual(worker["containers"][0]["resources"], {"claims": [{"name": "devices"}]})
 
-    def test_members_pin_to_their_own_pools(self):
+    def test_members_pin_to_their_own_pools(self) -> None:
         # The scheduler may split a gang across pools when no single pool
         # satisfies every member. Each member's pods must pin to that member's
         # pool, not a shared engine-wide one.
@@ -560,18 +585,18 @@ class TestBackendManifests(unittest.TestCase):
 
 
 class TestBackendSelection(unittest.TestCase):
-    def test_standalone_engine_is_native(self):
+    def test_standalone_engine_is_native(self) -> None:
         self.assertEqual(base.select_backend(_standalone_engine()), base.NATIVE)
 
-    def test_leader_worker_engine_is_llmd(self):
+    def test_leader_worker_engine_is_llmd(self) -> None:
         self.assertEqual(base.select_backend(_gang_engine()), base.LLMD)
 
 
 class TestDynamoStub(unittest.TestCase):
-    def test_not_selected_in_v01(self):
+    def test_not_selected_in_v01(self) -> None:
         self.assertNotEqual(base.select_backend(_gang_engine()), base.DYNAMO)
 
-    def test_build_raises(self):
+    def test_build_raises(self) -> None:
         engine = _gang_engine()
         replica = _replica(engines=[engine])
         with self.assertRaises(NotImplementedError):
@@ -579,7 +604,9 @@ class TestDynamoStub(unittest.TestCase):
 
 
 class TestCacheMounts(unittest.TestCase):
-    def _replica(self, *, cache=None, args=None, command=None):
+    def _replica(
+        self, *, cache: str | None = None, args: list[str] | None = None, command: list[str] | None = None
+    ) -> v1alpha1.ModelReplica:
         engine = _standalone_engine(args=args or [], command=command)
         modelcache = v1alpha1.ModelCacheRef(name=cache) if cache else None
         return v1alpha1.ModelReplica(
@@ -588,14 +615,16 @@ class TestCacheMounts(unittest.TestCase):
         )
 
     @staticmethod
-    def _engine(replica):
-        return replica.spec.engines[0].members[0].template.spec.containers[0]
+    def _engine(replica: v1alpha1.ModelReplica) -> v1alpha1.Container:
+        spec = replica.spec.engines[0].members[0].template.spec
+        assert spec is not None
+        return spec.containers[0]
 
-    def test_no_cache_no_mounts(self):
+    def test_no_cache_no_mounts(self) -> None:
         volumes, mounts = base.cache_mounts(self._replica())
         self.assertEqual((volumes, mounts), ([], []))
 
-    def test_cache_adds_volume_and_mount(self):
+    def test_cache_adds_volume_and_mount(self) -> None:
         volumes, mounts = base.cache_mounts(self._replica(cache="qwen"))
         self.assertEqual(
             volumes,
@@ -603,22 +632,22 @@ class TestCacheMounts(unittest.TestCase):
         )
         self.assertEqual(mounts, [{"name": "model-cache", "mountPath": "/mnt/models"}])
 
-    def test_apply_cache_injects_model_when_absent(self):
+    def test_apply_cache_injects_model_when_absent(self) -> None:
         r = self._replica(cache="qwen")
         args = base.apply_cache_args(["--trust-remote-code"], r, self._engine(r))
         self.assertIn("--model=/mnt/models", args)
 
-    def test_apply_cache_respects_user_model(self):
+    def test_apply_cache_respects_user_model(self) -> None:
         r = self._replica(cache="qwen", args=["--model=/mnt/models"])
         args = base.apply_cache_args(["--model=/mnt/models"], r, self._engine(r))
         self.assertEqual(args.count("--model=/mnt/models"), 1)
 
-    def test_apply_cache_noop_without_cache(self):
+    def test_apply_cache_noop_without_cache(self) -> None:
         r = self._replica()
         args = base.apply_cache_args(["--trust-remote-code"], r, self._engine(r))
         self.assertEqual(args, ["--trust-remote-code"])
 
-    def test_apply_cache_skips_when_engine_has_command(self):
+    def test_apply_cache_skips_when_engine_has_command(self) -> None:
         # Non-vLLM engine (e.g. SGLang) owns its args via a command and uses
         # --model-path, not --model: we must not inject --model.
         r = self._replica(cache="qwen", args=["--model-path=/mnt/models"], command=["/bin/sh", "-c", "..."])
@@ -628,7 +657,7 @@ class TestCacheMounts(unittest.TestCase):
 
 
 class TestNativeBackendCache(unittest.TestCase):
-    def _replica(self):
+    def _replica(self) -> v1alpha1.ModelReplica:
         engine = _standalone_engine(args=[])
         return v1alpha1.ModelReplica(
             metadata=metav1.ObjectMeta(name="r", namespace="ml-team"),
@@ -639,7 +668,7 @@ class TestNativeBackendCache(unittest.TestCase):
             ),
         )
 
-    def test_mounts_pvc_and_injects_model(self):
+    def test_mounts_pvc_and_injects_model(self) -> None:
         replica = self._replica()
         out = native.NativeBackend().build(replica, replica.spec.engines[0], _PC, base.serving_label(replica))
         dep = out["model-serving-main"].spec.forProvider.manifest
@@ -652,7 +681,14 @@ class TestNativeBackendCache(unittest.TestCase):
 
 
 class TestLLMDBackendCache(unittest.TestCase):
-    def _replica(self, *, leader_command=None, worker_command=None, leader_args=None, worker_args=None):
+    def _replica(
+        self,
+        *,
+        leader_command: list[str] | None = None,
+        worker_command: list[str] | None = None,
+        leader_args: list[str] | None = None,
+        worker_args: list[str] | None = None,
+    ) -> v1alpha1.ModelReplica:
         engine = _gang_engine(
             leader_command=leader_command,
             worker_command=worker_command,
@@ -668,7 +704,7 @@ class TestLLMDBackendCache(unittest.TestCase):
             ),
         )
 
-    def test_both_lws_templates_mount_cache(self):
+    def test_both_lws_templates_mount_cache(self) -> None:
         replica = self._replica(leader_args=[], worker_command=["/bin/sh", "-c", "join"])
         lws = (
             llmd.LLMDBackend()
@@ -684,7 +720,7 @@ class TestLLMDBackendCache(unittest.TestCase):
                 pod["containers"][0]["volumeMounts"],
             )
 
-    def test_injects_model_into_leader_args_for_vllm(self):
+    def test_injects_model_into_leader_args_for_vllm(self) -> None:
         # The leader has no command and no --model arg, so the cache --model is
         # injected into its args.
         replica = self._replica(leader_args=[], worker_command=["/bin/sh", "-c", "join"])
@@ -696,7 +732,7 @@ class TestLLMDBackendCache(unittest.TestCase):
         leader_args = lws["spec"]["leaderWorkerTemplate"]["leaderTemplate"]["spec"]["containers"][0]["args"]
         self.assertIn("--model=/mnt/models", leader_args)
 
-    def test_command_engine_mounts_cache_without_injecting_model(self):
+    def test_command_engine_mounts_cache_without_injecting_model(self) -> None:
         # A member with its own command keeps it verbatim and gets no injected
         # --model (it points at the cache with its own flag).
         leader_cmd = [
@@ -723,7 +759,7 @@ class TestDisaggregated(unittest.TestCase):
     picker over two engines, role-labels them, and sidecars decode — no unified
     Service. Mirrors how fn.py composes engines then calls routing.apply."""
 
-    def _apply(self):
+    def _apply(self) -> dict[str, k8sobjv1alpha1.Object]:
         prefill = _standalone_engine(name="prefill")
         prefill.phase = "Prefill"
         decode = _standalone_engine(name="decode")
@@ -735,10 +771,10 @@ class TestDisaggregated(unittest.TestCase):
             composed.update(native.NativeBackend().build(replica, engine, _PC, base.serving_label(replica)))
         return routing.apply(composed, replica, _PC)
 
-    def _serving_pod(self, out, engine_name):
+    def _serving_pod(self, out: dict[str, k8sobjv1alpha1.Object], engine_name: str) -> dict:
         return out[f"model-serving-{engine_name}"].spec.forProvider.manifest["spec"]["template"]
 
-    def test_replaces_unified_service_with_pool_and_epp(self):
+    def test_replaces_unified_service_with_pool_and_epp(self) -> None:
         out = self._apply()
         self.assertNotIn(base.SERVICE_KEY, out)  # unified Service gone
         self.assertIn("inference-pool", out)
@@ -748,7 +784,7 @@ class TestDisaggregated(unittest.TestCase):
         self.assertEqual(pool["kind"], "InferencePool")
         self.assertEqual(pool["spec"]["endpointPickerRef"]["name"], "r-epp")
 
-    def test_injects_nixl_plumbing(self):
+    def test_injects_nixl_plumbing(self) -> None:
         """Both disagg engines get the NIXL plumbing the schema can't express:
         a Memory /dev/shm and VLLM_NIXL_SIDE_CHANNEL_HOST = pod IP."""
         out = self._apply()
@@ -761,11 +797,11 @@ class TestDisaggregated(unittest.TestCase):
             engine = next(c for c in pod["containers"] if c["name"] == "engine")
             self.assertIn("/dev/shm", [m["mountPath"] for m in engine["volumeMounts"]])
             host = next((e for e in engine["env"] if e["name"] == "VLLM_NIXL_SIDE_CHANNEL_HOST"), None)
-            self.assertIsNotNone(host, f"{role} missing VLLM_NIXL_SIDE_CHANNEL_HOST")
+            assert host is not None, f"{role} missing VLLM_NIXL_SIDE_CHANNEL_HOST"
             self.assertEqual(host["valueFrom"]["fieldRef"]["fieldPath"], "status.podIP")
             self.assertIn("VLLM_NIXL_SIDE_CHANNEL_PORT", [e["name"] for e in engine["env"]])
 
-    def test_epp_config_arms_the_pd_decider(self):
+    def test_epp_config_arms_the_pd_decider(self) -> None:
         """PrefillDecode silently serves decode-only unless the PD decider is armed.
 
         Selective prefix-based-pd-decider needs all of: nonCachedTokens > 0 (0 =
@@ -782,7 +818,7 @@ class TestDisaggregated(unittest.TestCase):
         self.assertNotIn("nonCachedTokens: 0", cfg)
         self.assertNotIn("prepareDataPlugins", cfg)
 
-    def test_epp_role_watches_inferenceobjectives(self):
+    def test_epp_role_watches_inferenceobjectives(self) -> None:
         """The picker watches InferenceObjectives (GIE x-k8s.io group); the Role must allow it."""
         rules = self._apply()["epp-role"].spec.forProvider.manifest["rules"]
         self.assertTrue(
@@ -793,7 +829,7 @@ class TestDisaggregated(unittest.TestCase):
             f"EPP Role missing inferenceobjectives watch: {rules}",
         )
 
-    def test_decode_port_follows_user_arg(self):
+    def test_decode_port_follows_user_arg(self) -> None:
         """The sidecar and the decode container port track the user's --port, not a hardcoded one."""
         prefill = _standalone_engine(name="prefill")
         prefill.phase = "Prefill"
@@ -812,14 +848,14 @@ class TestDisaggregated(unittest.TestCase):
         self.assertIn("--vllm-port=9000", sidecar["args"])
         self.assertEqual(sidecar["ports"][0]["containerPort"], 8000)
 
-    def test_engines_role_labeled(self):
+    def test_engines_role_labeled(self) -> None:
         out = self._apply()
         self.assertEqual(self._serving_pod(out, "prefill")["metadata"]["labels"]["llm-d.ai/role"], "prefill")
         decode_labels = self._serving_pod(out, "decode")["metadata"]["labels"]
         self.assertEqual(decode_labels["llm-d.ai/role"], "decode")
         self.assertEqual(decode_labels["app"], "r")
 
-    def test_decode_gets_sidecar_and_moves_engine_port(self):
+    def test_decode_gets_sidecar_and_moves_engine_port(self) -> None:
         out = self._apply()
         containers = self._serving_pod(out, "decode")["spec"]["containers"]
         names = [c["name"] for c in containers]
@@ -832,11 +868,11 @@ class TestDisaggregated(unittest.TestCase):
         self.assertEqual(sidecar["readinessProbe"]["timeoutSeconds"], 5)
         self.assertIn("--secure-proxy=false", sidecar["args"])
 
-    def test_prefill_has_no_sidecar(self):
+    def test_prefill_has_no_sidecar(self) -> None:
         containers = self._serving_pod(self._apply(), "prefill")["spec"]["containers"]
         self.assertEqual([c["name"] for c in containers], ["engine"])
 
-    def test_route_targets_inference_pool(self):
+    def test_route_targets_inference_pool(self) -> None:
         route = self._apply()[base.ROUTE_KEY].spec.forProvider.manifest
         rule = route["spec"]["rules"][0]
         ref = rule["backendRefs"][0]
@@ -845,7 +881,7 @@ class TestDisaggregated(unittest.TestCase):
         # Disable the request timeout so long token streams aren't severed.
         self.assertEqual(rule["timeouts"]["request"], "0s")
 
-    def test_selects_engines_by_phase_not_name(self):
+    def test_selects_engines_by_phase_not_name(self) -> None:
         """Roles come from each engine's phase, not its name."""
         decode = _standalone_engine(name="alpha")
         decode.phase = "Decode"
@@ -870,7 +906,7 @@ class TestUnifiedRouting(unittest.TestCase):
     """With no serving block (or mode Unified), routing.apply adds a plain
     Service + HTTPRoute and no InferencePool."""
 
-    def test_adds_service_and_route(self):
+    def test_adds_service_and_route(self) -> None:
         engine = _standalone_engine(name="main")
         replica = _replica(engines=[engine])
         composed = native.NativeBackend().build(replica, engine, _PC, base.serving_label(replica))
@@ -884,21 +920,21 @@ class TestKvBlockSize(unittest.TestCase):
     """The EPP prefix-cache producer's blockSizeTokens is derived best-effort
     from the engine flags (#179) so it matches the engine's KV block size."""
 
-    def test_defaults_to_16_when_absent(self):
+    def test_defaults_to_16_when_absent(self) -> None:
         self.assertEqual(routing._kv_block_size([]), 16)
         self.assertEqual(routing._kv_block_size(["--model=/mnt/models"]), 16)
 
-    def test_reads_vllm_block_size(self):
+    def test_reads_vllm_block_size(self) -> None:
         self.assertEqual(routing._kv_block_size(["--block-size", "32"]), 32)
         self.assertEqual(routing._kv_block_size(["--model=/m", "--block-size=8"]), 8)
 
-    def test_reads_sglang_page_size(self):
+    def test_reads_sglang_page_size(self) -> None:
         self.assertEqual(routing._kv_block_size(["--page-size=64"]), 64)
 
-    def test_non_integer_falls_back_to_default(self):
+    def test_non_integer_falls_back_to_default(self) -> None:
         self.assertEqual(routing._kv_block_size(["--block-size", "auto"]), 16)
 
-    def test_rendered_config_uses_block_size(self):
+    def test_rendered_config_uses_block_size(self) -> None:
         cfg = routing._epp_config_yaml(32)
         self.assertIn("blockSizeTokens: 32", cfg)
         self.assertNotIn("BLOCK_SIZE_TOKENS", cfg)

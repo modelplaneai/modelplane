@@ -33,6 +33,7 @@ from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.modelendpoint import v1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 SERVICE_RESOURCE_KEY = "service"
 ENDPOINTSLICE_RESOURCE_KEY = "endpointslice"
@@ -45,6 +46,13 @@ CONDITION_REASON_WAITING_FOR_BACKEND = "WaitingForBackend"
 CONDITION_REASON_INVALID_URL = "InvalidURL"
 
 
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
 def _address_type(host: str) -> str:
     """Return the EndpointSlice addressType for a host: IPv4, IPv6, or FQDN."""
     try:
@@ -54,14 +62,16 @@ def _address_type(host: str) -> str:
     return "IPv6" if isinstance(addr, ipaddress.IPv6Address) else "IPv4"
 
 
-class FunctionRunner(grpcv1.FunctionRunnerService):
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         """Run the function."""
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
@@ -73,41 +83,48 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelEndpoint(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
-        host, port = self.parse_url()
-        if host is None:
+    def compose(self) -> None:
+        parsed = self.parse_url()
+        if parsed is None:
             return
+        host, port = parsed
 
         self.compose_backend(host, port, _address_type(host))
         self.write_status()
         self.derive_conditions()
 
-    def parse_url(self):
-        """Parse spec.url into (host, port). Returns (None, None) and
-        marks the XR not-ready if the URL is invalid."""
+    def parse_url(self) -> tuple[str, int] | None:
+        """Parse spec.url into (host, port), or None (marking the XR not-ready)
+        if the URL is invalid."""
         parsed = urllib.parse.urlparse(self.xr.spec.url)
-        if not parsed.hostname:
+        try:
+            # .port parses lazily and raises on a non-integer port, e.g.
+            # https://host:abc.
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        except ValueError:
+            port = None
+
+        if not parsed.hostname or port is None:
             response.set_conditions(
                 self.rsp,
                 resource.Condition(
                     typ=CONDITION_TYPE_ROUTING_READY,
                     status="False",
                     reason=CONDITION_REASON_INVALID_URL,
-                    message=f"spec.url has no host: {self.xr.spec.url}",
+                    message=f"Invalid spec.url: {self.xr.spec.url}",
                 ),
             )
             response.warning(self.rsp, f"Invalid spec.url: {self.xr.spec.url}")
-            return None, None
+            return None
 
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
         return parsed.hostname, port
 
-    def compose_backend(self, host: str, port: int, address_type: str):
+    def compose_backend(self, host: str, port: int, address_type: str) -> None:
         """Compose a selectorless Service and EndpointSlice for the endpoint.
 
         The Service has no selector (Kubernetes will not auto-populate
@@ -120,7 +137,7 @@ class Composer:
         Traefik's Gateway API provider explicitly rejects them. See
         https://github.com/traefik/traefik/blob/fa49e2bcad7ffd8a80accdf1fae1ae480913d93d/pkg/provider/kubernetes/gateway/kubernetes.go#L890.
         """
-        ns = self.xr.metadata.namespace
+        ns = _namespace(self.xr.metadata)
 
         resource.update(
             self.rsp.desired.resources[SERVICE_RESOURCE_KEY],
@@ -164,7 +181,7 @@ class Composer:
                 },
             )
 
-    def write_status(self):
+    def write_status(self) -> None:
         """Surface the composed Service's name in status, but only once the
         EndpointSlice is observed too. ModelService treats backendName as
         routable, so we must not advertise it until the backing endpoint
@@ -181,7 +198,7 @@ class Composer:
 
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self):
+    def derive_conditions(self) -> None:
         """RoutingReady: both the Service and the EndpointSlice have been
         observed on the control plane."""
         svc_exists = SERVICE_RESOURCE_KEY in self.req.observed.resources

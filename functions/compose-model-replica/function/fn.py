@@ -56,26 +56,16 @@ _BACKENDS = {
 }
 
 
-def _inference_cluster(
-    ic: icv1alpha1.InferenceCluster,
-) -> icv1alpha1.InferenceCluster:
-    """Return a copy with status fields defaulted."""
-    ic = ic.model_copy(deep=True)
-    ic.status = ic.status or icv1alpha1.Status()
-    ic.status.providerConfigRef = ic.status.providerConfigRef or icv1alpha1.ProviderConfigRef()
-    ic.status.gateway = ic.status.gateway or icv1alpha1.Gateway()
-    ic.status.gpuPools = ic.status.gpuPools or []
-    return ic
-
-
-class FunctionRunner(grpcv1.FunctionRunnerService):
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         """Run the function."""
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
@@ -87,19 +77,19 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelReplica(**resource.struct_to_dict(req.observed.composite.resource))
         self.ic = None
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
             return
         self.compose_model_serving()
         self.derive_conditions()
 
-    def resolve_inputs(self):
+    def resolve_inputs(self) -> bool:
         """Declare and fetch the referenced InferenceCluster."""
         response.require_resources(
             self.rsp,
@@ -126,9 +116,9 @@ class Composer:
             response.normal(self.rsp, "Waiting for cluster to be resolved")
             return False
 
-        self.ic = _inference_cluster(icv1alpha1.InferenceCluster.model_validate(ic_dict))
+        self.ic = icv1alpha1.InferenceCluster.model_validate(ic_dict)
 
-        if not self.ic.status.providerConfigRef.name:
+        if not (self.ic.status and self.ic.status.providerConfigRef and self.ic.status.providerConfigRef.name):
             response.set_conditions(
                 self.rsp,
                 resource.Condition(
@@ -146,7 +136,7 @@ class Composer:
 
         return True
 
-    def compose_model_serving(self):
+    def compose_model_serving(self) -> None:
         """Compose each engine's workload, then the replica's routing surface.
 
         Every engine composes to a Deployment or LeaderWorkerSet (with its
@@ -155,6 +145,9 @@ class Composer:
         surface serving.mode selects: a Service (Unified) or an InferencePool +
         endpoint picker (PrefillDecode).
         """
+        # resolve_inputs runs first and returns False unless the cluster's
+        # status.providerConfigRef.name is set, so it's present here.
+        assert self.ic and self.ic.status and self.ic.status.providerConfigRef and self.ic.status.providerConfigRef.name
         pc = self.ic.status.providerConfigRef.name
         label = base.serving_label(self.xr)
         composed: dict[str, k8sobjv1alpha1.Object] = {}
@@ -165,7 +158,7 @@ class Composer:
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
 
-    def derive_conditions(self):
+    def derive_conditions(self) -> None:
         """Derive ModelAccepted and ModelReady across all of the replica's engines.
 
         A replica is accepted when every engine's workload has been created on the

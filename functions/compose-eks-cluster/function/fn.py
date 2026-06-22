@@ -28,6 +28,8 @@ authorised on the cluster. Downstream consumers only need the kubeconfig;
 no per-cluster AWS identity has to be wired into provider-kubernetes.
 """
 
+from typing import Literal
+
 import grpc
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -61,13 +63,29 @@ from models.io.upbound.m.aws.iam.policy import v1beta1 as policyv1beta1
 from models.io.upbound.m.aws.iam.role import v1beta1 as rolev1beta1
 from models.io.upbound.m.aws.iam.rolepolicyattachment import v1beta1 as rpav1beta1
 
+
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
 # Node group management policies that exclude LateInitialize, so the
 # desiredSize we seed via initProvider is applied only at creation and then
 # left alone. The cluster autoscaler drives the ASG's desired capacity; without
 # this Crossplane would keep reverting desiredSize to nodeCount and fight it.
 # (initProvider is a beta feature gated on enumerating management policies — the
 # default "*" still reconciles forProvider, defeating the purpose.)
-_NODE_GROUP_MANAGEMENT = ["Observe", "Create", "Update", "Delete"]
+_ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
+_NODE_GROUP_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "Delete"]
 
 # Management policies that exclude Delete, used for resources installed on the
 # workload cluster (the RWX StorageClass Object, the autoscaler and EFA DRA
@@ -81,7 +99,7 @@ _NODE_GROUP_MANAGEMENT = ["Observe", "Create", "Update", "Delete"]
 # so if one of these MRs is ever deleted out of band the recomposed MR takes the
 # same name and provider-helm / provider-kubernetes adopt the existing release
 # or object rather than erroring.
-_ORPHAN_MANAGEMENT = ["Observe", "Create", "Update"]
+_ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 
 # System node group injected into every EKS cluster to host control-plane
 # components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
@@ -298,12 +316,12 @@ _ANNOTATION_EXTERNAL_NAME = "crossplane.io/external-name"
 _MANAGED_STORAGE_CLASS = "modelplane-rwx-efs"
 
 
-def _kubeconfig_secret_name(xr):
+def _kubeconfig_secret_name(xr: v1alpha1.EKSCluster) -> str:
     """Derive the kubeconfig secret name from the XR."""
-    return resource.child_name(xr.metadata.name, "kubeconfig")
+    return resource.child_name(_name(xr.metadata), "kubeconfig")
 
 
-def _cluster_name(xr):
+def _cluster_name(xr: v1alpha1.EKSCluster) -> str:
     """The EKS cluster's name in AWS.
 
     Pinned to a deterministic, compose-time-known name (rather than left to a
@@ -316,20 +334,20 @@ def _cluster_name(xr):
     name alone would let two clusters in different namespaces collide on one AWS
     cluster. child_name folds both in and appends a hash for uniqueness.
     """
-    return resource.child_name(xr.metadata.namespace, xr.metadata.name, "eks")
+    return resource.child_name(_namespace(xr.metadata), _name(xr.metadata), "eks")
 
 
-def _subnet_name(xr, az):
+def _subnet_name(xr: v1alpha1.EKSCluster, az: str) -> str:
     """Derive a stable Crossplane resource name for the public subnet in az."""
-    return resource.child_name(xr.metadata.name, f"subnet-{az}")
+    return resource.child_name(_name(xr.metadata), f"subnet-{az}")
 
 
-def _private_subnet_name(xr, az):
+def _private_subnet_name(xr: v1alpha1.EKSCluster, az: str) -> str:
     """Derive a stable Crossplane resource name for the private subnet in az."""
-    return resource.child_name(xr.metadata.name, f"private-subnet-{az}")
+    return resource.child_name(_name(xr.metadata), f"private-subnet-{az}")
 
 
-def _private_cidr(public_cidr):
+def _private_cidr(public_cidr: v1alpha1.SubnetCidr) -> str:
     """Derive a private subnet CIDR from its AZ's public one.
 
     The VPC is a /16 split into /20s. The public subnets take the low /20s
@@ -344,7 +362,7 @@ def _private_cidr(public_cidr):
     return f"{'.'.join(octets)}/{mask}"
 
 
-def _az(region, index):
+def _az(region: str, index: int) -> str:
     """Derive an Availability Zone name from a region and an index.
 
     AWS conventionally names AZs as ``<region><letter>`` where the letter
@@ -355,14 +373,16 @@ def _az(region, index):
     return f"{region}{chr(ord('a') + index)}"
 
 
-class FunctionRunner(grpcv1.FunctionRunnerService):
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         """Run the function."""
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
@@ -374,12 +394,12 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.EKSCluster(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
+    def compose(self) -> None:
         self.compose_network()
         self.compose_iam()
         self.compose_cluster()
@@ -394,7 +414,7 @@ class Composer:
         self.write_status()
         self.mark_readiness()
 
-    def compose_network(self):
+    def compose_network(self) -> None:
         """Compose the VPC, its two subnet tiers, and internet routing.
 
         The VPC has a public and a private subnet per AZ. Public subnets route
@@ -420,7 +440,7 @@ class Composer:
             ),
         )
 
-        for i, cidr in enumerate(self._networking().subnetCidrs):
+        for i, cidr in enumerate(self._networking().subnetCidrs or []):
             az = _az(self.xr.spec.region, i)
             cidr_str = cidr.root if hasattr(cidr, "root") else cidr
             # Public subnet: IGW route, auto-assigned public IPs, ELB-tagged.
@@ -582,7 +602,7 @@ class Composer:
             ),
         )
 
-        for i in range(len(self._networking().subnetCidrs)):
+        for i in range(len(self._networking().subnetCidrs or [])):
             az = _az(self.xr.spec.region, i)
             resource.update(
                 self.rsp.desired.resources[f"route-table-association-{i}"],
@@ -621,7 +641,7 @@ class Composer:
                 ),
             )
 
-    def compose_iam(self):
+    def compose_iam(self) -> None:
         """Compose the cluster and node IAM roles."""
         resource.update(
             self.rsp.desired.resources["iam-role-cluster"],
@@ -682,7 +702,7 @@ class Composer:
                 ),
             )
 
-    def compose_cluster(self):
+    def compose_cluster(self) -> None:
         """Compose the EKS cluster."""
         resource.update(
             self.rsp.desired.resources["cluster"],
@@ -712,7 +732,7 @@ class Composer:
             ),
         )
 
-    def compose_cluster_auth(self):
+    def compose_cluster_auth(self) -> None:
         """Compose the ClusterAuth resource that writes a kubeconfig.
 
         ClusterAuth uses the AWS provider's own credentials to mint an
@@ -737,7 +757,7 @@ class Composer:
             ),
         )
 
-    def compose_node_groups(self):
+    def compose_node_groups(self) -> None:
         """Compose the system and user-declared GPU node groups."""
         self._compose_system_node_group()
         for pool in self.xr.spec.nodePools:
@@ -749,7 +769,7 @@ class Composer:
             # must not also set instanceTypes in that case.
             uses_launch_template = bool(capacity_block) or efa
             if uses_launch_template:
-                self._compose_launch_template(pool, capacity_block, efa)
+                self._compose_launch_template(pool, capacity_block, efa=efa)
             if efa:
                 self._compose_efa_security_group()
 
@@ -824,16 +844,18 @@ class Composer:
                 ),
             )
 
-    def _launch_template_name(self, pool):
+    def _launch_template_name(self, pool: v1alpha1.NodePool) -> str:
         """Derive the EC2 launch template name for a Capacity Block pool.
 
         The EKS NodeGroup references the launch template by name, so it
         must be stable and match the launchTemplate.forProvider.name set
         on the composed EC2 LaunchTemplate.
         """
-        return resource.child_name(self.xr.metadata.name, f"lt-{pool.name}")
+        return resource.child_name(_name(self.xr.metadata), f"lt-{pool.name}")
 
-    def _compose_launch_template(self, pool, capacity_block, efa):
+    def _compose_launch_template(
+        self, pool: v1alpha1.NodePool, capacity_block: v1alpha1.CapacityBlock | None, *, efa: bool
+    ) -> None:
         """Compose an EC2 launch template for a node group.
 
         EKS launches the node group's instances from this template. It carries
@@ -879,7 +901,7 @@ class Composer:
             ltv1beta1.LaunchTemplate(spec=ltv1beta1.Spec(forProvider=fp)),
         )
 
-    def _efa_network_interfaces(self, pool):
+    def _efa_network_interfaces(self, pool: v1alpha1.NodePool) -> list[ltv1beta1.NetworkInterface]:
         """Build the launch template's EFA network interfaces for a pool.
 
         Every network card carries an EFA interface for maximum fabric
@@ -927,7 +949,7 @@ class Composer:
             interfaces.append(ni)
         return interfaces
 
-    def _observed_efa_security_group_id(self):
+    def _observed_efa_security_group_id(self) -> str | None:
         """The composed EFA security group's ID, from its observed MR's
         external-name annotation (the sg-xxxx ID the provider sets once it
         exists). None before the group is created, so the launch template is
@@ -941,7 +963,7 @@ class Composer:
             return None
         return sg.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME)
 
-    def _observed_cluster_security_group_id(self):
+    def _observed_cluster_security_group_id(self) -> str | None:
         """The EKS-managed cluster security group ID, from the observed cluster.
 
         EKS creates this group and reports it on the cluster's status; it's
@@ -957,11 +979,11 @@ class Composer:
             return None
         return cluster.status.atProvider.vpcConfig.clusterSecurityGroupId
 
-    def _efa_security_group_resource_name(self):
+    def _efa_security_group_resource_name(self) -> str:
         """Object (metadata.name) of the shared EFA security group."""
-        return resource.child_name(self.xr.metadata.name, "efa-sg")
+        return resource.child_name(_name(self.xr.metadata), "efa-sg")
 
-    def _compose_efa_security_group(self):
+    def _compose_efa_security_group(self) -> None:
         """Compose the EFA security group and its self-referencing rules.
 
         EFA's OS-bypass transport requires every EFA interface to sit in a
@@ -980,7 +1002,7 @@ class Composer:
                 spec=sgv1beta1.Spec(
                     forProvider=sgv1beta1.ForProvider(
                         region=region,
-                        name=f"{self.xr.metadata.name}-efa",
+                        name=f"{_name(self.xr.metadata)}-efa",
                         description="EFA OS-bypass traffic between gang nodes",
                         vpcIdSelector=sgv1beta1.VpcIdSelector(matchControllerRef=True),
                     ),
@@ -1026,7 +1048,7 @@ class Composer:
             ),
         )
 
-    def _compose_system_node_group(self):
+    def _compose_system_node_group(self) -> None:
         """Compose the system node group for control-plane components."""
         resource.update(
             self.rsp.desired.resources[f"nodegroup-{_SYSTEM_POOL_NAME}"],
@@ -1063,7 +1085,7 @@ class Composer:
             ),
         )
 
-    def _subnet_refs_for_pool(self, pool):
+    def _subnet_refs_for_pool(self, pool: v1alpha1.NodePool) -> list[ngv1beta1.SubnetIdRef] | None:
         """Resolve a pool's zones to a list of private Crossplane Subnet refs.
 
         Nodes run in the private subnets (NAT egress, no public IP), so a pool
@@ -1078,7 +1100,7 @@ class Composer:
             for z in pool.zones
         ]
 
-    def compose_addons(self):
+    def compose_addons(self) -> None:
         for name in _ADDONS:
             resource.update(
                 self.rsp.desired.resources[f"addon-{name}"],
@@ -1095,7 +1117,7 @@ class Composer:
                 ),
             )
 
-    def compose_efs(self):
+    def compose_efs(self) -> None:
         """Provision EFS RWX storage for ModelCache: an Elastic-throughput
         filesystem, a mount target per node subnet, an NFS security group, and
         the EFS CSI driver. The driver's IAM role is bound through Pod Identity
@@ -1130,7 +1152,7 @@ class Composer:
                 spec=sgv1beta1.Spec(
                     forProvider=sgv1beta1.ForProvider(
                         region=region,
-                        name=f"{self.xr.metadata.name}-efs",
+                        name=f"{_name(self.xr.metadata)}-efs",
                         description="NFS access to the ModelCache EFS mount targets",
                         vpcIdSelector=sgv1beta1.VpcIdSelector(matchControllerRef=True),
                     ),
@@ -1157,7 +1179,7 @@ class Composer:
         )
 
         # One mount target per node subnet so any AZ's nodes can mount the share.
-        for i in range(len(self._networking().subnetCidrs)):
+        for i in range(len(self._networking().subnetCidrs or [])):
             az = _az(region, i)
             resource.update(
                 self.rsp.desired.resources[f"efs-mount-target-{i}"],
@@ -1248,7 +1270,7 @@ class Composer:
             ),
         )
 
-    def compose_storage_class(self):
+    def compose_storage_class(self) -> None:
         """Compose the EFS RWX StorageClass on the workload cluster. Gated on
         the filesystem id: the StorageClass pins to it, and the id is known
         only once the FileSystem is observed. The Object is applied through the
@@ -1269,7 +1291,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["storage-class-rwx-efs"],
             k8sobjv1alpha1.Object(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
                 spec=k8sobjv1alpha1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
@@ -1283,7 +1305,7 @@ class Composer:
         )
         self.rsp.desired.resources["storage-class-rwx-efs"].ready = fnv1.READY_TRUE
 
-    def compose_cluster_autoscaler(self):
+    def compose_cluster_autoscaler(self) -> None:
         """Provision the Kubernetes cluster autoscaler so GPU pools scale within
         their min/max, the way GKE's built-in autoscaler does. DRA rules out
         Karpenter and EKS Auto Mode, so we install the autoscaler ourselves: a
@@ -1366,7 +1388,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-cluster-autoscaler"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -1394,7 +1416,7 @@ class Composer:
             ),
         )
 
-    def compose_efa_dra_driver(self):
+    def compose_efa_dra_driver(self) -> None:
         """Compose the EFA DRA driver (DRANET), only when a pool uses the EFA
         fabric. Installed as a Helm release on the cluster's own helm
         ProviderConfig, like the autoscaler, and gated the same way: until the
@@ -1412,7 +1434,7 @@ class Composer:
         resource.update(
             self.rsp.desired.resources["release-efa-dra-driver"],
             helmv1beta1.Release(
-                metadata=metav1.ObjectMeta(namespace=self.xr.metadata.namespace),
+                metadata=metav1.ObjectMeta(namespace=_namespace(self.xr.metadata)),
                 spec=helmv1beta1.Spec(
                     managementPolicies=_ORPHAN_MANAGEMENT,
                     providerConfigRef=helmv1beta1.ProviderConfigRef(
@@ -1444,7 +1466,7 @@ class Composer:
             ),
         )
 
-    def compose_provider_configs(self):
+    def compose_provider_configs(self) -> None:
         kubeconfig_secret = _kubeconfig_secret_name(self.xr)
         resource.update(
             self.rsp.desired.resources["provider-config-kubernetes"],
@@ -1455,7 +1477,7 @@ class Composer:
                         source="Secret",
                         secretRef=k8spcv1alpha1.SecretRef(
                             name=kubeconfig_secret,
-                            namespace=self.xr.metadata.namespace,
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -1472,7 +1494,7 @@ class Composer:
                         source="Secret",
                         secretRef=helmpcv1beta1.SecretRef(
                             name=kubeconfig_secret,
-                            namespace=self.xr.metadata.namespace,
+                            namespace=_namespace(self.xr.metadata),
                             key=_SECRET_KEY_KUBECONFIG,
                         ),
                     ),
@@ -1480,7 +1502,7 @@ class Composer:
             ),
         )
 
-    def write_status(self):
+    def write_status(self) -> None:
         status = v1alpha1.Status(
             secrets=[
                 v1alpha1.Secret(
@@ -1496,7 +1518,7 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def _observed_efs_filesystem_id(self):
+    def _observed_efs_filesystem_id(self) -> str | None:
         """The composed EFS filesystem's id, from the observed FileSystem MR's
         external-name annotation (set by the provider once it exists). None on
         early reconciles before the filesystem is created."""
@@ -1508,7 +1530,7 @@ class Composer:
             return None
         return fs.metadata.annotations.get(_ANNOTATION_EXTERNAL_NAME)
 
-    def mark_readiness(self):
+    def mark_readiness(self) -> None:
         """Mark composed resources ready based on their observed conditions."""
         managed_resources = [
             "vpc",
@@ -1541,7 +1563,7 @@ class Composer:
             "iam-attach-cluster-autoscaler",
             "pod-identity-cluster-autoscaler",
         ]
-        for i in range(len(self._networking().subnetCidrs)):
+        for i in range(len(self._networking().subnetCidrs or [])):
             managed_resources.append(f"subnet-{i}")
             managed_resources.append(f"private-subnet-{i}")
             managed_resources.append(f"route-table-association-{i}")
@@ -1574,6 +1596,6 @@ class Composer:
         self.rsp.desired.resources["provider-config-kubernetes"].ready = fnv1.READY_TRUE
         self.rsp.desired.resources["provider-config-helm"].ready = fnv1.READY_TRUE
 
-    def _networking(self):
+    def _networking(self) -> v1alpha1.Networking:
         """Return the (defaulted) networking config from the XR."""
         return self.xr.spec.networking or v1alpha1.Networking()

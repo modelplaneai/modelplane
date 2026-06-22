@@ -20,16 +20,15 @@ Object reconciled by the Dynamo operator installed by ServingStack.
 """
 
 from models.ai.modelplane.modelreplica import v1alpha1
-
-from function.backends import base
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
 
 class DynamoBackend:
     def build(
         self,
         replica: v1alpha1.ModelReplica,
-        engine,
+        engine: v1alpha1.Engine,
         provider_config: str,
         serving_label: str,
-    ) -> dict[str, base.ComposedResource]:
+    ) -> dict[str, k8sobjv1alpha1.Object]:
         raise NotImplementedError("the Dynamo backend is not implemented in v0.1")

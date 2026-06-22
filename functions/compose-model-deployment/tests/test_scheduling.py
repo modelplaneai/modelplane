@@ -24,6 +24,7 @@ expressed as a device request's count, not derived from topology.
 """
 
 import dataclasses
+import datetime
 import unittest
 
 from function import cel, scheduling
@@ -31,6 +32,9 @@ from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modeldeployment import v1alpha1 as mdv1alpha1
 from models.ai.modelplane.modelreplica import v1alpha1 as mrv1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+# A fixed transition time keeps observed conditions deterministic.
+_TRANSITION_TIME = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
 
 # A GPU memory selector reused across cases.
 _MEM_141 = 'device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0'
@@ -62,7 +66,7 @@ def _request(name: str = "gpu", count: int = 1, cel_exprs: list[str] | None = No
     )
 
 
-def _template():
+def _template() -> mdv1alpha1.Template:
     return mdv1alpha1.Template(
         spec=mdv1alpha1.Spec(
             containers=[mdv1alpha1.Container(name="engine", image="vllm/vllm-openai:latest")],
@@ -111,7 +115,7 @@ def _deployment(
     count: int = 1,
     requests: list[mdv1alpha1.Device] | None = None,
     engines: list[mdv1alpha1.Engine] | None = None,
-):
+) -> mdv1alpha1.ModelDeployment:
     """Construct a ModelDeployment.
 
     The single-engine helpers map a node shape onto one engine: pipeline sets the
@@ -192,7 +196,7 @@ def _cluster(
             type="Ready",
             status=status,
             reason=reason,
-            lastTransitionTime="2025-01-01T00:00:00Z",
+            lastTransitionTime=_TRANSITION_TIME,
         )
     ]
 
@@ -315,6 +319,7 @@ def _collision_replica(
     the tiebreak the scheduler sorts on.
     """
     r = _replica_with_pool("my-model", cluster_name, pool=pool, index=index)
+    assert r.metadata is not None
     r.metadata.name = object_name
     return r
 
@@ -360,7 +365,14 @@ def _placement(
 # degraded/unplaced cluster carries no gateway. Cases that need a specific pool,
 # request, or engine layout pass `engines` explicitly.
 def _cand(
-    name: str, *, index: int = 0, pool: str = "default", device_requests=None, pipeline: int = 1, engines=None, **kwargs
+    name: str,
+    *,
+    index: int = 0,
+    pool: str = "default",
+    device_requests: list[scheduling.DeviceRequest] | None = None,
+    pipeline: int = 1,
+    engines: list[scheduling.EnginePlacement] | None = None,
+    **kwargs: str,
 ) -> scheduling.Candidate:
     if engines is None:
         engines = [_placement(pool=pool, device_requests=device_requests, pipeline=pipeline)]

@@ -53,12 +53,17 @@ class LLMDBackend:
     def build(
         self,
         replica: v1alpha1.ModelReplica,
-        engine,
+        engine: v1alpha1.Engine,
         provider_config: str,
         serving_label: str,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)
+        # select_backend dispatches the llm-d backend for a non-Standalone
+        # engine, and the XRD requires such an engine to carry exactly one
+        # Leader and one Worker member, so both are always present here.
+        assert leader is not None
+        assert worker is not None
         name = base.engine_name(replica, engine)
 
         # Gang size: the leader plus the worker's nodes (one follower pod each).
@@ -66,7 +71,7 @@ class LLMDBackend:
 
         cache_volumes, cache_volume_mounts = base.cache_mounts(replica)
 
-        def container(member, *, serving: bool) -> dict:
+        def container(member: v1alpha1.Member, *, serving: bool) -> dict:
             engine_container = base.engine_container(member)
             args = list(engine_container.args or [])
             # The turnkey cache --model injection is for the serving engine (the
@@ -109,7 +114,7 @@ class LLMDBackend:
                 }
             return c
 
-        def pod_spec(member, c: dict) -> dict:
+        def pod_spec(member: v1alpha1.Member, c: dict) -> dict:
             spec = {
                 "containers": [c],
                 "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}, *cache_volumes],
@@ -118,6 +123,9 @@ class LLMDBackend:
             # claims devices, claims GPUs via the member's DRA template (one
             # fresh claim per pod).
             base.place_pod(spec, replica, engine, member)
+            # The XRD types template.spec as optional, but a member with no spec
+            # defines no pod to serve, so reaching here without one is malformed.
+            assert member.template.spec is not None
             secrets = member.template.spec.imagePullSecrets
             if secrets:
                 spec["imagePullSecrets"] = [s.model_dump(exclude_none=True) for s in secrets]

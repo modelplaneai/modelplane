@@ -31,8 +31,9 @@ curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 ## Running checks
 
 `nix flake check` runs all of the project's checks inside the Nix sandbox:
-Python, shell, and Nix linters and formatters, plus unit tests for every
-composition function. Run `nix flake show` to see what else is available.
+Python, shell, and Nix linters and formatters, the [ty](https://docs.astral.sh/ty)
+type checker on every composition function, plus unit tests for every function.
+Run `nix flake show` to see what else is available.
 
 ```bash
 nix flake check            # or: ./nix.sh flake check

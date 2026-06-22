@@ -32,8 +32,17 @@ user's; this layer injects none.
 
 from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 from function.backends import base
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
 
 _EPP_IMAGE = "ghcr.io/llm-d/llm-d-inference-scheduler:v0.8.0"
 _SIDECAR_IMAGE = "ghcr.io/llm-d/llm-d-routing-sidecar:v0.8.0"
@@ -217,6 +226,9 @@ def _disaggregated(
     current tag. Engine images are the user's (#137), so Modelplane can't bundle
     this; it is a deployment prerequisite, not something the composition provides.
     """
+    assert (
+        replica.metadata is not None and replica.metadata.name is not None
+    )  # set on resources read from the API server
     name = replica.metadata.name
     prefill = next(e for e in replica.spec.engines if e.phase == "Prefill")
     decode = next(e for e in replica.spec.engines if e.phase == "Decode")
@@ -368,7 +380,7 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
             "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
             "rules": [
                 {
-                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],
+                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{_namespace(replica.metadata)}/{name}/"}}],
                     "timeouts": {"request": base.REQUEST_TIMEOUT},
                     "filters": [
                         {

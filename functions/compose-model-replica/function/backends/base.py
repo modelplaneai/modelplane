@@ -15,18 +15,43 @@
 """Backend dispatch for compose-model-replica.
 
 A backend turns a ModelReplica + its InferenceCluster into the cluster-level
-serving resources. Backends return provider-kubernetes Objects and/or
-provider-helm Releases; the dispatcher (fn.py) applies them to the response.
+serving resources. Backends return provider-kubernetes Objects; the dispatcher
+(fn.py) applies them to the response.
 """
+
+from typing import Protocol
 
 from crossplane.function import resource
 from models.ai.modelplane.modelreplica import v1alpha1
-from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# A composed resource is either a provider-kubernetes Object or a
-# provider-helm Release. fn.py writes these into the response by key.
-ComposedResource = k8sobjv1alpha1.Object | helmv1beta1.Release
+
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
+class Backend(Protocol):
+    """Composes a replica engine's cluster-level serving resources."""
+
+    def build(
+        self,
+        replica: v1alpha1.ModelReplica,
+        engine: v1alpha1.Engine,
+        provider_config: str,
+        serving_label: str,
+    ) -> dict[str, k8sobjv1alpha1.Object]: ...
+
 
 # Backend identifiers.
 NATIVE = "native"
@@ -65,7 +90,7 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
     ref = replica.spec.modelCacheRef
     if not ref:
         return [], []
-    pvc = cache_pvc_name(replica.metadata.namespace, ref.name)
+    pvc = cache_pvc_name(_namespace(replica.metadata), ref.name)
     # Mounted read-write (NOT readOnly): engines write into the model dir
     # (tokenizer/compile/lock artifacts), and a readOnly mount hard-fails them.
     # The PVC is ReadWriteMany, so every pod in the gang shares one read-write
@@ -76,7 +101,7 @@ def cache_mounts(replica: v1alpha1.ModelReplica) -> tuple[list[dict], list[dict]
     )
 
 
-def apply_cache_args(args: list[str], replica: v1alpha1.ModelReplica, engine) -> list[str]:
+def apply_cache_args(args: list[str], replica: v1alpha1.ModelReplica, engine: v1alpha1.Container) -> list[str]:
     """Inject --model=<mount> for the turnkey vLLM path only.
 
     KServe used to inject this; nothing does now, and without it vLLM silently
@@ -160,12 +185,12 @@ _CLAIM_KEY = "resource-claim"
 REQUEST_TIMEOUT = "0s"
 
 
-def workload_key(engine) -> str:
+def workload_key(engine: v1alpha1.Engine) -> str:
     """Response key for an engine's workload (Deployment or LeaderWorkerSet)."""
     return f"{_WORKLOAD_KEY}-{engine.name}"
 
 
-def member_role(member) -> str:
+def member_role(member: v1alpha1.Member) -> str:
     """A member's role, lowercased, defaulting to standalone.
 
     The discriminator for a member's claim key and ResourceClaimTemplate name.
@@ -176,7 +201,7 @@ def member_role(member) -> str:
     return (member.role or ROLE_STANDALONE).lower()
 
 
-def claim_key(engine, member) -> str:
+def claim_key(engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
     """Response key for a member's ResourceClaimTemplate.
 
     One per member that claims devices: a member's pods all claim the same
@@ -265,7 +290,7 @@ def serving_resources(replica: v1alpha1.ModelReplica, provider_config: str) -> d
     /<ns>/<service>/ prefix to this replica's /<ns>/<replica>/, which the route
     strips to /.
     """
-    name = replica.metadata.name
+    name = _name(replica.metadata)
     service = {
         "apiVersion": "v1",
         "kind": "Service",
@@ -280,7 +305,7 @@ def serving_resources(replica: v1alpha1.ModelReplica, provider_config: str) -> d
             "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
             "rules": [
                 {
-                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{replica.metadata.namespace}/{name}/"}}],
+                    "matches": [{"path": {"type": "PathPrefix", "value": f"/{_namespace(replica.metadata)}/{name}/"}}],
                     "timeouts": {"request": REQUEST_TIMEOUT},
                     "filters": [
                         {
@@ -305,10 +330,10 @@ def serving_label(replica: v1alpha1.ModelReplica) -> str:
     The replica name, so the shared Service selects every engine's leader and
     Standalone pods.
     """
-    return replica.metadata.name
+    return _name(replica.metadata)
 
 
-def engine_container(member):
+def engine_container(member: v1alpha1.Member) -> v1alpha1.Container:
     """Return a member's container named 'engine'. The XRD's CEL validation
     guarantees exactly one exists per member, so this always succeeds.
 
@@ -317,10 +342,14 @@ def engine_container(member):
     multi-container support is tracked in #108 — it needs design for the LWS
     gang (which containers run on the leader vs the workers).
     """
+    # An engine member carries its container in template.spec. The XRD types
+    # spec as optional but a member with no spec defines no pod to serve, so
+    # reaching here without one is a malformed replica.
+    assert member.template.spec is not None
     return next(c for c in member.template.spec.containers if c.name == "engine")
 
 
-def engine_member(engine, role: str):
+def engine_member(engine: v1alpha1.Engine, role: str) -> v1alpha1.Member | None:
     """The engine's member with this role, or None.
 
     An engine has at most one member of each role (a single Standalone, or one
@@ -329,7 +358,7 @@ def engine_member(engine, role: str):
     return next((m for m in engine.members if (m.role or ROLE_STANDALONE) == role), None)
 
 
-def select_backend(engine) -> str:
+def select_backend(engine: v1alpha1.Engine) -> str:
     """Pick the serving path for an engine from its member roles.
 
     A single Standalone member is a self-contained pod, served natively as a
@@ -341,7 +370,7 @@ def select_backend(engine) -> str:
     return LLMD
 
 
-def engine_name(replica: v1alpha1.ModelReplica, engine) -> str:
+def engine_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine) -> str:
     """The base name for an engine's composed workload and claim resources.
 
     Every engine's resources are qualified by the engine name: per-replica so
@@ -356,10 +385,10 @@ def engine_name(replica: v1alpha1.ModelReplica, engine) -> str:
     LWS shared the serving Service's name, that headless Service would never be
     created, gang DNS would never resolve, and the gang could never form.
     """
-    return resource.child_name(replica.metadata.name, engine.name)
+    return resource.child_name(_name(replica.metadata), engine.name)
 
 
-def claim_template_name(replica: v1alpha1.ModelReplica, engine, member) -> str:
+def claim_template_name(replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member) -> str:
     """ResourceClaimTemplate name for a member.
 
     Per-replica, per-engine, per-member-role: derived from the same parts as
@@ -370,7 +399,7 @@ def claim_template_name(replica: v1alpha1.ModelReplica, engine, member) -> str:
     engine's members may claim different devices, so each claiming member gets
     its own.
     """
-    return resource.child_name(replica.metadata.name, engine.name, member_role(member), _POD_CLAIM_NAME)
+    return resource.child_name(_name(replica.metadata), engine.name, member_role(member), _POD_CLAIM_NAME)
 
 
 def engine_resources() -> dict:
@@ -408,7 +437,7 @@ _GPU_TOLERATION = {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoS
 _LABEL_POOL = "modelplane.ai/pool"
 
 
-def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica, engine, member) -> None:
+def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member) -> None:
     """Constrain a member's serving pod to the placement the scheduler chose.
 
     Pins the pod to its member's scheduled node pool, wires it to claim its
@@ -441,7 +470,7 @@ def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica, engine, member) ->
 
 
 def resource_claim_template(
-    replica: v1alpha1.ModelReplica, engine, member, provider_config: str
+    replica: v1alpha1.ModelReplica, engine: v1alpha1.Engine, member: v1alpha1.Member, provider_config: str
 ) -> k8sobjv1alpha1.Object:
     """Compose a DRA ResourceClaimTemplate Object for a member.
 
@@ -451,6 +480,10 @@ def resource_claim_template(
     with device requests; a claimless member composes no template. One template
     serves every pod of the member, and DRA stamps a fresh claim per pod.
     """
+    # Callers (the backends) gate this on `if member.deviceRequests`, so it's
+    # only reached for a member that claims devices; a claimless member composes
+    # no template.
+    assert member.deviceRequests is not None
     device_requests = []
     for r in member.deviceRequests:
         exactly: dict = {"deviceClassName": r.deviceClassName, "count": int(r.count or 1)}

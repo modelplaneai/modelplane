@@ -36,7 +36,7 @@ from function import cel, semver
 
 def _eval(expr: str) -> bool:
     """Compile and evaluate a deviceless boolean CEL expression."""
-    return cel.compile_selector(expr).matches({})
+    return cel.Program(expr).matches({})
 
 
 @dataclasses.dataclass

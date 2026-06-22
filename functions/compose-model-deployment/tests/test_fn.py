@@ -15,7 +15,9 @@
 """Tests for the compose-model-deployment function."""
 
 import dataclasses
+import datetime
 import unittest
+from typing import Any
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -32,6 +34,9 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 # The selector used on the deployment's single GPU request, echoed verbatim
 # into each resolved device request.
 _GPU_CEL = 'device.driver == "gpu.nvidia.com"'
+
+# A fixed transition time keeps observed conditions deterministic.
+_TRANSITION_TIME = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
 
 # The resolved DRA device requests the scheduler stamps onto each ModelReplica
 # member, derived from the deployment's nodeSelector matched against the
@@ -93,7 +98,7 @@ def _replica_engines(*, args: bool = True) -> list:
     args toggles the engine container's --model arg, matching the fixture
     deployment a want is built from.
     """
-    container = {"name": "engine", "image": "vllm/vllm-openai:latest"}
+    container: dict[str, Any] = {"name": "engine", "image": "vllm/vllm-openai:latest"}
     if args:
         container["args"] = ["--model=Qwen/Qwen3-0.6B"]
     return [
@@ -156,7 +161,7 @@ def _cluster(name: str, *, ready: bool = True, address: str | None = "10.0.0.1",
                     type="Ready",
                     status="True" if ready else "False",
                     reason="Available" if ready else "Unavailable",
-                    lastTransitionTime="2025-01-01T00:00:00Z",
+                    lastTransitionTime=_TRANSITION_TIME,
                 )
             ],
             gateway=icv1alpha1.Gateway(address=address) if address else None,
@@ -279,7 +284,7 @@ def _req(
     observed: dict | None = None,
     cache: dict | None = None,
     cache_resolved_empty: bool = False,
-):
+) -> fnv1.RunFunctionRequest:
     """Build a RunFunctionRequest with the standard required_resources.
 
     clusters and replicas populate the "clusters" and "all-replicas" required

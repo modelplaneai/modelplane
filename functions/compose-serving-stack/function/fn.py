@@ -102,6 +102,20 @@ _GAIE_CRDS = [
 ]
 
 
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
 def _gaie_crd_key(doc: dict) -> str:
     """Stable composed-resource key for a GAIE CRD."""
     return f"gaie-crd-{doc['metadata']['name']}"
@@ -251,19 +265,21 @@ def _prometheus_release(version: str, provider_config: str) -> helmv1beta1.Relea
     )
 
 
-def _pc_name(xr):
+def _pc_name(xr: v1alpha1.ServingStack) -> str:
     """Derive the ProviderConfig name from the XR."""
-    return resource.child_name(xr.metadata.name, "cluster")
+    return resource.child_name(_name(xr.metadata), "cluster")
 
 
-class FunctionRunner(grpcv1.FunctionRunnerService):
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         """Run the function."""
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
@@ -275,12 +291,12 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ServingStack(**resource.struct_to_dict(req.observed.composite.resource))
 
-    def compose(self):
+    def compose(self) -> None:
         self.compose_provider_configs()
         self.compose_usages()
         self.compose_cert_manager()
@@ -295,7 +311,7 @@ class Composer:
         self.write_status()
         self.mark_readiness()
 
-    def compose_provider_configs(self):
+    def compose_provider_configs(self) -> None:
         """Build ProviderConfigs from the XR's secrets.
 
         The XRD requires a Kubeconfig secret, so one is always present.
@@ -313,7 +329,7 @@ class Composer:
                 source="Secret",
                 secretRef=k8spcv1alpha1.SecretRef(
                     name=kubeconfig_secret.name,
-                    namespace=self.xr.metadata.namespace,
+                    namespace=_namespace(self.xr.metadata),
                     key=kubeconfig_secret.key,
                 ),
             ),
@@ -323,7 +339,7 @@ class Composer:
                 source="Secret",
                 secretRef=helmpcv1beta1.SecretRef(
                     name=kubeconfig_secret.name,
-                    namespace=self.xr.metadata.namespace,
+                    namespace=_namespace(self.xr.metadata),
                     key=kubeconfig_secret.key,
                 ),
             ),
@@ -339,7 +355,7 @@ class Composer:
                 source="Secret",
                 secretRef=k8spcv1alpha1.SecretRef(
                     name=gcp_secret.name,
-                    namespace=self.xr.metadata.namespace,
+                    namespace=_namespace(self.xr.metadata),
                     key=gcp_secret.key,
                 ),
             )
@@ -348,7 +364,7 @@ class Composer:
                 source="Secret",
                 secretRef=helmpcv1beta1.SecretRef(
                     name=gcp_secret.name,
-                    namespace=self.xr.metadata.namespace,
+                    namespace=_namespace(self.xr.metadata),
                     key=gcp_secret.key,
                 ),
             )
@@ -369,7 +385,7 @@ class Composer:
             ),
         )
 
-    def compose_usages(self):
+    def compose_usages(self) -> None:
         """Compose Usages ordering the Envoy Gateway teardown.
 
         The Envoy Gateway controller must outlive the Gateway and GatewayClass
@@ -439,7 +455,7 @@ class Composer:
         )
         self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
 
-    def compose_cert_manager(self):
+    def compose_cert_manager(self) -> None:
         """Compose cert-manager. Gated on ProviderConfigs being observed."""
         pc_observed = self.provider_configs_observed()
         if not (pc_observed or "cert-manager" in self.req.observed.resources):
@@ -451,14 +467,14 @@ class Composer:
             _helm_release(
                 chart="cert-manager",
                 repo="https://charts.jetstack.io",
-                version=v.certManager,
+                version=v.certManager,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
                 namespace="cert-manager",
                 provider_config=_pc_name(self.xr),
                 values={"crds": {"enabled": True, "keep": False}},
             ),
         )
 
-    def compose_envoy_gateway(self):
+    def compose_envoy_gateway(self) -> None:
         """Compose Envoy Gateway. Gated on ProviderConfigs being observed.
 
         The extensionManager block points Envoy Gateway at the Envoy AI Gateway
@@ -477,7 +493,7 @@ class Composer:
             _helm_release(
                 chart="gateway-helm",
                 repo="oci://docker.io/envoyproxy",
-                version=v.envoyGateway,
+                version=v.envoyGateway,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
                 namespace="envoy-gateway-system",
                 provider_config=_pc_name(self.xr),
                 labels={_LABEL_RESOURCE: "envoy-gateway"},
@@ -517,7 +533,7 @@ class Composer:
             ),
         )
 
-    def compose_ai_gateway(self):
+    def compose_ai_gateway(self) -> None:
         """Compose the Envoy AI Gateway CRDs and controller. Gated on the same
         ProviderConfigs as Envoy Gateway.
 
@@ -549,7 +565,7 @@ class Composer:
             ),
         )
 
-    def compose_gaie_crds(self):
+    def compose_gaie_crds(self) -> None:
         """Compose the Gateway API Inference Extension (GAIE) CRDs as
         provider-kubernetes Objects on the remote cluster. Gated on the same
         ProviderConfigs as Envoy Gateway.
@@ -566,7 +582,7 @@ class Composer:
             if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
                 self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
-    def compose_prometheus(self):
+    def compose_prometheus(self) -> None:
         """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
         observed. Provides cluster observability (metrics scraping)."""
         pc_observed = self.provider_configs_observed()
@@ -576,10 +592,10 @@ class Composer:
         v = self.xr.spec.versions or v1alpha1.Versions()
         resource.update(
             self.rsp.desired.resources["prometheus"],
-            _prometheus_release(v.prometheus, _pc_name(self.xr)),
+            _prometheus_release(v.prometheus, _pc_name(self.xr)),  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
         )
 
-    def compose_leader_worker_set(self):
+    def compose_leader_worker_set(self) -> None:
         """Compose LeaderWorkerSet. Gated on ProviderConfigs being observed."""
         pc_observed = self.provider_configs_observed()
         if not (pc_observed or "leader-worker-set" in self.req.observed.resources):
@@ -591,13 +607,13 @@ class Composer:
             _helm_release(
                 chart="lws",
                 repo="oci://registry.k8s.io/lws/charts",
-                version=v.leaderWorkerSet,
+                version=v.leaderWorkerSet,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
                 namespace="lws-system",
                 provider_config=_pc_name(self.xr),
             ),
         )
 
-    def compose_node_feature_discovery(self):
+    def compose_node_feature_discovery(self) -> None:
         """Compose Node Feature Discovery. Gated on ProviderConfigs being
         observed. NFD labels GPU nodes (e.g. feature.node.kubernetes.io/pci-10de
         for NVIDIA) so the DRA driver can target its kubelet plugin to them."""
@@ -611,13 +627,13 @@ class Composer:
             _helm_release(
                 chart="node-feature-discovery",
                 repo="oci://registry.k8s.io/nfd/charts",
-                version=v.nodeFeatureDiscovery,
+                version=v.nodeFeatureDiscovery,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
                 namespace="node-feature-discovery",
                 provider_config=_pc_name(self.xr),
             ),
         )
 
-    def compose_dra_driver(self):
+    def compose_dra_driver(self) -> None:
         """Compose the NVIDIA DRA driver. Gated on ProviderConfigs being
         observed. The driver publishes each GPU node's devices as DRA
         ResourceSlices and registers the gpu.nvidia.com DeviceClass that
@@ -648,7 +664,7 @@ class Composer:
             _helm_release(
                 chart="dra-driver-nvidia-gpu",
                 repo="oci://registry.k8s.io/dra-driver-nvidia/charts",
-                version=v.nvidiaDraDriver,
+                version=v.nvidiaDraDriver,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
                 namespace=_DRA_DRIVER_NAMESPACE,
                 provider_config=_pc_name(self.xr),
                 values=dra_values,
@@ -693,7 +709,7 @@ class Composer:
             ),
         )
 
-    def compose_gateway(self):
+    def compose_gateway(self) -> None:
         """Compose the GatewayClass and Gateway on the remote cluster. Gated on
         ProviderConfigs being observed."""
         pc_observed = self.provider_configs_observed()
@@ -768,7 +784,7 @@ class Composer:
                 ),
             )
 
-    def write_status(self):
+    def write_status(self) -> None:
         """Extract the gateway address from the observed Gateway Object and
         write it to the XR's status."""
         gateway_address = None
@@ -790,7 +806,7 @@ class Composer:
             status.gateway = v1alpha1.GatewayModel(address=gateway_address)
         resource.update_status(self.rsp.desired.composite, status)
 
-    def mark_readiness(self):
+    def mark_readiness(self) -> None:
         """Mark composed resources as ready. Resources that don't need external
         readiness tracking are always marked ready. Others are marked ready when
         their observed condition is True."""
@@ -825,7 +841,7 @@ class Composer:
             ):
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
-    def provider_configs_observed(self):
+    def provider_configs_observed(self) -> bool:
         """Check if both ProviderConfigs have been persisted by Crossplane from
         a previous reconcile. Resources targeting the remote cluster are gated
         on this to avoid transient 'ProviderConfig not found' errors on first

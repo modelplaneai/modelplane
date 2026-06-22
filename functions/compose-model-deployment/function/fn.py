@@ -70,6 +70,20 @@ _LABEL_INDEX = "modelplane.ai/replica-index"
 _GATEWAY_SCHEME = "http"
 
 
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
 # TODO(https://github.com/crossplane/function-sdk-python/issues/217): Replace
 # Resolution and resolve_required with the SDK helper once it lands upstream.
 class Resolution(enum.Enum):
@@ -88,7 +102,7 @@ class Resolution(enum.Enum):
     PRESENT = "present"  # Resolved and found.
 
 
-def resolve_required(req, name: str) -> tuple[Resolution, dict | None]:
+def resolve_required(req: fnv1.RunFunctionRequest, name: str) -> tuple[Resolution, dict | None]:
     """Classify a required resource into a Resolution and its value.
 
     Returns (PRESENT, resource) when one was found, (ABSENT, None) when the
@@ -114,14 +128,16 @@ def _inference_cluster(
     return ic
 
 
-class FunctionRunner(grpcv1.FunctionRunnerService):
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new FunctionRunner."""
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         """Run the function."""
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
@@ -133,7 +149,7 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelDeployment(**resource.struct_to_dict(req.observed.composite.resource))
@@ -148,7 +164,7 @@ class Composer:
         # the (then-unknown) cache footprint. Set by resolve_inputs.
         self.fill = True
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
             return
         try:
@@ -173,7 +189,7 @@ class Composer:
         self.write_status(matched)
         self.derive_conditions(matched)
 
-    def resolve_inputs(self):
+    def resolve_inputs(self) -> bool:
         """Declare and fetch required resources. Returns False if critical
         inputs are missing."""
         # Candidate clusters are those matching the deployment's own
@@ -242,7 +258,7 @@ class Composer:
 
         return True
 
-    def resolve_cache_footprint(self, ref) -> tuple[Resolution, dict[str, str] | None]:
+    def resolve_cache_footprint(self, ref: v1alpha1.ModelCacheRef) -> tuple[Resolution, dict[str, str] | None]:
         """Resolve the cluster footprint of the ModelCache named by ref.
 
         Returns a (Resolution, matchLabels) pair:
@@ -265,7 +281,7 @@ class Composer:
             api_version="modelplane.ai/v1alpha1",
             kind="ModelCache",
             match_name=ref.name,
-            namespace=self.xr.metadata.namespace,
+            namespace=_namespace(self.xr.metadata),
         )
 
         resolution, cache_dict = resolve_required(self.req, "cache")
@@ -316,7 +332,7 @@ class Composer:
         # constraint beyond the deployment's own selector.
         return resolution, {}
 
-    def schedule(self):
+    def schedule(self) -> list[scheduling.Candidate]:
         """Match the deployment's engines against available clusters."""
         matched = scheduling.schedule(self.xr, self.clusters, self.all_replicas, fill=self.fill)
 
@@ -334,7 +350,7 @@ class Composer:
 
         return matched
 
-    def compose_replicas(self, matched):
+    def compose_replicas(self, matched: list[scheduling.Candidate]) -> None:
         """Compose a ModelReplica per matched cluster.
 
         Each replica mirrors the deployment's engines with the scheduler's
@@ -352,10 +368,10 @@ class Composer:
 
             replica = mrv1alpha1.ModelReplica(
                 metadata=metav1.ObjectMeta(
-                    name=name.replica(self.xr.metadata.name, cluster_info),
-                    namespace=self.xr.metadata.namespace,
+                    name=name.replica(_name(self.xr.metadata), cluster_info),
+                    namespace=_namespace(self.xr.metadata),
                     labels={
-                        _LABEL_DEPLOYMENT: self.xr.metadata.name,
+                        _LABEL_DEPLOYMENT: _name(self.xr.metadata),
                         _LABEL_CLUSTER: cluster_info.name,
                         _LABEL_INDEX: str(cluster_info.index),
                     },
@@ -375,7 +391,7 @@ class Composer:
                 )
             resource.update(self.rsp.desired.resources[replica_key], replica)
 
-    def _replica_engine(self, engine, placement):
+    def _replica_engine(self, engine: v1alpha1.Engine, placement: scheduling.EnginePlacement) -> mrv1alpha1.Engine:
         """Build a ModelReplica engine from a deployment engine + placement.
 
         The engine keeps its name, copies, phase, and member templates verbatim;
@@ -422,7 +438,7 @@ class Composer:
             replica_engine.phase = engine.phase
         return replica_engine
 
-    def compose_endpoints(self, matched):
+    def compose_endpoints(self, matched: list[scheduling.Candidate]) -> None:
         """Compose one ModelEndpoint per matched replica.
 
         Endpoints are labeled with the deployment name so a ModelService
@@ -460,8 +476,8 @@ class Composer:
             # The replica name (== the ModelReplica and the backend's workload
             # resources) is the per-placement routing key. Must match the name
             # composed in compose_replicas so routing lands on this replica.
-            replica_name = name.replica(self.xr.metadata.name, cluster_info)
-            rewrite_path = f"/{self.xr.metadata.namespace}/{replica_name}/"
+            replica_name = name.replica(_name(self.xr.metadata), cluster_info)
+            rewrite_path = f"/{_namespace(self.xr.metadata)}/{replica_name}/"
             endpoint_key = name.endpoint_key(cluster_info)
             url = f"{_GATEWAY_SCHEME}://{cluster_info.gateway_address}{rewrite_path}v1"
 
@@ -470,9 +486,9 @@ class Composer:
                 mev1alpha1.ModelEndpoint(
                     metadata=metav1.ObjectMeta(
                         name=replica_name,
-                        namespace=self.xr.metadata.namespace,
+                        namespace=_namespace(self.xr.metadata),
                         labels={
-                            _LABEL_DEPLOYMENT: self.xr.metadata.name,
+                            _LABEL_DEPLOYMENT: _name(self.xr.metadata),
                             _LABEL_CLUSTER: cluster_info.name,
                             _LABEL_INDEX: str(cluster_info.index),
                         },
@@ -484,7 +500,7 @@ class Composer:
                 ),
             )
 
-    def write_status(self, matched):
+    def write_status(self, matched: list[scheduling.Candidate]) -> None:
         """Write deployment status: replica counts."""
         replicas_ready = sum(
             1
@@ -497,7 +513,7 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self, matched):
+    def derive_conditions(self, matched: list[scheduling.Candidate]) -> None:
         """Derive ReplicasScheduled and ReplicasReady. Per-resource
         readiness is marked here too."""
         self.derive_replicas_scheduled(matched)
@@ -509,7 +525,7 @@ class Composer:
         if not matched:
             self.rsp.desired.composite.ready = fnv1.READY_FALSE
 
-    def derive_replicas_scheduled(self, matched):
+    def derive_replicas_scheduled(self, matched: list[scheduling.Candidate]) -> None:
         """ReplicasScheduled: replicas placed and created."""
         any_observed = any(name.replica_key(c) in self.req.observed.resources for c in matched)
         scheduled = len(matched) > 0 and any_observed
@@ -535,7 +551,7 @@ class Composer:
             ),
         )
 
-    def derive_replicas_ready(self, matched):
+    def derive_replicas_ready(self, matched: list[scheduling.Candidate]) -> None:
         """ReplicasReady: all replicas are serving traffic."""
         replicas_ready = 0
         for c in matched:
@@ -566,7 +582,7 @@ class Composer:
             ),
         )
 
-    def mark_endpoint_readiness(self, matched):
+    def mark_endpoint_readiness(self, matched: list[scheduling.Candidate]) -> None:
         """Mark each composed ModelEndpoint Ready when observed Ready."""
         for c in matched:
             endpoint_key = name.endpoint_key(c)

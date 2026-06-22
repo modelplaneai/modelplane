@@ -21,6 +21,8 @@ at /mnt/models, so weights are downloaded once per cluster and read N
 times by every pod in an LWS gang.
 """
 
+from typing import Literal
+
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -28,6 +30,22 @@ from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
 from models.ai.modelplane.modelcache import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+
+def _name(meta: metav1.ObjectMeta | None) -> str:
+    """The object's name, always set on resources read from the API server."""
+    if meta is None or meta.name is None:
+        raise ValueError("metadata.name is unexpectedly absent")
+    return meta.name
+
+
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
 
 # Condition types/reasons for the ModelCache XR.
 CONDITION_TYPE_CLUSTERS_MATCHED = "ClustersMatched"
@@ -48,10 +66,11 @@ _PVC_READY_CEL = 'object.status.phase == "Bound"'
 _JOB_READY_CEL = 'object.status.conditions.exists(c, c.type == "Complete" && c.status == "True")'
 
 # Per-cluster phases reported in status.clusters[].phase.
-PHASE_PENDING = "Pending"
-PHASE_HYDRATING = "Hydrating"
-PHASE_READY = "Ready"
-PHASE_FAILED = "Failed"
+_Phase = Literal["Pending", "Hydrating", "Ready", "Failed"]
+PHASE_PENDING: _Phase = "Pending"
+PHASE_HYDRATING: _Phase = "Hydrating"
+PHASE_READY: _Phase = "Ready"
+PHASE_FAILED: _Phase = "Failed"
 
 # Namespace on the workload cluster where the PVC + Job land. Must match the
 # namespace the serving pods mount from (native.py/llmd.py `_REMOTE_NAMESPACE`,
@@ -78,7 +97,8 @@ _JOB_TTL_SECONDS = 180
 # pod that pins the PVC - whereas Crossplane's delete would orphan that pod. (No
 # "all but Delete" shorthand exists, and deletionPolicy: Orphan is ignored once
 # managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
-_JOB_MANAGEMENT = ["Observe", "Create", "Update", "LateInitialize"]
+_ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
+_JOB_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "LateInitialize"]
 
 
 def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str | None:
@@ -104,7 +124,7 @@ _HYDRATED_MARKER = f"{HYDRATION_MOUNT}/.modelplane-hydrated"
 _SKIP_IF_HYDRATED = f"if [ -f {_HYDRATED_MARKER} ]; then echo 'already hydrated, skipping'; exit 0; fi; "
 
 
-def _hf_hydration(hf, auth_secret_name: str | None) -> tuple[list[dict], str]:
+def _hf_hydration(hf: v1alpha1.HuggingFace, auth_secret_name: str | None) -> tuple[list[dict], str]:
     """Return (env, shell command) for a HuggingFace source.
 
     Uses `hf download` (huggingface_hub 1.x; `huggingface-cli` is removed).
@@ -139,13 +159,15 @@ def _hf_hydration(hf, auth_secret_name: str | None) -> tuple[list[dict], str]:
     return env, command
 
 
-class FunctionRunner(grpcv1.FunctionRunnerService):
+class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.log = logging.get_logger()
 
-    async def RunFunction(self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext) -> fnv1.RunFunctionResponse:
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext | None
+    ) -> fnv1.RunFunctionResponse:  # ty: ignore[invalid-method-override]  # the generated grpc servicer base is untyped
         log = self.log.bind(tag=req.meta.tag)
         log.info("Running function")
         rsp = response.to(req)
@@ -154,7 +176,7 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
 
 class Composer:
-    def __init__(self, req, rsp):
+    def __init__(self, req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse) -> None:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelCache(**resource.struct_to_dict(req.observed.composite.resource))
@@ -169,19 +191,21 @@ class Composer:
         resolved. compose() only runs past resolve_inputs() once the auth
         requirement (if any) is resolved, so an empty auth_data here means the
         Secret was found-but-empty or absent, not merely unresolved."""
-        return self.xr.spec.huggingFace.authSecret is not None and not self.auth_data
+        return self.xr.spec.huggingFace.authSecret is not None and not self.auth_data  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
 
-    def compose(self):
+    def compose(self) -> None:
         if not self.resolve_inputs():
             return
         matched = self.match_clusters()
         # Derive each cluster's phase first (from observed state), then compose:
         # a hydrated cluster's Job is composed Observe-only so Crossplane doesn't
         # recreate it after the TTL controller cleans it.
-        per_cluster_phase = [(c.metadata.name, self.derive_cluster_phase(c.metadata.name)) for c in matched]
+        per_cluster_phase: list[tuple[str, _Phase]] = [
+            (_name(c.metadata), self.derive_cluster_phase(_name(c.metadata))) for c in matched
+        ]
         phase_by_name = dict(per_cluster_phase)
         for cluster in matched:
-            self.compose_cluster_resources(cluster, phase_by_name[cluster.metadata.name])
+            self.compose_cluster_resources(cluster, phase_by_name[_name(cluster.metadata)])
         self.mark_ready_resources(per_cluster_phase)
         self.write_status(matched, per_cluster_phase)
         self.derive_conditions(matched, per_cluster_phase)
@@ -215,7 +239,7 @@ class Composer:
         # XR's own namespace on the control plane. Its token is propagated to
         # each workload cluster (compose_cluster_resources) so the hydration Job
         # finds it; without resolving it first we can't materialize it remotely.
-        auth = self.xr.spec.huggingFace.authSecret
+        auth = self.xr.spec.huggingFace.authSecret  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
         if auth:
             response.require_resources(
                 self.rsp,
@@ -223,7 +247,7 @@ class Composer:
                 api_version="v1",
                 kind="Secret",
                 match_name=auth.name,
-                namespace=self.xr.metadata.namespace,
+                namespace=_namespace(self.xr.metadata),
             )
 
         # get_required_resources returns [] both when unresolved AND when
@@ -245,7 +269,7 @@ class Composer:
 
         return True
 
-    def _resolve_auth_data(self, auth, secret: dict | None) -> None:
+    def _resolve_auth_data(self, auth: v1alpha1.AuthSecret, secret: dict | None) -> None:
         """Read the token from the resolved control-plane authSecret into
         self.auth_data, copying its base64 `data` verbatim (re-encoding would
         corrupt it).
@@ -274,7 +298,7 @@ class Composer:
             if c.status and c.status.providerConfigRef and c.status.providerConfigRef.name and _storage_class(c)
         ]
 
-    def compose_cluster_resources(self, cluster: icv1alpha1.InferenceCluster, phase: str) -> None:
+    def compose_cluster_resources(self, cluster: icv1alpha1.InferenceCluster, phase: _Phase) -> None:
         """Compose the PVC always, and the hydration Job until the cluster is Ready.
 
         Once Ready the Job is dropped: with _JOB_MANAGEMENT (no Delete) that
@@ -283,8 +307,11 @@ class Composer:
         instead of Crossplane orphaning the pod. Readiness is latched in the XR
         status, so dropping the Job doesn't regress it, and a flap that re-adds
         it is a cheap idempotent skip."""
+        # match_clusters only returns clusters whose status.providerConfigRef.name
+        # is set, so this is never None here.
+        assert cluster.status and cluster.status.providerConfigRef and cluster.status.providerConfigRef.name
         pc = cluster.status.providerConfigRef.name
-        name = cluster.metadata.name
+        name = _name(cluster.metadata)
         resource.update(
             self.rsp.desired.resources[self._pvc_key(name)],
             self._wrap_remote(pc, self._pvc_manifest(cluster), _PVC_READY_CEL),
@@ -316,7 +343,7 @@ class Composer:
 
     def _pvc_manifest(self, cluster: icv1alpha1.InferenceCluster) -> dict:
         hf = self.xr.spec.huggingFace
-        size_gib = int(hf.sizeGiB)  # protobuf delivers XRD ints as float
+        size_gib = int(hf.sizeGiB)  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set; protobuf delivers XRD ints as float
         return {
             "apiVersion": "v1",
             "kind": "PersistentVolumeClaim",
@@ -347,7 +374,7 @@ class Composer:
         provider_config: str,
         manifest: dict,
         cel_query: str | None = None,
-        management_policies: list[str] | None = None,
+        management_policies: list[_ManagementPolicy] | None = None,
     ) -> k8sobjv1alpha1.Object:
         spec = k8sobjv1alpha1.Spec(
             providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
@@ -370,13 +397,13 @@ class Composer:
     # Namespace-qualified so same-named caches from different Modelplane
     # namespaces don't collide in the workload cluster's `default` namespace.
     def _pvc_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name)
+        return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata))
 
     def _job_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "hydrate")
+        return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata), "hydrate")
 
     def _auth_secret_name(self) -> str:
-        return resource.child_name("modelcache", self.xr.metadata.namespace, self.xr.metadata.name, "auth")
+        return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata), "auth")
 
     def _pvc_key(self, cluster_name: str) -> str:
         return f"pvc-{cluster_name}"
@@ -388,10 +415,10 @@ class Composer:
         return f"auth-{cluster_name}"
 
     def _labels(self) -> dict[str, str]:
-        return {"modelplane.ai/modelcache": self.xr.metadata.name}
+        return {"modelplane.ai/modelcache": _name(self.xr.metadata)}
 
     def _job_manifest(self) -> dict:
-        env, command = _hf_hydration(self.xr.spec.huggingFace, self._auth_secret_name())
+        env, command = _hf_hydration(self.xr.spec.huggingFace, self._auth_secret_name())  # ty: ignore[invalid-argument-type]  # XRD guarantees huggingFace is set
         return {
             "apiVersion": "batch/v1",
             "kind": "Job",
@@ -423,7 +450,7 @@ class Composer:
             },
         }
 
-    def derive_cluster_phase(self, cluster_name: str) -> str:
+    def derive_cluster_phase(self, cluster_name: str) -> _Phase:
         pvc_bound = self._observed_status(self._pvc_key(cluster_name)).get("phase") == "Bound"
         job_status = self._observed_status(self._job_key(cluster_name))
         if any(c.get("type") == "Failed" and c.get("status") == "True" for c in job_status.get("conditions", [])):
@@ -461,7 +488,7 @@ class Composer:
         manifest = (obj.status.atProvider.manifest if obj.status and obj.status.atProvider else None) or {}
         return manifest.get("status", {}) or {}
 
-    def mark_ready_resources(self, per_cluster_phase) -> None:
+    def mark_ready_resources(self, per_cluster_phase: list[tuple[str, _Phase]]) -> None:
         """Mark composed Objects ready from each Object's own Ready condition.
 
         The PVC and Job carry a DeriveFromCelQuery readiness policy, so the
@@ -484,7 +511,9 @@ class Composer:
                 if observed and resource.get_condition(observed.resource, "Ready").status == "True":
                     self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
-    def write_status(self, matched, per_cluster_phase) -> None:
+    def write_status(
+        self, matched: list[icv1alpha1.InferenceCluster], per_cluster_phase: list[tuple[str, _Phase]]
+    ) -> None:
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
         status = v1alpha1.Status(
             summary=v1alpha1.Summary(ready=f"{ready_count}/{len(matched)}"),
@@ -492,7 +521,9 @@ class Composer:
         )
         resource.update_status(self.rsp.desired.composite, status)
 
-    def derive_conditions(self, matched, per_cluster_phase) -> None:
+    def derive_conditions(
+        self, matched: list[icv1alpha1.InferenceCluster], per_cluster_phase: list[tuple[str, _Phase]]
+    ) -> None:
         if not matched:
             response.set_conditions(
                 self.rsp,
@@ -524,7 +555,9 @@ class Composer:
         # token rotated away after hydration is neither reported nor warned.
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
         if self._auth_missing() and ready_count != len(matched):
-            auth = self.xr.spec.huggingFace.authSecret
+            # _auth_missing is true only when huggingFace.authSecret is set.
+            auth = self.xr.spec.huggingFace.authSecret  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
+            assert auth is not None
             key = auth.key or "HF_TOKEN"
             response.set_conditions(
                 self.rsp,
@@ -536,7 +569,7 @@ class Composer:
             )
             response.warning(
                 self.rsp,
-                f"authSecret {self.xr.metadata.namespace}/{auth.name} is missing or has no key {key!r}",
+                f"authSecret {_namespace(self.xr.metadata)}/{auth.name} is missing or has no key {key!r}",
             )
         elif any(p == PHASE_FAILED for _, p in per_cluster_phase):
             response.set_conditions(
@@ -562,17 +595,19 @@ class Composer:
                 ),
             )
 
-    def emit_events(self, matched, per_cluster_phase) -> None:
+    def emit_events(
+        self, matched: list[icv1alpha1.InferenceCluster], per_cluster_phase: list[tuple[str, _Phase]]
+    ) -> None:
         """One-time transition events only (keep `kubectl describe` quiet)."""
         was_ready = resource.get_condition(self.req.observed.composite.resource, "Ready").status == "True"
         now_ready = bool(matched) and all(p == PHASE_READY for _, p in per_cluster_phase)
         observed_keys = self.req.observed.resources.keys()
-        first_compose = matched and all(self._pvc_key(c.metadata.name) not in observed_keys for c in matched)
+        first_compose = matched and all(self._pvc_key(_name(c.metadata)) not in observed_keys for c in matched)
         if first_compose:
-            names = ", ".join(c.metadata.name for c in matched)
+            names = ", ".join(_name(c.metadata) for c in matched)
             response.normal(
                 self.rsp,
-                f"Staging {self.xr.spec.huggingFace.repo} to {len(matched)} clusters: {names}",
+                f"Staging {self.xr.spec.huggingFace.repo} to {len(matched)} clusters: {names}",  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
             )
         if now_ready and not was_ready:
             response.normal(self.rsp, f"Artifact staged on all {len(matched)} clusters")
