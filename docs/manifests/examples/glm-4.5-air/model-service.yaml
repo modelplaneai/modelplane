@@ -1,0 +1,12 @@
+# One OpenAI-compatible endpoint for the deployment. Read its public address:
+#   kubectl get ms glm-air -n ml-team -o jsonpath='{.status.address}'
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: glm-air
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: glm-air

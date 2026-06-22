@@ -1,0 +1,28 @@
+# A single A100 40GB on GKE. GLM-4.5-Air is a ~106B MoE; a 4-bit GGUF doesn't
+# fit one A100's VRAM, but llama.cpp offloads the expert tensors to host RAM
+# (see the ModelDeployment's --n-cpu-moe), so the GPU only holds the active path
+# + KV cache. One A100, not a multi-GPU node.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-a100-40-1x
+spec:
+  description: "GKE a2-highgpu-1g, 1x NVIDIA A100 40GB"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: a2-highgpu-1g
+      diskSizeGb: 200
+      accelerator:
+        type: nvidia-tesla-a100
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ampere }
+    capacity:
+      memory: { value: "40960Mi" }

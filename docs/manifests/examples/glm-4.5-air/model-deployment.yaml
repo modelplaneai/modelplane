@@ -1,0 +1,48 @@
+# GLM-4.5-Air (~106B MoE) served from an Unsloth GGUF via llama.cpp instead of
+# vLLM, on a SINGLE A100. Modelplane treats the engine as any OpenAI-compatible
+# container, so the only changes from a vLLM deployment are the image and args:
+# the container is still named `engine` and listens on :8000. vLLM can't load
+# Unsloth's UD- dynamic quants; llama.cpp can, and `-hf` pulls the quant from
+# HuggingFace at startup (no ModelCache needed for a one-off).
+#
+# The model is bigger than one A100's VRAM, so --n-cpu-moe offloads the MoE
+# expert tensors to host RAM; the GPU runs the active path. That's how a 106B
+# model fits one A100 instead of a multi-GPU node. --port 8000 because llama.cpp
+# defaults to 8080 and Modelplane scrapes 8000.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: glm-air
+  namespace: ml-team
+spec:
+  replicas: 1
+  engines:
+  - name: glm
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("35Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: ghcr.io/ggml-org/llama.cpp:server-cuda
+            args:
+            - "-hf"
+            - "unsloth/GLM-4.5-Air-GGUF:IQ4_XS"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "-ngl"
+            - "999"
+            - "--n-cpu-moe"
+            - "99"
+            - "--jinja"
+            - "-c"
+            - "8192"

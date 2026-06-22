@@ -1,0 +1,21 @@
+# A GKE cluster with a single A100 node offering the class above.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gke-a100
+  labels:
+    modelplane.ai/region: us-west
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: my-gcp-project   # set to your project
+      region: us-west1
+  nodePools:
+  - name: gpu-a100
+    className: gke-a100-40-1x
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1
+    zones:
+    - us-west1-b
