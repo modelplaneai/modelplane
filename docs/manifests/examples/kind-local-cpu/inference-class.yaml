@@ -1,0 +1,33 @@
+# Two fake GPU classes of different sizes, both backed by the one mock DRA
+# driver. The sizes are DECLARED here (capacity.memory) — the mock devices have
+# no real VRAM; the scheduler matches a model's selector against this declared
+# capacity. That is what lets you demo capability scheduling with no hardware.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: fake-l4
+spec:
+  description: "Fake L4-class (24Gi) — mock DRA device"
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.example.com
+    deviceClassName: gpu.example.com
+    count: 1
+    capacity:
+      memory: { value: "24Gi" }
+---
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: fake-a100
+spec:
+  description: "Fake A100-class (40Gi) — mock DRA device"
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.example.com
+    deviceClassName: gpu.example.com
+    count: 1
+    capacity:
+      memory: { value: "40Gi" }

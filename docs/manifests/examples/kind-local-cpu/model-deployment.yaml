@@ -1,0 +1,30 @@
+# Ask for >= 35Gi of GPU memory. The fake-a100 pool (40Gi) qualifies; the
+# fake-l4 pool (24Gi) is skipped — capability scheduling, locally, with no GPUs.
+# The engine is the CPU llama.cpp image serving a tiny GGUF: the model is small
+# (it runs on CPU), and the selector is what drives placement. Bump the
+# threshold to >= 41Gi and nothing matches; lower it to >= 20Gi and either pool
+# is eligible.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-fleet
+  namespace: ml-team
+spec:
+  replicas: 1
+  engines:
+  - name: qwen
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.example.com"].memory.compareTo(quantity("35Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: ghcr.io/ggml-org/llama.cpp:server
+            args: ["-hf","unsloth/Qwen3-0.6B-GGUF:Q4_K_M","--host","0.0.0.0","--port","8000","--jinja"]

@@ -1,0 +1,24 @@
+# The local kind cluster (created by create-inference-cluster.sh) registered as
+# a workload via source: Existing, with two pools of different fake sizes. A BYO
+# cluster declares its nodePools so the scheduler knows its capacity; the script
+# labels each node modelplane.ai/pool=<name>.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: mp-fleet
+  labels:
+    modelplane.ai/region: local
+spec:
+  cluster:
+    source: Existing
+    existing:
+      secretRef:
+        name: mp-fleet-kubeconfig
+        key: kubeconfig
+  nodePools:
+  - name: fake-l4
+    className: fake-l4
+    nodeCount: 1
+  - name: fake-a100
+    className: fake-a100
+    nodeCount: 1

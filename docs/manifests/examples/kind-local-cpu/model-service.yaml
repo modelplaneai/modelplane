@@ -1,0 +1,13 @@
+# One OpenAI-compatible endpoint for the deployment. On kind the gateway gets a
+# MetalLB address that isn't routable from your host, so reach it with a
+# port-forward (see the README).
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelService
+metadata:
+  name: qwen-fleet
+  namespace: ml-team
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: qwen-fleet
