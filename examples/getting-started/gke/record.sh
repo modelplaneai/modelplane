@@ -7,6 +7,9 @@
 # an instant read, an idempotent re-apply, or a warm curl — nothing waits on
 # infra on camera.
 #
+# It applies the SAME manifests the getting-started docs ship — straight out of
+# docs/manifests/getting-started/ — so the demo and the guide can never drift.
+#
 #   cd examples/getting-started/gke && ./record.sh
 #   (or from anywhere: examples/getting-started/gke/record.sh — it cd's to its own dir)
 #
@@ -14,22 +17,24 @@
 # Tunables (env): TYPE_SPEED (sec/char), READ_PAUSE (sec after each output),
 #   CP (control-plane context), NS. Set STEP=1 to advance on Enter (dry run).
 set -uo pipefail
-cd "$(dirname "$0")" || exit 1                 # so relative manifest paths always resolve
+cd "$(dirname "$0")" || exit 1                 # so the relative manifest path always resolves
 
 CP="${CP:-gke_crossplane-playground_us-central1-a_modelplane-cp}"
 NS="${NS:-ml-team}"
+MF="../../../docs/manifests/getting-started"    # the canonical docs manifests
 TYPE_SPEED="${TYPE_SPEED:-0.03}"
 READ_PAUSE="${READ_PAUSE:-6}"
 
-# Pre-flight: tools present, and the endpoint actually has an address. Exit
-# cleanly with guidance rather than capturing a broken take.
+# Pre-flight: tools present, manifests reachable, and the endpoint actually has
+# an address. Exit cleanly with guidance rather than capturing a broken take.
 for t in kubectl curl jq; do
   command -v "$t" >/dev/null || { echo "record.sh: missing required tool '$t'"; exit 1; }
 done
+[ -f "$MF/gke/model-deployment-west.yaml" ] || { echo "record.sh: canonical manifests not found at $MF"; exit 1; }
 QWEN="$(kubectl --context "$CP" -n "$NS" get ms qwen -o jsonpath='{.status.address}' 2>/dev/null)"
 if [ -z "$QWEN" ]; then
   echo "record.sh: ModelService 'qwen' has no address yet."
-  echo "Finish the pre-flight (clusters + deployment Ready, endpoint warmed) first."
+  echo "Finish the pre-flight (clusters + deployments Ready, endpoint warmed) first."
   exit 1
 fi
 
@@ -48,20 +53,23 @@ run() {  # type the command like a human, then run it
 
 clear
 
-banner "Part 1 — started on one cheap L4 cluster, one small model."
+banner "Part 1 — one cheap L4 cluster, one small model, one OpenAI endpoint."
 run 'kubectl --context $CP get inferencecluster'
 run "curl -s \$QWEN/v1/chat/completions -H 'content-type: application/json' -d '{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Crossplane in one sentence?\"}],\"max_tokens\":80}' | jq -r '.choices[0].message.content'"
 
-banner "Part 2 — the fleet grew. Ask for the hardware you need, not a region."
-run "grep -A1 'cel:' 02-scale-to-fleet.yaml | head -2"
+banner "Part 2 — the platform team grew the fleet: two A100 regions next to the L4."
 run 'kubectl --context $CP get inferencecluster -L modelplane.ai/region'
 
-banner "Edit the same deployment in place — watch where the replicas land."
-run 'kubectl --context $CP apply -f 02-scale-to-fleet.yaml'
+banner "ML team adds a second deployment, pinned to us-west, asking for a bigger GPU."
+run "sed -n '/clusterSelector/,/quantity/p' \$MF/gke/model-deployment-west.yaml"
+run 'kubectl --context $CP apply -f $MF/gke/model-deployment-west.yaml'
+
+banner "One ModelService fronts both deployments — the endpoint never changes."
+run 'kubectl --context $CP apply -f $MF/model-service-multi.yaml'
 run 'kubectl --context $CP -n ml-team get modelreplica -L modelplane.ai/deployment,modelplane.ai/cluster'
 
-banner "Same endpoint, same model name — now served from the A100 clusters."
+banner "Same endpoint, same model name — now load-balancing across two regions."
 run "curl -s \$QWEN/v1/chat/completions -H 'content-type: application/json' -d '{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"Reverse a linked list in Python:\"}],\"max_tokens\":80}' | jq -r '.choices[0].message.content'"
 
-banner "Right hardware fleet-wide, one endpoint — no cluster names, no region labels, no tickets."
+banner "qwen-demo on the L4, qwen-west on the A100 — one endpoint, two regions, your HA posture too."
 pause 3
