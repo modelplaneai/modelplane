@@ -388,11 +388,42 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             type="RoutingReady",
                             status=fnv1.STATUS_CONDITION_FALSE,
                             reason="InvalidURL",
-                            message="spec.url has no host: not-a-url",
+                            message="Invalid spec.url: not-a-url",
                         ),
                     ],
                     results=[
                         fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="Invalid spec.url: not-a-url"),
+                    ],
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="URL with a non-integer port produces a warning and no service",
+                req=fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                v1alpha1.ModelEndpoint(
+                                    metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
+                                    spec=v1alpha1.Spec(url="https://host:abc"),
+                                ).model_dump(exclude_none=True, mode="json")
+                            ),
+                        ),
+                    ),
+                ),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(),
+                    conditions=[
+                        fnv1.Condition(
+                            type="RoutingReady",
+                            status=fnv1.STATUS_CONDITION_FALSE,
+                            reason="InvalidURL",
+                            message="Invalid spec.url: https://host:abc",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="Invalid spec.url: https://host:abc"),
                     ],
                     context=structpb.Struct(),
                 ),

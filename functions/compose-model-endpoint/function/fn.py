@@ -102,20 +102,26 @@ class Composer:
         """Parse spec.url into (host, port), or None (marking the XR not-ready)
         if the URL is invalid."""
         parsed = urllib.parse.urlparse(self.xr.spec.url)
-        if not parsed.hostname:
+        try:
+            # .port parses lazily and raises on a non-integer port, e.g.
+            # https://host:abc.
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        except ValueError:
+            port = None
+
+        if not parsed.hostname or port is None:
             response.set_conditions(
                 self.rsp,
                 resource.Condition(
                     typ=CONDITION_TYPE_ROUTING_READY,
                     status="False",
                     reason=CONDITION_REASON_INVALID_URL,
-                    message=f"spec.url has no host: {self.xr.spec.url}",
+                    message=f"Invalid spec.url: {self.xr.spec.url}",
                 ),
             )
             response.warning(self.rsp, f"Invalid spec.url: {self.xr.spec.url}")
             return None
 
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
         return parsed.hostname, port
 
     def compose_backend(self, host: str, port: int, address_type: str) -> None:
