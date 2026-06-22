@@ -12,29 +12,58 @@ start. `ModelDeployments` reference a cache via `spec.modelCacheRef.name`, and
 Modelplane mounts it at `/mnt/models` in every serving pod, shared across the
 pods of a multi-node engine. The engine reads weights locally from the mount.
 
-
-Without a cache, the engine fetches the model at pod startup, so the
-`ModelDeployment` must supply any required credentials, like `HF_TOKEN` via the engine container's `env`.
-
-Each cache has:
-
-- A **source**: a required `source` enum naming the kind, with the matching
-  source object set alongside it (setting `source: HuggingFace` selects
-  `spec.huggingFace`, which carries `repo` and `sizeGiB`). `HuggingFace` is the
-  only source today.
-- An optional **clusterSelector** to scope replication. Omitting
-  `spec.clusterSelector` stages the cache on every matched cluster; setting
-  `matchLabels` restricts it to clusters carrying those labels. A
-  `ModelDeployment` that references the cache places *new* replicas only onto
-  clusters within this footprint, so narrowing the selector also narrows where
-  replicas can land - a replica never schedules to a cluster the cache didn't
-  stage to. Replicas already running are left where they are.
-
-The cache mounts at `/mnt/models` on every consuming pod; engine container args
-should reference this path (`--model=/mnt/models` for vLLM).
-
 `ModelCache` is recommended for multi-node deployments and optional for
 single-node cold-start optimization.
+
+## What to cache
+
+The required `source` enum names the kind, with the matching source object set
+alongside it. Setting `source: HuggingFace` selects `spec.huggingFace`, which
+carries the `repo` to fetch, an optional `revision` (branch, tag, or commit), and
+`sizeGiB`. `HuggingFace` is the only source today.
+
+The cache mounts at `/mnt/models` on every consuming pod, so the engine's args
+reference that path (`--model=/mnt/models` for vLLM) rather than the source.
+
+## Authenticating
+
+A gated or private model needs a credential to fetch. When a cache stages the
+weights, the credential lives on the cache: set `authSecret` to name a Secret in
+the cache's namespace, and Modelplane propagates it to every cluster the cache
+stages to, for the hydration to read.
+
+Create the Secret once on the control plane, then reference it:
+
+```bash
+kubectl create secret generic hf-token \
+  --namespace ml-team \
+  --from-literal=HF_TOKEN=hf_xxxxxxxx
+```
+
+```yaml {nocopy=true}
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen3-Coder-480B-A35B-Instruct
+    authSecret:
+      name: hf-token         # a Secret in this ModelCache's namespace
+      key: HF_TOKEN          # defaults to HF_TOKEN
+    sizeGiB: 1100
+```
+
+Without a cache, the engine fetches the model itself at startup, so the
+credential goes on the `ModelDeployment` instead, as `HF_TOKEN` in the engine
+container's `env`.
+
+## Where to cache
+
+An optional `clusterSelector` scopes where the cache is staged. Omitting it
+stages the cache on every cluster in the fleet; setting `matchLabels` restricts
+it to clusters carrying those labels. A `ModelDeployment` that references the cache
+places *new* replicas only onto clusters within this footprint, so narrowing the
+selector also narrows where replicas can land: a replica never schedules to a
+cluster the cache didn't stage to. Replicas already running are left where they
+are.
 
 ## Loading from the cache efficiently
 
