@@ -12,7 +12,7 @@ An `InferenceClass` is a tested recipe for a GPU node pool. It bundles:
 - **Devices**: the node's hardware as a list of Dynamic Resource Allocation (DRA)
   style devices, each with a driver, count, typed attributes, and capacity. A
   `claim: DRA` device (a GPU) is bound to pods through a DRA `ResourceClaim`; a
-  `claim: Synthetic` device (an InfiniBand NIC, for example) is described for
+  `claim: Synthetic` device (like an InfiniBand NIC) is described for
   scheduling only. The scheduler matches a member's `nodeSelector` against these
   devices.
 - **Provisioning** (optional): how to create a node pool of this class on a

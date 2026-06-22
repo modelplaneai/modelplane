@@ -17,13 +17,12 @@ fetching them at boot.
 
 
 Without a cache, the engine fetches the model at pod startup, so the
-`ModelDeployment` must supply any required credentials (`HF_TOKEN` via the engine
-container's `env`, for example).
+`ModelDeployment` must supply any required credentials, like `HF_TOKEN` via the engine container's `env`.
 
 Each cache has:
 
 - A **source**: a required `source` enum naming the kind, with the matching
-  source object set alongside it (`source: HuggingFace`, for example, selects
+  source object set alongside it (setting `source: HuggingFace` selects
   `spec.huggingFace`, which carries `repo` and `sizeGiB`). `HuggingFace` is
   the only value today; future sources add an enum value and a sibling object
   (`Dragonfly` for P2P distribution, `OCI` for NIM-style bundled artifacts).
@@ -65,15 +64,15 @@ What the platform admin must set up depends on the cloud:
 Modelplane provisions RWX storage on `GKE` (Filestore Enterprise) and `EKS`
 (EFS) clusters, and those classes are fixed. On `Existing` clusters the admin
 brings the storage: create a `ReadWriteMany` StorageClass on the cluster (any
-backend supporting dynamic provisioning like WekaIO, NetApp Trident, `FSx` for
+backend with automatic PVC provisioning, like WekaIO, NetApp Trident, `FSx` for
 NetApp, and similar) and name it in `cluster.existing.cache.storageClassName` on
 the [InferenceCluster]({{< ref "platform/inference-cluster.md" >}}). Any name
 works; `modelplane-rwx` is just a convention. The ML team's `ModelCache` and
 `ModelDeployment` specs are unchanged regardless.
 <!-- vale Google.Acronyms = YES -->
 
-Backends that don't fit dynamic-PVC provisioning (Dragonfly's P2P distribution
-to per-node local caches, for example) will be added natively as new types under
+Backends that don't fit automatic PVC provisioning (Dragonfly's P2P distribution
+to per-node local caches) will be added natively as new types under
 `ModelCache.spec.source` rather than through this override.
 
 ## Example

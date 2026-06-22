@@ -12,8 +12,7 @@ above the **inference clusters** that actually serve models. It's built on
 [Crossplane](https://crossplane.io): platform teams and developers describe what
 they want as Kubernetes resources, and Modelplane continuously reconciles the
 fleet to match, composing the clusters, scheduling replicas, and exposing
-endpoints. This page is the full tour: the architecture, the resources, and what
-happens when you deploy a model.
+endpoints. This page is the full tour. It covers the architecture and resources, then walks through what happens when you deploy a model.
 
 ## Modelplane API
 
@@ -41,7 +40,7 @@ model, and Modelplane composes the rest.
     <div class="mp-lane-title">ML team creates</div>
     <a class="mp-chip" href="{{< ref "/models/model-deployment" >}}">
       <span class="mp-chip-name">ModelDeployment</span>
-      <span class="mp-chip-desc">A model to serve: its engines, replica count, and an optional cache.</span>
+      <span class="mp-chip-desc">A model to serve, with engines, replica count, and an optional cache.</span>
     </a>
     <a class="mp-chip" href="{{< ref "/models/model-service" >}}">
       <span class="mp-chip-name">ModelService</span>
@@ -103,7 +102,7 @@ This is what lets one API serve any container-based engine and any topology
 without special cases. Modelplane composes the engine onto the right cluster
 resource and injects almost nothing, just the address a multi-node leader is
 reachable at, so a worker can join it. New engines and new parallelism strategies
-work without a change to Modelplane. The community ships recipes (worked, copyable
+work without a change to Modelplane. The community publishes recipes (worked, copyable
 manifests) to bridge the gap that flexibility leaves, rather than hard-coding
 choices into the API.
 
@@ -146,7 +145,7 @@ their weights through a `ModelCache`, which is required once more than one pod
 loads the same model.
 
 Disaggregated serving splits prefill and decode into separate engines
-(`serving.mode: PrefillDecode`) that land on the same cluster and hand off the KV
+(`serving.mode: PrefillDecode`) that run on the same cluster and hand off the KV
 cache between them. Modelplane wires up the cluster-edge routing that pairs each
 request's prefill and decode; the engines carry the KV-transfer flags. Both are
 described in full in the [model deployment docs]({{< ref "/models/model-deployment" >}}).

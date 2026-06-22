@@ -7,7 +7,7 @@ description: Grow from one cluster to a multi-region fleet.
 You have one L4 cluster with a running model. In this guide, you'll add two
 larger-GPU clusters in different regions to grow the fleet available to the ML team.
 
-Provisioning two more clusters takes about 10–15 minutes.
+Provisioning two more clusters takes about 10 to 15 minutes.
 
 ## Register more clusters
 

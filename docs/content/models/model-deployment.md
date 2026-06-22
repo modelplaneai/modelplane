@@ -29,7 +29,7 @@ When you create a `ModelDeployment`, the scheduler:
    if set). When the deployment references a [ModelCache]({{< ref "model-cache.md" >}})
    via `spec.modelCacheRef`, the candidate clusters for *new* replicas are
    further narrowed to the cache's own `clusterSelector` footprint, so a replica
-   never lands on a cluster the cache didn't stage to (where its PVC wouldn't
+   is never placed on a cluster the cache didn't stage to (where its PVC wouldn't
    exist). Existing replicas are always retained where they're pinned. If the
    referenced cache can't be read yet, the deployment reports
    `ModelCacheResolved=False` and holds off placing new replicas until it
@@ -70,7 +70,7 @@ serves; the workers join it, addressing the leader through the
 across the gang (tensor, pipeline, data, or expert parallelism) is up to the
 engine flags you write on each member.
 
-A member's `env` can read pod fields through `valueFrom.fieldRef`: for example,
+A member's `env` can read pod fields through `valueFrom.fieldRef`, like
 setting vLLM's `VLLM_HOST_IP` from `status.podIP`, which multi-NIC RDMA nodes
 need so the engine binds the right interface instead of guessing it.
 
@@ -93,7 +93,7 @@ Disaggregation requires the **engine image to provide the NIXL KV-transfer
 runtime**. vLLM's `NixlConnector` (and SGLang's prefill/decode transfer) import
 the `nixl` package, so disaggregated engines crash at startup with `NIXL is not
 available` on an image that lacks it. Recent vanilla `vllm/vllm-openai` images
-ship NIXL, so pin a current tag rather than an old one. The engine image is
+include NIXL, so pin a current tag rather than an old one. The engine image is
 yours to choose, so this is a prerequisite Modelplane does not bundle for you.
 
 ## Examples

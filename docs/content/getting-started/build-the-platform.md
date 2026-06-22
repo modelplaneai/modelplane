@@ -9,7 +9,7 @@ first GPU cluster: a hardware profile published as an `InferenceClass` and an
 `InferenceCluster` that offers it.
 
 In the next step, the ML team will create a model deployment that schedules
-against this capacity without knowing which cluster it lands on.
+against this capacity without knowing which cluster it runs on.
 
 ## Prerequisites
 
@@ -26,10 +26,12 @@ against this capacity without knowing which cluster it lands on.
 
 ## Set up the InferenceGateway
 
+<!-- vale ai-tells.EmptyPadding = NO -->
 The `InferenceGateway` installs Traefik Proxy and MetalLB on the control plane.
 Traefik routes inference traffic to model replicas. MetalLB assigns Traefik's
 `LoadBalancer` service an external IP on kind, which doesn't have a cloud load
-balancer. You need one per control plane, always named `default`.
+balancer. You need one named `default` per control plane.
+<!-- vale ai-tells.EmptyPadding = YES -->
 
 If you run the control plane on a cloud cluster with native `LoadBalancer`
 support, omit the `loadBalancer` field.

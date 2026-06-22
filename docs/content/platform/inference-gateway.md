@@ -11,7 +11,7 @@ creates a Gateway that routes requests to model endpoints on remote inference
 clusters.
 
 
-Create one `InferenceGateway` per control plane. It must be named `default`. When
+Create one `InferenceGateway` named `default` per control plane. When
 running the control plane in kind, set `loadBalancer: MetalLB` to get a
 LoadBalancer IP inside the Docker network.
 

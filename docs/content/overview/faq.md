@@ -14,7 +14,7 @@ and [How Modelplane works]({{< ref "/overview/how-it-works" >}}) first.
 {{< qa "Is Modelplane a serving engine like vLLM?" >}}
 No, Modelplane is the control plane *above* the engine. It composes serving
 engines like vLLM, SGLang, and NVIDIA TensorRT-LLM, and operates them across a
-fleet of clusters; it doesn't serve tokens itself. You bring the engine; Modelplane schedules
+fleet of clusters. It doesn't serve tokens itself. You bring the engine; Modelplane schedules
 it, routes to it, scales it, and caches its weights across your inference fleet.
 {{< /qa >}}
 
@@ -93,12 +93,13 @@ every inference cluster, so dedicate each one to Modelplane rather than sharing 
 with other workloads.
 {{< /qa >}}
 
+<!-- vale ai-tells.FormalRegister = NO -->
 {{< qa "Do I need Crossplane?" >}}
 Yes, Modelplane is built on [Crossplane](https://crossplane.io) and requires it. If your 
 platform team already runs Crossplane to manage cloud infrastructure, Modelplane is the 
-same pattern applied to inference. Modelplane is built using Crossplane's composition 
-function framework, and shares its infrastructure providers.
+same pattern applied to inference. Modelplane uses Crossplane's function framework and shares its infrastructure providers.
 {{< /qa >}}
+<!-- vale ai-tells.FormalRegister  = YES -->
 
 
 ## What it can do
@@ -119,22 +120,21 @@ weights for canary and A/B rollouts.
 
 {{< qa "Can I fall back to a managed provider?" >}}
 Yes, a `ModelService` can send a slice of traffic to a manually created
-`ModelEndpoint` that points at an external SaaS endpoint (for example Together or
+`ModelEndpoint` that points at an external SaaS endpoint (like Together or
 Baseten), alongside your self-hosted replicas. Use it for overflow or break-glass
 routing.
 {{< /qa >}}
 
 {{< qa "How do large or multi-node models work?" >}}
 An engine can be a gang: a leader and one or more workers that Modelplane composes
-into a LeaderWorkerSet across nodes. You write the coordination (for example Ray,
-or vLLM's data-parallel coordinator) in the engine flags, and Modelplane injects
+into a LeaderWorkerSet across nodes. You write the coordination (like Ray or vLLM's data-parallel coordinator) in the engine flags, and Modelplane injects
 the leader's address so the workers can join it. Multi-node deployments stage
 weights through a `ModelCache`.
 {{< /qa >}}
 
 {{< qa "What about disaggregated prefill/decode?" >}}
 Set `serving.mode: PrefillDecode` and define separate prefill and decode engines.
-They land on the same cluster, hand off the KV cache over a fast fabric, and
+Both run on the same cluster, hand off the KV cache over a fast fabric, and
 Modelplane configures the cluster-edge routing that pairs each request. The
 KV-transfer flags live in your engine config.
 {{< /qa >}}
@@ -157,7 +157,7 @@ single-node deployments, and is required for multi-node ones.
 
 {{< qa "Why did you pick Modelplane as a name for the project?" >}}
 It's a fusion of AI Model and Control Plane. We also like that it implies that AI models
-are their own layer (or plane) in the overall stack.
+are their own layer (or plane) in the stack.
 {{< /qa >}}
 
 {{< qa "What does the logo signify?" >}}
@@ -166,7 +166,7 @@ Three popsicle sticks assembled to make a model plane. Balsa wood planes were th
 
 {{< qa "Is Modelplane production-ready?" >}}
 Modelplane is in early development and moving fast. Treat it as early software. The
-[platform docs]({{< ref "/platform" >}}) are specific about what ships today
+[platform docs]({{< ref "/platform" >}}) are specific about what's available today
 versus what's planned. We are building it in the open.
 {{< /qa >}}
 

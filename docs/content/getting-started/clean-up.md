@@ -3,7 +3,7 @@ title: Clean up
 weight: 60
 description: Tear down everything you created during the tour.
 ---
-Tear down in order: model resources first, then clusters, then the control plane.
+Delete the model resources, clusters, and finally the control plane.
 
 ## Delete model resources
 
@@ -26,7 +26,7 @@ kubectl get modelreplica -n ml-team --watch
 Delete all clusters with foreground cascading deletion. The serving stack on each
 workload cluster must uninstall while that cluster's API server is still
 reachable. Foreground deletion holds each cluster object until its stack
-finishes; background deletion can orphan cloud resources.
+finishes. Background deletion can orphan cloud resources.
 
 ```bash
 kubectl delete ic --all --cascade=foreground

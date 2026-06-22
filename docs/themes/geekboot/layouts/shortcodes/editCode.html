@@ -36,6 +36,12 @@
 {{- $escaped := htmlEscape $code -}}
 {{- $editable := `<span class="pe-2 editable" data-default="$1" contentEditable="true"></span><svg class="bi text-white" width="1em" height="1em"><use xlink:href="#pencil-square"/></svg>` -}}
 {{- $replaced := replaceRE `\$\@([^$]*)\$\@` $editable $escaped -}}
+{{- /* Wrap each line in .cl so the existing padding-left:1rem rule applies,
+     matching the indentation that Chroma gives regular code blocks. */ -}}
+{{- $lines := split $replaced "\n" -}}
+{{- $clLines := slice -}}
+{{- range $lines -}}{{- $clLines = $clLines | append (printf "<span class=\"cl\">%s</span>" .) -}}{{- end -}}
+{{- $replaced = delimit $clLines "\n" -}}
 <div class="code-card">
   <div class="code-card__header">
     {{ with $lang }}<span class="code-card__name">{{ . }}</span>{{ end }}

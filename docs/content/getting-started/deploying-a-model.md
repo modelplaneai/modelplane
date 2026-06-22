@@ -18,7 +18,7 @@ kubectl create namespace ml-team
 
 The device selector matches against the capacity declared in the
 `InferenceClass`, not the pod's resource requests. Any L4 node satisfies
-`>= 20Gi`, so this deployment lands on the cluster you just added:
+`>= 20Gi`, so this deployment runs on the cluster you just added:
 
 {{< tabs >}}
 {{< tab "EKS" >}}
@@ -77,13 +77,10 @@ Send a request to it:
 kubectl run -i --rm curl-test \
   --image=curlimages/curl \
   --restart=Never \
-  -- curl -s http://$ADDRESS/ml-team/qwen/v1/chat/completions \
+  --env="ADDRESS=$ADDRESS" \
+  -- sh -c 'curl -v "$ADDRESS/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen2.5-0.5B-Instruct",
-    "messages": [{"role": "user", "content": "What is Crossplane in one sentence?"}],
-    "max_tokens": 100
-  }'
+  -d "{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"What is the squre root of pi?\"}],\"max_tokens\":100}"'
 ```
 
 The request routes to the replica on the cluster Modelplane placed it on.
@@ -91,27 +88,30 @@ You should get a response in a few seconds:
 
 ```json {nocopy=true}
 {
-  "id": "chatcmpl-217f0efa-4b57-40bb-a7dc-f31047a9ba45",
+  "id": "chatcmpl-a26fc9ab-a7e6-4000-a349-286227102d57",
   "object": "chat.completion",
-  "created": 1781713612,
+  "created": 1782139786,
   "model": "Qwen/Qwen2.5-0.5B-Instruct",
   "choices": [
     {
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "Crossplane is a cross-cloud service orchestration platform
-        designed to facilitate seamless deployment and management of
-        applications and infrastructure across various distributed cloud
-        environments." },
-      "finish_reason": "stop"
+        "content": "The square root of pi (π) is approximately 
+        1.77245385090551602779409473109902323386.
+        This value can be obtained through various mathematical methods or 
+        algorithms designed to compute the square root of π. The precision and 
+        accuracy of this value depend on the computational resources available 
+        and the method used for calculation.",
+      },
+      "finish_reason": "stop",
     }
   ],
   "usage": {
     "prompt_tokens": 37,
-    "completion_tokens": 28,
-    "total_tokens": 65
-  }
+    "completion_tokens": 93,
+    "total_tokens": 130,
+  },
 }
 ```
 

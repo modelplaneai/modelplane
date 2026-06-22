@@ -82,7 +82,7 @@ engines:
 Disaggregation pays off for large models under load with strict latency targets
 and long context. For small models or low traffic, the KV-transfer overhead
 outweighs the benefit, so unified serving is the default. It requires an engine
-image that ships the **NIXL** KV-transfer runtime; see
+image that includes the **NIXL** KV-transfer runtime; see
 [Deploy a Model]({{< ref "model-deployment.md" >}}) for the prerequisite detail.
 
 ## Choosing a topology

@@ -32,7 +32,7 @@ across multiple clouds and on-premise environments. Large clusters
 concentrate failure and risk, so fleets of smaller clusters are often preferable,
 and inference workloads don't bin-pack the way other workloads do.
 
-Inference therefore grows into a fleet, and a new set of problems appears above
+Inference grows into a fleet, and a new set of problems appears above
 any single cluster:
 
 - Deciding where each model runs across available capacity.
