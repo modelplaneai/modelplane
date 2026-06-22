@@ -1,6 +1,6 @@
 # Modelplane
 
-**Status:** Draft
+**Status:** Accepted
 **Date:** May 2026
 **Author:** Nic Cope
 
@@ -15,33 +15,38 @@ gateway. An ML team deploys a model like this:
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
-  name: kimi-k2
+  name: qwen3-8b
   namespace: ml-team
 spec:
+  replicas: 1
   clusterSelector:
     matchLabels:
-      modelplane.ai/tier: production
-  replicas: 1
-  nodeSelector:
-    devices:
-    - name: gpu
-      count: 8
-      selectors:
-      - cel: |
-          device.attributes["gpu.nvidia.com"].cudaComputeCapability.isGreaterThan(semver("9.0.0")) &&
-          device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0
-  workers:
-    topology:
-      tensor: 8
-      pipeline: 2
-    template:
-      containers:
-      - name: engine
-        image: vllm/vllm-openai:v0.8.5
-        args:
-        - "--model=moonshotai/Kimi-K2-Instruct"
-        - "--trust-remote-code"
-        - "--max-model-len=65536"
+      modelplane.ai/region: us
+  engines:
+  - name: qwen3-8b
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            args:
+            - "--model=Qwen/Qwen3-8B"
+            - "--served-model-name=qwen"
+            - "--max-model-len=16384"
+            - "--gpu-memory-utilization=0.92"
+            - "--reasoning-parser=qwen3"
+            - "--default-chat-template-kwargs={\"enable_thinking\": false}"
+            - "--enable-auto-tool-choice"
+            - "--tool-call-parser=hermes"
 ```
 
 Modelplane handles fleet scheduling, multi-cluster routing, and infrastructure
@@ -66,9 +71,9 @@ pods. llm-d adds model-aware routing and prefill/decode coordination. NVIDIA
 Dynamo brings KV cache management and GPU-to-GPU weight transfer. Running a
 model on a Kubernetes cluster is increasingly a solved problem.
 
-The hard part is the fleet. Organizations have GPU clusters across regions and
-clouds, or will soon. Scheduling models to the right hardware, routing inference
-traffic across clusters, managing fleet-wide capacity, and providing
+The missing part is the fleet. Organizations have GPU clusters across regions
+and clouds, or will soon. Scheduling models to the right hardware, routing
+inference traffic across clusters, managing fleet-wide capacity, and providing
 self-service to ML teams with organizational governance are all problems that
 sit above any single cluster. Nobody ships this layer today.
 
@@ -76,32 +81,29 @@ Platform teams at companies like Apple and JPMC already use Crossplane to manage
 cloud infrastructure: unifying AWS, GCP, and Azure behind declarative APIs on a
 central control plane. Inference infrastructure is the same pattern. Modelplane
 is a fleet-level inference platform built on Crossplane. It solves the same
-problems as KServe and Dynamo (scheduling models to hardware, routing traffic,
-managing lifecycle and scaling) but across a fleet of clusters rather than
-within one.
-
-This document proposes Modelplane's v0.1 API: seven resources that give
-platform teams a fleet management layer and ML teams a self-service
-deployment interface, with scheduling, routing, and composition handled by
-Crossplane composition functions.
+problems as tools like KServe and Dynamo (scheduling models to hardware, routing
+traffic, managing lifecycle and scaling) but across a fleet of clusters rather
+than within one.
 
 ## Goals
 
-v0.1 demonstrates that a fleet-level inference control plane is viable and
-compelling.
+Modelplane does for a fleet of inference clusters what Kubernetes does for one.
+It's an open source control plane for AI inference: a fleet-wide system of
+record across clouds, neoclouds, on-premise environments, and regions. A handful
+of goals shape the API.
 
-v0.1 is successful if:
+**Fleet-scale.** Provisioning, scheduling, scaling, caching, and routing all
+operate at the fleet level.
 
-1. **End-to-end demo works.** A platform team can install Modelplane, create an
-   InferenceCluster, and an ML team can create a ModelDeployment and get a
-   working OpenAI-compatible endpoint routing across its replicas.
+**Universal.** Modelplane serves any model, on any engine, on any accelerator.
+When a new engine or a new parallelism strategy ships, you can author a
+ModelDeployment that uses it without upgrading Modelplane and without waiting
+for us to release support for it.
 
-2. **Frontier models work.** The same API can express deployments for Kimi K2
-   and Qwen3-Coder-480B. The API is credible for the models enterprises actually
-   want to deploy.
-
-3. **The API is credible.** An enterprise platform team can look at the resource
-   model and see how we could extend it to their requirementss
+**Self-service.** ML teams own *what to run*: the model, the hardware it needs,
+and how the engine is tuned to run it. Platform teams own *what's available*:
+which clusters and hardware exist, and who may use them. Modelplane takes care
+of everything between (scheduling, routing, etc).
 
 ## Target personas
 
@@ -123,8 +125,8 @@ operational: can they provide inference capacity without becoming a bottleneck?
 
 The machine learning (ML) team needs to run inference against open-weight models
 as part of their product or research. They create a `ModelDeployment` specifying
-everything needed to run the model: the worker template, hardware requirements,
-and the compute topology. They create a `ModelService` to get a unified
+everything needed to run the model: the engines, their hardware requirements,
+and how they're served. They create a `ModelService` to get a unified
 endpoint, and optionally create manual `ModelEndpoint` resources to route to
 external SaaS providers (Together, BaseTen) alongside self-hosted replicas.
 Modelplane handles scheduling, composition, and routing. The ML team thinks
@@ -240,6 +242,7 @@ spec:
   - name: gpu
     claim: DRA                      # default; emitted as a request in the ResourceClaim
     driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com # the DRA DeviceClass to claim through; required for claim: DRA
     count: 8
     attributes:
       # These mirror what the NVIDIA DRA driver publishes per device.
@@ -291,13 +294,13 @@ spec:
       kubernetesVersion: "1.35"
   nodePools:
   - name: frontier
-    class: gke-h200-8x-a3-ib
+    className: gke-h200-8x-a3-ib
     maxNodeCount: 4
     minNodeCount: 0
     nodeCount: 0
 
   - name: dev
-    class: gke-l4-1x-g2
+    className: gke-l4-1x-g2
     maxNodeCount: 4
     nodeCount: 1
 ```
@@ -330,7 +333,7 @@ spec:
         key: kubeconfig
   nodePools:
   - name: frontier
-    class: h200-8x-ib
+    className: h200-8x-ib
     maxNodeCount: 4
 ```
 
@@ -351,58 +354,55 @@ runs on the cluster.
 
 ### ModelDeployment
 
-> **Superseded.** How a `ModelDeployment` describes its workers and serving —
-> `spec.workers`, `workers.topology`, the top-level `nodeSelector`, and
-> disaggregated prefill/decode — is revised by [Unopinionated
-> ModelDeployments](./unopinionated-deployments.md). The sections below describe
-> the original model, pending that doc being folded in here.
-
 A model deployment spec. The ML team creates one to deploy a model to the fleet.
 Modelplane creates a `ModelReplica` for each replica and schedules it to an
-`InferenceCluster`. `ModelDeployment` carries everything about what to deploy
-and how: the worker template, hardware requirements via CEL, the compute
-topology, and the replica count.
+`InferenceCluster`. A ModelDeployment describes two things: the *shape* of its
+inference engines (`spec.engines`) and how those engines are *served* at the
+cluster edge (`spec.serving`). It describes a deployment's shape, not how the
+model is run; inference engine configuration is opaque to Modelplane.
 
-`workers.template` is a curated subset of a Kubernetes `PodTemplateSpec` in the
-same structural shape, so that fields can be added without restructuring. v0.1
-exposes `containers` (carrying `name`, `image`, `args`, `env`, and `envFrom`)
-and `imagePullSecrets`. The container named `engine` is the inference engine;
-additional containers pass through as sidecars. The composition function maps
-the template to the appropriate workload resource on the target cluster.
-References to Secrets in `env` or `imagePullSecrets` are passed through; the
-referenced objects must exist on every InferenceCluster the deployment may
-target.
+At its simplest, a small model on a single GPU is one engine with one
+`Standalone` member, fronted by `Unified` serving (the default):
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:
-  name: mixtral-8x7b
+  name: qwen3-8b
   namespace: ml-team
 spec:
+  replicas: 1
   clusterSelector:
     matchLabels:
-      modelplane.ai/tier: production
-  replicas: 2
-  nodeSelector:
-    devices:
-    - name: gpu
-      count: 2
-      selectors:
-      - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0
-  workers:
-    topology:
-      tensor: 2
-    template:
-      containers:
-      - name: engine
-        image: vllm/vllm-openai:v0.8.5
-        args:
-        - "--model=mistralai/Mixtral-8x7B-Instruct-v0.1"
-        - "--tensor-parallel-size=2"
-        - "--max-model-len=32768"
-        - "--gpu-memory-utilization=0.9"
+      modelplane.ai/region: us
+  engines:
+  - name: qwen3-8b
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            args:
+            - "--model=Qwen/Qwen3-8B"
+            - "--served-model-name=qwen"
+            - "--max-model-len=16384"
+            - "--gpu-memory-utilization=0.92"
+            - "--reasoning-parser=qwen3"
+            - "--default-chat-template-kwargs={\"enable_thinking\": false}"
+            - "--enable-auto-tool-choice"
+            - "--tool-call-parser=hermes"
 ```
+
+The rest of this section works up from there.
 
 #### Two-level matching
 
@@ -410,20 +410,17 @@ Cluster-level matching uses `clusterSelector.matchLabels` against standard
 Kubernetes labels on InferenceCluster. This is organizational metadata: tier,
 region, provider, compliance posture. String equality is sufficient.
 
-Node-level matching uses `nodeSelector.devices`, a list of device requests
-mirroring a DRA `ResourceClaim`. Each request has a `name`, a `count`, and a
-list of `selectors`. A pool matches a request when it has a device whose `count`
-covers the request and whose `driver`, `attributes`, and `capacity` satisfy
-every selector, and matches the deployment when it satisfies every request.
+Node-level matching uses each member's `nodeSelector.devices`, a list of device
+requests mirroring a DRA `ResourceClaim`. Each request has a `name`, a `count`,
+and a list of `selectors`. A pool matches a request when it has a device whose
+`count` covers the request and whose `driver`, `attributes`, and `capacity`
+satisfy every selector, and matches the member when it satisfies every request.
 
-`nodeSelector` is required. GPUs bind to pods only through DRA: each `claim: DRA`
-request becomes a `DeviceRequest` in the `ResourceClaim` the serving pods claim
-GPUs through, so a deployment with no device requests gets no GPU. Modelplane
-won't infer one. A request's selectors are how the ML team says what the model
-needs. A 0.5B model and a 70B model want very different GPUs, and inferring an
-empty "any GPU" request would schedule a model onto whatever pool has a free
-device and hope it fits. Declaring the request makes the requirement explicit
-and binds the matching device at admission.
+GPUs bind to pods only through DRA: each `claim: DRA` request becomes a
+`DeviceRequest` in the `ResourceClaim` the serving pods claim GPUs through, so a
+member with no device requests gets no GPU. A member's selectors are how the ML
+team says what the model needs. A 0.5B model and a 70B model want very different
+GPUs.
 
 The CEL is real DRA CEL: `device.driver`,
 `device.attributes["gpu.nvidia.com"].architecture` for a typed attribute under
@@ -431,105 +428,241 @@ the driver's domain, `device.capacity["gpu.nvidia.com"].memory` for a Quantity,
 with `quantity()` and `semver()` to construct comparable values. Someone who
 knows DRA writes the same expressions they'd write in a `ResourceClaim`.
 
-#### Workers and topology
+#### Engines
 
-`workers` groups the worker count and compute topology. `workers.topology`
-describes the shape of one worker; `workers.count` (default 1) says how many
-workers of that shape exist per ModelReplica.
+`spec.engines` describes a ModelReplica's topology as an array of engines. An
+engine is one serving unit: a standalone pod, or a gang of pods coordinating
+across nodes. Each engine may be copied (but not autoscaled) within a
+ModelReplica.
 
-`topology` has four fields, all parallelism axes. `tensor` is required.
-`pipeline`, `data`, and `dataLocal` default to 1. The axes are independent and
-compose multiplicatively — there is no strategy discriminator because the
-derivation formula is the same regardless of which axes are active:
+- `name`: identifies the engine.
+- `copies`: how many identical copies of this engine to run per `ModelReplica`.
+- `phase`: the engine's phase in a disaggregated deployment, `Prefill` or
+  `Decode`. Only set when `spec.serving.mode` is `PrefillDecode`.
+- `members`: the engine's pods. An engine must either have a single `Standalone`
+  member or a `Leader` and a `Worker`.
 
-| | Formula |
-|---|---|
-| Nodes per worker | `pipeline * (data / dataLocal)` |
-| GPUs per node | `tensor * dataLocal` |
-| Total GPUs per worker | `tensor * data * pipeline` |
+Each member has:
 
+- `role`: `Standalone` (default), `Leader`, or `Worker`.
+- `nodeSelector`: the member's per-node device request.
+- `worker.nodes`: how many nodes the member spans, for a `Worker` only. Each
+  node runs one worker pod, so this is how big the gang is: a leader plus
+  `worker.nodes` workers. Defaults to 1.
+- `template`: a curated subset of a Kubernetes `PodTemplateSpec`, in the same
+  structural shape so fields can be added without restructuring. It carries a
+  single container named `engine` (the inference engine) with its image, command,
+  args, and env, plus `imagePullSecrets`. Secret references are passed through;
+  the referenced objects must exist on every InferenceCluster the deployment may
+  target.
 
-Topology drives provisioning: it shapes how the workload is laid out into pods
-and a LeaderWorkerSet. The scheduler reads only one number from it,
-nodes-per-replica (`pipeline * (data / dataLocal) * workers.count`, i.e.
-nodes-per-worker times the workers per replica), which it gates against the
-pool's available nodes. Per-node GPU count is a `nodeSelector` concern: a GPU
-request with `count: 8` selects a pool whose GPU device has a count of at least
-8.
+A `Standalone` engine composes to a Deployment. A `Leader`/`Worker` engine
+composes to a LeaderWorkerSet whose gang size is one leader plus its
+`worker.nodes` workers. Which workload kind backs each is an implementation
+detail.
 
-#### Disaggregated prefill/decode
+Modelplane expects the user to provide all the engine commands and flags needed
+to form a topology. Some of those commands need to find other pods in the
+engine: in a multi-node tensor+pipeline gang, for instance, the Ray followers
+need the Ray head's address. Modelplane injects a small set of `MODELPLANE_` env
+vars into the engine containers for this (today just
+`MODELPLANE_LEADER_ADDRESS`). For the LWS backend it aliases the variable to
+`LWS_LEADER_ADDRESS`.
 
-The top-level `nodeSelector` and `workers` are always the decode (or unified)
-settings. Adding a `prefill` block makes the deployment disaggregated. The
-`prefill` block is self-contained: it repeats all settings rather than
-inheriting from the root, because explicit repetition is easier to reason about
-than implicit merge.
-
-The P:D ratio is expressed via `workers.count` on each role. It's a topology
-parameter (fixed per deployment), not a scaling knob. Decode and prefill must
-land on the same InferenceCluster (KV cache transfer needs co-location) but can
-target different pools within that cluster.
+A model too large for one node shows this: tensor-parallel within each node,
+pipeline-parallel across two. One engine with a `Leader` and one `Worker`
+composes to a LeaderWorkerSet of two pods. The leader runs the engine's
+coordination head and serves; the follower joins it, addressing the leader
+through `MODELPLANE_LEADER_ADDRESS`. The asymmetry between running the head and
+joining it lives in the two members' commands, which the user writes. Both
+members want the same GPUs, so they repeat the same `nodeSelector` and the
+scheduler places the whole gang on one pool. It schedules as 2 nodes, 8 GPUs
+each.
 
 ```yaml
-apiVersion: modelplane.ai/v1alpha1
-kind: ModelDeployment
-metadata:
-  name: llama-405b-disagg
-  namespace: ml-team
 spec:
-  clusterSelector:
-    matchLabels:
-      modelplane.ai/tier: production
-  replicas: 1
-
-  # Top-level = decode. 3 decode workers, each TP=8 PP=2.
-  nodeSelector:
-    devices:
-    - name: gpu
-      count: 8
-      selectors:
-      - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0
-    - name: nic
-      count: 8
-      selectors:
-      - cel: device.attributes["nic.nvidia.com"].linkType == "infiniband"
-  workers:
-    count: 3
-    topology:
-      tensor: 8
-      pipeline: 2
-    template:
-      containers:
-      - name: engine
-        image: vllm/vllm-openai:v0.9.1
-        args:
-        - "--model=meta-llama/Llama-3.1-405B-Instruct"
-        - "--max-model-len=131072"
-        - '--kv-transfer-config={"kv_role":"kv_consumer"}'
-
-  # Prefill: 5 workers, each single-GPU. Self-contained.
-  prefill:
-    nodeSelector:
-      devices:
-      - name: gpu
-        count: 1
-        selectors:
-        - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("80Gi")) >= 0
-      - name: nic
-        count: 1
-        selectors:
-        - cel: device.attributes["nic.nvidia.com"].linkType == "infiniband"
-    workers:
-      count: 5
-      topology:
-        tensor: 1
+  serving:
+    mode: Unified
+  engines:
+  - name: llama-405b
+    members:
+    - role: Leader
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 8
+          selectors:
+          - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("64Gi")) >= 0
       template:
-        containers:
-        - name: engine
-          image: vllm/vllm-openai:v0.9.1
-          args:
-          - "--model=meta-llama/Llama-3.1-405B-Instruct"
-          - '--kv-transfer-config={"kv_role":"kv_producer"}'
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            command:
+            - /bin/sh
+            - -c
+            - >-
+              ray start --head --port=6379;
+              exec vllm serve
+              --model=meta-llama/Llama-3.1-405B-Instruct
+              --tensor-parallel-size=8
+              --pipeline-parallel-size=2
+              --port=8000
+    - role: Worker
+      worker:
+        nodes: 1
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 8
+          selectors:
+          - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("64Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            command:
+            - /bin/sh
+            - -c
+            - exec ray start --address=${MODELPLANE_LEADER_ADDRESS}:6379 --block
+```
+
+Note the relationship between `ModelDeployment` replicas, engine copies, and
+worker nodes:
+
+- `ModelDeployment` replicas specifies how many replicas of the entire model
+  topology and serving apparatus should be stamped out. Replicas often run on
+  different InferenceClusters. This is the scaling axis: Modelplane scales a
+  model by adding and removing whole replicas.
+- Engine copies specifies how many identical copies of an engine each
+  `ModelReplica` stamps out: a fixed number, sized once, never autoscaled.
+  Always within the same InferenceCluster, but potentially on different pools.
+- Worker nodes specifies how big each copy of an engine's gang is, how many
+  worker nodes it has.
+
+Engine copies serves two purposes. In disaggregated serving, with a prefill
+engine and a decode engine, engine copies are how you control the
+prefill-to-decode ratio. They also size the ModelReplica itself: engine copies
+maps to the underlying Deployment or LeaderWorkerSet's replicas, so one
+ModelReplica holds many pods. Without it, running ten copies of a single-node
+model means ten ModelReplicas of one pod each, and the fleet scheduler ends up
+placing individual pods on clusters with less information than the cluster's own
+scheduler has. Engine copies lets the fleet scheduler pick a cluster and leaves
+placing pods on nodes to that cluster's scheduler.
+
+#### Serving
+
+`spec.serving` specifies how an InferenceCluster should serve a ModelReplica:
+how it should expose it as a usable ModelEndpoint target. It's optional, and if
+omitted defaults to:
+
+```yaml
+spec:
+  serving:
+    mode: Unified
+```
+
+Modelplane has two layers of inference request routing. The InferenceGateway
+runs on the Modelplane control plane, offering an OpenAI compatible inference
+URL per ModelService. It can only route to the InferenceCluster edge. Each
+InferenceCluster also runs a gateway, responsible for routing from cluster edge
+to the actual model engines (vLLM etc). This is what `spec.serving` configures.
+
+Modelplane is pretty opinionated about this layer. We consider which inference
+gateway we use an implementation detail, like using LWS or llm-d. Where possible
+we infer this layer's configuration from the shape of the `engines` block.
+
+By default, under `Unified` serving, Modelplane assumes:
+
+- Every Standalone or Leader member exposes an OpenAI endpoint on port 8000.
+- Every Standalone or Leader member should be part of one Kubernetes Service.
+- The Kubernetes Service should be exposed by a Gateway API HTTPRoute.
+
+The only other valid mode is `PrefillDecode`, for disaggregated serving, where
+each engine marks its `phase` as `Prefill` or `Decode` (the full spec is below).
+`mode` is the single explicit statement that a deployment is disaggregated;
+`phase` marks which engine plays which part. Validation ties them together:
+`PrefillDecode` requires exactly two engines, one `Prefill` and one `Decode`,
+and `phase` may not be set under any other mode. The mode enum leaves room for
+other topologies with special serving needs (e.g. `EncodePrefillDecode` for
+multimodal models, where a third engine would mark `phase: Encode`).
+
+Under `PrefillDecode` Modelplane configures inference-aware routing optimized
+for disaggregated serving and assumes:
+
+- Every Standalone or Leader member exposes an OpenAI endpoint on port 8000.
+- Every Standalone or Leader member should be part of one GAIE InferencePool.
+- The InferencePool should be exposed by a Gateway API HTTPRoute.
+
+Disaggregated serving requires an endpoint picker (EPP) to pick a decode and a
+prefill worker for each request. The decode worker runs a sidecar that
+dispatches prefill to the chosen worker; the engines themselves transfer the KV
+cache over their configured connector. Modelplane injects the sidecar, labels
+the pods as either prefill or decode, and configures the endpoint picker
+accordingly.
+
+Because the engines transfer the KV cache over their connector (e.g. vLLM's
+`NixlConnector`), the engine image must ship that connector's runtime: the NIXL
+library. Recent vanilla `vllm/vllm-openai` images include it, so a disaggregated
+deployment pins a current tag rather than an old one. Since the engine image and
+flags are the user's, this is a deployment prerequisite Modelplane does not
+provide; failing it surfaces as engines crashlooping with `NIXL is not
+available`.
+
+A disaggregated deployment splits prefill and decode into separate engines on
+their own hardware, serving the same model: three single-GPU prefill copies and
+two two-GPU decode copies, sized by each engine's `copies`. Decode gets more GPU
+per copy for KV-cache capacity. The KV producer/consumer roles are engine flags.
+Everything that differs between the phases, hardware and KV role and copy count,
+is carried by the two engines. It schedules as 7 nodes co-located in one network
+domain on one cluster: 3×1 GPU for prefill and 2×2 GPU for decode, in
+potentially different pools.
+
+```yaml
+spec:
+  serving:
+    mode: PrefillDecode
+  engines:
+  - name: prefill
+    phase: Prefill
+    copies: 3
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("24Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            args:
+            - --model=meta-llama/Llama-3.1-8B-Instruct
+            - --kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_producer"}
+  - name: decode
+    phase: Decode
+    copies: 2
+    members:
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 2
+          selectors:
+          - cel: device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("40Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.11.0
+            args:
+            - --model=meta-llama/Llama-3.1-8B-Instruct
+            - --tensor-parallel-size=2
+            - --kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_consumer"}
 ```
 
 ### ModelReplica
@@ -541,9 +674,8 @@ schematically identical to a `ModelDeployment`, but:
 * With `spec.clusterName` instead of `spec.clusterSelector`
 
 Each replica is one complete serving instance on a chosen InferenceCluster,
-containing all the pods needed for that instance: one pod for single-node,
-multiple pods via LeaderWorkerSet for multi-node, and both decode and prefill
-workloads for disaggregated serving.
+containing all the pods needed for that instance: every engine, every copy, and
+every member, plus the serving surface that exposes them.
 
 The fleet scheduler picks `(InferenceCluster, pool)` per replica independently.
 Replicas of the same deployment can land on different clusters or the same
@@ -559,7 +691,8 @@ re-places the replica on another viable cluster.
 
 The `ModelReplica` is the intermediate representation between the user-facing
 ModelDeployment and the cluster-level serving workload. The composition function
-maps the ModelReplica's topology to the appropriate cluster-level resource.
+maps the ModelReplica's engines and serving config to the appropriate
+cluster-level resources.
 
 ### ModelService
 
@@ -632,7 +765,10 @@ metadata:
     modelplane.ai/cluster: prod-gke-us-east
     modelplane.ai/api: OpenAI
 spec:
-  url: http://10.0.1.50/ml-team/kimi-k2/
+  # url is the full reachable endpoint: cluster gateway + per-replica path + /v1.
+  url: http://10.0.1.50/ml-team/kimi-k2-coreweave-us-east-0/v1
+  # rewritePath is the per-replica path ModelService rewrites requests to.
+  rewritePath: /ml-team/kimi-k2-coreweave-us-east-0/
 
 ---
 # Manual (external SaaS)
@@ -655,7 +791,7 @@ spec:
 
 Configures the control plane's routing infrastructure, the gateway that sits
 between ML teams and inference clusters. Cluster-scoped and singleton in
-practice (one gateway per control plane). v0.1 uses Envoy Gateway.
+practice (one gateway per control plane).
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -663,58 +799,80 @@ kind: InferenceGateway
 metadata:
   name: default
 spec:
-  type: Envoy
-  envoyGateway:
-    version: v1.3.0
-  gateway:
-    port: 80
+  backend: Traefik
+  traefik:
+    version: "40.2.0"
 status:
   address: 34.56.129.3
 ```
 
+The `backend` discriminator selects the gateway implementation.
+
 The ModelService composition function configures routing rules on the gateway.
 The status contract is minimal: just `status.address`. Gateway implementation
-details (Gateway API resources, Envoy configuration) are composed under the
-hood.
+details are composed under the hood.
 
 ## Fleet scheduling
 
 When an ML team creates a ModelDeployment:
 
-1. The deploy function runs the fleet scheduler (described below) to pick
-   `(cluster, pool)` for each replica.
+1. The deploy function runs the fleet scheduler (described below) to place each
+   replica on a cluster.
 2. It composes a ModelReplica targeting that cluster and a ModelEndpoint for
    routing.
-3. The replica function reads the worker template and topology from the
+3. The replica function reads the engines and serving config from the
    ModelReplica and composes the serving workload on the target cluster.
 4. The service function reads the InferenceGateway and matched ModelEndpoints,
    and composes routing resources on the control plane.
 
-The fleet scheduler picks `(InferenceCluster, pool)` for each ModelReplica:
+The fleet scheduler places each ModelReplica on one InferenceCluster. It is
+really co-scheduling a set of engines to a single cluster: the unit of pool
+placement is the engine. Every member of an engine lands on one pool, but
+different engines in a replica may land on different pools.
 
-1. **Filter clusters** by `clusterSelector.matchLabels` against InferenceCluster
-   labels.
-2. **Filter pools** by evaluating each `nodeSelector.devices` request against the
-   pool's InferenceClass devices. A pool matches a request when it has a device
-   whose `count` covers the request and whose `driver`, `attributes`, and
-   `capacity` satisfy every selector. A pool matches the deployment when it
-   satisfies every request.
-3. **Check capacity.** Does the pool have enough available nodes for one replica
-   (`pipeline * (data / dataLocal) * workers.count` from `workers`)? Available =
-   `maxNodeCount` minus nodes consumed by existing ModelReplicas on that
-   cluster. (This capacity formula is superseded by [Unopinionated
-   ModelDeployments](./unopinionated-deployments.md), which counts nodes per
-   worker group.)
+A member's cost is counted in nodes:
+
+```
+nodes = pods × engine copies
+pods = 1 (Standalone or Leader), or Worker nodes
+```
+
+A member with no nodeSelector costs zero nodes. Its pods claim no devices, so
+they don't occupy a node the way a pod that claims all of a node's GPUs does;
+the cluster's scheduler packs them onto the gang's nodes alongside the pods that
+do. At least one engine member must have a nodeSelector.
+
+When placing an engine, the scheduler requires one pool that satisfies every
+member, with enough free nodes for all of them. A gang's members talk over the
+pool's fabric, and pool identity is the finest grain the scheduler has to reason
+about it, so it never splits an engine across pools: an engine that no single
+pool satisfies isn't scheduled on that cluster. A member with no nodeSelector
+matches every pool, so it always lands with its gang. All of a ModelReplica's
+engines must be co-scheduled onto one cluster.
+
+The scheduler's pool choice is enforced, not advisory. Every pod carries a
+Kubernetes nodeSelector on the `modelplane.ai/pool` node label, which Modelplane
+stamps on every node it provisions (operators of BYO clusters must label their
+nodes). Without it the cluster's scheduler could place a pod on any pool whose
+devices satisfy its DRA claim, and the fleet scheduler's per-pool accounting
+would drift from where pods actually run.
+
+That accounting is node-granular and deliberately coarse. It assumes a member's
+pods each occupy one node, which holds when a pod claims all of a node's
+devices. A pod claiming fewer (say 1 GPU of 8) still charges a whole node, so
+the scheduler may refuse a placement that would physically fit. It never
+overcommits; device-level contention is left to DRA admission on the workload
+cluster, which is authoritative.
 
 Modelplane will support affinity and anti-affinity in a future version.
 
-DRA binds devices on every InferenceCluster. Because `nodeSelector` is already a
-list of DRA device requests, forming the `ResourceClaim` is mechanical: each
-request whose matched device is `claim: DRA` becomes one `DeviceRequest`,
-carrying the request's `count` and CEL selectors verbatim, referencing the
-driver's DeviceClass. Requests matching a `claim: Synthetic` device are dropped;
-the fleet scheduler already enforced them by pool selection. DRA binds
-device-to-node at pod admission time.
+DRA binds devices on every InferenceCluster. Because each member's
+`nodeSelector` is already a list of DRA device requests, forming the
+`ResourceClaim` is mechanical: each request whose matched device is `claim: DRA`
+becomes one `DeviceRequest`, carrying the request's `count` and CEL selectors
+verbatim, referencing the driver's DeviceClass. Requests matching a `claim:
+Synthetic` device are dropped; the fleet scheduler already enforced them by pool
+selection. DRA binds device-to-node at pod admission time.
 
 ## Autoscaling
 
@@ -731,6 +889,18 @@ keep readiness in a separate field. Autoscaling is opt-in via `kubectl scale` or
 separate KEDA `ScaledObject` (or similar).
 
 ## Alternatives considered
+
+### An opinionated topology block
+
+An earlier design had `spec.workers` carry a `topology` block of named
+parallelism axes (`tensor`, `pipeline`, `data`, `dataLocal`), from which
+Modelplane derived and injected the engine's parallelism flags
+(`--tensor-parallel-size` and the like). Those flags are engine-specific, so
+deriving them takes on the per-engine knowledge Modelplane otherwise avoids, and
+it creates two sources of truth: the user writes the flags in `args` and
+Modelplane derives them again from `topology`. `spec.engines` and `spec.serving`
+replaced it. [Unopinionated ModelDeployments](./unopinionated-deployments.md)
+has the full argument.
 
 ### A single flat CEL expression for nodeSelector
 
@@ -782,5 +952,4 @@ any orchestrator, it can only express features every orchestrator supports.
 Instead, I'd prefer Modelplane to be opinionated about which orchestrator to
 use, dispatching based on topology and engine requirements. Users describe what
 they want; Modelplane picks the lightest composition path that satisfies it.
-
 

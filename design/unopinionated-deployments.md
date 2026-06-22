@@ -1,14 +1,17 @@
 # Unopinionated ModelDeployments
 
-**Status:** Draft
+**Status:** Superseded by [design.md](./design.md)
 **Date:** June 2026
 **Author:** Nic Cope
+
+> This proposal has been folded into [design.md](./design.md), which now
+> describes the engine and serving model as the base design. It's preserved here
+> for the background and rationale that didn't carry over.
 
 This document proposes a revision to how a `ModelDeployment` describes its
 engines and serving, so the API stays unopinionated about the inference engine
 and the parallelism topology. The API describes a deployment's shape, not how
-the model is run. It iterates on and supersedes parts of the base design in
-[design.md](./design.md).
+the model is run.
 
 ## Summary
 
