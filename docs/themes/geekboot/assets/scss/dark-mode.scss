@@ -3,7 +3,7 @@
     --body-background: #{$mp-bg};
     --body-font-color: #ffffff;
     --content-link-color: #{$mp-purple-hi};
-    --anchor-link-color: #{$mp-muted};
+    --anchor-link-color: #{$mp-lavender-dim};
     --rss-icon-fill: #{$mp-purple};
 
     // Inline code within text: purple text, no background.
@@ -17,8 +17,8 @@
     --inactive-tab-hover-color: #ffffff;
 
     // Muted text (sidebar section headers, chevrons, etc.)
-    --mp-muted: #{$mp-muted};
-    --mp-muted-hi: #{$mp-muted-hi};
+    --mp-muted: #{$mp-lavender-dim};
+    --mp-muted-hi: #{$mp-lavender};
 
     // Component card tokens (catalog/persona cards, hints, matrix). Defined here
     // rather than on .bd-content so the light-mode override survives PurgeCSS.
@@ -42,7 +42,7 @@
     --table-divider: rgba(255, 255, 255, 0.18);
 
     //Right-side table of contents
-    --toc-font-color: #{$mp-muted};
+    --toc-font-color: #{$mp-lavender-dim};
     --toc-mobile-menu-outline: #{$mp-border};
     --toc-mobile-menu-background: #{$mp-bg};
 
@@ -71,9 +71,9 @@
     --plus-svg: url("../img/plus-150.svg");
     // Bump description / header text to muted-hi (#b0afcc) for legibility.
     // $mp-muted (#8b8aae) passes WCAG AA but reads as washed-out body text.
-    --crd-header-color: #{$mp-muted-hi};
-    --crd-description-color: #{$mp-muted-hi};
-    --link-icon-fill: #{$mp-muted};
+    --crd-header-color: #{$mp-lavender};
+    --crd-description-color: #{$mp-lavender};
+    --link-icon-fill: #{$mp-lavender-dim};
     // Slightly more visible separators than $mp-border (rgba(255,255,255,0.07))
     // so field rows, tab bars, and section headings have clear visual structure.
     --crd-row-border: rgba(255,255,255,0.13);
@@ -166,7 +166,7 @@
 
         // Dim the text of non-active tabs
         .nav-link {
-            color: #{$mp-muted};
+            color: #{$mp-lavender-dim};
 
             // Make the text light on hover
             &:hover{

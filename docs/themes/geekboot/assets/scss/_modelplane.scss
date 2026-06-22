@@ -1,5 +1,70 @@
 // Modelplane visual overrides
 
+// ── Handoff helpers (from modelplane-theme.css) ───────────────
+
+.mp-gradient-text {
+  background: var(--mp-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.mp-eyebrow {
+  font-family: var(--mp-font-body);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mp-sky);
+}
+
+.mp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mp-font-body);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1;
+  border-radius: var(--mp-radius-pill);
+  padding: 13px 28px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s var(--mp-ease), border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.12s;
+  &:hover { text-decoration: none; }
+}
+
+.mp-btn--primary {
+  background: var(--mp-purple);
+  color: #fff;
+  box-shadow: var(--mp-glow-purple);
+  &:hover {
+    background: var(--mp-gradient);
+    box-shadow: var(--mp-glow-sky);
+    transform: translateY(-1px);
+    color: #fff;
+  }
+}
+
+.mp-btn--secondary {
+  background: transparent;
+  color: #fff;
+  border-color: var(--mp-border-strong);
+  &:hover {
+    color: var(--mp-sky);
+    border-color: var(--mp-sky);
+  }
+}
+
+.mp-glass {
+  background: rgba(0, 29, 47, 0.72);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--mp-border);
+}
+
 // Match website body exactly — explicit values beat Bootstrap's CSS-var approach
 // since _modelplane.scss loads after bootstrap/bootstrap in docs.scss
 body {
@@ -57,11 +122,9 @@ nav.site-nav a {
   border-color: #{$mp-purple} !important;
 }
 
-// Page title
+// Page title — inherits Outfit Medium 500 from _fonts.scss heading rules.
 .bd-title {
   font-family: #{$font-family-headings};
-  font-weight: 700;
-  letter-spacing: -0.02em;
 }
 
 // ── For AI agents — "Copy page" split control next to the page title ─────────
@@ -252,7 +315,7 @@ nav.site-nav a {
 
   .footer-tagline {
     font-size: 13px;
-    color: #{$mp-muted};
+    color: #{$mp-lavender-dim};
     line-height: 1.4;
   }
 
@@ -263,7 +326,7 @@ nav.site-nav a {
 
     a {
       font-size: 13px;
-      color: #{$mp-muted};
+      color: #{$mp-lavender-dim};
       text-decoration: none;
       transition: color 0.2s;
       display: flex;

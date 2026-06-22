@@ -55,8 +55,8 @@
 }
 .mp-status--available {
   color: #{$mp-green};
-  background: rgba(52, 211, 153, 0.08);
-  border-color: rgba(52, 211, 153, 0.25);
+  background: rgba(53, 208, 186, 0.08);
+  border-color: rgba(53, 208, 186, 0.25);
 }
 .mp-status--preview {
   color: #{$mp-cyan};
@@ -111,7 +111,7 @@
   border-radius: 4px;
   padding: 1px 7px;
   white-space: nowrap;
-  &.mp-card-tag--ok { color: #{$mp-green}; border-color: rgba(52, 211, 153, 0.3); }
+  &.mp-card-tag--ok { color: #{$mp-green}; border-color: rgba(53, 208, 186, 0.3); }
 }
 
 .mp-card-meta {
