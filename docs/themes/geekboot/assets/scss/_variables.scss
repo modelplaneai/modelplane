@@ -4,8 +4,8 @@
 $bd-callout-variants: info, warning, danger !default;
 $font-family-sans-serif:      "Inter", -apple-system, BlinkMacSystemFont, sans-serif !default;
 $font-family-monospace:       "DM Mono", "Fira Code", monospace !default;
-// Headings use the same face as body (Inter); no separate display face.
-$font-family-headings:        "Inter", -apple-system, BlinkMacSystemFont, sans-serif !default;
+// Headings use Outfit (display face); body uses Inter.
+$font-family-headings:        "Outfit", system-ui, -apple-system, sans-serif !default;
 // These three are set by Bootstrap before _variables.scss runs (Bootstrap
 // is imported first in docs.scss), so !default has no effect on Bootstrap's
 // output. The actual overrides live in _modelplane.scss body { font-size; line-height }.
@@ -122,20 +122,30 @@ $salmon-950:                   #221C1C !default;
 
 // Modelplane brand colors — aligned to the Modelplane stylescape
 // (Dark Spruce #001D2F, Spruce #183D54, Purple #9A5EFC, Sky #00DCE8, White).
-$mp-bg:           #001D2F !default;   // Dark Spruce — page background (dark mode)
-$mp-bg-mid:       #06293B !default;   // lifted surface (dropdown, accordion header)
-$mp-bg-card:      #0B2D41 !default;   // card / code-block surface
-$mp-surface:      #183D54 !default;   // Spruce — elevated / hover surface
-$mp-border:       rgba(255,255,255,0.10) !default;
-$mp-border-hi:    rgba(154,94,252,0.30) !default;  // Purple tint
-$mp-purple:       #9A5EFC !default;   // Purple — primary accent
-$mp-purple-hi:    #B58BFD !default;   // lighter purple for hover/links on dark
-$mp-purple-dark:  #7C3AED !default;   // darkened purple for links/accents on white (WCAG AA)
-$mp-purple-soft:  #A98CDB !default;   // lighter, less saturated purple — code/manifest header bars
-$mp-cyan:         #00DCE8 !default;   // Sky — secondary accent
-$mp-green:        #34d399 !default;   // semantic success (status: available)
-$mp-muted:        #8FA6B4 !default;   // cool slate — muted text on Dark Spruce
-$mp-muted-hi:     #BCCAD4 !default;   // muted text on hover
+$mp-bg:               #001D2F !default;   // Dark Spruce — page background (dark mode)
+$mp-bg-mid:           #06293B !default;   // lifted surface (dropdown, accordion header)
+$mp-bg-card:          #0B2D41 !default;   // card / code-block surface
+$mp-surface:          #183D54 !default;   // Spruce — elevated / hover surface
+$mp-spruce-elevated:  #21465E !default;   // one step above surface
+$mp-spruce-line:      #2C5067 !default;   // hairline borders on spruce surfaces
+$mp-border:           rgba(255,255,255,0.10) !default;
+$mp-border-strong:    rgba(255,255,255,0.20) !default;
+$mp-border-hi:        rgba(154,94,252,0.30) !default;  // purple-tint highlight border
+$mp-purple:           #9A5EFC !default;   // Purple — primary accent / CTA
+$mp-purple-light:     #AD7BFC !default;   // lighter purple for diagram fills
+$mp-purple-text:      #C3A6FF !default;   // purple text on dark (chips, labels)
+$mp-purple-hi:        #B58BFD !default;   // lighter purple for hover/links on dark
+$mp-purple-dark:      #7C3AED !default;   // darkened purple for links on white (WCAG AA)
+$mp-purple-soft:      #A98CDB !default;   // less-saturated purple — code/manifest header bars
+$mp-cyan:             #00DCE8 !default;   // Sky — secondary accent / links
+$mp-green:            #35D0BA !default;   // semantic success (status: available)
+$mp-coral:            #F3807B !default;   // semantic error / danger
+$mp-yellow:           #FFCD3C !default;   // semantic warning
+$mp-lavender:         #B0AFCC !default;   // secondary text on dark (warm lavender)
+$mp-lavender-dim:     #8B8AAE !default;   // muted / tertiary text on dark
+$mp-muted:            #8FA6B4 !default;   // cool slate — legacy muted text; prefer $mp-lavender-dim
+$mp-muted-hi:         #BCCAD4 !default;   // legacy muted text on hover; prefer $mp-lavender
+$mp-gradient:         linear-gradient(90deg, #9A5EFC 0%, #00DCE8 100%) !default; // signature gradient
 
 $body-font-weight:          normal !default;
 $body-min-width:            20rem !default;
@@ -144,4 +154,57 @@ $color-admonition-background: transparent;
 
 :root {
   font-size: $font-size-root;
+
+  /* ---- Brand core ---- */
+  --mp-dark-spruce:     #001D2F;
+  --mp-spruce:          #183D54;
+  --mp-spruce-elevated: #21465E;
+  --mp-spruce-line:     #2C5067;
+  --mp-purple:          #9A5EFC;
+  --mp-purple-light:    #AD7BFC;
+  --mp-purple-text:     #C3A6FF;
+  --mp-sky:             #00DCE8;
+  --mp-white:           #FFFFFF;
+
+  /* ---- Accent + status ---- */
+  --mp-green:  #35D0BA;
+  --mp-coral:  #F3807B;
+  --mp-yellow: #FFCD3C;
+
+  /* ---- Neutrals on dark ---- */
+  --mp-lavender:     #B0AFCC;
+  --mp-lavender-dim: #8B8AAE;
+
+  /* ---- Signature gradient ---- */
+  --mp-gradient: linear-gradient(90deg, #9A5EFC 0%, #00DCE8 100%);
+
+  /* ---- Semantic aliases ---- */
+  --mp-bg:             var(--mp-dark-spruce);
+  --mp-surface:        var(--mp-spruce);
+  --mp-text:           var(--mp-white);
+  --mp-text-secondary: var(--mp-lavender);
+  --mp-text-muted:     var(--mp-lavender-dim);
+  --mp-link:           var(--mp-sky);
+  --mp-border:         rgba(255, 255, 255, 0.10);
+  --mp-border-strong:  rgba(255, 255, 255, 0.20);
+
+  /* ---- Type ---- */
+  --mp-font-display: 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mp-font-body:    'Inter',  system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mp-font-mono:    'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* ---- Spacing (4px base) ---- */
+  --mp-space-1: 4px;  --mp-space-2: 8px;  --mp-space-3: 12px; --mp-space-4: 16px;
+  --mp-space-5: 24px; --mp-space-6: 32px; --mp-space-7: 48px; --mp-space-8: 64px;
+
+  /* ---- Radii ---- */
+  --mp-radius-sm: 6px; --mp-radius-md: 10px; --mp-radius-lg: 16px; --mp-radius-pill: 999px;
+
+  /* ---- Shadows / glow ---- */
+  --mp-shadow-md:   0 8px 24px rgba(0, 0, 0, 0.35);
+  --mp-glow-purple: 0 8px 32px rgba(154, 94, 252, 0.30);
+  --mp-glow-sky:    0 8px 32px rgba(0, 220, 232, 0.25);
+
+  /* ---- Motion ---- */
+  --mp-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }

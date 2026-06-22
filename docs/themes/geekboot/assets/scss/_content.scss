@@ -36,7 +36,7 @@ body {
     text-decoration: none;
     color: var(--content-link-color);
 
-    &:hover, code{
+    &:hover:not(.mp-card):not(.mp-card--link):not(.mp-chip):not(.mp-pagination-next):not(.mp-pagination-prev), code{
       text-decoration: underline !important;
       color: var(--content-link-color);
     }
@@ -101,7 +101,7 @@ blockquote {
 .bd-content h4,
 .bd-content h5,
 .bd-content h6 {
-  font-family: #{$font-family-headings};
+  font-family: var(--mp-font-display);
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.25;

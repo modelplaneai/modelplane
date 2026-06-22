@@ -40,11 +40,11 @@ nav.site-nav .wrap {
 .nav-links a {
   font-size: 14px;
   font-weight: 400;
-  color: #{$mp-muted};
+  color: var(--mp-text-muted);
   text-decoration: none;
   transition: color 0.2s;
 }
-.nav-links a:hover { color: #ffffff; }
+.nav-links a:hover { color: var(--mp-text); }
 
 .nav-cta {
   font-size: 14px;

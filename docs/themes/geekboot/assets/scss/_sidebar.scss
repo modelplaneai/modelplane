@@ -41,7 +41,7 @@
   flex-shrink: 0;
 }
 .brand-name {
-  font-family: #{$font-family-headings};
+  font-family: var(--mp-font-display);
   font-weight: 600;
   font-size: 1.05rem;
   line-height: 1;
@@ -49,13 +49,16 @@
   color: var(--body-font-color);
 }
 .brand-docs {
-  font-family: #{$font-family-headings};
+  font-family: var(--mp-font-display);
   font-weight: 600;
   font-size: 1.05rem;
   line-height: 1;
   letter-spacing: -0.01em;
-  color: var(--content-link-color);
   margin-left: -3px;
+  background: var(--mp-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .bd-sidebar-actions {
