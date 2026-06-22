@@ -2,15 +2,16 @@
 # manually only to register an external inference endpoint with a ModelService,
 # for example a SaaS provider like Together or BaseTen.
 #
-# Label it to match a ModelService's selector, and set url/rewritePath to the
-# provider's OpenAI-compatible endpoint.
+# Give it a label of your own for a ModelService to select on
+# (modelplane.ai/external-provider is a readable convention), and set
+# url/rewritePath to the provider's OpenAI-compatible endpoint.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelEndpoint
 metadata:
   name: qwen3-coder-together
   namespace: ml-team
   labels:
-    modelplane.ai/deployment: qwen3-coder
+    modelplane.ai/external-provider: together
 spec:
   url: https://api.together.xyz/
   rewritePath: /v1/

@@ -24,10 +24,9 @@ metadata:
   name: kimi-k2-together
   namespace: ml-team
   labels:
-    # 1. A label a ModelService selects on. Reusing a deployment's
-    #    modelplane.ai/deployment label puts this endpoint behind the same
-    #    service as that deployment's own replicas.
-    modelplane.ai/deployment: kimi-k2
+    # 1. A label of your own for a ModelService to select on. Any label
+    #    works; modelplane.ai/external-provider is a readable convention.
+    modelplane.ai/external-provider: together
 spec:
   # 2. The provider's base URL.
   url: https://api.together.xyz/
@@ -37,10 +36,10 @@ spec:
   rewritePath: /v1/
 ```
 
-Then point a `ModelService` at it. With the label above, a service selecting
-`modelplane.ai/deployment: kimi-k2` reaches both the deployment's replicas and
-this provider, splitting traffic across them. Give the endpoint a label of its
-own instead if you want a service that routes only to the provider. See
+Then point a `ModelService` at it: a service selecting
+`modelplane.ai/external-provider: together` routes to the provider. To put it
+behind the same URL as a deployment's own replicas, give the service two
+endpoint entries, one selecting the deployment and one selecting this label. See
 [Expose a Model]({{< ref "model-service.md" >}}) for selecting and combining
 endpoints.
 

@@ -80,8 +80,22 @@ another, to send, say, 5% of traffic to a canary, is tracked in
 [#90](https://github.com/modelplaneai/modelplane/issues/90). Until then the split
 follows endpoint counts, not a ratio you set.
 
-You can also mix a deployment's replicas with a manually created
-[ModelEndpoint]({{< ref "model-endpoint.md" >}}) pointing at an external provider.
+The entries don't have to be deployments. One can select a manually created
+[ModelEndpoint]({{< ref "model-endpoint.md" >}}) that points at an external
+provider, so a service can send overflow or break-glass traffic to a SaaS
+endpoint alongside your own replicas:
+
+```yaml {nocopy=true}
+spec:
+  endpoints:
+  - selector:
+      matchLabels:
+        modelplane.ai/deployment: kimi-k2
+  - selector:
+      matchLabels:
+        modelplane.ai/external-provider: together
+```
+
 Endpoints with different path layouts coexist behind the one URL.
 
 The route matches the `/<namespace>/<service>/` prefix and forwards everything
