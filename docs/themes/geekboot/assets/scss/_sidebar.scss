@@ -193,9 +193,18 @@
 // ── Scrolling nav area ──────────────────────────────────────────
 .bd-sidebar-scroll {
   padding: 1rem 0.75rem 2.5rem;
+}
 
+// The nav fills the remaining sidebar height and scrolls when it's taller than
+// the viewport. The compound selector is deliberate: .bd-sidebar-scroll also
+// carries Bootstrap's `offcanvas-body` class, and Bootstrap's responsive
+// offcanvas reset (`.offcanvas-lg .offcanvas-body { flex-grow: 0; overflow-y:
+// visible }`) otherwise outranks a single-class rule and stops the nav from
+// scrolling, leaving the lower nav items unreachable.
+.bd-sidebar-container .bd-sidebar-scroll {
   @include media-breakpoint-up(lg) {
     flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
