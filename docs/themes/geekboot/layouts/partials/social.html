@@ -1,14 +1,16 @@
-{{ $ver := .Page.Params.version | default .Site.Params.latest }}
-{{- if .IsHome -}}
-    <meta property="og:title" {{ printf "content=%s" .Site.Title }} />
-{{- else }}
-    {{ if eq .Page.Params.version "master" }}
-        <meta property="og:title" {{ printf "content='Crossplane Docs · master · %s'" .Params.Title | safeHTMLAttr }} />
-    {{ else if and (ne .Page.Params.version "0") (ne .Page.Params.version "master") }}
-        <meta property="og:title" {{ printf "content='Crossplane Docs · v%s · %s'" $ver .Params.Title | safeHTMLAttr }} />
-    {{ else }}
-        <meta property="og:title" {{ printf "content='Crossplane %s · %s'" .Params.Product .Page.Params.Title | safeHTMLAttr  }} />
-    {{ end }}
-{{ end }}
-
-<meta property="og:description"     content="{{ .Summary | truncate 200 }}" />
+{{- /* Per-page social tags. Kept here (not in the partialCached meta-common) so each
+       page gets its own title and branded card. */ -}}
+{{- $title := cond .IsHome .Site.Title (printf "%s · %s" .Title .Site.Title) -}}
+{{- $desc := .Description | default (.Summary | truncate 200) | default .Site.Params.description -}}
+{{- $cardTitle := cond .IsHome .Site.Title (.Title | default .Site.Title) -}}
+{{- $ogImage := printf "https://modelplane.ai/api/og?%s" (querify "title" $cardTitle) -}}
+<meta property="og:title"           content="{{ $title }}" />
+<meta name="twitter:title"          content="{{ $title }}" />
+<meta property="og:description"     content="{{ $desc }}" />
+<meta name="twitter:description"    content="{{ $desc }}" />
+<meta property="og:image"           content="{{ $ogImage }}" />
+<meta property="og:image:width"     content="1200" />
+<meta property="og:image:height"    content="630" />
+<meta property="og:image:alt"       content="{{ $cardTitle }}" />
+<meta name="twitter:image"          content="{{ $ogImage }}" />
+<meta name="twitter:image:alt"      content="{{ $cardTitle }}" />
