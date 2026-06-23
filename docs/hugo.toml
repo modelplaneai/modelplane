@@ -79,6 +79,11 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
   [[module.mounts]]
     source = "../apis"
     target = "data/apis/crds"
+  # Also mount it as assets so the Markdown output can emit the raw definition.yaml
+  # verbatim (comments preserved) via resources.Get "apis/<plural>/definition.yaml".
+  [[module.mounts]]
+    source = "../apis"
+    target = "assets/apis"
   # Mount the manifests directory as assets so the manifests shortcode can read
   # raw YAML (preserving comments) via resources.Get "examples/<path>.yaml". The
   # files live under docs/manifests/<section>/, one subtree per docs section.

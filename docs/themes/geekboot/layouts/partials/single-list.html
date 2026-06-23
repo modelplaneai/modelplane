@@ -97,7 +97,10 @@
               </li>
             </ul>
           </div>
-          <template id="mp-raw-md">{{ .RawContent | htmlEscape }}</template>
+          {{/* htmlUnescape undoes the partial's html/template escaping to recover
+               the verbatim Markdown; html/template then escapes it once on output,
+               so it survives inside the <template> for mpCopyPage to decode back. */}}
+          <template id="mp-raw-md">{{ partial "markdown-body.txt" . | htmlUnescape }}</template>
           <script>
           function mpFlash(btn, msg) {
             var label = btn.querySelector('.mp-ai-title') || btn.querySelector('span') || btn;

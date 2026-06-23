@@ -1,0 +1,12 @@
+{{- /*
+  The page body as Markdown, shared by the Markdown output (single.md) and the
+  Copy page button so the two never drift. A plain-text (.txt) partial: it must
+  not HTML-escape .RawContent. Reference pages (product: crd) are generated from
+  the CRD schema and have no .RawContent, so render them from the schema; every
+  other page uses its verbatim source Markdown.
+*/ -}}
+{{- if eq .Params.product "crd" -}}
+  {{- partial "crd-markdown.txt" . -}}
+{{- else -}}
+  {{- .RawContent -}}
+{{- end -}}
