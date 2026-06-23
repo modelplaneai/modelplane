@@ -99,5 +99,5 @@ For more on the resources you used:
 Modelplane is in active development and we're building in the open. If you're
 running your own inference fleet and want to shape where this goes, we'd love to
 hear from you. Star the [repository](https://github.com/modelplaneai/modelplane),
-join us in [Slack](https://slack.crossplane.io), or read the
+join us in [Slack](https://slack.modelplane.ai), or read the
 [manifesto](https://modelplane.ai).

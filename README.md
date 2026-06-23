@@ -139,4 +139,4 @@ the Modelplane name and logos are not covered by it.
 [examples]: docs/manifests/examples/
 [issues]: https://github.com/modelplaneai/modelplane/issues
 [enhancements]: https://github.com/modelplaneai/modelplane/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement
-[slack]: https://kubernetes.slack.com
+[slack]: https://slack.modelplane.ai
