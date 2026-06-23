@@ -1,8 +1,12 @@
-# Released doc versions, newest first. main is not listed here — the root
-# redirects to the latest release. See CONTRIBUTING.md § Versioning the docs.
+# Doc versions for the version dropdown, newest first. main is the dev build,
+# browsable at its own subdomain; the canonical apex (docs.modelplane.ai)
+# redirects to the latest release (params.latest in hugo.toml). See
+# CONTRIBUTING.md § Versioning the docs.
 #
-# version: X.Y minor version string (e.g. "0.1")
+# version: X.Y minor version string (e.g. "0.1"), or "main" for the dev build
 # url:     absolute base URL for that version's content
 versions:
   - version: "main"
-    url: ""
+    url: "https://main.docs.modelplane.ai"
+  - version: "0.1"
+    url: "https://v0-1.docs.modelplane.ai"

@@ -1,5 +1,40 @@
 {{ define "main" }}
-{{ with .Site.GetPage "/overview" }}
-{{ partial "single-list" . }}
+{{/* The dev (main) docs are built twice: once for the canonical apex
+     (docs.modelplane.ai) and once for their own subdomain
+     (main.docs.modelplane.ai). The apex build redirects its root to the
+     latest release so a reader on the bare domain lands on the latest docs;
+     the main-subdomain build serves the dev docs so they stay browsable.
+
+     Both builds are version == "main"; what tells them apart is the baseURL.
+     versions.yaml records each version's home URL, so the apex is "the main
+     build whose baseURL isn't main's own subdomain". Release builds
+     (version != "main") never redirect and fall straight through.
+
+     The redirect mirrors the window.location.replace plus noscript
+     meta-refresh that list.html uses for section index pages. */}}
+{{ $dest := "" }}
+{{ if eq .Site.Params.version "main" }}
+  {{ $here := strings.TrimSuffix "/" .Site.BaseURL }}
+  {{ $mainURL := "" }}
+  {{ $latestURL := "" }}
+  {{ range .Site.Data.versions.versions }}
+    {{ if eq .version "main" }}{{ $mainURL = strings.TrimSuffix "/" .url }}{{ end }}
+    {{ if and (eq .version $.Site.Params.latest) .url }}{{ $latestURL = strings.TrimSuffix "/" .url }}{{ end }}
+  {{ end }}
+  {{/* Redirect only when main's own subdomain is known and this build isn't it,
+       and only if a latest release exists to redirect to. Requiring $mainURL to
+       be set makes the dev-docs build fail open (serve content) rather than
+       redirect if the main entry is missing from versions.yaml. */}}
+  {{ if and $latestURL $mainURL (ne $here $mainURL) }}
+    {{ $dest = printf "%s/" $latestURL }}
+  {{ end }}
+{{ end }}
+{{ if $dest }}
+  <script>window.location.replace("{{ $dest | safeURL }}");</script>
+  <noscript><meta http-equiv="refresh" content="0; url={{ $dest | safeURL }}"></noscript>
+{{ else }}
+  {{ with .Site.GetPage "/overview" }}
+  {{ partial "single-list" . }}
+  {{ end }}
 {{ end }}
 {{ end }}

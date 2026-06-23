@@ -100,8 +100,8 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
   description = "Modelplane documentation."
   # "main" on the dev branch; "X.Y" (e.g. "0.1") on release branches.
   version = "0.1"
-  # Latest stable release.
-  latest = "main"
+  # Latest stable release. The apex build redirects its root here.
+  latest = "0.1"
   [params.anchors]
     min = 2
     max = 5

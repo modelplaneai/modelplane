@@ -1,11 +1,12 @@
 {{ $cur := .Site.Params.version }}
 {{ $latest := .Site.Params.latest }}
 {{ $versions := .Site.Data.versions.versions }}
-{{/* Only render on release branches — main content redirects to latest,
-     so there's nothing to switch between from the root. */}}
-{{ if and $versions (ne $cur "main") }}
+{{/* Render wherever there's more than one version to switch between. Every
+     build, including main (browsable at main.docs.modelplane.ai), serves real
+     content, so all of them carry the switcher. */}}
+{{ if and $versions (gt (len $versions) 1) }}
 
-{{/* Each version is served from its own subdomain (e.g. v0.1.docs.modelplane.ai),
+{{/* Each version is served from its own subdomain (e.g. v0-1.docs.modelplane.ai),
      so baseURL has no path component and RelPermalink is already root-relative. */}}
 {{ $pagePath := .RelPermalink }}
 
