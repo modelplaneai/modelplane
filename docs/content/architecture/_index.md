@@ -110,7 +110,7 @@ flowchart TB
     prov -->|provision + install via kubeconfig| wc2
 ```
 
-Onto each workload cluster Modelplane installs a serving stack: the components a
+Modelplane installs a serving stack on each workload cluster: the components a
 cluster needs to serve models, providing inference-aware routing through Gateway
 API, multi-node serving, GPU binding through DRA, and observability, among others.
 The exact components evolve, but Modelplane composes and owns all of them. For
