@@ -1,0 +1,50 @@
+# Qwen2.5-0.5B-Instruct served on a single NVIDIA L4 by vLLM, validated end to
+# end on GKE.
+#
+# A 0.5B dense model is the smallest useful serving shape: one Standalone vLLM
+# pod, no ModelCache, weights pulled straight from Hugging Face. It barely touches
+# the L4's VRAM, so the flags here are about behavior, not fit:
+#
+#   --max-model-len=16384   caps the context; the default 32K KV cache is wasteful
+#                           for a model this size and a demo this small.
+#   --served-model-name     the id clients pass as "model" in OpenAI requests.
+#
+# vLLM exposes Prometheus metrics at /metrics on its serving port (:8000) with no
+# extra flag, which is what the example's PodMonitor scrapes.
+#
+# No --port or --host: Modelplane's routing expects the engine on its default
+# :8000 with a /health probe, and passes args through verbatim.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen2-5-0-5b
+  namespace: ml-team
+spec:
+  # One replica, matched to any compatible InferenceCluster by device capacity.
+  replicas: 1
+  engines:
+  - name: qwen2-5-0-5b
+    members:
+    # A single self-contained vLLM pod. The container named "engine" is the
+    # inference server; its image and args pass through verbatim.
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          # The model needs almost no VRAM; >=20Gi simply pins it to the L4 pool
+          # this example provisions (the L4 reports ~23Gi). DRA evaluates this CEL
+          # against the InferenceClass device, then against the GPU's
+          # ResourceSlice when it binds the claim.
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            args:
+            - "--model=Qwen/Qwen2.5-0.5B-Instruct"
+            - "--served-model-name=qwen2.5-0.5b"
+            - "--max-model-len=16384"

@@ -1,0 +1,32 @@
+# InferenceClass for the L4 shape on GKE, validated serving Qwen2.5-0.5B.
+#
+# One NVIDIA L4 on a g2-standard-8. The GPU is declared as a DRA device: the
+# scheduler matches a ModelDeployment's nodeSelector against this capacity, then
+# DRA binds the physical GPU to the serving pod. A 0.5B model uses a sliver of
+# this L4 - the shape is shared with the larger L4 examples, not sized for it.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: gke-l4-1x-g2
+spec:
+  description: "GKE g2-standard-8, 1x NVIDIA L4"
+  provisioning:
+    provider: GKE
+    gke:
+      machineType: g2-standard-8
+      diskSizeGb: 100
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      # The L4's real usable VRAM as the NVIDIA DRA driver reports it, not the
+      # nominal 24GB.
+      memory: { value: "23034Mi" }

@@ -388,6 +388,7 @@ server-side
 serving-stack
 [Ss]ingle-node
 single-pod
+sidecar
 source-specific
 step-by-step
 subresources?
