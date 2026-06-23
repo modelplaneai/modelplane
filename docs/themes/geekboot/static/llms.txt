@@ -77,5 +77,5 @@ Aggregates all ModelEndpoints for a ModelDeployment into a single, unified, Open
 - GitHub: https://github.com/modelplaneai/modelplane
 - Issues: https://github.com/modelplaneai/modelplane/issues
 - Discussions: https://github.com/modelplaneai/modelplane/discussions
-- Slack: https://crossplane.slack.com (#modelplane)
+- Slack: https://slack.modelplane.ai
 - License: Apache 2.0
