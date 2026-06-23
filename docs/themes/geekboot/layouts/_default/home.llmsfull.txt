@@ -9,5 +9,5 @@
 
 Source: {{ .Permalink }}
 
-{{ .RawContent }}
+{{ .RenderShortcodes | replaceRE "<[^>]*[=/][^>]*>" "" | htmlUnescape }}
 {{ end }}{{ end }}
