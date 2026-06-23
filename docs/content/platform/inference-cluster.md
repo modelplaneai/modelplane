@@ -68,11 +68,19 @@ The `cluster.source` discriminator picks one of two models:
 
 ## Cache storage
 
-On provisioned `GKE` and `EKS` clusters, the ReadWriteMany StorageClass
-Modelplane uses for
-[ModelCache]({{< ref "models/model-cache.md#custom-cache-backends" >}}) PVCs is
-auto-provisioned. On an `Existing` cluster, name the StorageClass you created in
-`cluster.existing.cache.storageClassName`. See
-[Custom cache backends]({{< ref "models/model-cache.md#custom-cache-backends" >}})
-for how storage is provided on each.
+A [ModelCache]({{< ref "/models/model-cache.md" >}}) stages model weights on a
+`ReadWriteMany` (RWX) StorageClass on the workload cluster. Where that comes from
+depends on the source:
+
+<!-- vale Google.Acronyms = NO -->
+- **`GKE`** (Filestore Enterprise) and **`EKS`** (EFS): auto-provisioned. Those
+  classes are fixed; nothing for the admin to do.
+- **`Existing`**: bring your own. Create an RWX StorageClass on the cluster, with
+  any backend that supports automatic PVC provisioning (WekaIO, NetApp Trident,
+  `FSx` for NetApp, and similar), and name it in
+  `cluster.existing.cache.storageClassName`.
+<!-- vale Google.Acronyms = YES -->
+
+The ML team's `ModelCache` and `ModelDeployment` specs are the same regardless of
+which backing storage a cluster uses.
 <!-- vale write-good.Passive = YES -->

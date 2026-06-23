@@ -98,23 +98,12 @@ The cache PVC needs a `ReadWriteMany` (RWX) StorageClass on the workload cluster
 What the platform admin must set up depends on the cloud:
 <!-- vale Google.Acronyms = YES -->
 
-- **GKE:** auto-provisioned on Filestore. Nothing for the admin to do.
-- **EKS:** auto-provisioned on EFS. Nothing for the admin to do.
-- **Existing:** bring-your-own. The admin creates a `ReadWriteMany` StorageClass
-  on the cluster and names it in `cluster.existing.cache.storageClassName`. See
-  [Custom cache backends](#custom-cache-backends).
+- **GKE** and **EKS:** auto-provisioned. Nothing for the admin to do.
+- **Existing:** the admin sets up a `ReadWriteMany` StorageClass on the cluster.
 
-## Custom cache backends
-
-<!-- vale Google.Acronyms = NO -->
-Modelplane provisions RWX storage on `GKE` (Filestore Enterprise) and `EKS`
-(EFS) clusters, and those classes are fixed. On `Existing` clusters the admin
-brings the storage: create a `ReadWriteMany` StorageClass on the cluster (any
-backend with automatic PVC provisioning, like WekaIO, NetApp Trident, `FSx` for
-NetApp, and similar) and name it in `cluster.existing.cache.storageClassName` on
-the [InferenceCluster]({{< ref "platform/inference-cluster.md" >}}). The ML
-team's `ModelCache` and `ModelDeployment` specs are unchanged regardless.
-<!-- vale Google.Acronyms = YES -->
+Either way, your `ModelCache` and `ModelDeployment` specs are the same. How
+storage is provided on each cluster source, and how to bring your own backend, is
+covered in [Register a Cluster]({{< ref "/platform/inference-cluster.md#cache-storage" >}}).
 
 ## Example
 
