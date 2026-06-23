@@ -124,7 +124,7 @@ curl "$ADDRESS/v1/chat/completions" \
 
 We call the endpoint OpenAI-compatible because the engines are, not because
 Modelplane imposes it. The route matches the `/<namespace>/<service>/` prefix and
-forwards everything below it to the engine untouched, so any API the engine serves
+preserves the path below it on the way to the engine, so any API the engine serves
 is reachable on the same URL.
 
 Take a vLLM replica that also serves the Anthropic Messages API. It answers on
