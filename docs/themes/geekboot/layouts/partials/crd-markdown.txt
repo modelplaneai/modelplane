@@ -1,0 +1,45 @@
+{{- /*
+  Markdown rendering of a CRD reference page (product: crd) for the Markdown
+  output and Copy page. Reference pages are generated from the CRD schema, not
+  from .RawContent, so without this the Markdown output and Copy page would show
+  only the page description.
+
+  The audience is LLM agents, so this returns the machine-readable contract
+  rather than a prose re-rendering of it: the served apiVersion/kind a user
+  applies, the validated example, then the full CompositeResourceDefinition
+  (the authoritative schema, validation, and defaults) verbatim. Reading the
+  source file means zero drift from the API and nothing for us to keep in sync.
+
+  A plain-text (.txt) partial so the YAML isn't HTML-escaped. The H1 and Source
+  line come from single.md; this starts at the lead paragraph.
+*/ -}}
+{{- $plural := .Params.plural -}}
+{{- $crd := "" -}}
+{{- with index site.Data.apis.crds $plural -}}{{- $crd = .definition -}}{{- end -}}
+
+{{- with $crd -}}
+  {{- $kind  := .spec.names.kind -}}
+  {{- $group := .spec.group -}}
+  {{- $version := "" -}}
+  {{- range .spec.versions -}}{{- if .served -}}{{- $version = .name -}}{{- end -}}{{- end -}}
+
+  {{- /* Lead description (schema's, else the concept doc's) and concept link. */ -}}
+  {{- $concept := "" -}}
+  {{- with index site.Data.apigroups.concepts $kind -}}{{- $concept = site.GetPage . -}}{{- end -}}
+  {{- $lead := $.Params.description -}}
+  {{- if not $lead -}}{{- with $concept -}}{{- $lead = .Description -}}{{- end -}}{{- end -}}
+  {{- with $lead -}}{{- printf "%s\n\n" . -}}{{- end -}}
+
+  {{- printf "Apply instances as `apiVersion: %s/%s`, `kind: %s`.\n\n" $group $version $kind -}}
+  {{- with $concept -}}{{- printf "[Concept guide: %s](%s)\n\n" .Title .Permalink -}}{{- end -}}
+
+  {{- /* Validated example, in the form a user writes. */ -}}
+  {{- with resources.Get (printf "examples/reference/%s.yaml" $plural) -}}
+    {{- printf "## Example\n\n```yaml\n%s\n```\n\n" (.Content | chomp) -}}
+  {{- end -}}
+
+  {{- /* The full definition: the authoritative schema, validation, and defaults. */ -}}
+  {{- with resources.Get (printf "apis/%s/definition.yaml" $plural) -}}
+    {{- printf "## Definition\n\nThe CompositeResourceDefinition this reference is generated from, with the complete OpenAPI schema, validation rules, and defaults:\n\n```yaml\n%s\n```\n" (.Content | chomp) -}}
+  {{- end -}}
+{{- end -}}
