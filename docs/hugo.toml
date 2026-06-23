@@ -88,7 +88,7 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
 
 [security]
   [security.funcs]
-    getenv = ["^CONTEXT", "^REVIEW_ID"]
+    getenv = ["^CONTEXT", "^REVIEW_ID", "^VERCEL_ENV"]
 
 [params]
   docs = true

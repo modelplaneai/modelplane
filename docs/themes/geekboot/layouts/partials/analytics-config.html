@@ -1,4 +1,4 @@
-{{ if hugo.IsProduction }}
+{{ if eq (os.Getenv "VERCEL_ENV") "production" }}
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-YP8274QQR9"></script>
 <script>
