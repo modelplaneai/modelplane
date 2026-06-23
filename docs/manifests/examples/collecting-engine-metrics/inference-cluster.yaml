@@ -1,0 +1,28 @@
+# GKE InferenceCluster with one L4 node pool. Replace the project ID before
+# applying. No clusterSelector targets it; the ModelDeployment matches on device
+# capacity alone, so it lands here or on any other compatible cluster.
+#
+# Modelplane installs an in-cluster Prometheus on this cluster (the monitoring
+# namespace) with open PodMonitor discovery - the metrics section of the example
+# scrapes the engine through it.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: gke-l4-single
+  labels:
+    modelplane.ai/cloud: gke
+    modelplane.ai/region: us-central
+spec:
+  cluster:
+    source: GKE
+    gke:
+      project: my-gcp-project  # Replace with your GCP project ID.
+      region: us-central1
+  nodePools:
+  - name: gpu-l4
+    className: gke-l4-1x-g2
+    nodeCount: 1
+    zones:
+    - us-central1-a
+    minNodeCount: 0
+    maxNodeCount: 4
