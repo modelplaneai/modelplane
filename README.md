@@ -120,7 +120,7 @@ Modelplane is at v0.1. It is early and evolving fast. See [issues labeled `enhan
 Contributions, bug reports, and feature requests are welcome.
 
 - **Issues:** [GitHub Issues][issues]
-- **Slack:** [#modelplane][slack] in the Kubernetes workspace
+- **Slack:** [Join our Slack][slack]
 
 See [CONTRIBUTING.md] for how to get set up, run checks, and submit changes.
 

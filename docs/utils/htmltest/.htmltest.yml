@@ -6,5 +6,5 @@ IgnoreURLs:
   - "/safari-pinned-tab.svg"
   - "github.com/modelplaneai/modelplane/issues/new.*"
   - "github.com/modelplaneai/modelplane/issues\\?.*"
-  - "crossplane.slack.com"
+  - "slack.modelplane.ai"
   - "twitter.com/.*"
