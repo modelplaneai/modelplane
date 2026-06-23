@@ -1,5 +1,5 @@
 ---
-title: Fleet Scheduling
+title: How it schedules
 weight: 20
 description: How Modelplane places a deployment's replicas across the fleet, and the limits of that placement.
 ---

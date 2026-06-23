@@ -122,7 +122,7 @@ For each replica, the scheduler picks a `(cluster, pool)` in two steps:
 Capacity is accounted at the node level across the fleet, so Modelplane never
 overcommits a pool. Replicas are pinned to their cluster once placed and stay
 there across reconciles; if a cluster is deleted, the scheduler re-places its
-replicas elsewhere. [Fleet scheduling]({{< ref "/architecture/scheduling.md" >}})
+replicas elsewhere. [How it schedules]({{< ref "/architecture/scheduling.md" >}})
 covers the placement rules and their limits in full.
 
 ## Deploying a model
