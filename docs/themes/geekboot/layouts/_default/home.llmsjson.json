@@ -1,5 +1,19 @@
 {{- /* llms.json: the structured corpus the docs MCP server searches.
-       One entry per content page; the MCP server chunks by heading at load time. */ -}}
+       One entry per content page; the MCP server chunks by heading at load time.
+
+       Content is .RenderShortcodes (not .RawContent) so shortcodes are expanded
+       rather than leaking as their literal source (manifests, ref, tabs, etc.).
+       .RenderShortcodes leaves the surrounding Markdown intact (unlike .Plain), so
+       headings survive for the MCP server's heading-based chunking, and newlines
+       are kept (plainify would collapse them, flattening the YAML and headings).
+
+       The replaceRE strips the HTML the shortcodes emit (manifest code cards, SVG
+       icons). It deliberately matches only tags that contain "=" or "/" — i.e.
+       real tags, which always have an attribute or are closing/self-closing — so
+       it does NOT eat bare angle-bracket placeholders in prose like the inline
+       `http://<address>/<namespace>/<service>`. Do not simplify it to <[^>]+>:
+       that strips those placeholders too. htmlUnescape then restores entities
+       (e.g. escaped angle brackets from highlighted YAML) to readable text. */ -}}
 {{- $pages := slice -}}
 {{- range (where .Site.Pages "Kind" "in" (slice "home" "page" "section")).ByWeight -}}
   {{- if .RawContent -}}
@@ -11,7 +25,7 @@
         "url" .Permalink
         "path" .RelPermalink
         "markdown_url" $md
-        "content" .RawContent) -}}
+        "content" (.RenderShortcodes | replaceRE "<[^>]*[=/][^>]*>" "" | htmlUnescape)) -}}
   {{- end -}}
 {{- end -}}
 {{- dict
