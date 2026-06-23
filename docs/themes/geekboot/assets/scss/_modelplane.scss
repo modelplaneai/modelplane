@@ -270,8 +270,8 @@ nav.site-nav a { vertical-align: baseline; }
 // ── Footer ────────────────────────────────────────────────────
 
 .bd-footer {
-  background: var(--mp-bg) !important; // always the dark brand colour, like modelplane.ai
-  border-top: 1px solid var(--mp-border);
+  background: var(--body-background) !important; // follow the active theme: dark brand colour in dark mode, light in light mode
+  border-top: 1px solid var(--mp-card-border);
   margin-top: auto; // pin to the bottom of the .bd-main column on short pages
   padding: 48px 18px;
   position: relative; z-index: 1;
@@ -284,15 +284,15 @@ nav.site-nav a { vertical-align: baseline; }
   }
   .footer-left  { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
   .footer-logo  { display: flex; align-items: center; flex-shrink: 0; text-decoration: none; }
-  .footer-tagline { font-size: 13px; color: var(--mp-text-muted); line-height: 1.4; }
-  .footer-legal { margin: 0; font-size: 12px; color: var(--mp-text-muted); line-height: 1.4; }
+  .footer-tagline { font-size: 13px; color: var(--mp-muted); line-height: 1.4; }
+  .footer-legal { margin: 0; font-size: 12px; color: var(--mp-muted); line-height: 1.4; }
   .footer-right {
     display: flex; align-items: center; flex-wrap: wrap; gap: 32px;
     a {
-      font-size: 13px; color: var(--mp-text-muted); text-decoration: none;
+      font-size: 13px; color: var(--mp-muted); text-decoration: none;
       transition: color 0.2s; display: flex; align-items: center;
       svg { width: 20px; height: 20px; display: block; }
-      &:hover { color: var(--mp-text); }
+      &:hover { color: var(--body-font-color); }
     }
   }
   .social-icons { display: inline-flex; align-items: center; gap: 16px; }
