@@ -12,7 +12,7 @@ namespaces, so scraping the engine is a `PodMonitor` plus a `port-forward`. The
 model is only the subject; the same wiring fits any engine, with the SGLang,
 leader/worker, and prefill/decode differences noted at the end.
 
-This was run end to end on GKE; the `InferenceClass` and `ModelDeployment` are the
+This was run end to end on GKE. The `InferenceClass` and `ModelDeployment` are the
 exact manifests from that run, and the `PodMonitor` below scraped this deployment.
 Apply the platform side first, then the ML side. The GKE `InferenceCluster`
 carries a GCP project placeholder to edit before applying.
