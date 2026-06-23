@@ -285,6 +285,14 @@ Vercel's GitHub app drives deploys as usual: preview URLs on pull requests
 Before opening a PR, run `nix flake check` and make sure it passes. If you
 changed a composition function, make sure there's a test covering the change.
 
+### Work from a fork
+
+Open every PR from a branch on your own [fork][fork], never a branch of the main
+repo. This holds for maintainers too, and for any agent working on your behalf:
+point it at your fork.
+
+[fork]: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo
+
 ### Writing style
 
 Using an agent to help write code, commits, PRs, or issues is fine. But the prose it
