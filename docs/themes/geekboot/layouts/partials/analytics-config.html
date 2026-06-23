@@ -1,4 +1,4 @@
-{{ if eq (os.Getenv "VERCEL_ENV") "production" }}
+{{ if hasPrefix site.BaseURL "https://docs.modelplane.ai" }}
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-YP8274QQR9"></script>
 <script>
