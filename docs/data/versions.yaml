@@ -1,5 +1,5 @@
 # Released doc versions, newest first. main is not listed here — the root
-# redirects to the latest release. See CONTRIBUTING.md § Versioning the docs.
+# redirects to the latest release. See RELEASING.md § Versioning the docs.
 #
 # version: X.Y minor version string (e.g. "0.1")
 # url:     absolute base URL for that version's content

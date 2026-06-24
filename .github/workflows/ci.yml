@@ -51,7 +51,7 @@ jobs:
 
   # Pushes the package on every push to main and on any manual run. Both push a
   # dev version derived from git metadata unless the run supplies a tag input,
-  # which is how releases are cut - see CONTRIBUTING.md.
+  # which is how releases are cut - see RELEASING.md.
   push-package:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
