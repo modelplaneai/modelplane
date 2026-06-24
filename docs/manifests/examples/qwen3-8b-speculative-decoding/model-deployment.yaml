@@ -1,0 +1,69 @@
+# Qwen3-8B served on a single NVIDIA L4 by vLLM with n-gram (prompt-lookup)
+# speculative decoding, validated end to end (the model layer is cloud-agnostic;
+# the same manifest serves on EKS and GKE).
+#
+# n-gram speculation proposes the next tokens by matching a short suffix of what
+# has been generated so far against earlier text in the prompt, then verifies the
+# guess in one forward pass. It needs no draft model and no second set of weights,
+# so it stays a single Standalone engine with no ModelCache. That is deliberate:
+# Modelplane cannot yet stage a separate draft model on cache (modelplaneai/
+# modelplane#281), so this is the speculative flavor that works today.
+#
+#   --speculative-config            method=ngram with num_speculative_tokens=5
+#                                   proposes up to 5 tokens per step;
+#                                   prompt_lookup_min/max=2..4 set the n-gram
+#                                   suffix lengths matched against the prompt.
+#                                   It pays off only when output repeats the
+#                                   input - e.g. editing a pasted code block,
+#                                   where most output tokens are copied verbatim.
+#   --default-chat-template-kwargs  turns thinking off. Qwen3 thinks by default,
+#                                   and a <think> block is novel text absent from
+#                                   the prompt, so prompt-lookup cannot accelerate
+#                                   it. Off, the output is mostly the copied code,
+#                                   which is exactly what n-gram speeds up.
+#   --max-model-len / --gpu-memory-utilization  L4 fit, not correctness. n-gram
+#                                   adds only a small proposal buffer, no weights,
+#                                   so the budget matches the plain Qwen3-8B recipe.
+#
+# No --port or --host: Modelplane's routing expects the engine on its default
+# :8000 with a /health probe, and passes args through verbatim.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen3-8b-spec
+  namespace: ml-team
+spec:
+  # One replica, matched to any compatible InferenceCluster by device capacity.
+  replicas: 1
+  engines:
+  - name: qwen3-8b-spec
+    members:
+    # A single self-contained vLLM pod. The container named "engine" is the
+    # inference server; its image and args pass through verbatim.
+    - role: Standalone
+      nodeSelector:
+        devices:
+        - name: gpu
+          count: 1
+          selectors:
+          # An 8B model needs most of an L4. >=20Gi selects the L4 (which reports
+          # ~23Gi) without over-constraining. DRA evaluates this CEL against the
+          # InferenceClass device, then against the GPU's ResourceSlice on bind.
+          - cel: |
+              device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+      template:
+        spec:
+          containers:
+          - name: engine
+            image: vllm/vllm-openai:v0.23.0
+            args:
+            - "--model=Qwen/Qwen3-8B"
+            # The id clients pass as "model" in OpenAI requests.
+            - "--served-model-name=qwen3-8b-spec"
+            # Cap the context so the KV cache fits beside the weights on the L4.
+            - "--max-model-len=16384"
+            - "--gpu-memory-utilization=0.92"
+            # Enable n-gram speculative decoding (no draft model, no cache).
+            - "--speculative-config={\"method\": \"ngram\", \"num_speculative_tokens\": 5, \"prompt_lookup_max\": 4, \"prompt_lookup_min\": 2}"
+            # Thinking off, so output copies the prompt and prompt-lookup pays off.
+            - "--default-chat-template-kwargs={\"enable_thinking\": false}"
