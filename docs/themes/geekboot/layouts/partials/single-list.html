@@ -165,7 +165,9 @@
               </div>
               <div>
                 <svg class="bi" width="1em" height="1em"><use xlink:href="#github"/></svg>
-                <span class="ps-1"><a href="{{printf "https://github.com/modelplaneai/modelplane/tree/master/content/%s" .Page.File.Path}}">View page source</a></span>
+                {{- $branch := .Site.Params.version -}}
+                {{- if ne $branch "main" }}{{- $branch = printf "v%s" $branch -}}{{- end -}}
+                <span class="ps-1"><a href="{{printf "https://github.com/modelplaneai/modelplane/tree/%s/docs/content/%s" $branch .Page.File.Path}}">View page source</a></span>
               </div>
             </div>
           </nav>
@@ -175,9 +177,7 @@
 
       <div class="bd-content ps-lg-2 DocSearch-content">
         <div class="bd-content-inner">
-        {{ if eq $.Params.Product "Release Notes" }}
-          {{ partial "release-notes" . }}
-        {{ else if $isCrd }}
+        {{ if $isCrd }}
           {{ partial "crd-single" . }}
           {{ partial "page-pagination" . }}
         {{ else if eq .Params.product "reference" }}
