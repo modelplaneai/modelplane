@@ -6,8 +6,8 @@
 {{ range .Site.Sections }}
     {{/* Skip versions marked as hidden */}}
     {{ if not .Page.Params.hidden }}
-        {{ if eq .Page.Params.version "master" }}
-            {{$sorted_list = $sorted_list | append  "master" }}
+        {{ if eq .Page.Params.version "main" }}
+            {{$sorted_list = $sorted_list | append  "main" }}
         {{ else if and (.Page.Params.version) (ne .Page.Params.version "0") }}
             {{ $splitver := split .Page.Params.version "." }}
             {{ if eq (len $splitver) 2 }}
@@ -28,7 +28,7 @@
         {{$semver_sorted = $semver_sorted | append (printf "%s.%s" $majorver .) }}
     {{ end }}
 {{ end }}
-{{/* Append semver sorted versions after master */}}
+{{/* Append semver sorted versions after main */}}
 {{ $sorted_list = $sorted_list | append $semver_sorted }}
 
 {{ return $sorted_list }}
