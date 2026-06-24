@@ -9,7 +9,7 @@
             {{- errorf "\n\nNo \"alphaVersion\" front matter in page %q\n\n\n" .Page.File.Path -}}
             {{- end -}}
             This is an alpha feature.
-            Crossplane may change or drop this feature at any time. <br />
+            Modelplane may change or drop this feature at any time. <br />
             {{ end }}
             {{ if eq .Page.Params.state "beta" }}
                 {{- if not .Page.Params.alphaVersion -}}
@@ -29,13 +29,6 @@
                 <br />
                 This feature graduated to beta status in v{{.Page.Params.betaVersion}}.
             {{ end }}
-            {{ $verParam := .Page.Params.version | default .Site.Params.latest }}
-            {{ $ver := (printf "v%s" $verParam) }}
-            {{ if eq $verParam "master" }}
-                {{ $ver = "master" }}
-            {{ end }}
-            <br /><br />
-            For more information read the <a href="{{.Site.BaseURL}}{{$ver}}/learn/feature-lifecycle/">Crossplane feature lifecycle</a>.
         </p>
     </div>
 </div>
