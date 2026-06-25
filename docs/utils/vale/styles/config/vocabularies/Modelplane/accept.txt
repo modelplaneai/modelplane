@@ -165,6 +165,14 @@ GGUF
 LoRA
 MoE
 SGLang
+[Nn]-gram
+prompt-lookup
+copy-heavy
+[Ww]all-clock
+[Ii]nter-token
+TPOT
+ITL
+TTFT
 # Parameter counts: 8B, 35B, 480B, 1T, etc.
 [0-9]+[BMT]
 [Vv][Rr][Aa][Mm]
