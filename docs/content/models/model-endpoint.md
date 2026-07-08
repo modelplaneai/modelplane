@@ -31,9 +31,10 @@ spec:
   # 2. The provider's base URL.
   url: https://api.together.xyz/
   # 3. The path to rewrite requests to. A ModelService receives requests at
-  #    /<namespace>/<service>/v1/... and rewrites them to this prefix, so an
-  #    OpenAI-compatible provider that serves /v1/... takes /v1/.
-  rewritePath: /v1/
+  #    /<namespace>/<service>/v1/... and strips only the /<namespace>/<service>/
+  #    prefix, so an OpenAI-compatible provider that already serves /v1/...
+  #    takes just /.
+  rewritePath: /
 ```
 
 Then point a [`ModelService`]({{< ref "model-service.md" >}}) at it. Selecting

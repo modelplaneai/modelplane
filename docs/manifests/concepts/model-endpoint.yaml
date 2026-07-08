@@ -14,4 +14,4 @@ metadata:
     modelplane.ai/external-provider: together
 spec:
   url: https://api.together.xyz/
-  rewritePath: /v1/
+  rewritePath: /
