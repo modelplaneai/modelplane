@@ -128,6 +128,10 @@ Two things depend on this:
 2. On upgrade the child adopts the existing, already-Bound PVC instead of
    provisioning a new one and re-downloading the weights.
 
+`child_name` truncates the prefix and appends a hash, so every composed name stays
+a valid DNS label at or under 63 characters, including the child's own name with
+the cluster folded in.
+
 ## Placement-driven footprint
 
 The problem (#186): a cache's `clusterSelector` and a deployment's placement are
@@ -172,6 +176,13 @@ Rather than fail the mount, the replica gates readiness on its cluster's
 `ModelCacheHydration`: it reports `Hydrating` until the PVC is Bound, then
 proceeds. The first replica on a new cluster pays the download once, as a visible
 state rather than a mount error.
+
+Gating can't be open-ended. If hydration fails, a bad token, a bad revision, or
+exhausted storage, the child reports `Failed`, the parent surfaces
+`ArtifactReady=False` with reason `HydrationFailed`, and the gated replica fails
+with that reason instead of sitting in `Hydrating`. The hydration `Job`'s
+`backoffLimit` bounds retries, so a permanent failure stops and is reported rather
+than retried forever.
 
 ### Lifecycle
 
