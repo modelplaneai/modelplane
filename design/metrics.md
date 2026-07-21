@@ -27,15 +27,17 @@ Instead, Modelplane composes the collection, per source:
   (multi-pod Unified and prefill/decode).
 
 Both come up with the deployment, are reclaimed with it, and share one opt-out
-field. On by default:
+field. This is serving metrics; `ModelCache` PVC and hydration observability is a
+separate concern and out of scope here. On by default:
 
 ```yaml
 spec:
   replicas: 1
   template:
     spec:
-      metrics:
-        enabled: false   # default true; collection is composed unless disabled
+      observability:
+        metrics:
+          enabled: false   # default true; collection is composed unless disabled
       engines:
       - name: qwen
         # ...
@@ -108,6 +110,13 @@ Prometheus `metricRelabelings` knob. It's out of scope for now, because a
 selection surface reintroduces the per-deployment wiring #269 removes. The nested
 `metrics` object leaves room to add it if a real need appears.
 
+This scrape feeds Prometheus for dashboards and alerting, so the 30s interval is
+an observability default, not a routing input. The EPP scrapes engine `/metrics`
+on its own fast internal loop for routing decisions, so routing latency doesn't
+depend on this interval. An engine pod exposes on the order of dozens of series
+(request and latency histograms, KV-cache, throughput); retention and storage
+sizing are the serving stack's Prometheus configuration, not this composition.
+
 ## Endpoint picker metrics
 
 Multi-pod Unified and prefill/decode serving front the engines with an endpoint
@@ -130,11 +139,13 @@ ClusterRole, token, or TLS to manage.
 
 ## The opt-out field
 
-`spec.template.spec.metrics.enabled` (boolean, default true), copied down to
-`ModelReplica.spec`, governs both PodMonitors. A nested `metrics` object leaves
-room for `interval` or `path` later; only `enabled` is defined now.
-`compose-model-replica` composes the engine `PodMonitor`, and the EPP path
-composes the picker's, unless `enabled` is false.
+`spec.template.spec.observability.metrics.enabled` (boolean, default true), copied
+down to `ModelReplica.spec`, governs both PodMonitors. The field sits under an
+`observability` object to match [#77](https://github.com/modelplaneai/modelplane/issues/77),
+which puts `observability.traces` on `ModelService`; traces and logs can slot
+beside `metrics` later. The `metrics` object itself leaves room for `interval` or
+`path`; only `enabled` is defined now. `compose-model-replica` composes the engine
+`PodMonitor`, and the EPP path composes the picker's, unless `enabled` is false.
 
 ## Architecture
 
@@ -205,4 +216,8 @@ them directly, matching the manual path.
 The [#264](https://github.com/modelplaneai/modelplane/issues/264) example
 documents the manual path. Once collection is composed, that example drops its
 hand-written `podmonitor.yaml` and shows the opt-out field instead.
+
+On upgrade, an existing hand-written `PodMonitor` has to be deleted, or it
+double-scrapes the same pods alongside the composed one. This warrants a release
+note.
 </content>
