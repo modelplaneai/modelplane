@@ -5,9 +5,10 @@
 **Author:** Dennis Ramdass
 
 This document proposes `ModelCacheHydration`, a per-cluster child of `ModelCache`,
-and uses it to make a cache's footprint follow where replicas are scheduled. It
-builds on [modelcache.md](./modelcache.md) and [design.md](./design.md), and
-addresses [#210](https://github.com/modelplaneai/modelplane/issues/210) (decompose
+and makes a cache's `clusterSelector` the authoritative footprint that Modelplane
+pre-warms ahead of deployment. It builds on [modelcache.md](./modelcache.md) and
+[design.md](./design.md), and addresses
+[#210](https://github.com/modelplaneai/modelplane/issues/210) (decompose
 `ModelCache`) and [#186](https://github.com/modelplaneai/modelplane/issues/186)
 (footprint diverges from placement) together.
 
@@ -26,12 +27,11 @@ Two changes:
    cluster's hydration. Pinned by `spec.clusterName`, it resolves its
    `InferenceCluster` and auth `Secret`, composes the PVC, token `Secret`, and
    `Job`, runs the phase machine, and drops the `Job`/`Secret` once Ready.
-2. **Derive the footprint from placement.** `ModelCache` stages onto the
-   clusters where its referencing replicas are placed, not onto a hand-maintained
-   `clusterSelector`. A selector, if set, is an opt-in pre-warm set, not the whole
-   footprint.
-
-A cache with no selector stages exactly where its consumers run:
+2. **Pre-warm from the selector.** A cache's `clusterSelector` is the authoritative
+   footprint. The platform team declares which clusters hold the weights, and
+   Modelplane hydrates them ahead of any deployment. A deployment schedules on its
+   own selector and loads from the cache where the cache is staged, or from the
+   source where it isn't. No deployment pays the download twice.
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -46,8 +46,9 @@ spec:
     authSecret:
       name: hf-token
     sizeGiB: 1500
-  # No clusterSelector: footprint follows the ModelDeployments that
-  # reference this cache. Set one only to pre-warm ahead of placement.
+  clusterSelector:              # the footprint: pre-warm these clusters
+    matchLabels:
+      modelplane.ai/tier: a100
 ```
 
 The `ModelCache` and `ModelDeployment` specs are otherwise unchanged.
@@ -55,9 +56,9 @@ The `ModelCache` and `ModelDeployment` specs are otherwise unchanged.
 
 ## Architecture
 
-Both fan-outs are per-cluster. The new link is `ModelReplica → ModelCache` (bold):
-the cache's footprint is the set of clusters its referencing replicas are placed
-on.
+Both fan-outs are per-cluster. `ModelCache` stages onto the clusters its
+`clusterSelector` matches. `ModelReplica` mounts the cache PVC where it exists and
+loads from the source where it doesn't. The two are placed independently.
 
 ```mermaid
 flowchart TD
@@ -67,7 +68,7 @@ flowchart TD
     end
     subgraph cp["Composed on the control cluster"]
         MR["ModelReplica\n(one per placed cluster)"]
-        MCH["ModelCacheHydration\n(one per cluster in footprint)"]
+        MCH["ModelCacheHydration\n(one per selected cluster)"]
     end
     subgraph wc["Workload cluster"]
         WL["serving workload\n(Deployment / LeaderWorkerSet)"]
@@ -76,15 +77,14 @@ flowchart TD
         PVC["PVC (weights)"]
     end
     MD -->|schedules| MR
-    MC -->|"fan out per cluster"| MCH
+    MC -->|"fan out per selected cluster"| MCH
     MD -. modelCacheRef .-> MC
-    MR == "placement drives footprint" ==> MC
     MR --> WL
     MCH --> JOB
     MCH --> SEC
     MCH --> PVC
     JOB -->|writes| PVC
-    WL -->|"mounts /mnt/models"| PVC
+    WL -->|"mounts /mnt/models where staged"| PVC
     classDef new fill:#ffb74d,stroke:#e65100,stroke-width:3px,color:#000;
     class MCH new
 ```
@@ -132,50 +132,52 @@ Two things depend on this:
 a valid DNS label at or under 63 characters, including the child's own name with
 the cluster folded in.
 
-## Placement-driven footprint
+## Pre-warm-authoritative footprint
 
-The problem (#186): a cache's `clusterSelector` and a deployment's placement are
-set independently. The scheduler places a replica on whichever matching cluster
-has capacity; if the cache didn't stage there, the PVC is missing and the pod
-fails to mount at runtime, with nothing visible at apply time. Staging everywhere
-is the only safe workaround, and it wastes storage and pushes the download token
-and private weights onto clusters running none of the team's deployments.
+The divergence (#186): a cache's `clusterSelector` and a deployment's placement are
+set independently. If a replica is scheduled onto a cluster the cache didn't stage
+to, the PVC is missing and the pod fails to mount at runtime, with nothing visible
+at apply time.
 
-Instead, derive the footprint from placement. Each reconcile, `ModelCache`:
+There are two ways to close that gap. Make the cache chase placement (hydrate
+on-demand wherever a replica lands), or make placement tolerate a missing cache
+(load from the source there). This proposal takes the second. The cache's
+`clusterSelector` is the footprint the platform team declares, Modelplane pre-warms
+those clusters ahead of any deployment, and a deployment that schedules elsewhere
+loads from the source.
 
-1. requires every `ModelReplica` in the fleet (the scheduler already does this for
-   capacity accounting);
-2. keeps those that reference it (`spec.modelCacheRef.name` and namespace);
-3. takes the clusters they're placed on. That set is the footprint, one
-   `ModelCacheHydration` each.
+Pre-warm is what makes a large model usable. Hydrating a 1.5TB cache PVC and
+loading the model into a replica are two sequential copies. Paid on-demand, the
+first deployment onto a new cluster must wait for both, which was roughly an hour
+for a model the size of Kimi in testing. Pre-warm moves that hydration ahead of
+time. The platform team pays it once. An author onto a warmed cluster then waits
+only for the load of roughly fifteen minutes. No deployment ever pays the two
+copies in series.
 
-A replica is then never placed on a cluster the model isn't staged to, and
-credentials and weights reach only the clusters that run the model.
+Because the footprint is the static selector, `ModelCache` does not watch replica
+placement and does not recompose when replicas move. It needs no cross-resource
+watch to stay correct.
 
-`clusterSelector` stays, as an opt-in pre-warm set unioned with the placed set. It
-covers the one thing pure placement can't do: warm a tier before any deployment
-exists. The default (no selector) follows placement.
+### Cache or source, per replica
 
-### Reference counting and reclaim
-
-The placed set is the reference count:
-
-- Two deployments sharing the cache on cluster X contribute one entry; either one
-  tearing down leaves the other's, so X's hydration stays.
-- When the last referencing replica leaves X (and X isn't pre-warmed), X drops
-  out, the parent stops composing that child, and the child and its PVC are
-  reclaimed.
-
-No hydration is retracted out from under a live replica, and an unreferenced cache
-reclaims itself per cluster with no manual cleanup.
+A deployment keeps `modelCacheRef`, and the resolution already exists.
+`compose-model-deployment` resolves the referenced cache's footprint today
+(`resolve_cache_footprint`), which is how #189 constrains placement. Here it serves
+a different purpose. For each replica, the function knows whether that replica's
+cluster is in the footprint and passes the answer down. On a footprint cluster the
+replica mounts the PVC and `base.cache_mount` injects `--model=<mount>`. Off the
+footprint it injects nothing and the engine loads from the source, the existing
+no-cache path. The cache-versus-source decision is known at compose time, so
+forming engine args needs no runtime lookup.
 
 ### Hydrating before ready
 
-A replica can be scheduled onto a cluster new to the model before its PVC exists.
-Rather than fail the mount, the replica gates readiness on its cluster's
-`ModelCacheHydration`: it reports `Hydrating` until the PVC is Bound, then
-proceeds. The first replica on a new cluster pays the download once, as a visible
-state rather than a mount error.
+A replica can be scheduled onto a footprint cluster while its pre-warm is still
+hydrating. Rather than fail the mount, the replica gates readiness on that cluster's
+`ModelCacheHydration`, holding at `Hydrating` until the PVC is Bound. A replica
+loading from the source doesn't gate at all. The replica watches the
+`ModelCacheHydration` object, not the PVC directly, so a future cache that doesn't
+use a PVC keeps the same readiness contract.
 
 Gating can't be open-ended. If hydration fails, a bad token, a bad revision, or
 exhausted storage, the child reports `Failed`, the parent surfaces
@@ -186,30 +188,31 @@ than retried forever.
 
 ### Lifecycle
 
-Placement adds a cluster to the footprint. The last replica leaving removes it.
+The selector is the footprint. A cluster enters when it starts matching and leaves
+when it stops (or when the `ModelCache` is deleted). The parent stamps a child per
+matched cluster and reclaims the child and its PVC when the cluster drops out. No
+replica reference counting is involved, because placement no longer drives the
+footprint.
 
 ```mermaid
 flowchart TD
-    A["Replica scheduled onto cluster C"] --> B["ModelCache adds C to the placed set"]
-    B --> C["Stamp ModelCacheHydration for (cache, C)"]
-    C --> D["Child composes PVC + hydration Job\nphase: Hydrating"]
-    D --> E{"PVC Bound and\nJob complete?"}
-    E -- no --> F["Replica gates on the hydration\nreports Hydrating, holds"]
-    F --> E
-    E -- yes --> G["Child phase: Ready"]
-    G --> H["Replica mounts /mnt/models, becomes Ready"]
-    H --> I{"Last referencing\nreplica leaves C?"}
-    I -- no --> H
-    I -- yes --> J["C drops from the placed set\nchild + PVC reclaimed"]
+    A["clusterSelector matches cluster C"] --> B["Stamp ModelCacheHydration for (cache, C)"]
+    B --> C["Child composes PVC + hydration Job\nphase: Hydrating"]
+    C --> D{"PVC Bound and\nJob complete?"}
+    D -- no --> C
+    D -- yes --> E["Child phase: Ready"]
+    E --> F["Replicas on C mount /mnt/models;\nreplicas elsewhere load from source"]
+    F --> G{"C still matches\nthe selector?"}
+    G -- yes --> F
+    G -- no --> H["C drops out\nchild + PVC reclaimed"]
 ```
 
 ## What the parent composes
 
 `compose-model-cache` becomes fan-out plus roll-up:
 
-- **Resolve** the referencing `ModelReplica`s (the placed set) and, for pre-warm,
-  the `clusterSelector`.
-- **Stamp** one child per cluster in `placed ∪ preWarm`, named
+- **Resolve** the clusters the `clusterSelector` matches.
+- **Stamp** one child per matched cluster, named
   `child_name("modelcache", ns, cache-name, cluster)`, copying down `huggingFace`,
   `clusterName`, the `authSecret` reference, and `cacheName`.
 - **Roll up** each child's `status.phase`/`Ready` into `status.clusters[]`,
@@ -231,13 +234,35 @@ No `mrap.yaml` change is needed, because it composes
 
 ## Alternatives considered
 
-### Keep `clusterSelector` as the whole footprint
+### Hydrate on-demand from placement
 
-The status quo, and the divergence #186 is about: the selector and placement
-drift, and the failure is a runtime mount error with nothing at apply time.
-Deriving the footprint from placement removes the class of bug by construction.
-The selector survives only for the case placement can't serve, pre-warming ahead
-of a deployment.
+Derive the footprint from where replicas are placed. When a replica is scheduled
+onto a cluster new to the model, the cache follows it there. This was the earlier
+shape of this proposal and reads as the most automatic option. Three costs turned
+it down:
+
+1. It needs [crossplane#7572](https://github.com/crossplane/crossplane/pull/7572)
+   to function. Without a watch on referencing `ModelReplica`s, nothing re-triggers
+   `compose-model-cache` when a new replica is placed, so the parent never learns to
+   stamp the new child. That change is approved and expected in Crossplane v2.4, so
+   the on-demand shape can't be built until then.
+2. The first deployment onto a new cluster pays the hydrate and the load in series,
+   the download twice, which is the hour-long wait pre-warm removes.
+3. A model implicitly carries its private weights and download token onto any
+   cluster it happens to be scheduled to, rather than onto the clusters the platform
+   team chose.
+
+Pre-warm avoids all three. A model never carries the cache to a cluster the
+platform team didn't pre-hydrate.
+
+### Constrain placement to the footprint (#189)
+
+[#189](https://github.com/modelplaneai/modelplane/pull/189) prevents the stuck
+mount by making the scheduler refuse to place a replica outside the cache
+footprint. That closes the divergence but removes capacity. A cluster with room to
+run the model stays unusable for it until the cache is staged there. Pre-warm takes
+the opposite tack. A replica may schedule anywhere its own selector allows. Off the
+footprint it loads from the source rather than being turned away.
 
 ### Drop `modelCacheRef`; derive the model from the deployment
 
@@ -252,20 +277,21 @@ structured only on `ModelCache`. Fully automatic caching would need:
   serving mount contract.
 
 That is a larger, user-facing change with its own migration. This proposal keeps
-`modelCacheRef` and solves the divergence, waste, sprawl, and lifecycle problems
-without it. Identity-keyed sharing can be added on top later, since the child
-already carries a source independent of how it was requested.
+`modelCacheRef`, which is also what lets `compose-model-deployment` resolve the
+footprint for the cache-or-source decision above. Identity-keyed sharing can be
+added on top later, since the child already carries a source independent of how it
+was requested.
 
-### A separate fleet reconciler kind for reference counting
+### A separate fleet reconciler kind
 
-A single hydration per cluster serves replicas across deployments and outlives any
-one of them, and Crossplane composed resources are single-owner, so a
-`ModelReplica` can't compose a shared hydration directly. A new fleet-scoped
-reconciler kind could own all hydrations. Reusing `ModelCache` is simpler: it is
-already the per-model, per-namespace resource, it already fans out per cluster,
-and computing the placed set keeps ownership and the namespace security boundary
-where they are. A dedicated reconciler is worth revisiting only if caching becomes
-fully deployment-derived (the alternative above).
+A single hydration per cluster serves replicas across deployments, and Crossplane
+composed resources are single-owner, so a `ModelReplica` can't compose a shared
+hydration directly. A new fleet-scoped reconciler kind could own all hydrations.
+Reusing `ModelCache` is simpler: it is already the per-model, per-namespace
+resource, it already fans out per cluster, and pre-warm keeps ownership and the
+namespace security boundary where they are. A dedicated reconciler is worth
+revisiting only if caching becomes fully deployment-derived (the alternative
+above).
 
 ### Conditions-only child status, like `ModelReplica`
 
@@ -276,22 +302,27 @@ so the parent preserves it.
 
 ### Deliver the decomposition and the footprint change separately
 
-The decomposition (#210) is a pure refactor and could merge first. They are kept
-together because the placed-set footprint only works once the per-cluster
-hydration is its own reconciled unit. Splitting them would mean designing the
-child's ownership twice.
+The decomposition (#210) is a pure refactor and could merge first. The footprint
+change (#186) is lighter under pre-warm, since the selector stays authoritative as
+it is today. The two are kept together because designing the child's ownership once
+against the final footprint model is easier than doing it twice.
 
 ## Open questions
 
 - **Child kind name:** `ModelCacheHydration` (chosen) versus `ModelCacheReplica`
   for symmetry with `ModelReplica`. `Hydration` names the lifecycle the child
   owns; `Replica` implies a copy.
-- **Readiness gating:** whether a replica gates its readiness on its cluster's
-  hydration (the `Hydrating` state above), or lets the mount block until the PVC
-  appears (less coupling, worse failure surface). Leaning toward the gate.
+- **Empty selector:** whether a `ModelCache` with no `clusterSelector` stages
+  nowhere (nothing to pre-warm, so every replica loads from the source) or is
+  rejected at apply time as a likely mistake. Leaning toward staging nowhere.
+- **Surfacing the source fallback:** a replica loading from the source on an
+  un-warmed cluster is slower to start, and that should be visible on the
+  `ModelDeployment` so an operator can see they missed a pre-warm.
 
 ## Interaction with related issues
 
+- **#189 (constrain placement):** superseded here. Pre-warm relaxes the placement
+  constraint and loads from the source off the footprint, as above.
 - **#115 (Modelplane-owned hydration image):** the Job builder moves to the child;
   #115 becomes a localized image swap there.
 - **#281 (multiple models per deployment):** the child stays single-source (one
@@ -303,4 +334,3 @@ child's ownership twice.
   each node's local image store, which a PVC-based cache cannot do (the Kubelet
   starts containers from node-local image layers, not a mounted volume). It shares
   only the per-cluster fan-out shape, not the mechanism.
-</content>
