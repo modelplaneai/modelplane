@@ -54,6 +54,10 @@ spec:
 The `ModelCache` and `ModelDeployment` specs are otherwise unchanged.
 `ModelCacheHydration` is composed, never authored, the same as `ModelReplica`.
 
+Approving this means agreeing to both changes: the `ModelCacheHydration`
+decomposition (#210), and the pre-warm-authoritative footprint (#186) where a
+deployment loads from the source on clusters the cache isn't staged to.
+
 ## Architecture
 
 Both fan-outs are per-cluster. `ModelCache` stages onto the clusters its
