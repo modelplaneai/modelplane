@@ -36,6 +36,17 @@ composes these against the Gateway API standard and its inference extension,
 rather than any one gateway's own resources, so a conformant gateway works without
 Modelplane carrying a codepath per vendor.
 
+Concretely, this proposes:
+
+1. an `affinity` block on `ModelService` (Session or ClientIP)
+2. criticality and weighting expressed through GAIE, replacing the static HTTPRoute
+   weights `compose-model-service` emits today
+3. moving the fleet gateway from Traefik to the standard profile (Envoy Gateway with
+   GAIE and Envoy AI Gateway), with heterogeneous path rewrites handled by an ext_proc
+
+Approving this means agreeing to that direction and that gateway profile. The YAML
+below illustrates the shapes. It isn't the committed field spec.
+
 ## The user model: ModelService and ModelEndpoint
 
 A user works with two resources.
@@ -214,33 +225,48 @@ seams where extra routing logic can attach without forking the composition. The
 baseline stays standard and portable, and richer behavior layers on top through
 those seams rather than living in core.
 
-One thing falls outside the standard today: **path aggregation.** Each
-`ModelEndpoint` carries a per-replica rewrite path, so the per-backendRef
-`URLRewrite` that pins us to Traefik (#89) fires for any multi-endpoint
-`ModelService`, not only external-provider mixes. For a self-hosted fleet, which is
-the inference-aware target, two changes remove the need for it:
+### Heterogeneous rewrites without the beyond-spec feature
 
-1. Serve a deployment's replicas at one deployment-scoped path, so their endpoints
-   share a single route-level rewrite.
-2. Weight canaries through GAIE `InferenceModel` rather than per-backendRef
-   weights.
+One feature pins us to Traefik: the per-backendRef `URLRewrite`. Each `ModelEndpoint`
+carries its own rewrite path, so a multi-endpoint `ModelService` needs a different
+rewrite per backend, which the Gateway API spec allows only at the rule level (#85).
+A spec-compliant gateway rejects it, so the standard profile has to do heterogeneous
+rewrites another way. There are two cases.
 
-The remaining case is folding an external provider into the same weighted split,
-where the provider's `/openai/v1/` differs from the self-hosted `/v1/`. Normalizing
-that off the gateway would take a **per-provider adapter**: a small proxy that
-presents the canonical path and injects the provider's API key. That goes beyond a
-path rewrite, since Modelplane doesn't inject provider auth today (an endpoint
-points at the FQDN), so the adapter would need to read the key from a Secret. **This
-document does not propose building it.** The adapter belongs
-with a provider-auth design, not with fleet routing. Until it exists,
-heterogeneous-path provider aggregation stays a Traefik-backend concern, and the
-standard, inference-aware backend serves self-hosted fleets.
+**Self-hosted replicas** each sit at `/<ns>/<replica>/`. Two ways to handle them on a
+standard gateway:
 
-No single gateway meets the whole profile today. Envoy Gateway is closest (GAIE
-and `SessionPersistence`) once the self-hosted normalization above is in place.
-Traefik keeps provider aggregation, but not the profile. As the standard matures,
-more gateways qualify with no new Modelplane code. That is the point of composing
-to the standard: the supported set grows without the design diverging.
+1. Normalize the path away. Serve a deployment's replicas at one deployment-scoped
+   path, so a single rule-level `URLRewrite` covers them, and weight canaries through
+   GAIE `InferenceModel` rather than per-backendRef weights. No per-request rewrite is
+   left.
+2. Rewrite in an ext_proc. Where a per-endpoint path is unavoidable, an external
+   processing filter (`EnvoyExtensionPolicy` with `extProc`) rewrites `:path` for the
+   chosen backend. GAIE already runs an ext_proc in the request path, the EPP, so the
+   rewrite rides a mechanism the profile already introduces.
+
+**External providers** sit at their own path (`/openai/v1/`) and need their own API
+key. This isn't a Modelplane-built adapter. Envoy AI Gateway, the GAIE gateway in the
+profile, already does it: an `AIServiceBackend` declares the provider's API shape and a
+`BackendSecurityPolicy` supplies its credential. The gateway's ext_proc does the path
+and schema translation and injects the auth on the way to the provider. So provider
+aggregation, the path rewrite and the credential this doc used to defer to a separate
+design, is a built-in feature of the gateway we are adopting.
+
+Both cases put the rewrite in an ext_proc rather than a beyond-spec gateway feature,
+which is what lets the standard profile replace Traefik without losing heterogeneous
+rewrites.
+
+## Which gateway
+
+The profile targets one gateway, Envoy Gateway with GAIE and Envoy AI Gateway.
+It is the gateway that covers `SessionPersistence`, GAIE, and provider aggregation
+together, once the ext_proc rewrite above is in place. Composing to the standard
+rather than to Envoy's own resources isn't about supporting every gateway. It keeps us
+off Traefik's beyond-spec behavior and lets us adopt the inference-aware features, and
+the `InferenceGateway` `backend` discriminator stays as the seam if a platform team
+ever needs a different conformant gateway. Breadth of support is a consequence,
+not the goal.
 
 ## Validation
 
@@ -261,11 +287,16 @@ before we commit to it. Where each stands:
 - **Deployment-scoped path normalization.** Serving a deployment's replicas at one
   path changes the two-gateway path contract, so it needs an end-to-end test:
   fleet route, per-cluster match, pod mount.
+- **ext_proc rewrite and Envoy AI Gateway provider aggregation.** The replacements
+  for the per-backendRef rewrite. `EnvoyExtensionPolicy`/`extProc` for a self-hosted
+  per-endpoint path, and `AIServiceBackend` plus `BackendSecurityPolicy` for a
+  provider, both need proving against our composed shapes. Built-in gateway features,
+  unvalidated against Modelplane.
 
 The consequence is blunt: the inference-aware features do not run on the Traefik
-backend we run. They require the standard, GAIE-capable backend (Envoy Gateway)
-with path aggregation normalized first, and that backend has to be stood up and
-tested before this design is committed.
+backend we run. They require the standard backend (Envoy Gateway with GAIE and Envoy
+AI Gateway) with the ext_proc rewrite in place, and that backend has to be stood up
+and tested before this design is committed.
 
 ## Alternatives considered
 
@@ -284,12 +315,13 @@ this routing. The profile has to name `SessionPersistence` and GAIE.
 
 ### Lean on Traefik's own features
 
-Staying on Traefik is correct for provider aggregation, and its HRW strategy
-(client IP) and cookie stickiness (`TraefikService` CRD) even give coarse affinity.
+Traefik's HRW strategy (client IP) and cookie stickiness (`TraefikService` CRD) give
+coarse affinity, and its per-backendRef rewrite handles provider aggregation today.
 But those are coarse and partly outside Gateway API, and leaning on them forecloses
-the inference-aware routing this document is about. Only a single feature pins us to
-Traefik, so the cost of staying exceeds the cost of composing to the standard.
-Client-IP affinity is worth keeping as an interim on the Traefik backend.
+the inference-aware routing this document is about. The one feature that pinned us to
+Traefik, the per-backendRef rewrite, has an ext_proc replacement on the standard
+profile, so nothing requires staying. Client-IP affinity is worth keeping as an
+interim on the Traefik backend until the standard one is stood up.
 
 ### Replica-level routing from the fleet
 
