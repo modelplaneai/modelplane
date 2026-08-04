@@ -74,6 +74,9 @@ GPU.
 {{< tab "Nebius H100" >}}
 {{< manifests "concepts/inference-class-nebius-h100.yaml" >}}
 {{< /tab >}}
+{{< tab "Vultr L40S" >}}
+{{< manifests "concepts/inference-class-vultr-l40s.yaml" >}}
+{{< /tab >}}
 {{< tab "H100 bare-metal" >}}
 {{< manifests "concepts/inference-class-h100-byo.yaml" >}}
 {{< /tab >}}

@@ -22,6 +22,7 @@ members = [
     "compose-nebius-cluster",
     "compose-serving-stack",
     "compose-usages",
+    "compose-vultr-cluster",
     "crossplane-models",
     "modelplane",
 ]
@@ -329,6 +330,25 @@ requires-dist = [
 name = "compose-usages"
 version = "0.0.0"
 source = { editable = "functions/compose-usages" }
+dependencies = [
+    { name = "click" },
+    { name = "crossplane-function-sdk-python" },
+    { name = "crossplane-models" },
+    { name = "grpcio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "crossplane-models", editable = "schemas/python" },
+    { name = "grpcio", specifier = ">=1.73.1" },
+]
+
+[[package]]
+name = "compose-vultr-cluster"
+version = "0.0.0"
+source = { editable = "functions/compose-vultr-cluster" }
 dependencies = [
     { name = "click" },
     { name = "crossplane-function-sdk-python" },

@@ -110,6 +110,21 @@ class Nebius(BaseModel):
     """
 
 
+class Vultr(BaseModel):
+    credentials: Credentials | None = None
+    """
+    Vultr ProviderConfig or ClusterProviderConfig used to authenticate to the Vultr API. Defaults to the ClusterProviderConfig named default.
+    """
+    kubernetesVersion: str | None = 'v1.36.1+3'
+    """
+    VKE cluster Kubernetes version. VKE requires an exact version string including the build suffix; list current versions with vultr-cli kubernetes versions. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
+    """
+    region: constr(min_length=1, max_length=32)
+    """
+    Vultr region for the cluster (e.g. ewr, fra). GPU plans and Vultr File System availability vary by region.
+    """
+
+
 class Cluster(BaseModel):
     aks: Aks | None = None
     """
@@ -131,9 +146,13 @@ class Cluster(BaseModel):
     """
     Nebius mk8s cluster configuration. Required when source is Nebius; may be empty, since every field has a default. The cluster is created in the project the referenced ProviderConfig or ClusterProviderConfig sets as its projectID; Nebius projects are bound to a region, so the project also determines where the cluster runs.
     """
-    source: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Existing']
+    source: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Existing']
     """
     Cluster provisioning method.
+    """
+    vultr: Vultr | None = None
+    """
+    Vultr Kubernetes Engine (VKE) cluster configuration. Required when source is Vultr.
     """
 
 

@@ -1,0 +1,38 @@
+# An InferenceClass describing Vultr's vcg-l40s-16c-180g-48vram plan with
+# 1x NVIDIA L40S.
+#
+# The provisioning block tells Modelplane how to create a node pool of
+# this class on VKE. Vultr sizes nodes by plan; the plan determines the
+# GPU, vCPU, and memory shape of each node. The devices block describes
+# what hardware a node of this class has, DRA-style - used by the
+# scheduler to match models to clusters, and to form DRA ResourceClaims
+# for claim: DRA devices.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: vultr-l40s-1x
+spec:
+  description: "Vultr vcg-l40s-16c-180g-48vram, 1x NVIDIA L40S 48GB"
+  provisioning:
+    provider: Vultr
+    vultr:
+      # List the plans available in a region via the Vultr API:
+      #   curl -s "https://api.vultr.com/v2/regions/ewr/availability" \
+      #     -H "Authorization: Bearer $VULTR_API_KEY" | jq '.available_plans[]'
+      plan: vcg-l40s-16c-180g-48vram
+      accelerator:
+        type: nvidia-l40s
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+      cudaComputeCapability: { version: "8.9.0" }
+    capacity:
+      # The L40S's real usable VRAM, what the NVIDIA DRA driver reports,
+      # not its nominal 48GB. A nodeSelector asking for >= 48Gi would never bind.
+      memory: { value: "46068Mi" }

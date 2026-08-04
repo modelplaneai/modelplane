@@ -1,0 +1,217 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: vultrclusters.infrastructure.modelplane.ai
+spec:
+  group: infrastructure.modelplane.ai
+  names:
+    categories:
+    - crossplane
+    - modelplane
+    kind: VultrCluster
+    plural: vultrclusters
+    shortNames:
+    - vke
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    additionalPrinterColumns:
+    - name: REGION
+      type: string
+      jsonPath: .spec.region
+    schema:
+      openAPIV3Schema:
+        description: >-
+          A VultrCluster provisions a Vultr Kubernetes Engine (VKE) cluster
+          with dedicated node pools for GPU inference and system workloads.
+          It outputs a Secret containing the cluster kubeconfig. The
+          kubeconfig embeds static client certificates, so consumers need
+          nothing beyond it to reach the cluster. Note that provider-vultr
+          only honors node pool changes at creation time; resize existing
+          pools through VKE's server-side autoscaler by setting
+          maxNodeCount up front.
+        properties:
+          spec:
+            description: VultrClusterSpec defines the desired state of VultrCluster.
+            required:
+            - region
+            - nodePools
+            properties:
+              region:
+                type: string
+                description: >-
+                  Vultr region for the cluster (e.g. ewr, fra). GPU plans
+                  and Vultr File System availability vary by region.
+                minLength: 1
+                maxLength: 32
+              kubernetesVersion:
+                type: string
+                default: "v1.36.1+3"
+                description: >-
+                  VKE cluster Kubernetes version. VKE requires an exact
+                  version string including the build suffix; list current
+                  versions with vultr-cli kubernetes versions. Defaults to
+                  a version where Dynamic Resource Allocation (how GPUs
+                  bind to pods) is generally available.
+                minLength: 1
+                maxLength: 16
+              credentials:
+                type: object
+                description: >-
+                  Vultr ProviderConfig or ClusterProviderConfig used to
+                  authenticate to the Vultr API. Defaults to the
+                  ClusterProviderConfig named default.
+                properties:
+                  type:
+                    type: string
+                    default: ClusterProviderConfig
+                    enum:
+                    - ProviderConfig
+                    - ClusterProviderConfig
+                  name:
+                    type: string
+                    default: default
+                    minLength: 1
+                    maxLength: 253
+              nodePools:
+                type: array
+                description: >-
+                  Node pools for the cluster. At least one System pool is
+                  required for controllers and infrastructure workloads.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys:
+                - name
+                items:
+                  type: object
+                  required:
+                  - name
+                  - role
+                  - plan
+                  x-kubernetes-validations:
+                  - rule: "self.role != 'GPU' || has(self.gpu)"
+                    message: gpu is required when role is GPU.
+                  - rule: "!has(self.minNodeCount) || has(self.maxNodeCount)"
+                    message: maxNodeCount is required when minNodeCount is set.
+                  properties:
+                    name:
+                      type: string
+                      description: >-
+                        Unique name for this node pool. Used as the pool's
+                        label in the VKE cluster.
+                      maxLength: 40
+                      minLength: 1
+                    role:
+                      type: string
+                      description: >-
+                        Determines what workloads this pool runs. System
+                        pools host controllers, gateways, and infrastructure.
+                        GPU pools host inference workloads and are tainted to
+                        exclude non-GPU pods.
+                      enum:
+                      - System
+                      - GPU
+                    plan:
+                      type: string
+                      description: >-
+                        Vultr plan ID for the pool's nodes (e.g.
+                        vcg-l40s-16c-180g-48vram, vc2-6c-16gb). This is the
+                        instance type used by other clouds; list plans with
+                        vultr-cli plans list.
+                      minLength: 1
+                      maxLength: 63
+                    nodeCount:
+                      type: integer
+                      default: 1
+                      description: >-
+                        Number of nodes. Fixed unless maxNodeCount enables
+                        autoscaling. VKE pools always run at least one node.
+                      minimum: 1
+                      maximum: 1000
+                    minNodeCount:
+                      type: integer
+                      description: >-
+                        Minimum number of nodes for autoscaling. Defaults to
+                        nodeCount when maxNodeCount is set. Requires
+                        maxNodeCount.
+                      minimum: 1
+                      maximum: 1000
+                    maxNodeCount:
+                      type: integer
+                      description: >-
+                        Maximum number of nodes for autoscaling. When set the
+                        node pool autoscales between minNodeCount (or
+                        nodeCount) and this; VKE autoscaling is server-side,
+                        no in-cluster autoscaler is installed. Omit for
+                        fixed-size pools.
+                      minimum: 1
+                      maximum: 1000
+                    gpu:
+                      type: object
+                      description: >-
+                        GPU configuration. Required when role is GPU.
+                      required:
+                      - acceleratorType
+                      properties:
+                        acceleratorType:
+                          type: string
+                          description: >-
+                            GPU accelerator type (e.g. nvidia-l40s,
+                            nvidia-a100). Used to label GPU nodes; the actual
+                            GPU and count are determined by the plan.
+                          minLength: 1
+                          maxLength: 63
+            type: object
+          status:
+            description: VultrClusterStatus defines the observed state of VultrCluster.
+            properties:
+              secrets:
+                type: array
+                description: >-
+                  Secrets produced by this cluster. Consumers use these to
+                  authenticate to the cluster. All secrets are in the same
+                  namespace as this VultrCluster.
+                items:
+                  type: object
+                  required:
+                  - type
+                  - name
+                  - key
+                  properties:
+                    type:
+                      type: string
+                      description: >-
+                        The type of credential this secret contains.
+                        Kubeconfig contains a kubeconfig file with the
+                        cluster endpoint, CA certificate, and static client
+                        certificates.
+                      enum:
+                      - Kubeconfig
+                    name:
+                      type: string
+                      description: Name of the Secret.
+                      maxLength: 253
+                    key:
+                      type: string
+                      description: >-
+                        Key within the Secret that holds the credential data.
+                      maxLength: 253
+              cache:
+                type: object
+                description: >-
+                  Observed ModelCache RWX storage state.
+                properties:
+                  storageClassName:
+                    type: string
+                    description: >-
+                      Name of the Modelplane-managed ReadWriteMany StorageClass
+                      composed on this cluster for ModelCache PVCs. ModelCache
+                      reads this to target the cache PVC.
+                    maxLength: 253
+            type: object
+        required:
+        - spec
+        type: object
+    served: true

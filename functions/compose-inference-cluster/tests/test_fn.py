@@ -2120,8 +2120,418 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+        # --- Case 14: Vultr first pass composes the VultrCluster XR only.
+        # minNodeCount stays unset so the pool's autoscaling floor defaults
+        # to its node count downstream. ---
+        inference_class_l40s_vultr = {
+            "apiVersion": "modelplane.ai/v1alpha1",
+            "kind": "InferenceClass",
+            "metadata": {"name": "gpu-l40s-vultr"},
+            "spec": {
+                "devices": [
+                    {
+                        "name": "gpu",
+                        "claim": "DRA",
+                        "driver": "gpu.nvidia.com",
+                        "deviceClassName": "gpu.nvidia.com",
+                        "count": 1,
+                        "capacity": {"memory": {"value": "46068Mi"}},
+                    },
+                ],
+                "provisioning": {
+                    "provider": "Vultr",
+                    "vultr": {
+                        "plan": "vcg-l40s-16c-180g-48vram",
+                        "accelerator": {"type": "nvidia-l40s", "count": 1},
+                    },
+                },
+            },
+        }
+        class_selector_vultr = fnv1.ResourceSelector(
+            api_version="modelplane.ai/v1alpha1",
+            kind="InferenceClass",
+            match_name="gpu-l40s-vultr",
+        )
+
+        req14 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="Vultr",
+                                    vultr=v1alpha1.Vultr(region="ewr"),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="l40s-pool",
+                                        className="gpu-l40s-vultr",
+                                        nodeCount=2,
+                                        maxNodeCount=4,
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req14.required_resources["class-gpu-l40s-vultr"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_l40s_vultr)),
+        )
+
+        want14 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "providerConfigRef": {
+                                    "name": "test-cluster-cluster-kubeconfig-d0f89",
+                                },
+                                "namespace": "modelplane-system",
+                                "gpuPools": [
+                                    {
+                                        "name": "l40s-pool",
+                                        "nodes": 4,
+                                        "devices": [
+                                            {
+                                                "name": "gpu",
+                                                "claim": "DRA",
+                                                "driver": "gpu.nvidia.com",
+                                                "deviceClassName": "gpu.nvidia.com",
+                                                "count": 1,
+                                                "capacity": {"memory": {"value": "46068Mi"}},
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ),
+                ),
+                resources={
+                    "vultr-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "VultrCluster",
+                                "metadata": {
+                                    "name": "test-cluster",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "region": "ewr",
+                                    "kubernetesVersion": "v1.36.1+3",
+                                    "nodePools": [
+                                        {
+                                            "name": "l40s-pool",
+                                            "role": "GPU",
+                                            "plan": "vcg-l40s-16c-180g-48vram",
+                                            "nodeCount": 2,
+                                            "maxNodeCount": 4,
+                                            "gpu": {
+                                                "acceleratorType": "nvidia-l40s",
+                                            },
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCluster",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want14.requirements.resources["class-gpu-l40s-vultr"].CopyFrom(class_selector_vultr)
+
+        # --- Case 14b: Vultr credentials pass through to the VultrCluster
+        # spec, mirroring the GKE/EKS/AKS passthrough. ---
+        req_creds_vultr = fnv1.RunFunctionRequest()
+        req_creds_vultr.CopyFrom(req14)
+        req_creds_vultr.observed.composite.CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    v1alpha1.InferenceCluster(
+                        metadata=metav1.ObjectMeta(
+                            name="test-cluster",
+                            namespace="modelplane-system",
+                        ),
+                        spec=v1alpha1.Spec(
+                            cluster=v1alpha1.Cluster(
+                                source="Vultr",
+                                vultr=v1alpha1.Vultr(
+                                    region="ewr",
+                                    credentials=v1alpha1.Credentials(
+                                        type="ProviderConfig",
+                                        name="my-vultr-account",
+                                    ),
+                                ),
+                            ),
+                            nodePools=[
+                                v1alpha1.NodePool(
+                                    name="l40s-pool",
+                                    className="gpu-l40s-vultr",
+                                    nodeCount=2,
+                                    maxNodeCount=4,
+                                ),
+                            ],
+                        ),
+                    ).model_dump(exclude_none=True, mode="json"),
+                ),
+            ),
+        )
+
+        want_creds_vultr = fnv1.RunFunctionResponse()
+        want_creds_vultr.CopyFrom(want14)
+        want_creds_vultr.desired.resources["vultr-cluster"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "VultrCluster",
+                        "metadata": {
+                            "name": "test-cluster",
+                            "namespace": "modelplane-system",
+                        },
+                        "spec": {
+                            "region": "ewr",
+                            "kubernetesVersion": "v1.36.1+3",
+                            "credentials": {
+                                "type": "ProviderConfig",
+                                "name": "my-vultr-account",
+                            },
+                            "nodePools": [
+                                {
+                                    "name": "l40s-pool",
+                                    "role": "GPU",
+                                    "plan": "vcg-l40s-16c-180g-48vram",
+                                    "nodeCount": 2,
+                                    "maxNodeCount": 4,
+                                    "gpu": {
+                                        "acceleratorType": "nvidia-l40s",
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ),
+            ),
+        )
+
+        # --- Case 15: Vultr cluster ready - kubeconfig observed on the
+        # VultrCluster status. The VKE kubeconfig embeds static client
+        # certificates, so the ClusterProviderConfig carries no identity
+        # (unlike Nebius). The function composes the ServingStack backend
+        # with the kubeconfig, relays the built-in RWX StorageClass, and
+        # emits the Usage that blocks VultrCluster deletion until the
+        # ServingStack is gone. ---
+        req15 = fnv1.RunFunctionRequest()
+        req15.CopyFrom(req14)
+        req15.observed.resources["vultr-cluster"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "VultrCluster",
+                        "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                        "spec": {
+                            "region": "ewr",
+                            "nodePools": [
+                                {
+                                    "name": "l40s-pool",
+                                    "role": "GPU",
+                                    "plan": "vcg-l40s-16c-180g-48vram",
+                                    "nodeCount": 2,
+                                },
+                            ],
+                        },
+                        "status": {
+                            "conditions": [
+                                {
+                                    "type": "Ready",
+                                    "status": "True",
+                                    "reason": "Available",
+                                    "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                },
+                            ],
+                            "secrets": [
+                                {
+                                    "type": "Kubeconfig",
+                                    "name": "test-cluster-kubeconfig-abcde",
+                                    "key": "kubeconfig",
+                                },
+                            ],
+                            "cache": {"storageClassName": "vultr-vfs-storage"},
+                        },
+                    }
+                ),
+            ),
+        )
+
+        want15 = fnv1.RunFunctionResponse()
+        want15.CopyFrom(want14)
+        want15.desired.resources["vultr-cluster"].ready = fnv1.READY_TRUE
+        want15.desired.composite.CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "status": {
+                            "providerConfigRef": {
+                                "name": "test-cluster-cluster-kubeconfig-d0f89",
+                            },
+                            "namespace": "modelplane-system",
+                            "gpuPools": [
+                                {
+                                    "name": "l40s-pool",
+                                    "nodes": 4,
+                                    "devices": [
+                                        {
+                                            "name": "gpu",
+                                            "claim": "DRA",
+                                            "driver": "gpu.nvidia.com",
+                                            "deviceClassName": "gpu.nvidia.com",
+                                            "count": 1,
+                                            "capacity": {"memory": {"value": "46068Mi"}},
+                                        },
+                                    ],
+                                },
+                            ],
+                            "cache": {"storageClassName": "vultr-vfs-storage"},
+                        },
+                    },
+                ),
+            ),
+        )
+        want15.desired.resources["cluster-provider-config-kubernetes"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "ClusterProviderConfig",
+                        "metadata": {"name": "test-cluster-cluster-kubeconfig-d0f89"},
+                        "spec": {
+                            "credentials": {
+                                "source": "Secret",
+                                "secretRef": {
+                                    "namespace": "modelplane-system",
+                                    "name": "test-cluster-kubeconfig-abcde",
+                                    "key": "kubeconfig",
+                                },
+                            },
+                        },
+                    }
+                ),
+                ready=fnv1.READY_TRUE,
+            ),
+        )
+        want15.desired.resources["serving-stack"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "ServingStack",
+                        "metadata": {
+                            "name": "test-cluster-serving-stack-fd00b",
+                            "namespace": "modelplane-system",
+                        },
+                        "spec": {
+                            "secrets": [
+                                {
+                                    "type": "Kubeconfig",
+                                    "name": "test-cluster-kubeconfig-abcde",
+                                    "key": "kubeconfig",
+                                },
+                            ],
+                        },
+                    }
+                ),
+            ),
+        )
+        want15.desired.resources["usage-vultr-by-backend"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "protection.crossplane.io/v1beta1",
+                        "kind": "Usage",
+                        "metadata": {"namespace": "modelplane-system"},
+                        "spec": {
+                            "of": {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "VultrCluster",
+                                "resourceSelector": {"matchControllerRef": True},
+                            },
+                            "by": {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "ServingStack",
+                                "resourceSelector": {"matchControllerRef": True},
+                            },
+                            "replayDeletion": True,
+                        },
+                    }
+                ),
+                ready=fnv1.READY_TRUE,
+            ),
+        )
+        del want15.conditions[:]
+        want15.conditions.extend(
+            [
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="ClusterRunning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Installing",
+                ),
+            ]
+        )
+        want15.results.append(
+            fnv1.Result(
+                severity=fnv1.SEVERITY_NORMAL,
+                message="Vultr cluster ready, composing backend",
+            )
+        )
+
         # Every compose path emits the ModelReplica guard requirement.
-        for want in (want1, want2, want3, want4, want5, want6, want7, want8, want9, want10, want11, want12, want13):
+        for want in (
+            want1,
+            want2,
+            want3,
+            want4,
+            want5,
+            want6,
+            want7,
+            want8,
+            want9,
+            want10,
+            want11,
+            want12,
+            want13,
+            want14,
+            want_creds_vultr,
+            want15,
+        ):
             want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         # The guard cases reuse case 1's request and response.
@@ -2291,6 +2701,17 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="AKS cluster ready composes CPC without identity, ServingStack, and Usage",
                 req=req13,
                 want=want13,
+            ),
+            Case(name="Vultr cluster first pass composes VultrCluster XR only", req=req14, want=want14),
+            Case(
+                name="Vultr credentials pass through to VultrCluster spec",
+                req=req_creds_vultr,
+                want=want_creds_vultr,
+            ),
+            Case(
+                name="Vultr cluster ready composes CPC without identity, ServingStack, and Usage",
+                req=req15,
+                want=want15,
             ),
             *guard_cases,
         ]

@@ -1,10 +1,9 @@
 # An InferenceCluster backed by an Azure AKS cluster.
 #
-# Modelplane provisions the full AKS cluster (a dedicated resource
-# group, virtual network and subnet, control plane with a
-# system-assigned managed identity, system + GPU node pools) and
-# installs the inference stack (cert-manager, Traefik, Prometheus,
-# KEDA, LeaderWorkerSet).
+# Modelplane provisions the full AKS cluster (a dedicated resource group,
+# virtual network and subnet, control plane with a system-assigned managed
+# identity, system + GPU node pools) and installs the inference stack
+# (cert-manager, Envoy Gateway, Prometheus, LeaderWorkerSet, Gateway API).
 #
 # The system node pool that hosts control-plane components is
 # provisioned automatically and is not declared here. Only GPU node

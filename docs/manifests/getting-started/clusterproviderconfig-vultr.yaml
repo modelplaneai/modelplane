@@ -1,0 +1,16 @@
+# Points the Vultr provider at the API key Secret you created. Named
+# default, so InferenceClusters with a Vultr source use it without further
+# configuration. The API key only provisions clusters - VKE kubeconfigs
+# embed static client certificates, so consumers never need it to reach
+# the clusters Modelplane provisions.
+apiVersion: vultr.m.crossplane.io/v1alpha1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: vultr-credentials
+      key: api-key

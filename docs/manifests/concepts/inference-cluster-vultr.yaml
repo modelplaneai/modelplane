@@ -1,0 +1,61 @@
+# An InferenceCluster backed by a Vultr Kubernetes Engine (VKE) cluster.
+#
+# Modelplane provisions the full VKE cluster (VPC, control plane, system + GPU
+# node pools) and installs the inference stack (cert-manager, Envoy Gateway,
+# Prometheus, LeaderWorkerSet, Gateway API).
+#
+# The system node pool that hosts control-plane components is provisioned
+# automatically and is not declared here. Only GPU node pools - each
+# referencing an InferenceClass that describes the hardware shape and how
+# to provision it - need to be declared.
+#
+# The VKE kubeconfig embeds static client certificates, so Modelplane needs
+# nothing beyond it to authenticate to the cluster. The Vultr API key on
+# the ClusterProviderConfig named default only provisions the cluster.
+#
+# ModelCache RWX storage: VKE ships the vultr-vfs-storage ReadWriteMany
+# StorageClass backed by Vultr File System, but it is not usable on GPU
+# nodes - attaching a VFS-backed PVC to a GPU node fails with a 422 error.
+# ModelCache RWX storage is served by Longhorn instead: a Helm release
+# installs Longhorn (tolerating the GPU taint so its node components run
+# everywhere), an NFS-client installer DaemonSet satisfies Longhorn's RWX
+# prerequisite on VKE's node image, and the modelplane-rwx-longhorn
+# StorageClass pins ModelCache PVCs to driver.longhorn.io.
+#
+# The system node pool (hosting control-plane components) is a fixed inline
+# pool on the VkeCluster resource. provider-vultr only honors changes to
+# that inline pool at creation time - it cannot be resized after the fact.
+# GPU node pools declared here are separate VkeNodePool resources with an
+# independent lifecycle; they can be updated or removed after the cluster
+# exists. Set maxNodeCount up front to enable VKE's server-side autoscaler.
+#
+# Delete this InferenceCluster with foreground cascading deletion for a
+# clean teardown:
+#
+#   kubectl delete inferencecluster vultr-ewr --cascade=foreground
+#
+# The inference stack runs on the VKE cluster and must uninstall while
+# the cluster's API server and kubeconfig still exist - otherwise its
+# Helm releases hang, and a load balancer one of them created can leak
+# and block the VPC from deleting. Foreground deletion holds the
+# cluster until the stack is uninstalled. Background deletion (the
+# kubectl default) tears everything down at once and can orphan cloud
+# resources.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: vultr-ewr
+  labels:
+    modelplane.ai/region: ewr
+spec:
+  cluster:
+    source: Vultr
+    vultr:
+      region: ewr
+
+  nodePools:
+    - name: gpu-l40s
+      className: vultr-l40s-1x
+      nodeCount: 1
+      minNodeCount: 1
+      maxNodeCount: 4
