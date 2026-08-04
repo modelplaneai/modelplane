@@ -177,7 +177,7 @@ class Secret(BaseModel):
 class Status(BaseModel):
     cache: Cache | None = None
     """
-    Observed ModelCache RWX storage state, served by the Nebius shared filesystem mounted on every node group and Nebius's csi-mounted-fs-path CSI driver.
+    Observed ModelCache RWX storage state.
     """
     conditions: list[Condition] | None = None
     """

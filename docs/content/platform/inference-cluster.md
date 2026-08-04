@@ -11,7 +11,7 @@ serving. Platform teams create these to provide GPU capacity.
 
 Each cluster has:
 
-- A **cluster source**: `GKE`, `EKS`, `AKS`, or `Nebius` (Modelplane provisions
+- A **cluster source**: `GKE`, `EKS`, `AKS`, `Nebius` or `Vultr` (Modelplane provisions
   the full cluster) or `Existing` (bring a cluster you manage yourself). See
   [Supported Providers]({{< ref "platform/providers.md" >}}) for the clouds and
   neoclouds Modelplane runs on.
@@ -39,7 +39,7 @@ existing cluster the platform team must meet the requirements.
 
 The `cluster.source` discriminator picks one of two models:
 
-- **Provisioned (`GKE`, `EKS`, `AKS`, `Nebius`).** Modelplane creates the cluster and its GPU node
+- **Provisioned (`GKE`, `EKS`, `AKS`, `Nebius`, `Vultr`).** Modelplane creates the cluster and its GPU node
   pools from each pool's `InferenceClass`, labels the pool's nodes so the
   scheduler's placement is enforced, and provisions the storage class for model
   weights. It also injects a non-GPU **system pool** with opinionated defaults to
@@ -67,6 +67,9 @@ The `cluster.source` discriminator picks one of two models:
 {{< tab "Nebius" >}}
 {{< manifests path="concepts/inference-cluster-nebius.yaml" apply="false" >}}
 {{< /tab >}}
+{{< tab "Vultr" >}}
+{{< manifests path="concepts/inference-cluster-vultr.yaml" apply="false" >}}
+{{< /tab >}}
 {{< tab "Existing" >}}
 {{< manifests path="concepts/inference-cluster-existing.yaml" apply="false" >}}
 {{< /tab >}}
@@ -82,6 +85,9 @@ depends on the source:
 - **`GKE`** (Filestore Enterprise), **`EKS`** (EFS), **`AKS`** (Azure Files),
   and **`Nebius`** (shared filesystem): auto-provisioned. Those classes are
   fixed; nothing for the admin to do.
+- **`Vultr`** ([Longhorn](https://longhorn.io/)): auto-provisioned. VKE's
+  built-in RWX class isn't usable on GPU nodes, so Modelplane installs
+  Longhorn instead; nothing for the admin to do.
 - **`Existing`**: bring your own. Create an RWX StorageClass on the cluster, with
   any backend that supports automatic PVC provisioning (WekaIO, NetApp Trident,
   `FSx` for NetApp, and similar), and name it in

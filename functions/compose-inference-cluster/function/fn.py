@@ -15,11 +15,12 @@
 """Compose an InferenceCluster.
 
 This function orchestrates the internal XRs that make up an inference
-cluster. It dispatches on the cluster source (GKE, Existing) to determine
-how the cluster is obtained, then composes a ServingStack on it.
+cluster. It dispatches on the cluster source (GKE, EKS, AKS, Nebius,
+Vultr, or Existing) to determine how the cluster is obtained, then
+composes a ServingStack on it.
 
-GPU node pools reference InferenceClasses. For provisioned (GKE)
-clusters the class's provisioning block describes how to build the pool;
+GPU node pools reference InferenceClasses. For provisioned clusters
+the class's provisioning block describes how to build the pool;
 for BYO (Existing) clusters the class is a pure description of pools
 that already exist. Either way, the class's resources block populates
 status.gpuPools so the scheduler can match models.
@@ -40,6 +41,7 @@ from models.ai.modelplane.infrastructure.ekscluster import v1alpha1 as eksv1alph
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from models.ai.modelplane.infrastructure.nebiuscluster import v1alpha1 as nebiusv1alpha1
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alpha1
+from models.ai.modelplane.infrastructure.vultrcluster import v1alpha1 as vultrv1alpha1
 from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
@@ -52,6 +54,7 @@ CLUSTER_SOURCE_GKE = "GKE"
 CLUSTER_SOURCE_EKS = "EKS"
 CLUSTER_SOURCE_AKS = "AKS"
 CLUSTER_SOURCE_NEBIUS = "Nebius"
+CLUSTER_SOURCE_VULTR = "Vultr"
 CLUSTER_SOURCE_EXISTING = "Existing"
 
 # GKE installs the NVIDIA driver here rather than at the default / root; the
@@ -160,6 +163,8 @@ class Composer:
             self.compose_aks(cluster.aks)
         elif source == CLUSTER_SOURCE_NEBIUS:
             self.compose_nebius(cluster.nebius)
+        elif source == CLUSTER_SOURCE_VULTR:
+            self.compose_vultr(cluster.vultr)
         elif source == CLUSTER_SOURCE_EXISTING:
             self.compose_existing(cluster.existing)
         else:
@@ -410,6 +415,42 @@ class Composer:
 
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=nebius_ready)
+
+    def compose_vultr(self, vultr: v1alpha1.Vultr | None) -> None:
+        """Compose an InferenceCluster backed by a Modelplane-provisioned
+        VKE cluster. Composes the VultrCluster XR, waits for it to be ready,
+        then wires its kubeconfig into the backend.
+
+        The VKE kubeconfig embeds static client certificates, so
+        the kubeconfig alone is enough to reach the
+        cluster and no identity is layered on the ClusterProviderConfig.
+        """
+        if not vultr:
+            response.warning(self.rsp, "Vultr configuration is required when source is Vultr")
+            return
+
+        self.compose_vultr_cluster(vultr)
+
+        vultr_ready = resource.get_condition(self.req.observed.resources.get("vultr-cluster"), "Ready").status == "True"
+        kubeconfig = self.observed_vultr_secret(_SECRET_TYPE_KUBECONFIG)
+        backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
+
+        if vultr_ready and kubeconfig:
+            self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
+
+        backend_secrets = self.resolve_vultr_backend_secrets(vultr_ready=vultr_ready, backend_exists=backend_exists)
+        if backend_secrets or backend_exists:
+            if backend_secrets:
+                self.compose_serving_stack(backend_secrets)
+            self.compose_vultr_usage()
+
+        if vultr_ready:
+            self.rsp.desired.resources["vultr-cluster"].ready = fnv1.READY_TRUE
+            if not backend_exists:
+                response.normal(self.rsp, "Vultr cluster ready, composing backend")
+
+        self.write_status(self.gpu_pools())
+        self.derive_conditions(cluster_ready=vultr_ready)
 
     def compose_existing(self, existing: v1alpha1.Existing | None) -> None:
         """Compose an InferenceCluster backed by a user-supplied cluster.
@@ -925,6 +966,133 @@ class Composer:
             return None
         return next((s for s in nebius_secrets if s.type == secret_type), None)
 
+    def compose_vultr_cluster(self, vultr: v1alpha1.Vultr) -> None:
+        """Compose a VultrCluster XR.
+
+        Combines the cluster-level config (region) with GPU node pools
+        derived from the user's node pools + referenced classes. The
+        system pool is injected by compose-vultr-cluster.
+        """
+        vultr_node_pools: list[vultrv1alpha1.NodePool] = []
+
+        for pool in self.xr.spec.nodePools or []:
+            cls = self.classes.get(pool.className)
+            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.vultr:
+                msg = f"InferenceClass {pool.className} has no Vultr provisioning block"
+                response.set_conditions(
+                    self.rsp,
+                    resource.Condition(
+                        typ=CONDITION_TYPE_CLUSTER_READY,
+                        status="False",
+                        reason=CONDITION_REASON_INVALID_NODE_POOL,
+                        message=msg,
+                    ),
+                )
+                response.warning(self.rsp, msg)
+                return
+            prov = cls.spec.provisioning.vultr
+            node_pool = vultrv1alpha1.NodePool(
+                name=pool.name,
+                role="GPU",
+                plan=prov.plan,
+                nodeCount=pool.nodeCount,
+                gpu=vultrv1alpha1.Gpu(
+                    acceleratorType=prov.accelerator.type,
+                ),
+            )
+            # Only set the autoscaling bounds when the pool opts in, so
+            # fixed-size pools stay fixed (resource.update serializes with
+            # exclude_unset, keeping unset bounds out of the VultrCluster
+            # spec rather than emitting maxNodeCount: null). Fabric is not
+            # mapped: VKE has no EFA or InfiniBand analog yet.
+            if pool.maxNodeCount is not None:
+                node_pool.maxNodeCount = pool.maxNodeCount
+            if pool.minNodeCount is not None:
+                node_pool.minNodeCount = pool.minNodeCount
+            vultr_node_pools.append(node_pool)
+
+        vultr_spec = vultrv1alpha1.Spec(
+            region=vultr.region,
+            kubernetesVersion=vultr.kubernetesVersion,
+            nodePools=vultr_node_pools,
+        )
+        if vultr.credentials:
+            vultr_spec.credentials = vultrv1alpha1.Credentials(
+                type=vultr.credentials.type,
+                name=vultr.credentials.name,
+            )
+        resource.update(
+            self.rsp.desired.resources["vultr-cluster"],
+            vultrv1alpha1.VultrCluster(
+                metadata=metav1.ObjectMeta(
+                    name=_name(self.xr.metadata),
+                    namespace=_NAMESPACE_SYSTEM,
+                ),
+                spec=vultr_spec,
+            ),
+        )
+
+    def compose_vultr_usage(self) -> None:
+        """Block VultrCluster deletion until the backend is deleted."""
+        resource.update(
+            self.rsp.desired.resources["usage-vultr-by-backend"],
+            usagev1beta1.Usage(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="VultrCluster",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(matchControllerRef=True),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="ServingStack",
+                        resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources["usage-vultr-by-backend"].ready = fnv1.READY_TRUE
+
+    def resolve_vultr_backend_secrets(
+        self, *, vultr_ready: bool, backend_exists: bool
+    ) -> list[ssv1alpha1.Secret] | None:
+        """Resolve secrets for the backend from VultrCluster status. Falls
+        back to the observed backend's spec.secrets if VultrCluster secrets
+        aren't available but the backend already exists."""
+        vultr_secrets = self.observed_vultr_secrets()
+
+        if vultr_ready and vultr_secrets:
+            return [ssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in vultr_secrets]
+
+        if backend_exists:
+            observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+            if observed:
+                d = resource.struct_to_dict(observed.resource)
+                observed_secrets = d.get("spec", {}).get("secrets", [])
+                if observed_secrets:
+                    return [ssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
+
+        return None
+
+    def observed_vultr_secrets(self) -> list[vultrv1alpha1.Secret] | None:
+        """Read the VultrCluster's status.secrets from observed state."""
+        vultr_observed = self.req.observed.resources.get("vultr-cluster")
+        if not vultr_observed:
+            return None
+        observed_vultr = vultrv1alpha1.VultrCluster.model_validate(resource.struct_to_dict(vultr_observed.resource))
+        if not observed_vultr.status:
+            return None
+        return observed_vultr.status.secrets
+
+    def observed_vultr_secret(self, secret_type: str) -> vultrv1alpha1.Secret | None:
+        """Read a specific secret from the observed VultrCluster status."""
+        vultr_secrets = self.observed_vultr_secrets()
+        if not vultr_secrets:
+            return None
+        return next((s for s in vultr_secrets if s.type == secret_type), None)
+
     def compose_eks_usage(self) -> None:
         """Block EKSCluster deletion until the backend is deleted."""
         resource.update(
@@ -1144,19 +1312,21 @@ class Composer:
         """The effective ModelCache RWX StorageClass name, relayed up so
         ModelCache can target it without reaching into the cluster XRs.
 
-        For provisioned (GKE/EKS) clusters it comes from the backing cluster's
+        For provisioned clusters it comes from the backing cluster's
         status.cache.storageClassName, which reports the Modelplane-managed
         class. For Existing clusters there is no cluster XR, so it's the
         user-supplied name. None until the cluster XR reports it."""
+        provisioned = {
+            CLUSTER_SOURCE_GKE: ("gke-cluster", gkev1alpha1.GKECluster),
+            CLUSTER_SOURCE_EKS: ("eks-cluster", eksv1alpha1.EKSCluster),
+            CLUSTER_SOURCE_AKS: ("aks-cluster", aksv1alpha1.AKSCluster),
+            CLUSTER_SOURCE_NEBIUS: ("nebius-cluster", nebiusv1alpha1.NebiusCluster),
+            CLUSTER_SOURCE_VULTR: ("vultr-cluster", vultrv1alpha1.VultrCluster),
+        }
         cluster = self.xr.spec.cluster
-        if cluster.source == CLUSTER_SOURCE_GKE:
-            return self._observed_cluster_cache_class("gke-cluster", gkev1alpha1.GKECluster)
-        if cluster.source == CLUSTER_SOURCE_EKS:
-            return self._observed_cluster_cache_class("eks-cluster", eksv1alpha1.EKSCluster)
-        if cluster.source == CLUSTER_SOURCE_AKS:
-            return self._observed_cluster_cache_class("aks-cluster", aksv1alpha1.AKSCluster)
-        if cluster.source == CLUSTER_SOURCE_NEBIUS:
-            return self._observed_cluster_cache_class("nebius-cluster", nebiusv1alpha1.NebiusCluster)
+        if cluster.source in provisioned:
+            key, model = provisioned[cluster.source]
+            return self._observed_cluster_cache_class(key, model)
         if cluster.source == CLUSTER_SOURCE_EXISTING and cluster.existing and cluster.existing.cache:
             return cluster.existing.cache.storageClassName
         return None
@@ -1167,7 +1337,8 @@ class Composer:
         model: type[gkev1alpha1.GKECluster]
         | type[eksv1alpha1.EKSCluster]
         | type[aksv1alpha1.AKSCluster]
-        | type[nebiusv1alpha1.NebiusCluster],
+        | type[nebiusv1alpha1.NebiusCluster]
+        | type[vultrv1alpha1.VultrCluster],
     ) -> str | None:
         """Read status.cache.storageClassName from an observed cluster XR."""
         observed = self.req.observed.resources.get(key)

@@ -68,3 +68,6 @@ spec:
   - nodegroups.mk8s.nebius.m.upbound.io
   - networks.vpc.nebius.m.upbound.io
   - subnets.vpc.nebius.m.upbound.io
+  # Vultr (VKE clusters).
+  - vkeclusters.vultr.m.crossplane.io
+  - vkenodepools.vultr.m.crossplane.io

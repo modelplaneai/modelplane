@@ -175,12 +175,32 @@ class Nebius(BaseModel):
     """
 
 
+class AcceleratorModel3(BaseModel):
+    count: conint(ge=1, le=16)
+    type: constr(min_length=1, max_length=63)
+    """
+    GPU accelerator type (e.g. nvidia-l40s, nvidia-a100). Informational - reported on the consuming InferenceCluster's status.
+    """
+
+
+class Vultr(BaseModel):
+    accelerator: AcceleratorModel3
+    """
+    GPU accelerator to attach when provisioning the node pool. Provisioning input only: the scheduler matches against spec.devices, not this block.
+    """
+    plan: constr(min_length=1, max_length=63)
+    """
+    Vultr plan ID (e.g. vcg-l40s-16c-180g-48vram). The plan determines the GPU model and count; the accelerator block below is informational.
+    """
+
+
 class Provisioning(BaseModel):
     aks: Aks | None = None
     eks: Eks | None = None
     gke: Gke | None = None
     nebius: Nebius | None = None
-    provider: Literal['GKE', 'EKS', 'AKS', 'Nebius']
+    provider: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr']
+    vultr: Vultr | None = None
 
 
 class Spec(BaseModel):

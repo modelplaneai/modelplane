@@ -221,6 +221,7 @@ europe-central2
 # Acronyms
 GPU
 GPUs
+CSI
 DRA
 LWS
 NIC
@@ -231,6 +232,7 @@ RWX
 SaaS
 P2P
 L4
+L40S
 H100
 H200
 EFA

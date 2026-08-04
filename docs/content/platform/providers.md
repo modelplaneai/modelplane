@@ -12,8 +12,7 @@ A provider can show up here in three ways:
 
 {{< hint "note" >}}
 - **Provisioning supported.** Modelplane creates and manages the whole cluster
-  from an `InferenceCluster`, selected through `provisioning.provider`. GKE,
-  EKS, AKS, and Nebius mk8s work this way today.
+  from an `InferenceCluster`, selected through `provisioning.provider`. GKE, EKS, AKS, Nebius mk8s, Vultr VKE work this way today.
 - **Bring your own supported.** Register a cluster you already run with
   `source: Existing`. This works on any provider whose Kubernetes meets
   Modelplane's requirements (Dynamic Resource Allocation and a recent Kubernetes
@@ -53,7 +52,7 @@ native provisioning.
 | Scaleway (Kapsule) | {{< accel nvidia >}} | Planned | ✓ | {{< repolink "https://github.com/scaleway/crossplane-provider-scaleway" "crossplane-provider-scaleway" "official" >}} |
 | Tencent Cloud (TKE) | {{< accel nvidia >}} | Planned | ✓ | {{< repolink "https://github.com/crossplane-contrib/provider-tencentcloud" "provider-tencentcloud" "community" >}} |
 | Voltage Park | {{< accel nvidia >}} | Planned | ✓ | none yet |
-| Vultr (VKE) | {{< accel nvidia >}} {{< accel amd >}} | Planned | ✓ | {{< repolink "https://github.com/vultr/crossplane-provider-vultr" "crossplane-provider-vultr" "official" >}} |
+| Vultr (VKE) | {{< accel nvidia >}} {{< accel amd >}} | ✓ | ✓ | {{< repolink "https://github.com/upbound/provider-vultr" "provider-vultr" "community" >}} |
 {{< /table >}}
 
 {{< hint "note" >}}

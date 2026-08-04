@@ -47,12 +47,14 @@ spec:
                   message: spec.cluster.aks is required when spec.cluster.source is AKS.
                 - rule: "self.source != 'Nebius' || has(self.nebius)"
                   message: spec.cluster.nebius is required when spec.cluster.source is Nebius.
+                - rule: "self.source != 'Vultr' || has(self.vultr)"
+                  message: spec.cluster.vultr is required when spec.cluster.source is Vultr.
                 properties:
                   source:
                     type: string
                     description: >-
                       Cluster provisioning method.
-                    enum: [GKE, EKS, AKS, Nebius, Existing]
+                    enum: [GKE, EKS, AKS, Nebius, Vultr, Existing]
                   existing:
                     type: object
                     description: >-
@@ -252,6 +254,49 @@ spec:
                         description: >-
                           Nebius ProviderConfig or ClusterProviderConfig used
                           to authenticate to the Nebius API. Defaults to the
+                          ClusterProviderConfig named default.
+                        properties:
+                          type:
+                            type: string
+                            default: ClusterProviderConfig
+                            enum:
+                            - ProviderConfig
+                            - ClusterProviderConfig
+                          name:
+                            type: string
+                            default: default
+                            minLength: 1
+                            maxLength: 253
+                  vultr:
+                    type: object
+                    description: >-
+                      Vultr Kubernetes Engine (VKE) cluster configuration.
+                      Required when source is Vultr.
+                    required: [region]
+                    properties:
+                      region:
+                        type: string
+                        description: >-
+                          Vultr region for the cluster (e.g. ewr, fra). GPU
+                          plans and Vultr File System availability vary by
+                          region.
+                        minLength: 1
+                        maxLength: 32
+                      kubernetesVersion:
+                        type: string
+                        default: "v1.36.1+3"
+                        description: >-
+                          VKE cluster Kubernetes version. VKE requires an
+                          exact version string including the build suffix;
+                          list current versions with vultr-cli kubernetes
+                          versions. Defaults to a version where Dynamic
+                          Resource Allocation (how GPUs bind to pods) is
+                          generally available.
+                      credentials:
+                        type: object
+                        description: >-
+                          Vultr ProviderConfig or ClusterProviderConfig used to
+                          authenticate to the Vultr API. Defaults to the
                           ClusterProviderConfig named default.
                         properties:
                           type:

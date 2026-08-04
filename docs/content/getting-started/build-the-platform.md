@@ -30,6 +30,10 @@ against this capacity without knowing which cluster it runs on.
 - A Nebius account with permissions to create clusters
 - A Nebius service account JSON key and your project ID
 {{< /tab >}}
+{{< tab "Vultr" >}}
+- A Vultr account with access to GPU plans
+- A Vultr API key
+{{< /tab >}}
 {{< /tabs >}}
 
 ## Set up the InferenceGateway
@@ -147,6 +151,22 @@ curl -fsSL {{< manifest-url "getting-started/clusterproviderconfig-nebius.yaml" 
 ```
 {{< /editCode >}}
 {{< /tab >}}
+
+{{< tab "Vultr" >}}
+Create a Kubernetes secret from your API key:
+
+{{< editCode >}}
+```bash
+kubectl create secret generic vultr-credentials \
+  --from-literal=api-key=$@<vultr-api-key>$@ \
+  -n crossplane-system
+```
+{{< /editCode >}}
+
+Apply the `ClusterProviderConfig` referencing your secret:
+
+{{< manifests "getting-started/clusterproviderconfig-vultr.yaml" >}}
+{{< /tab >}}
 {{</tabs>}}
 
 ## Publish hardware and register the cluster
@@ -198,6 +218,16 @@ Modelplane provisions the cluster. This takes about 15 minutes:
 
 ```bash
 kubectl wait --for=condition=Ready ic/nebius-eu-north --timeout=20m
+```
+{{< /tab >}}
+
+{{< tab "Vultr" >}}
+{{< manifests "getting-started/vultr/platform.yaml" >}}
+
+Modelplane provisions the cluster. This takes about 15 minutes:
+
+```bash
+kubectl wait --for=condition=Ready ic/vultr-ewr --timeout=20m
 ```
 {{< /tab >}}
 {{< /tabs >}}

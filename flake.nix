@@ -61,6 +61,7 @@
         "compose-inference-gateway"
         "compose-nebius-cluster"
         "compose-serving-stack"
+        "compose-vultr-cluster"
         "compose-model-cache"
         "compose-model-deployment"
         "compose-model-endpoint"

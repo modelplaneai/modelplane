@@ -71,6 +71,10 @@ spec:
     tarball:
       name: compose-usages
       pathPrefix: _output/functions/compose-usages
+  - source: Tarball
+    tarball:
+      name: compose-vultr-cluster
+      pathPrefix: _output/functions/compose-vultr-cluster
   dependencies:
   - type: crd
     git:
@@ -163,3 +167,9 @@ spec:
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-family-azure
       version: v2.6.0
+  - type: xpkg
+    xpkg:
+      apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/upbound/provider-vultr
+      version: v0.2.0
