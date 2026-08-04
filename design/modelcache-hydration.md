@@ -98,8 +98,9 @@ flowchart TD
 ## The per-cluster child
 
 `ModelCacheHydration` is a namespaced composite pinned to one cluster, the cache
-analogue of `ModelReplica`. Its spec carries what one cluster's hydration needs
-and nothing about fan-out:
+analogue of `ModelReplica`. The name states the lifecycle the child owns, where
+`ModelCacheReplica` would imply a copy of the parent. Its spec carries what one
+cluster's hydration needs and nothing about fan-out:
 
 - **`clusterName`**, the cluster it stages onto. Pinned at creation; the parent
   re-places only if the cluster disappears.
@@ -158,7 +159,9 @@ absorbs it once. An author onto a warmed cluster then waits only for the load,
 roughly fifteen minutes.
 
 Because the footprint is the static selector, `ModelCache` does not watch replica
-placement and does not recompose when replicas move.
+placement and does not recompose when replicas move. A `ModelCache` with no
+`clusterSelector` stages nowhere, so Modelplane rejects it at apply time rather
+than admit a cache no deployment can place against.
 
 ### Two modes
 
@@ -264,98 +267,64 @@ No `mrap.yaml` change is needed, because it composes
 
 ### Hydrate on-demand from placement
 
-Derive the footprint from where replicas are placed. When a replica is scheduled
-onto a cluster new to the model, the cache follows it there. This was the earlier
-shape of this proposal and reads as the most automatic option. Three costs turned
-it down:
-
-1. It needs [crossplane#7572](https://github.com/crossplane/crossplane/pull/7572)
-   to function. Without a watch on referencing `ModelReplica`s, nothing re-triggers
-   `compose-model-cache` when a new replica is placed, so the parent never learns to
-   stamp the new child. That change is approved and expected in Crossplane v2.4, so
-   the on-demand shape can't be built until then.
-2. The first deployment onto a new cluster pays the hydrate and the load in series,
-   the download twice, which is the hour-long wait pre-warm removes.
-3. A model implicitly carries its private weights and download token onto any
-   cluster it happens to be scheduled to, rather than onto the clusters the platform
-   team chose.
-
-Pre-warm avoids all three. A model never carries the cache to a cluster the
-platform team didn't pre-hydrate.
+Derive the footprint from where replicas are placed, so a cache follows a replica
+onto a cluster new to the model. This was the earlier shape of this proposal and
+reads as the most automatic. Three costs turned it down. It needs
+[crossplane#7572](https://github.com/crossplane/crossplane/pull/7572) to re-trigger
+`compose-model-cache` when a new replica appears, which isn't out until Crossplane
+v2.4. The first deployment onto a new cluster still pays the hydrate and the load in
+series, the hour-long wait pre-warm removes. And a model carries its private weights
+and token onto whatever cluster it happens to run on, rather than the clusters the
+platform team chose.
 
 ### Load from the source off the footprint
 
-An earlier shape let a cache-referencing deployment run anywhere and load from the
-source on clusters without the cache, so a cache never limited placement. It needs
-Modelplane to vary the model reference per replica (the mount path where the cache
-is, the source repo where it isn't). That works for a plain mount, through an
-injected env var, but it doesn't generalize. A loader-plugin cache like ModelExpress
-needs an engine-specific flag and image that are invalid off the cache, so those
-deployments have to be placement-constrained anyway. Constraining placement for every
-cache is simpler and consistent, and it keeps Modelplane out of the engine's flags. A
-deployment that wants to run without a cache references none and loads from the source
-directly.
+Let a cache-referencing deployment run anywhere and load from the source where the
+cache is absent, so a cache never limits placement. This needs Modelplane to vary the
+model reference per replica, which works for a plain mount but not for a loader-plugin
+cache like ModelExpress, whose flag and image are invalid off the cache. Constraining
+placement for every cache is simpler and keeps Modelplane out of the engine's flags.
+A deployment that wants no cache references none.
 
 ### Always populate a fixed path
 
-Two ways to make the start command uniform: require every deployment to use a cache,
-or reintroduce `spec.model` and pre-fetch it into a path before the engine starts.
-Requiring a cache drops the lightweight no-cache path for quick or experimental
-models. A per-pod pre-fetch has no reuse, since every replica still downloads the
-whole model, so it costs a load from the source plus an extra copy with none of a
-cache's benefit. Neither earns the uniformity.
+Make the start command uniform another way: require every deployment to use a cache,
+or reintroduce `spec.model` and pre-fetch it before the engine starts. Requiring a
+cache drops the lightweight no-cache path. A per-pod pre-fetch has no reuse, so it
+costs a load plus an extra copy with none of a cache's benefit. Neither earns the
+uniformity.
 
 ### Drop `modelCacheRef`; derive the model from the deployment
 
-#186 floats going further: drop the explicit `ModelCache` and `modelCacheRef`, and
-derive caching from the model the deployment declares. Nothing structured declares
-it today. The model lives in opaque engine args (`--model=…`), with the source
-structured only on `ModelCache`. Fully automatic caching would need:
-
-- a structured model source on the deployment (`spec.template.spec.model`), and
-- hydration keyed by model identity (a content hash) rather than cache name, so
-  two deployments of one model share a copy per cluster, which also changes the
-  serving mount contract.
-
-That is a larger, user-facing change with its own migration. This proposal keeps
-`modelCacheRef`, which is what a deployment references to say it wants a cache, and
-what the scheduler resolves to a footprint to place against. Identity-keyed sharing
-can be added on top later, since the child already carries a source independent of
-how it was requested.
+#186 floats dropping the explicit `ModelCache` and `modelCacheRef` and deriving
+caching from the model the deployment declares. Nothing structured declares the model
+today. It lives in opaque engine args. Automatic caching would need a structured model
+source on the deployment and hydration keyed by model identity rather than cache name,
+which also changes the serving mount contract. That is a larger user-facing change with
+its own migration. This proposal keeps `modelCacheRef`, and identity-keyed sharing can
+be added on top later, since the child already carries a source independent of how it
+was requested.
 
 ### A separate fleet reconciler kind
 
 A single hydration per cluster serves replicas across deployments, and Crossplane
 composed resources are single-owner, so a `ModelReplica` can't compose a shared
-hydration directly. A new fleet-scoped reconciler kind could own all hydrations.
-Reusing `ModelCache` is simpler: it is already the per-model, per-namespace
-resource, it already fans out per cluster, and pre-warm keeps ownership and the
-namespace security boundary where they are. A dedicated reconciler is worth
-revisiting only if caching becomes fully deployment-derived (the alternative
-above).
+hydration. A new fleet-scoped reconciler could own all hydrations. Reusing `ModelCache`
+is simpler, since it is already the per-model, per-namespace resource that fans out per
+cluster and keeps the namespace boundary where it is. A dedicated reconciler is worth
+revisiting only if caching becomes fully deployment-derived.
 
-### Conditions-only child status, like `ModelReplica`
+### Conditions-only child status
 
-Mirroring `ModelReplica` exactly would collapse `ModelCache`'s per-cluster `phase`
-(Pending/Hydrating/Ready/Failed) to a boolean, losing detail that
-`kubectl get modelcache` shows today. The child carries a structured `status.phase`
-so the parent preserves it.
+Mirroring `ModelReplica`'s boolean conditions would collapse `ModelCache`'s per-cluster
+`phase` (Pending/Hydrating/Ready/Failed) that `kubectl get modelcache` shows today. The
+child carries a structured `status.phase` so the parent preserves it.
 
 ### Deliver the decomposition and the footprint change separately
 
-The decomposition (#210) is a pure refactor and could merge first. The footprint
-change (#186) is lighter under pre-warm, since the selector stays authoritative as
-it is today. The two are kept together because designing the child's ownership once
-against the final footprint model is easier than doing it twice.
-
-## Open questions
-
-- **Child kind name:** `ModelCacheHydration` (chosen) versus `ModelCacheReplica`
-  for symmetry with `ModelReplica`. `Hydration` names the lifecycle the child
-  owns; `Replica` implies a copy.
-- **Empty selector:** a `ModelCache` with no `clusterSelector` stages nowhere, so a
-  deployment that references it has no cluster to run on. Reject it at apply time as a
-  likely mistake, or treat an empty selector as every cluster. Leaning toward reject.
+The decomposition (#210) is a pure refactor and could merge first. The two are kept
+together because designing the child's ownership once against the final footprint model
+is easier than doing it twice.
 
 ## Interaction with related issues
 
