@@ -186,17 +186,21 @@ The engine command stays the ML team's. Where a value depends on the cluster,
 Modelplane injects an env var the command references, the way it injects
 `MODELPLANE_LEADER_ADDRESS` today. It never writes an engine flag.
 
-A cache presents its weights to the engine one of two ways. Most backends put them at
-a path (a PVC mount, an object-store CSI mount, a node-local cache), so the ML team
-writes `--model=<path>` with nothing engine-specific. A few, such as NVIDIA
-ModelExpress or the Run:ai streamer, are engine loader plugins that need an
-engine-specific `--load-format` and a loader-capable image; there the ML team writes
-that flag and uses that image, because they chose that cache, and Modelplane wires the
-env and the cluster-side pieces. Either way, placing only where the cache is
-pre-warmed makes the command valid wherever the replica runs. How the bytes reach the
-cluster (a shared filesystem, peer-to-peer distribution, GPU-to-GPU streaming) is the
-platform team's concern and orthogonal to the command. The catalog of backends is a
-separate design. Each has to present one of these two contracts.
+A cache presents its weights to the engine one of two ways.
+
+- **A path.** Most backends put the weights at a path (a PVC mount, an object-store
+  CSI mount, a node-local cache), so the ML team writes `--model=<path>` with nothing
+  engine-specific.
+- **A loader plugin.** A few, such as NVIDIA ModelExpress or the Run:ai streamer, are
+  engine loader plugins that need an engine-specific `--load-format` and a
+  loader-capable image. The ML team writes that flag and uses that image, because they
+  chose that cache, and Modelplane wires the env and the cluster-side pieces.
+
+Either way, placing only where the cache is pre-warmed makes the command valid wherever
+the replica runs. How the bytes reach the cluster (a shared filesystem, peer-to-peer
+distribution, GPU-to-GPU streaming) is the platform team's concern and orthogonal to
+the command. The catalog of backends is a separate design, and each backend has to
+present one of these two contracts.
 
 ### Hydrating before ready
 
@@ -269,13 +273,15 @@ No `mrap.yaml` change is needed, because it composes
 
 Derive the footprint from where replicas are placed, so a cache follows a replica
 onto a cluster new to the model. This was the earlier shape of this proposal and
-reads as the most automatic. Three costs turned it down. It needs
-[crossplane#7572](https://github.com/crossplane/crossplane/pull/7572) to re-trigger
-`compose-model-cache` when a new replica appears, which isn't out until Crossplane
-v2.4. The first deployment onto a new cluster still pays the hydrate and the load in
-series, the hour-long wait pre-warm removes. And a model carries its private weights
-and token onto whatever cluster it happens to run on, rather than the clusters the
-platform team chose.
+reads as the most automatic. Three costs turned it down.
+
+- It needs [crossplane#7572](https://github.com/crossplane/crossplane/pull/7572) to
+  re-trigger `compose-model-cache` when a new replica appears, which isn't out until
+  Crossplane v2.4.
+- The first deployment onto a new cluster still pays the hydrate and the load in
+  series, the hour-long wait pre-warm removes.
+- A model carries its private weights and token onto whatever cluster it happens to
+  run on, rather than the clusters the platform team chose.
 
 ### Load from the source off the footprint
 
