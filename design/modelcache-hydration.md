@@ -21,18 +21,19 @@ drop-Job-after-Ready cleanup), threading a `cluster_name` through every method.
 It's also the only fan-out that doesn't follow the `ModelDeployment` →
 `ModelReplica` pattern.
 
-Two changes:
+I propose two changes.
 
-1. **Split out `ModelCacheHydration`**, a per-cluster child that owns one
-   cluster's hydration. Pinned by `spec.clusterName`, it resolves its
-   `InferenceCluster` and auth `Secret`, composes the PVC, token `Secret`, and
-   `Job`, runs the phase machine, and drops the `Job`/`Secret` once Ready.
-2. **Pre-warm from the selector, and place where it's warmed.** A cache's
-   `clusterSelector` is the authoritative footprint. The platform team declares which
-   clusters hold the weights, and Modelplane hydrates them ahead of any deployment. A
-   deployment that references the cache runs only on those clusters. A deployment that
-   references no cache runs anywhere its own selector allows and loads from the source
-   itself. No deployment pays the download twice.
+**Split out `ModelCacheHydration`.** A per-cluster child that owns one cluster's
+hydration. Pinned by `spec.clusterName`, it resolves its `InferenceCluster` and auth
+`Secret`, composes the PVC, token `Secret`, and `Job`, runs the phase machine, and
+drops the `Job`/`Secret` once Ready.
+
+**Pre-warm from the selector, and place where it's warmed.** A cache's `clusterSelector`
+is the authoritative footprint. The platform team declares which clusters hold the
+weights, and Modelplane hydrates them ahead of any deployment. A deployment that
+references the cache runs only on those clusters. A deployment that references no cache
+runs anywhere its own selector allows and loads from the source itself. No deployment
+pays the download twice.
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -58,7 +59,7 @@ The `ModelCache` and `ModelDeployment` specs are otherwise unchanged.
 Approving this means agreeing to both changes: the `ModelCacheHydration`
 decomposition (#210), and a pre-warm-authoritative footprint (#186) where a
 deployment that references a cache is placed only where that cache is pre-warmed.
-Modelplane injects no engine flags for any of this. The section below explains why.
+Modelplane injects no engine flags for any of this. The sections below explain why.
 
 ## Architecture
 
@@ -153,10 +154,10 @@ the cache is scheduled only onto them.
 
 Pre-warm is what makes a large model usable. Hydrating a 1.5TB cache PVC and loading
 the model into a replica are two sequential copies. Paid on-demand, the first
-deployment onto a new cluster waits for both, roughly an hour for a model the size of
-Kimi in testing. Pre-warm moves that hydration ahead of time. The platform team
-absorbs it once. An author onto a warmed cluster then waits only for the load,
-roughly fifteen minutes.
+deployment onto a new cluster waits for both. For a model the size of Kimi that's
+roughly an hour in our testing. Pre-warm moves that hydration ahead of time, and the
+platform team absorbs it once. An author onto a warmed cluster then waits only for the
+load, roughly fifteen minutes.
 
 Because the footprint is the static selector, `ModelCache` does not watch replica
 placement and does not recompose when replicas move. A `ModelCache` with no
@@ -165,20 +166,22 @@ than admit a cache no deployment can place against.
 
 ### Two modes
 
-A deployment is in one of two modes, and the two actors split cleanly.
+A deployment runs in one of two modes, split along the personas: the platform team
+owns *what's cached and where*, the ML team owns *what to run*.
 
-- **With a cache.** The ML team references a `ModelCache` and writes the engine
-  command. Modelplane places the deployment only on the clusters where the platform
-  team pre-warmed that cache. The cache is present wherever the replica runs, so the
-  start command is the same on every cluster it runs on.
-- **Without a cache.** The ML team references no cache and writes the engine to load
-  from the source, with its own token. Modelplane places it on any cluster the ML
-  team's selector allows. This suits small or experimental models, and is slow for
-  large ones, since every replica downloads from the source.
+**With a cache.** The ML team references a `ModelCache` and writes the engine command.
+Modelplane places the deployment only on the clusters where the platform team pre-warmed
+that cache, so the cache is present wherever the replica runs and the start command is
+the same on every cluster.
 
-If a deployment references a cache but no cluster both matches its own selector and
-holds that cache, it isn't placed, and the scheduler reports why rather than leaving
-it Pending without a reason.
+**Without a cache.** The ML team references no cache and writes the engine to load from
+the source with its own token. Modelplane places it on any cluster its own selector
+allows. This suits small or experimental models, and is slow for large ones, because
+every replica downloads from the source.
+
+When a deployment references a cache but no cluster both matches its own selector and
+holds that cache, it isn't placed, and the scheduler reports why rather than leaving it
+Pending without a reason.
 
 ### Modelplane injects env values, never engine flags
 
@@ -188,21 +191,22 @@ Modelplane injects an env var the command references, the way it injects
 
 A cache presents its weights to the engine one of two ways.
 
-- **A path.** Most backends put the weights at a path (a PVC mount, an object-store
-  CSI mount, a node-local cache). The ML team points the engine at it with the engine's
-  own flag, `--model` on vLLM or `--model-path` on SGLang, and the path reads the same
-  whatever transport staged it there.
-- **A loader plugin.** A few backends are engine loader plugins. NVIDIA ModelExpress
-  provides first-class loaders for vLLM, SGLang, and TensorRT-LLM, and the Run:ai streamer
-  plugs into vLLM and SGLang. Each needs the engine's own `--load-format` and a
-  loader-capable image. The ML team writes that, because they chose that cache, and
-  Modelplane wires the env and the cluster-side pieces.
+**A path.** Most backends put the weights at a path (a PVC mount, an object-store CSI
+mount, or a node-local cache). The ML team points the engine at it with the engine's own
+flag, `--model` on vLLM or `--model-path` on SGLang, and the path reads the same
+whatever transport staged it there.
 
-The flag that names the model belongs to the engine either way, which is exactly why
-Modelplane stays out of it and injects only env values. Placing only where the cache is
-pre-warmed makes whatever the ML team wrote valid wherever the replica runs. How the
-bytes reach the cluster (a shared filesystem, peer-to-peer distribution, GPU-to-GPU
-streaming) is the platform team's concern and orthogonal to the command. The catalog of
+**A loader plugin.** A few backends are engine loader plugins. NVIDIA ModelExpress
+provides first-class loaders for vLLM, SGLang, and TensorRT-LLM, and the Run:ai streamer
+plugs into vLLM and SGLang. Each needs the engine's own `--load-format` and a
+loader-capable image. The ML team writes that, because they chose the cache, and
+Modelplane wires the env and the cluster-side pieces.
+
+Either way the flag that names the model belongs to the engine, so Modelplane stays out
+of it and injects only env values. Placing only where the cache is pre-warmed
+makes whatever the ML team wrote valid wherever the replica runs. How the bytes reach
+the cluster, whether a shared filesystem, peer-to-peer distribution, or GPU-to-GPU
+streaming, is the platform team's concern and orthogonal to the command. The catalog of
 backends is a separate design, and each backend has to present one of these two
 contracts.
 
@@ -215,8 +219,8 @@ holding at `Hydrating` until the PVC is Bound. It watches the `ModelCacheHydrati
 object, not the PVC directly, so a future cache that doesn't use a PVC keeps the same
 readiness contract.
 
-Gating can't be open-ended. If hydration fails, a bad token, a bad revision, or
-exhausted storage, the child reports `Failed`, the parent surfaces
+Gating can't be open-ended. If hydration fails (a bad token, a bad revision,
+exhausted storage), the child reports `Failed`, the parent surfaces
 `ArtifactReady=False` with reason `HydrationFailed`, and the gated replica fails
 with that reason instead of sitting in `Hydrating`. The hydration `Job`'s
 `backoffLimit` bounds retries, so a permanent failure stops and is reported rather
@@ -283,7 +287,7 @@ reads as the most automatic. Three costs turned it down.
   re-trigger `compose-model-cache` when a new replica appears, which isn't out until
   Crossplane v2.4.
 - The first deployment onto a new cluster still pays the hydrate and the load in
-  series, the hour-long wait pre-warm removes.
+  series: the hour-long wait pre-warm removes.
 - A model carries its private weights and token onto whatever cluster it happens to
   run on, rather than the clusters the platform team chose.
 
