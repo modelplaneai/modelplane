@@ -189,18 +189,22 @@ Modelplane injects an env var the command references, the way it injects
 A cache presents its weights to the engine one of two ways.
 
 - **A path.** Most backends put the weights at a path (a PVC mount, an object-store
-  CSI mount, a node-local cache), so the ML team writes `--model=<path>` with nothing
-  engine-specific.
-- **A loader plugin.** A few, such as NVIDIA ModelExpress or the Run:ai streamer, are
-  engine loader plugins that need an engine-specific `--load-format` and a
-  loader-capable image. The ML team writes that flag and uses that image, because they
-  chose that cache, and Modelplane wires the env and the cluster-side pieces.
+  CSI mount, a node-local cache). The ML team points the engine at it with the engine's
+  own flag, `--model` on vLLM or `--model-path` on SGLang, and the path reads the same
+  whatever transport staged it there.
+- **A loader plugin.** A few backends are engine loader plugins. NVIDIA ModelExpress
+  provides first-class loaders for vLLM, SGLang, and TensorRT-LLM, and the Run:ai streamer
+  plugs into vLLM and SGLang. Each needs the engine's own `--load-format` and a
+  loader-capable image. The ML team writes that, because they chose that cache, and
+  Modelplane wires the env and the cluster-side pieces.
 
-Either way, placing only where the cache is pre-warmed makes the command valid wherever
-the replica runs. How the bytes reach the cluster (a shared filesystem, peer-to-peer
-distribution, GPU-to-GPU streaming) is the platform team's concern and orthogonal to
-the command. The catalog of backends is a separate design, and each backend has to
-present one of these two contracts.
+The flag that names the model belongs to the engine either way, which is exactly why
+Modelplane stays out of it and injects only env values. Placing only where the cache is
+pre-warmed makes whatever the ML team wrote valid wherever the replica runs. How the
+bytes reach the cluster (a shared filesystem, peer-to-peer distribution, GPU-to-GPU
+streaming) is the platform team's concern and orthogonal to the command. The catalog of
+backends is a separate design, and each backend has to present one of these two
+contracts.
 
 ### Hydrating before ready
 
