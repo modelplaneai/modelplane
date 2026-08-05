@@ -94,8 +94,8 @@ The pattern is the one the [GAIE model-server-protocol](https://github.com/kuber
 already uses, and that Modelplane's routing depends on: read a label, don't detect the
 engine. The GAIE endpoint picker carries metric mappings for vLLM and SGLang and selects
 one from an engine-type label on the pod. If Modelplane runs that picker for
-KV-cache-aware routing, the label already exists, and normalization reuses it. One label,
-one mapping registry, two consumers.
+KV-cache-aware routing, the engine-type label already exists, and normalization reuses it.
+The label serves two consumers, the picker for routing and the collector for normalization.
 
 - **A capture contract.** An engine exposes Prometheus `/metrics`. The required set
   follows the GAIE protocol and the OpenTelemetry GenAI conventions: TTFT, time per output
@@ -136,8 +136,8 @@ spec:
 `compose-serving-stack` reads every `MetricMapping` as a required resource, the same way
 `compose-model-deployment` reads `InferenceCluster` and `ModelCache`. It renders them into
 the collector's config, the ConfigMap the OTel collector loads on each cluster. The
-`rename` map becomes transform-processor rules. A new engine is a new `MetricMapping`, not a
-package change.
+`rename` map becomes transform-processor rules, applied to metrics from the pods the
+`selector` matches. A new engine is a new `MetricMapping`, not a package change.
 
 As engines emit the OpenTelemetry conventions directly (vLLM already emits OTLP traces,
 and native OTLP metrics are in progress), each mapping shrinks toward identity and the
@@ -165,6 +165,7 @@ from end-to-end.
 | `input_sequence_tokens` | `vllm:request_prompt_tokens` | prompt tokens | `nv_trt_llm_*` |
 | `output_sequence_tokens` | `vllm:request_generation_tokens` | generation tokens | `nv_trt_llm_*` |
 | `requests_total{outcome}` | `vllm:request_success_total` | request counters | Triton success/fail |
+| `tokens_total{kind}` | `vllm:prompt_tokens_total`, `vllm:generation_tokens_total` | token counters | Triton token counts |
 
 vLLM and SGLang map cleanly. Their names already nearly match, and both align to the
 OpenTelemetry set. Triton and TensorRT-LLM expose batch-manager stats rather than native
