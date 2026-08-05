@@ -40,8 +40,9 @@ request and error rates per model. It answers "is my model serving well, and is 
 saturated?"
 
 **Substrate health.** The stack Modelplane installs on each workload cluster. Is the
-gateway up, are cert-manager, the LeaderWorkerSet controller, and the NVIDIA DRA driver
-healthy, are GPUs allocatable. "Is the machinery on this cluster working?"
+gateway up, are cert-manager, the LeaderWorkerSet controller, the NVIDIA DRA driver, and
+the pod scheduler healthy, are GPUs allocatable and gangs forming. "Is the machinery on
+this cluster working?"
 
 **Control-plane health.** Modelplane itself. Crossplane reconcile rates and errors,
 function latency and panics, the fleet scheduler placing replicas, and XR `Ready`/`Synced`.
@@ -133,6 +134,8 @@ from end-to-end.
 | `requests_waiting` | `vllm:num_requests_waiting` | scheduler waiting | `nv_trt_llm_request_metrics` |
 | `kv_cache_usage` | `vllm:kv_cache_usage_perc` | token usage | TRT-LLM KV metrics |
 | `prefix_cache_hits` | `vllm:prefix_cache_hits` | cache hit | n/a |
+| `input_sequence_tokens` | `vllm:request_prompt_tokens` | prompt tokens | `nv_trt_llm_*` |
+| `output_sequence_tokens` | `vllm:request_generation_tokens` | generation tokens | `nv_trt_llm_*` |
 
 vLLM and SGLang map cleanly. Their names already nearly match, and both align to the
 OpenTelemetry set. Triton and TensorRT-LLM expose batch-manager stats rather than native
@@ -146,7 +149,45 @@ set, so we carry both.
 Under disaggregation the two roles show different health. A prefill worker is watched on
 `modelplane_time_to_first_token` and prefill-queue depth. A decode worker is watched on
 `modelplane_inter_token_latency` and `modelplane_kv_cache_usage`. A `role={prefill,decode}`
-label carries the split, set from the same serving labels.
+label carries the split, set from the same serving labels. The finer signals are the two
+disaggregation bottlenecks, queued prefill tokens and in-flight decode KV tokens, exposed
+per engine as forward-pass metrics.
+
+These series feed more than dashboards. An autoscaler or an SLA planner, with NVIDIA's
+Dynamo Planner as the reference, reads the same normalized latency, sequence-length, and
+queue series to size prefill against decode and to hold TTFT and ITL under target. Such a
+consumer samples on the order of seconds, faster than a dashboard needs, so the scrape
+interval is a knob rather than a fixed value.
+
+## Cluster scheduler metrics
+
+The engine is not the only pluggable component on a workload cluster. The pod scheduler
+that places the engine pods is one too. By default it is kube-scheduler. For multi-node
+gangs and GPU fairness a fleet may swap in a gang scheduler such as NVIDIA KAI or Volcano.
+The collector already reaches these in-cluster pods. Modelplane treats a scheduler like an
+engine, a per-scheduler mapping normalized to a `modelplane_cluster_scheduler_*` surface,
+keyed by which scheduler is installed. The name says cluster because a
+future Modelplane fleet scheduler, placing replicas across clusters rather than pods across
+nodes, would get its own `modelplane_fleet_scheduler_*` surface.
+
+Five signals matter, and they answer whether a replica's pods reach GPUs and whether the
+cluster's capacity is shared fairly across teams.
+
+- **Pending or unschedulable work.** kube-scheduler's `scheduler_pending_pods{queue}`,
+  Volcano's `volcano_unschedule_job_counts`, a KAI queue's waiting podgroups.
+- **Scheduling latency.** `scheduler_scheduling_attempt_duration_seconds`,
+  `volcano_e2e_job_scheduling_latency_milliseconds`.
+- **Gang readiness.** Whether a podgroup's pods can all start at once,
+  `volcano_queue_pod_group_pending_count` against `_running_count`. A gang that never forms
+  is a stuck multi-node deployment.
+- **Per-queue GPU allocation against quota.** `kai_queue_allocated_gpus`, Volcano's
+  `volcano_queue_allocated_scalar_resources` against `_deserved_` and `_capacity_`, with
+  `volcano_queue_overused` for fairness.
+- **Preemptions and evictions.** `scheduler_preemption_victims`,
+  `volcano_pod_preemption_victims`.
+
+The mapping and the degradation rule are the engine ones. An unmapped scheduler still gets
+scraped under its native names, and Modelplane surfaces that rather than guessing.
 
 ## Aggregate to one view
 
@@ -154,7 +195,8 @@ Per-cluster collection is half the ask. Each cluster's series roll up to a singl
 Modelplane store at the control plane, which also scrapes the control plane's own metrics
 (Crossplane, the functions, the scheduler). One query then covers the whole deployment
 rather than a per-cluster island an operator stitches together by hand. The fleet roll-up
-(capacity, GPU usage, degraded deployments) is recording rules over the aggregate.
+(capacity, GPU usage, degraded deployments, and SLO attainment such as the fraction of
+requests under a TTFT target) is recording rules over the aggregate.
 
 ## Collector: OpenTelemetry
 
