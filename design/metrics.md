@@ -104,11 +104,12 @@ one mapping registry, two consumers.
 - **Selection by label.** An engine-type label (`modelplane.ai/engine: vllm`) picks the
   mapping. The ML team already chose the engine in the image. Naming its kind for metrics
   is one token and touches nothing about serving.
-- **A mapping registry as data.** Modelplane provides mappings for the common engines
-  (vLLM, SGLang, Triton/TensorRT-LLM) as a ConfigMap the collector reads, not code. A new
-  or forked engine is a new entry and a label, with no Modelplane release, so a new engine
-  doesn't wait on us. A CRD makes sense only if outside parties author mappings and
-  need schema validation.
+- **A mapping registry as data.** Modelplane carries mappings for the common engines
+  (vLLM, SGLang, Triton/TensorRT-LLM) in the serving-stack Composition, which renders them
+  into the collector's config on each cluster. They are versioned data the package moves
+  as a set, not function code. A platform team adds a mapping for a new or forked engine
+  through composition input, with no fork, no hand-edited ConfigMap, and no wait on a
+  Modelplane release.
 - **Graceful degradation.** An unlabelled or unmapped engine still gets scraped and
   aggregated under its native names. The rename is skipped and Modelplane surfaces it
   ("no mapping for `X`") rather than guessing a mapping and reporting the wrong thing.
@@ -202,9 +203,8 @@ rather than a per-cluster island an operator stitches together by hand. The flee
 (capacity, GPU usage, degraded deployments, and SLO attainment such as the fraction of
 requests under a TTFT target) is recording rules over the aggregate.
 
-The store is a single Prometheus-compatible instance to start. When one instance can't hold
-the whole fleet, it moves to a horizontally scaled backend such as Mimir, still
-Prometheus-compatible so the queries and rules carry over.
+The store is a single Prometheus-compatible instance with a short retention window. Scaling
+it horizontally is out of scope here.
 
 ## Collector: OpenTelemetry
 
@@ -256,8 +256,8 @@ flowchart LR
 ### A Prometheus stack
 
 Each cluster runs the kube-prometheus-stack `compose-serving-stack` already installs, with
-composed `PodMonitor`s, and remote-writes to a central Prometheus (or Thanos, Mimir,
-Cortex). It's the incumbent and PromQL is standard. The collector wins for the reasons
+composed `PodMonitor`s, and remote-writes to a central Prometheus-compatible store. It's
+the incumbent and PromQL is standard. The collector wins for the reasons
 above: it renames in the pipeline instead of through per-cluster recording rules, carries
 traces and logs on the same path, and runs no full Prometheus per cluster. The central
 store can still be Prometheus-compatible.
