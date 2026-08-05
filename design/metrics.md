@@ -76,10 +76,11 @@ replica. A second selector covers the endpoint pickers, and a third the substrat
 `compose-serving-stack` installs.
 
 Scrape the engine port by name, not by number. The engine serves `/metrics` on its
-serving port, which the backends name (say `http`) in `native.py`, `llmd.py`, and
-`routing.py`. Under prefill/decode the decode engine serves on 8001 because the pd-sidecar
-takes 8000, so matching 8000 by number would scrape the sidecar. By name, the scrape
-follows the engine on every pod.
+serving port, which the backends name `http` in `native.py`, `llmd.py`, and `routing.py`.
+It is `http` and not `metrics` because it is the one serving port, not a dedicated metrics
+one. Under prefill/decode the decode engine serves on 8001 because the pd-sidecar takes
+8000, so matching 8000 by number would scrape the sidecar. By name, the scrape follows the
+engine on every pod.
 
 ## Capture from an opaque engine
 
@@ -104,9 +105,10 @@ one mapping registry, two consumers.
   mapping. The ML team already chose the engine in the image. Naming its kind for metrics
   is one token and touches nothing about serving.
 - **A mapping registry as data.** Modelplane provides mappings for the common engines
-  (vLLM, SGLang, Triton/TensorRT-LLM) as data, not code. A new or forked engine is a new
-  mapping entry and a label, with no Modelplane release, so a new engine doesn't wait on
-  us.
+  (vLLM, SGLang, Triton/TensorRT-LLM) as a ConfigMap the collector reads, not code. A new
+  or forked engine is a new entry and a label, with no Modelplane release, so a new engine
+  doesn't wait on us. A CRD makes sense only if outside parties author mappings and
+  need schema validation.
 - **Graceful degradation.** An unlabelled or unmapped engine still gets scraped and
   aggregated under its native names. The rename is skipped and Modelplane surfaces it
   ("no mapping for `X`") rather than guessing a mapping and reporting the wrong thing.
@@ -200,6 +202,10 @@ rather than a per-cluster island an operator stitches together by hand. The flee
 (capacity, GPU usage, degraded deployments, and SLO attainment such as the fraction of
 requests under a TTFT target) is recording rules over the aggregate.
 
+The store is a single Prometheus-compatible instance to start. When one instance can't hold
+the whole fleet, it moves to a horizontally scaled backend such as Mimir, still
+Prometheus-compatible so the queries and rules carry over.
+
 ## Collector: OpenTelemetry
 
 The collector is an OpenTelemetry collector. Three reasons settle it over a per-cluster
@@ -291,16 +297,6 @@ The EPP can serve `/metrics` behind controller-runtime auth (a `ClusterRole` wit
 the endpoint carries non-sensitive routing stats reachable only in-cluster,
 `--metrics-endpoint-auth=false` collects them with nothing to manage. Auth would add a
 `ClusterRole` and a bearer token for no gain here.
-
-## Open questions
-
-- **Central store.** A single Prometheus-compatible store is simplest to start. A
-  horizontally scaled backend (Thanos, Mimir, Cortex) is the answer once the aggregate
-  outgrows one instance. Which, and when.
-- **Mapping registry shape.** How the per-engine mappings are packaged and extended, a
-  ConfigMap the collector reads or a small CRD.
-- **Port name.** `http` (the serving port that also serves `/metrics`) versus `metrics`.
-  Leaning `http`, since it's the one serving port.
 
 ## Interaction with #264
 
