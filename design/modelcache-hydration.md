@@ -185,9 +185,29 @@ Pending without a reason.
 
 ### Modelplane injects env values, never engine flags
 
-The engine command stays the ML team's. Where a value depends on the cluster,
-Modelplane injects an env var the command references, the way it injects
-`MODELPLANE_LEADER_ADDRESS` today. It never writes an engine flag.
+The engine command stays the ML team's, and Modelplane never writes an engine flag. In
+the common case it injects nothing. The cache mounts at the same path on every footprint
+cluster, so the ML team writes that path directly.
+
+```yaml
+engines:
+- name: kimi-k2
+  members:
+  - role: Standalone
+    template:
+      spec:
+        containers:
+        - name: engine
+          image: vllm/vllm-openai:v0.11.0
+          args:
+          - --model=/mnt/models      # the cache mount, uniform across the footprint
+```
+
+Injection covers the case where a value varies from one cluster to the next. Modelplane
+sets it as an env var and the ML team references it with Kubernetes `$(VAR)` expansion,
+the way `MODELPLANE_LEADER_ADDRESS` supplies a multi-node leader address today. A
+loader-plugin cache uses the same mechanism when its client needs a cluster-specific
+server address.
 
 A cache presents its weights to the engine one of two ways.
 
@@ -202,8 +222,8 @@ plugs into vLLM and SGLang. Each needs the engine's own `--load-format` and a
 loader-capable image. The ML team writes that, because they chose the cache, and
 Modelplane wires the env and the cluster-side pieces.
 
-Either way the flag that names the model belongs to the engine, so Modelplane stays out
-of it and injects only env values. Placing only where the cache is pre-warmed
+Either way the flag that names the model belongs to the engine, and Modelplane stays out
+of it. Placing only where the cache is pre-warmed
 makes whatever the ML team wrote valid wherever the replica runs. How the bytes reach
 the cluster, whether a shared filesystem, peer-to-peer distribution, or GPU-to-GPU
 streaming, is the platform team's concern and orthogonal to the command. The catalog of
