@@ -102,17 +102,42 @@ one mapping registry, two consumers.
   token, queue depth, KV-cache occupancy. It's the metrics analogue of the OpenAI API
   contract Modelplane already assumes for serving.
 - **Selection by label.** An engine-type label (`modelplane.ai/engine: vllm`) picks the
-  mapping. The ML team already chose the engine in the image. Naming its kind for metrics
-  is one token and touches nothing about serving.
-- **A mapping registry as data.** Modelplane carries mappings for the common engines
-  (vLLM, SGLang, Triton/TensorRT-LLM) in the serving-stack Composition, which renders them
-  into the collector's config on each cluster. They are versioned data the package moves
-  as a set, not function code. A platform team adds a mapping for a new or forked engine
-  through composition input, with no fork, no hand-edited ConfigMap, and no wait on a
-  Modelplane release.
+  `MetricMapping`. The ML team already chose the engine in the image. Naming its kind for
+  metrics is one token and touches nothing about serving.
+- **A registry of first-class resources.** Each mapping is a `MetricMapping`, a Modelplane
+  kind, not a ConfigMap or an EnvironmentConfig. Modelplane installs the built-in ones
+  (vLLM, SGLang, Triton/TensorRT-LLM). A platform team applies one more for a new or forked
+  engine. Being typed, it validates on apply and appears under `kubectl get metricmappings`,
+  and adding one is no fork and no Modelplane release.
 - **Graceful degradation.** An unlabelled or unmapped engine still gets scraped and
   aggregated under its native names. The rename is skipped and Modelplane surfaces it
   ("no mapping for `X`") rather than guessing a mapping and reporting the wrong thing.
+
+A `MetricMapping` is small: a selector for the pods it applies to, the source names, the
+`modelplane_*` name each becomes, and the labels to keep or add. The vLLM one:
+
+```yaml
+apiVersion: modelplane.ai/v1alpha1
+kind: MetricMapping
+metadata:
+  name: vllm
+spec:
+  selector:
+    matchLabels:
+      modelplane.ai/engine: vllm
+  rename:
+    vllm:time_to_first_token_seconds: modelplane_time_to_first_token
+    vllm:inter_token_latency_seconds: modelplane_inter_token_latency
+    vllm:num_requests_waiting: modelplane_requests_waiting
+  labels:
+    add: { engine: vllm }
+```
+
+`compose-serving-stack` reads every `MetricMapping` as a required resource, the same way
+`compose-model-deployment` reads `InferenceCluster` and `ModelCache`. It renders them into
+the collector's config, the ConfigMap the OTel collector loads on each cluster. The
+`rename` map becomes transform-processor rules. A new engine is a new `MetricMapping`, not a
+package change.
 
 As engines emit the OpenTelemetry conventions directly (vLLM already emits OTLP traces,
 and native OTLP metrics are in progress), each mapping shrinks toward identity and the
@@ -191,8 +216,9 @@ cluster's capacity is shared fairly across teams.
 - **Preemptions and evictions.** `scheduler_preemption_victims`,
   `volcano_pod_preemption_victims`.
 
-The mapping and the degradation rule are the engine ones. An unmapped scheduler still gets
-scraped under its native names, and Modelplane surfaces that rather than guessing.
+A scheduler's mapping is a `MetricMapping` like an engine's, and the degradation rule
+carries over. An unmapped scheduler still gets scraped under its native names, and
+Modelplane surfaces that rather than guessing.
 
 ## Aggregate to one view
 
