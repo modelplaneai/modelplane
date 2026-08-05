@@ -136,6 +136,7 @@ from end-to-end.
 | `prefix_cache_hits` | `vllm:prefix_cache_hits` | cache hit | n/a |
 | `input_sequence_tokens` | `vllm:request_prompt_tokens` | prompt tokens | `nv_trt_llm_*` |
 | `output_sequence_tokens` | `vllm:request_generation_tokens` | generation tokens | `nv_trt_llm_*` |
+| `requests_total{outcome}` | `vllm:request_success_total` | request counters | Triton success/fail |
 
 vLLM and SGLang map cleanly. Their names already nearly match, and both align to the
 OpenTelemetry set. Triton and TensorRT-LLM expose batch-manager stats rather than native
@@ -150,23 +151,24 @@ Under disaggregation the two roles show different health. A prefill worker is wa
 `modelplane_time_to_first_token` and prefill-queue depth. A decode worker is watched on
 `modelplane_inter_token_latency` and `modelplane_kv_cache_usage`. A `role={prefill,decode}`
 label carries the split, set from the same serving labels. The finer signals are the two
-disaggregation bottlenecks, queued prefill tokens and in-flight decode KV tokens, exposed
-per engine as forward-pass metrics.
+disaggregation bottlenecks, queued prefill tokens and in-flight decode KV tokens, reported
+by the engine's scheduler loop.
 
-These series feed more than dashboards. An autoscaler or an SLA planner, with NVIDIA's
-Dynamo Planner as the reference, reads the same normalized latency, sequence-length, and
-queue series to size prefill against decode and to hold TTFT and ITL under target. Such a
-consumer samples on the order of seconds, faster than a dashboard needs, so the scrape
+These series feed more than dashboards. An autoscaler or an SLA planner reads the same
+normalized latency, sequence-length, and queue series to size prefill against decode and
+hold TTFT and ITL under target. NVIDIA's Dynamo Planner is the reference for such a
+consumer. It samples on the order of seconds, faster than a dashboard needs, so the scrape
 interval is a knob rather than a fixed value.
 
 ## Cluster scheduler metrics
 
 The engine is not the only pluggable component on a workload cluster. The pod scheduler
-that places the engine pods is one too. By default it is kube-scheduler. For multi-node
-gangs and GPU fairness a fleet may swap in a gang scheduler such as NVIDIA KAI or Volcano.
-The collector already reaches these in-cluster pods. Modelplane treats a scheduler like an
-engine, a per-scheduler mapping normalized to a `modelplane_cluster_scheduler_*` surface,
-keyed by which scheduler is installed. The name says cluster because a
+that places the engine pods is one too. By default it is kube-scheduler. On a managed
+cluster that scheduler sits in the provider's control plane and is often not scrapable. A
+fleet running multi-node gangs or GPU fairness installs a gang scheduler instead, NVIDIA
+KAI or Volcano. Those run as in-cluster pods the collector reaches. Modelplane treats such
+a scheduler like an engine. A per-scheduler mapping, keyed by the one installed, normalizes
+to a `modelplane_cluster_scheduler_*` surface. The name says cluster because a
 future Modelplane fleet scheduler, placing replicas across clusters rather than pods across
 nodes, would get its own `modelplane_fleet_scheduler_*` surface.
 
@@ -193,7 +195,7 @@ scraped under its native names, and Modelplane surfaces that rather than guessin
 
 Per-cluster collection is half the ask. Each cluster's series roll up to a single
 Modelplane store at the control plane, which also scrapes the control plane's own metrics
-(Crossplane, the functions, the scheduler). One query then covers the whole deployment
+(Crossplane, the functions, the fleet scheduler). One query then covers the whole deployment
 rather than a per-cluster island an operator stitches together by hand. The fleet roll-up
 (capacity, GPU usage, degraded deployments, and SLO attainment such as the fraction of
 requests under a TTFT target) is recording rules over the aggregate.
@@ -230,7 +232,7 @@ flowchart LR
         CB["OTel collector"]
     end
     subgraph cp["control plane"]
-        XP["Crossplane\n(functions, scheduler, XRs)"]
+        XP["Crossplane\n(functions, fleet scheduler, XRs)"]
         CENT["Modelplane store\n+ fleet roll-up rules"]
     end
     OP["operator\ndashboards + alerting"]
