@@ -185,9 +185,10 @@ Pending without a reason.
 
 ### Modelplane injects env values, never engine flags
 
-The engine command stays the ML team's, and Modelplane never writes an engine flag. In
-the common case it injects nothing. The cache mounts at the same path on every footprint
-cluster, so the ML team writes that path directly.
+The engine command stays the ML team's, and Modelplane never writes an engine flag. When
+Modelplane owns a value the engine needs, it injects that value as an env var and the ML
+team references it with Kubernetes `$(VAR)` expansion. With a cache Modelplane owns where
+the weights are mounted, so it injects the mount path as `MODELPLANE_MODEL`.
 
 ```yaml
 engines:
@@ -200,21 +201,21 @@ engines:
         - name: engine
           image: vllm/vllm-openai:v0.11.0
           args:
-          - --model=/mnt/models      # the cache mount, uniform across the footprint
+          - --model=$(MODELPLANE_MODEL)   # Modelplane sets this to the cache mount
 ```
 
-Injection covers the case where a value varies from one cluster to the next. Modelplane
-sets it as an env var and the ML team references it with Kubernetes `$(VAR)` expansion,
-the way `MODELPLANE_LEADER_ADDRESS` supplies a multi-node leader address today. A
-loader-plugin cache uses the same mechanism when its client needs a cluster-specific
-server address.
+The ML team never hardcodes Modelplane's mount path, so Modelplane is free to change it.
+It's the same mechanism `MODELPLANE_LEADER_ADDRESS` uses for a multi-node leader address
+today. Without a cache the ML team writes `--model=<source>` directly, since the source is
+theirs and Modelplane doesn't own it.
 
 A cache presents its weights to the engine one of two ways.
 
 **A path.** Most backends put the weights at a path (a PVC mount, an object-store CSI
-mount, or a node-local cache). The ML team points the engine at it with the engine's own
-flag, `--model` on vLLM or `--model-path` on SGLang, and the path reads the same
-whatever transport staged it there.
+mount, or a node-local cache). Modelplane sets `MODELPLANE_MODEL` to that path, and the ML
+team passes it with the engine's own flag, `--model=$(MODELPLANE_MODEL)` on vLLM or
+`--model-path=$(MODELPLANE_MODEL)` on SGLang. The path reads the same whatever transport
+staged it there.
 
 **A loader plugin.** A few backends are engine loader plugins. NVIDIA ModelExpress
 provides first-class loaders for vLLM, SGLang, and TensorRT-LLM, and the Run:ai streamer
@@ -222,8 +223,8 @@ plugs into vLLM and SGLang. Each needs the engine's own `--load-format` and a
 loader-capable image. The ML team writes that, because they chose the cache, and
 Modelplane wires the env and the cluster-side pieces.
 
-Either way the flag that names the model belongs to the engine, and Modelplane stays out
-of it. Placing only where the cache is pre-warmed
+Either way the ML team writes the flag and Modelplane supplies the value it references,
+never the flag itself. Placing only where the cache is pre-warmed
 makes whatever the ML team wrote valid wherever the replica runs. How the bytes reach
 the cluster, whether a shared filesystem, peer-to-peer distribution, or GPU-to-GPU
 streaming, is the platform team's concern and orthogonal to the command. The catalog of
