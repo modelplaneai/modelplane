@@ -96,6 +96,9 @@ engine. The GAIE endpoint picker carries metric mappings for vLLM and SGLang and
 one from an engine-type label on the pod. If Modelplane runs that picker for
 KV-cache-aware routing, the engine-type label already exists, and normalization reuses it.
 The label serves two consumers, the picker for routing and the collector for normalization.
+The picker routes any engine. Its KV- and queue-aware scoring reads the engine's standard
+metrics through the same mapping, so an engine without them still routes, only less
+informed.
 
 - **A capture contract.** An engine exposes Prometheus `/metrics`. The required set
   follows the GAIE protocol and the OpenTelemetry GenAI conventions: TTFT, time per output
@@ -223,15 +226,25 @@ Modelplane surfaces that rather than guessing.
 
 ## Aggregate to one view
 
-Per-cluster collection is half the ask. Each cluster's series roll up to a single
-Modelplane store at the control plane, which also scrapes the control plane's own metrics
-(Crossplane, the functions, the fleet scheduler). One query then covers the whole deployment
-rather than a per-cluster island an operator stitches together by hand. The fleet roll-up
-(capacity, GPU usage, degraded deployments, and SLO attainment such as the fraction of
-requests under a TTFT target) is recording rules over the aggregate.
+Per-cluster collection is half the ask. Each cluster's collector sends its series up to the
+control plane, which also collects the control plane's own metrics (Crossplane, the
+functions, the fleet scheduler). One query then covers the whole deployment rather than a
+per-cluster island an operator stitches together by hand.
 
-The store is a single Prometheus-compatible instance with a short retention window. Scaling
-it horizontally is out of scope here.
+The cluster sends by pushing outbound. Each collector remote-writes or OTLP-exports to a
+control-plane endpoint, so the workload cluster needs only egress, which is what makes it
+work across regions and through firewalls. Nothing inbound to the cluster is required, and
+nothing is exposed outside it. The center can pull instead where it already reaches the
+cluster, publishing the cluster's endpoint on the `InferenceCluster` status, but push is the
+default for the regional and firewalled case.
+
+The roll-up is a set of `modelplane_*` series over the aggregate: capacity, GPU usage,
+degraded deployments, and SLO attainment such as the fraction of requests under a TTFT
+target. Modelplane doesn't need a persistent store to produce it. The control-plane
+collector aggregates the incoming streams in memory. A roll-up that needs PromQL or a
+histogram quantile is handled by a short-retention Prometheus, also in memory and with no
+volume, so it runs in a Space. If an operator wants durable storage, the collector writes
+to their own Prometheus-compatible backend, and Modelplane operates no store of its own.
 
 ## Collector: OpenTelemetry
 
@@ -249,10 +262,6 @@ Prometheus.
 - **One pipeline carries three signals.** Metrics, the #77 traces, and logs travel
   together, where a Prometheus stack is metrics only.
 
-Each cluster reaches the center by pushing (remote-write) or the center pulls. On the pull
-path Modelplane publishes the cluster's endpoint on the `InferenceCluster` status. On the
-push path nothing is exposed outside the cluster.
-
 ## Architecture
 
 ```mermaid
@@ -266,12 +275,12 @@ flowchart LR
     end
     subgraph cp["control plane"]
         XP["Crossplane\n(functions, fleet scheduler, XRs)"]
-        CENT["Modelplane store\n+ fleet roll-up rules"]
+        CENT["control-plane collector\n+ in-memory roll-up"]
     end
     OP["operator\ndashboards + alerting"]
     SA --> CA
-    CA -->|remote-write| CENT
-    CB -->|remote-write| CENT
+    CA -->|push| CENT
+    CB -->|push| CENT
     XP -->|scraped by| CENT
     CENT --> OP
     classDef new fill:#ffb74d,stroke:#e65100,stroke-width:3px,color:#000;
