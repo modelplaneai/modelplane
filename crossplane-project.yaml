@@ -69,6 +69,10 @@ spec:
       pathPrefix: _output/functions/compose-model-service
   - source: Tarball
     tarball:
+      name: compose-metric-mapping
+      pathPrefix: _output/functions/compose-metric-mapping
+  - source: Tarball
+    tarball:
       name: compose-usages
       pathPrefix: _output/functions/compose-usages
   dependencies:

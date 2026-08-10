@@ -1,0 +1,67 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: metricmappings.modelplane.ai
+spec:
+  group: modelplane.ai
+  names:
+    categories: [crossplane, modelplane]
+    kind: MetricMapping
+    plural: metricmappings
+    shortNames: [mm]
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        required: [spec]
+        properties:
+          spec:
+            type: object
+            description: >-
+              How to normalize one component's Prometheus metrics onto the
+              modelplane_* surface. The metrics collector reads every
+              MetricMapping and renders the matching rename and label rules
+              into its config. Modelplane ships a MetricMapping per common
+              engine; a platform team applies one more for a new or forked
+              engine.
+            properties:
+              selector:
+                type: object
+                description: >-
+                  Selects the pods this mapping applies to, by label. An
+                  engine mapping matches the engine-type label
+                  (modelplane.ai/engine); a scheduler mapping matches the
+                  scheduler's pods.
+                properties:
+                  matchLabels:
+                    type: object
+                    additionalProperties:
+                      type: string
+              rename:
+                type: object
+                description: >-
+                  Source metric name to its modelplane_* name, e.g.
+                  vllm:time_to_first_token_seconds becomes
+                  modelplane_time_to_first_token.
+                additionalProperties:
+                  type: string
+              labels:
+                type: object
+                description: Label rewrites applied to the matched series.
+                properties:
+                  add:
+                    type: object
+                    description: Labels to add to every matched series.
+                    additionalProperties:
+                      type: string
+          status:
+            type: object
+            properties:
+              conditions:
+                type: array
+                items:
+                  type: object

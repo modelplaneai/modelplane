@@ -59,6 +59,7 @@
         "compose-inference-class"
         "compose-inference-cluster"
         "compose-inference-gateway"
+        "compose-metric-mapping"
         "compose-nebius-cluster"
         "compose-serving-stack"
         "compose-model-cache"
