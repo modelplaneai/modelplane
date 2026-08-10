@@ -53,7 +53,7 @@ degraded deployments, and cost.
 
 All four are in the central view. The data plane and substrate are collected on each
 cluster and aggregated up, the control plane is scraped at the center, and the fleet
-roll-up is recording rules over the aggregate.
+roll-up is the collector's aggregation over the collected series.
 
 ## Collect on every cluster
 
@@ -240,11 +240,14 @@ default for the regional and firewalled case.
 
 The roll-up is a set of `modelplane_*` series over the aggregate: capacity, GPU usage,
 degraded deployments, and SLO attainment such as the fraction of requests under a TTFT
-target. Modelplane doesn't need a persistent store to produce it. The control-plane
-collector aggregates the incoming streams in memory. A roll-up that needs PromQL or a
-histogram quantile is handled by a short-retention Prometheus, also in memory and with no
-volume, so it runs in a Space. If an operator wants durable storage, the collector writes
-to their own Prometheus-compatible backend, and Modelplane operates no store of its own.
+target. The control-plane collector produces them in memory, because each is a spatial
+aggregation it already does. It sums gauges and counters across clusters and merges
+per-cluster histograms into a fleet histogram. SLO attainment is a ratio of buckets in
+that merged histogram when a boundary sits at the target, which is ours to set. So Modelplane
+runs no store and the control plane stays stateless, which is what lets it run in a Space.
+
+Computing a percentile value or answering an ad-hoc query is read-time work for whatever
+consumes the export, a dashboard or an operator's own Prometheus-compatible backend.
 
 ## Collector: OpenTelemetry
 
