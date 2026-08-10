@@ -20,8 +20,8 @@ the engines, the endpoint pickers, and the substrate, with no per-deployment tog
 `sglang:*`). The collector renames them to one Modelplane vocabulary, picked by an
 engine-type label, so a dashboard reads Modelplane's names and not each engine's.
 
-**Aggregate to one view.** Every cluster's series roll up to a single store at the
-control plane, so one query covers the whole deployment instead of a per-cluster island.
+**Aggregate to one view.** Every cluster's series roll up to one view at the control
+plane, so one query covers the whole deployment instead of a per-cluster island.
 
 **Collect with OpenTelemetry.** The collector is an OpenTelemetry collector, not a
 per-cluster Prometheus. The section below gives the reasons.
@@ -239,8 +239,8 @@ cluster, publishing the cluster's endpoint on the `InferenceCluster` status, but
 default for the regional and firewalled case.
 
 The roll-up is a set of `modelplane_*` series over the aggregate: capacity, GPU usage,
-degraded deployments, and SLO attainment such as the fraction of requests under a TTFT
-target. The control-plane collector produces them in memory, because each is a spatial
+cost, degraded deployments, and SLO attainment such as the fraction of requests under a
+TTFT target. The control-plane collector produces them in memory, because each is a spatial
 aggregation it already does. It sums gauges and counters across clusters and merges
 per-cluster histograms into a fleet histogram. SLO attainment is a ratio of buckets in
 that merged histogram when a boundary sits at the target, which is ours to set. So Modelplane
@@ -298,8 +298,8 @@ Each cluster runs the kube-prometheus-stack `compose-serving-stack` already inst
 composed `PodMonitor`s, and remote-writes to a central Prometheus-compatible store. It's
 the incumbent and PromQL is standard. The collector wins for the reasons
 above: it renames in the pipeline instead of through per-cluster recording rules, carries
-traces and logs on the same path, and runs no full Prometheus per cluster. The central
-store can still be Prometheus-compatible.
+traces and logs on the same path, and runs no full Prometheus per cluster or at the center.
+If an operator does want a store, it can still be Prometheus-compatible.
 
 ### Stop at per-cluster collection
 
@@ -319,7 +319,7 @@ whole deployment.
 ### A PodMonitor per replica
 
 `compose-model-replica` could compose a `PodMonitor` per replica, so collection comes and
-goes with the deployment. With no opt-out and a cluster-wide store, that per-deployment
+goes with the deployment. With no opt-out and a cluster-wide collector, that per-deployment
 lifecycle buys nothing over one cluster-wide selector, and it composes N monitors where one
 does the same job.
 
