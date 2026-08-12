@@ -149,6 +149,13 @@ class Status(BaseModel):
     """
     Conditions of the resource.
     """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
+    """
     membershipLabel: dict[str, str] | None = None
     """
     MembershipLabel is the label set on each member of this collection

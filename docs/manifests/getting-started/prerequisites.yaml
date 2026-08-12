@@ -76,7 +76,7 @@ metadata:
 spec:
   matchImages:
   - type: Prefix
-    prefix: xpkg.upbound.io/modelplane/provider-helm
+    prefix: xpkg.upbound.io/upbound/provider-helm
   runtime:
     configRef:
       name: provider-helm-modelplane
