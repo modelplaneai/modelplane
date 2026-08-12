@@ -105,10 +105,10 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
   docs = true
   description = "Modelplane documentation."
   # "main" on the dev branch; "X.Y" (e.g. "0.1") on release branches.
-  version = "main"
+  version = "0.3"
   # Latest stable release. Drives the version dropdown and the "not the latest
   # release" banners; the apex (docs.modelplane.ai) is this release's own build.
-  latest = "0.2"
+  latest = "0.3"
   [params.anchors]
     min = 2
     max = 5
