@@ -174,7 +174,7 @@
               # so provider-helm always comes up on the default runtime config,
               # whose ServiceAccount lacks the RBAC granted above. Point it at
               # its DeploymentRuntimeConfig explicitly.
-              kubectl patch provider.pkg.crossplane.io modelplane-provider-helm --type merge \
+              kubectl patch provider.pkg.crossplane.io upbound-provider-helm --type merge \
                 -p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-helm-modelplane"}}}'
             fi
 
