@@ -187,6 +187,13 @@ class ForProvider(BaseModel):
     """
     SkipCreateNamespace won't create the namespace for the release. This requires the namespace to already exist.
     """
+    ssaForceConflicts: bool | None = None
+    """
+    SSAForceConflicts forces Kubernetes server-side apply to overwrite
+    field conflicts ("become sole manager") when installing, upgrading,
+    or rolling back the release.
+    See https://kubernetes.io/docs/reference/using-api/server-side-apply/#conflicts
+    """
     takeOwnership: bool | None = None
     """
     TakeOwnership ignores Helm ownership validation and adopts pre-existing releases.
@@ -330,6 +337,13 @@ class Status(BaseModel):
     Conditions of the resource.
     """
     failed: int | None = None
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
+    """
     observedGeneration: int | None = None
     """
     ObservedGeneration is the latest metadata.generation

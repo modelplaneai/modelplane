@@ -133,16 +133,14 @@ spec:
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
-      # ToDo(haarchri): switch to official provider
-      package: xpkg.upbound.io/modelplane/provider-helm
-      version: v1.3.0-9a6fb4b
+      package: xpkg.upbound.io/upbound/provider-helm
+      version: v1.4.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
-      # ToDo(haarchri): switch to official provider
-      package: xpkg.upbound.io/modelplane/provider-kubernetes
-      version: v1.2.1-070dae7
+      package: xpkg.upbound.io/upbound/provider-kubernetes
+      version: v1.3.0
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
