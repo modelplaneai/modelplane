@@ -149,10 +149,19 @@
               esac
             done
 
+            # Pin Crossplane to the version e2e/run.sh uses: without a pin the
+            # CLI installs the latest release
+            version_args=(--crossplane-version=2.3.4)
+            for arg in "$@"; do
+              case "$arg" in
+                --crossplane-version | --crossplane-version=*) version_args=() ;;
+              esac
+            done
+
             # On failure, dump the package revision state: installs time out
             # with only "context deadline exceeded", and under nix.sh the
             # cluster is gone by the time anyone can look at it.
-            if ! crossplane project run "''${timeout_args[@]}" "$@"; then
+            if ! crossplane project run "''${timeout_args[@]}" "''${version_args[@]}" "$@"; then
               echo ""
               echo "crossplane project run failed; package revision state:"
               for cluster in $(kind get clusters 2>/dev/null); do
