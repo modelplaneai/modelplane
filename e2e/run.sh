@@ -142,7 +142,8 @@ cd "$ROOT"
 # document that `crossplane project run` rejects but kubectl skips.
 crossplane project run \
 	--control-plane-name "$CP" --cluster-admin --timeout 25m \
-	--init-resources "$ROOT/e2e/lean-control-plane.yaml"
+	--init-resources "$ROOT/e2e/lean-control-plane.yaml" \
+	--crossplane-version=2.3.4
 
 # Config healthy. Finish the setup the getting-started flow does by hand (as the
 # nix run app now does too, PR #375): apply the RBAC prerequisites, then point
@@ -151,7 +152,7 @@ crossplane project run \
 # creation, so provider-helm otherwise comes up without the granted RBAC.
 log "Finishing control-plane setup: prerequisites + provider-helm runtime config"
 kubectl --context "$cpctx" apply -f "$ROOT/docs/manifests/getting-started/prerequisites.yaml"
-kubectl --context "$cpctx" patch provider.pkg.crossplane.io modelplane-provider-helm --type merge \
+kubectl --context "$cpctx" patch provider.pkg.crossplane.io upbound-provider-helm --type merge \
 	-p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-helm-modelplane"}}}'
 
 # The InferenceCluster (source: Existing) reads this kubeconfig to reach the

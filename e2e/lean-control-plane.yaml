@@ -7,11 +7,17 @@
 # it BEFORE the Configuration's dependencies install, so the cloud providers
 # never activate their managed resources or run their controllers.
 
-# 1. Scale the unused cloud provider controllers to zero. The cloud packages all
-#    live under xpkg.upbound.io/upbound/provider-*, while the two we use are
-#    xpkg.upbound.io/modelplane/*, so this prefix matches only the unused ones.
-#    ImageConfig applies the runtime config to matching packages including ones
-#    installed as dependencies (Crossplane docs: packages/image-configs).
+# 1. Scale the unused cloud provider controllers to zero. Every provider -
+#    including provider-kubernetes and provider-helm, the two this scenario
+#    uses - now lives under xpkg.upbound.io/upbound/provider-*, so an org-wide
+#    prefix would scale those two to zero as well (an ImageConfig runtime
+#    overrides even an explicit runtimeConfigRef on the Provider). Match the
+#    cloud provider families explicitly instead. A new cloud provider must be
+#    added here to stay dormant; forgetting one costs an idle controller pod in
+#    kind, not a broken run. ImageConfig applies the runtime config to matching
+#    packages including ones installed as dependencies - that's what catches
+#    the family providers, which install as dependencies of the cloud
+#    providers (Crossplane docs: packages/image-configs).
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
 metadata:
@@ -30,7 +36,17 @@ metadata:
 spec:
   matchImages:
   - type: Prefix
-    prefix: xpkg.upbound.io/upbound/provider-
+    prefix: xpkg.upbound.io/upbound/provider-aws-
+  - type: Prefix
+    prefix: xpkg.upbound.io/upbound/provider-azure-
+  - type: Prefix
+    prefix: xpkg.upbound.io/upbound/provider-gcp-
+  - type: Prefix
+    prefix: xpkg.upbound.io/upbound/provider-family-
+  - type: Prefix
+    prefix: xpkg.upbound.io/upbound/provider-nebius
+  - type: Prefix
+    prefix: xpkg.upbound.io/upbound/provider-vultr
   runtime:
     configRef:
       name: scale-to-zero
