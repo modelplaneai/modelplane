@@ -82,7 +82,7 @@ class NodeSelector(BaseModel):
 
 
 class MetadataModel(BaseModel):
-    annotations: dict[str, str] | None = None
+    annotations: dict[str, constr(max_length=8192)] | None = Field(None, max_length=32)
     labels: dict[str, constr(max_length=63)] | None = Field(None, max_length=32)
 
 

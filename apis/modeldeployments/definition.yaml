@@ -65,7 +65,7 @@ spec:
                     x-kubernetes-validations:
                     - rule: "!has(self.labels) || self.labels.all(k, !k.startsWith('modelplane.ai/'))"
                       message: "template.metadata.labels keys must not use the reserved modelplane.ai/ prefix"
-                    - rule: "!has(self.labels) || self.labels.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$'))"
+                    - rule: "!has(self.labels) || self.labels.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$'))"
                       message: "template.metadata.labels keys must be valid Kubernetes label keys"
                     - rule: "!has(self.labels) || self.labels.all(k, k.split('/')[0].size() <= 253)"
                       message: "template.metadata.labels key prefixes must be DNS subdomains of at most 253 characters"
@@ -416,13 +416,13 @@ spec:
                                         x-kubernetes-validations:
                                         - rule: "!has(self.labels) || self.labels.all(k, !k.startsWith('modelplane.ai/'))"
                                           message: "member template.metadata.labels keys must not use the reserved modelplane.ai/ prefix"
-                                        - rule: "!has(self.labels) || self.labels.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$'))"
+                                        - rule: "!has(self.labels) || self.labels.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$'))"
                                           message: "member template.metadata.labels keys must be valid Kubernetes label keys"
                                         - rule: "!has(self.labels) || self.labels.all(k, k.split('/')[0].size() <= 253)"
                                           message: "member template.metadata.labels key prefixes must be DNS subdomains of at most 253 characters"
                                         - rule: "!has(self.labels) || self.labels.all(k, self.labels[k].matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$'))"
                                           message: "member template.metadata.labels values must be valid Kubernetes label values"
-                                        - rule: "!has(self.annotations) || self.annotations.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$'))"
+                                        - rule: "!has(self.annotations) || self.annotations.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$'))"
                                           message: "member template.metadata.annotations keys must be valid Kubernetes annotation keys"
                                         - rule: "!has(self.annotations) || self.annotations.all(k, k.split('/')[0].size() <= 253)"
                                           message: "member template.metadata.annotations key prefixes must be DNS subdomains of at most 253 characters"
@@ -435,8 +435,10 @@ spec:
                                               maxLength: 63
                                           annotations:
                                             type: object
+                                            maxProperties: 32
                                             additionalProperties:
                                               type: string
+                                              maxLength: 8192
                                       spec:
                                         type: object
                                         required: [containers]
