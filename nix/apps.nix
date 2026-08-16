@@ -46,8 +46,8 @@
           find . -name '*.sh' -type f -exec shellcheck {} +
 
           echo "Formatting and linting Python..."
-          ruff format functions/
-          ruff check --fix functions/
+          ruff format functions/ e2e/verify/
+          ruff check --fix functions/ e2e/verify/
 
           echo "Refreshing uv.lock..."
           uv lock
