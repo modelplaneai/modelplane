@@ -1,6 +1,6 @@
 {{/*
   Renders one CRD type page (product: crd). The page's plural param selects the
-  definition from site.Data.apis.crds; the example comes from the validated
+  definition from hugo.Data.apis.crds; the example comes from the validated
   manifest at examples/reference/<plural>.yaml. The header leads with the kind,
   a description and a link to its concept doc, then an apiVersion/kind/scope
   strip; spec and status follow, with deep objects promoted to their own named
@@ -8,7 +8,7 @@
 */}}
 {{ $plural := .Params.plural }}
 {{ $crd := "" }}
-{{ with index site.Data.apis.crds $plural }}{{ $crd = .definition }}{{ end }}
+{{ with index hugo.Data.apis.crds $plural }}{{ $crd = .definition }}{{ end }}
 
 {{ with $crd }}
   {{ $kind   := .spec.names.kind }}
@@ -28,7 +28,7 @@
 
         {{/* Lead description (schema, else the concept doc's) + link to it. */}}
         {{ $concept := "" }}
-        {{ with index site.Data.apigroups.concepts $kind }}{{ $concept = site.GetPage . }}{{ end }}
+        {{ with index hugo.Data.apigroups.concepts $kind }}{{ $concept = site.GetPage . }}{{ end }}
         {{ $lead := $.Params.description }}
         {{ if not $lead }}{{ with $concept }}{{ $lead = .Description }}{{ end }}{{ end }}
         {{ with $lead }}<p class="api-ref__lead">{{ . | markdownify }}</p>{{ end }}

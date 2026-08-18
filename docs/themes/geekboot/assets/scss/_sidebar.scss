@@ -274,6 +274,9 @@
 @include media-breakpoint-down(lg) {
   .bd-sidebar-container.offcanvas-lg {
     background-color: var(--body-background);
+    // Below the breakpoint Bootstrap applies --bs-offcanvas-color, which is
+    // dimmer than the theme's body color; force the same color as desktop.
+    color: var(--body-font-color);
     width: 320px;
   }
 }

@@ -1,0 +1,14 @@
+{{/*
+  A square logo tile for a vendor or cloud. Context: dict with "entry" (a
+  record from data/recipes.yaml with .name and optional .icon) and "class"
+  (size variant: mp-brand-tile--lg / --sm / --xs). Entries without an icon
+  render a monogram from the name's first letter.
+*/}}
+{{ $e := .entry }}
+<span class="mp-brand-tile {{ .class }}">
+  {{- with $e.icon -}}
+    <svg class="mp-brand-icon" role="img" aria-hidden="true"><use xlink:href="#{{ . }}"/></svg>
+  {{- else -}}
+    <span class="mp-brand-mono">{{ substr $e.name 0 1 }}</span>
+  {{- end -}}
+</span>

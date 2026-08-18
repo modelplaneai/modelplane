@@ -281,6 +281,395 @@ a.mp-chip:hover {
 .mp-lane--platform .mp-chip { border-color: rgba(0, 220, 232, 0.30); }
 .mp-lane--ml .mp-chip { border-color: rgba(154, 94, 252, 0.30); }
 
+// ── Brand tiles (vendor/cloud logos) ──────────────────────────
+.mp-brand-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 8px;
+  color: var(--body-font-color, inherit);
+}
+.mp-brand-icon { fill: currentColor; width: 60%; height: 60%; }
+.mp-brand-mono {
+  font-weight: 800;
+  font-family: #{$font-family-monospace};
+  line-height: 1;
+}
+.mp-brand-tile--lg { width: 56px; height: 56px; border-radius: 12px; .mp-brand-mono { font-size: 1.5rem; } }
+.mp-brand-tile--md { width: 40px; height: 40px; .mp-brand-mono { font-size: 1.1rem; } }
+.mp-brand-tile--sm { width: 22px; height: 22px; border-radius: 5px; .mp-brand-mono { font-size: 0.7rem; } }
+.mp-brand-tile--xs {
+  width: 16px; height: 16px;
+  border: 0; background: transparent;
+  .mp-brand-mono { font-size: 0.62rem; }
+}
+
+// ── Recipe catalog browse cards ───────────────────────────────
+.mp-browse-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 2rem 0 0.75rem;
+}
+.mp-browse-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mp-card-muted);
+}
+.mp-browse-all {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #{$mp-purple-hi};
+  text-decoration: none;
+  &:hover { color: #{$mp-purple}; text-decoration: none; }
+}
+.mp-browse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.mp-browse-card {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  text-decoration: none !important;
+
+  &.is-empty {
+    opacity: 0.45;
+    &:hover { border-color: var(--mp-card-border); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+  }
+}
+.mp-browse-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.mp-browse-name { font-weight: 700; color: #{$mp-purple-hi}; }
+.mp-browse-org {
+  font-family: #{$font-family-monospace};
+  font-size: 0.74rem;
+  color: var(--mp-card-muted);
+}
+.mp-browse-count {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--mp-card-muted);
+  white-space: nowrap;
+  strong { color: var(--body-font-color, inherit); }
+}
+
+// ── Recipe page header ────────────────────────────────────────
+.mp-recipe-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.mp-recipe-head--term { align-items: center; }
+.mp-term-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--mp-card-muted);
+
+  a { color: #{$mp-purple-hi}; text-decoration: none; &:hover { color: #{$mp-purple}; } }
+}
+.mp-term-org { font-family: #{$font-family-monospace}; }
+.mp-term-dot { opacity: 0.6; }
+
+// ── Term-page recipe rows (vLLM-style table listing) ──────────
+.mp-recipe-rows {
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 10px;
+  margin: 1rem 0 1.5rem;
+  overflow: hidden;
+}
+.mp-recipe-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  text-decoration: none !important;
+  color: inherit !important;
+  transition: background 0.15s;
+
+  & + .mp-recipe-row { border-top: 1px solid var(--mp-card-border); }
+
+  &:hover {
+    background: rgba(154, 94, 252, 0.06);
+    .mp-row-name { color: #{$mp-purple-hi}; }
+    .mp-row-arrow { color: #{$mp-purple-hi}; transform: translateX(2px); }
+  }
+}
+.mp-row-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 15rem;
+  min-width: 0;
+}
+.mp-row-name {
+  font-family: #{$font-family-monospace};
+  font-weight: 700;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+.mp-row-size {
+  font-family: #{$font-family-monospace};
+  font-size: 0.78rem;
+  color: var(--mp-card-muted);
+}
+.mp-row-arch { flex: 0 0 5.5rem; }
+.mp-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mp-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.mp-row-ctx {
+  font-family: #{$font-family-monospace};
+  font-size: 0.78rem;
+  color: var(--mp-card-muted);
+}
+.mp-row-arrow {
+  color: var(--mp-card-muted);
+  transition: color 0.15s, transform 0.15s;
+}
+
+@media (max-width: 800px) {
+  .mp-recipe-row { flex-wrap: wrap; gap: 8px 16px; }
+  .mp-row-id { flex-basis: 100%; }
+  .mp-row-arch { flex-basis: auto; }
+  .mp-row-ctx { display: none; }
+}
+
+// ── Browse-all recipe table (/recipes/all/) ───────────────────
+.mp-table-wrap {
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 10px;
+  margin: 1rem 0 1.5rem;
+  overflow-x: auto;
+}
+.mp-recipe-table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+
+  th {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--mp-card-muted);
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--mp-card-border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 14px;
+    border-bottom: 1px solid var(--mp-card-border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr { transition: background 0.15s; }
+  tbody tr:hover { background: rgba(154, 94, 252, 0.06); }
+}
+.mp-t-model { min-width: 13rem; }
+.mp-t-model-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit !important;
+  text-decoration: none !important;
+  &:hover .mp-row-name { color: #{$mp-purple-hi}; }
+}
+.mp-t-model-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mp-t-mono {
+  font-family: #{$font-family-monospace};
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.mp-t-chips {
+  min-width: 9rem;
+  .mp-vchip { margin: 0 4px 4px 0; }
+}
+.mp-t-notes {
+  min-width: 16rem;
+  font-size: 0.84rem;
+  color: var(--mp-card-muted);
+}
+.mp-recipe-title {
+  font-family: #{$font-family-monospace};
+  letter-spacing: -0.02em;
+}
+.mp-recipe-vendor { color: var(--mp-card-muted); font-weight: 400; }
+.mp-recipe-name { font-weight: 800; }
+.mp-recipe-sub { margin: 0.35rem 0 0.25rem; color: var(--mp-card-muted); }
+.mp-recipe-hf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #{$mp-purple-hi};
+  text-decoration: none;
+  .mp-brand-icon { width: 16px; height: 16px; }
+  &:hover { color: #{$mp-purple}; text-decoration: none; }
+}
+
+// ── Validated deployments panel ───────────────────────────────
+.mp-recipe-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 1rem 0;
+}
+
+.mp-vchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  font-family: #{$font-family-monospace};
+  font-size: 0.78rem;
+  color: var(--mp-card-muted);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 999px;
+  white-space: nowrap;
+  text-decoration: none !important;
+
+  &.is-on {
+    color: var(--body-font-color, inherit);
+    border-color: rgba(154, 94, 252, 0.55);
+  }
+  &.mp-vchip--code {
+    color: #{$mp-purple-hi};
+    border-radius: 6px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  // Chips rendered as <button> (cloud chips that select a tab below).
+  &.mp-vchip--btn {
+    background: transparent;
+    font: inherit;
+    font-family: #{$font-family-monospace};
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+}
+a.mp-vchip:hover,
+button.mp-vchip:hover { border-color: var(--mp-card-border-hi); }
+
+.mp-spec {
+  background: var(--mp-card-bg);
+  border: 1px solid var(--mp-card-border);
+  border-radius: 10px;
+  margin: 1rem 0 1.5rem;
+}
+.mp-spec-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 16px;
+  & + .mp-spec-row { border-top: 1px solid var(--mp-card-border); }
+}
+.mp-spec-label {
+  flex: 0 0 8.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mp-card-muted);
+}
+.mp-spec-val {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mp-spec-note { font-size: 0.8rem; color: var(--mp-card-muted); }
+
+@media (max-width: 600px) {
+  .mp-spec-row { flex-direction: column; gap: 6px; }
+  .mp-spec-label { flex-basis: auto; }
+}
+
+// ── Vendor groups in the Recipes sidebar ──────────────────────
+.nav-vendor {
+  > summary { list-style: none; }
+  > summary::-webkit-details-marker { display: none; }
+}
+// Matches the 10px inset of .nav-group-label / .bd-links in _sidebar.scss.
+.nav-vendor-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+
+  &:hover { color: var(--content-link-color); }
+
+  .nav-vendor-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: inherit !important;
+    &:hover { color: var(--content-link-color) !important; }
+    &.active { color: var(--content-link-color) !important; }
+  }
+
+  &::after {
+    content: "";
+    margin-left: auto;
+    width: 0.5em;
+    height: 0.5em;
+    border-right: 1.5px solid var(--mp-card-muted);
+    border-bottom: 1.5px solid var(--mp-card-muted);
+    transform: rotate(-45deg);
+    transition: transform 0.15s;
+  }
+}
+.nav-vendor[open] > .nav-vendor-summary::after { transform: rotate(45deg); }
+// .bd-links inside carry their own indent; add just enough to nest under the tile.
+// One contrast step above --mp-muted: next to the bold vendor rows the dimmest
+// text tier reads as disabled, worst on the mobile drawer.
+.nav-vendor-children {
+  padding-left: 20px;
+  .bd-links { color: var(--mp-muted-hi) !important; }
+  .bd-links:hover { color: var(--body-font-color) !important; }
+  .bd-links.active { color: var(--content-link-color) !important; }
+}
+
 // ── FAQ disclosure ────────────────────────────────────────────
 .mp-faq {
   margin: 0.6rem 0;

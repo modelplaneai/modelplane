@@ -1,0 +1,19 @@
+# A Vultr Kubernetes Engine cluster in ewr (New Jersey) with a single A16 node
+# offering the class above.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: vultr-a16
+  labels:
+    modelplane.ai/region: ewr
+spec:
+  cluster:
+    source: Vultr
+    vultr:
+      region: ewr
+  nodePools:
+  - name: gpu-a16
+    className: vultr-a16-1x
+    nodeCount: 1
+    minNodeCount: 1
+    maxNodeCount: 1

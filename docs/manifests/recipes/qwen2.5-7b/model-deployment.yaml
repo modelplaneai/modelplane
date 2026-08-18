@@ -1,0 +1,39 @@
+# Qwen2.5-7B served on a single NVIDIA A16, validated end to end on Vultr.
+#
+# A 7B AWQ INT4 model is a single Standalone engine: one self-contained vLLM
+# pod, no ModelCache, weights pulled straight from Hugging Face. The 16 GiB
+# card is the constraint: --gpu-memory-utilization=0.85 leaves headroom for
+# the card's overhead, and --enforce-eager skips CUDA graph capture to save
+# memory at some latency cost. It carries no clusterSelector, so device
+# capacity alone matches it to any compatible GPU in the fleet.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-7b
+  namespace: ml-team
+spec:
+  replicas: 1
+  template:
+    spec:
+      engines:
+      - name: qwen-7b
+        members:
+        - role: Standalone
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 1
+              selectors:
+              - cel: |
+                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("14Gi")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: vllm/vllm-openai:v0.9.2
+                args:
+                - --model=Qwen/Qwen2.5-7B-Instruct-AWQ
+                - --served-model-name=qwen-7b
+                - --max-model-len=8192
+                - --gpu-memory-utilization=0.85
+                - --enforce-eager

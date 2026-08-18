@@ -1,17 +1,36 @@
 baseURL = "/"
-languageCode = "en-us"
+locale = "en-us"
 title = "Modelplane Docs"
 theme = "geekboot"
 enableRobotsTXT = true
 enableGitInfo = true
 
-disableKinds = ["taxonomy", "term"]
+# Term pages power the recipe catalog facets; taxonomy (index-of-terms) pages
+# stay disabled — the catalog page on /recipes/ fills that role.
+disableKinds = ["taxonomy"]
+# Keep term titles exactly as written in front matter ("vLLM", not "VLLM").
+capitalizeListTitles = false
 ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
+
+# Only vendors and clouds are taxonomies — their term pages are the browse
+# targets on /recipes/. GPU, engine, and technique facets are plain front
+# matter rendered inline; they get no term pages until something links there.
+[taxonomies]
+  vendor = "vendors"
+  cloud  = "clouds"
+
+# Nest term pages under the Recipes section so facet URLs read as part of the
+# catalog: /recipes/cloud/nebius/ lists every recipe that runs on Nebius.
+[permalinks]
+  [permalinks.term]
+    vendors = "/recipes/vendor/:slug/"
+    clouds  = "/recipes/cloud/:slug/"
 
 [outputs]
   home = ["html", "llms", "llmsfull", "llmsjson"]
   section = ["html", "rss", "markdown"]
   page = ["html", "markdown"]
+  term = ["html"]
 
 # Machine-readable variants for AI agents and LLM tools. The markdown format
 # emits a raw-Markdown sibling of every page (page/index.md); the home page also
@@ -66,16 +85,16 @@ ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
   [[module.mounts]]
     source = "content"
     target = "assets/content"
-    includeFiles = ["**/**.png", "**/**.jpg", "**/**.jpeg", "**/**.gif"]
+    files = ["**/**.png", "**/**.jpg", "**/**.jpeg", "**/**.gif"]
   # Defining any data mount below suppresses Hugo's default data mount, so mount
   # the local data dir explicitly (holds apigroups.yaml, which groups the API
-  # reference). Accessible as site.Data.apigroups.
+  # reference). Accessible as hugo.Data.apigroups.
   [[module.mounts]]
     source = "data"
     target = "data"
   # Mount the APIs directory as Hugo data so the reference partials can read
   # definition.yaml files without a separate generation step.
-  # Accessible as site.Data.apis.crds.<plural>.definition
+  # Accessible as hugo.Data.apis.crds.<plural>.definition
   [[module.mounts]]
     source = "../apis"
     target = "data/apis/crds"

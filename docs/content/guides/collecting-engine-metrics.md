@@ -1,6 +1,6 @@
 ---
 title: Collecting engine metrics
-weight: 50
+weight: 20
 description: Scrape a vLLM engine's Prometheus metrics through the in-cluster Prometheus.
 ---
 <!-- vale write-good.Passive = NO -->
@@ -18,15 +18,15 @@ Apply the platform side first, then the ML side.
 
 ## Platform
 
-{{< manifests "examples/collecting-engine-metrics/inference-class.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/inference-class.yaml" >}}
 
-{{< manifests "examples/collecting-engine-metrics/inference-cluster.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/inference-cluster.yaml" >}}
 
 ## Deployment
 
-{{< manifests "examples/collecting-engine-metrics/model-deployment.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/model-deployment.yaml" >}}
 
-{{< manifests "examples/collecting-engine-metrics/model-service.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/model-service.yaml" >}}
 
 ## Scraping the metrics
 
@@ -35,7 +35,7 @@ Modelplane stamps on them, and the `monitoring` namespace Prometheus discovers a
 `PodMonitor`, so this is the whole config. The engine container port is unnamed,
 so reference it by number with `targetPort`:
 
-{{< manifests "examples/collecting-engine-metrics/podmonitor.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/podmonitor.yaml" >}}
 
 The engine pods and the `PodMonitor` CRD live on the workload cluster, not the
 control plane, so apply it there. Then read the metrics from the in-cluster

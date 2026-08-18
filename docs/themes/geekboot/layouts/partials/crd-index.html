@@ -1,12 +1,12 @@
 {{/*
   Reference landing (product: reference). Renders the page body, then a card per
-  CRD grouped by site.Data.apigroups. Cards link to the generated per-type pages
+  CRD grouped by hugo.Data.apigroups. Cards link to the generated per-type pages
   and pull their summary from the page Description, so new CRDs appear here once
   they're added to a group.
 */}}
 {{ .Content }}
 
-{{ range site.Data.apigroups.groups }}
+{{ range hugo.Data.apigroups.groups }}
   <section class="api-index-group">
     <h2 id="{{ .id }}">{{ .title }}</h2>
     {{ with .description }}<p>{{ . }}</p>{{ end }}
@@ -14,7 +14,7 @@
       {{ $group := . }}
       {{ range $group.kinds }}
         {{ $k := . }}
-        {{ range $plural, $dir := site.Data.apis.crds }}
+        {{ range $plural, $dir := hugo.Data.apis.crds }}
           {{ $crd := $dir.definition }}
           {{ if and $crd (eq $crd.spec.names.kind $k) }}
             {{ $page := site.GetPage (printf "/reference/%s" $plural) }}

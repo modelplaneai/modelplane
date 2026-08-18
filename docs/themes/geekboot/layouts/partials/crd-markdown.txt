@@ -15,7 +15,7 @@
 */ -}}
 {{- $plural := .Params.plural -}}
 {{- $crd := "" -}}
-{{- with index site.Data.apis.crds $plural -}}{{- $crd = .definition -}}{{- end -}}
+{{- with index hugo.Data.apis.crds $plural -}}{{- $crd = .definition -}}{{- end -}}
 
 {{- with $crd -}}
   {{- $kind  := .spec.names.kind -}}
@@ -25,7 +25,7 @@
 
   {{- /* Lead description (schema's, else the concept doc's) and concept link. */ -}}
   {{- $concept := "" -}}
-  {{- with index site.Data.apigroups.concepts $kind -}}{{- $concept = site.GetPage . -}}{{- end -}}
+  {{- with index hugo.Data.apigroups.concepts $kind -}}{{- $concept = site.GetPage . -}}{{- end -}}
   {{- $lead := $.Params.description -}}
   {{- if not $lead -}}{{- with $concept -}}{{- $lead = .Description -}}{{- end -}}{{- end -}}
   {{- with $lead -}}{{- printf "%s\n\n" . -}}{{- end -}}
