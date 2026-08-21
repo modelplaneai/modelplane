@@ -16,7 +16,7 @@
       },
       "original": {
         "owner": "crossplane",
-        "ref": "v2.4.0",
+        "ref": "v2.5.0",
         "repo": "cli",
         "type": "github"
       }

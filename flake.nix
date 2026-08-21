@@ -12,7 +12,7 @@
     # tracking the latest uv_build releases.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    crossplane-cli.url = "github:crossplane/cli/v2.4.0";
+    crossplane-cli.url = "github:crossplane/cli/v2.5.0";
 
     # uv2nix reads a uv workspace's uv.lock and generates Nix derivations
     # for each Python package, using pyproject.nix's build infrastructure.
