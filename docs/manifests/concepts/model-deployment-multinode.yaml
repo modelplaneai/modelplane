@@ -3,12 +3,26 @@
 # When a model is too large to fit on one node's GPUs, make an engine a gang:
 # give it a Leader and a Worker member, whose worker.nodes expands to that many
 # worker pods, one per node. The scheduler picks a cluster with a pool that has
-# enough GPUs per node and enough nodes for the whole gang, and Modelplane
-# composes a LeaderWorkerSet-backed serving instance on it. A member joins the
-# leader through $(MODELPLANE_LEADER_ADDRESS) and takes its rank from
-# $(MODELPLANE_RANK) (0 on the Leader, 1..worker.nodes on the followers), both
-# injected by Modelplane - so the same Worker template fans out to any number
-# of nodes.
+# enough GPUs per node and enough nodes for the whole gang.
+#
+# By default a cluster serves multi-node gangs with the Standard stack
+# (InferenceCluster.spec.stack: Standard), so Modelplane
+# composes the gang into a LeaderWorkerSet. On that backend Modelplane injects
+# backend-neutral env vars into every gang pod, so the command is the same for
+# the leader and the workers:
+#   - $(MODELPLANE_LEADER_ADDRESS) is the address the leader is reachable at.
+#   - $(MODELPLANE_RANK) is the pod's node rank: 0 on the leader, 1..N on the
+#     workers. The worker also adds --headless.
+#
+# To run the same gang on a cluster that opts into the Dynamo stack (Grove + KAI
+# Scheduler, InferenceCluster.spec.stack: Dynamo), the command references Grove's
+# own pod-discovery vars directly instead. This is interim, pending Grove
+# releases carrying grove#753 and grove#755 that let Modelplane inject the
+# backend-neutral vars there too:
+#   - master-addr: $(GROVE_PCS_NAME)-$(GROVE_PCS_INDEX)-gang-0-leader-0.$(GROVE_HEADLESS_SERVICE)
+#   - node-rank: 0 on the leader, and $$((GROVE_PCLQ_POD_INDEX + 1)) on the
+#     workers ($$ escapes past Kubernetes to leave a literal $((...)) for the
+#     shell to evaluate).
 #
 # Multi-node engines require a ModelCache: every pod in the gang mounts it at
 # /mnt/models. When a member brings its own command, Modelplane does not inject

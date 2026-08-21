@@ -128,8 +128,10 @@ A resource composes others, which compose others, until the tree bottoms out in
 provider resources and plain Kubernetes objects. A `ModelDeployment` is the
 clearest example. Its function schedules the replicas, then composes a
 `ModelReplica` for each, and a `ModelEndpoint` for each replica that's ready to
-serve. Each `ModelReplica` function composes the serving workload, a Deployment or
-a LeaderWorkerSet, onto its target workload cluster through provider-kubernetes.
+serve. Each `ModelReplica` function composes the serving workload onto its target
+workload cluster through provider-kubernetes: a Deployment for single-node, or a
+LeaderWorkerSet for multi-node (a Grove PodCliqueSet on clusters that opt into
+the Dynamo stack via `InferenceCluster.spec.stack: Dynamo`).
 
 ```mermaid
 flowchart TD
