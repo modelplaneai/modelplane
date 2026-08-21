@@ -196,7 +196,7 @@ class Member(BaseModel):
 class Engine(BaseModel):
     copies: conint(ge=1, le=64) | None = 1
     """
-    How many identical copies of this engine to run per ModelReplica. A fixed number, sized once per deployment; scaling happens by adding ModelReplicas (spec.replicas), never by varying copies. Maps to the composed Deployment's or LeaderWorkerSet's replica count. Defaults to 1.
+    How many identical copies of this engine to run per ModelReplica. A fixed number, sized once per deployment; scaling happens by adding ModelReplicas (spec.replicas), never by varying copies. Maps to the composed Deployment's, LeaderWorkerSet's, or PodCliqueSet's replica count. Defaults to 1.
     """
     members: list[Member] = Field(..., max_length=2, min_length=1)
     """
@@ -249,7 +249,7 @@ class SpecModel(BaseModel):
     """
     engines: list[Engine] = Field(..., max_length=8, min_length=1)
     """
-    A ModelReplica's inference engines. An engine is one serving unit: a single Standalone pod, or a gang of a Leader and one or more Workers coordinating across nodes. Modelplane composes the whole array once per ModelReplica; an engine composes to a Deployment (Standalone) or a LeaderWorkerSet (Leader/Worker), but the workload kind is an implementation detail. Modelplane is unopinionated about the engine itself: parallelism, quantization, and KV transfer all live in the members' engine flags, written by the user, never injected by Modelplane.
+    A ModelReplica's inference engines. An engine is one serving unit: a single Standalone pod, or a gang of a Leader and one or more Workers coordinating across nodes. Modelplane composes the whole array once per ModelReplica; an engine composes to a Deployment (Standalone) or, for a Leader/Worker gang, a LeaderWorkerSet or a Grove PodCliqueSet depending on the cluster's stack, but the workload kind is an implementation detail. Modelplane is unopinionated about the engine itself: parallelism, quantization, and KV transfer all live in the members' engine flags, written by the user, never injected by Modelplane.
     """
     modelCacheRef: ModelCacheRef | None = None
     """

@@ -100,12 +100,14 @@ spec:
                   required: [name, members]
                   # An engine is exactly one Standalone member, or one Leader
                   # and one Worker member - the two shapes the backends compose
-                  # (a Deployment or a LeaderWorkerSet). A multi-node gang's size
-                  # lives in the Worker member's worker.nodes, not in repeated
-                  # Worker members, so members caps at two. select_backend
-                  # switches on Standalone-present, and the llm-d backend
-                  # dereferences the Leader and Worker members, so any other
-                  # role combination would crash or compose the wrong workload.
+                  # (a Deployment, or a LeaderWorkerSet or Grove PodCliqueSet
+                  # depending on the cluster's stack). A multi-node gang's
+                  # size lives in the Worker member's worker.nodes, not in
+                  # repeated Worker members, so members caps at two.
+                  # select_backend switches on Standalone-present, and the
+                  # Grove backend dereferences the Leader and Worker members,
+                  # so any other role combination would crash or compose the
+                  # wrong workload.
                   #
                   # The scheduler also only places an engine where at least one
                   # member resolves a claimable device; an engine where no

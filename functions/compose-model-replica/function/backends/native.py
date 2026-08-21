@@ -36,6 +36,7 @@ class NativeBackend:
         engine: v1alpha1.Engine,
         provider_config: str,
         serving_label: str,
+        stack: str,
     ) -> dict[str, k8sobjv1alpha1.Object]:
         member = base.engine_member(engine, base.ROLE_STANDALONE)
         # select_backend dispatches the native backend only for an engine with a
@@ -81,8 +82,18 @@ class NativeBackend:
             container["resources"] = base.engine_resources()
         if engine_container.command:
             container["command"] = list(engine_container.command)
+        # ModelExpress P2P env (Dynamo + a referenced cache) applies to a
+        # Standalone engine too: several replicas of one Standalone deployment
+        # are as valid a P2P peer set as a multi-node gang. Inert unless the
+        # engine command opts in with --load-format modelexpress.
+        env = list(base.modelexpress_env(replica, stack))
         if engine_container.env:
-            container["env"] = [e.model_dump(exclude_none=True) for e in engine_container.env]
+            env.extend(e.model_dump(exclude_none=True) for e in engine_container.env)
+        if env:
+            container["env"] = env
+        security_context = base.modelexpress_security_context(replica, stack)
+        if security_context:
+            container["securityContext"] = security_context
 
         pod_spec = {
             "containers": [container],
