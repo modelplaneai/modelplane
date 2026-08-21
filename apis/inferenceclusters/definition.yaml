@@ -310,6 +310,26 @@ spec:
                             default: default
                             minLength: 1
                             maxLength: 253
+              stack:
+                type: string
+                default: Standard
+                x-kubernetes-validations:
+                - rule: self == oldSelf
+                  message: spec.stack is immutable; recreate the cluster to change its serving stack.
+                description: >-
+                  Which serving stack the cluster installs and composes. Standard
+                  (the default) is the Modelplane-composed serving layer: a
+                  Deployment or LeaderWorkerSet, Gateway API, and the endpoint
+                  picker.                   Dynamo swaps in NVIDIA's components: Grove with the KAI
+                  Scheduler gang-schedules multi-node engines, and ModelExpress
+                  distributes weights. A single-node (Standalone) engine's
+                  workload kind is unaffected - it stays a Deployment - but if it
+                  references a ModelCache on a Dynamo cluster it still gets the
+                  ModelExpress P2P env and IPC_LOCK, so it can seed peers and
+                  load from them like a gang.
+                enum:
+                - Standard
+                - Dynamo
               taints:
                 type: array
                 description: >-

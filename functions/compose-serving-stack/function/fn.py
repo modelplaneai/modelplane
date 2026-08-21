@@ -15,11 +15,13 @@
 """Install the serving substrate on a remote cluster.
 
 This function composes the serving substrate (the cluster-side CRDs,
-controllers, and gateway) that the native and llm-d model-serving backends
-depend on: cert-manager, Envoy Gateway, the Envoy AI Gateway and Gateway API
-Inference Extension (which together route HTTPRoute -> InferencePool backendRefs
-for disaggregated serving), Prometheus, LeaderWorkerSet, and an inference
-Gateway. Resources are composed as Helm releases and
+controllers, and gateway) that the model-serving backends depend on:
+cert-manager, Envoy Gateway, the Envoy AI Gateway and Gateway API Inference
+Extension (which together route HTTPRoute -> InferencePool backendRefs for
+disaggregated serving), Prometheus, and an inference Gateway. The serving stack
+is selected per cluster by spec.stack: Standard (the default) installs the
+LeaderWorkerSet controller; Dynamo installs NVIDIA Grove with the KAI Scheduler
+and a shared ModelExpress server. Resources are composed as Helm releases and
 provider-kubernetes Objects, all targeting the remote cluster via
 ProviderConfigs.
 
@@ -107,6 +109,42 @@ _GAIE_CRDS = [
     if doc and doc.get("kind") == "CustomResourceDefinition"
 ]
 
+# ModelExpress CRDs (ModelMetadata, ModelCacheEntry), the metadata backend the
+# shared ModelExpress server uses. Installed with the rest of the ModelExpress
+# bundle only when stack is Dynamo (see compose_modelexpress).
+_MODELEXPRESS_CRDS = [
+    doc
+    for doc in yaml.safe_load_all((_HERE / "modelexpress_crds.yaml").read_text())
+    if doc and doc.get("kind") == "CustomResourceDefinition"
+]
+
+# The shared ModelExpress server, installed once per cluster in `default` when
+# stack is Dynamo. Its name is a cross-function contract: compose-model-replica
+# points engine pods at the server Service by name. Both functions hard-code the
+# string independently, so they must change together.
+#
+# `default` matches the namespace the engine pods live in
+# (compose-model-replica's REMOTE_NAMESPACE), so they can reach the server's
+# Service.
+_MODELEXPRESS_NAMESPACE = "default"
+# Server Deployment, its ServiceAccount/Role/RoleBinding, and its Service all
+# take this name; engine clients reach it at modelexpress-server:8001.
+_MODELEXPRESS_SERVER_NAME = "modelexpress-server"
+# Registry/repo of the ModelExpress server image; the tag is a ServingStack
+# knob (spec.dynamo.modelExpress), so only the version moves without an image
+# override.
+_MODELEXPRESS_SERVER_REPO = "nvcr.io/nvidia/ai-dynamo/modelexpress-server"
+_MODELEXPRESS_MOUNT = "/mnt/models"
+_MODELEXPRESS_PORT = 8001
+# Selector label for the server Deployment's pods and its Service.
+_MODELEXPRESS_SELECTOR = "modelplane.ai/modelexpress"
+
+# CEL readiness for the server Deployment, which publishes Available, not Ready,
+# matching the policy the rest of the pipeline derives workload readiness from.
+_MODELEXPRESS_SERVER_READY_CEL = (
+    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+)
+
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
     """The object's name, always set on resources read from the API server."""
@@ -125,6 +163,11 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
 def _gaie_crd_key(doc: dict) -> str:
     """Stable composed-resource key for a GAIE CRD."""
     return f"gaie-crd-{doc['metadata']['name']}"
+
+
+def _modelexpress_crd_key(doc: dict) -> str:
+    """Stable composed-resource key for a ModelExpress CRD."""
+    return f"modelexpress-crd-{doc['metadata']['name']}"
 
 
 def _helm_release(
@@ -318,7 +361,19 @@ class Composer:
         self.compose_ai_gateway()
         self.compose_gaie_crds()
         self.compose_prometheus()
-        self.compose_leader_worker_set()
+        # The cluster's stack selects which gang scheduler and weight-
+        # distribution components this installs. Dynamo: Grove + KAI for
+        # gang scheduling, plus the shared ModelExpress server (and its CRDs).
+        # Standard: LeaderWorkerSet, and none of the ModelExpress resources.
+        if self.xr.spec.stack == "Dynamo":
+            self.compose_grove()
+            self.compose_kai_scheduler()
+            self.compose_kai_queues()
+            self.compose_kai_usages()
+            self.compose_modelexpress_crds()
+            self.compose_modelexpress()
+        else:
+            self.compose_leader_worker_set()
         self.compose_node_feature_discovery()
         self.compose_dra_driver()
         self.compose_gateway()
@@ -600,6 +655,199 @@ class Composer:
             if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
                 self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
+    def compose_modelexpress_crds(self) -> None:
+        """Compose the ModelExpress CRDs (ModelMetadata, ModelCacheEntry) as
+        provider-kubernetes Objects on the remote cluster. Gated on the same
+        ProviderConfigs as Envoy Gateway. Installed only when stack is Dynamo,
+        alongside the rest of the ModelExpress bundle.
+        """
+        pc_observed = self.provider_configs_observed()
+        for doc in _MODELEXPRESS_CRDS:
+            key = _modelexpress_crd_key(doc)
+            if not (pc_observed or key in self.req.observed.resources):
+                continue
+            resource.update(
+                self.rsp.desired.resources[key],
+                _k8s_object(_pc_name(self.xr), doc),
+            )
+            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
+                self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
+
+    def compose_modelexpress(self) -> None:
+        """Compose the shared ModelExpress server in `default`.
+
+        One server per cluster: it's metadata-only, coordinating P2P weight
+        transfer between engine pods that opt into --load-format modelexpress.
+        It holds no weights itself, so it needs no shared storage - its cache
+        directory is an emptyDir. Engine pods keep their own per-cache PVC
+        (compose-model-cache) and register with this server at load.
+
+        The whole bundle - ServiceAccount, Role, RoleBinding, Service, and the
+        server Deployment - composes as soon as the ProviderConfigs are
+        observed.
+        """
+        pc_observed = self.provider_configs_observed()
+        pc = _pc_name(self.xr)
+        d = self.xr.spec.dynamo or v1alpha1.Dynamo()
+        image = f"{_MODELEXPRESS_SERVER_REPO}:{d.modelExpress}"
+
+        # RBAC the server needs for the Kubernetes CRD metadata backend:
+        # ModelMetadata (P2P worker coordination) and ModelCacheEntry (the
+        # download registry), plus ConfigMaps holding tensor descriptors too
+        # large for a ModelMetadata status field. Mirrors ModelExpress's own
+        # Helm chart Role.
+        if pc_observed or "modelexpress-server-sa" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["modelexpress-server-sa"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "v1",
+                        "kind": "ServiceAccount",
+                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
+                    },
+                ),
+            )
+        if pc_observed or "modelexpress-server-role" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["modelexpress-server-role"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "rbac.authorization.k8s.io/v1",
+                        "kind": "Role",
+                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
+                        "rules": [
+                            {
+                                "apiGroups": ["modelexpress.nvidia.com"],
+                                "resources": ["modelmetadatas", "modelmetadatas/status"],
+                                "verbs": ["get", "list", "create", "update", "patch", "delete"],
+                            },
+                            {
+                                "apiGroups": [""],
+                                "resources": ["configmaps"],
+                                "verbs": ["get", "list", "create", "update", "patch", "delete"],
+                            },
+                            {
+                                "apiGroups": ["modelexpress.nvidia.com"],
+                                "resources": ["modelcacheentries", "modelcacheentries/status"],
+                                "verbs": ["get", "list", "create", "update", "patch", "delete"],
+                            },
+                        ],
+                    },
+                ),
+            )
+        if pc_observed or "modelexpress-server-rolebinding" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["modelexpress-server-rolebinding"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "rbac.authorization.k8s.io/v1",
+                        "kind": "RoleBinding",
+                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
+                        "subjects": [
+                            {
+                                "kind": "ServiceAccount",
+                                "name": _MODELEXPRESS_SERVER_NAME,
+                                "namespace": _MODELEXPRESS_NAMESPACE,
+                            }
+                        ],
+                        "roleRef": {
+                            "apiGroup": "rbac.authorization.k8s.io",
+                            "kind": "Role",
+                            "name": _MODELEXPRESS_SERVER_NAME,
+                        },
+                    },
+                ),
+            )
+        if pc_observed or "modelexpress-server-svc" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["modelexpress-server-svc"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "v1",
+                        "kind": "Service",
+                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
+                        "spec": {
+                            "selector": {_MODELEXPRESS_SELECTOR: _MODELEXPRESS_SERVER_NAME},
+                            "ports": [{"name": "grpc", "port": _MODELEXPRESS_PORT, "targetPort": _MODELEXPRESS_PORT}],
+                        },
+                    },
+                ),
+            )
+
+        if pc_observed or "modelexpress-server" in self.req.observed.resources:
+            # MODEL_EXPRESS_CACHE_DIRECTORY and HF_HUB_CACHE both point at an
+            # emptyDir - the server is metadata-only and holds no weights, so it
+            # needs no shared storage (matching ModelExpress's own
+            # values-local-storage.yaml). No HF_HUB_OFFLINE: the server never
+            # pulls from HuggingFace; engine pods seed weights from their own
+            # per-cache PVC.
+            select = {_MODELEXPRESS_SELECTOR: _MODELEXPRESS_SERVER_NAME}
+            resource.update(
+                self.rsp.desired.resources["modelexpress-server"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "apps/v1",
+                        "kind": "Deployment",
+                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
+                        "spec": {
+                            "replicas": 1,
+                            "selector": {"matchLabels": select},
+                            "template": {
+                                "metadata": {"labels": select},
+                                "spec": {
+                                    "serviceAccountName": _MODELEXPRESS_SERVER_NAME,
+                                    "containers": [
+                                        {
+                                            "name": "modelexpress-server",
+                                            "image": image,
+                                            "ports": [{"containerPort": _MODELEXPRESS_PORT}],
+                                            "env": [
+                                                {
+                                                    "name": "MODEL_EXPRESS_CACHE_DIRECTORY",
+                                                    "value": _MODELEXPRESS_MOUNT,
+                                                },
+                                                {"name": "HF_HUB_CACHE", "value": _MODELEXPRESS_MOUNT},
+                                                {"name": "MX_METADATA_BACKEND", "value": "kubernetes"},
+                                                {
+                                                    "name": "POD_NAMESPACE",
+                                                    "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}},
+                                                },
+                                            ],
+                                            "volumeMounts": [{"name": "cache", "mountPath": _MODELEXPRESS_MOUNT}],
+                                            # The server listens for gRPC on the
+                                            # cache port; a TCP probe is enough to
+                                            # tell it's accepting connections.
+                                            # Readiness gates the Service's
+                                            # endpoints so engines don't dial a
+                                            # not-yet-listening server; liveness
+                                            # restarts it if the socket stops
+                                            # accepting.
+                                            "readinessProbe": {
+                                                "tcpSocket": {"port": _MODELEXPRESS_PORT},
+                                                "periodSeconds": 10,
+                                            },
+                                            "livenessProbe": {
+                                                "tcpSocket": {"port": _MODELEXPRESS_PORT},
+                                                "periodSeconds": 20,
+                                            },
+                                        }
+                                    ],
+                                    "volumes": [{"name": "cache", "emptyDir": {}}],
+                                },
+                            },
+                        },
+                    },
+                    cel_query=_MODELEXPRESS_SERVER_READY_CEL,
+                ),
+            )
+            if resource.get_condition(self.req.observed.resources.get("modelexpress-server"), "Ready").status == "True":
+                self.rsp.desired.resources["modelexpress-server"].ready = fnv1.READY_TRUE
+
     def compose_prometheus(self) -> None:
         """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
         observed. Provides cluster observability (metrics scraping)."""
@@ -619,17 +867,160 @@ class Composer:
         if not (pc_observed or "leader-worker-set" in self.req.observed.resources):
             return
 
-        v = self.xr.spec.versions or v1alpha1.Versions()
+        s = self.xr.spec.standard or v1alpha1.Standard()
         resource.update(
             self.rsp.desired.resources["leader-worker-set"],
             _helm_release(
                 chart="lws",
                 repo="oci://registry.k8s.io/lws/charts",
-                version=v.leaderWorkerSet,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
+                version=s.leaderWorkerSet,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
                 namespace="lws-system",
                 provider_config=_pc_name(self.xr),
             ),
         )
+
+    def compose_grove(self) -> None:
+        """Compose Grove. Gated on ProviderConfigs being observed.
+
+        Grove gang-schedules a multi-node engine as a PodCliqueSet: a leader
+        clique and a worker clique, each carrying its own command, replacing
+        LeaderWorkerSet. Grove hands the gang-scheduling decision to KAI (see
+        compose_kai_scheduler); it creates no PodGroups of its own.
+        """
+        pc_observed = self.provider_configs_observed()
+        if not (pc_observed or "grove" in self.req.observed.resources):
+            return
+
+        d = self.xr.spec.dynamo or v1alpha1.Dynamo()
+        resource.update(
+            self.rsp.desired.resources["grove"],
+            _helm_release(
+                chart="grove-charts",
+                repo="oci://ghcr.io/ai-dynamo/grove",
+                version=d.grove,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
+                namespace="grove-system",
+                provider_config=_pc_name(self.xr),
+            ),
+        )
+
+    def compose_kai_scheduler(self) -> None:
+        """Compose KAI Scheduler. Gated on ProviderConfigs being observed.
+
+        KAI is the scheduler Grove hands its PodGangs to; a Grove
+        PodCliqueSet's pods set schedulerName: kai-scheduler and KAI binds
+        each gang all-or-nothing. Grove itself creates no scheduler-side
+        queue or priority CRs — see compose_kai_queues.
+        """
+        pc_observed = self.provider_configs_observed()
+        if not (pc_observed or "kai-scheduler" in self.req.observed.resources):
+            return
+
+        d = self.xr.spec.dynamo or v1alpha1.Dynamo()
+        resource.update(
+            self.rsp.desired.resources["kai-scheduler"],
+            _helm_release(
+                chart="kai-scheduler",
+                repo="oci://ghcr.io/kai-scheduler/kai-scheduler",
+                version=d.kaiScheduler,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
+                namespace="kai-scheduler",
+                provider_config=_pc_name(self.xr),
+                labels={_LABEL_RESOURCE: "kai-scheduler"},
+            ),
+        )
+
+    def compose_kai_queues(self) -> None:
+        """Compose the Queue CRs every Grove gang schedules into.
+
+        KAI refuses to schedule a pod whose queue doesn't exist, and neither
+        Grove nor KAI creates one, so Modelplane owns a small two-level
+        hierarchy: an unbounded root queue and a child queue every
+        Grove-composed PodCliqueSet is labelled into. Quotas of -1 mean
+        unbounded — Modelplane's own scheduler (compose-model-deployment)
+        already decides what fits on a cluster; KAI's queue is just the
+        admission point its gang-scheduler requires.
+        """
+        pc_observed = self.provider_configs_observed()
+        pc = _pc_name(self.xr)
+
+        if pc_observed or "kai-queue-root" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["kai-queue-root"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "scheduling.run.ai/v2",
+                        "kind": "Queue",
+                        "metadata": {"name": "modelplane-root"},
+                        "spec": {
+                            "resources": {
+                                "cpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+                                "gpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+                                "memory": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+                            },
+                        },
+                    },
+                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "kai-queue-root"}),
+                ),
+            )
+
+        if pc_observed or "kai-queue" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["kai-queue"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "scheduling.run.ai/v2",
+                        "kind": "Queue",
+                        "metadata": {"name": "modelplane"},
+                        "spec": {
+                            "parentQueue": "modelplane-root",
+                            "resources": {
+                                "cpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+                                "gpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+                                "memory": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+                            },
+                        },
+                    },
+                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "kai-queue"}),
+                ),
+            )
+
+    def compose_kai_usages(self) -> None:
+        """Compose Usages ordering the KAI Scheduler teardown after its Queues.
+
+        Queue is a CRD the kai-scheduler Release owns. Without an ordering
+        Usage, uninstalling the release can remove that CRD while
+        kai-queue-root/kai-queue CRs still exist, and their delete then hangs
+        waiting for a controller that's already gone — the same failure
+        CONTRIBUTING.md's KServe CRD-ordering example describes. This holds
+        the Release until both Queue Objects are gone.
+        """
+        for queue_key in ("kai-queue-root", "kai-queue"):
+            resource.update(
+                self.rsp.desired.resources[f"usage-kai-scheduler-by-{queue_key}"],
+                usagev1beta1.Usage(
+                    spec=usagev1beta1.Spec(
+                        of=usagev1beta1.Of(
+                            apiVersion="helm.m.crossplane.io/v1beta1",
+                            kind="Release",
+                            resourceSelector=usagev1beta1.ResourceSelectorModel(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_RESOURCE: "kai-scheduler"},
+                            ),
+                        ),
+                        by=usagev1beta1.By(
+                            apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                            kind="Object",
+                            resourceSelector=usagev1beta1.ResourceSelector(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_RESOURCE: queue_key},
+                            ),
+                        ),
+                        replayDeletion=True,
+                    ),
+                ),
+            )
+            self.rsp.desired.resources[f"usage-kai-scheduler-by-{queue_key}"].ready = fnv1.READY_TRUE
 
     def compose_node_feature_discovery(self) -> None:
         """Compose Node Feature Discovery. Gated on ProviderConfigs being
@@ -908,6 +1299,15 @@ class Composer:
             "ai-gateway-crds",
             "ai-gateway",
             "prometheus",
+            "grove",
+            "kai-scheduler",
+            "kai-queue-root",
+            "kai-queue",
+            "modelexpress-server-sa",
+            "modelexpress-server-role",
+            "modelexpress-server-rolebinding",
+            "modelexpress-server-svc",
+            "modelexpress-server",
             "leader-worker-set",
             "node-feature-discovery",
             "dra-driver",

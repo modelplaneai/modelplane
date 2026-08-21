@@ -104,10 +104,6 @@ class Versions(BaseModel):
     """
     Gateway API CRD version.
     """
-    leaderWorkerSet: constr(min_length=1, max_length=32) | None = 'v0.8.0'
-    """
-    LeaderWorkerSet chart version.
-    """
     nodeFeatureDiscovery: constr(min_length=1, max_length=32) | None = '0.18.3'
     """
     Node Feature Discovery chart version. NFD labels GPU nodes so the NVIDIA DRA driver targets its kubelet plugin to them.
@@ -122,10 +118,36 @@ class Versions(BaseModel):
     """
 
 
+class Dynamo(BaseModel):
+    grove: constr(min_length=1, max_length=32) | None = 'v0.1.0-alpha.6'
+    """
+    Grove chart version. Grove gang-schedules a multi-node engine as a PodCliqueSet when stack is Dynamo.
+    """
+    kaiScheduler: constr(min_length=1, max_length=32) | None = 'v0.16.8'
+    """
+    KAI Scheduler chart version. Grove hands a PodCliqueSet's gang-scheduling to KAI, which binds each gang all-or-nothing against a Queue.
+    """
+    modelExpress: constr(min_length=1, max_length=32) | None = '0.4.1'
+    """
+    ModelExpress server image tag. The metadata-only server coordinates peer-to-peer weight transfer between engine pods that opt into --load-format modelexpress.
+    """
+
+
+class Standard(BaseModel):
+    leaderWorkerSet: constr(min_length=1, max_length=32) | None = 'v0.8.0'
+    """
+    LeaderWorkerSet chart version.
+    """
+
+
 class Spec(BaseModel):
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
+    """
+    dynamo: Dynamo | None = None
+    """
+    Version pins for Dynamo-stack components. Ignored when stack is Standard.
     """
     gateway: Gateway | None = None
     """
@@ -138,6 +160,14 @@ class Spec(BaseModel):
     secrets: list[Secret] = Field(..., max_length=8, min_length=1)
     """
     Secrets used to authenticate to the target cluster. Typically sourced from a GKECluster's status.secrets. Secrets are in the same namespace as this ServingStack unless an entry says otherwise. A Kubeconfig secret is required. If a cloud identity secret is present, the serving stack authenticates as that identity instead of relying on the kubeconfig's embedded credentials.
+    """
+    stack: Literal['Standard', 'Dynamo'] | None = 'Standard'
+    """
+    Which serving stack this installs. Standard (the default) is the Modelplane-composed serving layer: a Deployment or LeaderWorkerSet, Gateway API, and the endpoint picker. Dynamo swaps in NVIDIA's components: Grove with the KAI Scheduler for multi-node gang scheduling, and a shared ModelExpress server for weight distribution. Propagated from the InferenceCluster.
+    """
+    standard: Standard | None = None
+    """
+    Version pins for Standard-stack components. Ignored when stack is Dynamo.
     """
     versions: Versions | None = None
     """

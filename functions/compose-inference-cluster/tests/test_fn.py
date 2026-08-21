@@ -331,6 +331,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
+                                    "stack": "Standard",
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",
@@ -662,6 +663,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
+                                    "stack": "Standard",
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",
@@ -1288,6 +1290,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
+                                    "stack": "Standard",
                                     "secrets": [
                                         {
                                             "type": "Kubeconfig",
@@ -1438,6 +1441,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "stack": "Standard",
                             "secrets": [
                                 {
                                     "type": "Kubeconfig",
@@ -1755,6 +1759,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "stack": "Standard",
                             "secrets": [
                                 {
                                     "type": "Kubeconfig",
@@ -2061,6 +2066,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "stack": "Standard",
                             "secrets": [
                                 {
                                     "type": "Kubeconfig",
@@ -2452,6 +2458,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "stack": "Standard",
                             "secrets": [
                                 {
                                     "type": "Kubeconfig",
