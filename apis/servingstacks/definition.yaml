@@ -23,8 +23,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: >-
-          A ServingStack installs the serving substrate (LeaderWorkerSet,
-          Gateway API, cert-manager, Prometheus) on a Kubernetes cluster.
+          A ServingStack installs the serving substrate on a Kubernetes cluster:
+          LeaderWorkerSet (Standard) or Grove and the KAI Scheduler (Dynamo),
+          plus Gateway API, cert-manager, and Prometheus.
         properties:
           spec:
             description: ServingStackSpec defines the desired state of ServingStack.
@@ -88,6 +89,19 @@ spec:
                         entries whose credential is the Secret the cloud
                         provider's ProviderConfig references.
                       maxLength: 253
+              stack:
+                type: string
+                default: Standard
+                description: >-
+                  Which serving stack this installs. Standard (the default) is
+                  the Modelplane-composed serving layer: a Deployment or
+                  LeaderWorkerSet, Gateway API, and the endpoint picker. Dynamo
+                  swaps in NVIDIA's components: Grove with the KAI Scheduler for
+                  multi-node gang scheduling, and a shared ModelExpress server
+                  for weight distribution. Propagated from the InferenceCluster.
+                enum:
+                - Standard
+                - Dynamo
               nvidiaDriverRoot:
                 type: string
                 default: "/"
@@ -137,12 +151,6 @@ spec:
                     description: kube-prometheus-stack chart version.
                     minLength: 1
                     maxLength: 32
-                  leaderWorkerSet:
-                    type: string
-                    default: "v0.8.0"
-                    description: LeaderWorkerSet chart version.
-                    minLength: 1
-                    maxLength: 32
                   nodeFeatureDiscovery:
                     type: string
                     default: "0.18.3"
@@ -159,6 +167,50 @@ spec:
                       NVIDIA DRA driver chart version. Publishes GPUs as DRA
                       ResourceSlices and the gpu.nvidia.com DeviceClass that
                       ModelReplica ResourceClaims bind through.
+                    minLength: 1
+                    maxLength: 32
+              standard:
+                type: object
+                description: >-
+                  Version pins for Standard-stack components. Ignored when stack
+                  is Dynamo.
+                properties:
+                  leaderWorkerSet:
+                    type: string
+                    default: "v0.8.0"
+                    description: LeaderWorkerSet chart version.
+                    minLength: 1
+                    maxLength: 32
+              dynamo:
+                type: object
+                description: >-
+                  Version pins for Dynamo-stack components. Ignored when stack is
+                  Standard.
+                properties:
+                  grove:
+                    type: string
+                    default: "v0.1.0-alpha.6"
+                    description: >-
+                      Grove chart version. Grove gang-schedules a multi-node
+                      engine as a PodCliqueSet when stack is Dynamo.
+                    minLength: 1
+                    maxLength: 32
+                  kaiScheduler:
+                    type: string
+                    default: "v0.16.8"
+                    description: >-
+                      KAI Scheduler chart version. Grove hands a PodCliqueSet's
+                      gang-scheduling to KAI, which binds each gang all-or-nothing
+                      against a Queue.
+                    minLength: 1
+                    maxLength: 32
+                  modelExpress:
+                    type: string
+                    default: "0.4.1"
+                    description: >-
+                      ModelExpress server image tag. The metadata-only server
+                      coordinates peer-to-peer weight transfer between engine
+                      pods that opt into --load-format modelexpress.
                     minLength: 1
                     maxLength: 32
               gateway:

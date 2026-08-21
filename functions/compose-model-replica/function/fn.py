@@ -17,8 +17,10 @@
 This function reads the referenced InferenceCluster via required resources, then
 composes the cluster-level serving resources for each of the replica's worker
 engines. An engine's member roles select its backend: a Standalone member composes
-to a Deployment (native), a Leader plus Worker to a LeaderWorkerSet (llm-d). One
-shared Service and HTTPRoute front all of a replica's engines.
+to a Deployment (native), a Leader plus Worker to the cluster's chosen multi-node
+backend - a LeaderWorkerSet (llm-d) or a PodCliqueSet (Grove), per the
+InferenceCluster's stack. One shared Service and HTTPRoute front all of
+a replica's engines.
 
 Each member's template is a curated subset of PodTemplateSpec. The container
 named "engine" is the inference engine; its image, command, and args are passed
@@ -34,7 +36,7 @@ from models.ai.modelplane.modelreplica import v1alpha1
 from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 
 from function import routing
-from function.backends import base, dynamo, llmd, native
+from function.backends import base, grove, llmd, native
 
 # Condition types and reasons for the ModelReplica XR.
 CONDITION_TYPE_MODEL_ACCEPTED = "ModelAccepted"
@@ -52,7 +54,7 @@ CONDITION_REASON_MODEL_STARTING = "ModelStarting"
 _BACKENDS = {
     base.NATIVE: native.NativeBackend,
     base.LLMD: llmd.LLMDBackend,
-    base.DYNAMO: dynamo.DynamoBackend,
+    base.GROVE: grove.GroveBackend,
 }
 
 
@@ -139,7 +141,7 @@ class Composer:
     def compose_model_serving(self) -> None:
         """Compose each engine's workload, then the replica's routing surface.
 
-        Every engine composes to a Deployment or LeaderWorkerSet (with its
+        Every engine composes to a Deployment, LeaderWorkerSet, or PodCliqueSet (with its
         members' ResourceClaimTemplates) via the backend its roles select; the
         backends build no routing. routing.apply then fronts the engines with the
         surface serving.mode selects: a Service (Unified) or an InferencePool +
@@ -149,11 +151,15 @@ class Composer:
         # status.providerConfigRef.name is set, so it's present here.
         assert self.ic and self.ic.status and self.ic.status.providerConfigRef and self.ic.status.providerConfigRef.name
         pc = self.ic.status.providerConfigRef.name
+        # The XRD defaults stack, so it's always set; a gang engine composes to
+        # its value (Standard or Dynamo). Coalesce for the type checker, which
+        # sees the field as optional.
+        stack = self.ic.spec.stack or "Standard"
         label = base.serving_label(self.xr)
         composed: dict[str, k8sobjv1alpha1.Object] = {}
         for engine in self.xr.spec.engines:
-            backend = _BACKENDS[base.select_backend(engine)]()
-            composed.update(backend.build(self.xr, engine, pc, label))
+            backend = _BACKENDS[base.select_backend(engine, stack)]()
+            composed.update(backend.build(self.xr, engine, pc, label, stack))
         composed = routing.apply(composed, self.xr, pc)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)

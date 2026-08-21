@@ -1,12 +1,15 @@
 # Qwen3-Coder-480B served BF16 across two H200 nodes, validated end to end on
 # EKS over EFA. A 480B MoE doesn't fit one node, so the engine is a Leader +
-# Worker gang spanning two nodes via LeaderWorkerSet, both pods mounting the
-# shared ModelCache at /mnt/models.
+# Worker gang spanning two nodes, both pods mounting the shared ModelCache at
+# /mnt/models.
 #
 # Each member requests 8 GPUs + 16 EFA interfaces per node; the scheduler
-# co-schedules the gang on the H200 pool. A member joins the leader through
-# $(MODELPLANE_LEADER_ADDRESS) and takes its rank from $(MODELPLANE_RANK),
-# both injected by Modelplane.
+# co-schedules the gang on the H200 pool. This cluster uses the default
+# Standard stack (InferenceCluster.spec.stack: Standard), which composes a
+# LeaderWorkerSet, so Modelplane injects the backend-neutral env vars the
+# commands reference: $(MODELPLANE_LEADER_ADDRESS) is the leader's address and
+# $(MODELPLANE_RANK) is the pod's node rank (0 on the leader, 1..N on the
+# workers). See docs/manifests/concepts/model-deployment-multinode.yaml.
 #
 # Notes on the engine flags:
 #   --distributed-executor-backend=mp with --nnodes/--node-rank/--master-addr/

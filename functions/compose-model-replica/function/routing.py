@@ -14,7 +14,7 @@
 
 """Routing: front a replica's engine workloads with a serving surface.
 
-The workload backends (native, llm-d, dynamo) compose engines only; this layer
+The workload backends (native, Grove) compose engines only; this layer
 decorates them with the routing the replica's serving.mode selects. apply picks
 the strategy:
 
@@ -331,22 +331,37 @@ def _disaggregated(
 
 
 def _serving_pod_templates(manifest: dict) -> list[dict]:
-    """The pod template(s) of a workload that actually serve the API.
+    """The serving pod target(s) of a workload that actually serve the API.
 
-    A Deployment serves from spec.template; a LeaderWorkerSet serves from its
-    leaderTemplate (followers never serve). Returns the list to mutate.
+    Normalizes the three workload shapes to {"labels": ..., "spec": ...}, a
+    mutable reference to the pod's labels and a mutable reference to its
+    corev1.PodSpec, so callers don't need to know which workload kind they're
+    decorating. A Deployment carries a PodTemplateSpec at spec.template and a
+    LeaderWorkerSet one at spec.leaderWorkerTemplate.leaderTemplate (its
+    followers never serve) - both with labels under metadata. A Grove
+    PodCliqueSet's leader clique (the only clique that serves) is different: its
+    podSpec is a bare corev1.PodSpec with no metadata of its own, so its labels
+    live one level up, on the clique itself.
     """
     spec = manifest["spec"]
-    if manifest["kind"] == "Deployment":
-        return [spec["template"]]
-    return [spec["leaderWorkerTemplate"]["leaderTemplate"]]
+    kind = manifest["kind"]
+    if kind == "Deployment":
+        tmpl = spec["template"]
+        return [{"labels": tmpl.setdefault("metadata", {}).setdefault("labels", {}), "spec": tmpl["spec"]}]
+    if kind == "LeaderWorkerSet":
+        tmpl = spec["leaderWorkerTemplate"]["leaderTemplate"]
+        return [{"labels": tmpl.setdefault("metadata", {}).setdefault("labels", {}), "spec": tmpl["spec"]}]
+    for clique in spec["template"]["cliques"]:
+        if clique["name"] == base.GROVE_LEADER_CLIQUE:
+            return [{"labels": clique.setdefault("labels", {}), "spec": clique["spec"]["podSpec"]}]
+    raise ValueError("PodCliqueSet manifest has no leader clique")
 
 
 def _label_role(obj: k8sobjv1alpha1.Object, *, role: str, app: str) -> None:
     """Stamp the role + InferencePool selector labels on an engine's serving pods."""
     manifest = obj.spec.forProvider.manifest
     for tmpl in _serving_pod_templates(manifest):
-        labels = tmpl.setdefault("metadata", {}).setdefault("labels", {})
+        labels = tmpl["labels"]
         labels[_LABEL_ROLE] = role
         labels[_LABEL_INFERENCE_SERVING] = "true"
         labels["app"] = app

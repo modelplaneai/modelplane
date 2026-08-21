@@ -45,6 +45,7 @@ nodeCount
 nodePool
 nodePools
 workerTemplate
+Dynamo
 runtimeClassName
 imagePullSecret
 
@@ -90,7 +91,10 @@ ReplicaSets
 LoadBalancer
 ReadWriteMany
 StorageClass
+PodCliqueSet
+PodCliqueSets
 LeaderWorkerSet
+LeaderWorkerSets
 kubeconfig
 kube-apiserver
 kube-controller-manager
@@ -110,6 +114,7 @@ Traefik
 MetalLB
 NIXL
 NixlConnector
+GPUDirect
 Prometheus
 ArgoCD
 FluxCD
@@ -227,7 +232,6 @@ GPU
 GPUs
 CSI
 DRA
-LWS
 NIC
 NFS
 PVCs?
@@ -247,6 +251,7 @@ AWQ
 InfiniBand
 CEL
 CLI
+KAI
 APIs?
 CI
 CSS
@@ -342,6 +347,7 @@ coordinator-only
 cross-reference
 cross-resource
 day-two
+deduped
 deprovisioned
 double-check
 dry-run
@@ -392,10 +398,12 @@ one-way
 OpenAI-compatible
 out-of-sync
 per-node
+pod-identity
 pre-existing
 pre-provisioned
 pre-releases?
 pre-stage
+pre-staged
 read-only
 read-write
 ready-made
@@ -410,6 +418,7 @@ single-pod
 sidecar
 source-specific
 step-by-step
+still-read
 subresources?
 third-party
 top-level
@@ -458,6 +467,7 @@ autoscaled
 delete-plus-create
 [Dd]evice-level
 fabric-aware
+gang-scheduled
 garbage-collects
 highest-index
 load-balanced
@@ -499,6 +509,14 @@ KServe
 Slurm
 KubeAI
 Kueue
+Grove
+GROVE_PCS_NAME
+GROVE_PCS_INDEX
+GROVE_PCLQ_POD_INDEX
+GROVE_HEADLESS_SERVICE
+MODELPLANE_LEADER_ADDRESS
+MODELPLANE_RANK
+ModelExpress
 
 agent
 requirement

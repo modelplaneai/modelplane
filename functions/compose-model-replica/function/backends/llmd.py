@@ -57,6 +57,7 @@ class LLMDBackend:
         engine: v1alpha1.Engine,
         provider_config: str,
         serving_label: str,
+        _stack: str,  # accepted for backend-interface parity; LWS is Standard-only, no ModelExpress
     ) -> dict[str, k8sobjv1alpha1.Object]:
         leader = base.engine_member(engine, base.ROLE_LEADER)
         worker = base.engine_member(engine, base.ROLE_WORKER)

@@ -493,7 +493,7 @@ class Composer:
         without inspecting its own cloud. Left None for EKS / existing clusters,
         which keep the ServingStack's default root.
         """
-        spec = ssv1alpha1.Spec(secrets=backend_secrets)
+        spec = ssv1alpha1.Spec(secrets=backend_secrets, stack=self.xr.spec.stack)
         if nvidia_driver_root is not None:
             spec.nvidiaDriverRoot = nvidia_driver_root
         resource.update(

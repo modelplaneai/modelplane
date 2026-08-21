@@ -257,6 +257,10 @@ class Spec(BaseModel):
     """
     GPU node pools available on this cluster. Each pool references an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools for control-plane components are provisioned automatically.
     """
+    stack: Literal['Standard', 'Dynamo'] | None = 'Standard'
+    """
+    Which serving stack the cluster installs and composes. Standard (the default) is the Modelplane-composed serving layer: a Deployment or LeaderWorkerSet, Gateway API, and the endpoint picker. Dynamo swaps in NVIDIA's components: Grove with the KAI Scheduler gang-schedules multi-node engines, and ModelExpress distributes weights. Single-node (Standalone) engines are unaffected; this only selects how a Leader/Worker gang is scheduled across nodes and how weights are distributed.
+    """
     taints: list[Taint] | None = None
     """
     Taints that repel ModelDeployments from this cluster unless they carry a matching toleration, following the Kubernetes taint model. NoSchedule keeps new replicas off the cluster while leaving existing ones in place; NoExecute additionally drains the replicas already here, which the scheduler reschedules onto other tolerated clusters (the declarative equivalent of draining a node before maintenance).

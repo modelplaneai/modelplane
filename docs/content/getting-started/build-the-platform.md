@@ -238,8 +238,10 @@ manifest you just applied.
 
 While you wait, Modelplane is creating the cloud cluster and its GPU node
 pool, then installing the inference stack with LeaderWorkerSet for multi-node
-serving, llm-d for inference-aware routing, Envoy Gateway for traffic
-management, and the storage class for model weights. This is the same reconciliation loop Crossplane uses to configure other 
+serving (the default; a cluster can opt into Grove and KAI Scheduler instead via
+`InferenceCluster.spec.stack: Dynamo`), llm-d for inference-aware routing,
+Envoy Gateway for traffic management, and the storage class for model weights.
+This is the same reconciliation loop Crossplane uses to configure other
 infrastructure, extended to the inference layer.
 {{< /hint >}}
 

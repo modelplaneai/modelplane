@@ -92,6 +92,30 @@ treat these as a starting point and measure your own cold-start time. The
 [Kimi-K2 example]({{< ref "/examples/kimi-k2" >}}) uses this configuration end to
 end.
 
+## Accelerating with ModelExpress
+
+A cache's weights always live on its own PVC, portable across every cluster. On
+a [Dynamo]({{< ref "/platform/inference-cluster.md" >}}) cluster the serving
+stack also runs a [ModelExpress](https://github.com/ai-dynamo/modelexpress)
+server, and Modelplane injects ModelExpress env into every engine pod that
+references a cache. An engine opts in with `--load-format modelexpress`, loading
+the first replica from its PVC seed and every later one from a peer over RDMA
+instead of reading storage again. The env is inert unless the engine opts in, so
+a cache still works unchanged on a Standard cluster and a deployment is portable
+between the two.
+
+Modelplane injects no `--load-format` flag: the ML team's engine command decides
+whether to use ModelExpress's loader, the same as it decides
+`--load-format=runai_streamer` above. Write it yourself, verbatim:
+
+```yaml {nocopy=true}
+command: ["/bin/sh", "-c"]
+args:
+- >-
+  pip install --index-url https://pypi.nvidia.com modelexpress &&
+  exec vllm serve /mnt/models --load-format modelexpress
+```
+
 ## Storage prerequisites
 
 <!-- vale Google.Acronyms = NO -->

@@ -21,7 +21,7 @@ spec:
     # Serve a scale subresource so `kubectl scale` and event-driven autoscalers
     # (e.g. KEDA) can drive spec.replicas, the deployment's single scaling axis.
     # statusReplicasPath points at the count of scheduled replicas, mirroring how
-    # Deployment and LeaderWorkerSet report status.replicas as the observed total
+    # Deployment, LeaderWorkerSet, and PodCliqueSet report status.replicas as the observed total
     # and keep readiness separate. No labelSelectorPath: replica pods run on
     # remote workload clusters, not alongside this XR, so metric-based HPA can't
     # observe them; scaling is by kubectl or external metrics.
@@ -189,8 +189,9 @@ spec:
                           unit: a single Standalone pod, or a gang of a Leader and one
                           or more Workers coordinating across nodes. Modelplane
                           composes the whole array once per ModelReplica; an engine
-                          composes to a Deployment (Standalone) or a LeaderWorkerSet
-                          (Leader/Worker), but the workload kind is an implementation
+                          composes to a Deployment (Standalone) or, for a Leader/Worker
+                          gang, a LeaderWorkerSet or a Grove PodCliqueSet depending on
+                          the cluster's stack, but the workload kind is an implementation
                           detail. Modelplane is unopinionated about the engine itself:
                           parallelism, quantization, and KV transfer all live in the
                           members' engine flags, written by the user, never injected by
@@ -239,8 +240,9 @@ spec:
                                 ModelReplica. A fixed number, sized once per deployment;
                                 scaling happens by adding ModelReplicas
                                 (spec.replicas), never by varying copies. Maps to the
-                                composed Deployment's or LeaderWorkerSet's replica
-                                count. Defaults to 1.
+                                composed Deployment's or LeaderWorkerSet's replica count,
+                                or a Grove PodCliqueSet's podCliqueScalingGroups[].replicas
+                                (its spec.replicas stays 1). Defaults to 1.
                               default: 1
                               minimum: 1
                               maximum: 64
