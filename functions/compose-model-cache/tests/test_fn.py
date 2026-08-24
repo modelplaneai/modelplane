@@ -58,6 +58,18 @@ def _cache_xr(**hf_extra: Any) -> v1alpha1.ModelCache:
     )
 
 
+# The OCI counterpart. Same metadata as _cache_xr, so the PVC/Job/Secret names
+# are identical and the shared name constants apply to both sources.
+def _oci_cache_xr(**oci_extra: Any) -> v1alpha1.ModelCache:
+    return v1alpha1.ModelCache(
+        metadata=metav1.ObjectMeta(name="qwen", namespace="ml-team"),
+        spec=v1alpha1.Spec(
+            source="OCI",
+            oci=v1alpha1.Oci(ref="registry.example.com/models/qwen:v1", sizeGiB=20, **oci_extra),
+        ),
+    )
+
+
 def _cluster_dict(name: str, pc: str, *, source: str = "GKE", storage_class: str | None = None) -> dict:
     """An InferenceCluster as Crossplane returns it in a required-resource set.
 
@@ -187,6 +199,19 @@ _HYDRATE_CMD_REVISION = (
     "touch /mnt/artifact/.modelplane-hydrated"
 )
 
+# The OCI hydration script: fetch the pinned modctl release for the node's
+# architecture, then stream the artifact straight onto the mount.
+_OCI_HYDRATE_CMD = (
+    "set -e; if [ -f /mnt/artifact/.modelplane-hydrated ]; then echo 'already hydrated, skipping'; exit 0; fi; "
+    'case "$(uname -m)" in aarch64|arm64) a=arm64;; *) a=amd64;; esac; '
+    "apk add --no-cache curl tar >/dev/null; "
+    "curl -sSfL https://github.com/modelpack/modctl/releases/download/v0.2.2/"
+    "modctl-0.2.2-linux-$a.tar.gz | tar -xz -C /tmp modctl; "
+    "/tmp/modctl pull registry.example.com/models/qwen:v1 --extract-dir /mnt/artifact "
+    "--extract-from-remote --no-progress; "
+    "touch /mnt/artifact/.modelplane-hydrated"
+)
+
 _PVC_NAME = "modelcache-ml-team-qwen-17db2"
 _JOB_NAME = "modelcache-ml-team-qwen-hydrate-256ec"
 _AUTH_NAME = "modelcache-ml-team-qwen-auth-ae01b"
@@ -195,6 +220,10 @@ _LABELS = {"modelplane.ai/modelcache": "qwen"}
 # The token data the control-plane authSecret carries, base64 as the API server
 # stores it. Propagated verbatim into the workload-cluster Secret's data.
 _TOKEN_B64 = "aGYtdG9rZW4tdmFsdWU="
+
+# A dockerconfigjson payload, base64 as the API server stores it. Propagated
+# verbatim, the same as the HuggingFace token.
+_DOCKERCFG_B64 = "eyJhdXRocyI6e319"
 
 
 def _pvc_object(pc: str, *, storage_class: str = "modelplane-rwx") -> dict:
@@ -220,7 +249,15 @@ def _pvc_object(pc: str, *, storage_class: str = "modelplane-rwx") -> dict:
     }
 
 
-def _job_object(pc: str, *, command: str = _HYDRATE_CMD, env: list | None = None) -> dict:
+def _job_object(
+    pc: str,
+    *,
+    command: str = _HYDRATE_CMD,
+    env: list | None = None,
+    image: str = "python:3.11-slim",
+    mounts: list | None = None,
+    volumes: list | None = None,
+) -> dict:
     return {
         "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
         "kind": "Object",
@@ -240,13 +277,14 @@ def _job_object(pc: str, *, command: str = _HYDRATE_CMD, env: list | None = None
                                 "containers": [
                                     {
                                         "name": "hydrate",
-                                        "image": "python:3.11-slim",
+                                        "image": image,
                                         "command": ["/bin/sh", "-c", command],
                                         "env": env or [],
-                                        "volumeMounts": [{"name": "artifact", "mountPath": "/mnt/artifact"}],
+                                        "volumeMounts": mounts or [{"name": "artifact", "mountPath": "/mnt/artifact"}],
                                     },
                                 ],
-                                "volumes": [
+                                "volumes": volumes
+                                or [
                                     {"name": "artifact", "persistentVolumeClaim": {"claimName": _PVC_NAME}},
                                 ],
                             },
@@ -277,6 +315,28 @@ def _auth_object(pc: str) -> dict:
                     "kind": "Secret",
                     "metadata": {"name": _AUTH_NAME, "namespace": "default", "labels": _LABELS},
                     "data": {"HF_TOKEN": _TOKEN_B64},
+                },
+            },
+            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": pc},
+        },
+    }
+
+
+def _registry_auth_object(pc: str) -> dict:
+    """The workload-cluster Secret propagating a registry credential. Typed
+    dockerconfigjson so the kubelet validates the payload it projects, rather
+    than a malformed config surfacing as an auth failure inside the Job."""
+    return {
+        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+        "kind": "Object",
+        "spec": {
+            "forProvider": {
+                "manifest": {
+                    "apiVersion": "v1",
+                    "kind": "Secret",
+                    "type": "kubernetes.io/dockerconfigjson",
+                    "metadata": {"name": _AUTH_NAME, "namespace": "default", "labels": _LABELS},
+                    "data": {".dockerconfigjson": _DOCKERCFG_B64},
                 },
             },
             "providerConfigRef": {"kind": "ClusterProviderConfig", "name": pc},
@@ -785,6 +845,122 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         want13.requirements.resources["clusters"].CopyFrom(_CLUSTERS_SELECTOR)
         want13.requirements.resources["auth-secret"].CopyFrom(_AUTH_SELECTOR)
 
+        # --- Case 14: an OCI source. Same PVC as a HuggingFace cache, since
+        # capacity and naming don't depend on the source, but the Job runs modctl
+        # out of an alpine image instead of huggingface_hub out of python. ---
+        want14 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "summary": {"ready": "0/1"},
+                                "clusters": [{"name": "cluster-a", "phase": "Pending"}],
+                            },
+                        },
+                    ),
+                ),
+                resources={
+                    "pvc-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_pvc_object("cluster-a-pc"))),
+                    "hydrate-cluster-a": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _job_object(
+                                "cluster-a-pc",
+                                command=_OCI_HYDRATE_CMD,
+                                image="alpine:3.20",
+                            ),
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClustersMatched", status=fnv1.STATUS_CONDITION_TRUE, reason="Matched"),
+                fnv1.Condition(type="ArtifactReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Hydrating"),
+            ],
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Staging registry.example.com/models/qwen:v1 to 1 clusters: cluster-a",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want14.requirements.resources["clusters"].CopyFrom(_CLUSTERS_SELECTOR)
+
+        # --- Case 15: an OCI source with a pullSecret. The propagated Secret is
+        # typed dockerconfigjson, and the Job reads it as a projected file rather
+        # than an env var: DOCKER_CONFIG names the directory, and the volume
+        # renames .dockerconfigjson to the config.json modctl looks for. ---
+        xr15 = _oci_cache_xr(pullSecret=v1alpha1.PullSecret(name="regcreds"))
+        mounts15 = [
+            {"name": "artifact", "mountPath": "/mnt/artifact"},
+            {"name": "registry-auth", "mountPath": "/etc/modelplane/registry", "readOnly": True},
+        ]
+        volumes15 = [
+            {"name": "artifact", "persistentVolumeClaim": {"claimName": _PVC_NAME}},
+            {
+                "name": "registry-auth",
+                "secret": {
+                    "secretName": _AUTH_NAME,
+                    "items": [{"key": ".dockerconfigjson", "path": "config.json"}],
+                },
+            },
+        ]
+        want15 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "summary": {"ready": "0/1"},
+                                "clusters": [{"name": "cluster-a", "phase": "Pending"}],
+                            },
+                        },
+                    ),
+                ),
+                resources={
+                    "pvc-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_pvc_object("cluster-a-pc"))),
+                    "auth-cluster-a": fnv1.Resource(
+                        resource=resource.dict_to_struct(_registry_auth_object("cluster-a-pc")),
+                    ),
+                    "hydrate-cluster-a": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            _job_object(
+                                "cluster-a-pc",
+                                command=_OCI_HYDRATE_CMD,
+                                image="alpine:3.20",
+                                env=[{"name": "DOCKER_CONFIG", "value": "/etc/modelplane/registry"}],
+                                mounts=mounts15,
+                                volumes=volumes15,
+                            ),
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(type="ClustersMatched", status=fnv1.STATUS_CONDITION_TRUE, reason="Matched"),
+                fnv1.Condition(type="ArtifactReady", status=fnv1.STATUS_CONDITION_FALSE, reason="Hydrating"),
+            ],
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Staging registry.example.com/models/qwen:v1 to 1 clusters: cluster-a",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want15.requirements.resources["clusters"].CopyFrom(_CLUSTERS_SELECTOR)
+        want15.requirements.resources["auth-secret"].CopyFrom(
+            fnv1.ResourceSelector(
+                api_version="v1",
+                kind="Secret",
+                match_name="regcreds",
+                namespace="ml-team",
+            ),
+        )
+
         cases = [
             Case(
                 name="GKE cluster first pass composes RWX PVC and hydration Job",
@@ -873,6 +1049,26 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="authSecret missing with no clusters reports NoClusters not AuthSecretMissing",
                 req=_req(xr13, [], auth=_auth_secret(data={"OTHER": _TOKEN_B64})),
                 want=want13,
+            ),
+            Case(
+                name="OCI source composes the same PVC and a modctl hydration Job",
+                req=_req(_oci_cache_xr(), [_cluster_dict("cluster-a", "cluster-a-pc")]),
+                want=want14,
+            ),
+            Case(
+                name="OCI pullSecret propagates a dockerconfigjson Secret and projects it",
+                req=_req(
+                    xr15,
+                    [_cluster_dict("cluster-a", "cluster-a-pc")],
+                    auth={
+                        "apiVersion": "v1",
+                        "kind": "Secret",
+                        "metadata": {"name": "regcreds", "namespace": "ml-team"},
+                        "type": "kubernetes.io/dockerconfigjson",
+                        "data": {".dockerconfigjson": _DOCKERCFG_B64},
+                    },
+                ),
+                want=want15,
             ),
         ]
 

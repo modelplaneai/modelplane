@@ -14,11 +14,17 @@
 
 """Compose a ModelCache.
 
-Stages a HuggingFace model onto a ReadWriteMany PVC on every matched
-InferenceCluster via a one-shot hydration Job. Pods that reference the
-cache (ModelDeployment.spec.modelCacheRef -> ModelReplica) mount the PVC
-at /mnt/models, so weights are downloaded once per cluster and read N
-times by every pod in an LWS gang.
+Stages a model onto a ReadWriteMany PVC on every matched InferenceCluster
+via a one-shot hydration Job. Pods that reference the cache
+(ModelDeployment.spec.modelCacheRef -> ModelReplica) mount the PVC at
+/mnt/models, so weights are fetched once per cluster and read N times by
+every pod in an LWS gang.
+
+spec.source picks where the artifact comes from. HuggingFace downloads a
+repo with huggingface_hub, which writes a flat model directory.  OCI pulls
+a ModelPack artifact from a registry with modctl, which restores whatever
+file layout the artifact was built with. Both land on the same mount and
+an engine reads them the same way, by path.
 """
 
 from typing import Literal
@@ -78,11 +84,31 @@ PHASE_FAILED: _Phase = "Failed"
 # functions set this independently, so they are a contract — change together.
 REMOTE_NS = "default"
 
-# Hydration container. python:3.11-slim has pip; we install huggingface_hub
-# at runtime. A Modelplane-owned image with the tool preinstalled is a
-# follow-up (#115).
+# Hydration containers, one per source, each fetching its tool at runtime:
+# huggingface_hub from PyPI, and the modctl release tarball over HTTP. A
+# Modelplane-owned image with both preinstalled is a follow-up (#115), and is
+# what would let either source hydrate in an air-gapped cluster - neither can
+# today, because both reach out before they reach the artifact.
 HYDRATION_IMAGE = "python:3.11-slim"
+OCI_HYDRATION_IMAGE = "alpine:3.20"
 HYDRATION_MOUNT = "/mnt/artifact"
+
+# modctl publishes release tarballs rather than an image, so the Job downloads
+# one. Pinned: the artifactType and layer media types it writes are still the
+# pre-donation `vnd.cnai.*` names rather than the `vnd.cncf.*` ones in the
+# ModelPack spec, so a version bump can change what an artifact looks like.
+_MODCTL_VERSION = "0.2.2"
+
+# Where the propagated registry credential is projected for an OCI source.
+# modctl looks for `config.json` under DOCKER_CONFIG, while a
+# kubernetes.io/dockerconfigjson Secret stores it under `.dockerconfigjson`, so
+# the volume renames the key on the way in.
+_REGISTRY_AUTH_MOUNT = "/etc/modelplane/registry"
+
+# spec.source values, and the key a kubernetes.io/dockerconfigjson Secret stores
+# its payload under.
+_SOURCE_OCI = "OCI"
+_DOCKERCONFIG_KEY = ".dockerconfigjson"
 
 # ttlSecondsAfterFinished governs how long the completed Job (and its
 # PVC-pinning pod) lingers before its TTL controller cascade-deletes both. Keep
@@ -159,6 +185,41 @@ def _hf_hydration(hf: v1alpha1.HuggingFace, auth_secret_name: str | None) -> tup
     return env, command
 
 
+def _oci_hydration(oci: v1alpha1.Oci) -> tuple[list[dict], str]:
+    """Return (env, shell command) for an OCI source.
+
+    `modctl pull --extract-from-remote` streams the artifact from the registry
+    and `--extract-dir` writes its files straight onto the mount, so nothing
+    stages a second copy in the container filesystem.
+
+    What lands is the layout the artifact was *built* with: modctl records a
+    filepath annotation per descriptor and extract restores those paths,
+    subdirectories included. A `modctl build` over a model directory therefore
+    yields that same flat directory here, not a HuggingFace hub cache tree, so an
+    engine reads this mount by path rather than by repo id. Synthesizing a hub
+    layout from the manifest's model name is a follow-up; the artifact does not
+    carry one.
+
+    A registry credential arrives as the propagated dockerconfigjson Secret,
+    projected to the filename modctl's auth lookup expects and pointed at with
+    DOCKER_CONFIG.
+    """
+    env: list[dict] = []
+    if oci.pullSecret:
+        env.append({"name": "DOCKER_CONFIG", "value": _REGISTRY_AUTH_MOUNT})
+    url = f"https://github.com/modelpack/modctl/releases/download/v{_MODCTL_VERSION}/modctl-{_MODCTL_VERSION}-linux-$a.tar.gz"
+    command = (
+        "set -e; "
+        f"{_SKIP_IF_HYDRATED}"
+        'case "$(uname -m)" in aarch64|arm64) a=arm64;; *) a=amd64;; esac; '
+        "apk add --no-cache curl tar >/dev/null; "
+        f"curl -sSfL {url} | tar -xz -C /tmp modctl; "
+        f"/tmp/modctl pull {oci.ref} --extract-dir {HYDRATION_MOUNT} --extract-from-remote --no-progress; "
+        f"touch {_HYDRATED_MARKER}"
+    )
+    return env, command
+
+
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
@@ -186,12 +247,53 @@ class Composer:
         # references an authSecret and that key is present; empty otherwise.
         self.auth_data: dict[str, str] = {}
 
+    # --- source dispatch ---
+    # Every difference between sources is one of four things: the credential the
+    # Job needs, the capacity for the PVC, the hydration command, and the label
+    # for an event. Each is answered here so the composition below reads the same
+    # whichever source is set. A CEL rule on the XRD guarantees the sibling
+    # matching spec.source is present, so each branch can assume its own.
+
+    def _is_oci(self) -> bool:
+        return self.xr.spec.source == _SOURCE_OCI
+
+    def _credential(self) -> tuple[str, str, str] | None:
+        """(field, Secret name, key) of the credential this source references on
+        the control plane, or None when it needs none. The field is carried so a
+        warning names what the user actually wrote - `pullSecret` for OCI,
+        `authSecret` for HuggingFace - rather than a generic word for both. The
+        OCI key is fixed by the dockerconfigjson Secret type; the HuggingFace one
+        is user-selectable."""
+        if self._is_oci():
+            oci = self.xr.spec.oci
+            assert oci is not None
+            return ("pullSecret", oci.pullSecret.name, _DOCKERCONFIG_KEY) if oci.pullSecret else None
+        hf = self.xr.spec.huggingFace
+        assert hf is not None
+        return ("authSecret", hf.authSecret.name, hf.authSecret.key or "HF_TOKEN") if hf.authSecret else None
+
+    def _size_gib(self) -> int:
+        """Capacity for the PVC. Declared per source because a source that
+        stages nothing would have nothing to size."""
+        source = self.xr.spec.oci if self._is_oci() else self.xr.spec.huggingFace
+        assert source is not None
+        # Protobuf delivers XRD integers as float.
+        return int(source.sizeGiB)
+
+    def _artifact(self) -> str:
+        """What this cache stages, for events and messages."""
+        if self._is_oci():
+            assert self.xr.spec.oci is not None
+            return self.xr.spec.oci.ref
+        assert self.xr.spec.huggingFace is not None
+        return self.xr.spec.huggingFace.repo
+
     def _auth_missing(self) -> bool:
-        """Whether the XR references an authSecret whose token couldn't be
-        resolved. compose() only runs past resolve_inputs() once the auth
-        requirement (if any) is resolved, so an empty auth_data here means the
-        Secret was found-but-empty or absent, not merely unresolved."""
-        return self.xr.spec.huggingFace.authSecret is not None and not self.auth_data  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
+        """Whether the XR references a credential that couldn't be resolved.
+        compose() only runs past resolve_inputs() once the requirement (if any)
+        is resolved, so empty auth_data here means the Secret was
+        found-but-empty or absent, not merely unresolved."""
+        return self._credential() is not None and not self.auth_data
 
     def compose(self) -> None:
         if not self.resolve_inputs():
@@ -235,18 +337,18 @@ class Composer:
             match_labels=match_labels,
         )
 
-        # When the cache references an authSecret, require that Secret from the
-        # XR's own namespace on the control plane. Its token is propagated to
-        # each workload cluster (compose_cluster_resources) so the hydration Job
-        # finds it; without resolving it first we can't materialize it remotely.
-        auth = self.xr.spec.huggingFace.authSecret  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
-        if auth:
+        # When the source references a credential, require that Secret from the
+        # XR's own namespace on the control plane. It is propagated to each
+        # workload cluster (compose_cluster_resources) so the hydration Job finds
+        # it; without resolving it first we can't materialize it remotely.
+        credential = self._credential()
+        if credential:
             response.require_resources(
                 self.rsp,
                 name="auth-secret",
                 api_version="v1",
                 kind="Secret",
-                match_name=auth.name,
+                match_name=credential[1],
                 namespace=_namespace(self.xr.metadata),
             )
 
@@ -256,7 +358,7 @@ class Composer:
         # for both to resolve before composing.
         if "clusters" not in self.req.required_resources:
             return False
-        if auth and "auth-secret" not in self.req.required_resources:
+        if credential and "auth-secret" not in self.req.required_resources:
             return False
         self.clusters = [
             icv1alpha1.InferenceCluster.model_validate(c) for c in request.get_required_resources(self.req, "clusters")
@@ -264,25 +366,24 @@ class Composer:
 
         # Resolve the token best-effort: a missing one doesn't block the PVC,
         # only the hydration Job and token Secret (see _resolve_auth_data).
-        if auth:
-            self._resolve_auth_data(auth, request.get_required_resource(self.req, "auth-secret"))
+        if credential:
+            self._resolve_auth_data(credential[2], request.get_required_resource(self.req, "auth-secret"))
 
         return True
 
-    def _resolve_auth_data(self, auth: v1alpha1.AuthSecret, secret: dict | None) -> None:
-        """Read the token from the resolved control-plane authSecret into
+    def _resolve_auth_data(self, key: str, secret: dict | None) -> None:
+        """Read the credential from the resolved control-plane Secret into
         self.auth_data, copying its base64 `data` verbatim (re-encoding would
         corrupt it).
 
         Best-effort: the caller proceeds either way. A resolved Secret that's
         missing, or whose referenced key is absent or empty, leaves auth_data
         empty (an empty value is as broken as a missing key - the Job would run
-        with an empty HF_TOKEN). That gates the hydration Job and token Secret
-        out while leaving the PVC - which doesn't depend on the token - to
-        compose, so an already-staged cache isn't pruned when its token is later
-        rotated away. derive_conditions surfaces the misconfiguration only when
-        it actually blocks progress."""
-        key = auth.key or "HF_TOKEN"
+        with an empty credential). That gates the hydration Job and the
+        propagated Secret out while leaving the PVC - which doesn't depend on the
+        credential - to compose, so an already-staged cache isn't pruned when its
+        token is later rotated away. derive_conditions surfaces the
+        misconfiguration only when it actually blocks progress."""
         data = (secret.get("data") if secret else {}) or {}
         if data.get(key):
             self.auth_data = {key: data[key]}
@@ -342,8 +443,7 @@ class Composer:
             )
 
     def _pvc_manifest(self, cluster: icv1alpha1.InferenceCluster) -> dict:
-        hf = self.xr.spec.huggingFace
-        size_gib = int(hf.sizeGiB)  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set; protobuf delivers XRD ints as float
+        size_gib = self._size_gib()
         return {
             "apiVersion": "v1",
             "kind": "PersistentVolumeClaim",
@@ -356,18 +456,26 @@ class Composer:
         }
 
     def _auth_secret_manifest(self) -> dict:
-        """The workload-cluster Secret carrying the propagated HF token.
+        """The workload-cluster Secret carrying the propagated credential.
 
         Namespace-qualified name in REMOTE_NS, matching the PVC/Job, so caches
         from different control-plane namespaces don't collide. `data` carries the
-        referenced authSecret key with its base64 value copied verbatim - the
-        hydration Job's env reads that same key from it."""
-        return {
+        referenced key with its base64 value copied verbatim - the hydration Job
+        reads that same key, as an env var for HuggingFace or as a projected file
+        for OCI.
+
+        An OCI credential is typed kubernetes.io/dockerconfigjson so the kubelet
+        validates the payload it projects, rather than leaving a malformed
+        registry config to surface as an auth failure inside the Job."""
+        manifest: dict = {
             "apiVersion": "v1",
             "kind": "Secret",
             "metadata": {"name": self._auth_secret_name(), "namespace": REMOTE_NS, "labels": self._labels()},
             "data": self.auth_data,
         }
+        if self._is_oci():
+            manifest["type"] = "kubernetes.io/dockerconfigjson"
+        return manifest
 
     def _wrap_remote(
         self,
@@ -418,7 +526,31 @@ class Composer:
         return {"modelplane.ai/modelcache": _name(self.xr.metadata)}
 
     def _job_manifest(self) -> dict:
-        env, command = _hf_hydration(self.xr.spec.huggingFace, self._auth_secret_name())  # ty: ignore[invalid-argument-type]  # XRD guarantees huggingFace is set
+        """The one-shot hydration Job. Everything source-specific is the tool it
+        runs and how it reads its credential; the Job around them is the same."""
+        mounts = [{"name": "artifact", "mountPath": HYDRATION_MOUNT}]
+        volumes: list[dict] = [{"name": "artifact", "persistentVolumeClaim": {"claimName": self._pvc_name()}}]
+        if self._is_oci():
+            oci = self.xr.spec.oci
+            assert oci is not None
+            image, (env, command) = OCI_HYDRATION_IMAGE, _oci_hydration(oci)
+            if self.auth_data:
+                # Rename the dockerconfigjson key to the filename modctl reads,
+                # so DOCKER_CONFIG can point at the directory.
+                mounts.append({"name": "registry-auth", "mountPath": _REGISTRY_AUTH_MOUNT, "readOnly": True})
+                volumes.append(
+                    {
+                        "name": "registry-auth",
+                        "secret": {
+                            "secretName": self._auth_secret_name(),
+                            "items": [{"key": _DOCKERCONFIG_KEY, "path": "config.json"}],
+                        },
+                    }
+                )
+        else:
+            hf = self.xr.spec.huggingFace
+            assert hf is not None
+            image, (env, command) = HYDRATION_IMAGE, _hf_hydration(hf, self._auth_secret_name())
         return {
             "apiVersion": "batch/v1",
             "kind": "Job",
@@ -433,18 +565,13 @@ class Composer:
                         "containers": [
                             {
                                 "name": "hydrate",
-                                "image": HYDRATION_IMAGE,
+                                "image": image,
                                 "command": ["/bin/sh", "-c", command],
                                 "env": env,
-                                "volumeMounts": [{"name": "artifact", "mountPath": HYDRATION_MOUNT}],
+                                "volumeMounts": mounts,
                             }
                         ],
-                        "volumes": [
-                            {
-                                "name": "artifact",
-                                "persistentVolumeClaim": {"claimName": self._pvc_name()},
-                            }
-                        ],
+                        "volumes": volumes,
                     },
                 },
             },
@@ -555,10 +682,10 @@ class Composer:
         # token rotated away after hydration is neither reported nor warned.
         ready_count = sum(1 for _, p in per_cluster_phase if p == PHASE_READY)
         if self._auth_missing() and ready_count != len(matched):
-            # _auth_missing is true only when huggingFace.authSecret is set.
-            auth = self.xr.spec.huggingFace.authSecret  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
-            assert auth is not None
-            key = auth.key or "HF_TOKEN"
+            # _auth_missing is true only when the source references a credential.
+            credential = self._credential()
+            assert credential is not None
+            field, name, key = credential
             response.set_conditions(
                 self.rsp,
                 resource.Condition(
@@ -569,7 +696,7 @@ class Composer:
             )
             response.warning(
                 self.rsp,
-                f"authSecret {_namespace(self.xr.metadata)}/{auth.name} is missing or has no key {key!r}",
+                f"{field} {_namespace(self.xr.metadata)}/{name} is missing or has no key {key!r}",
             )
         elif any(p == PHASE_FAILED for _, p in per_cluster_phase):
             response.set_conditions(
@@ -607,7 +734,7 @@ class Composer:
             names = ", ".join(_name(c.metadata) for c in matched)
             response.normal(
                 self.rsp,
-                f"Staging {self.xr.spec.huggingFace.repo} to {len(matched)} clusters: {names}",  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set
+                f"Staging {self._artifact()} to {len(matched)} clusters: {names}",
             )
         if now_ready and not was_ready:
             response.normal(self.rsp, f"Artifact staged on all {len(matched)} clusters")

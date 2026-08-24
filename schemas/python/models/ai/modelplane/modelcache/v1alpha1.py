@@ -69,6 +69,25 @@ class HuggingFace(BaseModel):
     """
 
 
+class PullSecret(BaseModel):
+    name: constr(min_length=1)
+
+
+class Oci(BaseModel):
+    pullSecret: PullSecret | None = None
+    """
+    Optional Secret holding registry credentials for a private repository. Names a kubernetes.io/dockerconfigjson Secret in the ModelCache's own namespace; Modelplane propagates it to each matched cluster for the hydration Job to read.
+    """
+    ref: constr(min_length=1)
+    """
+    Registry reference to the model artifact, by tag or digest (e.g. registry.example.com/models/ qwen2.5-0.5b:v1).
+    """
+    sizeGiB: conint(ge=1, le=100000)
+    """
+    Capacity to allocate for the staged artifact on each matched cluster.
+    """
+
+
 class Spec(BaseModel):
     clusterSelector: ClusterSelector | None = None
     """
@@ -82,7 +101,11 @@ class Spec(BaseModel):
     """
     HuggingFace source. Required when source is HuggingFace.
     """
-    source: Literal['HuggingFace'] = 'HuggingFace'
+    oci: Oci | None = None
+    """
+    OCI source. Required when source is OCI. The hydration Job pulls the artifact with modctl and extracts it onto the cache volume, restoring the file layout the artifact was built with.
+    """
+    source: Literal['HuggingFace', 'OCI']
     """
     Which kind of artifact source to stage from. The matching source object (e.g. spec.huggingFace) must be set.
     """
