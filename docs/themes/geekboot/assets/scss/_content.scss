@@ -15,6 +15,15 @@ body {
   margin-inline: auto;
 }
 
+// Catalog-style pages (recipe browse, term listings) opt into a wider column
+// via `wide: true` front matter; prose pages keep the 52rem reading measure.
+.bd-grid-wide {
+  .bd-content-inner,
+  .bd-intro-inner {
+    max-width: 74rem;
+  }
+}
+
 .bd-content {
   font-size: $body-font-size;
   line-height: 1.6;
@@ -36,7 +45,7 @@ body {
     text-decoration: none;
     color: var(--content-link-color);
 
-    &:hover:not(.mp-card):not(.mp-card--link):not(.mp-chip):not(.mp-pagination-next):not(.mp-pagination-prev), code{
+    &:hover:not(.mp-card):not(.mp-card--link):not(.mp-chip):not(.mp-pagination-next):not(.mp-pagination-prev):not(.mp-recipe-row):not(.mp-browse-card):not(.mp-vchip):not(.mp-browse-all):not(.mp-t-model-link), code{
       text-decoration: underline !important;
       color: var(--content-link-color);
     }

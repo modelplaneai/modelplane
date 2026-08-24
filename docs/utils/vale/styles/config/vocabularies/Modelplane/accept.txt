@@ -164,6 +164,9 @@ Kimi
 Llama
 Laguna[\w.-]*
 Nemotron[\w.-]*
+GLM[\w.-]*
+Unsloth|unsloth
+NVIDIA|nvidia
 NVFP4
 Mamba
 OpenMDW-1.1
@@ -180,8 +183,11 @@ copy-heavy
 TPOT
 ITL
 TTFT
-# Parameter counts: 8B, 35B, 480B, 1T, etc.
 [0-9]+[BMT]
+A[0-9]+B
+IQ4_XS
+llama\.cpp
+multi-GPU
 [Vv][Rr][Aa][Mm]
 tensor
 tokenizer
@@ -399,6 +405,7 @@ pre-stage
 read-only
 read-write
 ready-made
+region-gated
 resource-intensive
 self-contained
 self-service
@@ -443,6 +450,7 @@ usually
 SKU
 SKUs
 T4
+A16
 A100
 as-is
 hardcode

@@ -1,0 +1,26 @@
+{{/*
+  Page header for a recipe: vendor logo tile, "Vendor/Model" title, the
+  description as a subtitle, and a Hugging Face link derived from the `model`
+  front matter (tag suffixes like :IQ4_XS are stripped for the URL). Replaces
+  the plain h1 in single-list.html for regular pages in the recipes section.
+*/}}
+{{ $vendorName := index (.Params.vendors | default slice) 0 | default "" }}
+{{ $entry := dict "name" (or $vendorName .Title) }}
+{{ range hugo.Data.recipes.vendors }}{{ if eq .name $vendorName }}{{ $entry = . }}{{ end }}{{ end }}
+<div class="mp-recipe-head">
+  {{ partial "brand-tile" (dict "entry" $entry "class" "mp-brand-tile--lg") }}
+  <div class="mp-recipe-head-text">
+    <h1 class="bd-title mp-recipe-title mb-0" id="content">
+      {{- with $vendorName }}<span class="mp-recipe-vendor">{{ . }}/</span>{{ end -}}
+      <span class="mp-recipe-name">{{ .Title }}</span>
+    </h1>
+    {{ with .Description }}<p class="mp-recipe-sub">{{ . }}</p>{{ end }}
+    {{ with .Params.model }}
+      {{ $repo := index (split . ":") 0 }}
+      <a class="mp-recipe-hf" href="https://huggingface.co/{{ $repo }}" target="_blank" rel="noopener">
+        <svg class="mp-brand-icon" role="img" aria-hidden="true"><use xlink:href="#brand-huggingface"/></svg>
+        View on Hugging Face
+      </a>
+    {{ end }}
+  </div>
+</div>

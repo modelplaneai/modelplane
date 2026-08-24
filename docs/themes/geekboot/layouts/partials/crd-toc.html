@@ -14,7 +14,7 @@
   <nav id="TableOfContents" class="toc-tree">
     {{ $plural := .Params.plural }}
     {{ $crd := "" }}
-    {{ with index site.Data.apis.crds $plural }}{{ $crd = .definition }}{{ end }}
+    {{ with index hugo.Data.apis.crds $plural }}{{ $crd = .definition }}{{ end }}
     {{ $hasExample := resources.Get (printf "examples/reference/%s.yaml" $plural) }}
     {{ with $crd }}
       {{ $kind := .spec.names.kind }}
