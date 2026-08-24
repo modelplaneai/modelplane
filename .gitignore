@@ -22,5 +22,5 @@ docs/utils/webpack/node_modules
 docs/superpowers/
 
 # Local demo manifests at the repo root (may hold real credentials) — only the
-# top-level directory, not docs/manifests/examples or docs/content/examples.
+# top-level directory, not docs/manifests/recipes or docs/content/recipes.
 /examples/

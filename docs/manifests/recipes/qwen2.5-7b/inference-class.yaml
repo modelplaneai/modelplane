@@ -1,0 +1,30 @@
+# InferenceClass for the A16 shape, validated serving Qwen2.5-7B on Vultr.
+#
+# One NVIDIA A16 on a Vultr vcg-a16-6c-64g-16vram plan: 16 GiB of VRAM is
+# enough for a 7B AWQ INT4 model with KV cache headroom. GPU plans are
+# region-gated on Vultr, so check the plan is offered in the cluster's region
+# before applying.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: vultr-a16-1x
+spec:
+  description: "Vultr vcg-a16-6c-64g-16vram, 1x NVIDIA A16 16GB"
+  provisioning:
+    provider: Vultr
+    vultr:
+      plan: vcg-a16-6c-64g-16vram
+      accelerator:
+        type: nvidia-a16
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ampere }
+      cudaComputeCapability: { version: "8.6.0" }
+    capacity:
+      memory: { value: "16384Mi" }

@@ -1,8 +1,8 @@
 {{- $name := .Get "name" -}}
 
-{{- if .Site.Data.properties }}
+{{- if hugo.Data.properties }}
   <dl class="gdoc-props">
-    {{- with (index .Site.Data.properties (split $name ".")) }}
+    {{- with (index hugo.Data.properties (split $name ".")) }}
       {{- range $key, $value := .properties }}
         <dt class="flex flex-wrap align-center gdoc-props__meta">
           <span class="gdoc-props__title">{{ $key }}</span>

@@ -89,7 +89,7 @@ args:
 
 The right loader and settings depend on the engine and the storage backend, so
 treat these as a starting point and measure your own cold-start time. The
-[Kimi-K2 example]({{< ref "/examples/kimi-k2" >}}) uses this configuration end to
+[Kimi-K2 recipe]({{< ref "/recipes/kimi-k2" >}}) uses this configuration end to
 end.
 
 ## Storage prerequisites

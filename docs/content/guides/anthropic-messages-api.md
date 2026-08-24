@@ -1,6 +1,6 @@
 ---
 title: Anthropic Messages API
-weight: 70
+weight: 10
 description: Serve a model on the Anthropic Messages API and drive it from Claude Code.
 ---
 <!-- vale write-good.Passive = NO -->
@@ -19,15 +19,15 @@ has ample headroom. Apply the platform side first, then the ML side.
 
 ## Platform
 
-{{< manifests "examples/anthropic-messages-api/inference-class.yaml" >}}
+{{< manifests "guides/anthropic-messages-api/inference-class.yaml" >}}
 
-{{< manifests "examples/anthropic-messages-api/inference-cluster.yaml" >}}
+{{< manifests "guides/anthropic-messages-api/inference-cluster.yaml" >}}
 
 ## Deployment
 
-{{< manifests "examples/anthropic-messages-api/model-deployment.yaml" >}}
+{{< manifests "guides/anthropic-messages-api/model-deployment.yaml" >}}
 
-{{< manifests "examples/anthropic-messages-api/model-service.yaml" >}}
+{{< manifests "guides/anthropic-messages-api/model-service.yaml" >}}
 
 ## Send a request
 
