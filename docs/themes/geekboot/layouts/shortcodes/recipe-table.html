@@ -1,0 +1,60 @@
+{{/*
+  The browse-all table on /recipes/all/: one row per recipe with model (logo,
+  name, HF org), size, architecture, precision, the clouds and GPUs it was
+  verified on, and the description as notes. Only pages with `model` front
+  matter are recipes; that filter keeps this page itself out of the list.
+*/}}
+{{ $all := where (site.GetPage "/recipes").RegularPages.ByWeight "Params.model" "!=" nil }}
+{{/* Sort by vendor (data-file order) so a vendor's models sit together,
+     keeping the curated weight order within each vendor. */}}
+{{ $recipes := slice }}
+{{ range site.Data.recipes.vendors }}
+  {{ $vendor := .name }}
+  {{ range $all }}
+    {{ if eq (index (.Params.vendors | default slice) 0) $vendor }}{{ $recipes = $recipes | append . }}{{ end }}
+  {{ end }}
+{{ end }}
+{{/* Recipes without a matching vendor entry still get listed, at the end. */}}
+{{ range $all }}
+  {{ if not (in $recipes .) }}{{ $recipes = $recipes | append . }}{{ end }}
+{{ end }}
+<div class="mp-table-wrap">
+  <table class="mp-recipe-table">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>Size</th>
+        <th>Arch</th>
+        <th>Precision</th>
+        <th>Verified on</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ range $recipes }}
+        {{ $vendorName := index (.Params.vendors | default slice) 0 | default "" }}
+        {{ $entry := dict "name" (or $vendorName .Title) }}
+        {{ range site.Data.recipes.vendors }}{{ if eq .name $vendorName }}{{ $entry = . }}{{ end }}{{ end }}
+        <tr>
+          <td class="mp-t-model">
+            <a class="mp-t-model-link" href="{{ .RelPermalink }}">
+              {{ partial "brand-tile" (dict "entry" $entry "class" "mp-brand-tile--sm") }}
+              <span class="mp-t-model-text">
+                <span class="mp-row-name">{{ .Title }}</span>
+                {{ with $entry.org }}<span class="mp-row-size">{{ . }}</span>{{ end }}
+              </span>
+            </a>
+          </td>
+          <td class="mp-t-mono">{{ .Params.size }}</td>
+          <td>{{ .Params.arch }}</td>
+          <td class="mp-t-mono">{{ delimit (.Params.precisions | default slice) " / " }}</td>
+          <td class="mp-t-chips">
+            {{ range .Params.clouds }}<span class="mp-vchip">{{ . }}</span>{{ end }}
+            {{ range .Params.accelerators }}<span class="mp-vchip"><strong>{{ . }}</strong></span>{{ end }}
+          </td>
+          <td class="mp-t-notes">{{ .Description }}</td>
+        </tr>
+      {{ end }}
+    </tbody>
+  </table>
+</div>

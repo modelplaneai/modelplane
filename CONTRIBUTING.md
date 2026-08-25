@@ -413,6 +413,251 @@ This makes the scheduler skip environments without a `Ready=True` condition. Whe
 The pool-fitting logic moves into a `_best_pool_fit` helper to keep `schedule()` under the branch-count lint threshold. A new `test-model-deployment-not-ready-env` case covers the skip behavior.
 ```
 
+### Work from a fork
+
+Open every PR from a branch on your own [fork][fork], never a branch of the main
+repo. This holds for maintainers too, and for any agent working on your behalf:
+point it at your fork.
+
+[fork]: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo
+
+## Working on composition functions
+
+Modelplane is a [Crossplane](https://crossplane.io/) project. The core logic
+lives in Python composition functions under `functions/`.
+`compose-inference-gateway/function/fn.py` is a good reference implementation to
+model new functions on.
+
+Each function is a self-contained Python package, built as a hatch project and
+managed in the workspace `uv.lock`:
+
+```
+functions/<name>/
+  pyproject.toml      # Hatch package metadata; declares SDK and models deps
+  function/
+    __init__.py
+    __version__.py
+    main.py           # CLI entrypoint (boilerplate)
+    fn.py             # FunctionRunner gRPC service and Composer logic
+  tests/
+    test_fn.py        # unittest-based tests for fn.py
+```
+
+The `Composer.compose()` method in `fn.py` reads the XR from the request,
+composes resources into the response, and tracks readiness. `FunctionRunner` is
+the gRPC service that wires `Composer` to the SDK's runtime. Functions use
+generated Pydantic models (in `schemas/python/`) for type-safe access to XR
+specs and status.
+
+Each function is self-contained; there is no shared library. Common patterns
+like setting conditions, updating status, and building child resource names are
+provided by the [Crossplane Python Function
+SDK](https://github.com/crossplane/function-sdk-python). Helpers specific to a
+single function live in that function's `function/` package alongside `fn.py`.
+
+The Pydantic models in `schemas/python/` are generated from the XRDs under
+`apis/` and the project's dependency CRDs. They're committed to git so tests and
+type checking don't need to run the Crossplane CLI first. Regenerate them by
+building after you change an XRD or bump a dependency:
+
+```bash
+nix run .#build
+```
+
+The build deletes and recreates the whole `schemas/python/` tree, so models for
+XRDs or dependencies you've removed don't linger.
+
+### Tests
+
+Every function has tests under `functions/<name>/tests/test_fn.py`. The
+canonical form is a table of `Case`s, each running the function on a
+`RunFunctionRequest` and comparing the whole `RunFunctionResponse` against an
+expected one — not asserting on individual fields. `compose-usages` is a clean
+example; `compose-model-cache` shows the same form scaled up to a multi-pass
+reconcile. The skeleton:
+
+```python
+@dataclasses.dataclass
+class Case:
+    name: str
+    req: fnv1.RunFunctionRequest
+    want: fnv1.RunFunctionResponse
+
+
+def setUpModule() -> None:
+    logging.configure(level=logging.Level.DISABLED)
+
+
+class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
+    maxDiff = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
+
+    async def test_compose(self) -> None:
+        cases = [
+            Case(
+                name="describes what this case exercises",
+                req=fnv1.RunFunctionRequest(...),
+                want=fnv1.RunFunctionResponse(...),
+            ),
+        ]
+        for case in cases:
+            with self.subTest(case.name):
+                got = await self.runner.RunFunction(case.req, None)
+                self.assertEqual(
+                    json_format.MessageToDict(case.want),
+                    json_format.MessageToDict(got),
+                    "-want, +got",
+                )
+```
+
+Build the XR with
+`resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json"))` from a
+generated Pydantic model; build other observed, desired, and required resources
+as plain dicts. Because `want` is the whole response, it must include the parts
+the function always emits: `meta.ttl` (60s), an empty `context`, and any
+conditions, results, and requirements. Give observed conditions a fixed
+`lastTransitionTime` so the input is deterministic. Protobuf maps
+(`desired.resources`, `requirements.resources`) compare order-independently, but
+repeated fields (`conditions`, `results`, status arrays) must match the order
+the function emits.
+
+Some existing tests (`compose-serving-stack`, the second method in
+`compose-eks-cluster`) predate this form and assert on individual fields. Don't
+model new tests on them. Add new cases to the function's `test_fn.py` and run
+`nix flake check` to verify they pass.
+
+### Running locally
+
+`nix run .#run` builds the project and runs it on a local development control
+plane: a [KIND](https://kind.sigs.k8s.io/) cluster with its own OCI registry,
+created and managed by the Crossplane CLI. It builds the functions, loads the
+packages into the local registry, installs the Configuration, and points
+`kubectl` at the cluster. Iterate by editing a function and rerunning it; tear
+down with `nix run .#stop`.
+
+```bash
+nix run .#run
+```
+
+This needs a running Docker-compatible container runtime (for KIND and the local
+registry). It works on Linux and macOS with no emulation: the function images
+are Linux images assembled entirely from data — a prebuilt Python interpreter
+and dependency wheels plus our own source — so there's no cross-compilation. The
+same is true of `nix run .#build`.
+
+## Working on the docs site
+
+The documentation site under `docs/` is a [Hugo](https://gohugo.io/) project.
+`nix flake check` builds it as one of its checks, so a broken site fails CI.
+
+Run the commands below from the repository root, not from `docs/`. They're flake
+apps (`nix run .#...`), so they resolve against the flake at the root regardless
+of which file you're editing.
+
+Preview it locally with live reload:
+
+```bash
+nix run .#docs-serve            # http://localhost:1313
+```
+
+`nix build .#docs` produces the production site in `result/`. The production
+build compiles the theme's SCSS and runs it through PostCSS to strip unused
+CSS, sort media queries, and minify. Those Node dependencies are pinned in
+`docs/package-lock.json` and built reproducibly; the local preview skips them.
+
+The site's JavaScript bundle is built by webpack and committed to git under the
+theme's assets. Rebuild it after changing anything under
+`docs/utils/webpack/src/` and commit the result:
+
+```bash
+nix run .#docs-generate
+```
+
+### Manifest shortcodes
+
+Annotated YAML manifests live under `docs/manifests/`, one subtree per docs
+section: `getting-started/` backs the getting started guide, `concepts/` backs
+the platform and model concept pages, `recipes/` backs the Recipes section,
+and `guides/` backs the Guides section.
+A page references only manifests from its own section's subtree. Two shortcodes
+render them in content pages.
+
+`manifests` renders the file inline with syntax highlighting, followed by
+a `kubectl apply -f <url>` block pointing to the published file:
+
+```markdown
+{{</* manifests "concepts/inference-gateway.yaml" */>}}
+```
+
+Optional named args:
+
+| Arg | Default | Effect |
+|---|---|---|
+| `apply="false"` | — | omit the kubectl block |
+| `command="kubectl delete -f"` | `kubectl apply -f` | override the verb |
+
+Hugo forbids mixing positional and named arguments in one shortcode call, so a
+call that passes `apply=` or `command=` must pass the path as `path=` too:
+
+```markdown
+{{</* manifests path="concepts/inference-gateway.yaml" apply="false" */>}}
+```
+
+`manifest-url` emits just the absolute URL of the file, for use inside
+an existing code fence:
+
+```markdown
+kubectl delete -f {{</* manifest-url "concepts/inference-gateway.yaml" */>}}
+```
+
+Both shortcodes take a path relative to `docs/manifests/` and fail the build
+with a clear error if the file doesn't exist.
+
+The `docs-manifests` flake check validates every Modelplane manifest the docs
+show — all the files under `docs/manifests/`, including the API-reference
+examples under `docs/manifests/reference/` — against the generated Pydantic
+models in `schemas/python/`. It runs the models with `extra="forbid"` at every
+level, so an example that drifts from the live API schema fails CI: a missing
+required field, a wrong type, a bad enum, or any field the schema doesn't define
+(a typo, or a field the API renamed or dropped). The docs can't show a manifest
+the current API would reject. Resources from other API groups (provider configs,
+core Kubernetes, Crossplane packages) have no model and are skipped. The
+validator is `docs/utils/validate/validate_manifests.py`.
+
+### Linting and link checking
+
+Docs prose is linted with [Vale](https://vale.sh) and internal links are checked
+with [htmltest](https://github.com/wjdp/htmltest). Both run as flake checks, so
+run them with the rest of CI:
+
+```bash
+nix flake check
+```
+
+Custom Modelplane rules live in `docs/utils/vale/styles/Modelplane/`.
+
+Vale flags brand names, acronyms, API types, and technical terms it doesn't
+recognise. Add them to
+`docs/utils/vale/styles/config/vocabularies/Modelplane/accept.txt` — that is
+the single place for all Vale exceptions. Entries are case-sensitive regular
+expressions, one per line.
+
+CI runs them on every pull request via the same check (see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+### Deployment
+
+The site deploys to [Vercel](https://vercel.com/). Vercel builds it with the
+same `nix build .#docs` derivation that `nix flake check` verifies, so what
+ships matches what CI checks. `vercel.json` points the build at
+[`docs/vercel-build.sh`](docs/vercel-build.sh), which installs Nix into
+Vercel's build image, runs the build, and writes the static site to `public/`.
+Vercel's GitHub app drives deploys as usual: preview URLs on pull requests
+(including from forks) and production on merge to `main`.
+
 ## Releasing
 
 Releases are cut from a release branch and published by the `CI` workflow. To

@@ -1,7 +1,9 @@
 {{ $ref := .Site.GetPage "/reference" }}
-{{ $ex := .Site.GetPage "/examples" }}
+{{ $rec := .Site.GetPage "/recipes" }}
+{{ $guides := .Site.GetPage "/guides" }}
 {{ $isRef := and $ref (eq .Section "reference") }}
-{{ $isExamples := and $ex (eq .Section "examples") }}
+{{ $isRecipes := and $rec (eq .Section "recipes") }}
+{{ $isGuides := and $guides (eq .Section "guides") }}
 {{ $isCrd := eq .Params.product "crd" }}
 {{/* Whether this page shows an "On this page" rail (drives the centred no-toc layout). */}}
 {{ $hasToc := or $isCrd (and (ne .Page.Params.toc false) (gt (len .TableOfContents) 40)) }}
@@ -19,12 +21,13 @@
       {{ if $ref }}
         <div class="doc-switch dropdown d-lg-none">
           <button class="doc-switch-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Switch documentation section">
-            <span>{{ if $isRef }}Reference{{ else if $isExamples }}Examples{{ else }}Documentation{{ end }}</span>
+            <span>{{ if $isRef }}Reference{{ else if $isRecipes }}Recipes{{ else if $isGuides }}Guides{{ else }}Documentation{{ end }}</span>
             <svg class="doc-switch-caret" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>
           </button>
           <ul class="dropdown-menu doc-switch-menu">
-            <li><a class="dropdown-item{{ if and (not $isRef) (not $isExamples) }} active{{ end }}" href="{{ .Site.Home.Permalink }}">Documentation</a></li>
-            {{ with $ex }}<li><a class="dropdown-item{{ if $isExamples }} active{{ end }}" href="{{ .Permalink }}">Examples</a></li>{{ end }}
+            <li><a class="dropdown-item{{ if and (not $isRef) (not $isRecipes) (not $isGuides) }} active{{ end }}" href="{{ .Site.Home.Permalink }}">Documentation</a></li>
+            {{ with $rec }}<li><a class="dropdown-item{{ if $isRecipes }} active{{ end }}" href="{{ .Permalink }}">Recipes</a></li>{{ end }}
+            {{ with $guides }}<li><a class="dropdown-item{{ if $isGuides }} active{{ end }}" href="{{ .Permalink }}">Guides</a></li>{{ end }}
             <li><a class="dropdown-item{{ if $isRef }} active{{ end }}" href="{{ $ref.Permalink }}">Reference</a></li>
           </ul>
         </div>
@@ -36,13 +39,14 @@
   </aside>
 
   <main class="bd-main order-1">
-    {{ $hasVersions := .Site.Data.versions.versions }}
+    {{ $hasVersions := site.Data.versions.versions }}
     {{ if or $ref $hasVersions }}
     <header class="doc-content-nav">
       {{ if $ref }}
       <nav class="doc-tabs" aria-label="Documentation sections">
-        <a class="doc-tab{{ if and (not $isRef) (not $isExamples) }} active{{ end }}" href="{{ .Site.Home.Permalink }}">Documentation</a>
-        {{ with $ex }}<a class="doc-tab{{ if $isExamples }} active{{ end }}" href="{{ .Permalink }}">Examples</a>{{ end }}
+        <a class="doc-tab{{ if and (not $isRef) (not $isRecipes) (not $isGuides) }} active{{ end }}" href="{{ .Site.Home.Permalink }}">Documentation</a>
+        {{ with $rec }}<a class="doc-tab{{ if $isRecipes }} active{{ end }}" href="{{ .Permalink }}">Recipes</a>{{ end }}
+        {{ with $guides }}<a class="doc-tab{{ if $isGuides }} active{{ end }}" href="{{ .Permalink }}">Guides</a>{{ end }}
         <a class="doc-tab{{ if $isRef }} active{{ end }}" href="{{ $ref.Permalink }}">Reference</a>
       </nav>
       {{ end }}
@@ -53,7 +57,7 @@
       {{ end }}
     </header>
     {{ end }}
-    <div class="bd-main-grid{{ if not $hasToc }} no-toc{{ end }}">
+    <div class="bd-main-grid{{ if not $hasToc }} no-toc{{ end }}{{ if .Params.wide }} bd-grid-wide{{ end }}">
     <div class="bd-intro pt-2 ps-lg-2">
       <div class="bd-intro-inner">
       <div class="d-md-flex flex-md-row-reverse align-items-center justify-content-between">
@@ -128,6 +132,11 @@
           }
           </script>
         </div>
+        {{/* Only actual recipes (they carry `model`) get the vendor header;
+             utility pages like /recipes/all/ keep the plain title. */}}
+        {{ if and $isRecipes (not .IsSection) .Params.model }}
+        {{ partial "recipe-header" . }}
+        {{ else }}
         <h1 class="bd-title mb-0" id="content">{{ .Title | markdownify }}{{ if $isCrd }} <span class="api-ref__crd-tag">Custom Resource</span>{{ end }}
           {{ if eq .Page.Title "Release Notes" }}
             {{ with .OutputFormats.Get "rss" -}}
@@ -135,6 +144,7 @@
             {{ end }}
           {{ end }}
         </h1>
+        {{ end }}
       </div>
       {{ if .Page.Params.state }}
         {{ partial "feature-state-alert" . }}

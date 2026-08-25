@@ -1,6 +1,6 @@
-{{ $js := resources.Get (index (index .Site.Data.assets "main.js") "src") }}
+{{ $js := resources.Get (index (index site.Data.assets "main.js") "src") }}
 <script src="{{ $js.Permalink }}" data-no-instant></script>
-{{- $jsmap := resources.Get (printf "%s.map" (index (index .Site.Data.assets "main.js") "src")) -}}
+{{- $jsmap := resources.Get (printf "%s.map" (index (index site.Data.assets "main.js") "src")) -}}
 {{- $jsmap.Publish -}}
 
 {{ if eq hugo.Environment "production" -}}

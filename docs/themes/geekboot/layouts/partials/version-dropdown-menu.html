@@ -1,6 +1,6 @@
 {{ $cur := .Site.Params.version }}
 {{ $latest := .Site.Params.latest }}
-{{ $versions := .Site.Data.versions.versions }}
+{{ $versions := site.Data.versions.versions }}
 {{/* Render wherever there's more than one version to switch between. Every
      build, including main (browsable at main.docs.modelplane.ai), serves real
      content, so all of them carry the switcher. */}}

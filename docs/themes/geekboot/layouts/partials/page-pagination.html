@@ -5,16 +5,18 @@
   weight. Flattening that tree here lets prev/next flow across section
   boundaries, just like reading top to bottom in the sidebar.
 
-  Pagination stays within a tab: Examples flows through its own recipes,
+  Pagination stays within a tab: Recipes flows through its own recipes,
   Reference flows through its type pages, and Documentation excludes both.
 
   Opt a page out with `paginationHidden: true` in its front matter.
 */}}
 {{ $current := . }}
 {{ $root := .Site.Home }}
-{{ $ex := .Site.GetPage "/examples" }}
+{{ $rec := .Site.GetPage "/recipes" }}
+{{ $guides := .Site.GetPage "/guides" }}
 {{ $ref := .Site.GetPage "/reference" }}
-{{ $isExamples := and $ex (eq $current.Section "examples") }}
+{{ $isRecipes := and $rec (eq $current.Section "recipes") }}
+{{ $isGuides := and $guides (eq $current.Section "guides") }}
 {{ $isRef := and $ref (eq $current.Section "reference") }}
 {{ $ordered := slice }}
 {{ if $isRef }}
@@ -23,9 +25,15 @@
       {{ if not .Params.tocHidden }}{{ $ordered = $ordered | append . }}{{ end }}
     {{ end }}
   {{ end }}
-{{ else if $isExamples }}
-  {{ with $ex }}
+{{ else if $isRecipes }}
+  {{ with $rec }}
     {{ if .Params.navLanding }}{{ $ordered = $ordered | append . }}{{ end }}
+    {{ range .Pages.ByWeight }}
+      {{ if not .Params.tocHidden }}{{ $ordered = $ordered | append . }}{{ end }}
+    {{ end }}
+  {{ end }}
+{{ else if $isGuides }}
+  {{ with $guides }}
     {{ range .Pages.ByWeight }}
       {{ if not .Params.tocHidden }}{{ $ordered = $ordered | append . }}{{ end }}
     {{ end }}
@@ -33,7 +41,7 @@
 {{ else }}
   {{ range (slice $root | append $root.RegularPages | append $root.Sections).ByWeight }}
     {{ $item := . }}
-    {{ if and (ne $item $root) (ne $item $ref) (ne $item $ex) (not $item.Params.tocHidden) }}
+    {{ if and (ne $item $root) (ne $item $ref) (ne $item $rec) (ne $item $guides) (not $item.Params.tocHidden) }}
       {{ if $item.IsSection }}
         {{ if $item.Params.navLanding }}{{ $ordered = $ordered | append $item }}{{ end }}
         {{ range $item.Pages.ByWeight }}

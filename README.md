@@ -78,7 +78,7 @@ Follow the [getting started guide][getting-started] to deploy Modelplane on a
 local kind cluster and serve a model. The [how it works][how-it-works] page
 covers the resources and what happens when you deploy a model.
 
-The [example manifests][examples] are validated, end-to-end recipes that serve
+The [recipes][examples] are validated, end-to-end manifest sets that serve
 specific models, each covering the full workflow from inference class and cluster
 through model cache, deployment, and service.
 
@@ -136,7 +136,7 @@ the Modelplane name and logos are not covered by it.
 [CONTRIBUTING.md]: CONTRIBUTING.md
 [getting-started]: https://docs.modelplane.ai/getting-started/
 [how-it-works]: https://docs.modelplane.ai/overview/how-it-works/
-[examples]: docs/manifests/examples/
+[examples]: docs/manifests/recipes/
 [issues]: https://github.com/modelplaneai/modelplane/issues
 [enhancements]: https://github.com/modelplaneai/modelplane/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement
 [slack]: https://slack.modelplane.ai
