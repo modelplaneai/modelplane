@@ -5,13 +5,32 @@ theme = "geekboot"
 enableRobotsTXT = true
 enableGitInfo = true
 
-disableKinds = ["taxonomy", "term"]
+# Term pages power the recipe catalog facets; taxonomy (index-of-terms) pages
+# stay disabled — the catalog page on /recipes/ fills that role.
+disableKinds = ["taxonomy"]
+# Keep term titles exactly as written in front matter ("vLLM", not "VLLM").
+capitalizeListTitles = false
 ignoreFiles = ["themes/geekboot/content/.*", "README.md"]
+
+# Only vendors and clouds are taxonomies — their term pages are the browse
+# targets on /recipes/. GPU, engine, and technique facets are plain front
+# matter rendered inline; they get no term pages until something links there.
+[taxonomies]
+  vendor = "vendors"
+  cloud  = "clouds"
+
+# Nest term pages under the Recipes section so facet URLs read as part of the
+# catalog: /recipes/cloud/nebius/ lists every recipe that runs on Nebius.
+[permalinks]
+  [permalinks.term]
+    vendors = "/recipes/vendor/:slug/"
+    clouds  = "/recipes/cloud/:slug/"
 
 [outputs]
   home = ["html", "llms", "llmsfull", "llmsjson"]
   section = ["html", "rss", "markdown"]
   page = ["html", "markdown"]
+  term = ["html"]
 
 # Machine-readable variants for AI agents and LLM tools. The markdown format
 # emits a raw-Markdown sibling of every page (page/index.md); the home page also

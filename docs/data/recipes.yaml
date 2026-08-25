@@ -1,0 +1,49 @@
+# Canonical facet sets for the recipe catalog and the "Validated deployments"
+# panel. The catalog's browse cards render every entry here (grayed out when no
+# recipe carries the term yet), and the panel highlights a recipe's own terms
+# against the full set. `name` must match the taxonomy term used in recipe
+# front matter; `icon` is a symbol id from partials/icons.html; entries without
+# an icon render a monogram tile from the first letter.
+vendors:
+  - name: Qwen
+    org: qwen
+    icon: brand-qwen
+  - name: Moonshot AI
+    org: moonshotai
+    icon: brand-moonshotai
+  - name: Meta
+    org: meta-llama
+    icon: brand-meta
+  - name: Z.ai
+    org: zai-org
+    icon: brand-zai
+  - name: NVIDIA
+    org: nvidia
+    icon: brand-nvidia
+clouds:
+  - name: AWS
+    term: EKS
+    icon: brand-aws
+  - name: Google Cloud
+    term: GKE
+    icon: brand-googlecloud
+  - name: Nebius
+    term: Nebius
+    icon: brand-nebius
+gpus:
+  - name: L4
+    mem: 24G
+  - name: A100
+    mem: 40/80G
+  - name: H100
+    mem: 80G
+  - name: H200
+    mem: 141G
+servingModes:
+  - Standalone
+  - LeaderWorker
+  - PrefillDecode
+engines:
+  - vLLM
+  - SGLang
+  - llama.cpp

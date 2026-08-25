@@ -1,6 +1,6 @@
 ---
 title: Collecting engine metrics
-weight: 50
+weight: 20
 description: Scrape a vLLM engine's Prometheus metrics through the in-cluster Prometheus.
 ---
 <!-- vale write-good.Passive = NO -->
@@ -19,13 +19,13 @@ carries a GCP project placeholder to edit before applying.
 
 ## Platform
 
-{{< manifests "examples/collecting-engine-metrics/inference-class.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/inference-class.yaml" >}}
 
-{{< manifests path="examples/collecting-engine-metrics/inference-cluster.yaml" apply="false" >}}
+{{< manifests path="guides/collecting-engine-metrics/inference-cluster.yaml" apply="false" >}}
 
 {{< editCode >}}
 ```bash
-curl -fsSL {{< manifest-url "examples/collecting-engine-metrics/inference-cluster.yaml" >}} \
+curl -fsSL {{< manifest-url "guides/collecting-engine-metrics/inference-cluster.yaml" >}} \
   | sed 's/my-gcp-project/$@<your-gcp-project-id>$@/' \
   | kubectl apply -f -
 ```
@@ -33,9 +33,9 @@ curl -fsSL {{< manifest-url "examples/collecting-engine-metrics/inference-cluste
 
 ## Deployment
 
-{{< manifests "examples/collecting-engine-metrics/model-deployment.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/model-deployment.yaml" >}}
 
-{{< manifests "examples/collecting-engine-metrics/model-service.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/model-service.yaml" >}}
 
 ## Scraping the metrics
 
@@ -44,7 +44,7 @@ Modelplane stamps on them, and the `monitoring` namespace Prometheus discovers a
 `PodMonitor`, so this is the whole config. The engine container port is unnamed,
 so reference it by number with `targetPort`:
 
-{{< manifests "examples/collecting-engine-metrics/podmonitor.yaml" >}}
+{{< manifests "guides/collecting-engine-metrics/podmonitor.yaml" >}}
 
 The engine pods and the `PodMonitor` CRD live on the workload cluster, not the
 control plane, so apply it there. Then read the metrics from the in-cluster

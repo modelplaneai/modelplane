@@ -1,0 +1,27 @@
+{{/*
+  One table-style row in a term-page listing (vendor and cloud pages). The
+  whole row links to the recipe: model name and size on the left, an
+  architecture chip, then GPU, engine, and cloud chips, context length and an
+  arrow on the right.
+*/}}
+<a class="mp-recipe-row" href="{{ .RelPermalink }}">
+  <span class="mp-row-id">
+    <span class="mp-row-name">{{ .Title }}</span>
+    {{ with .Params.size }}<span class="mp-row-size">{{ . }}</span>{{ end }}
+  </span>
+  <span class="mp-row-arch">{{ with .Params.arch }}<span class="mp-vchip is-on">{{ . }}</span>{{ end }}</span>
+  <span class="mp-row-chips">
+    {{ range .Params.accelerators }}
+      {{ $name := . }}
+      {{ $mem := "" }}
+      {{ range site.Data.recipes.gpus }}{{ if eq .name $name }}{{ $mem = .mem }}{{ end }}{{ end }}
+      <span class="mp-vchip"><strong>{{ $name }}</strong>{{ with $mem }}&nbsp;{{ . }}{{ end }}</span>
+    {{ end }}
+    {{ range .Params.engines }}<span class="mp-vchip">{{ . }}</span>{{ end }}
+    {{ range .Params.clouds }}<span class="mp-vchip">{{ . }}</span>{{ end }}
+  </span>
+  <span class="mp-row-meta">
+    {{ with .Params.ctx }}<span class="mp-row-ctx">{{ . }} ctx</span>{{ end }}
+    <span class="mp-row-arrow">&rarr;</span>
+  </span>
+</a>

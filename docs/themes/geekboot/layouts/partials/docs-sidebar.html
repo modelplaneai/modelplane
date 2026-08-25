@@ -1,9 +1,13 @@
 {{ $current := . }}
 {{ $root := .Site.Home }}
-{{ $ex := .Site.GetPage "/examples" }}
+{{ $rec := .Site.GetPage "/recipes" }}
+{{ $guides := .Site.GetPage "/guides" }}
 {{ $ref := .Site.GetPage "/reference" }}
 {{ $isRef := and $ref (eq $current.Section "reference") }}
-{{ $isExamples := and $ex (eq $current.Section "examples") }}
+{{/* The Recipes tab also hosts the taxonomy term pages (facet listings) — a
+     term page's .Section is the taxonomy plural, not "recipes". */}}
+{{ $isRecipes := and $rec (or (eq $current.Section "recipes") (eq $current.Kind "term")) }}
+{{ $isGuides := and $guides (eq $current.Section "guides") }}
 
 {{/* Home + top-level regular pages + sections, ordered by weight. The home page
      itself is excluded from the list (the sidebar brand links to it). */}}
@@ -24,7 +28,7 @@
         <div class="nav-children">
           {{ range .kinds }}
             {{ $k := . }}
-            {{ range $plural, $dir := $.Site.Data.apis.crds }}
+            {{ range $plural, $dir := site.Data.apis.crds }}
               {{ $crd := $dir.definition }}
               {{ if and $crd (eq $crd.spec.names.kind $k) }}
                 {{ with site.GetPage (printf "/reference/%s" $plural) }}
@@ -36,15 +40,51 @@
         </div>
       </div>
     {{ end }}
-  {{ else if $isExamples }}
-    {{/* ── Examples tab: the examples section and its recipes ── */}}
-    {{ with $ex }}
+  {{ else if $isRecipes }}
+    {{/* ── Recipes tab: the catalog landing, then recipes grouped by vendor.
+         Vendor order and logos come from data/recipes.yaml; a vendor group is
+         open when one of its recipes is the current page. ── */}}
+    {{ with $rec }}
+      <div class="nav-group">
+        <div class="nav-group-label">{{ .Params.navLabel | default .Title }}</div>
+        {{ range site.Data.recipes.vendors }}
+          {{ $entry := . }}
+          {{ $tp := site.GetPage (printf "/vendors/%s" (urlize .name)) }}
+          {{ $vendorPages := slice }}
+          {{ with $tp }}
+            {{ range .Pages.ByWeight }}
+              {{ if and (eq .Section "recipes") (not .Params.tocHidden) }}
+                {{ $vendorPages = $vendorPages | append . }}
+              {{ end }}
+            {{ end }}
+          {{ end }}
+          {{ if $vendorPages }}
+            {{ $active := or (eq $tp $current) }}
+            {{ range $vendorPages }}{{ if eq . $current }}{{ $active = true }}{{ end }}{{ end }}
+            <details class="nav-vendor"{{ if $active }} open{{ end }}>
+              <summary class="nav-vendor-summary">
+                {{/* The name links to the vendor page; the chevron toggles. */}}
+                <a class="nav-vendor-link{{ if eq $tp $current }} active{{ end }}" href="{{ $tp.RelPermalink }}">
+                  {{ partial "brand-tile" (dict "entry" $entry "class" "mp-brand-tile--sm") }}
+                  <span class="nav-vendor-name">{{ $entry.name }}</span>
+                </a>
+              </summary>
+              <div class="nav-children nav-vendor-children">
+                {{ range $vendorPages }}
+                  <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
+                {{ end }}
+              </div>
+            </details>
+          {{ end }}
+        {{ end }}
+      </div>
+    {{ end }}
+  {{ else if $isGuides }}
+    {{/* ── Guides tab: the how-to guides, one flat group ── */}}
+    {{ with $guides }}
       <div class="nav-group">
         <div class="nav-group-label">{{ .Params.navLabel | default .Title }}</div>
         <div class="nav-children">
-          {{ with .Params.navLanding }}
-            <a class="bd-links d-flex{{ if eq $ex $current }} active{{ end }}" href="{{ $ex.Permalink }}">{{ . }}</a>
-          {{ end }}
           {{ range .Pages.ByWeight }}
             {{ if not .Params.tocHidden }}
               <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
@@ -54,9 +94,10 @@
       </div>
     {{ end }}
   {{ else }}
-    {{/* ── Documentation tab: every non-reference, non-examples section and page ── */}}
+    {{/* ── Documentation tab: every section and page not owned by the
+         Reference or Recipes tabs (guides live under Recipes) ── */}}
     {{ range $allItems }}
-      {{ if and (ne . $root) (ne . $ref) (ne . $ex) (not .Params.tocHidden) }}
+      {{ if and (ne . $root) (ne . $ref) (ne . $rec) (ne . $guides) (not .Params.tocHidden) }}
         {{ if .IsSection }}
           {{ $section := . }}
           <div class="nav-group">

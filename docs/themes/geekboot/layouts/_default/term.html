@@ -1,0 +1,105 @@
+{{/*
+  Taxonomy term pages (/recipes/vendor/qwen/, /recipes/cloud/nebius/): the
+  browse targets behind the catalog cards. The default list.html would
+  JS-redirect a contentless list to its first child, so terms need their own
+  template. Same chrome as single-list.html, minimal body: no toc, no
+  copy-page tools (term pages have no markdown output), one row per recipe.
+*/}}
+{{ define "main" }}
+{{ $ref := .Site.GetPage "/reference" }}
+{{ $rec := .Site.GetPage "/recipes" }}
+{{ $guides := .Site.GetPage "/guides" }}
+<div class="bd-layout docs-container">
+  <aside class="bd-sidebar">
+    <div class="offcanvas-lg offcanvas-start bd-sidebar-container" tabindex="-1" id="bdSidebar" aria-labelledby="bdSidebarLabel">
+      <div class="bd-sidebar-header">
+        {{ partial "brand" (dict "ctx" . "class" "bd-sidebar-brand") }}
+        <div class="bd-sidebar-actions">
+          {{ partial "theme-switch" (dict "withId" true) }}
+          <button type="button" class="btn-close d-lg-none" data-bs-dismiss="offcanvas" data-bs-target="#bdSidebar" aria-label="Close navigation"></button>
+        </div>
+      </div>
+      {{ partialCached "search-button" . }}
+      {{ if $ref }}
+        <div class="doc-switch dropdown d-lg-none">
+          <button class="doc-switch-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Switch documentation section">
+            <span>Recipes</span>
+            <svg class="doc-switch-caret" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>
+          </button>
+          <ul class="dropdown-menu doc-switch-menu">
+            <li><a class="dropdown-item" href="{{ .Site.Home.Permalink }}">Documentation</a></li>
+            {{ with $rec }}<li><a class="dropdown-item active" href="{{ .Permalink }}">Recipes</a></li>{{ end }}
+            {{ with $guides }}<li><a class="dropdown-item" href="{{ .Permalink }}">Guides</a></li>{{ end }}
+            <li><a class="dropdown-item" href="{{ $ref.Permalink }}">Reference</a></li>
+          </ul>
+        </div>
+      {{ end }}
+      <div class="offcanvas-body bd-sidebar-scroll">
+        {{ partial "docs-sidebar" . }}
+      </div>
+    </div>
+  </aside>
+
+  <main class="bd-main order-1">
+    {{ $hasVersions := site.Data.versions.versions }}
+    {{ if or $ref $hasVersions }}
+    <header class="doc-content-nav">
+      {{ if $ref }}
+      <nav class="doc-tabs" aria-label="Documentation sections">
+        <a class="doc-tab" href="{{ .Site.Home.Permalink }}">Documentation</a>
+        {{ with $rec }}<a class="doc-tab active" href="{{ .Permalink }}">Recipes</a>{{ end }}
+        {{ with $guides }}<a class="doc-tab" href="{{ .Permalink }}">Guides</a>{{ end }}
+        <a class="doc-tab" href="{{ $ref.Permalink }}">Reference</a>
+      </nav>
+      {{ end }}
+      {{ if $hasVersions }}
+      <div class="doc-content-version">
+        {{ partial "version-dropdown-menu" . }}
+      </div>
+      {{ end }}
+    </header>
+    {{ end }}
+    <div class="bd-main-grid no-toc bd-grid-wide">
+      <div class="bd-intro pt-2 ps-lg-2">
+        <div class="bd-intro-inner">
+          {{/* Look up the term's brand entry (vendors match on name, clouds on
+               the term slug) so vendor and cloud pages get their logo tile;
+               other taxonomies fall back to a plain title. */}}
+          {{ $entry := dict "name" .Title }}
+          {{ $found := false }}
+          {{ if eq .Data.Plural "vendors" }}
+            {{ range site.Data.recipes.vendors }}{{ if eq .name $.Title }}{{ $entry = . }}{{ $found = true }}{{ end }}{{ end }}
+          {{ else if eq .Data.Plural "clouds" }}
+            {{ range site.Data.recipes.clouds }}{{ if eq .term $.Title }}{{ $entry = . }}{{ $found = true }}{{ end }}{{ end }}
+          {{ end }}
+          {{ $recipeCount := len .Pages }}
+          <div class="mp-recipe-head mp-recipe-head--term">
+            {{ if $found }}{{ partial "brand-tile" (dict "entry" $entry "class" "mp-brand-tile--lg") }}{{ end }}
+            <div>
+              <h1 class="bd-title mb-0" id="content">{{ $entry.name }}{{ if and $found (eq .Data.Plural "clouds") (ne $entry.name .Title) }} <span class="mp-recipe-vendor">{{ .Title }}</span>{{ end }}</h1>
+              <div class="mp-term-meta">
+                {{ with $entry.org }}<span class="mp-term-org">{{ . }}</span><span class="mp-term-dot">&middot;</span>{{ end }}
+                <span>{{ $recipeCount }} recipe{{ if ne $recipeCount 1 }}s{{ end }}</span>
+                {{ with $entry.org }}
+                  <span class="mp-term-dot">&middot;</span>
+                  <a href="https://huggingface.co/{{ . }}" target="_blank" rel="noopener">Hugging Face {{ partial "ai-ext-arrow.html" }}</a>
+                {{ end }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bd-content ps-lg-2 DocSearch-content">
+        <div class="bd-content-inner">
+          <div class="mp-recipe-rows">
+            {{ range .Pages.ByWeight }}
+              {{ partial "recipe-row" . }}
+            {{ end }}
+          </div>
+        </div>
+      </div>
+    </div>
+    {{ partial "footer" . }}
+  </main>
+</div>
+{{ end }}

@@ -375,7 +375,8 @@ nix run .#docs-generate
 
 Annotated YAML manifests live under `docs/manifests/`, one subtree per docs
 section: `getting-started/` backs the getting started guide, `concepts/` backs
-the platform and model concept pages, and `examples/` backs the Examples page.
+the platform and model concept pages, `recipes/` backs the Recipes section,
+and `guides/` backs the Guides section.
 A page references only manifests from its own section's subtree. Two shortcodes
 render them in content pages.
 

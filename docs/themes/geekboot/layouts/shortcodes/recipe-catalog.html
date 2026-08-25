@@ -1,0 +1,60 @@
+{{/*
+  The Recipes catalog, used from recipes/_index.md: browse-by-organization and
+  browse-by-cloud card grids driven by data/recipes.yaml, then the full recipe
+  list. Every canonical vendor and cloud renders a card; ones with no recipes
+  yet are grayed out and unlinked. Counts include only pages in the recipes
+  section, not guides, so the numbers match the grid below. Cards link to the
+  taxonomy term pages (/recipes/vendor/qwen/ etc.).
+*/}}
+{{/* Only pages with `model` front matter are recipes; the filter keeps
+     utility pages like /recipes/all/ out of the counts and the grid. */}}
+{{ $recipes := where .Page.RegularPages.ByWeight "Params.model" "!=" nil }}
+
+<div class="mp-browse-head">
+  <span class="mp-browse-title">Browse by organization</span>
+  {{ with site.GetPage "/recipes/all" }}
+  <a class="mp-browse-all" href="{{ .RelPermalink }}">View all {{ len $recipes }} &rarr;</a>
+  {{ end }}
+</div>
+<div class="mp-browse-grid">
+  {{ range site.Data.recipes.vendors }}
+    {{ $tp := site.GetPage (printf "/vendors/%s" (urlize .name)) }}
+    {{ $count := 0 }}
+    {{ with $tp }}{{ range .Pages }}{{ if eq .Section "recipes" }}{{ $count = add $count 1 }}{{ end }}{{ end }}{{ end }}
+    {{ if gt $count 0 }}
+    <a class="mp-card mp-browse-card" href="{{ $tp.RelPermalink }}">
+    {{ else }}
+    <div class="mp-card mp-browse-card is-empty">
+    {{ end }}
+      {{ partial "brand-tile" (dict "entry" . "class" "mp-brand-tile--md") }}
+      <span class="mp-browse-text">
+        <span class="mp-browse-name">{{ .name }}</span>
+        <span class="mp-browse-org">{{ .org }}</span>
+      </span>
+      <span class="mp-browse-count"><strong>{{ $count }}</strong> recipe{{ if ne $count 1 }}s{{ end }}</span>
+    {{ if gt $count 0 }}</a>{{ else }}</div>{{ end }}
+  {{ end }}
+</div>
+
+<div class="mp-browse-head">
+  <span class="mp-browse-title">Browse by cloud provider</span>
+</div>
+<div class="mp-browse-grid">
+  {{ range site.Data.recipes.clouds }}
+    {{ $tp := site.GetPage (printf "/clouds/%s" (urlize .term)) }}
+    {{ $count := 0 }}
+    {{ with $tp }}{{ range .Pages }}{{ if eq .Section "recipes" }}{{ $count = add $count 1 }}{{ end }}{{ end }}{{ end }}
+    {{ if gt $count 0 }}
+    <a class="mp-card mp-browse-card" href="{{ $tp.RelPermalink }}">
+    {{ else }}
+    <div class="mp-card mp-browse-card is-empty">
+    {{ end }}
+      {{ partial "brand-tile" (dict "entry" . "class" "mp-brand-tile--md") }}
+      <span class="mp-browse-text">
+        <span class="mp-browse-name">{{ .name }}</span>
+        <span class="mp-browse-org">{{ .term }}</span>
+      </span>
+      <span class="mp-browse-count"><strong>{{ $count }}</strong> recipe{{ if ne $count 1 }}s{{ end }}</span>
+    {{ if gt $count 0 }}</a>{{ else }}</div>{{ end }}
+  {{ end }}
+</div>

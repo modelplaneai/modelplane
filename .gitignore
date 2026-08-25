@@ -20,4 +20,7 @@ docs/utils/webpack/node_modules
 
 # Local superpowers planning artifacts (specs/plans/notes) — not repo content
 docs/superpowers/
-examples/
+
+# Local demo manifests at the repo root (may hold real credentials) — only the
+# top-level directory, not docs/manifests/recipes or docs/content/recipes.
+/examples/
