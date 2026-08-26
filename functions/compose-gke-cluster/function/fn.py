@@ -175,9 +175,11 @@ class Composer:
     def resolve_project(self) -> str | None:
         """Fetch the GCP provider config and return its projectID.
 
-        The GCP provider uses projectID from the ProviderConfig/ClusterProviderConfig
-        as the default for all managed resources, so we only need the value
-        explicitly for the workloadPool string in the GKE cluster spec.
+        The GCP provider late-initializes projectID from the
+        ProviderConfig/ClusterProviderConfig into most managed resources, so the
+        value is needed explicitly only where that does not happen: the
+        workloadPool string in the GKE cluster spec, and the ProjectIAMMember,
+        which creates with an empty project unless it is set.
 
         When the ProviderConfig is transiently gone but the cluster already
         exists, falls back to the project embedded in the observed cluster's
@@ -506,6 +508,12 @@ class Composer:
                     forProvider=iamv1beta1.ForProvider(
                         role="roles/container.admin",
                         member=f"serviceAccount:{sa_email}",
+                        # Set explicitly. The provider late-initializes `project`
+                        # from the ProviderConfig for the Network, Subnetwork and
+                        # ServiceAccount, but not for this resource: it goes to
+                        # create with an empty project and the GCP call 404s on
+                        # "Error retrieving IAM policy for project ''".
+                        project=self.project,
                     ),
                 ),
             ),
