@@ -74,6 +74,9 @@ against. The control-plane cluster needs no DRA.
 nix run .#e2e              # bring up both clusters + deploy the mock model
 nix run .#e2e -- --verify  # same, then wait for readiness and assert a live 200
 nix run .#e2e -- --clean   # tear both clusters down
+
+# additionally stage a `source: OCI` ModelCache and assert the artifact lands
+MP_E2E_OCI_REF=ttl.sh/my-model:24h nix run .#e2e -- --verify --oci
 ```
 
 `crossplane project run` installs the config and applies the resources, then
@@ -101,6 +104,26 @@ kubectl run curl -n ml-team --rm -it --image=curlimages/curl@sha256:7c12af72ceb3
 failure. It's the exact command the `E2E` CI workflow runs, so a green `--verify`
 locally and a green CI run mean the same thing; use the manual curls above to
 poke the endpoints interactively.
+
+### `--oci`
+
+`--oci` adds a `source: OCI` `ModelCache` pointing at `MP_E2E_OCI_REF`, waits for
+the hydration Job on the workload cluster, then mounts the cache volume from a
+throwaway pod and asserts the artifact's files are on it — including a nested
+path, since preserving subdirectories is the part of `modctl`'s extract the
+source depends on.
+
+It is off by default and not part of the CI gate, because it needs an artifact
+pushed somewhere the workload cluster can pull from, which makes it non-hermetic.
+Build one with [`modctl`](https://github.com/modelpack/modctl):
+
+```bash
+modctl build -t ttl.sh/my-model:24h -f Modelfile . && modctl push ttl.sh/my-model:24h
+```
+
+This proves hydration, not loading. The engine here is a mock, so nothing reads
+the weights off the volume; proving a load needs a real engine on CPU or a real
+cluster.
 
 ## How it's structured
 

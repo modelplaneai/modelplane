@@ -122,6 +122,11 @@ export DOCKER_CONFIG="$docker_config"
 #   --verify    after apply, wait for the ModelService and assert a live 200,
 #               exiting non-zero on failure. This is exactly what CI runs, so
 #               running it locally gives the same pass/fail signal (dev/CI parity).
+#   --oci       additionally stage a `source: OCI` ModelCache from the registry
+#               reference in MP_E2E_OCI_REF and assert the artifact's files land
+#               on the cache volume. Off by default: it needs an artifact pushed
+#               somewhere the workload cluster can pull, so it is not hermetic
+#               and is not part of the CI gate.
 rendered="$work/rendered"
 mkdir -p "$rendered"
 cp "$ROOT/e2e/manifests/"*.yaml "$rendered/"
@@ -129,10 +134,19 @@ sed -i.bak "s/172\.18\.255/${PREFIX}.255/g" "$rendered/"*.yaml && rm -f "$render
 cpctx="kind-$CP"
 apply_manifests=1
 verify=0
-case "${1:-}" in
---no-apply) apply_manifests=0 ;;
---verify) verify=1 ;;
-esac
+oci=0
+for arg in "$@"; do
+	case "$arg" in
+	--no-apply) apply_manifests=0 ;;
+	--verify) verify=1 ;;
+	--oci) oci=1 ;;
+	esac
+done
+if [ "$oci" = 1 ] && [ -z "${MP_E2E_OCI_REF:-}" ]; then
+	echo "--oci needs MP_E2E_OCI_REF set to a ModelPack reference the workload cluster can pull, e.g." >&2
+	echo "  MP_E2E_OCI_REF=ttl.sh/my-model:24h nix run .#e2e -- --verify --oci" >&2
+	exit 1
+fi
 
 log "Building + running the control plane"
 cd "$ROOT"
@@ -249,3 +263,81 @@ kubectl --context "$cpctx" -n "$ns" delete pod -l app.kubernetes.io/name=e2e-ver
 	exit 1
 }
 log "End to end OK: $addr serves OpenAI (/v1/chat/completions) and Anthropic (/v1/messages)"
+
+# --oci: stage a ModelCache from an OCI artifact and assert its files land on
+# the cache volume. This is the hydration half of the OCI source -- the pull,
+# the extract, and the layout on the PVC. It does not prove an engine loads
+# from it: the engine here is a mock, so nothing reads the weights.
+if [ "$oci" = 1 ]; then
+	log "Staging a source: OCI ModelCache from $MP_E2E_OCI_REF"
+	cache=oci-poc
+	kubectl --context "$cpctx" apply -f - <<-EOF
+	apiVersion: modelplane.ai/v1alpha1
+	kind: ModelCache
+	metadata:
+	  name: $cache
+	  namespace: $ns
+	spec:
+	  source: OCI
+	  clusterSelector:
+	    matchLabels:
+	      modelplane.ai/region: local
+	  oci:
+	    ref: $MP_E2E_OCI_REF
+	    sizeGiB: 1
+	EOF
+
+	# The hydration Job runs on the workload cluster, so watch the PVC and Job
+	# there rather than the XR's status: a Job that pulls and exits is the thing
+	# under test, and its failure message is what a user would have to read.
+	job=""
+	for _ in $(seq 1 40); do
+		job="$(kubectl --context "$WLCTX" -n default get job \
+			-l "modelplane.ai/modelcache=$cache" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+		[ -n "$job" ] && break
+		sleep 15
+	done
+	[ -n "$job" ] || {
+		echo "verify: no hydration Job appeared on the workload cluster for ModelCache $cache" >&2
+		kubectl --context "$cpctx" -n "$ns" describe modelcache "$cache" 2>&1 | tail -30 >&2 || true
+		exit 1
+	}
+	log "Hydration Job: $job"
+
+	if ! kubectl --context "$WLCTX" -n default wait --for=condition=complete "job/$job" --timeout=10m; then
+		echo "verify: hydration Job $job did not complete" >&2
+		kubectl --context "$WLCTX" -n default logs "job/$job" --tail=60 2>&1 >&2 || true
+		kubectl --context "$WLCTX" -n default describe "job/$job" 2>&1 | tail -30 >&2 || true
+		exit 1
+	fi
+
+	# Read the volume back through a pod that mounts the same PVC, which is how
+	# an engine would see it. Select the PVC by label so this does not depend on
+	# the child-name hash.
+	pvc="$(kubectl --context "$WLCTX" -n default get pvc \
+		-l "modelplane.ai/modelcache=$cache" -o jsonpath='{.items[0].metadata.name}')"
+	log "Cache volume: $pvc"
+	kubectl --context "$WLCTX" -n default delete pod e2e-cache-ls --now >/dev/null 2>&1 || true
+	kubectl --context "$WLCTX" -n default run e2e-cache-ls --restart=Never --image="$CURL_IMAGE" \
+		--overrides="$(printf '{"spec":{"containers":[{"name":"ls","image":"%s","command":["find","/mnt/models","-type","f"],"volumeMounts":[{"name":"c","mountPath":"/mnt/models","readOnly":true}]}],"volumes":[{"name":"c","persistentVolumeClaim":{"claimName":"%s","readOnly":true}}]}}' "$CURL_IMAGE" "$pvc")" \
+		>/dev/null 2>&1 || true
+	listing=""
+	for _ in $(seq 1 30); do
+		listing="$(kubectl --context "$WLCTX" -n default logs e2e-cache-ls 2>/dev/null || true)"
+		[ -n "$listing" ] && break
+		sleep 3
+	done
+	kubectl --context "$WLCTX" -n default delete pod e2e-cache-ls --now >/dev/null 2>&1 || true
+	printf '%s\n' "$listing" | sed 's/^/    /'
+	# Assert the weight file and a nested path, since preserving subdirectories
+	# is the part of modctl's extract this depends on.
+	printf '%s' "$listing" | grep -q '\.gguf$' || {
+		echo "verify: no .gguf file on the cache volume; the OCI extract did not land the weights" >&2
+		exit 1
+	}
+	printf '%s' "$listing" | grep -q '/nested/' || {
+		echo "verify: no nested path on the cache volume; modctl's extract flattened the artifact" >&2
+		exit 1
+	}
+	log "OCI OK: $MP_E2E_OCI_REF hydrated onto $pvc with its layout intact"
+fi
