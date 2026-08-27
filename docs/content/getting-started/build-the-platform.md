@@ -24,14 +24,14 @@ against this capacity without knowing which cluster it runs on.
   | Role | Needed for |
   |---|---|
   | `roles/container.admin` | the cluster and its node pools |
-  | `roles/compute.admin` | the VPC network and subnetwork |
+  | `roles/compute.admin` | the VPC network and subnet |
   | `roles/serviceusage.serviceUsageAdmin` | enabling the APIs the cluster needs |
   | `roles/iam.serviceAccountAdmin` | the node service account |
   | `roles/iam.serviceAccountKeyAdmin` | the node service account's key |
   | `roles/iam.serviceAccountUser` | attaching that account to the nodes |
   | `roles/resourcemanager.projectIamAdmin` | granting the node account `container.admin` |
 
-  The last one is worth a look before you hand the key over: Modelplane grants
+  The last one is worth a look before you hand the key over. Modelplane grants
   the node service account `roles/container.admin`, so the credential doing the
   provisioning has to be able to set project IAM policy.
 {{< /tab >}}
