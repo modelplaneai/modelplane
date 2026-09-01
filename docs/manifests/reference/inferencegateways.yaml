@@ -1,11 +1,25 @@
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceGateway
 metadata:
-  name: default
+  name: eu
 spec:
-  backend: Traefik
-  traefik:
-    version: "40.2.0"
-    loadBalancer: MetalLB
-    metallb:
-      addressPool: "172.18.255.200-172.18.255.250"
+  # The InferenceCluster this gateway runs on, which decides its region and its
+  # address. The cluster needs no GPU pools.
+  clusterName: gw-gcp-eu
+  # The name the gateway answers on. Point it at status.address.
+  hostname: eu.example.com
+  tls:
+    certificateRefs:
+      - name: eu-example-com-tls
+  auth:
+    # Each key in a selected Secret is one caller: the entry's name is the
+    # caller's identity, its value is the key. Adding a caller means writing a
+    # Secret, not editing this gateway.
+    secretSelector:
+      matchLabels:
+        modelplane.ai/inference-keys: "true"
+  # The ModelServices this gateway serves. Absent, it serves every one. Scoped
+  # here to a region, which is how residency is expressed.
+  serviceSelector:
+    matchLabels:
+      example.org/region: eu

@@ -5,9 +5,23 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel
+from pydantic import AwareDatetime, BaseModel, Field, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
+
+
+class SecretSelector(BaseModel):
+    matchLabels: dict[str, constr(max_length=63)] = Field(
+        ..., max_length=16, min_length=1
+    )
+
+
+class Auth(BaseModel):
+    secretSelector: SecretSelector
+    """
+    Selects Secrets holding caller API keys. Each key in a selected Secret is one caller: the entry's name is the caller's identity and its value is the key. So adding a caller means writing a Secret, not editing this gateway.
+    The gateway stamps the resolved identity onto every request and every usage record, and never forwards the caller's key. Ranking one caller above another is not Modelplane's decision to make, so it publishes the identity and leaves acting on it to whatever does decide.
+    """
 
 
 class CompositionRef(BaseModel):
@@ -42,40 +56,51 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
-class Metallb(BaseModel):
-    addressPool: str
-    """
-    IP address range for the MetalLB pool (e.g. "172.18.255.200-172.18.255.250"). Must be within the cluster's network CIDR.
-    """
+class ServiceSelector(BaseModel):
+    matchLabels: dict[str, constr(max_length=63)] = Field(
+        ..., max_length=16, min_length=1
+    )
 
 
-class Traefik(BaseModel):
-    loadBalancer: Literal['MetalLB'] | None = None
+class CertificateRef(BaseModel):
+    name: constr(min_length=1, max_length=253)
+
+
+class Tls(BaseModel):
+    certificateRefs: list[CertificateRef] = Field(..., max_length=8, min_length=1)
     """
-    Load balancer implementation for the gateway Service. Omit for cloud environments where a native LB controller is available.
-    """
-    metallb: Metallb | None = None
-    """
-    MetalLB configuration. Required when loadBalancer is MetalLB. Use for kind or bare-metal clusters.
-    """
-    version: str
-    """
-    Traefik Helm chart version.
+    Secrets holding the gateway's certificate, of type kubernetes.io/tls, in the same namespace as this Modelplane's other gateway Secrets. Modelplane copies them to the gateway's cluster.
     """
 
 
 class Spec(BaseModel):
-    backend: Literal['Traefik'] = 'Traefik'
+    auth: Auth | None = None
     """
-    Gateway implementation.
+    Authenticates callers against keys this gateway holds. Omit it and the gateway authenticates nobody, so anything that can reach the address can invoke any ModelService it serves. That is only appropriate behind something that has already established who is calling.
+    Modelplane authenticates callers; it does not authorize them. Every accepted key can reach every ModelService this gateway serves, and /v1/models lists them all regardless of key. To narrow what a key can reach, narrow the gateway with serviceSelector or run a separate gateway with its own keys.
+    """
+    clusterName: constr(min_length=1, max_length=253)
+    """
+    The InferenceCluster this gateway runs on, which decides its region and its address. A gateway doesn't move: unlike a ModelDeployment, whose replicas re-place when their cluster goes away, a gateway stays where it was put. Availability comes from running more of them, because failing over would change the address callers use and could move traffic out of the jurisdiction the gateway exists to hold.
+    The cluster needs no GPU pools. A cluster with none is a gateway and nothing else, which is what a region with callers but no accelerators wants. A cluster that serves models can host a gateway too, and does so at most once.
     """
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    traefik: Traefik | None = None
+    hostname: constr(min_length=1, max_length=253) | None = None
     """
-    Traefik Proxy configuration. Required when backend is Traefik.
+    The name this gateway answers on. Point it at status.address once the gateway has one.
+    Omit it and the gateway answers on its address alone, over plain HTTP. That is the getting-started shape, and also the shape for anyone terminating TLS on an edge of their own in front of the gateway.
+    """
+    serviceSelector: ServiceSelector | None = None
+    """
+    Selects the ModelServices this gateway serves, by their labels. Absent, it serves every one.
+    This is how a gateway is scoped: to a region, so an EU service is only reachable through EU gateways; to your public services on an internet-facing front door; or to a named set on a dedicated gateway. These are your labels, under your own prefix. Modelplane matches them and never interprets them, so a region means no more to it than any other label.
+    """
+    tls: Tls | None = None
+    """
+    Serves callers over HTTPS. Without it the caller's hop is unencrypted, so anything reachable from an untrusted network wants this or an edge that terminates TLS in front.
     """
 
 
@@ -88,14 +113,29 @@ class Condition(BaseModel):
     type: str
 
 
+class Endpoints(BaseModel):
+    anthropic: str | None = None
+    """
+    Base URL for Anthropic's Messages API.
+    """
+    openAI: str | None = None
+    """
+    Base URL for the OpenAI API. A caller sets its SDK's base_url to this and names a ModelService as the model.
+    """
+
+
 class Status(BaseModel):
     address: str | None = None
     """
-    External address of the control plane gateway. Backend-agnostic — works for any routing implementation.
+    The address this gateway answers on, and what spec.hostname should point at. It is also the target to health check, at /healthz, to decide whether this gateway is in rotation.
     """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    endpoints: Endpoints | None = None
+    """
+    The paths this gateway serves.
     """
 
 

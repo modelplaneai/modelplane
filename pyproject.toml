@@ -18,6 +18,10 @@ dev = [
   # Type stubs for the dynamically generated protobuf modules, so ty can
   # resolve the Struct and Duration types the functions and tests use.
   "types-protobuf>=4.24",
+  # Read by the docs manifest validator (docs/utils/validate). Declared here
+  # rather than borrowed from whichever composition function happens to parse
+  # YAML, so dropping that function's dependency can't break the check.
+  "pyyaml>=6.0",
 ]
 
 [tool.ruff]

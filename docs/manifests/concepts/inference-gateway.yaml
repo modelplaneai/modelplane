@@ -1,23 +1,34 @@
-# The InferenceGateway creates a unified, OpenAI-compatible endpoint on the
-# control plane cluster. It installs Traefik Proxy and creates a Gateway that
-# routes traffic to model replicas on remote inference clusters.
+# An InferenceGateway is the front door for inference requests: the only address
+# a caller sees. It runs on an InferenceCluster, which already runs the gateway
+# software, so it installs nothing on your control plane.
 #
-# Create one InferenceGateway per control plane. It must be named "default".
-#
-# For kind or bare-metal clusters, set loadBalancer to MetalLB and configure an
-# address pool. For cloud clusters with native LoadBalancer support, omit the
-# loadBalancer field entirely.
+# This one is a production shape: it answers on a name, over TLS, and
+# authenticates callers against keys it holds. Point eu.example.com at
+# status.address once the gateway reports one.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceGateway
 metadata:
-  name: default
+  name: eu
 spec:
-  backend: Traefik
-  traefik:
-    version: "40.2.0"
-
-    # Remove the loadBalancer section if your cluster supports LoadBalancer
-    # services natively (e.g. GKE, EKS).
-    loadBalancer: MetalLB
-    metallb:
-      addressPool: "172.18.255.200-172.18.255.250"
+  # A gateway doesn't move. Availability comes from running more of them, since
+  # failing over would change the address callers use and could move traffic out
+  # of the jurisdiction the gateway exists to hold.
+  clusterName: gw-gcp-eu
+  hostname: eu.example.com
+  tls:
+    certificateRefs:
+      - name: eu-example-com-tls
+  auth:
+    # Each key in a selected Secret is one caller: the entry's name is the
+    # identity, its value is the key. So adding a caller means writing a Secret
+    # rather than editing this gateway. The gateway stamps the identity onto
+    # every request and usage record, and never forwards the caller's key.
+    secretSelector:
+      matchLabels:
+        modelplane.ai/inference-keys: "true"
+  # Which ModelServices this gateway serves. Absent, it serves every one.
+  # Scoping it to a region is how residency is expressed: an EU service reaches
+  # only EU gateways, and from there only the endpoints it selects.
+  serviceSelector:
+    matchLabels:
+      example.org/region: eu

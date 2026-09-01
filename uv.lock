@@ -384,6 +384,12 @@ wheels = [
 name = "crossplane-models"
 version = "0.0.0"
 source = { editable = "schemas/python" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
 
 [[package]]
 name = "google-re2"
@@ -506,6 +512,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "crossplane-function-sdk-python" },
+    { name = "pyyaml" },
     { name = "types-protobuf" },
 ]
 
@@ -514,6 +521,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "types-protobuf", specifier = ">=4.24" },
 ]
 

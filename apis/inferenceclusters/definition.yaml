@@ -330,6 +330,30 @@ spec:
                 enum:
                 - Standard
                 - Dynamo
+              gateway:
+                type: object
+                description: >-
+                  Configuration for this cluster's inference traffic gateway,
+                  which fronts the engine pods and is what an InferenceGateway
+                  forwards to.
+                properties:
+                  hostname:
+                    type: string
+                    description: >-
+                      DNS name that resolves to this cluster's gateway address,
+                      published by you once the cluster reports
+                      status.gateway.address. An InferenceGateway addresses this
+                      cluster by name rather than by address, so replicas here
+                      carry no traffic until the name resolves. A name is
+                      required because Envoy AI Gateway only applies per-backend
+                      model rewriting, credentials and priority failover when
+                      every backend in a route is addressed by hostname; given
+                      an address it silently stops applying them.
+                    minLength: 1
+                    maxLength: 253
+                    x-kubernetes-validations:
+                    - rule: "!self.contains('/') && !self.contains(':')"
+                      message: spec.gateway.hostname must be a bare DNS name, with no scheme, port or path.
               taints:
                 type: array
                 description: >-
@@ -499,8 +523,16 @@ spec:
                   address:
                     type: string
                     description: >-
-                      External IP of the inference gateway on the remote cluster.
-                      Used by ModelDeployment for unified endpoint routing.
+                      External address of the inference gateway on the remote
+                      cluster. Point spec.gateway.hostname at this.
+                  hostname:
+                    type: string
+                    description: >-
+                      The name an InferenceGateway addresses this cluster's
+                      gateway by, echoed from spec.gateway.hostname once the
+                      gateway has an address. ModelDeployment composes a
+                      ModelEndpoint origin from it, and withholds the endpoint
+                      while it's unset.
               cache:
                 type: object
                 description: >-
