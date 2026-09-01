@@ -97,8 +97,17 @@ def _replica_engines(*, args: bool = True) -> list:
 
     args toggles the engine container's --model arg, matching the fixture
     deployment a want is built from.
+
+    Every container carries MODELPLANE_SERVED_MODEL_NAME, ahead of any env the
+    user wrote, so an arg can reference it. It's how an engine comes up under the
+    name Modelplane routes to instead of Modelplane having to be told what the
+    engine was started with.
     """
-    container: dict[str, Any] = {"name": "engine", "image": "vllm/vllm-openai:latest"}
+    container: dict[str, Any] = {
+        "name": "engine",
+        "image": "vllm/vllm-openai:latest",
+        "env": [{"name": "MODELPLANE_SERVED_MODEL_NAME", "value": "ml-team/my-model"}],
+    }
     if args:
         container["args"] = ["--model=Qwen/Qwen3-0.6B"]
     return [
@@ -143,11 +152,18 @@ _XR = v1alpha1.ModelDeployment(
 ).model_dump(exclude_none=True, mode="json")
 
 
-def _cluster(name: str, *, ready: bool = True, address: str | None = "10.0.0.1", nodes: int = 2) -> dict:
+def _cluster(
+    name: str,
+    *,
+    ready: bool = True,
+    hostname: str | None = "cluster.clusters.example.com",
+    nodes: int = 2,
+    placement_labels: dict[str, str] | None = None,
+) -> dict:
     """An InferenceCluster input fixture, dumped to a dict.
 
-    A ready cluster has a Ready=True condition and a gateway address. ready=False
-    flips the condition to Unavailable; address=None drops the gateway entirely
+    A ready cluster has a Ready=True condition and a gateway hostname. ready=False
+    flips the condition to Unavailable; hostname=None drops the gateway entirely
     (mirroring an offline cluster). nodes=0 yields a pool with no capacity.
     """
     return icv1alpha1.InferenceCluster(
@@ -156,6 +172,11 @@ def _cluster(name: str, *, ready: bool = True, address: str | None = "10.0.0.1",
             cluster=icv1alpha1.Cluster(
                 source="Existing",
                 existing=icv1alpha1.Existing(secretRef=icv1alpha1.SecretRef(name="k")),
+            ),
+            placement=(
+                icv1alpha1.Placement(metadata=icv1alpha1.Metadata(labels=placement_labels))
+                if placement_labels
+                else None
             ),
         ),
         status=icv1alpha1.Status(
@@ -167,7 +188,7 @@ def _cluster(name: str, *, ready: bool = True, address: str | None = "10.0.0.1",
                     lastTransitionTime=_TRANSITION_TIME,
                 )
             ],
-            gateway=icv1alpha1.Gateway(address=address) if address else None,
+            gateway=icv1alpha1.GatewayModel(address="10.0.0.1", hostname=hostname) if hostname else None,
             providerConfigRef=icv1alpha1.ProviderConfigRef(name=name),
             gpuPools=[
                 icv1alpha1.GpuPool(
@@ -671,8 +692,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 },
                                             },
                                             "spec": {
-                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                                "rewritePath": "/ml-team/my-model-5ab63/",
+                                                "origin": "http://cluster.clusters.example.com",
+                                                "api": {
+                                                    "schema": "OpenAI",
+                                                    "prefix": "/ml-team/my-model-5ab63/v1",
+                                                },
+                                                "model": "ml-team/my-model",
                                             },
                                         }
                                     ),
@@ -701,7 +726,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="offline pinned cluster keeps replica but drops endpoint",
                 req=_req(
                     _XR,
-                    clusters=[_cluster("cluster-a", ready=False, address=None)],
+                    clusters=[_cluster("cluster-a", ready=False, hostname=None)],
                     replicas=[_EXISTING_REPLICA],
                     observed={"replica-cluster-a-0": _EXISTING_REPLICA},
                 ),
@@ -758,7 +783,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="deleted pinned cluster triggers replica re-placement",
                 req=_req(
                     _XR,
-                    clusters=[_cluster("cluster-b", address="10.0.0.2")],
+                    clusters=[_cluster("cluster-b", hostname="cluster-b.clusters.example.com")],
                     replicas=[_EXISTING_REPLICA],
                     observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
                 ),
@@ -1058,8 +1083,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 },
                                             },
                                             "spec": {
-                                                "url": "http://10.0.0.1/ml-team/my-model-5ab63/v1",
-                                                "rewritePath": "/ml-team/my-model-5ab63/",
+                                                "origin": "http://cluster.clusters.example.com",
+                                                "api": {
+                                                    "schema": "OpenAI",
+                                                    "prefix": "/ml-team/my-model-5ab63/v1",
+                                                },
+                                                "model": "ml-team/my-model",
                                             },
                                         }
                                     ),
@@ -1333,3 +1362,108 @@ class TestResolveRequired(unittest.TestCase):
         # UNRESOLVED: Crossplane has not fetched the requirement (key absent).
         req = fnv1.RunFunctionRequest()
         self.assertEqual((fn.Resolution.UNRESOLVED, None), fn.resolve_required(req, "cache"))
+
+
+class TestServedModelName(unittest.TestCase):
+    """The name an engine is started under, and how it gets there."""
+
+    def test_it_goes_ahead_of_the_users_env(self) -> None:
+        """Env expansion is left to right, so an arg or a later entry
+        referencing $(MODELPLANE_SERVED_MODEL_NAME) only resolves if it's
+        first."""
+        template = mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(
+                containers=[
+                    mrv1alpha1.Container(
+                        name="engine",
+                        image="vllm/vllm-openai:latest",
+                        env=[mrv1alpha1.EnvItem(name="HF_TOKEN", value="x")],
+                    )
+                ]
+            )
+        )
+        fn._inject_served_model_name(template, "ml-team/kimi-k2")
+        assert template.spec is not None
+        self.assertEqual(
+            [(e.name, e.value) for e in template.spec.containers[0].env or []],
+            [("MODELPLANE_SERVED_MODEL_NAME", "ml-team/kimi-k2"), ("HF_TOKEN", "x")],
+        )
+
+    def test_a_user_override_is_dropped(self) -> None:
+        """Modelplane decides this value. Honouring an override would let the
+        engine answer to a name nothing routes to, which surfaces as a 404 from
+        the engine rather than anything visible in status."""
+        template = mrv1alpha1.Template(
+            spec=mrv1alpha1.Spec(
+                containers=[
+                    mrv1alpha1.Container(
+                        name="engine",
+                        image="vllm/vllm-openai:latest",
+                        env=[mrv1alpha1.EnvItem(name="MODELPLANE_SERVED_MODEL_NAME", value="mine")],
+                    )
+                ]
+            )
+        )
+        fn._inject_served_model_name(template, "ml-team/kimi-k2")
+        assert template.spec is not None
+        self.assertEqual(
+            [(e.name, e.value) for e in template.spec.containers[0].env or []],
+            [("MODELPLANE_SERVED_MODEL_NAME", "ml-team/kimi-k2")],
+        )
+
+    def test_it_is_namespaced(self) -> None:
+        """So two deployments in different namespaces can't collide, and a
+        ModelService can rewrite one name for a whole deployment."""
+        self.assertEqual(fn.served_model_name("ml-team", "kimi-k2"), "ml-team/kimi-k2")
+
+
+class TestPlacementLabels(unittest.IsolatedAsyncioTestCase):
+    """A cluster's spec.placement.metadata.labels land on the ModelReplicas and
+    ModelEndpoints composed there.
+
+    This is the endpoint half of residency: a ModelService selects endpoints by
+    label, so without it a region-scoped service can't select its own replicas,
+    and nobody can label them by hand because Modelplane owns them. The gateway
+    half is an InferenceGateway's serviceSelector.
+    """
+
+    async def test_stamped_on_replica_and_endpoint(self) -> None:
+        xr = v1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=v1alpha1.SpecModel1(
+                replicas=1,
+                template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE])),
+            ),
+        ).model_dump(exclude_none=True, mode="json")
+        req = _req(
+            xr,
+            clusters=[_cluster("cluster-a", placement_labels={"example.org/region": "eu"})],
+            replicas=[_EXISTING_REPLICA],
+            observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
+        )
+        got = await fn.FunctionRunner().RunFunction(req, None)
+
+        composed = _composed(got, "ModelReplica") + _composed(got, "ModelEndpoint")
+        self.assertEqual(len(composed), 2, "expected one ModelReplica and one ModelEndpoint")
+        for obj in composed:
+            self.assertEqual(obj["metadata"]["labels"].get("example.org/region"), "eu")
+
+    async def test_a_cluster_label_beats_a_template_label(self) -> None:
+        """The cluster is the authority on where it is, so its placement labels
+        are stamped after the deployment's own template labels."""
+        xr = v1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=v1alpha1.SpecModel1(
+                replicas=1,
+                template=v1alpha1.TemplateModel(
+                    metadata=v1alpha1.Metadata(labels={"example.org/region": "wrong"}),
+                    spec=v1alpha1.SpecModel(engines=[_ENGINE]),
+                ),
+            ),
+        ).model_dump(exclude_none=True, mode="json")
+        got = await fn.FunctionRunner().RunFunction(
+            _req(xr, clusters=[_cluster("cluster-a", placement_labels={"example.org/region": "eu"})]),
+            None,
+        )
+        replica = _composed(got, "ModelReplica")[0]
+        self.assertEqual(replica["metadata"]["labels"]["example.org/region"], "eu")

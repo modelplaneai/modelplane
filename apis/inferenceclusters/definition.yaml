@@ -330,6 +330,38 @@ spec:
                 enum:
                 - Standard
                 - Dynamo
+              placement:
+                type: object
+                description: >-
+                  Facts about where this cluster is, projected onto everything
+                  Modelplane composes here.
+                properties:
+                  metadata:
+                    type: object
+                    description: Metadata to project.
+                    properties:
+                      labels:
+                        type: object
+                        description: >-
+                          Labels stamped onto every ModelReplica and
+                          ModelEndpoint composed on this cluster, so a fact about
+                          the cluster is declared once here rather than repeated
+                          on each of them.
+
+                          This is how a self-hosted endpoint gets its region: a
+                          ModelService selects endpoints by label, so a service
+                          scoped to a region selects only the endpoints in it.
+                          These are your labels, under your own prefix.
+                          Modelplane carries and matches them, and never
+                          interprets them, so "eu" means no more to it than
+                          "prod".
+                        additionalProperties:
+                          type: string
+                          maxLength: 63
+                        maxProperties: 16
+                        x-kubernetes-validations:
+                        - rule: "self.all(k, !k.startsWith('modelplane.ai/'))"
+                          message: spec.placement.metadata.labels must not use the reserved modelplane.ai/ prefix.
               gateway:
                 type: object
                 description: >-

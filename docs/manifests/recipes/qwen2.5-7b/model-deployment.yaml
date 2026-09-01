@@ -33,7 +33,7 @@ spec:
                 image: vllm/vllm-openai:v0.9.2
                 args:
                 - --model=Qwen/Qwen2.5-7B-Instruct-AWQ
-                - --served-model-name=qwen-7b
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --max-model-len=8192
                 - --gpu-memory-utilization=0.85
                 - --enforce-eager

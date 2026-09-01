@@ -369,7 +369,7 @@ spec:
                                                       semver() helpers, e.g.
                                                       device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
                                                     minLength: 1
-                                                    maxLength: 10240
+                                                    maxLength: 8192
                                   # This object has no schema default on purpose: the
                                   # apiserver applies defaults before CEL validation, so
                                   # defaulting it would inject it onto Standalone and
@@ -500,6 +500,20 @@ spec:
                                                     serving engine. Includes the model
                                                     identifier (e.g. --model=...) and any
                                                     parallelism flags.
+
+                                                    Pass --served-model-name
+                                                    $(MODELPLANE_SERVED_MODEL_NAME), the
+                                                    variable Modelplane injects, so the
+                                                    engine answers to the name a gateway
+                                                    routes to. A caller names a
+                                                    ModelService and the gateway rewrites
+                                                    the request's model to the
+                                                    deployment's, so an engine started
+                                                    under a literal name returns 404 for
+                                                    every request. Nothing enforces this:
+                                                    a CEL rule requiring the reference
+                                                    exceeds the schema's rule cost budget
+                                                    however tightly args is bounded.
                                                   items:
                                                     type: string
                                                 env:
