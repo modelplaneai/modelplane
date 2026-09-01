@@ -82,7 +82,13 @@ spec:
                         entries at the same priority, spread as evenly as
                         possible across the endpoints it matches. A pair of
                         entries weighted 90 and 10 is a canary.
-                      minimum: 0
+
+                        At least 1. A weight of 0 doesn't deprioritise a
+                        backend, it drops it from the gateway's load assignment
+                        entirely, which is indistinguishable from removing the
+                        entry and easy to mistake for parking it. Remove the
+                        entry instead.
+                      minimum: 1
                       maximum: 1000000
                       default: 1
                     selector:

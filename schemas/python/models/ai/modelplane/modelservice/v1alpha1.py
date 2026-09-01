@@ -57,9 +57,10 @@ class Endpoint(BaseModel):
     """
     Selects ModelEndpoints in this ModelService's namespace. Scope a service to a region by selecting only endpoints in it; Modelplane stamps an InferenceCluster's labels onto every endpoint composed there, so the region is declared once on the cluster.
     """
-    weight: conint(ge=0, le=1000000) | None = 1
+    weight: conint(ge=1, le=1000000) | None = 1
     """
     Share of traffic for this entry relative to the other entries at the same priority, spread as evenly as possible across the endpoints it matches. A pair of entries weighted 90 and 10 is a canary.
+    At least 1. A weight of 0 doesn't deprioritise a backend, it drops it from the gateway's load assignment entirely, which is indistinguishable from removing the entry and easy to mistake for parking it. Remove the entry instead.
     """
 
 
