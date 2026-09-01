@@ -142,7 +142,7 @@ _CERT_MANAGER = {
             "chart": {
                 "name": "cert-manager",
                 "repository": "https://charts.jetstack.io",
-                "version": "v1.17.1",
+                "version": "v1.21.1",
             },
             "namespace": "cert-manager",
             "values": {
@@ -171,7 +171,7 @@ _ENVOY_GATEWAY = {
             "chart": {
                 "name": "gateway-helm",
                 "repository": "oci://docker.io/envoyproxy",
-                "version": "v1.8.1",
+                "version": "v1.8.4",
             },
             "namespace": "envoy-gateway-system",
             "values": {
@@ -224,7 +224,7 @@ _AI_GATEWAY_CRDS = {
             "chart": {
                 "name": "ai-gateway-crds-helm",
                 "repository": "oci://docker.io/envoyproxy",
-                "version": "v0.7.0",
+                "version": "v1.1.0",
             },
             "namespace": "envoy-ai-gateway-system",
         },
@@ -244,9 +244,10 @@ _AI_GATEWAY = {
             "chart": {
                 "name": "ai-gateway-helm",
                 "repository": "oci://docker.io/envoyproxy",
-                "version": "v0.7.0",
+                "version": "v1.1.0",
             },
             "namespace": "envoy-ai-gateway-system",
+            "values": {"controller": {"logRequestHeaderAttributes": "x-modelplane-caller:caller"}},
         },
         "providerConfigRef": {
             "kind": "ProviderConfig",

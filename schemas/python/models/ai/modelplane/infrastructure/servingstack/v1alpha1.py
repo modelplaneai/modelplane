@@ -114,17 +114,13 @@ class Standard(BaseModel):
 
 
 class Versions(BaseModel):
-    certManager: constr(min_length=1, max_length=32) | None = 'v1.17.1'
+    certManager: constr(min_length=1, max_length=32) | None = 'v1.21.1'
     """
     cert-manager chart version.
     """
-    envoyGateway: constr(min_length=1, max_length=32) | None = 'v1.8.1'
+    envoyGateway: constr(min_length=1, max_length=32) | None = 'v1.8.4'
     """
-    Envoy Gateway chart version. Must support InferencePool backend resources (the disaggregated-serving routing path), which requires v1.8.x or newer; older releases lack the Gateway API CRDs (ListenerSet) the AI Gateway needs.
-    """
-    gatewayApi: constr(min_length=1, max_length=32) | None = 'v1.5.1'
-    """
-    Gateway API CRD version.
+    Envoy Gateway chart version. Must support InferencePool backend resources (the disaggregated-serving routing path), which requires v1.8.x or newer; older releases lack the Gateway API CRDs (ListenerSet) the AI Gateway needs. Envoy AI Gateway v1.1.x is tested against Envoy Gateway v1.8.x with Gateway API v1.5.x, so v1.9.x is out of range until the AI Gateway release that pairs with it.
     """
     nodeFeatureDiscovery: constr(min_length=1, max_length=32) | None = '0.18.3'
     """

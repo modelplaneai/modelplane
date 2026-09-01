@@ -94,9 +94,12 @@ _DEFAULT_NVIDIA_DRIVER_ROOT = "/"
 # to, so HTTPRoute -> InferencePool backendRefs (disaggregated serving) route.
 _AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
 _AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
-_AI_GATEWAY_VERSION = "v0.7.0"
+_AI_GATEWAY_VERSION = "v1.1.0"
 _AI_GATEWAY_CONTROLLER_FQDN = f"ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local"
 _AI_GATEWAY_CONTROLLER_PORT = 1063
+# The header the fleet gateway stamps the authenticated caller's identity onto.
+# Also mapped into AI Gateway request metadata (see compose_ai_gateway).
+_CALLER_HEADER = "x-modelplane-caller"
 
 
 # Gateway API Inference Extension (GAIE) CRDs, providing the InferencePool that
@@ -608,6 +611,28 @@ class Composer:
 
         The controller runs the ext-proc extension server that Envoy Gateway's
         extensionManager delegates InferencePool backend resolution to.
+
+        logRequestHeaderAttributes copies the caller identity into the
+        io.envoy.ai_gateway metadata namespace, via a header_to_metadata filter
+        on each listener, so the fleet gateway's access log can read the caller
+        from metadata rather than from the request header. The distinction
+        matters because the header is stripped again before the request reaches
+        a backend Modelplane doesn't operate, so as not to disclose a tenant's
+        identity to a third-party provider. Reading the log from the header
+        instead would lose the caller from exactly those records, which is where
+        provider spend gets attributed.
+
+        This is deliberately not left unset. Unset, the controller defaults the
+        mapping to "agent-session-id:session.id", which we don't use, and any
+        non-empty mapping makes the PostTranslateModify hook walk every listener
+        looking for an HTTP connection manager and error on the first filter
+        chain without one. One TCPRoute or UDPRoute Gateway elsewhere on this
+        cluster's Envoy Gateway then gets the whole xDS update rejected, taking
+        every Gateway including ours to Programmed=False. So this trades a
+        conditional, loud, upstream-tracked failure (envoyproxy/ai-gateway#2600,
+        fix in flight as #2601) for silent loss of the caller dimension on every
+        request served by a third-party endpoint. Setting an empty string
+        restores the workaround at that cost.
         """
         pc_observed = self.provider_configs_observed()
         if not (pc_observed or "ai-gateway-crds" in self.req.observed.resources):
@@ -631,6 +656,7 @@ class Composer:
                 version=_AI_GATEWAY_VERSION,
                 namespace=_AI_GATEWAY_NAMESPACE,
                 provider_config=_pc_name(self.xr),
+                values={"controller": {"logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller"}},
             ),
         )
 

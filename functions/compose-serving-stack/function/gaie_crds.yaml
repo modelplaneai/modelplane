@@ -1,5 +1,5 @@
-# Gateway API Inference Extension (GAIE) CRDs, vendored from the v1.0.1 release:
-# https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml
+# Gateway API Inference Extension (GAIE) CRDs, vendored from the v1.0.2 release:
+# https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.2/manifests.yaml
 #
 # When re-vendoring (bump the release in the URL above), strip each CRD's
 # top-level status and metadata.creationTimestamp. The upstream manifests carry
@@ -11,7 +11,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    inference.networking.k8s.io/bundle-version: v1.0.1
+    inference.networking.k8s.io/bundle-version: v1.0.2
   name: inferenceobjectives.inference.networking.x-k8s.io
 spec:
   group: inference.networking.x-k8s.io
@@ -247,7 +247,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     api-approved.kubernetes.io: https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/1173
-    inference.networking.k8s.io/bundle-version: v1.0.1
+    inference.networking.k8s.io/bundle-version: v1.0.2
   name: inferencepools.inference.networking.k8s.io
 spec:
   group: inference.networking.k8s.io
@@ -441,6 +441,8 @@ spec:
                       An object must match every label in this map to be selected.
 
                       The matching logic is an AND operation on all entries.'
+                    maxProperties: 64
+                    minProperties: 1
                     type: object
                 required:
                 - matchLabels
@@ -669,7 +671,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     api-approved.kubernetes.io: unapproved, experimental-only
-    inference.networking.k8s.io/bundle-version: v1.0.1
+    inference.networking.k8s.io/bundle-version: v1.0.2
   name: inferencepools.inference.networking.x-k8s.io
 spec:
   group: inference.networking.x-k8s.io
