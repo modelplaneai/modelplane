@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "compose-model-endpoint"
 version = "0.0.0"
-description = "Compose an Envoy Gateway Backend from a ModelEndpoint."
+description = "Validate a ModelEndpoint and report whether it can carry traffic."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [

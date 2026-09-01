@@ -569,6 +569,13 @@ class Composer:
         gateway_address = self.observed_gateway_address()
         if gateway_address:
             status.gateway = v1alpha1.Gateway(address=gateway_address)
+            # Echo the hostname only once there's an address for it to point at.
+            # An InferenceGateway addresses this cluster by name, so publishing
+            # the name before the address exists would advertise a name that
+            # can't yet resolve, and ModelDeployment would compose endpoints
+            # that black-hole traffic.
+            if self.xr.spec.gateway and self.xr.spec.gateway.hostname:
+                status.gateway.hostname = self.xr.spec.gateway.hostname
         resource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self, *, cluster_ready: bool) -> None:

@@ -128,6 +128,7 @@ class Status(BaseModel):
     address: str | None = None
     """
     The address this gateway answers on, and what spec.hostname should point at. It is also the target to health check, at /healthz, to decide whether this gateway is in rotation.
+    /healthz answers 200 whenever this gateway's proxy is running and serving. It says nothing about whether any ModelService is reachable through it, so a gateway with no healthy backend stays in rotation and answers requests with a 503. Read each ModelService's RoutingReady for that.
     """
     conditions: list[Condition] | None = None
     """

@@ -177,7 +177,6 @@ dependencies = [
     { name = "crossplane-function-sdk-python" },
     { name = "crossplane-models" },
     { name = "grpcio" },
-    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -186,7 +185,6 @@ requires-dist = [
     { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
-    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
