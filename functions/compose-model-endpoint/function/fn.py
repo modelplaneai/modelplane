@@ -12,54 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compose a Kubernetes Service and EndpointSlice from a ModelEndpoint.
+"""Report whether a ModelEndpoint can carry traffic.
 
-ModelEndpoint is a reachable inference endpoint. This function parses
-spec.url and composes a selectorless Service plus a manually-managed
-EndpointSlice on the control plane pointing at the URL's host:port.
-ModelService reads the resulting service name from
-status.routing.backendName to build its HTTPRoute.
+A ModelEndpoint composes nothing. It is a description of a backend, and the
+objects a gateway needs in order to reach it are per-gateway, so
+compose-model-service composes them once per gateway that serves a
+ModelService selecting this endpoint. An endpoint can't know that set without
+reading the services that select it, and having two XRs compose the same object
+would put them in a fight over it.
 
-For IPv4 URLs (e.g. workload cluster gateways) the EndpointSlice uses
-addressType IPv4; for IPv6 URLs, IPv6; for FQDN URLs (e.g. external
-SaaS providers like Together or Groq), FQDN.
+What's left is worth doing here rather than there: deciding whether this
+endpoint is usable at all, once, where the answer belongs. An endpoint naming a
+credential Secret that doesn't exist would otherwise be composed into every
+gateway's route and fail there, N times, with the reason visible only in Envoy's
+logs. Reporting it on the endpoint puts it where someone looking at the endpoint
+will find it, and lets compose-model-service leave a broken endpoint out of the
+route rather than sending traffic to something that will reject it.
 """
 
-import ipaddress
-import urllib.parse
-
 import grpc
-from crossplane.function import logging, resource, response
+from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.modelendpoint import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-SERVICE_RESOURCE_KEY = "service"
-ENDPOINTSLICE_RESOURCE_KEY = "endpointslice"
+# EndpointReady says whether a gateway could serve a request from this endpoint.
+# compose-model-service reads it, and leaves an endpoint out of a route until
+# it's True, so a broken endpoint carries no traffic rather than failing
+# requests that reach it.
+CONDITION_TYPE_ENDPOINT_READY = "EndpointReady"
 
-# Condition type shared with compose-model-service. Both functions write
-# RoutingReady to signal whether traffic can reach the endpoint.
-CONDITION_TYPE_ROUTING_READY = "RoutingReady"
-CONDITION_REASON_BACKEND_CONFIGURED = "BackendConfigured"
-CONDITION_REASON_WAITING_FOR_BACKEND = "WaitingForBackend"
-CONDITION_REASON_INVALID_URL = "InvalidURL"
+CONDITION_REASON_ENDPOINT_USABLE = "EndpointUsable"
+CONDITION_REASON_CREDENTIAL_MISSING = "CredentialMissing"
+CONDITION_REASON_WAITING_FOR_CREDENTIAL = "WaitingForCredential"
 
 
 def _namespace(meta: metav1.ObjectMeta | None) -> str:
-    """The object's namespace, always set on namespaced resources read from the API server."""
+    """The endpoint's namespace, always set on a namespaced resource."""
     if meta is None or meta.namespace is None:
         raise ValueError("metadata.namespace is unexpectedly absent")
     return meta.namespace
-
-
-def _address_type(host: str) -> str:
-    """Return the EndpointSlice addressType for a host: IPv4, IPv6, or FQDN."""
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        return "FQDN"
-    return "IPv6" if isinstance(addr, ipaddress.IPv6Address) else "IPv4"
 
 
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
@@ -77,8 +70,7 @@ class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
         log.info("Running function")
 
         rsp = response.to(req)
-        c = Composer(req, rsp)
-        c.compose()
+        Composer(req, rsp).compose()
         return rsp
 
 
@@ -89,130 +81,74 @@ class Composer:
         self.xr = v1alpha1.ModelEndpoint(**resource.struct_to_dict(req.observed.composite.resource))
 
     def compose(self) -> None:
-        parsed = self.parse_url()
-        if parsed is None:
-            return
-        host, port = parsed
-
-        self.compose_backend(host, port, _address_type(host))
-        self.write_status()
         self.derive_conditions()
 
-    def parse_url(self) -> tuple[str, int] | None:
-        """Parse spec.url into (host, port), or None (marking the XR not-ready)
-        if the URL is invalid."""
-        parsed = urllib.parse.urlparse(self.xr.spec.url)
-        try:
-            # .port parses lazily and raises on a non-integer port, e.g.
-            # https://host:abc.
-            port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        except ValueError:
-            port = None
-
-        if not parsed.hostname or port is None:
-            response.set_conditions(
-                self.rsp,
-                resource.Condition(
-                    typ=CONDITION_TYPE_ROUTING_READY,
-                    status="False",
-                    reason=CONDITION_REASON_INVALID_URL,
-                    message=f"Invalid spec.url: {self.xr.spec.url}",
-                ),
-            )
-            response.warning(self.rsp, f"Invalid spec.url: {self.xr.spec.url}")
-            return None
-
-        return parsed.hostname, port
-
-    def compose_backend(self, host: str, port: int, address_type: str) -> None:
-        """Compose a selectorless Service and EndpointSlice for the endpoint.
-
-        The Service has no selector (Kubernetes will not auto-populate
-        EndpointSlices for it) so we compose the EndpointSlice ourselves.
-        The kubernetes.io/service-name label associates the slice with
-        the Service. The slice is gated on the Service being observed
-        because Crossplane generates the Service's name.
-
-        ExternalName Services aren't an option for FQDN endpoints:
-        Traefik's Gateway API provider explicitly rejects them. See
-        https://github.com/traefik/traefik/blob/fa49e2bcad7ffd8a80accdf1fae1ae480913d93d/pkg/provider/kubernetes/gateway/kubernetes.go#L890.
-        """
-        ns = _namespace(self.xr.metadata)
-
-        resource.update(
-            self.rsp.desired.resources[SERVICE_RESOURCE_KEY],
-            {
-                "apiVersion": "v1",
-                "kind": "Service",
-                "metadata": {"namespace": ns},
-                "spec": {
-                    "ports": [{"port": port, "protocol": "TCP"}],
-                },
-            },
-        )
-
-        svc_observed = self.req.observed.resources.get(SERVICE_RESOURCE_KEY)
-        svc_name = (
-            resource.struct_to_dict(svc_observed.resource).get("metadata", {}).get("name") if svc_observed else None
-        )
-        if svc_name:
-            resource.update(
-                self.rsp.desired.resources[ENDPOINTSLICE_RESOURCE_KEY],
-                {
-                    "apiVersion": "discovery.k8s.io/v1",
-                    "kind": "EndpointSlice",
-                    "metadata": {
-                        "namespace": ns,
-                        "labels": {"kubernetes.io/service-name": svc_name},
-                    },
-                    "addressType": address_type,
-                    "ports": [{"name": "", "port": port, "protocol": "TCP"}],
-                    # Traefik's Gateway API provider skips endpoints
-                    # whose ready condition is nil, contradicting the
-                    # Kubernetes spec which says nil should be
-                    # interpreted as true. See
-                    # https://github.com/traefik/traefik/blob/fa49e2bcad7ffd8a80accdf1fae1ae480913d93d/pkg/provider/kubernetes/gateway/kubernetes.go#L948.
-                    "endpoints": [
-                        {
-                            "addresses": [host],
-                            "conditions": {"ready": True},
-                        }
-                    ],
-                },
-            )
-
-    def write_status(self) -> None:
-        """Surface the composed Service's name in status, but only once the
-        EndpointSlice is observed too. ModelService treats backendName as
-        routable, so we must not advertise it until the backing endpoint
-        exists or Traefik will report ResolvedRefs=False until the next
-        reconcile catches up."""
-        status = v1alpha1.Status()
-
-        svc_observed = self.req.observed.resources.get(SERVICE_RESOURCE_KEY)
-        slice_observed = ENDPOINTSLICE_RESOURCE_KEY in self.req.observed.resources
-        if svc_observed and slice_observed:
-            svc_name = resource.struct_to_dict(svc_observed.resource).get("metadata", {}).get("name")
-            if svc_name:
-                status.routing = v1alpha1.Routing(backendName=svc_name)
-
-        resource.update_status(self.rsp.desired.composite, status)
-
     def derive_conditions(self) -> None:
-        """RoutingReady: both the Service and the EndpointSlice have been
-        observed on the control plane."""
-        svc_exists = SERVICE_RESOURCE_KEY in self.req.observed.resources
-        slice_exists = ENDPOINTSLICE_RESOURCE_KEY in self.req.observed.resources
-        ready = svc_exists and slice_exists
+        """Set EndpointReady, having resolved the credential Secret if any.
+
+        An endpoint with no credentialRef is usable as soon as it exists: the
+        XRD's validation has already established that its origin is a scheme and
+        a host, and whether the backend actually answers is a question only a
+        request can settle, which the gateway's outlier detection then acts on.
+        """
+        ref = self.xr.spec.credentialRef
+        if ref is None:
+            self.ready()
+            return
+
+        response.require_resources(
+            self.rsp,
+            name="credential",
+            api_version="v1",
+            kind="Secret",
+            match_name=ref.name,
+            namespace=_namespace(self.xr.metadata),
+        )
+        # A requirement key is absent until it resolves, which is how the SDK
+        # distinguishes unresolved from resolved-empty.
+        if "credential" not in self.req.required_resources:
+            self.not_ready(
+                CONDITION_REASON_WAITING_FOR_CREDENTIAL,
+                f"Waiting for Secret {ref.name} to resolve",
+            )
+            return
+
+        secrets = request.get_required_resources(self.req, "credential")
+        if not secrets:
+            self.not_ready(
+                CONDITION_REASON_CREDENTIAL_MISSING,
+                f"Secret {ref.name} does not exist",
+            )
+            return
+
+        key = ref.key or "apiKey"
+        if key not in secrets[0].get("data", {}):
+            self.not_ready(
+                CONDITION_REASON_CREDENTIAL_MISSING,
+                f"Secret {ref.name} has no key {key}",
+            )
+            return
+
+        self.ready()
+
+    def ready(self) -> None:
         response.set_conditions(
             self.rsp,
             resource.Condition(
-                typ=CONDITION_TYPE_ROUTING_READY,
-                status="True" if ready else "False",
-                reason=CONDITION_REASON_BACKEND_CONFIGURED if ready else CONDITION_REASON_WAITING_FOR_BACKEND,
+                typ=CONDITION_TYPE_ENDPOINT_READY,
+                status="True",
+                reason=CONDITION_REASON_ENDPOINT_USABLE,
             ),
         )
-        if svc_exists:
-            self.rsp.desired.resources[SERVICE_RESOURCE_KEY].ready = fnv1.READY_TRUE
-        if ready:
-            self.rsp.desired.resources[ENDPOINTSLICE_RESOURCE_KEY].ready = fnv1.READY_TRUE
+
+    def not_ready(self, reason: str, message: str) -> None:
+        response.set_conditions(
+            self.rsp,
+            resource.Condition(
+                typ=CONDITION_TYPE_ENDPOINT_READY,
+                status="False",
+                reason=reason,
+                message=message,
+            ),
+        )
+        response.normal(self.rsp, message)

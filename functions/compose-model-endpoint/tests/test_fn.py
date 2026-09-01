@@ -14,6 +14,7 @@
 
 """Tests for the compose-model-endpoint function."""
 
+import base64
 import dataclasses
 import unittest
 
@@ -24,7 +25,9 @@ from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.modelendpoint import v1alpha1
-from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
+
+_NS = "ml-team"
+_NAME = "together-kimi-k2"
 
 
 @dataclasses.dataclass
@@ -36,400 +39,207 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
+def _xr(**spec) -> dict:  # noqa: ANN003
+    """The ModelEndpoint XR, built from the generated model so a field the XRD
+    doesn't define can't creep into a test."""
+    xr = v1alpha1.ModelEndpoint(
+        apiVersion="modelplane.ai/v1alpha1",
+        kind="ModelEndpoint",
+        metadata={"name": _NAME, "namespace": _NS},
+        spec=v1alpha1.Spec(origin="https://api.together.xyz", **spec),
+    )
+    return xr.model_dump(exclude_none=True, mode="json", by_alias=True)
+
+
+def _secret(name: str, data: dict[str, str]) -> dict:
+    """A Secret as the API server stores it, values base64 encoded."""
+    return {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {"name": name, "namespace": _NS},
+        "data": {k: base64.b64encode(v.encode()).decode() for k, v in data.items()},
+    }
+
+
+def _credential_requirement(name: str) -> fnv1.Requirements:
+    return fnv1.Requirements(
+        resources={"credential": fnv1.ResourceSelector(api_version="v1", kind="Secret", match_name=name, namespace=_NS)}
+    )
+
+
+def _response(
+    *,
+    reason: str,
+    status: fnv1.Status,
+    message: str | None = None,
+    requirements: fnv1.Requirements | None = None,
+) -> fnv1.RunFunctionResponse:
+    """The whole response. This function composes no resources, so desired
+    carries only the composite, and asserting the whole thing proves it stays
+    that way."""
+    rsp = fnv1.RunFunctionResponse(
+        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+        desired=fnv1.State(),
+        context=structpb.Struct(),
+        conditions=[
+            fnv1.Condition(type=fn.CONDITION_TYPE_ENDPOINT_READY, status=status, reason=reason, message=message)
+        ],
+    )
+    if requirements is not None:
+        rsp.requirements.CopyFrom(requirements)
+    if message is not None:
+        rsp.results.append(fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message=message))
+    return rsp
+
+
 def setUpModule() -> None:
     logging.configure(level=logging.Level.DISABLED)
 
 
-def _service_only(name: str, namespace: str = "ml-team") -> fnv1.Resource:
-    """Build an observed Service resource with just metadata.name set."""
-    return fnv1.Resource(
-        resource=resource.dict_to_struct(
-            {
-                "apiVersion": "v1",
-                "kind": "Service",
-                "metadata": {"name": name, "namespace": namespace},
-            }
-        ),
-    )
-
-
-def _endpointslice_only(name: str, namespace: str = "ml-team") -> fnv1.Resource:
-    """Build an observed EndpointSlice resource with just metadata.name set."""
-    return fnv1.Resource(
-        resource=resource.dict_to_struct(
-            {
-                "apiVersion": "discovery.k8s.io/v1",
-                "kind": "EndpointSlice",
-                "metadata": {"name": name, "namespace": namespace},
-            }
-        ),
-    )
-
-
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
+    maxDiff = None
 
     @classmethod
     def setUpClass(cls) -> None:
         cls.runner = fn.FunctionRunner()
 
     async def test_compose(self) -> None:
-        """The function composes a Service and EndpointSlice from a ModelEndpoint."""
-
-        ip_xr = v1alpha1.ModelEndpoint(
-            metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
-            spec=v1alpha1.Spec(url="http://34.55.100.10/v1"),
-        ).model_dump(exclude_none=True, mode="json")
-
-        ip_service = {
-            "apiVersion": "v1",
-            "kind": "Service",
-            "metadata": {"namespace": "ml-team"},
-            "spec": {
-                "ports": [{"port": 80, "protocol": "TCP"}],
-            },
-        }
-        ip_endpointslice = {
-            "apiVersion": "discovery.k8s.io/v1",
-            "kind": "EndpointSlice",
-            "metadata": {
-                "namespace": "ml-team",
-                "labels": {"kubernetes.io/service-name": "my-service"},
-            },
-            "addressType": "IPv4",
-            "ports": [{"name": "", "port": 80, "protocol": "TCP"}],
-            "endpoints": [
-                {
-                    "addresses": ["34.55.100.10"],
-                    "conditions": {"ready": True},
-                }
-            ],
-        }
-
-        fqdn_xr = v1alpha1.ModelEndpoint(
-            metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
-            spec=v1alpha1.Spec(url="https://api.together.xyz/v1"),
-        ).model_dump(exclude_none=True, mode="json")
-
-        fqdn_service = {
-            "apiVersion": "v1",
-            "kind": "Service",
-            "metadata": {"namespace": "ml-team"},
-            "spec": {
-                "ports": [{"port": 443, "protocol": "TCP"}],
-            },
-        }
-        fqdn_endpointslice = {
-            "apiVersion": "discovery.k8s.io/v1",
-            "kind": "EndpointSlice",
-            "metadata": {
-                "namespace": "ml-team",
-                "labels": {"kubernetes.io/service-name": "together-svc"},
-            },
-            "addressType": "FQDN",
-            "ports": [{"name": "", "port": 443, "protocol": "TCP"}],
-            "endpoints": [
-                {
-                    "addresses": ["api.together.xyz"],
-                    "conditions": {"ready": True},
-                }
-            ],
-        }
-
         cases = [
             Case(
-                name="IP URL first pass composes Service only; EndpointSlice gated on Service name",
+                name="no credential: usable as soon as it exists",
                 req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(ip_xr)),
-                    ),
+                    observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_xr()))),
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {}}),
-                        ),
-                        resources={
-                            "service": fnv1.Resource(
-                                resource=resource.dict_to_struct(ip_service),
-                            ),
-                        },
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForBackend"
-                        ),
-                    ],
-                    context=structpb.Struct(),
+                want=_response(
+                    reason=fn.CONDITION_REASON_ENDPOINT_USABLE,
+                    status=fnv1.STATUS_CONDITION_TRUE,
                 ),
             ),
             Case(
-                name="IP URL second pass composes EndpointSlice; backendName not yet set",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(ip_xr)),
-                        resources={
-                            "service": _service_only("my-service"),
-                        },
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {}}),
-                        ),
-                        resources={
-                            "service": fnv1.Resource(
-                                resource=resource.dict_to_struct(ip_service),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "endpointslice": fnv1.Resource(
-                                resource=resource.dict_to_struct(ip_endpointslice),
-                            ),
-                        },
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForBackend"
-                        ),
-                    ],
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="IP URL third pass with EndpointSlice observed sets backendName and RoutingReady",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(ip_xr)),
-                        resources={
-                            "service": _service_only("my-service"),
-                            "endpointslice": _endpointslice_only("my-slice"),
-                        },
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {"routing": {"backendName": "my-service"}}}),
-                        ),
-                        resources={
-                            "service": fnv1.Resource(
-                                resource=resource.dict_to_struct(ip_service),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "endpointslice": fnv1.Resource(
-                                resource=resource.dict_to_struct(ip_endpointslice),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady", status=fnv1.STATUS_CONDITION_TRUE, reason="BackendConfigured"
-                        ),
-                    ],
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="FQDN URL first pass composes Service only",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(fqdn_xr)),
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {}}),
-                        ),
-                        resources={
-                            "service": fnv1.Resource(
-                                resource=resource.dict_to_struct(fqdn_service),
-                            ),
-                        },
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady", status=fnv1.STATUS_CONDITION_FALSE, reason="WaitingForBackend"
-                        ),
-                    ],
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="FQDN URL with EndpointSlice observed sets backendName and RoutingReady",
-                req=fnv1.RunFunctionRequest(
-                    observed=fnv1.State(
-                        composite=fnv1.Resource(resource=resource.dict_to_struct(fqdn_xr)),
-                        resources={
-                            "service": _service_only("together-svc"),
-                            "endpointslice": _endpointslice_only("together-slice"),
-                        },
-                    ),
-                ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {"routing": {"backendName": "together-svc"}}}),
-                        ),
-                        resources={
-                            "service": fnv1.Resource(
-                                resource=resource.dict_to_struct(fqdn_service),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "endpointslice": fnv1.Resource(
-                                resource=resource.dict_to_struct(fqdn_endpointslice),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady", status=fnv1.STATUS_CONDITION_TRUE, reason="BackendConfigured"
-                        ),
-                    ],
-                    context=structpb.Struct(),
-                ),
-            ),
-            Case(
-                name="IPv6 URL composes EndpointSlice with addressType IPv6",
+                name="a credential that resolves",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(
                             resource=resource.dict_to_struct(
-                                v1alpha1.ModelEndpoint(
-                                    metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
-                                    spec=v1alpha1.Spec(url="http://[2001:db8::1]/v1"),
-                                ).model_dump(exclude_none=True, mode="json")
-                            ),
-                        ),
-                        resources={
-                            "service": _service_only("v6-svc"),
-                            "endpointslice": _endpointslice_only("v6-slice"),
-                        },
+                                _xr(credentialRef=v1alpha1.CredentialRef(name="together-api-key"))
+                            )
+                        )
                     ),
+                    required_resources={
+                        "credential": fnv1.Resources(
+                            items=[
+                                fnv1.Resource(
+                                    resource=resource.dict_to_struct(_secret("together-api-key", {"apiKey": "sk-abc"}))
+                                )
+                            ]
+                        )
+                    },
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(
-                        composite=fnv1.Resource(
-                            resource=resource.dict_to_struct({"status": {"routing": {"backendName": "v6-svc"}}}),
-                        ),
-                        resources={
-                            "service": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    {
-                                        "apiVersion": "v1",
-                                        "kind": "Service",
-                                        "metadata": {"namespace": "ml-team"},
-                                        "spec": {
-                                            "ports": [{"port": 80, "protocol": "TCP"}],
-                                        },
-                                    }
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                            "endpointslice": fnv1.Resource(
-                                resource=resource.dict_to_struct(
-                                    {
-                                        "apiVersion": "discovery.k8s.io/v1",
-                                        "kind": "EndpointSlice",
-                                        "metadata": {
-                                            "namespace": "ml-team",
-                                            "labels": {"kubernetes.io/service-name": "v6-svc"},
-                                        },
-                                        "addressType": "IPv6",
-                                        "ports": [{"name": "", "port": 80, "protocol": "TCP"}],
-                                        "endpoints": [
-                                            {
-                                                "addresses": ["2001:db8::1"],
-                                                "conditions": {"ready": True},
-                                            }
-                                        ],
-                                    }
-                                ),
-                                ready=fnv1.READY_TRUE,
-                            ),
-                        },
-                    ),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady", status=fnv1.STATUS_CONDITION_TRUE, reason="BackendConfigured"
-                        ),
-                    ],
-                    context=structpb.Struct(),
+                want=_response(
+                    reason=fn.CONDITION_REASON_ENDPOINT_USABLE,
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    requirements=_credential_requirement("together-api-key"),
                 ),
             ),
             Case(
-                name="invalid URL produces a warning and no service",
+                name="a credential Secret that does not exist",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(
                             resource=resource.dict_to_struct(
-                                v1alpha1.ModelEndpoint(
-                                    metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
-                                    spec=v1alpha1.Spec(url="not-a-url"),
-                                ).model_dump(exclude_none=True, mode="json")
-                            ),
-                        ),
+                                _xr(credentialRef=v1alpha1.CredentialRef(name="together-api-key"))
+                            )
+                        )
                     ),
+                    required_resources={"credential": fnv1.Resources(items=[])},
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady",
-                            status=fnv1.STATUS_CONDITION_FALSE,
-                            reason="InvalidURL",
-                            message="Invalid spec.url: not-a-url",
-                        ),
-                    ],
-                    results=[
-                        fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="Invalid spec.url: not-a-url"),
-                    ],
-                    context=structpb.Struct(),
+                want=_response(
+                    reason=fn.CONDITION_REASON_CREDENTIAL_MISSING,
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    message="Secret together-api-key does not exist",
+                    requirements=_credential_requirement("together-api-key"),
                 ),
             ),
             Case(
-                name="URL with a non-integer port produces a warning and no service",
+                # A Secret that exists but lacks the key is the likelier mistake,
+                # and would otherwise surface as a 401 from the provider.
+                name="a credential Secret missing the key",
                 req=fnv1.RunFunctionRequest(
                     observed=fnv1.State(
                         composite=fnv1.Resource(
                             resource=resource.dict_to_struct(
-                                v1alpha1.ModelEndpoint(
-                                    metadata=metav1.ObjectMeta(name="test-endpoint", namespace="ml-team"),
-                                    spec=v1alpha1.Spec(url="https://host:abc"),
-                                ).model_dump(exclude_none=True, mode="json")
-                            ),
-                        ),
+                                _xr(credentialRef=v1alpha1.CredentialRef(name="together-api-key"))
+                            )
+                        )
+                    ),
+                    required_resources={
+                        "credential": fnv1.Resources(
+                            items=[
+                                fnv1.Resource(
+                                    resource=resource.dict_to_struct(_secret("together-api-key", {"token": "sk-abc"}))
+                                )
+                            ]
+                        )
+                    },
+                ),
+                want=_response(
+                    reason=fn.CONDITION_REASON_CREDENTIAL_MISSING,
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    message="Secret together-api-key has no key apiKey",
+                    requirements=_credential_requirement("together-api-key"),
+                ),
+            ),
+            Case(
+                name="a credential under a non-default key",
+                req=fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _xr(
+                                    credentialRef=v1alpha1.CredentialRef(
+                                        name="together-api-key", key="TOGETHER_API_KEY"
+                                    )
+                                )
+                            )
+                        )
+                    ),
+                    required_resources={
+                        "credential": fnv1.Resources(
+                            items=[
+                                fnv1.Resource(
+                                    resource=resource.dict_to_struct(
+                                        _secret("together-api-key", {"TOGETHER_API_KEY": "sk-abc"})
+                                    )
+                                )
+                            ]
+                        )
+                    },
+                ),
+                want=_response(
+                    reason=fn.CONDITION_REASON_ENDPOINT_USABLE,
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    requirements=_credential_requirement("together-api-key"),
+                ),
+            ),
+            Case(
+                name="an unresolved credential requirement",
+                req=fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                _xr(credentialRef=v1alpha1.CredentialRef(name="together-api-key"))
+                            )
+                        )
                     ),
                 ),
-                want=fnv1.RunFunctionResponse(
-                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                    desired=fnv1.State(),
-                    conditions=[
-                        fnv1.Condition(
-                            type="RoutingReady",
-                            status=fnv1.STATUS_CONDITION_FALSE,
-                            reason="InvalidURL",
-                            message="Invalid spec.url: https://host:abc",
-                        ),
-                    ],
-                    results=[
-                        fnv1.Result(severity=fnv1.SEVERITY_WARNING, message="Invalid spec.url: https://host:abc"),
-                    ],
-                    context=structpb.Struct(),
+                want=_response(
+                    reason=fn.CONDITION_REASON_WAITING_FOR_CREDENTIAL,
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    message="Waiting for Secret together-api-key to resolve",
+                    requirements=_credential_requirement("together-api-key"),
                 ),
             ),
         ]
-
         for case in cases:
             with self.subTest(case.name):
                 got = await self.runner.RunFunction(case.req, None)
