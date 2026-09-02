@@ -318,6 +318,10 @@ class GatewayModel(BaseModel):
     """
     External address of the inference gateway on the remote cluster. Point spec.gateway.hostname at this.
     """
+    caCertificate: constr(max_length=16384) | None = None
+    """
+    PEM certificate of the CA that signed this gateway's serving certificate. An InferenceGateway validates against it, so it reaches the cluster it meant to rather than whatever else answers on that address. Written once cert-manager on the cluster has issued.
+    """
     hostname: str | None = None
     """
     The name an InferenceGateway addresses this cluster's gateway by, echoed from spec.gateway.hostname once the gateway has an address. ModelDeployment composes a ModelEndpoint origin from it, and withholds the endpoint while it's unset.

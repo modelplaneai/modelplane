@@ -56,6 +56,17 @@ class Dynamo(BaseModel):
     """
 
 
+class ClientCA(BaseModel):
+    certificate: constr(min_length=1, max_length=16384)
+    """
+    The CA certificate, PEM encoded.
+    """
+    name: constr(min_length=1, max_length=253)
+    """
+    The InferenceGateway this CA belongs to.
+    """
+
+
 class Listener(BaseModel):
     name: constr(min_length=1, max_length=63)
     """
@@ -75,6 +86,15 @@ class Gateway(BaseModel):
     className: constr(min_length=1, max_length=63) | None = 'envoy'
     """
     GatewayClass name. Override if the cluster already has a GatewayClass named envoy.
+    """
+    clientCAs: list[ClientCA] | None = Field(None, max_length=32)
+    """
+    PEM certificates of the CAs whose client certificates this gateway accepts, one per InferenceGateway in the fleet. Projected from the InferenceCluster, which reads them from each gateway's status.
+    Presenting one of these is how a caller proves it is a fleet gateway. Requests without one are refused, which is what makes a fleet gateway the only thing that can reach the engines behind this cluster's gateway.
+    """
+    hostname: constr(min_length=1, max_length=253) | None = None
+    """
+    The name this cluster's gateway is reached by, projected from the InferenceCluster. The gateway serves a certificate for it, so an InferenceGateway can originate TLS and know it reached the right cluster. Without it the gateway serves plain HTTP and carries no traffic, since an InferenceGateway addresses a cluster by name.
     """
     listeners: list[Listener] | None = Field(None, max_length=8)
     """
@@ -184,6 +204,10 @@ class GatewayModel(BaseModel):
     address: constr(max_length=256) | None = None
     """
     The gateway's external address, once assigned by the cloud load balancer.
+    """
+    caCertificate: constr(max_length=16384) | None = None
+    """
+    PEM certificate of the CA that signed this gateway's serving certificate. An InferenceGateway validates the gateway against it, so it reaches the cluster it meant to and not whatever answers on that address.
     """
 
 

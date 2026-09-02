@@ -73,6 +73,10 @@ _MODEL_HEADER = "x-ai-eg-model"
 # metadata, which this doesn't disturb.
 _CALLER_HEADER = "x-modelplane-caller"
 
+# The Secret compose-inference-gateway has cert-manager issue for the fleet
+# gateway's client certificate, in the same namespace on the same cluster.
+_CLIENT_CERT_SECRET = "fleet-gateway-client"
+
 # Envoy AI Gateway's per-backendRef weight limit, inherited from Gateway API.
 _MAX_WEIGHT = 1000000
 
@@ -263,6 +267,8 @@ class Composer:
         # distributed within a tier.
         self.tiers: dict[int, list[tuple[int, list[mev1alpha1.ModelEndpoint]]]] = {}
         self.credentials: dict[str, dict] = {}
+        # CA certificate per InferenceCluster, for validating its gateway.
+        self.cluster_cas: dict[str, str] = {}
         self.total = 0
         self.ready_count = 0
 
@@ -272,7 +278,20 @@ class Composer:
             return
         self.compose_routes()
         self.write_status()
+        self.mark_ready()
         self.derive_conditions()
+
+    def mark_ready(self) -> None:
+        """Mark each composed resource ready once its observed counterpart is.
+
+        Nothing else does this. The composition pipeline has no auto-ready
+        function, so a desired resource's readiness is whatever the function
+        says, and a function that says nothing leaves the XR permanently
+        not-Ready however healthy everything under it is.
+        """
+        for key, res in self.rsp.desired.resources.items():
+            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
+                res.ready = fnv1.READY_TRUE
 
     def resolve_inputs(self) -> bool:
         """Resolve the gateways serving this service and the endpoints behind it.
@@ -332,6 +351,8 @@ class Composer:
             cluster = icv1alpha1.InferenceCluster.model_validate(c)
             if cluster.status and cluster.status.providerConfigRef and cluster.status.providerConfigRef.name:
                 pcs[_name(cluster.metadata)] = cluster.status.providerConfigRef.name
+            if cluster.status and cluster.status.gateway and cluster.status.gateway.caCertificate:
+                self.cluster_cas[_name(cluster.metadata)] = cluster.status.gateway.caCertificate
 
         labels = _labels(self.xr.metadata)
         for g in request.get_required_resources(self.req, "gateways"):
@@ -372,6 +393,25 @@ class Composer:
             weight = entry.weight if entry.weight is not None else 1
             self.tiers.setdefault(priority, []).append((weight, matched))
 
+    def credential_ready(self, ep: mev1alpha1.ModelEndpoint) -> bool:
+        """Whether this endpoint's credential resolved to a usable Secret.
+
+        The endpoint's own EndpointReady is supposed to keep an unusable one out
+        of the route, but it's written by another XR on an independent reconcile
+        loop. In the window between a Secret being deleted and that XR noticing,
+        this function sees a ready endpoint and an unresolved credential. Reading
+        the dict unguarded there raises, which fails the whole composition and
+        withdraws the route from every gateway serving the service, over one
+        endpoint of possibly many.
+        """
+        ref = ep.spec.credentialRef
+        if ref is None:
+            return True
+        secret = self.credentials.get(_name(ep.metadata))
+        if secret is None:
+            return False
+        return (ref.key or "apiKey") in secret.get("data", {})
+
     def resolve_credentials(self) -> bool:
         """Require the Secret behind each ready endpoint's credentialRef.
 
@@ -410,7 +450,44 @@ class Composer:
             found = request.get_required_resources(self.req, key)
             if found:
                 self.credentials[endpoint] = found[0]
+
+        self.drop_unusable_credentials()
+        # Dropping can empty the service, and a route with no backendRefs is
+        # worse than no route: a caller gets a reply that isn't an error.
+        if not any(eps for entries in self.tiers.values() for _, eps in entries):
+            self.not_ready(
+                CONDITION_REASON_NO_ENDPOINTS,
+                f"None of the {self.total} selected ModelEndpoints is ready to carry traffic",
+            )
+            return False
         return True
+
+    def drop_unusable_credentials(self) -> None:
+        """Leave out any endpoint whose credential didn't resolve to a usable
+        Secret, rather than composing a backend that would reach a provider with
+        no key.
+
+        The endpoint's own EndpointReady says the same thing, but it's written by
+        another XR on an independent loop, so between a Secret being deleted and
+        that XR noticing this one sees a ready endpoint and no credential.
+        Dropping only that endpoint keeps the rest of the service serving;
+        raising here would withdraw the route from every gateway.
+        """
+        dropped: list[str] = []
+        for entries in self.tiers.values():
+            for _, eps in entries:
+                for ep in list(eps):
+                    if self.credential_ready(ep):
+                        continue
+                    eps.remove(ep)
+                    self.ready_count -= 1
+                    dropped.append(_name(ep.metadata))
+        if dropped:
+            response.warning(
+                self.rsp,
+                "Endpoints left out of the route, their credential Secret missing or missing its key: "
+                + ", ".join(sorted(dropped)),
+            )
 
     def compose_routes(self) -> None:
         """One route per gateway, plus each gateway's copy of the backends."""
@@ -419,11 +496,42 @@ class Composer:
             self.compose_route(gw)
 
     def compose_backends(self, gw: ServingGateway) -> None:
-        """Per endpoint: how to reach it, what it speaks, and its credential."""
+        """Per endpoint: how to reach it, what it speaks, and its credential.
+
+        Plus, once per cluster rather than per endpoint, the CA certificate the
+        gateway validates that cluster's gateway against.
+        """
+        clusters: set[str] = set()
         for entries in self.tiers.values():
             for _, eps in entries:
                 for ep in eps:
                     self.compose_backend(gw, ep)
+                    cluster = _labels(ep.metadata).get(_LABEL_CLUSTER, "")
+                    if cluster in self.cluster_cas:
+                        clusters.add(cluster)
+        for cluster in sorted(clusters):
+            self.compose_cluster_ca(gw, cluster)
+
+    def compose_cluster_ca(self, gw: ServingGateway, cluster: str) -> None:
+        """Copy one cluster gateway's CA certificate to a gateway's cluster.
+
+        A ConfigMap because a CA certificate is public, and because Envoy Gateway
+        reads a Backend's caCertificateRefs from one. Keyed and named by the
+        cluster, so several ModelServices reaching the same cluster converge on
+        identical content rather than fighting over it.
+        """
+        resource.update(
+            self.rsp.desired.resources[f"cluster-ca-{gw.name}-{cluster}"],
+            _wrap(
+                gw.provider_config,
+                {
+                    "apiVersion": "v1",
+                    "kind": "ConfigMap",
+                    "metadata": {"name": names.cluster_ca(cluster), "namespace": REMOTE_NAMESPACE},
+                    "data": {"ca.crt": self.cluster_cas[cluster]},
+                },
+            ),
+        )
 
     def compose_backend(self, gw: ServingGateway, ep: mev1alpha1.ModelEndpoint) -> None:
         ep_name = _name(ep.metadata)
@@ -443,7 +551,31 @@ class Composer:
         # this is a hostname.
         spec: dict = {"endpoints": [{"fqdn": {"hostname": hostname, "port": number}}]}
         if tls:
-            spec["tls"] = {"wellKnownCACertificates": "System", "sni": hostname}
+            # A Modelplane-composed endpoint is a cluster gateway, whose
+            # certificate is signed by its own cluster's CA rather than a public
+            # one, and which requires a client certificate in return. That pair
+            # is what makes a fleet gateway the only thing able to reach the
+            # engines behind it.
+            #
+            # Anything else is a public endpoint, validated against the system
+            # trust store. Presenting a client certificate to a provider would
+            # be meaningless, and pinning our own CA would reject them.
+            cluster = _labels(ep.metadata).get(_LABEL_CLUSTER, "")
+            if cluster:
+                # A cluster only publishes the hostname a composed endpoint's
+                # origin is built from once it has also published its CA, so a
+                # composed endpoint always has one to validate against. Falling
+                # back to the public trust store here instead would leave the
+                # backend unable to complete a handshake, presenting no client
+                # certificate to a gateway that requires one, while the endpoint
+                # and the route both reported ready.
+                spec["tls"] = {
+                    "caCertificateRefs": [{"kind": "ConfigMap", "group": "", "name": names.cluster_ca(cluster)}],
+                    "sni": hostname,
+                    "clientCertificateRef": {"kind": "Secret", "group": "", "name": _CLIENT_CERT_SECRET},
+                }
+            else:
+                spec["tls"] = {"wellKnownCACertificates": "System", "sni": hostname}
         backend: dict = {
             "apiVersion": "gateway.envoyproxy.io/v1alpha1",
             "kind": "Backend",
@@ -482,19 +614,13 @@ class Composer:
 
         if not ep.spec.credentialRef:
             return
-        # The endpoint's EndpointReady gate already keeps an endpoint whose
-        # Secret is missing out of the route, so reaching here without one means
-        # the two disagree. Assert rather than composing a backend with no
-        # credential, which would send a caller's request to a provider
-        # unauthenticated.
-        secret = self.credentials[ep_name]
+        secret = self.credentials.get(ep_name)
         secret_name = names.credential(self.ns, self.svc, ep_name)
         key = ep.spec.credentialRef.key or "apiKey"
         # The AI Gateway reads the credential from a fixed key, so a Secret
         # using another name is republished under the expected one rather than
-        # forcing the key onto whoever writes the Secret. compose-model-endpoint
-        # has already established the key is present.
-        data = secret.get("data", {})
+        # forcing the key onto whoever writes the Secret.
+        data = secret.get("data", {}) if secret else {}
         resource.update(
             self.rsp.desired.resources[f"credential-{gw.name}-{ep_name}"],
             _wrap(

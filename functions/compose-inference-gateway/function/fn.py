@@ -31,6 +31,8 @@ endpoint wins. This function owns everything gateway-scoped, and nothing
 per-service.
 """
 
+import base64
+
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -86,6 +88,26 @@ _ANTHROPIC_PREFIX = "/anthropic/v1"
 # The path a geo-DNS record or a fronting edge health checks to decide whether
 # this gateway is in rotation.
 _HEALTHZ_PATH = "/healthz"
+
+# This gateway's own PKI, issued by cert-manager on its cluster, which the
+# serving stack installs there. A composition function runs on every reconcile
+# and must be a pure function of its inputs, so it can't generate key material.
+#
+# A self-signed issuer signs a CA, the CA signs the client certificate the
+# gateway presents to a cluster gateway, and the CA's certificate is published
+# in status. Every InferenceCluster accepts client certificates from it, which
+# is how this gateway proves itself and how anything else is refused. The
+# private key never leaves this cluster.
+_SELFSIGNED_ISSUER = "fleet-gateway-selfsigned"
+_CLIENT_CA_ISSUER = "fleet-gateway-ca"
+_CLIENT_CA_SECRET = "fleet-gateway-ca"
+_CLIENT_CERT_SECRET = "fleet-gateway-client"
+
+# A cert-manager Certificate is Ready once it has issued.
+_CERTIFICATE_READY_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+)
 
 # A Gateway is ready once it has an address to hand out.
 _GATEWAY_READY_CEL = "has(object.status) && has(object.status.addresses) && object.status.addresses.size() > 0"
@@ -226,11 +248,25 @@ class Composer:
         self.compose_secrets()
         self.compose_envoy_proxy()
         self.compose_gateway()
+        self.compose_client_pki()
         self.compose_caller_auth()
         self.compose_failover_policy()
         self.compose_healthz()
         self.write_status()
+        self.mark_ready()
         self.derive_conditions()
+
+    def mark_ready(self) -> None:
+        """Mark each composed resource ready once its observed counterpart is.
+
+        Nothing else does this. The composition pipeline has no auto-ready
+        function, so a desired resource's readiness is whatever the function
+        says, and a function that says nothing leaves the XR permanently
+        not-Ready however healthy everything under it is.
+        """
+        for key, res in self.rsp.desired.resources.items():
+            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
+                res.ready = fnv1.READY_TRUE
 
     def resolve_inputs(self) -> bool:
         """Require the gateway's cluster, its Secrets, and the other gateways.
@@ -537,6 +573,103 @@ class Composer:
             ),
         )
 
+    def compose_client_pki(self) -> None:
+        """Compose the certificate this gateway presents to a cluster gateway.
+
+        A cluster gateway refuses a request that arrives without one, so this is
+        what lets the fleet gateway reach the engines behind it and stops
+        anything else. cert-manager on this gateway's cluster does the issuing.
+
+        The certificate's subject is this gateway's name. Nothing matches on it:
+        a cluster gateway checks the signing CA, not the subject, because what it
+        needs to know is that a fleet gateway is calling rather than which one.
+        """
+        gateway = _name(self.xr.metadata)
+        objects: list[tuple[str, dict, str | None]] = [
+            (
+                "client-selfsigned-issuer",
+                {
+                    "apiVersion": "cert-manager.io/v1",
+                    "kind": "Issuer",
+                    "metadata": {"name": _SELFSIGNED_ISSUER, "namespace": REMOTE_NAMESPACE},
+                    "spec": {"selfSigned": {}},
+                },
+                None,
+            ),
+            (
+                "client-ca-certificate",
+                {
+                    "apiVersion": "cert-manager.io/v1",
+                    "kind": "Certificate",
+                    "metadata": {"name": _CLIENT_CA_ISSUER, "namespace": REMOTE_NAMESPACE},
+                    "spec": {
+                        "isCA": True,
+                        "commonName": f"modelplane fleet gateway CA {gateway}",
+                        "secretName": _CLIENT_CA_SECRET,
+                        "duration": "87600h",
+                        "renewBefore": "8760h",
+                        "privateKey": {"algorithm": "ECDSA", "size": 256},
+                        "issuerRef": {"name": _SELFSIGNED_ISSUER, "kind": "Issuer", "group": "cert-manager.io"},
+                    },
+                },
+                _CERTIFICATE_READY_CEL,
+            ),
+            (
+                "client-ca-issuer",
+                {
+                    "apiVersion": "cert-manager.io/v1",
+                    "kind": "Issuer",
+                    "metadata": {"name": _CLIENT_CA_ISSUER, "namespace": REMOTE_NAMESPACE},
+                    "spec": {"ca": {"secretName": _CLIENT_CA_SECRET}},
+                },
+                None,
+            ),
+            (
+                "client-certificate",
+                {
+                    "apiVersion": "cert-manager.io/v1",
+                    "kind": "Certificate",
+                    "metadata": {"name": _CLIENT_CERT_SECRET, "namespace": REMOTE_NAMESPACE},
+                    "spec": {
+                        "secretName": _CLIENT_CERT_SECRET,
+                        "commonName": f"fleet-gateway-{gateway}",
+                        "usages": ["client auth", "digital signature", "key encipherment"],
+                        "duration": "2160h",
+                        "renewBefore": "720h",
+                        "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
+                        "issuerRef": {"name": _CLIENT_CA_ISSUER, "kind": "Issuer", "group": "cert-manager.io"},
+                    },
+                },
+                _CERTIFICATE_READY_CEL,
+            ),
+            # Observed, not managed: cert-manager owns this Secret, and status
+            # only needs to read the CA certificate back out of it.
+            (
+                "client-ca-secret",
+                {
+                    "apiVersion": "v1",
+                    "kind": "Secret",
+                    "metadata": {"name": _CLIENT_CA_SECRET, "namespace": REMOTE_NAMESPACE},
+                },
+                None,
+            ),
+        ]
+        for key, manifest, cel in objects:
+            obj = _wrap(self.pc, manifest, cel_query=cel)
+            if key == "client-ca-secret":
+                obj.spec.managementPolicies = ["Observe"]
+            resource.update(self.rsp.desired.resources[key], obj)
+
+    def observed_client_ca(self) -> str | None:
+        """This gateway's client CA certificate, read off the observed Secret."""
+        obj = self.req.observed.resources.get("client-ca-secret")
+        if obj is None:
+            return None
+        d = resource.struct_to_dict(obj.resource)
+        data = d.get("status", {}).get("atProvider", {}).get("manifest", {}).get("data", {})
+        encoded = data.get("ca.crt")
+        return base64.b64decode(encoded).decode() if encoded else None
+
     def compose_caller_auth(self) -> None:
         """A SecurityPolicy authenticating callers against the selected Secrets.
 
@@ -648,17 +781,22 @@ class Composer:
                                 "consecutive5XxErrors": 5,
                                 "interval": "5s",
                                 "maxEjectionPercent": 100,
-                                # Panic mode defaults to 50%: once that share of a
-                                # cluster's endpoints is unhealthy Envoy ignores
-                                # health and spreads traffic over all of them,
-                                # ejected ones included. Every endpoint of a
-                                # ModelService shares one cluster, so ejecting a
-                                # whole priority tier usually crosses it, and
-                                # failover would stop working in exactly the case
-                                # it exists for. Disabled, because a request is
-                                # better refused than sent somewhere known dead.
-                                "panicThreshold": 0,
-                            }
+                            },
+                            # A sibling of passive, not a field inside it. Nested
+                            # wrongly the API server prunes it, the policy still
+                            # applies, and panic mode silently stays at its
+                            # default.
+                            #
+                            # That default is 50%: once that share of a cluster's
+                            # endpoints is unhealthy Envoy ignores health and
+                            # spreads traffic over all of them, ejected ones
+                            # included. Every endpoint of a ModelService shares
+                            # one cluster, so ejecting a whole priority tier
+                            # usually crosses it, and failover would stop working
+                            # in exactly the case it exists for. Disabled,
+                            # because a request is better refused than sent
+                            # somewhere known dead.
+                            "panicThreshold": 0,
                         },
                     },
                 },
@@ -776,6 +914,9 @@ class Composer:
             base = f"https://{self.xr.spec.hostname}" if self.xr.spec.tls else f"http://{self.xr.spec.hostname}"
         elif address:
             base = f"http://{address}"
+        ca = self.observed_client_ca()
+        if ca:
+            status.clientCACertificate = ca
         if base:
             status.endpoints = v1alpha1.Endpoints(
                 openAI=f"{base}{_OPENAI_PREFIX}",

@@ -65,11 +65,12 @@ _LABEL_DEPLOYMENT = "modelplane.ai/deployment"
 _LABEL_INDEX = "modelplane.ai/replica-index"
 
 
-# Scheme for gateway-facing origins. The hop from a fleet gateway to a cluster
-# gateway is plain HTTP for now; TLS terminates at the edge.
-# TODO(negz): originate TLS to the cluster gateway, and require a client
-# certificate there, so the fleet gateway is the only thing that can reach it.
-_GATEWAY_SCHEME = "http"
+# The hop from a fleet gateway to a cluster gateway crosses whatever network
+# separates two clusters, so TLS is originated to it and the cluster gateway
+# requires a client certificate in return. Neither is configurable: a composed
+# endpoint is always https, and a cluster gateway always refuses a request that
+# arrives without a fleet gateway's certificate.
+_GATEWAY_SCHEME = "https"
 
 # Injected into every engine container so an engine can be started under the
 # name Modelplane routes to, rather than Modelplane having to be told what the

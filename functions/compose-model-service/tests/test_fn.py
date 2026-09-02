@@ -127,7 +127,7 @@ def _gateway(name: str, cluster: str, *, selector: dict[str, str] | None = None,
     return d
 
 
-def _cluster(name: str, *, provider_config: str | None = None) -> dict:
+def _cluster(name: str, *, provider_config: str | None = None, ca: str | None = None) -> dict:
     c = icv1alpha1.InferenceCluster(
         apiVersion="modelplane.ai/v1alpha1",
         kind="InferenceCluster",
@@ -142,8 +142,13 @@ def _cluster(name: str, *, provider_config: str | None = None) -> dict:
         ),
     )
     d = c.model_dump(exclude_none=True, mode="json", by_alias=True)
+    status: dict = {}
     if provider_config:
-        d["status"] = {"providerConfigRef": {"name": provider_config}}
+        status["providerConfigRef"] = {"name": provider_config}
+    if ca:
+        status["gateway"] = {"caCertificate": ca}
+    if status:
+        d["status"] = status
     return d
 
 
@@ -716,6 +721,113 @@ class TestComposition(unittest.IsolatedAsyncioTestCase):
             [("0", 0), ("0", 1)],
             "two tiers survive, renumbered 0 and 1",
         )
+
+    async def test_a_composed_endpoint_gets_mutual_tls(self) -> None:
+        """A cluster gateway's certificate is signed by its own cluster's CA, not
+        a public one, and it refuses a request that arrives without a client
+        certificate. Validating against the system trust store would fail, and
+        omitting the client certificate would be refused, so a composed endpoint
+        needs both halves or it carries no traffic at all."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_service([_entry("kimi-k2")])))
+            ),
+            required_resources=_required(
+                gateways=[_gateway("eu", "gw-eu")],
+                clusters=[_cluster("gw-eu", provider_config="gw-eu-pc", ca="-----BEGIN CERTIFICATE-----\nx\n")],
+                **{
+                    "endpoints-0": [
+                        _endpoint(
+                            "kimi-eu-0",
+                            origin="https://gw-eu.clusters.example.com",
+                            model="ml-team/kimi-k2",
+                            composed=True,
+                        )
+                    ]
+                },
+            ),
+        )
+        got = await self._run(req)
+        self.assertEqual(
+            _manifest(got, "backend-eu-kimi-eu-0")["spec"]["tls"],
+            {
+                "caCertificateRefs": [{"kind": "ConfigMap", "group": "", "name": "cluster-ca-gw-eu"}],
+                "sni": "gw-eu.clusters.example.com",
+                "clientCertificateRef": {"kind": "Secret", "group": "", "name": "fleet-gateway-client"},
+            },
+        )
+        self.assertEqual(
+            _manifest(got, "cluster-ca-eu-gw-eu")["data"],
+            {"ca.crt": "-----BEGIN CERTIFICATE-----\nx\n"},
+            "the cluster's CA is copied to the gateway's cluster so Envoy can read it",
+        )
+
+    async def test_a_provider_is_validated_against_the_system_store(self) -> None:
+        """Pinning our own CA would reject a real provider, and presenting a
+        client certificate to one would be meaningless."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_service([_entry("together")])))
+            ),
+            required_resources=_required(
+                gateways=[_gateway("eu", "gw-eu")],
+                clusters=[_cluster("gw-eu", provider_config="gw-eu-pc", ca="-----BEGIN CERTIFICATE-----\nx\n")],
+                **{"endpoints-0": [_endpoint("together", origin="https://api.together.xyz")]},
+            ),
+        )
+        got = await self._run(req)
+        self.assertEqual(
+            _manifest(got, "backend-eu-together")["spec"]["tls"],
+            {"wellKnownCACertificates": "System", "sni": "api.together.xyz"},
+        )
+
+    async def test_an_endpoint_whose_credential_vanished_is_dropped_not_fatal(self) -> None:
+        """EndpointReady is written by another XR on its own reconcile loop, so
+        between a credential Secret being deleted and that XR noticing, this
+        function sees a ready endpoint with no credential. Raising there would
+        withdraw the route from every gateway serving the service over one
+        endpoint; the rest must keep serving."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_service([_entry("a"), _entry("b")])))
+            ),
+            required_resources=_required(
+                gateways=[_gateway("eu", "gw-eu")],
+                clusters=[_cluster("gw-eu", provider_config="gw-eu-pc")],
+                **{
+                    "endpoints-0": [_endpoint("good", origin="https://a.example.com")],
+                    # Ready, but its Secret resolved to nothing.
+                    "endpoints-1": [_endpoint("gone", origin="https://b.example.com", credential="vanished")],
+                    "credential-gone": [],
+                },
+            ),
+        )
+        got = await self._run(req)
+        refs = _manifest(got, "route-eu")["spec"]["rules"][0]["backendRefs"]
+        self.assertEqual([r["name"] for r in refs], [names.backend(_NS, _SVC, "good")])
+        self.assertNotIn("backend-eu-gone", got.desired.resources)
+        self.assertTrue(
+            any("gone" in r.message for r in got.results),
+            "the dropped endpoint is reported rather than silently omitted",
+        )
+
+    async def test_a_credential_secret_missing_its_key_is_dropped(self) -> None:
+        """A Secret that exists but lacks the named key is the likelier mistake,
+        and would otherwise reach the provider as an empty credential."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_service([_entry("a")])))),
+            required_resources=_required(
+                gateways=[_gateway("eu", "gw-eu")],
+                clusters=[_cluster("gw-eu", provider_config="gw-eu-pc")],
+                **{
+                    "endpoints-0": [_endpoint("wrongkey", origin="https://a.example.com", credential="k")],
+                    "credential-wrongkey": [_secret("k", {"token": "sk-1"})],
+                },
+            ),
+        )
+        got = await self._run(req)
+        self.assertEqual(next(iter(got.conditions)).reason, fn.CONDITION_REASON_NO_ENDPOINTS)
+        self.assertEqual(len(got.desired.resources), 0)
 
 
 class TestNames(unittest.TestCase):

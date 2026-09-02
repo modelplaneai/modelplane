@@ -692,7 +692,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 },
                                             },
                                             "spec": {
-                                                "origin": "http://cluster.clusters.example.com",
+                                                "origin": "https://cluster.clusters.example.com",
                                                 "api": {
                                                     "schema": "OpenAI",
                                                     "prefix": "/ml-team/my-model-5ab63/v1",
@@ -1083,7 +1083,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 },
                                             },
                                             "spec": {
-                                                "origin": "http://cluster.clusters.example.com",
+                                                "origin": "https://cluster.clusters.example.com",
                                                 "api": {
                                                     "schema": "OpenAI",
                                                     "prefix": "/ml-team/my-model-5ab63/v1",

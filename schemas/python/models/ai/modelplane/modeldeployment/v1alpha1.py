@@ -53,7 +53,7 @@ class ClusterSelector(BaseModel):
 
 
 class Selector(BaseModel):
-    cel: constr(min_length=1, max_length=10240) | None = None
+    cel: constr(min_length=1, max_length=8192) | None = None
     """
     A DRA CEL expression evaluated against one device. Reads device.driver, device.attributes["<driver>"].<name> (typed), and device.capacity["<driver>"].<name> (a Quantity), with quantity() and semver() helpers, e.g. device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("141Gi")) >= 0.
     """
@@ -122,6 +122,7 @@ class Container(BaseModel):
     args: list[str] | None = None
     """
     Container args, passed through to the serving engine. Includes the model identifier (e.g. --model=...) and any parallelism flags.
+    Pass --served-model-name $(MODELPLANE_SERVED_MODEL_NAME), the variable Modelplane injects, so the engine answers to the name a gateway routes to. A caller names a ModelService and the gateway rewrites the request's model to the deployment's, so an engine started under a literal name returns 404 for every request. Nothing enforces this: a CEL rule requiring the reference exceeds the schema's rule cost budget however tightly args is bounded.
     """
     command: list[str] | None = None
     """

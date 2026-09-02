@@ -565,6 +565,15 @@ spec:
                       gateway has an address. ModelDeployment composes a
                       ModelEndpoint origin from it, and withholds the endpoint
                       while it's unset.
+                  caCertificate:
+                    type: string
+                    maxLength: 16384
+                    description: >-
+                      PEM certificate of the CA that signed this gateway's
+                      serving certificate. An InferenceGateway validates against
+                      it, so it reaches the cluster it meant to rather than
+                      whatever else answers on that address. Written once
+                      cert-manager on the cluster has issued.
               cache:
                 type: object
                 description: >-

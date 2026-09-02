@@ -323,8 +323,23 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             sorted(got.desired.resources),
-            ["envoy-proxy", "failover-policy", "gateway", "healthz-filter", "healthz-route"],
-            "composes the gateway objects, and no caller auth",
+            sorted(
+                [
+                    # The client certificate this gateway presents to a cluster
+                    # gateway, which refuses a request that arrives without one.
+                    "client-ca-certificate",
+                    "client-ca-issuer",
+                    "client-ca-secret",
+                    "client-certificate",
+                    "client-selfsigned-issuer",
+                    "envoy-proxy",
+                    "failover-policy",
+                    "gateway",
+                    "healthz-filter",
+                    "healthz-route",
+                ]
+            ),
+            "composes the gateway objects and its client PKI, and no caller auth",
         )
         for key, res in got.desired.resources.items():
             d = resource.struct_to_dict(res.resource)
@@ -381,9 +396,22 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         # spreads traffic over every endpoint including the ejected ones. Every
         # endpoint of a ModelService shares one cluster, so ejecting a whole
         # priority tier usually crosses it and failover stops working.
+        #
+        # Asserted on the whole healthCheck, because panicThreshold is a sibling
+        # of passive rather than a field inside it, and nested wrongly the API
+        # server prunes it while the policy still applies. Reaching for it at a
+        # path that doesn't exist is how the wrong nesting survived review.
         self.assertEqual(
-            failover["spec"]["forProvider"]["manifest"]["spec"]["healthCheck"]["passive"]["panicThreshold"],
-            0,
+            failover["spec"]["forProvider"]["manifest"]["spec"]["healthCheck"],
+            {
+                "passive": {
+                    "baseEjectionTime": "30s",
+                    "consecutive5XxErrors": 5,
+                    "interval": "5s",
+                    "maxEjectionPercent": 100,
+                },
+                "panicThreshold": 0,
+            },
         )
         self.assertEqual(
             failover["spec"]["forProvider"]["manifest"]["spec"]["targetRefs"],
@@ -477,6 +505,11 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             [
                 "caller-auth",
                 "caller-secret-ml-team-keys",
+                "client-ca-certificate",
+                "client-ca-issuer",
+                "client-ca-secret",
+                "client-certificate",
+                "client-selfsigned-issuer",
                 "envoy-proxy",
                 "failover-policy",
                 "gateway",

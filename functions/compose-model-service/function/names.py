@@ -82,3 +82,14 @@ def model(namespace: str, service: str) -> str:
     would make the name a caller uses depend on a hash.
     """
     return f"{namespace}/{service}"
+
+
+def cluster_ca(cluster: str) -> str:
+    """The ConfigMap holding one cluster gateway's CA certificate.
+
+    Named for the cluster rather than the service, because a CA certificate is a
+    fact about a cluster and identical for every service that reaches it. Several
+    ModelServices composing the same ConfigMap with the same content is
+    server-side apply converging, not a conflict.
+    """
+    return _fit(f"cluster-ca-{cluster}")

@@ -49,6 +49,12 @@ def _eks_ready_extras(want: fnv1.RunFunctionResponse, storage_class: str) -> Non
     status.fields["cache"].struct_value.fields["storageClassName"].string_value = storage_class
 
 
+def _gateways_selector() -> fnv1.ResourceSelector:
+    """Every InferenceGateway. A cluster gateway accepts client certificates
+    from each of their CAs, which is how a fleet gateway proves itself."""
+    return fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway")
+
+
 def _replicas_selector(cluster_name: str) -> fnv1.ResourceSelector:
     """The ModelReplica guard requirement: replicas scheduled to a cluster,
     across all namespaces."""
@@ -166,6 +172,7 @@ def _early_return_guard_case() -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctio
         desired=fnv1.State(resources={"usage-replicas": _guard_clusterusage()}),
         context=structpb.Struct(),
     )
+    want.requirements.resources["gateways"].CopyFrom(_gateways_selector())
     want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
     want.requirements.resources["class-gpu-l4"].CopyFrom(
         fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l4")
@@ -430,6 +437,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         backend1b.resource.CopyFrom(resource.dict_to_struct(backend1b_dict))
         # want1 gains the replica-guard requirement in place from the guard cases
         # below, after this snapshot; add it here so want1b matches on its own.
+        want1b.requirements.resources["gateways"].CopyFrom(_gateways_selector())
         want1b.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         # --- Case 2: GKE cluster first pass - no observed GKE, classes resolved. ---
@@ -2537,6 +2545,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             want_creds_vultr,
             want15,
         ):
+            want.requirements.resources["gateways"].CopyFrom(_gateways_selector())
             want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         # The guard cases reuse case 1's request and response.
@@ -2673,6 +2682,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             context=structpb.Struct(),
         )
         want_creds.requirements.resources["class-gpu-l4"].CopyFrom(class_selector)
+        want_creds.requirements.resources["gateways"].CopyFrom(_gateways_selector())
         want_creds.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         cases = [

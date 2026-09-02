@@ -130,6 +130,11 @@ class Status(BaseModel):
     The address this gateway answers on, and what spec.hostname should point at. It is also the target to health check, at /healthz, to decide whether this gateway is in rotation.
     /healthz answers 200 whenever this gateway's proxy is running and serving. It says nothing about whether any ModelService is reachable through it, so a gateway with no healthy backend stays in rotation and answers requests with a 503. Read each ModelService's RoutingReady for that.
     """
+    clientCACertificate: constr(max_length=16384) | None = None
+    """
+    PEM certificate of the CA that signs this gateway's client certificate. Every InferenceCluster accepts client certificates from it, which is how this gateway proves itself to a cluster gateway and how anything else is refused.
+    One CA per gateway rather than one per Modelplane: no private key has to be distributed, and compromising one cluster doesn't let anyone impersonate a gateway on another.
+    """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.

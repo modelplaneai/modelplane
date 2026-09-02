@@ -36,6 +36,7 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferenceclass import v1alpha1 as iclv1alpha1
 from models.ai.modelplane.inferencecluster import v1alpha1
+from models.ai.modelplane.inferencegateway import v1alpha1 as igv1alpha1
 from models.ai.modelplane.infrastructure.akscluster import v1alpha1 as aksv1alpha1
 from models.ai.modelplane.infrastructure.ekscluster import v1alpha1 as eksv1alpha1
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
@@ -136,6 +137,8 @@ class Composer:
         # Resolved InferenceClasses, keyed by class name. Populated by
         # resolve_classes().
         self.classes: dict[str, iclv1alpha1.InferenceClass] = {}
+        # Client CA per InferenceGateway, keyed by gateway name.
+        self.gateway_cas: dict[str, str] = {}
 
     def compose(self) -> None:
         # The replica guard runs first, before any early return. It only
@@ -145,6 +148,12 @@ class Composer:
         # transiently unresolved, deleting the ClusterUsage and letting the
         # cluster be deleted while replicas still use it.
         self.compose_replica_guard()
+
+        # Like the replica guard, this runs before any early return: the CAs a
+        # cluster gateway accepts don't depend on the cluster's source or its
+        # classes resolving, and dropping them on a transient reconcile would
+        # narrow the trust bundle and refuse a gateway that was working.
+        self.resolve_gateway_cas()
 
         cluster = self.xr.spec.cluster
         if not cluster:
@@ -219,6 +228,29 @@ class Composer:
             ),
         )
         self.rsp.desired.resources[_REPLICA_GUARD_RESOURCE_KEY].ready = fnv1.READY_TRUE
+
+    def resolve_gateway_cas(self) -> None:
+        """Collect the client CA of every InferenceGateway in the fleet.
+
+        Any gateway may forward to this cluster, and each signs its client
+        certificate with a CA of its own, so the cluster gateway has to accept
+        all of them. Read here rather than on the ServingStack because a
+        ServingStack knows only its own cluster, and this is fleet-wide state.
+
+        A gateway that hasn't published a CA yet is skipped. Its cluster's
+        cert-manager may still be installing, and refusing traffic from every
+        gateway because one isn't ready would be worse than accepting the rest.
+        """
+        response.require_resources(
+            self.rsp,
+            name="gateways",
+            api_version="modelplane.ai/v1alpha1",
+            kind="InferenceGateway",
+        )
+        for g in request.get_required_resources(self.req, "gateways"):
+            gw = igv1alpha1.InferenceGateway.model_validate(g)
+            if gw.status and gw.status.clientCACertificate:
+                self.gateway_cas[_name(gw.metadata)] = gw.status.clientCACertificate
 
     def resolve_classes(self) -> bool:
         """Declare and fetch every InferenceClass referenced by
@@ -496,6 +528,22 @@ class Composer:
         spec = ssv1alpha1.Spec(secrets=backend_secrets, stack=self.xr.spec.stack)
         if nvidia_driver_root is not None:
             spec.nvidiaDriverRoot = nvidia_driver_root
+
+        # The gateway's name and the CAs it should accept client certificates
+        # from. The name comes from this cluster's own spec; the CAs from every
+        # InferenceGateway in the fleet, because any of them may forward here and
+        # each signs its client certificate with its own CA. Presenting one is
+        # how a caller proves it is a fleet gateway, which is what stops anything
+        # else reaching the engines behind this cluster's gateway.
+        gateway = ssv1alpha1.Gateway()
+        if self.xr.spec.gateway and self.xr.spec.gateway.hostname:
+            gateway.hostname = self.xr.spec.gateway.hostname
+        if self.gateway_cas:
+            gateway.clientCAs = [
+                ssv1alpha1.ClientCA(name=name, certificate=cert) for name, cert in sorted(self.gateway_cas.items())
+            ]
+        if gateway.hostname or gateway.clientCAs:
+            spec.gateway = gateway
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(
@@ -569,12 +617,26 @@ class Composer:
         gateway_address = self.observed_gateway_address()
         if gateway_address:
             status.gateway = v1alpha1.GatewayModel(address=gateway_address)
-            # Echo the hostname only once there's an address for it to point at.
-            # An InferenceGateway addresses this cluster by name, so publishing
-            # the name before the address exists would advertise a name that
-            # can't yet resolve, and ModelDeployment would compose endpoints
-            # that black-hole traffic.
-            if self.xr.spec.gateway and self.xr.spec.gateway.hostname:
+            # Republished from the ServingStack so an InferenceGateway can
+            # validate this cluster's gateway without reading a ServingStack,
+            # which is machine-generated and not something another composition
+            # should depend on the shape of.
+            ca = self.observed_gateway_ca()
+            if ca:
+                status.gateway.caCertificate = ca
+            # The hostname is published only once there is an address for it to
+            # point at and a CA to validate the gateway against.
+            #
+            # The address, because an InferenceGateway addresses this cluster by
+            # name, so publishing it earlier advertises a name that can't
+            # resolve. The CA, because the hostname is what makes this cluster
+            # schedulable and its endpoints composable: publishing it before the
+            # gateway's certificate exists would have ModelDeployment compose
+            # endpoints that a fleet gateway can't validate, and it would have
+            # nothing to present a client certificate to. Gating both here means
+            # an endpoint never exists before the hop it describes is
+            # mutually authenticated.
+            if ca and self.xr.spec.gateway and self.xr.spec.gateway.hostname:
                 status.gateway.hostname = self.xr.spec.gateway.hostname
         resource.update_status(self.rsp.desired.composite, status)
 
@@ -1306,6 +1368,19 @@ class Composer:
         if not gke_secrets:
             return None
         return next((s for s in gke_secrets if s.type == secret_type), None)
+
+    def observed_gateway_ca(self) -> str | None:
+        """The cluster gateway's CA certificate, from the observed backend.
+
+        Read by dict rather than through a typed model, matching
+        observed_gateway_address, so it works for any backend following the
+        status.gateway contract.
+        """
+        observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+        if not observed:
+            return None
+        d = resource.struct_to_dict(observed.resource)
+        return d.get("status", {}).get("gateway", {}).get("caCertificate")
 
     def observed_gateway_address(self) -> str | None:
         """Read the backend's gateway address from observed state.
