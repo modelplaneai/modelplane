@@ -12,17 +12,16 @@ can gate a merge where the cloud e2e can't.
 
 It uses **two clusters**, mirroring a real deployment:
 
-- a **control-plane** cluster (crossplane + the Configuration + the
-  `InferenceGateway`), managed by `crossplane project run`;
+- a **control-plane** cluster (crossplane + the Configuration), managed by
+  `crossplane project run`;
 - a **workload** cluster registered via `source: Existing`, where the serving
-  stack and the model run.
+  stack, both gateways and the model run.
 
-Two clusters rather than one because the control-plane `InferenceGateway`
-(Traefik) and the workload `ServingStack` (Envoy) both install the Gateway API
-CRDs — co-located on one cluster they race for the same cluster-scoped CRDs and
-the gateway wedges (`encountered composed resource without required
-composition-resource-name annotation`). Separate clusters, as in production,
-avoid it.
+Two clusters rather than one because that's the shape Modelplane is for: a
+control plane that installs nothing on itself, and clusters that run everything.
+Both gateways now live on the workload cluster, the fleet gateway fronting the
+fleet and the cluster gateway fronting the engines, so the control plane runs
+only Crossplane and the providers.
 
 Two Modelplane primitives make it cloud-free:
 
@@ -130,21 +129,25 @@ run` flags can't express:
 
 1. Create the **workload** kind cluster (pinned v1.34).
 2. Install MetalLB on it (the serving stack doesn't) with a pool inside the
-   detected kind subnet and disjoint from the InferenceGateway's, install the
-   **dra-example-driver** (fake GPUs), and label its node for the `gpu-synthetic`
-   pool.
+   detected kind subnet, install the **dra-example-driver** (fake GPUs), and
+   label its node for the `gpu-synthetic` pool.
 3. `crossplane project run` for the **control plane**, with
    `lean-control-plane.yaml` as `--init-resources` so the provider trims land
    before the providers install.
 4. Finish the setup the getting-started flow does by hand (as the nix run app
    does since #375): `kubectl apply` the RBAC prerequisites, point provider-helm
-   at its DeploymentRuntimeConfig, add the workload kubeconfig Secret (`kind get
-   kubeconfig --internal`, reachable from control-plane pods over the shared kind
-   network), then apply the subnet-templated Modelplane manifests.
+   and provider-kubernetes at their DeploymentRuntimeConfigs, add the workload
+   kubeconfig Secret (`kind get kubeconfig --internal`, reachable from
+   control-plane pods over the shared kind network), then apply the
+   subnet-templated Modelplane manifests.
+5. Once the cluster gateway has an address, publish DNS for it as a CoreDNS
+   hosts entry on the workload cluster. The fleet gateway addresses a cluster by
+   name, never by address, so something has to stand in for the DNS a platform
+   would publish.
 
 Everything the control plane needs is a declarative manifest; the shell in
 `run.sh` is only the irreducible cross-cluster setup (a second cluster, its
-MetalLB and DRA driver, the cross-cluster kubeconfig).
+MetalLB and DRA driver, the cross-cluster kubeconfig, and the stand-in DNS).
 
 ```
 e2e/
@@ -161,14 +164,12 @@ e2e/
 
 ## Why the extra moving parts
 
-- **MetalLB on both clusters.** Both gateways — control-plane Traefik and the
-  workload Envoy Gateway (whose readiness the serving stack gates on,
-  `_GATEWAY_READY_CEL`) — need `LoadBalancer` addresses kind can't provide. The
-  `InferenceGateway` installs MetalLB on the control plane itself
-  (`compose_metallb`, pool `.200-.250`); the serving stack does *not*, so `run.sh`
-  installs MetalLB on the workload cluster with a **disjoint** pool (`.100-.149`).
-  Both pools sit inside the detected kind Docker subnet (see caveat) so the
-  control plane can route across it to the workload gateway's IP.
+- **MetalLB on the workload cluster.** Both gateways run there, and both need
+  `LoadBalancer` addresses kind can't provide: the serving stack gates the
+  cluster gateway's readiness on having one (`_GATEWAY_READY_CEL`). Nothing
+  Modelplane composes installs MetalLB, so `run.sh` does, with a pool inside the
+  detected kind Docker subnet (see caveat) so the control plane can route to the
+  addresses it hands out.
 - **Fake DRA driver.** A `claim: DRA` engine emits a `ResourceClaim`; with no DRA
   driver it stays Pending and the pod never schedules. `run.sh` applies the
   vendored **dra-example-driver**, which publishes fake `gpu.example.com` devices

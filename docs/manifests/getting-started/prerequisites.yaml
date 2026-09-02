@@ -20,23 +20,10 @@ rules:
 - apiGroups: [""]
   resources: ["namespaces"]
   verbs: ["*"]
-# Selectorless Service plus EndpointSlice composed by ModelEndpoint to route
-# the control plane gateway to a remote model endpoint.
-- apiGroups: [""]
-  resources: ["services"]
-  verbs: ["*"]
-- apiGroups: ["discovery.k8s.io"]
-  resources: ["endpointslices"]
-  verbs: ["*"]
-- apiGroups: ["gateway.networking.k8s.io"]
-  resources: ["gateways", "gatewayclasses", "httproutes"]
-  verbs: ["*"]
-- apiGroups: ["gateway.envoyproxy.io"]
-  resources: ["backends"]
-  verbs: ["*"]
-- apiGroups: ["metallb.io"]
-  resources: ["ipaddresspools", "l2advertisements"]
-  verbs: ["*"]
+# Usages, which order teardown between composed resources. Everything else
+# Modelplane composes lands on a workload cluster inside a provider-kubernetes
+# Object or a provider-helm Release, so it needs no permission here: the
+# providers carry their own, and reach the cluster with its kubeconfig.
 - apiGroups: ["protection.crossplane.io"]
   resources: ["usages"]
   verbs: ["*"]

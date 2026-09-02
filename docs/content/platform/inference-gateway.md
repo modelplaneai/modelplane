@@ -1,35 +1,50 @@
 ---
 title: Set Up the Gateway
 weight: 10
-description: Unified OpenAI-compatible endpoint on the control plane cluster.
+description: The OpenAI-compatible front door callers reach your models through.
 ---
 **API:** [`modelplane.ai/v1alpha1` · InferenceGateway]({{< ref "/reference/inferencegateways" >}})
 <!-- vale write-good.Passive = NO -->
-The `InferenceGateway` sets up the control plane's front door: one unified,
-OpenAI-compatible address that every `ModelService` is exposed through, routing
-each request on to the inference cluster serving it.
+The `InferenceGateway` is the front door for inference requests: the
+OpenAI-compatible address a caller sees, which routes each request on to a
+cluster serving the model it asked for.
 
-The `InferenceGateway` is a singleton: create exactly one, named `default`, on
-your Modelplane control plane. It fronts every inference cluster in the fleet, so
-you don't create one per cluster.
+It runs on an `InferenceCluster`, named by `spec.clusterName`, because that
+cluster already runs the gateway software. It installs nothing on your control
+plane. The cluster it runs on needs no GPU pools: one with none is a gateway and
+nothing else.
 
-The `backend` field selects which gateway runs it. `Traefik` is the only value
-today.
+Create as many as you need. A gateway is where a request enters your fleet, so
+you want one per place requests should enter from, and `spec.serviceSelector`
+decides which `ModelService`s each one serves. Scoping a gateway to a region is
+how residency is expressed: a service labelled for the EU reaches only EU
+gateways, and from there only the endpoints it selects. Left unset, a gateway
+serves every service.
 
-On a cloud cluster with a native LoadBalancer controller, the gateway's `Service`
-gets an external address on its own. On kind or bare-metal, where there's no such
-controller, set `spec.traefik.loadBalancer: MetalLB` and give it an address pool
-in `spec.traefik.metallb.addressPool` so the gateway gets an IP. See the example
-below.
+A gateway doesn't fail over. Availability comes from running more of them,
+because failing over would change the address callers use and could move traffic
+out of the jurisdiction the gateway exists to hold.
 
-Once the gateway is ready, read its external address from `status.address`:
+Set `spec.hostname` and `spec.tls.certificateRefs` to answer on a name over
+TLS, which is the shape you want in production. Point that name at the address
+the gateway publishes:
 
 ```bash
-kubectl get ig default -o jsonpath='{.status.address}'
+kubectl get ig eu -o jsonpath='{.status.address}'
 ```
 
-That address is the host of every `ModelService` URL
-(`http://<address>/<namespace>/<service>`), so it's what you hand to ML teams.
+Callers reach a model by naming it, not by path: the model in an OpenAI request
+body is `<namespace>/<service>`, and the gateway rewrites it to whatever the
+engine was started as, so one address serves every model. And
+`GET /v1/models` lists what this gateway will route.
+
+Use `spec.auth.secretSelector` to authenticate callers. Each key in a selected
+Secret is one caller: the entry's name is the identity and its value is the key,
+so adding a caller means writing a Secret rather than editing the gateway. The
+gateway stamps the identity onto every request and usage record, and never
+forwards the caller's key to a model. Without `auth` the gateway authenticates
+nobody, which is deliberate: it's the shape for running behind something that
+already has.
 ## Example
 
 {{< manifests "concepts/inference-gateway.yaml" >}}

@@ -115,48 +115,55 @@ spec:
         modelplane.ai/external-provider: together
 ```
 
-Endpoints with different path layouts coexist behind the one URL.
+Endpoints served by different providers, on different paths, coexist behind the
+one model name.
 
 ## Sending a request
 
-The service's public address is on `status.address`, in the form
-`http://<gateway>/<namespace>/<service-name>`:
+A caller names the model rather than a path. The name is
+`<namespace>/<service>`, and `status.gateways` lists the gateways serving it;
+each publishes a base URL per API it speaks:
 
 ```bash
-ADDRESS=$(kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}')
+ADDRESS=$(kubectl get ig local -o jsonpath='{.status.endpoints.openAI}')
 ```
 
-Append the OpenAI path and send a request. The `model` field is the name the
-engine serves (its `--served-model-name`, or the model's Hugging Face id if you
-didn't set one):
+Send a request naming the service. The gateway rewrites the name to whatever
+each endpoint's engine or provider expects, so one name reaches replicas and
+third-party providers alike:
 
 ```bash
-curl "$ADDRESS/v1/chat/completions" \
+curl "$ADDRESS/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen",
+    "model": "ml-team/qwen",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```
 
+`GET $ADDRESS/models` lists every model that gateway will route, which is how a
+caller discovers the name.
+
 ## Alternate APIs
 
-We call the endpoint OpenAI-compatible because the engines are, not because
-Modelplane imposes it. The route matches the `/<namespace>/<service>/` prefix and
-preserves the path below it on the way to the engine, so any API the engine serves
-is reachable on the same URL.
+The gateway speaks the OpenAI API and Anthropic's Messages API, and translates
+between them and whatever an endpoint speaks, so a caller can use either
+regardless of the engine behind it: `status.endpoints.anthropic` is the base URL
+for the Messages API, and a client that speaks it, including Claude Code via
+`ANTHROPIC_BASE_URL`, needs nothing else. See
+[the Messages API guide]({{< ref "/guides/anthropic-messages-api" >}}).
 
-Take a vLLM replica that also serves the Anthropic Messages API. It answers on
-`.../v1/messages`, so a client that speaks it (including Claude Code, via
-`ANTHROPIC_BASE_URL`) talks to it directly. The engine's operational paths come
-through the same way: `.../health` and the Prometheus `.../metrics` are reachable
-on the service URL.
+Because the gateway resolves a model name rather than forwarding a path, an
+engine's own operational paths are not exposed through it. Scrape `/metrics` and
+`/health` from the replica, not through the gateway. See
+[Collecting engine metrics]({{< ref "/guides/collecting-engine-metrics" >}}).
 
-There's one exception, and it's set by the deployment rather than the service.
+There's one exception to the translation, and it's set by the deployment rather
+than the service.
 [Disaggregated serving]({{< ref "model-deployment.md#disaggregated-serving" >}})
 reads OpenAI-format request bodies to pick a prefill and decode worker, so a
-request in another API shape still reaches the engine but skips that
-cache-aware routing. Unified serving forwards every API shape the same way.
+request that arrives in another API shape still reaches the engine but skips
+that cache-aware routing. Unified serving forwards every API shape the same way.
 
 ## Example
 
