@@ -2739,3 +2739,110 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(got),
                     "-want, +got",
                 )
+
+
+class TestGatewayStatus(unittest.IsolatedAsyncioTestCase):
+    """The hostname gate, which is what keeps a cluster off the schedule until
+    traffic to it is mutually authenticated in both directions."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
+
+    @staticmethod
+    def _request(*, address: str | None, ca: str | None, gateway_cas: list[str]) -> fnv1.RunFunctionRequest:
+        """A cluster with a hostname configured, and whatever its serving stack
+        and the fleet's gateways have published so far."""
+        xr = v1alpha1.InferenceCluster(
+            metadata=metav1.ObjectMeta(name="test-cluster", namespace="modelplane-system"),
+            spec=v1alpha1.Spec(
+                cluster=v1alpha1.Cluster(
+                    source="Existing",
+                    existing=v1alpha1.Existing(secretRef=v1alpha1.SecretRef(name="my-kubeconfig")),
+                ),
+                gateway=v1alpha1.Gateway(hostname="eu.clusters.example.org"),
+            ),
+        )
+        stack_status: dict = {"conditions": [{"type": "Ready", "status": "True"}]}
+        gateway: dict = {}
+        if address:
+            gateway["address"] = address
+        if ca:
+            gateway["caCertificate"] = ca
+        if gateway:
+            stack_status["gateway"] = gateway
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json"))
+                ),
+                resources={
+                    "serving-stack": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "ServingStack",
+                                "metadata": {"name": "test-cluster-serving-stack-fd00b"},
+                                "status": stack_status,
+                            }
+                        ),
+                    ),
+                },
+            ),
+        )
+        for i, cert in enumerate(gateway_cas):
+            req.required_resources["gateways"].items.append(
+                fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "InferenceGateway",
+                            "metadata": {"name": f"fleet-{i}"},
+                            "spec": {"clusterName": "test-cluster"},
+                            "status": {"clientCACertificate": cert},
+                        }
+                    ),
+                )
+            )
+        return req
+
+    async def _gateway_status(self, req: fnv1.RunFunctionRequest) -> dict:
+        got = await self.runner.RunFunction(req, None)
+        return resource.struct_to_dict(got.desired.composite.resource).get("status", {}).get("gateway", {})
+
+    async def test_hostname_published_once_both_directions_are_authenticated(self) -> None:
+        """An address to reach, this cluster's CA so a fleet gateway can tell it
+        reached the right cluster, and a fleet gateway CA so the cluster gateway
+        demands a client certificate."""
+        status = await self._gateway_status(
+            self._request(address="34.55.100.10", ca="cluster-ca", gateway_cas=["fleet-ca"])
+        )
+        self.assertEqual(
+            status,
+            {
+                "address": "34.55.100.10",
+                "caCertificate": "cluster-ca",
+                "hostname": "eu.clusters.example.org",
+            },
+        )
+
+    async def test_no_hostname_without_a_fleet_gateway_ca(self) -> None:
+        """The case that matters: the cluster gateway only demands a client
+        certificate when it has a CA to check against, and with none it serves no
+        Gateway at all. Publishing the hostname anyway would make the cluster
+        schedulable when nothing is listening on it, so every request routed
+        there would be stranded."""
+        status = await self._gateway_status(self._request(address="34.55.100.10", ca="cluster-ca", gateway_cas=[]))
+        self.assertEqual(status, {"address": "34.55.100.10", "caCertificate": "cluster-ca"})
+
+    async def test_no_hostname_without_this_clusters_ca(self) -> None:
+        """Without it a fleet gateway can't validate the cluster gateway it
+        reaches, so it would have to fall back to the public trust store."""
+        status = await self._gateway_status(self._request(address="34.55.100.10", ca=None, gateway_cas=["fleet-ca"]))
+        self.assertEqual(status, {"address": "34.55.100.10"})
+
+    async def test_no_gateway_status_before_an_address(self) -> None:
+        """A hostname that resolves to nothing strands every request routed to
+        it, and the CA is republished from the same status."""
+        status = await self._gateway_status(self._request(address=None, ca="cluster-ca", gateway_cas=["fleet-ca"]))
+        self.assertEqual(status, {})

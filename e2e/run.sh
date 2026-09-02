@@ -188,13 +188,16 @@ crossplane project run \
 
 # Config healthy. Finish the setup the getting-started flow does by hand (as the
 # nix run app now does too, PR #375): apply the RBAC prerequisites, then point
-# provider-helm at the DeploymentRuntimeConfig they define. Providers install
-# before prerequisites.yaml, and an ImageConfig binds only at ProviderRevision
-# creation, so provider-helm otherwise comes up without the granted RBAC.
-log "Finishing control-plane setup: prerequisites + provider-helm runtime config"
+# the two providers at the DeploymentRuntimeConfigs they define. Providers
+# install before prerequisites.yaml, and an ImageConfig binds only at
+# ProviderRevision creation, so provider-helm otherwise comes up without the
+# granted RBAC and provider-kubernetes without --sanitize-secrets.
+log "Finishing control-plane setup: prerequisites + provider runtime configs"
 kubectl --context "$cpctx" apply -f "$ROOT/docs/manifests/getting-started/prerequisites.yaml"
 kubectl --context "$cpctx" patch provider.pkg.crossplane.io upbound-provider-helm --type merge \
 	-p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-helm-modelplane"}}}'
+kubectl --context "$cpctx" patch provider.pkg.crossplane.io upbound-provider-kubernetes --type merge \
+	-p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-kubernetes-modelplane"}}}'
 
 # The InferenceCluster (source: Existing) reads this kubeconfig to reach the
 # workload cluster; --internal gives an address routable from the control plane's
@@ -276,6 +279,26 @@ log "Gateway ${base}, model ${model}"
 # runs one throwaway pod per call and echoes the HTTP code; it polls the logs
 # (curl writes the code once, then exits) so a failed attempt costs seconds, and
 # a unique pod name per call keeps retries from reading a prior pod's output.
+# GET a URL from the workload cluster, reporting curl's own exit code rather
+# than an HTTP status. Used to assert a request is refused before there is any
+# HTTP response to report. -k skips server verification, so a non-zero exit is
+# the server rejecting us rather than us rejecting its certificate.
+wl_curl_exit() {
+	local pod="$1" url="$2"
+	kubectl --context "$WLCTX" -n default run "$pod" --restart=Never \
+		--labels=app.kubernetes.io/name=e2e-verify --image="$CURL_IMAGE" \
+		--command -- sh -c "curl -sS -k --max-time 15 -o /dev/null \"$url\"; echo EXIT=\$?" \
+		>/dev/null 2>&1 || true
+	local c=""
+	for _ in $(seq 1 30); do
+		c="$(kubectl --context "$WLCTX" -n default logs "$pod" 2>/dev/null | sed -n 's/.*EXIT=\([0-9]*\).*/\1/p' || true)"
+		[ -n "$c" ] && break
+		sleep 2
+	done
+	kubectl --context "$WLCTX" -n default delete pod "$pod" --now >/dev/null 2>&1 || true
+	printf '%s' "$c"
+}
+
 curl_status() {
 	local pod="$1" url="$2"
 	shift 2
@@ -356,6 +379,62 @@ log "verify (unknown model): HTTP ${ncode:-none}"
 	cleanup_verify_pods
 	exit 1
 }
+
+# The cluster gateway must refuse a caller that presents no client certificate.
+# This is the property the whole mTLS design exists for, and every check above
+# goes through the fleet gateway, which does hold a certificate, so none of them
+# would notice it lapsing. A ClientTrafficPolicy that stopped applying, or an
+# HTTP listener creeping back, would leave the engines open to anything that can
+# reach the load balancer.
+#
+# Run from the workload cluster because that is where the gateway's hostname
+# resolves. A plain GET is enough: the handshake fails before any request is
+# sent, so the method and body are irrelevant.
+#
+# The trailing dot matters. A pod's resolv.conf carries ndots:5, and this name
+# has four dots, so without it the resolver tries every search domain and gives
+# up rather than falling back to the name as given. That returns curl 6, which
+# is not the gateway refusing anything, so the checks below reject 6 explicitly:
+# a DNS regression must fail this rather than quietly pass it.
+cluster_gw="https://local.clusters.modelplane.test./v1/models"
+ecode="$(wl_curl_exit e2e-verify-nocert "$cluster_gw")"
+log "verify (cluster gateway, no client certificate): curl exit ${ecode:-none}"
+case "$ecode" in
+0)
+	echo "verify: the cluster gateway served a caller presenting no client certificate" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+35 | 52 | 55 | 56) ;;
+*)
+	echo "verify: expected the cluster gateway to refuse an uncertified caller mid-handshake," >&2
+	echo "verify: but curl failed with ${ecode:-no exit code}, which is a different failure" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+esac
+
+# And nothing on port 80. HTTPS replaces the HTTP listener rather than joining
+# it, because the serving HTTPRoutes carry no sectionName and so attach to every
+# listener there is. The load balancer publishes a port per listener, so with
+# only an HTTPS listener nothing is listening on 80 and the connection is
+# refused.
+hcode="$(wl_curl_exit e2e-verify-plaintext "http://local.clusters.modelplane.test./v1/models")"
+log "verify (cluster gateway, plaintext): curl exit ${hcode:-none}"
+case "$hcode" in
+0)
+	echo "verify: the cluster gateway served plaintext HTTP on port 80" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+7 | 28 | 35 | 52 | 56) ;;
+*)
+	echo "verify: expected no listener on port 80, but curl failed with ${hcode:-no exit code}," >&2
+	echo "verify: which is a different failure" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+esac
 
 # /v1/models lists what this gateway serves. Only exact model matches appear, so
 # this also proves the route matches exactly rather than by pattern.

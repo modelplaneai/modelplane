@@ -129,6 +129,16 @@ spec:
                     description: cert-manager chart version.
                     minLength: 1
                     maxLength: 32
+                  trustManager:
+                    type: string
+                    default: "v0.24.0"
+                    description: >-
+                      trust-manager chart version. trust-manager distributes the
+                      cluster gateway's CA certificate without its private key,
+                      which is what lets the control plane read the certificate
+                      to hand to a fleet gateway.
+                    minLength: 1
+                    maxLength: 32
                   envoyGateway:
                     type: string
                     default: "v1.8.4"

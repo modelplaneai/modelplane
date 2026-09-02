@@ -154,6 +154,10 @@ class Versions(BaseModel):
     """
     kube-prometheus-stack chart version.
     """
+    trustManager: constr(min_length=1, max_length=32) | None = 'v0.24.0'
+    """
+    trust-manager chart version. trust-manager distributes the cluster gateway's CA certificate without its private key, which is what lets the control plane read the certificate to hand to a fleet gateway.
+    """
 
 
 class Spec(BaseModel):

@@ -80,3 +80,41 @@ spec:
   runtime:
     configRef:
       name: provider-helm-modelplane
+---
+# Stop provider-kubernetes copying Secret data into Object status.
+#
+# It writes an observed object's whole manifest to status.atProvider.manifest,
+# so for an Object whose manifest is a Secret, that Secret's data is readable by
+# anyone who can get objects, which is a wider audience than can get secrets.
+# Modelplane composes Secrets holding caller API keys and serving certificate
+# private keys, so this redacts them.
+#
+# Redaction applies to a copy used only for status. Drift detection still reads
+# the unredacted object, so this doesn't cause an Object to be perpetually out
+# of date.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-kubernetes-modelplane
+spec:
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+          - name: package-runtime
+            args:
+            - --sanitize-secrets
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: ImageConfig
+metadata:
+  name: provider-kubernetes-modelplane
+spec:
+  matchImages:
+  - type: Prefix
+    prefix: xpkg.upbound.io/upbound/provider-kubernetes
+  runtime:
+    configRef:
+      name: provider-kubernetes-modelplane

@@ -316,9 +316,12 @@ def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
     become unavailable. A cluster whose gateway has no hostname can't receive
     routed traffic: an InferenceGateway addresses a cluster by name, because
     Envoy AI Gateway only applies per-backend model rewriting, credentials and
-    priority failover when every backend in a route is a hostname. So a cluster
-    is only schedulable once you've published DNS for its gateway and set
-    spec.gateway.hostname.
+    priority failover when every backend in a route is a hostname.
+
+    The cluster decides when to publish that hostname, and withholds it until
+    traffic to it is mutually authenticated as well as addressable, so this is
+    also what keeps work off a cluster whose gateway isn't serving. See
+    compose-inference-cluster's write_status for the conditions.
     """
     if not cluster.status or not cluster.status.gateway or not cluster.status.gateway.hostname:
         return False
@@ -958,9 +961,10 @@ def _placement_labels(cluster: icv1alpha1.InferenceCluster) -> dict[str, str]:
 def _gateway_hostname(cluster: icv1alpha1.InferenceCluster) -> str:
     """The name the cluster's gateway is addressable by, or empty when unset.
 
-    The cluster echoes it from spec.gateway.hostname once its gateway has an
-    address, so an empty value means either that you haven't published DNS for
-    the gateway or that it has no address yet.
+    The cluster echoes it from spec.gateway.hostname once its gateway is both
+    addressable and mutually authenticated, so an empty value means one of: no
+    DNS published, no address yet, no CA of its own, or no fleet gateway CA for
+    it to demand a client certificate against.
     """
     if not cluster.status or not cluster.status.gateway:
         return ""

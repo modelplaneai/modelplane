@@ -133,6 +133,61 @@ _USAGE_GATEWAY_CLASS_BY_GATEWAY = {
     },
 }
 
+_TRUST_MANAGER = {
+    "apiVersion": "helm.m.crossplane.io/v1beta1",
+    "kind": "Release",
+    "metadata": {"annotations": {"crossplane.io/external-name": "mp-trust-manager"}},
+    "spec": {
+        "forProvider": {
+            "chart": {
+                "name": "trust-manager",
+                "repository": "oci://quay.io/jetstack/charts",
+                "version": "v0.24.0",
+            },
+            "namespace": "modelplane-system",
+            "values": {
+                "crds": {
+                    "enabled": True,
+                    "keep": False,
+                },
+                # It only reads source Secrets from its own namespace, and the
+                # cluster CA is in modelplane-system.
+                "app": {
+                    "trust": {
+                        "namespace": "modelplane-system",
+                    },
+                },
+                "defaultPackage": {
+                    "enabled": False,
+                },
+            },
+        },
+        "providerConfigRef": {
+            "kind": "ProviderConfig",
+            "name": _PC_NAME,
+        },
+    },
+}
+
+# The self-signed Issuer the cluster CA chains from. Composed on every cluster,
+# fleet facing or not, because it is what tells trust-manager that cert-manager
+# is ready for it, and any cluster may host an InferenceGateway.
+_GATEWAY_SELFSIGNED_ISSUER = {
+    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+    "kind": "Object",
+    "spec": {
+        "forProvider": {
+            "manifest": {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Issuer",
+                "metadata": {"name": "modelplane-selfsigned", "namespace": "modelplane-system"},
+                "spec": {"selfSigned": {}},
+            }
+        },
+        "providerConfigRef": {"kind": "ProviderConfig", "name": _PC_NAME},
+    },
+}
+
 _CERT_MANAGER = {
     "apiVersion": "helm.m.crossplane.io/v1beta1",
     "kind": "Release",
@@ -148,7 +203,9 @@ _CERT_MANAGER = {
             "values": {
                 "crds": {
                     "enabled": True,
-                    "keep": False,
+                    # Kept, because Certificates and Issuers composed as Objects
+                    # by other XRs can't be finalized once their CRD has gone.
+                    "keep": True,
                 },
             },
         },
@@ -833,6 +890,7 @@ def _base_request(
     nvidia_driver_root: str = "/home/kubernetes/bin/nvidia",
     name: str = "test-backend",
     stack: Literal["Standard", "Dynamo"] = "Dynamo",
+    gateway: v1alpha1.Gateway | None = None,
 ) -> fnv1.RunFunctionRequest:
     """Build the base RunFunctionRequest used by all test cases.
 
@@ -840,6 +898,9 @@ def _base_request(
     nvidiaDriverRoot override and the critical-pods quota. Defaults the stack to
     Dynamo so the Grove/KAI and ModelExpress fixtures below apply; the Standard
     path has its own test.
+
+    Defaults to no gateway, which is a cluster that hasn't been given a hostname
+    and so composes no PKI. The PKI tests pass one.
     """
     spec = v1alpha1.Spec(
         secrets=[
@@ -849,6 +910,8 @@ def _base_request(
         nvidiaDriverRoot=nvidia_driver_root,
         stack=stack,
     )
+    if gateway is not None:
+        spec.gateway = gateway
     return fnv1.RunFunctionRequest(
         observed=fnv1.State(
             composite=fnv1.Resource(
@@ -864,6 +927,31 @@ def _base_request(
             ),
         ),
     )
+
+
+def _observe_provider_configs(req: fnv1.RunFunctionRequest) -> None:
+    """Mark both ProviderConfigs observed, which is what ungates every resource
+    targeting the remote cluster."""
+    req.observed.resources["provider-config-helm"].CopyFrom(
+        fnv1.Resource(
+            resource=resource.dict_to_struct({"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}),
+        ),
+    )
+    req.observed.resources["provider-config-kubernetes"].CopyFrom(
+        fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
+            ),
+        ),
+    )
+
+
+# A cluster with a hostname and one fleet gateway's CA trusted, which is what
+# makes it compose its PKI and serve HTTPS.
+_GATEWAY_WITH_PKI = v1alpha1.Gateway(
+    hostname="eu.clusters.example.org",
+    clientCAs=[v1alpha1.ClientCA(name="fleet", certificate="-----BEGIN CERTIFICATE-----\nfleet\n")],
+)
 
 
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
@@ -1092,6 +1180,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                     "gateway-namespace": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
+                    ),
+                    "gateway-selfsigned-issuer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_SELFSIGNED_ISSUER),
                     ),
                     "gateway-proxy": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY_PROXY),
@@ -1404,6 +1495,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     "gateway-namespace": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
                     ),
+                    "gateway-selfsigned-issuer": fnv1.Resource(
+                        resource=resource.dict_to_struct(_GATEWAY_SELFSIGNED_ISSUER),
+                    ),
                     "gateway-proxy": fnv1.Resource(
                         resource=resource.dict_to_struct(_GATEWAY_PROXY),
                     ),
@@ -1469,3 +1563,302 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             json_format.MessageToDict(got),
             "-want, +got",
         )
+
+    async def test_no_composed_object_observes_a_secret(self) -> None:
+        """No composed Object reads a Secret, which is what keeps the CA private
+        keys off the control plane.
+
+        provider-kubernetes copies an observed object's whole manifest into the
+        Object's status, so observing a Secret publishes every key in it to
+        anyone who can get objects. cert-manager keeps ca.crt and tls.key in one
+        Secret, so observing the CA's Secret to read the certificate leaks the
+        key that signs for the whole cluster. Running the provider with
+        --sanitize-secrets, as prerequisites.yaml does, doesn't make that safe:
+        the read comes back redacted and mTLS is silently disabled instead.
+        trust-manager exists here to avoid the choice.
+
+        Asserted over everything composed rather than over the PKI, because the
+        cost of reintroducing this anywhere is the same.
+        """
+        req = _base_request(gateway=_GATEWAY_WITH_PKI)
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        observed_secrets = []
+        for key, res in got.desired.resources.items():
+            d = resource.struct_to_dict(res.resource)
+            if d.get("kind") != "Object":
+                continue
+            manifest = d["spec"]["forProvider"]["manifest"]
+            if manifest["kind"] == "Secret" and "Observe" in d["spec"].get("managementPolicies", []):
+                observed_secrets.append(key)
+        self.assertEqual(observed_secrets, [], "these observe a Secret, so its private keys reach the control plane")
+
+    async def test_gateway_pki_publishes_the_ca_without_its_key(self) -> None:
+        """The CA certificate reaches the control plane through a trust-manager
+        Bundle, which copies one named key into a ConfigMap, rather than through
+        the Secret that also holds the private key."""
+        req = _base_request(gateway=_GATEWAY_WITH_PKI)
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        def manifest(key: str) -> dict:
+            return resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+
+        self.assertEqual(
+            manifest("gateway-ca-bundle"),
+            {
+                "apiVersion": "trust.cert-manager.io/v1alpha1",
+                "kind": "Bundle",
+                "metadata": {"name": "modelplane-cluster-ca"},
+                "spec": {
+                    "sources": [{"secret": {"name": "modelplane-cluster-ca", "key": "ca.crt"}}],
+                    "target": {
+                        "configMap": {"key": "ca.crt"},
+                        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "modelplane-system"}},
+                    },
+                },
+            },
+        )
+        # Named after the Bundle, because that's the ConfigMap a Bundle syncs.
+        self.assertEqual(
+            manifest("gateway-ca-configmap"),
+            {
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {"name": "modelplane-cluster-ca", "namespace": "modelplane-system"},
+            },
+        )
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.resources["gateway-ca-configmap"].resource)["spec"][
+                "managementPolicies"
+            ],
+            ["Observe"],
+            "trust-manager owns this ConfigMap; Crossplane must not write it",
+        )
+
+    async def test_ca_certificate_published_from_the_observed_configmap(self) -> None:
+        """status.gateway.caCertificate comes from the ConfigMap trust-manager
+        syncs, as plain text rather than base64."""
+        req = _base_request(gateway=_GATEWAY_WITH_PKI)
+        _observe_provider_configs(req)
+        req.observed.resources["gateway-ca-configmap"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "status": {
+                            "atProvider": {
+                                "manifest": {
+                                    "apiVersion": "v1",
+                                    "kind": "ConfigMap",
+                                    "data": {"ca.crt": "-----BEGIN CERTIFICATE-----\ncluster\n"},
+                                }
+                            }
+                        },
+                    }
+                ),
+            ),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.composite.resource)["status"]["gateway"]["caCertificate"],
+            "-----BEGIN CERTIFICATE-----\ncluster\n",
+        )
+
+    async def test_no_ca_certificate_before_the_bundle_syncs(self) -> None:
+        """With no observed ConfigMap the cluster publishes no CA and no
+        hostname, so nothing composes a backend it couldn't authenticate."""
+        req = _base_request(gateway=_GATEWAY_WITH_PKI)
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertEqual(resource.struct_to_dict(got.desired.composite.resource)["status"], {})
+
+    async def test_client_auth_required_once_a_ca_is_trusted(self) -> None:
+        """The ClientTrafficPolicy is what refuses a request arriving without a
+        client certificate. It governs the https listener alone, and the CAs are
+        concatenated in name order so the ConfigMap doesn't churn."""
+        req = _base_request(
+            gateway=v1alpha1.Gateway(
+                hostname="eu.clusters.example.org",
+                clientCAs=[
+                    v1alpha1.ClientCA(name="second", certificate="-----BEGIN CERTIFICATE-----\ntwo\n"),
+                    v1alpha1.ClientCA(name="first", certificate="-----BEGIN CERTIFICATE-----\none\n"),
+                ],
+            )
+        )
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        def manifest(key: str) -> dict:
+            return resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+
+        self.assertEqual(
+            manifest("gateway-client-ca-bundle")["data"],
+            {"ca.crt": "-----BEGIN CERTIFICATE-----\none\n-----BEGIN CERTIFICATE-----\ntwo\n"},
+        )
+        self.assertEqual(
+            manifest("gateway-client-auth")["spec"],
+            {
+                "targetRefs": [
+                    {
+                        "group": "gateway.networking.k8s.io",
+                        "kind": "Gateway",
+                        "name": "inference-gateway",
+                        "sectionName": "https",
+                    }
+                ],
+                "tls": {
+                    "clientValidation": {
+                        "caCertificateRefs": [
+                            {"kind": "ConfigMap", "group": "", "name": "modelplane-fleet-gateway-cas"}
+                        ]
+                    }
+                },
+            },
+        )
+
+    async def test_no_gateway_at_all_without_a_trusted_ca(self) -> None:
+        """A fleet-facing cluster with no CA to trust serves nothing.
+
+        Every alternative is unsafe. An HTTP listener serves the engines to
+        anything on the internet, because the model-serving HTTPRoutes carry no
+        sectionName and attach to whatever listener exists. An HTTPS listener
+        without its ClientTrafficPolicy accepts every client while looking like
+        it doesn't. So no Gateway is composed, which leaves the routes nothing to
+        attach to and no load balancer to reach.
+
+        The namespace and the EnvoyProxy are still composed: the PKI and
+        trust-manager live in that namespace, so withholding it would stop the CA
+        this is waiting for from ever being issued.
+        """
+        req = _base_request(gateway=v1alpha1.Gateway(hostname="eu.clusters.example.org"))
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertNotIn("gateway", got.desired.resources)
+        self.assertNotIn("gateway-client-auth", got.desired.resources)
+        self.assertIn("gateway-namespace", got.desired.resources)
+        self.assertIn("gateway-proxy", got.desired.resources)
+
+    async def test_http_listener_when_not_fleet_facing(self) -> None:
+        """A cluster with no hostname isn't fleet facing and keeps the plain HTTP
+        listener. It never publishes a hostname, so it is never schedulable and
+        nothing routes to it."""
+        req = _base_request()
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        listeners = resource.struct_to_dict(got.desired.resources["gateway"].resource)["spec"]["forProvider"][
+            "manifest"
+        ]["spec"]["listeners"]
+        self.assertEqual([listener["protocol"] for listener in listeners], ["HTTP"])
+
+    async def test_https_replaces_the_http_listener(self) -> None:
+        """HTTPS replaces HTTP rather than joining it. The serving HTTPRoutes
+        carry no sectionName, so they attach to every listener on the Gateway: an
+        HTTP listener left alongside would serve the engines on the same public
+        load balancer with no certificate asked for."""
+        req = _base_request(gateway=_GATEWAY_WITH_PKI)
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        listeners = resource.struct_to_dict(got.desired.resources["gateway"].resource)["spec"]["forProvider"][
+            "manifest"
+        ]["spec"]["listeners"]
+        self.assertEqual([listener["protocol"] for listener in listeners], ["HTTPS"])
+
+    async def test_trust_manager_waits_for_cert_manager_to_admit_an_issuer(self) -> None:
+        """trust-manager isn't composed until an Issuer we composed exists.
+
+        Its chart contains an Issuer and a Certificate for its own webhook, and
+        Helm applies custom resources last. Installed alongside cert-manager
+        those lose a race with cert-manager's validating webhook, Helm marks the
+        release failed, and provider-helm only rolls a failed release back when
+        spec.rollbackLimit is set, which nothing here sets. The release then
+        stays failed and trust-manager never starts.
+
+        Our own self-signed Issuer is the signal because the same webhook admits
+        the same kind of object, and because it's a provider-kubernetes Object,
+        which retries forever where a failed release is terminal.
+        """
+        req = _base_request(gateway=_GATEWAY_WITH_PKI)
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+        self.assertNotIn("trust-manager", got.desired.resources, "the Issuer reports no readiness yet")
+
+        req.observed.resources["gateway-selfsigned-issuer"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                    }
+                ),
+            ),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+        self.assertIn("trust-manager", got.desired.resources)
+
+    async def test_trust_manager_installs_on_a_cluster_that_serves_nothing(self) -> None:
+        """A cluster with no hostname still gets trust-manager.
+
+        Such a cluster is a gateway host and nothing else, a shape the
+        getting-started docs describe. The InferenceGateway on it composes a
+        Bundle to publish its client CA, which needs trust-manager's CRD and
+        webhook on that same cluster. Withholding it would leave the gateway
+        unable to publish a CA, and since a cluster only becomes schedulable once
+        some gateway has, that would wedge every cluster in the fleet.
+        """
+        req = _base_request()
+        _observe_provider_configs(req)
+        req.observed.resources["gateway-selfsigned-issuer"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "Object",
+                        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                    }
+                ),
+            ),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertIn("trust-manager", got.desired.resources)
+        self.assertIn("gateway-selfsigned-issuer", got.desired.resources)
+        # It composes no CA of its own: it serves no traffic, so it needs no
+        # serving certificate.
+        self.assertNotIn("gateway-ca-certificate", got.desired.resources)
+
+    async def test_trust_manager_survives_cert_manager_going_unready(self) -> None:
+        """Once composed, trust-manager stays composed. Dropping it because
+        cert-manager restarted would uninstall it, taking both Bundles and so
+        both CA ConfigMaps with it, and every gateway would stop trusting every
+        cluster until it came back."""
+        req = _base_request(gateway=_GATEWAY_WITH_PKI)
+        _observe_provider_configs(req)
+        req.observed.resources["trust-manager"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct({"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "Release"}),
+            ),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertIn("trust-manager", got.desired.resources)

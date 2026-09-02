@@ -133,7 +133,7 @@ class Status(BaseModel):
     clientCACertificate: constr(max_length=16384) | None = None
     """
     PEM certificate of the CA that signs this gateway's client certificate. Every InferenceCluster accepts client certificates from it, which is how this gateway proves itself to a cluster gateway and how anything else is refused.
-    One CA per gateway rather than one per Modelplane: no private key has to be distributed, and compromising one cluster doesn't let anyone impersonate a gateway on another.
+    One CA per gateway rather than one per Modelplane, so that no private key has to be distributed: each is generated on the cluster that uses it and only its certificate travels. Note that every cluster gateway trusts every fleet gateway's CA and checks the signing CA rather than the subject, so this bounds where the keys live, not what one of them can reach.
     """
     conditions: list[Condition] | None = None
     """

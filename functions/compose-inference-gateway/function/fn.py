@@ -31,8 +31,6 @@ endpoint wins. This function owns everything gateway-scoped, and nothing
 per-service.
 """
 
-import base64
-
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -103,10 +101,21 @@ _CLIENT_CA_ISSUER = "fleet-gateway-ca"
 _CLIENT_CA_SECRET = "fleet-gateway-ca"
 _CLIENT_CERT_SECRET = "fleet-gateway-client"
 
+# The trust-manager Bundle republishing the client CA's certificate, and so also
+# the ConfigMap it syncs, which is what the control plane reads. See
+# compose_client_pki.
+_CLIENT_CA_BUNDLE = "fleet-gateway-ca"
+
 # A cert-manager Certificate is Ready once it has issued.
 _CERTIFICATE_READY_CEL = (
     "has(object.status) && has(object.status.conditions) && "
     "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+)
+
+# A trust-manager Bundle is Synced once it has written its target ConfigMaps.
+_BUNDLE_SYNCED_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')"
 )
 
 # A Gateway is ready once it has an address to hand out.
@@ -642,33 +651,65 @@ class Composer:
                 },
                 _CERTIFICATE_READY_CEL,
             ),
-            # Observed, not managed: cert-manager owns this Secret, and status
-            # only needs to read the CA certificate back out of it.
+            # Republish the CA certificate on its own, so the control plane can
+            # read it without reading the private key next to it. A cluster
+            # gateway needs this certificate to know a fleet gateway is calling,
+            # and the only route to it is through this gateway's status.
+            #
+            # cert-manager writes ca.crt and tls.key into one Secret. Observing
+            # that Secret would mean provider-kubernetes copying the whole thing
+            # into the Object's status, private key included, where anyone who
+            # can get objects could read it and mint a client certificate every
+            # cluster trusts. A Bundle takes one named key from a Secret and
+            # writes it to a ConfigMap, so the key is read once, in-cluster, by a
+            # controller already entitled to it.
             (
-                "client-ca-secret",
+                "client-ca-bundle",
+                {
+                    "apiVersion": "trust.cert-manager.io/v1alpha1",
+                    "kind": "Bundle",
+                    # Cluster-scoped, and it names the ConfigMap it syncs.
+                    "metadata": {"name": _CLIENT_CA_BUNDLE},
+                    "spec": {
+                        "sources": [{"secret": {"name": _CLIENT_CA_SECRET, "key": "ca.crt"}}],
+                        "target": {
+                            "configMap": {"key": "ca.crt"},
+                            # A target syncs to every namespace by default. Only
+                            # modelplane-system reads it.
+                            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": REMOTE_NAMESPACE}},
+                        },
+                    },
+                },
+                _BUNDLE_SYNCED_CEL,
+            ),
+            # Observed, not managed: trust-manager owns this ConfigMap, and
+            # status only needs to read the CA certificate back out of it.
+            (
+                "client-ca-configmap",
                 {
                     "apiVersion": "v1",
-                    "kind": "Secret",
-                    "metadata": {"name": _CLIENT_CA_SECRET, "namespace": REMOTE_NAMESPACE},
+                    "kind": "ConfigMap",
+                    "metadata": {"name": _CLIENT_CA_BUNDLE, "namespace": REMOTE_NAMESPACE},
                 },
                 None,
             ),
         ]
         for key, manifest, cel in objects:
             obj = _wrap(self.pc, manifest, cel_query=cel)
-            if key == "client-ca-secret":
+            if key == "client-ca-configmap":
                 obj.spec.managementPolicies = ["Observe"]
             resource.update(self.rsp.desired.resources[key], obj)
 
     def observed_client_ca(self) -> str | None:
-        """This gateway's client CA certificate, read off the observed Secret."""
-        obj = self.req.observed.resources.get("client-ca-secret")
+        """This gateway's client CA certificate, read off the ConfigMap
+        trust-manager syncs. A ConfigMap holds it as plain text, so unlike a
+        Secret there is nothing to decode."""
+        obj = self.req.observed.resources.get("client-ca-configmap")
         if obj is None:
             return None
         d = resource.struct_to_dict(obj.resource)
         data = d.get("status", {}).get("atProvider", {}).get("manifest", {}).get("data", {})
-        encoded = data.get("ca.crt")
-        return base64.b64decode(encoded).decode() if encoded else None
+        return data.get("ca.crt") or None
 
     def compose_caller_auth(self) -> None:
         """A SecurityPolicy authenticating callers against the selected Secrets.
@@ -800,6 +841,7 @@ class Composer:
                         },
                     },
                 },
+                cel_query=_POLICY_ACCEPTED_CEL,
             ),
         )
 
@@ -886,6 +928,7 @@ class Composer:
                         "authorization": {"defaultAction": "Allow"},
                     },
                 },
+                cel_query=_POLICY_ACCEPTED_CEL,
             ),
         )
 

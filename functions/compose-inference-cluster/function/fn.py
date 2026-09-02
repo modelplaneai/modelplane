@@ -624,19 +624,26 @@ class Composer:
             ca = self.observed_gateway_ca()
             if ca:
                 status.gateway.caCertificate = ca
-            # The hostname is published only once there is an address for it to
-            # point at and a CA to validate the gateway against.
+            # The hostname is what makes this cluster schedulable, so it is
+            # published only once traffic to it is mutually authenticated in
+            # both directions. That needs three things, and each is load
+            # bearing:
             #
-            # The address, because an InferenceGateway addresses this cluster by
-            # name, so publishing it earlier advertises a name that can't
-            # resolve. The CA, because the hostname is what makes this cluster
-            # schedulable and its endpoints composable: publishing it before the
-            # gateway's certificate exists would have ModelDeployment compose
-            # endpoints that a fleet gateway can't validate, and it would have
-            # nothing to present a client certificate to. Gating both here means
-            # an endpoint never exists before the hop it describes is
-            # mutually authenticated.
-            if ca and self.xr.spec.gateway and self.xr.spec.gateway.hostname:
+            # An address, because an InferenceGateway addresses this cluster by
+            # name, so publishing a name that resolves to nothing strands every
+            # request routed to it.
+            #
+            # This cluster's CA, so a fleet gateway can tell it reached this
+            # cluster rather than whatever else answers on that address.
+            #
+            # At least one fleet gateway CA, because the cluster gateway only
+            # demands a client certificate when it has one to check against, and
+            # a fleet-facing gateway with nothing to trust serves nothing at all
+            # rather than serving in the clear (see the serving stack's
+            # serves_gateway). Publishing the hostname anyway would make the
+            # cluster schedulable when it has no front door, so every request
+            # routed to it would be stranded.
+            if ca and self.gateway_cas and self.xr.spec.gateway and self.xr.spec.gateway.hostname:
                 status.gateway.hostname = self.xr.spec.gateway.hostname
         resource.update_status(self.rsp.desired.composite, status)
 

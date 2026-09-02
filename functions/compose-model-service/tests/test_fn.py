@@ -30,6 +30,15 @@ from models.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from models.ai.modelplane.modelservice import v1alpha1
 
 _NS = "ml-team"
+
+# What a cluster publishes as status.gateway.caCertificate, which a composed
+# endpoint's backend pins so it can tell it reached that cluster's gateway.
+_CLUSTER_CA = "-----BEGIN CERTIFICATE-----\ncluster\n-----END CERTIFICATE-----\n"
+
+# What a gateway publishes as status.clientCACertificate. A cluster gateway
+# accepts client certificates signed by it, which is how this gateway proves
+# itself, so a gateway without one can't reach a composed endpoint at all.
+_CLIENT_CA = "-----BEGIN CERTIFICATE-----\nclient\n-----END CERTIFICATE-----\n"
 _SVC = "assistant"
 _MODEL = f"{_NS}/{_SVC}"
 
@@ -111,7 +120,20 @@ def _endpoint(
     return d
 
 
-def _gateway(name: str, cluster: str, *, selector: dict[str, str] | None = None, address: str | None = None) -> dict:
+def _gateway(
+    name: str,
+    cluster: str,
+    *,
+    selector: dict[str, str] | None = None,
+    address: str | None = None,
+    client_ca: str | None = _CLIENT_CA,
+) -> dict:
+    """An InferenceGateway as this function sees it.
+
+    Publishes a client CA by default, because a gateway whose client PKI hasn't
+    issued yet has no client certificate for a composed endpoint's backend to
+    name. Pass client_ca=None for that window.
+    """
     gw = igv1alpha1.InferenceGateway(
         apiVersion="modelplane.ai/v1alpha1",
         kind="InferenceGateway",
@@ -122,12 +144,24 @@ def _gateway(name: str, cluster: str, *, selector: dict[str, str] | None = None,
         ),
     )
     d = gw.model_dump(exclude_none=True, mode="json", by_alias=True)
+    status: dict = {}
     if address:
-        d["status"] = {"address": address}
+        status["address"] = address
+    if client_ca:
+        status["clientCACertificate"] = client_ca
+    if status:
+        d["status"] = status
     return d
 
 
-def _cluster(name: str, *, provider_config: str | None = None, ca: str | None = None) -> dict:
+def _cluster(name: str, *, provider_config: str | None = None, ca: str | None = _CLUSTER_CA) -> dict:
+    """An InferenceCluster as this function sees it.
+
+    Publishes a gateway CA by default, because a cluster publishes the hostname a
+    composed endpoint's origin is built from only once it has published its CA,
+    so a composed endpoint's cluster always has one. Pass ca=None for the window
+    where a cluster has withdrawn it.
+    """
     c = icv1alpha1.InferenceCluster(
         apiVersion="modelplane.ai/v1alpha1",
         kind="InferenceCluster",
@@ -828,6 +862,87 @@ class TestComposition(unittest.IsolatedAsyncioTestCase):
         got = await self._run(req)
         self.assertEqual(next(iter(got.conditions)).reason, fn.CONDITION_REASON_NO_ENDPOINTS)
         self.assertEqual(len(got.desired.resources), 0)
+
+    async def test_a_composed_endpoint_whose_cluster_withdrew_its_ca_is_dropped(self) -> None:
+        """A composed endpoint's backend pins its cluster's CA and presents a
+        client certificate, which is what lets it through that cluster's gateway.
+
+        The cluster's status is written by another XR on its own loop and is
+        withdrawn when its gateway address goes away, so this function can see a
+        ready composed endpoint whose cluster publishes no CA. Composing the
+        backend anyway would point caCertificateRefs at a ConfigMap nothing
+        composes, and Envoy Gateway fails that route closed, so the endpoint is
+        left out and reported instead.
+        """
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_service([_entry("a"), _entry("b")])))
+            ),
+            required_resources=_required(
+                gateways=[_gateway("eu", "gw-eu")],
+                clusters=[_cluster("gw-eu", provider_config="gw-eu-pc", ca=None)],
+                **{
+                    "endpoints-0": [_endpoint("public", origin="https://a.example.com")],
+                    "endpoints-1": [_endpoint("selfhosted", origin="https://b.example.com", composed=True)],
+                },
+            ),
+        )
+        got = await self._run(req)
+
+        refs = _manifest(got, "route-eu")["spec"]["rules"][0]["backendRefs"]
+        self.assertEqual([r["name"] for r in refs], [names.backend(_NS, _SVC, "public")])
+        self.assertNotIn("cluster-ca-eu-gw-eu", got.desired.resources)
+        self.assertTrue(
+            any("selfhosted" in r.message for r in got.results),
+            "the dropped endpoint is reported rather than silently omitted",
+        )
+
+    async def test_a_composed_endpoint_pins_its_cluster_ca_and_its_client_cert(self) -> None:
+        """The other half: with the CA published, the backend pins it, sets SNI to
+        the cluster's hostname and attaches the client certificate, and the CA is
+        composed as a ConfigMap on the gateway's cluster."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_service([_entry("a")])))),
+            required_resources=_required(
+                gateways=[_gateway("eu", "gw-eu")],
+                clusters=[_cluster("gw-eu", provider_config="gw-eu-pc")],
+                **{"endpoints-0": [_endpoint("selfhosted", origin="https://gw-eu.example.org", composed=True)]},
+            ),
+        )
+        got = await self._run(req)
+
+        self.assertEqual(
+            _manifest(got, "backend-eu-selfhosted")["spec"]["tls"],
+            {
+                "caCertificateRefs": [{"kind": "ConfigMap", "group": "", "name": names.cluster_ca("gw-eu")}],
+                "sni": "gw-eu.example.org",
+                "clientCertificateRef": {"kind": "Secret", "group": "", "name": "fleet-gateway-client"},
+            },
+        )
+        self.assertEqual(_manifest(got, "cluster-ca-eu-gw-eu")["data"], {"ca.crt": _CLUSTER_CA})
+
+    async def test_a_gateway_whose_client_pki_has_not_issued_serves_nothing(self) -> None:
+        """Every composed endpoint's backend names this gateway's client
+        certificate Secret, issued from the same CA it publishes. A cluster
+        becomes schedulable once any gateway has published, so a second gateway
+        can still be waiting on its own PKI, and composing a route for it would
+        name a Secret that doesn't exist on its cluster.
+        """
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_service([_entry("a")])))),
+            required_resources=_required(
+                gateways=[_gateway("eu", "gw-eu"), _gateway("us", "gw-us", client_ca=None)],
+                clusters=[
+                    _cluster("gw-eu", provider_config="gw-eu-pc"),
+                    _cluster("gw-us", provider_config="gw-us-pc"),
+                ],
+                **{"endpoints-0": [_endpoint("selfhosted", origin="https://gw-eu.example.org", composed=True)]},
+            ),
+        )
+        got = await self._run(req)
+
+        self.assertIn("route-eu", got.desired.resources)
+        self.assertNotIn("route-us", got.desired.resources)
 
 
 class TestNames(unittest.TestCase):

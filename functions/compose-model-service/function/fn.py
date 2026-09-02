@@ -334,14 +334,23 @@ class Composer:
                 "No InferenceGateway's serviceSelector matches this service's labels, so no caller can reach it",
             )
             return False
+        if not self.resolve_credentials():
+            return False
+
+        # After resolving, not inside it: an endpoint with no credentialRef needs
+        # no Secret but may still be missing its cluster's CA, and resolving
+        # returns early when nothing has a credential at all.
+        self.drop_unusable_endpoints()
+        # One check, after dropping rather than also before it, because dropping
+        # only ever removes endpoints. A route with no backendRefs is worse than
+        # no route: a caller gets a reply that isn't an error.
         if not any(eps for entries in self.tiers.values() for _, eps in entries):
             self.not_ready(
                 CONDITION_REASON_NO_ENDPOINTS,
                 f"None of the {self.total} selected ModelEndpoints is ready to carry traffic",
             )
             return False
-
-        return self.resolve_credentials()
+        return True
 
     def resolve_gateways(self) -> None:
         """The gateways whose serviceSelector matches this service's labels, and
@@ -362,6 +371,14 @@ class Composer:
                 # The gateway's cluster hasn't published a ProviderConfig yet.
                 # compose-inference-gateway reports that on the gateway; there's
                 # nothing useful this service can add.
+                continue
+            if not (gw.status and gw.status.clientCACertificate):
+                # Its client PKI hasn't issued. Every composed endpoint's backend
+                # names this gateway's client certificate Secret, which is issued
+                # from the same CA and so doesn't exist on its cluster yet, and
+                # Envoy Gateway fails a backend closed when the Secret naming its
+                # certificate is missing. A cluster becomes schedulable once any
+                # gateway has published, so this one can be behind.
                 continue
             candidate = ServingGateway(gw, pc)
             if candidate.serves(labels):
@@ -451,42 +468,60 @@ class Composer:
             if found:
                 self.credentials[endpoint] = found[0]
 
-        self.drop_unusable_credentials()
-        # Dropping can empty the service, and a route with no backendRefs is
-        # worse than no route: a caller gets a reply that isn't an error.
-        if not any(eps for entries in self.tiers.values() for _, eps in entries):
-            self.not_ready(
-                CONDITION_REASON_NO_ENDPOINTS,
-                f"None of the {self.total} selected ModelEndpoints is ready to carry traffic",
-            )
-            return False
         return True
 
-    def drop_unusable_credentials(self) -> None:
-        """Leave out any endpoint whose credential didn't resolve to a usable
-        Secret, rather than composing a backend that would reach a provider with
-        no key.
+    def cluster_ca_ready(self, ep: mev1alpha1.ModelEndpoint) -> bool:
+        """Whether this endpoint's cluster has published the CA the backend has
+        to pin.
 
-        The endpoint's own EndpointReady says the same thing, but it's written by
-        another XR on an independent loop, so between a Secret being deleted and
-        that XR noticing this one sees a ready endpoint and no credential.
-        Dropping only that endpoint keeps the rest of the service serving;
-        raising here would withdraw the route from every gateway.
+        Only composed endpoints pin one. A cluster publishes the hostname their
+        origin is built from only once it has published its CA, so normally both
+        are present, but the two come from another XR's status on an independent
+        loop and a cluster withdraws its status when its gateway address goes
+        away. Composing the backend anyway would reference a ConfigMap nothing
+        composes, and Envoy Gateway fails that route closed.
         """
-        dropped: list[str] = []
+        cluster = _labels(ep.metadata).get(_LABEL_CLUSTER, "")
+        if not cluster:
+            return True
+        return cluster in self.cluster_cas
+
+    def drop_unusable_endpoints(self) -> None:
+        """Leave out any endpoint this can't compose a working backend for,
+        rather than composing one that can't carry a request.
+
+        That means a credential that didn't resolve to a usable Secret, or a
+        cluster that hasn't published the CA the backend pins. An endpoint's own
+        EndpointReady says much the same, but it's written by another XR on an
+        independent loop, so in the window between a Secret or a cluster status
+        going away and that XR noticing, this one sees a ready endpoint and
+        neither. Dropping only that endpoint keeps the rest of the service
+        serving; raising here would withdraw the route from every gateway.
+        """
+        no_credential: list[str] = []
+        no_ca: list[str] = []
         for entries in self.tiers.values():
             for _, eps in entries:
                 for ep in list(eps):
-                    if self.credential_ready(ep):
+                    if not self.credential_ready(ep):
+                        no_credential.append(_name(ep.metadata))
+                    elif not self.cluster_ca_ready(ep):
+                        no_ca.append(_name(ep.metadata))
+                    else:
                         continue
                     eps.remove(ep)
                     self.ready_count -= 1
-                    dropped.append(_name(ep.metadata))
-        if dropped:
+        if no_credential:
             response.warning(
                 self.rsp,
                 "Endpoints left out of the route, their credential Secret missing or missing its key: "
-                + ", ".join(sorted(dropped)),
+                + ", ".join(sorted(no_credential)),
+            )
+        if no_ca:
+            response.warning(
+                self.rsp,
+                "Endpoints left out of the route, their cluster has published no gateway CA: "
+                + ", ".join(sorted(no_ca)),
             )
 
     def compose_routes(self) -> None:
@@ -507,7 +542,7 @@ class Composer:
                 for ep in eps:
                     self.compose_backend(gw, ep)
                     cluster = _labels(ep.metadata).get(_LABEL_CLUSTER, "")
-                    if cluster in self.cluster_cas:
+                    if cluster:
                         clusters.add(cluster)
         for cluster in sorted(clusters):
             self.compose_cluster_ca(gw, cluster)
@@ -562,13 +597,13 @@ class Composer:
             # be meaningless, and pinning our own CA would reject them.
             cluster = _labels(ep.metadata).get(_LABEL_CLUSTER, "")
             if cluster:
-                # A cluster only publishes the hostname a composed endpoint's
-                # origin is built from once it has also published its CA, so a
-                # composed endpoint always has one to validate against. Falling
-                # back to the public trust store here instead would leave the
-                # backend unable to complete a handshake, presenting no client
-                # certificate to a gateway that requires one, while the endpoint
-                # and the route both reported ready.
+                # drop_unusable_endpoints has already left out any composed
+                # endpoint whose cluster hasn't published a CA, so there is one
+                # to pin and a ConfigMap composed to hold it. Falling back to the
+                # public trust store here instead would leave the backend unable
+                # to complete a handshake, presenting no client certificate to a
+                # gateway that requires one, while the endpoint and the route
+                # both reported ready.
                 spec["tls"] = {
                     "caCertificateRefs": [{"kind": "ConfigMap", "group": "", "name": names.cluster_ca(cluster)}],
                     "sni": hostname,

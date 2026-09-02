@@ -329,7 +329,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     # gateway, which refuses a request that arrives without one.
                     "client-ca-certificate",
                     "client-ca-issuer",
-                    "client-ca-secret",
+                    "client-ca-bundle",
+                    "client-ca-configmap",
                     "client-certificate",
                     "client-selfsigned-issuer",
                     "envoy-proxy",
@@ -359,8 +360,23 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 fn.CONTROL_PLANE_NAMESPACE,
                 f"{key} sets its own namespace, which a cluster-scoped XR must",
             )
+            manifest = d["spec"]["forProvider"]["manifest"]
+            if manifest["kind"] == "Bundle":
+                # A Bundle is cluster-scoped, so it has no namespace of its own.
+                # It picks the namespace it syncs its ConfigMap to by selector.
+                self.assertNotIn(
+                    "namespace",
+                    manifest["metadata"],
+                    f"{key} is cluster-scoped, so it sets no namespace",
+                )
+                self.assertEqual(
+                    manifest["spec"]["target"]["namespaceSelector"],
+                    {"matchLabels": {"kubernetes.io/metadata.name": fn.REMOTE_NAMESPACE}},
+                    f"{key} syncs only to the remote namespace",
+                )
+                continue
             self.assertEqual(
-                d["spec"]["forProvider"]["manifest"]["metadata"]["namespace"],
+                manifest["metadata"]["namespace"],
                 fn.REMOTE_NAMESPACE,
                 f"{key} lands in the remote namespace",
             )
@@ -505,9 +521,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             [
                 "caller-auth",
                 "caller-secret-ml-team-keys",
+                "client-ca-bundle",
                 "client-ca-certificate",
+                "client-ca-configmap",
                 "client-ca-issuer",
-                "client-ca-secret",
                 "client-certificate",
                 "client-selfsigned-issuer",
                 "envoy-proxy",
@@ -682,3 +699,166 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         cond = next(iter(got.conditions))
         self.assertEqual(cond.reason, fn.CONDITION_REASON_CLUSTER_TAKEN)
         self.assertIn("zzz", cond.message)
+
+    async def test_no_composed_object_observes_a_secret(self) -> None:
+        """No composed Object reads a Secret, which is what keeps this gateway's
+        client CA private key off the control plane.
+
+        provider-kubernetes copies an observed object's whole manifest into the
+        Object's status, and its --sanitize-secrets flag defaults to false, so
+        observing a Secret publishes every key in it to anyone who can get
+        objects. This CA signs the certificate every cluster gateway in the fleet
+        accepts, so leaking its key means anyone can reach any engine.
+
+        Asserted over everything composed rather than over the PKI, because the
+        cost of reintroducing this anywhere is the same.
+
+        Observing is the case that matters here. The Secrets this function
+        *writes* also end up in status, because provider-kubernetes reports what
+        it observes of what it manages, so this alone doesn't keep their contents
+        off the control plane. Those hold caller keys and serving certificates
+        that came from control-plane Secrets to begin with, so the exposure is a
+        wider audience for data already present rather than data that would
+        otherwise never be there, and prerequisites.yaml runs
+        provider-kubernetes with --sanitize-secrets to redact it. A CA private
+        key is different in kind: it is generated on the workload cluster and
+        observing it is the only way it could ever reach the control plane.
+        """
+        # Auth and TLS both on, so the Secret-copying path is exercised: without
+        # them this function composes no Secret at all and the assertion holds
+        # vacuously.
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        _xr(
+                            hostname="gw.example.org",
+                            tls={"certificateRefs": [{"name": "eu-tls-0"}]},
+                            auth={"secretSelector": {"matchLabels": {"team": "ml"}}},
+                        )
+                    )
+                ),
+            ),
+            required_resources=_required(
+                cluster=[_cluster()],
+                gateways=[_gateway_xr("eu", _CLUSTER)],
+                **{
+                    "caller-secrets": [_secret("ml-team-keys", {"alice": "key"})],
+                    "tls-secret-0": [_secret("eu-tls-0", {"tls.crt": "cert", "tls.key": "key"})],
+                },
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+
+        composed_secrets = []
+        observed_secrets = []
+        for key, res in got.desired.resources.items():
+            d = resource.struct_to_dict(res.resource)
+            manifest = d["spec"]["forProvider"]["manifest"]
+            if manifest["kind"] != "Secret":
+                continue
+            composed_secrets.append(key)
+            if "Observe" in d["spec"].get("managementPolicies", []):
+                observed_secrets.append(key)
+        self.assertEqual(observed_secrets, [], "these observe a Secret, so its private keys reach the control plane")
+        self.assertNotEqual(composed_secrets, [], "no Secret composed, so the assertion above proves nothing")
+
+    async def test_client_pki_publishes_the_ca_without_its_key(self) -> None:
+        """The client CA's certificate reaches the control plane through a
+        trust-manager Bundle, which copies one named key into a ConfigMap, rather
+        than through the Secret that also holds the private key."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_xr()))),
+            required_resources=_required(cluster=[_cluster()], gateways=[_gateway_xr("eu", _CLUSTER)]),
+        )
+        got = await self.runner.RunFunction(req, None)
+
+        def manifest(key: str) -> dict:
+            return resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+
+        self.assertEqual(
+            manifest("client-ca-bundle"),
+            {
+                "apiVersion": "trust.cert-manager.io/v1alpha1",
+                "kind": "Bundle",
+                "metadata": {"name": "fleet-gateway-ca"},
+                "spec": {
+                    "sources": [{"secret": {"name": "fleet-gateway-ca", "key": "ca.crt"}}],
+                    "target": {
+                        "configMap": {"key": "ca.crt"},
+                        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "modelplane-system"}},
+                    },
+                },
+            },
+        )
+        # Named after the Bundle, because that's the ConfigMap a Bundle syncs.
+        self.assertEqual(
+            manifest("client-ca-configmap"),
+            {
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {"name": "fleet-gateway-ca", "namespace": "modelplane-system"},
+            },
+        )
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.resources["client-ca-configmap"].resource)["spec"][
+                "managementPolicies"
+            ],
+            ["Observe"],
+            "trust-manager owns this ConfigMap; Crossplane must not write it",
+        )
+
+    async def test_client_ca_published_from_the_observed_configmap(self) -> None:
+        """status.clientCACertificate comes from the ConfigMap trust-manager
+        syncs, as plain text rather than base64. A cluster only trusts this
+        gateway once it has it, so nothing reaches an engine before it appears.
+        """
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_xr())),
+                resources={
+                    "gateway": _observed_gateway("gw.example.org", ready=True),
+                    "client-ca-configmap": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "status": {
+                                    "atProvider": {
+                                        "manifest": {
+                                            "apiVersion": "v1",
+                                            "kind": "ConfigMap",
+                                            "data": {"ca.crt": "-----BEGIN CERTIFICATE-----\nclient\n"},
+                                        }
+                                    }
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
+            required_resources=_required(cluster=[_cluster()], gateways=[_gateway_xr("eu", _CLUSTER)]),
+        )
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.composite.resource)["status"]["clientCACertificate"],
+            "-----BEGIN CERTIFICATE-----\nclient\n",
+        )
+
+    async def test_no_client_ca_before_the_bundle_syncs(self) -> None:
+        """With no observed ConfigMap the gateway publishes no CA, so no cluster
+        trusts it yet and no cluster publishes a hostname on its account."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(_xr())),
+                resources={"gateway": _observed_gateway("gw.example.org", ready=True)},
+            ),
+            required_resources=_required(cluster=[_cluster()], gateways=[_gateway_xr("eu", _CLUSTER)]),
+        )
+        got = await self.runner.RunFunction(req, None)
+
+        self.assertNotIn(
+            "clientCACertificate",
+            resource.struct_to_dict(got.desired.composite.resource)["status"],
+        )
