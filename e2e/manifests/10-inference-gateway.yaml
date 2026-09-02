@@ -1,21 +1,18 @@
-# Control-plane front door. On kind there's no cloud LoadBalancer, so Traefik's
-# Service gets its external IP from MetalLB. Setting loadBalancer: MetalLB makes
-# the InferenceGateway composition install MetalLB on the control-plane cluster
-# and configure this pool itself (see compose_metallb), so no separate MetalLB
-# install is needed here. The workload cluster runs its own MetalLB, installed
-# by run.sh, for the serving stack's Envoy gateway.
+# The front door. It runs on the workload InferenceCluster, which already runs
+# Envoy Gateway and Envoy AI Gateway for its own cluster gateway, so nothing is
+# installed on the control plane and the two clusters no longer race for the
+# Gateway API CRDs.
+#
+# Co-locating the fleet gateway with the models it serves is a supported shape,
+# and the one this test uses: the workload cluster hosts both gateways, each with
+# its own LoadBalancer address from the MetalLB run.sh installs there.
+#
+# No hostname, TLS or caller keys. That's the getting-started shape: the gateway
+# answers on its address over plain HTTP and authenticates nobody. Caller
+# authentication is exercised separately, since it needs Secrets.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceGateway
 metadata:
-  name: default
+  name: local
 spec:
-  backend: Traefik
-  traefik:
-    version: "40.2.0"
-    loadBalancer: MetalLB
-    metallb:
-      # run.sh rewrites the 172.18 prefix to the actual kind Docker subnet before
-      # applying (kind bumps off 172.18 when earlier networks hold it — see the
-      # subnet detection there). Kept disjoint from the workload cluster's MetalLB
-      # pool (.100-.149) since both clusters share the subnet.
-      addressPool: "172.18.255.200-172.18.255.250"
+  clusterName: local

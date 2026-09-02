@@ -1,5 +1,7 @@
-# Fronts the mock deployment's replicas behind one OpenAI-compatible endpoint on
-# the control-plane gateway. Its status.address is what you curl (see README).
+# One model as a caller sees it. There's no per-service address any more: a
+# caller names this service as the request's model at any InferenceGateway
+# serving it, which is every gateway here since none sets a serviceSelector.
+# status.model is the name to pass (see README).
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:

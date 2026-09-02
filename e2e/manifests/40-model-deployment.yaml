@@ -35,7 +35,13 @@ spec:
                 command: ["python", "-u", "-c"]
                 args:
                 - |
-                  import json, http.server
+                  import json, os, sys, http.server
+                  served = None
+                  for a in sys.argv[1:]:
+                      if a.startswith("--served-model-name="):
+                          served = a.split("=", 1)[1]
+                  if not served:
+                      raise SystemExit("--served-model-name is required")
                   class H(http.server.BaseHTTPRequestHandler):
                       def _s(self, o, c=200):
                           b = json.dumps(o).encode()
@@ -48,31 +54,68 @@ spec:
                           if self.path == "/health":
                               self._s({"status": "ok"})
                           elif self.path.startswith("/v1/models"):
-                              self._s({"object": "list", "data": [{"id": "mock", "object": "model"}]})
+                              self._s({"object": "list", "data": [{"id": served, "object": "model"}]})
                           else:
                               self._s({"error": "not found"}, 404)
+                      def _read_body(self):
+                          # The gateway's ext_proc rewrites the request body, and
+                          # Envoy forwards the result chunked, so content-length
+                          # is often absent. A real engine's HTTP stack handles
+                          # both; BaseHTTPRequestHandler doesn't, and reading
+                          # content-length alone yields an empty body and a
+                          # confusing 404 for a model the gateway did rewrite.
+                          if self.headers.get("transfer-encoding", "").lower() == "chunked":
+                              chunks = []
+                              while True:
+                                  size = int(self.rfile.readline().split(b";")[0] or b"0", 16)
+                                  if size == 0:
+                                      self.rfile.readline()
+                                      break
+                                  chunks.append(self.rfile.read(size))
+                                  self.rfile.readline()
+                              return b"".join(chunks)
+                          return self.rfile.read(int(self.headers.get("content-length") or 0))
                       def do_POST(self):
-                          n = int(self.headers.get("content-length") or 0)
-                          self.rfile.read(n)
+                          raw = self._read_body()
+                          try:
+                              body = json.loads(raw or b"{}")
+                          except Exception:
+                              body = {}
+                          # A real engine only answers to the name it was started
+                          # with. Rejecting anything else is what makes the fleet
+                          # gateway's model rewriting observable: without it the
+                          # caller's own model name would reach here and pass.
+                          if body.get("model") != served:
+                              self._s({"error": {"message": "model %r not found, this engine serves %r"
+                                                            % (body.get("model"), served),
+                                                 "type": "NotFoundError"}}, 404)
+                              return
                           text = "Hello from the Modelplane local mock engine."
                           if self.path.startswith("/v1/messages"):
                               # Anthropic Messages API; vLLM serves it alongside the OpenAI routes.
                               self._s({
                                   "id": "msg-mock", "type": "message", "role": "assistant",
-                                  "model": "mock", "stop_reason": "end_turn",
+                                  "model": served, "stop_reason": "end_turn",
                                   "content": [{"type": "text", "text": text}],
-                                  "usage": {"input_tokens": 1, "output_tokens": 1},
+                                  "usage": {"input_tokens": 12, "output_tokens": 9},
                               })
                           else:
                               self._s({
-                                  "id": "chatcmpl-mock", "object": "chat.completion", "model": "mock",
+                                  "id": "chatcmpl-mock", "object": "chat.completion", "model": served,
                                   "choices": [{"index": 0, "finish_reason": "stop",
                                                "message": {"role": "assistant", "content": text}}],
-                                  "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                                  "usage": {"prompt_tokens": 12, "completion_tokens": 9, "total_tokens": 21},
                               })
                       def log_message(self, *a):
                           pass
                   http.server.HTTPServer(("0.0.0.0", 8000), H).serve_forever()
+                # python -c takes the script as its first argument, so this follows
+                # it and arrives as sys.argv[1]. --served-model-name is how a real
+                # engine is told what to answer to, and referencing the env
+                # Modelplane injects is the pattern every ModelDeployment follows.
+                # The mock rejects a request naming anything else, so a 200
+                # through the gateway proves the model was rewritten.
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 # The ModelDeployment container template is a curated subset
                 # (name/image/command/args/env); the composition wires the port,
                 # readiness, and any GPU resources itself (it assumes port 8000). So

@@ -85,15 +85,15 @@ in
   # Validate the example manifests the docs show against the generated Pydantic
   # models, so an example that drifts from the live API schema fails CI. Covers
   # everything under docs/manifests/, including the API-reference examples under
-  # docs/manifests/reference/. The venv names what the validator imports:
-  # crossplane-models (which brings pydantic) and pyyaml, from the root dev
-  # group. It used to borrow a composition function's venv, which broke as soon
-  # as that function stopped parsing YAML.
+  # docs/manifests/reference/. The venv names exactly what the validator
+  # imports. It used to borrow a composition function's venv for pyyaml and
+  # pydantic, which broke as soon as that function stopped parsing YAML.
   docs-manifests =
     let
       venv = pythonSet.mkVirtualEnv "docs-manifests-validate-env" {
         crossplane-models = [ ];
         pyyaml = [ ];
+        pydantic = [ ];
       };
     in
     pkgs.runCommand "modelplane-docs-manifests" { } ''
