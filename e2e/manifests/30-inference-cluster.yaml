@@ -19,12 +19,6 @@ spec:
   # No gateway hostname: Modelplane derives the cluster gateway's internal name
   # and resolves it itself (compose-inference-gateway composes a Service for it
   # on the fleet gateway's cluster). A platform publishes no DNS per cluster.
-  #
-  # TODO(negz): the e2e harness (run.sh wire_cluster_gateway_dns and the
-  # verify curls against local.clusters.modelplane.test) still assumes the old
-  # published-DNS shape and needs reworking to the derived name. Unverified on
-  # kind, where a headless Service to a MetalLB address may hairpin; the change
-  # was validated on real EKS instead.
   nodePools:
   - name: gpu-synthetic
     className: synthetic-gpu

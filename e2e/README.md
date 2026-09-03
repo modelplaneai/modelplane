@@ -140,14 +140,12 @@ run` flags can't express:
    kubeconfig Secret (`kind get kubeconfig --internal`, reachable from
    control-plane pods over the shared kind network), then apply the
    subnet-templated Modelplane manifests.
-5. Once the cluster gateway has an address, publish DNS for it as a CoreDNS
-   hosts entry on the workload cluster. The fleet gateway addresses a cluster by
-   name, never by address, so something has to stand in for the DNS a platform
-   would publish.
 
 Everything the control plane needs is a declarative manifest; the shell in
 `run.sh` is only the irreducible cross-cluster setup (a second cluster, its
-MetalLB and DRA driver, the cross-cluster kubeconfig, and the stand-in DNS).
+MetalLB and DRA driver, and the cross-cluster kubeconfig). Modelplane derives
+the cluster gateway's name and composes the Service that resolves it, so the
+harness publishes no DNS.
 
 ```
 e2e/

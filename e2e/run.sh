@@ -97,46 +97,6 @@ metadata: { name: kind-l2, namespace: metallb-system }
 spec: { ipAddressPools: [kind-pool] }
 POOL
 
-# Stands in for the DNS a platform publishes for each cluster gateway. The fleet
-# gateway addresses a cluster by name, never by address, because Envoy AI Gateway
-# only applies per-backend model rewriting, credentials and priority failover
-# when every backend in a route is a hostname; given an address it emits an EDS
-# cluster, keeps passing traffic, and silently stops applying them.
-#
-# The name has to resolve where the fleet gateway's Envoy resolves it, which is
-# this cluster, so a CoreDNS hosts entry does it. A Service pointing at the
-# address would not: Envoy resolves the name itself, and a ClusterIP forwarding
-# to an external LoadBalancer address hairpins.
-#
-# The cluster gateway's address isn't known until the serving stack has created
-# it, so this runs after the manifests are applied (see wire_cluster_gateway_dns).
-wire_cluster_gateway_dns() {
-	local name="local.clusters.modelplane.test" addr=""
-	for _ in $(seq 1 60); do
-		addr="$(kubectl --context "$WLCTX" -n modelplane-system get gateway inference-gateway \
-			-o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)"
-		[ -n "$addr" ] && break
-		sleep 10
-	done
-	[ -n "$addr" ] || {
-		echo "the cluster gateway never published an address" >&2
-		return 1
-	}
-	log "Publishing DNS: ${name} -> ${addr}"
-	kubectl --context "$WLCTX" get cm coredns -n kube-system -o jsonpath='{.data.Corefile}' >"$work/Corefile"
-	if ! grep -q "$name" "$work/Corefile"; then
-		awk -v n="$name" -v a="$addr" '
-			/^\.:53 \{/ { print; print "    hosts {"; print "        " a " " n; print "        fallthrough"; print "    }"; next }
-			{ print }
-		' "$work/Corefile" >"$work/Corefile.new"
-		kubectl --context "$WLCTX" create cm coredns -n kube-system \
-			--from-file=Corefile="$work/Corefile.new" --dry-run=client -o yaml |
-			kubectl --context "$WLCTX" apply -f - >/dev/null
-		kubectl --context "$WLCTX" rollout restart deploy/coredns -n kube-system >/dev/null
-		kubectl --context "$WLCTX" rollout status deploy/coredns -n kube-system --timeout=120s
-	fi
-}
-
 # Fake DRA GPUs so a `claim: DRA` engine's ResourceClaim binds on this GPU-less
 # node (vendored dra-example-driver — see dra-example-driver.yaml). Without a DRA
 # driver the ResourceClaim stays Pending and the engine pod never schedules; the
@@ -214,11 +174,9 @@ if [ "$apply_manifests" = 0 ]; then
 fi
 
 # RBAC is in place, so the compositions can reach the workload cluster. Apply the
-# model manifests, then publish DNS for the cluster gateway once it has an
-# address; without the name the fleet gateway has nothing to route to and no
-# ModelEndpoint is composed.
+# model manifests. Modelplane derives the cluster gateway's name and composes the
+# Service that resolves it, so nothing here publishes DNS.
 kubectl --context "$cpctx" apply -f "$rendered/"
-wire_cluster_gateway_dns
 
 if [ "$verify" = 0 ]; then
 	log "Done. Curl the ModelService per the README; clean up with: nix run .#e2e -- --clean"
@@ -387,16 +345,13 @@ log "verify (unknown model): HTTP ${ncode:-none}"
 # HTTP listener creeping back, would leave the engines open to anything that can
 # reach the load balancer.
 #
-# Run from the workload cluster because that is where the gateway's hostname
-# resolves. A plain GET is enough: the handshake fails before any request is
-# sent, so the method and body are irrelevant.
-#
-# The trailing dot matters. A pod's resolv.conf carries ndots:5, and this name
-# has four dots, so without it the resolver tries every search domain and gives
-# up rather than falling back to the name as given. That returns curl 6, which
-# is not the gateway refusing anything, so the checks below reject 6 explicitly:
-# a DNS regression must fail this rather than quietly pass it.
-cluster_gw="https://local.clusters.modelplane.test./v1/models"
+# Run from the workload cluster, where the Service compose-inference-gateway
+# composed resolves the gateway's name. A plain GET is enough: the handshake
+# fails before any request is sent. The trailing dot skips the pod's search
+# domains, which ndots:5 would otherwise try ahead of the name itself. A resolve
+# failure returns curl 6, which the checks below reject rather than pass.
+cluster_gw_name="$(kubectl --context "$cpctx" get inferencecluster local -o jsonpath='{.status.gateway.hostname}')"
+cluster_gw="https://${cluster_gw_name}./v1/models"
 ecode="$(wl_curl_exit e2e-verify-nocert "$cluster_gw")"
 log "verify (cluster gateway, no client certificate): curl exit ${ecode:-none}"
 case "$ecode" in
@@ -419,7 +374,7 @@ esac
 # listener there is. The load balancer publishes a port per listener, so with
 # only an HTTPS listener nothing is listening on 80 and the connection is
 # refused.
-hcode="$(wl_curl_exit e2e-verify-plaintext "http://local.clusters.modelplane.test./v1/models")"
+hcode="$(wl_curl_exit e2e-verify-plaintext "http://${cluster_gw_name}./v1/models")"
 log "verify (cluster gateway, plaintext): curl exit ${hcode:-none}"
 case "$hcode" in
 0)
