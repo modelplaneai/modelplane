@@ -103,6 +103,8 @@
               # Current Upbound CLI; nixpkgs' package lags the stable
               # channel (see nix/upbound.nix).
               (import ./nix/upbound.nix)
+              # NVIDIA AICR CLI; nixpkgs has no package (see nix/aicr.nix).
+              (import ./nix/aicr.nix)
             ];
           };
         };
@@ -194,6 +196,7 @@
             buildInputs = [
               crossplane
               pkgs.upbound
+              pkgs.aicr
               pkgs.kubectl
               pkgs.kubernetes-helm
               pkgs.kind
