@@ -283,7 +283,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="cert-manager",
         chart="cert-manager",
         repository="https://charts.jetstack.io",
-        version="v1.17.1",
+        version="v1.20.2",
         values={"crds": {"enabled": True, "keep": False}},
     )
     out["kube-prometheus-stack"] = _release(
@@ -292,7 +292,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="monitoring",
         chart="kube-prometheus-stack",
         repository="https://prometheus-community.github.io/helm-charts",
-        version="72.6.2",
+        version="84.4.0",
         values={
             "fullnameOverride": "prometheus",
             "prometheus": {
@@ -335,8 +335,8 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         release="mp-node-feature-discovery",
         namespace="node-feature-discovery",
         chart="node-feature-discovery",
-        repository="oci://registry.k8s.io/nfd/charts",
-        version="0.18.3",
+        repository="https://kubernetes-sigs.github.io/node-feature-discovery/charts",
+        version="0.19.0",
         values={
             "worker": {
                 "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
@@ -349,7 +349,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="nvidia-dra-driver",
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
-        version="0.4.0",
+        version="0.4.1",
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},
@@ -846,12 +846,16 @@ _HAND_WRITTEN = frozenset(
     }
 )
 
+# VKE pre-installs NFD via its managed GPU Operator add-on, so the
+# Vultr half carries no node-feature-discovery of its own.
+_VULTR = _HAND_WRITTEN - frozenset({"node-feature-discovery"})
+
 _INVENTORY = {
     "EKS": _EKS,
     "AKS": _AKS,
     "GKE": _GKE,
     "Nebius": _HAND_WRITTEN,
-    "Vultr": _HAND_WRITTEN,
+    "Vultr": _VULTR,
     "Existing": _HAND_WRITTEN,
 }
 

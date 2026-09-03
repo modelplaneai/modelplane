@@ -485,9 +485,9 @@ class Composer:
         """Compose a ServingStack XR with the given secrets.
 
         cloud names the cluster's source (this XR's spec.cluster.source)
-        and selects the component list the serving stack installs -
-        including cloud specifics like where GKE's node image puts the
-        NVIDIA driver, which used to ride here as nvidiaDriverRoot.
+        and selects the component list the serving stack installs,
+        including cloud specifics like where the node image puts the
+        NVIDIA driver.
         """
         spec = ssv1alpha1.Spec(
             secrets=backend_secrets,

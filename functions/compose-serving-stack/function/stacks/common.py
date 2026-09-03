@@ -23,10 +23,10 @@ The GatewayClass and Gateway are deliberately absent: they read
 spec.gateway (className, listeners), which stays per-cluster API, so the
 function renders them itself.
 
-Versions here are Modelplane's pins. Where a component also appears on a
-generated cloud the pin is AICR's there; this file only carries what
-AICR doesn't resolve (see design/serving-stack-generation.md,
-"Component sources").
+Versions here are Modelplane's pins: this file carries what no
+generator resolves - the contract surface a ModelReplica composes
+against, whose versions have nothing to do with the hardware (see
+design/serving-stack-generation.md, "Component sources").
 """
 
 import pathlib
@@ -43,10 +43,9 @@ _AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
 _AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
 _AI_GATEWAY_VERSION = "v0.7.0"
 
-# Must match the namespace the NVIDIA DRA driver installs into on every
-# cloud: AICR's recipes use nvidia-dra-driver, and the hand-written
-# cloud halves align on it so this quota lands where the kubelet plugin
-# runs.
+# Must match the namespace every cloud half installs the NVIDIA DRA
+# driver into - generated and hand-written alike - so this quota lands
+# where the kubelet plugin runs.
 _DRA_DRIVER_NAMESPACE = "nvidia-dra-driver"
 
 _CRDS_DIR = pathlib.Path(__file__).parent / "crds"
@@ -69,9 +68,10 @@ COMPONENTS: list[Component] = [
         chart="gateway-helm",
         repository="oci://docker.io/envoyproxy",
         version="v1.8.1",
-        # cert-manager is AICR's on a generated cloud and Modelplane's on
-        # the rest - the edge crosses the halves and resolves against the
-        # joined list either way. Envoy Gateway needs it for its webhooks.
+        # cert-manager lives in every cloud half - generated or
+        # hand-written - so this edge crosses the halves and resolves
+        # against the joined list. Envoy Gateway needs it for its
+        # webhooks.
         depends_on=["cert-manager"],
         # The extensionManager block points Envoy Gateway at the Envoy AI
         # Gateway controller's ext-proc server and declares InferencePool

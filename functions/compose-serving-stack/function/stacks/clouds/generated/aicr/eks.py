@@ -299,7 +299,6 @@ COMPONENTS: list[Component] = [
                                 },
                             },
                         },
-                        "emptyDir": None,
                     },
                     "tolerations": [
                         {
@@ -600,9 +599,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         ],
         values={
             "controller": {
-                "affinity": {
-                    "nodeAffinity": None,
-                },
+                "affinity": {},
                 "podAnnotations": {
                     "aicr.run/gpu-operator-chart-version": "v26.3.3",
                 },

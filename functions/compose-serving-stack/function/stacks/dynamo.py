@@ -18,12 +18,13 @@ Grove gang-schedules a multi-node engine as a PodCliqueSet, handing the
 gang decision to the KAI Scheduler, and the shared ModelExpress server
 coordinates P2P weight transfer between engine pods.
 
-kai-scheduler is contract surface, not hardware surface: AICR carries it
-in its base for every cluster, but compose-model-replica names it in
-schedulerName and labels pods for the Queues here, its version has
-nothing to do with the GPU, and the clouds AICR doesn't cover need a
-Modelplane pin anyway. So Modelplane pins it beside its Queues, and only
-Dynamo clusters install it (see design/serving-stack-generation.md).
+kai-scheduler lives here, not in the cloud halves, because it is
+contract surface, not hardware surface: compose-model-replica names it
+in schedulerName and labels pods for the Queues here, its version has
+nothing to do with the GPU, and the hand-written clouds need a
+Modelplane pin for it anyway. A generator that carries it in its own
+catalog gets it dropped there, so it installs exactly once and only on
+Dynamo clusters (see design/serving-stack-generation.md).
 """
 
 import pathlib

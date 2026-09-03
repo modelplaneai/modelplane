@@ -12,13 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The cloud half of the stack for Vultr, which AICR doesn't cover.
+"""The cloud half of the stack for Vultr.
 
-Vultr has no AICR `service` value, so Modelplane pins the whole cloud
-half by hand, in the same shape the generator emits. Where a component
-is AICR's on a generated cloud (all four here), this file states the
-same pin Modelplane ships today, so one review moves both halves when a
-version changes.
+No generator covers Vultr, so Modelplane pins the cloud half by hand,
+in the same shape a generator emits. Where a component also appears on
+a generated cloud, this file states the same pin, so one review moves
+both halves.
+
+No node-feature-discovery here: VKE pre-installs a managed GPU
+Operator add-on that runs NFD with tolerate-everything workers, and a
+second instance would race it over the same label namespace. That
+add-on also leaves the driver and toolkit to the node image (so the
+DRA driver's default root holds) and runs a device plugin whose
+nvidia.com/gpu ledger coexists with the DRA ResourceSlices; Modelplane
+replicas claim via DRA only.
 """
 
 from function.stacks.components import Chart, Component
@@ -30,7 +37,7 @@ COMPONENTS: list[Component] = [
         namespace="cert-manager",
         chart="cert-manager",
         repository="https://charts.jetstack.io",
-        version="v1.17.1",
+        version="v1.20.2",
         values={"crds": {"enabled": True, "keep": False}},
     ),
     Chart(
@@ -39,7 +46,7 @@ COMPONENTS: list[Component] = [
         namespace="monitoring",
         chart="kube-prometheus-stack",
         repository="https://prometheus-community.github.io/helm-charts",
-        version="72.6.2",
+        version="84.4.0",
         values={
             "fullnameOverride": "prometheus",
             "prometheus": {
@@ -87,35 +94,6 @@ COMPONENTS: list[Component] = [
             "alertmanager": {"enabled": False},
         },
     ),
-    Chart(
-        key="node-feature-discovery",
-        release="mp-node-feature-discovery",
-        namespace="node-feature-discovery",
-        chart="node-feature-discovery",
-        repository="oci://registry.k8s.io/nfd/charts",
-        version="0.18.3",
-        # The worker must run on the very nodes it is supposed to label:
-        # the DRA driver's kubelet plugin schedules only onto nodes
-        # carrying an NFD GPU label (feature.node.kubernetes.io/pci-10de
-        # and friends). The cluster compositions taint GPU nodes with
-        # nvidia.com/gpu, and the NFD chart's worker tolerates nothing
-        # by default. Without this toleration the chain breaks silently:
-        # no worker on the GPU node, no pci-10de label, no kubelet
-        # plugin, no ResourceSlices, and every GPU ResourceClaim stays
-        # unallocatable with all components looking healthy. Exists
-        # matches every taint value.
-        values={
-            "worker": {
-                "tolerations": [
-                    {
-                        "key": "nvidia.com/gpu",
-                        "operator": "Exists",
-                        "effect": "NoSchedule",
-                    },
-                ],
-            },
-        },
-    ),
     # Publishes each GPU node's devices as DRA ResourceSlices and
     # registers the gpu.nvidia.com DeviceClass ModelReplica
     # ResourceClaims request through. GPU allocation is opt-in;
@@ -125,12 +103,10 @@ COMPONENTS: list[Component] = [
     Chart(
         key="nvidia-dra-driver-gpu",
         release="mp-dra-driver-nvidia-gpu",
-        # AICR's namespace for this chart; the generated clouds and the
-        # critical-pods quota in common.py align on it.
         namespace="nvidia-dra-driver",
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
-        version="0.4.0",
+        version="0.4.1",
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},

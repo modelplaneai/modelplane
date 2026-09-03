@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The cloud half of the stack for Nebius, which AICR doesn't cover.
+"""The cloud half of the stack for Nebius.
 
-Nebius has no AICR `service` value, so Modelplane pins the whole cloud
-half by hand, in the same shape the generator emits. Where a component
-is AICR's on a generated cloud (all four here), this file states the
-same pin Modelplane ships today, so one review moves both halves when a
-version changes.
+No generator covers Nebius, so Modelplane pins the whole cloud half by
+hand, in the same shape a generator emits. Where a component also
+appears on a generated cloud, this file states the same pin, so one
+review moves both halves when a version changes - regenerate, then
+mirror the shared pins here.
 """
 
 from function.stacks.components import Chart, Component
@@ -30,7 +30,7 @@ COMPONENTS: list[Component] = [
         namespace="cert-manager",
         chart="cert-manager",
         repository="https://charts.jetstack.io",
-        version="v1.17.1",
+        version="v1.20.2",
         values={"crds": {"enabled": True, "keep": False}},
     ),
     Chart(
@@ -39,7 +39,7 @@ COMPONENTS: list[Component] = [
         namespace="monitoring",
         chart="kube-prometheus-stack",
         repository="https://prometheus-community.github.io/helm-charts",
-        version="72.6.2",
+        version="84.4.0",
         values={
             "fullnameOverride": "prometheus",
             "prometheus": {
@@ -92,8 +92,8 @@ COMPONENTS: list[Component] = [
         release="mp-node-feature-discovery",
         namespace="node-feature-discovery",
         chart="node-feature-discovery",
-        repository="oci://registry.k8s.io/nfd/charts",
-        version="0.18.3",
+        repository="https://kubernetes-sigs.github.io/node-feature-discovery/charts",
+        version="0.19.0",
         # The worker must run on the very nodes it is supposed to label:
         # the DRA driver's kubelet plugin schedules only onto nodes
         # carrying an NFD GPU label (feature.node.kubernetes.io/pci-10de
@@ -125,12 +125,10 @@ COMPONENTS: list[Component] = [
     Chart(
         key="nvidia-dra-driver-gpu",
         release="mp-dra-driver-nvidia-gpu",
-        # AICR's namespace for this chart; the generated clouds and the
-        # critical-pods quota in common.py align on it.
         namespace="nvidia-dra-driver",
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
-        version="0.4.0",
+        version="0.4.1",
         values={
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},

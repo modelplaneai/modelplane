@@ -15,9 +15,9 @@
 """Hand-written components only the Standard stack installs.
 
 LeaderWorkerSet gang-deploys a multi-node engine; the Dynamo stack
-replaces it with Grove and friends (see dynamo.py). The pin moves to
-AICR's on the covered clouds once NVIDIA/aicr#2500 (an lws component)
-merges and releases.
+replaces it with Grove and friends (see dynamo.py). The pin moves into
+the generated halves on the clouds a generator covers once upstream
+carries an lws component (NVIDIA/aicr#2500 tracks the aicr one).
 """
 
 from function.stacks.components import Chart, Component

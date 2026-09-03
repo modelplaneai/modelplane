@@ -305,7 +305,6 @@ COMPONENTS: list[Component] = [
                                 },
                             },
                         },
-                        "emptyDir": None,
                     },
                     "tolerations": [
                         {
@@ -767,9 +766,7 @@ done
         ],
         values={
             "controller": {
-                "affinity": {
-                    "nodeAffinity": None,
-                },
+                "affinity": {},
                 "podAnnotations": {
                     "aicr.run/gpu-operator-chart-version": "v26.3.3",
                 },

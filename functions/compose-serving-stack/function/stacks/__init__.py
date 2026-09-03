@@ -15,14 +15,10 @@
 """The serving stack component lists, and the join that selects them.
 
 A cloud and a stack name the lists to join: the cloud half from
-clouds/ (generated into clouds/generated/aicr/ where AICR covers the
-cloud, hand-written at the package's top where it doesn't), common.py
-for the components on every stack, and the stack's own file. See
-design/serving-stack-generation.md.
-
-clouds/amd.py is a cloud half for a non-NVIDIA accelerator - one more
-value of the cloud axis. No cluster type maps to it yet, so it's absent
-from the join tables.
+clouds/ (written into clouds/generated/ by a build-time generator
+where one covers the cloud, hand-written at the package's top where
+none does), common.py for the components on every stack, and the
+stack's own file. See design/serving-stack-generation.md.
 """
 
 from function.stacks import common, dynamo, standard

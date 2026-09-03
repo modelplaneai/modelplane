@@ -14,11 +14,13 @@
 
 """The types every serving stack component list is made of.
 
-A stack file - hand-written at the top of the stacks package, or written
-into stacks/generated/ by `nix run .#stacks` - is a COMPONENTS list of
-these entries. The function renders a Chart as a provider-helm Release
-and a Manifests as provider-kubernetes Objects; see
-design/serving-stack-generation.md.
+A stack file - hand-written, or written into clouds/generated/ by a
+build-time generator (`nix run .#stacks`) - is a COMPONENTS list of
+these entries. The list is the intermediate representation: a generator
+is one producer of it, never the format, so a hand-written file and a
+generated one are interchangeable. The function renders a Chart as a
+provider-helm Release and a Manifests as provider-kubernetes Objects;
+see design/serving-stack-generation.md.
 """
 
 from dataclasses import dataclass, field

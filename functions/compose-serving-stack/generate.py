@@ -613,6 +613,35 @@ def set_path(values: Values, path: ValuePath, value: object) -> None:
     node[path[-1]] = value
 
 
+def prune_nulls(values: Values, prefix: tuple[str, ...] = ()) -> list[str]:
+    """Delete null-valued keys from hydrated values, returning their paths.
+
+    A null in a recipe's values is a Helm tombstone: when Helm merges
+    values files it deletes the key from a lower layer, and aicr's
+    bundler preserves nulls expecting that path. The bundler already
+    merged the layers a tombstone aimed at, so by the time values land
+    here a null only leaks into the rendered manifests - harmless where
+    a field is nullable, fatal where a CRD's schema forbids it (the
+    Prometheus CRD rejects storage.emptyDir null). So every null goes,
+    reported as a finding. One consequence: a tombstone aimed at a
+    chart default lets that default come back; if that is ever wrong
+    for a path, pin an explicit value in MODELPLANE_VALUES instead.
+    """
+    pruned = []
+    for key in list(values):
+        val = values[key]
+        if val is None:
+            del values[key]
+            pruned.append(".".join((*prefix, key)))
+        elif isinstance(val, dict):
+            pruned += prune_nulls(val, (*prefix, key))
+        elif isinstance(val, list):
+            for i, item in enumerate(val):
+                if isinstance(item, dict):
+                    pruned += prune_nulls(item, (*prefix, f"{key}[{i}]"))
+    return pruned
+
+
 def version_key(version: str | None) -> tuple[int, ...]:
     return tuple(int(x) for x in re.findall(r"\d+", version or "0"))
 
@@ -724,6 +753,8 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
                 )
             set_path(values, path, value)
             findings.append(f"modelplane value: {name}.{'.'.join(path)} ({why})")
+        for dotted in prune_nulls(values):
+            findings.append(f"pruned null: {name}.{dotted} (a Helm tombstone; see prune_nulls)")
 
         depends = []
         for dep in ref.get("dependencyRefs", []):

@@ -14,8 +14,9 @@
 
 """The cloud halves of the serving stack.
 
-A cloud half comes from one of two places: generated/aicr/ below, where
-AICR has a `service` value for the cloud, or a hand-written file at the
-top of this package where it doesn't. Both have the same shape. amd.py
-is the same axis for an accelerator vendor AICR doesn't cover.
+A cloud half comes from one of two places: generated/ below, where a
+build-time generator covers the cloud (one subdirectory per tool), or
+a hand-written file at the top of this package where none does. Both
+have the same shape, so which clouds are generated can change without
+changing anything else.
 """
