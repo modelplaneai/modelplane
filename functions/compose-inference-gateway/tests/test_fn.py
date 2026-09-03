@@ -40,13 +40,13 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def _xr(**spec) -> dict:  # noqa: ANN003
+def _xr(*, name: str = "eu", **spec) -> dict:  # noqa: ANN003
     """The InferenceGateway XR, built from the generated model so a field the
     XRD doesn't define can't creep into a test."""
     xr = v1alpha1.InferenceGateway(
         apiVersion="modelplane.ai/v1alpha1",
         kind="InferenceGateway",
-        metadata={"name": "eu"},
+        metadata={"name": name},
         spec=v1alpha1.Spec(clusterName=_CLUSTER, **spec),
     )
     return xr.model_dump(exclude_none=True, mode="json", by_alias=True)
@@ -741,6 +741,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "IP clusters get a headless Service + EndpointSlice, the hostname cluster an ExternalName, "
             "and the own cluster with nothing published gets neither",
         )
+
+    async def test_certificate_common_names_fit_the_x509_limit(self) -> None:
+        """A long gateway name must not push a certificate commonName past the
+        64-byte X.509 limit, which cert-manager's webhook rejects. A gateway name
+        is a cluster-scoped resource name, so it can be up to 253 characters."""
+        long_name = "g" + "a" * 62
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_xr(name=long_name)))),
+            required_resources=_required(cluster=[_cluster()], gateways=[_gateway_xr(long_name, _CLUSTER)]),
+        )
+        got = await self.runner.RunFunction(req, None)
+        for key in ("client-ca-certificate", "client-certificate"):
+            manifest = resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+            cn = manifest["spec"]["commonName"]
+            self.assertLessEqual(len(cn.encode()), 64, f"{key} commonName exceeds the 64-byte X.509 limit")
 
     async def test_a_rejected_caller_policy_is_not_ready(self) -> None:
         """A gateway whose caller policy was rejected refuses every request with

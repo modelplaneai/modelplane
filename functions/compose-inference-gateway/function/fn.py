@@ -642,7 +642,11 @@ class Composer:
                     "metadata": {"name": _CLIENT_CA_ISSUER, "namespace": REMOTE_NAMESPACE},
                     "spec": {
                         "isCA": True,
-                        "commonName": f"modelplane fleet gateway CA {gateway}",
+                        # Bounded to the 64-byte X.509 commonName limit; the
+                        # gateway name is a cluster-scoped resource name. The CN
+                        # is cosmetic, since a cluster gateway trusts this CA by
+                        # its certificate rather than its name.
+                        "commonName": f"modelplane fleet gateway CA {gateway}"[:64],
                         "secretName": _CLIENT_CA_SECRET,
                         "duration": "87600h",
                         "renewBefore": "8760h",
@@ -670,7 +674,7 @@ class Composer:
                     "metadata": {"name": _CLIENT_CERT_SECRET, "namespace": REMOTE_NAMESPACE},
                     "spec": {
                         "secretName": _CLIENT_CERT_SECRET,
-                        "commonName": f"fleet-gateway-{gateway}",
+                        "commonName": f"fleet-gateway-{gateway}"[:64],
                         "usages": ["client auth", "digital signature", "key encipherment"],
                         "duration": "2160h",
                         "renewBefore": "720h",
