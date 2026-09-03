@@ -634,8 +634,20 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         cls.runner = fn.FunctionRunner()
 
     async def test_compose(self) -> None:
-        # Second pass: PCs observed, the whole stack renders.
         full = _provider_configs() | _EXISTING_DYNAMO_USAGES | _existing_dynamo_stack()
+
+        # Second pass: PCs observed. depends_on gates first creation, so
+        # only the dependency-free wave renders; each dependent waits for
+        # its dependency's Ready before it is first created.
+        dep_gated = {
+            "envoy-gateway",  # -> cert-manager
+            "ai-gateway",  # -> ai-gateway-crds
+            "gateway-proxy",  # -> gateway-namespace
+            "kai-queue-root",  # -> kai-scheduler
+            "kai-queue",  # -> kai-scheduler
+            "modelexpress-server",  # -> modelexpress-crds
+        }
+        first_wave = {k: v for k, v in full.items() if k not in dep_gated}
 
         # Third pass: every rendered resource observed Ready (the gateway
         # with its address assigned), so everything is marked ready and
@@ -673,12 +685,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 want=_response(_provider_configs() | _EXISTING_DYNAMO_USAGES),
             ),
             Case(
-                name="second pass renders the whole Existing/Dynamo stack",
+                name="second pass renders the dependency-free wave",
                 req=_request("Existing", "Dynamo", observed=_observed_pcs()),
-                want=_response(full),
+                want=_response(first_wave),
             ),
             Case(
-                name="third pass marks observed-ready resources and writes the gateway address",
+                name="all dependencies ready renders the whole stack, marks it ready, and writes the gateway address",
                 req=_request("Existing", "Dynamo", observed=observed_ready),
                 want=_response(all_ready, status={"gateway": {"address": "203.0.113.7"}}),
             ),
@@ -855,11 +867,20 @@ class TestKeyInventory(unittest.IsolatedAsyncioTestCase):
         for cloud, cloud_keys in _INVENTORY.items():
             for stack, stack_keys in (("Standard", _STANDARD), ("Dynamo", _DYNAMO)):
                 with self.subTest(cloud=cloud, stack=stack):
-                    got = await self.runner.RunFunction(_request(cloud, stack, observed=_observed_pcs()), None)
-                    self.assertEqual(
-                        _ALWAYS | _COMMON | cloud_keys | stack_keys,
-                        set(got.desired.resources.keys()),
-                    )
+                    expected = _ALWAYS | _COMMON | cloud_keys | stack_keys
+                    # Observe every expected key Ready so the depends_on
+                    # install gate opens and the full stack renders; a
+                    # key the function doesn't render still fails the
+                    # comparison.
+                    observed = _observed_pcs()
+                    for key in expected:
+                        observed[key] = fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {"status": {"conditions": [{"type": "Ready", "status": "True"}]}}
+                            )
+                        )
+                    got = await self.runner.RunFunction(_request(cloud, stack, observed=observed), None)
+                    self.assertEqual(expected, set(got.desired.resources.keys()))
 
 
 if __name__ == "__main__":

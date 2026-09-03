@@ -23,12 +23,15 @@ ProviderConfigs built from the XR's secrets. The reconcile path holds no
 decisions of its own: every version, values block, and membership
 decision was resolved where a human reviewed a diff.
 
-Teardown ordering derives from the data too. A component's depends_on
-edges become Usage resources holding a dependency until its dependents
-are gone; installs stay concurrent and rely on Helm retrying. The one
-hand-rendered piece is the gateway pair - the GatewayClass and Gateway
-read spec.gateway, which stays per-cluster API - plus the Usages
-sequencing their teardown ahead of the Envoy Gateway release.
+Ordering derives from the data too, in both directions. A component's
+depends_on edges become Usage resources holding a dependency until its
+dependents are gone, and they gate installs: a component is first
+created only once every dependency reports Ready, so bring-up proceeds
+in dependency waves instead of relying on Helm retrying into absent
+prerequisites. The one hand-rendered piece is the gateway pair - the
+GatewayClass and Gateway read spec.gateway, which stays per-cluster
+API - plus the Usages sequencing their teardown ahead of the Envoy
+Gateway release.
 """
 
 import grpc
@@ -320,20 +323,39 @@ class Composer:
         everything is gated on the ProviderConfigs being observed (see
         provider_configs_observed) so first creation doesn't race them.
 
+        depends_on gates first creation too: a component is created
+        only once every doc of every dependency reports Ready, so
+        bring-up proceeds in dependency waves (cert-manager before the
+        GPU Operator, the GPU Operator before the DRA driver). Once a
+        resource exists it always re-composes - the observed check - so
+        a dependency going unready later never deletes dependents. A
+        Release reports Ready when Helm deploys it, not when its
+        workloads run, so this is deploy-order, not health-order.
+
         Returns the composed-resource keys it rendered, for readiness.
         """
         pc_observed = self.provider_configs_observed()
         pc = _pc_name(self.xr)
+        docs = {c.key: stacks.doc_keys(c) for c in components}
+
+        def deps_ready(c: stacks.Component) -> bool:
+            return all(
+                resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True"
+                for dep in c.depends_on
+                for key in docs[dep]
+            )
+
         rendered: list[str] = []
         for c in components:
+            gate = pc_observed and deps_ready(c)
             if isinstance(c, stacks.Chart):
-                if not (pc_observed or c.key in self.req.observed.resources):
+                if not (gate or c.key in self.req.observed.resources):
                     continue
                 resource.update(self.rsp.desired.resources[c.key], _helm_release(c, pc))
                 rendered.append(c.key)
                 continue
             for key, doc in zip(stacks.doc_keys(c), c.manifests, strict=True):
-                if not (pc_observed or key in self.req.observed.resources):
+                if not (gate or key in self.req.observed.resources):
                     continue
                 resource.update(
                     self.rsp.desired.resources[key],
