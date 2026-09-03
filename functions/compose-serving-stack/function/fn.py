@@ -12,27 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Install the serving substrate on a remote cluster.
+"""Install the serving stack on a remote cluster.
 
-This function composes the serving substrate (the cluster-side CRDs,
-controllers, and gateway) that the model-serving backends depend on:
-cert-manager, Envoy Gateway, the Envoy AI Gateway and Gateway API Inference
-Extension (which together route HTTPRoute -> InferencePool backendRefs for
-disaggregated serving), Prometheus, and an inference Gateway. The serving stack
-is selected per cluster by spec.stack: Standard (the default) installs the
-LeaderWorkerSet controller; Dynamo installs NVIDIA Grove with the KAI Scheduler
-and a shared ModelExpress server. Resources are composed as Helm releases and
-provider-kubernetes Objects, all targeting the remote cluster via
-ProviderConfigs.
+The stack is a list of components fixed at build time: the function
+joins the XR's cloud and stack through the stacks package (see
+function/stacks/__init__.py and design/serving-stack-generation.md) and
+renders each entry - a Chart as a provider-helm Release, a Manifests as
+provider-kubernetes Objects - all targeting the remote cluster via
+ProviderConfigs built from the XR's secrets. The reconcile path holds no
+decisions of its own: every version, values block, and membership
+decision was resolved where a human reviewed a diff.
 
-Usage resources protect ProviderConfigs from premature deletion during
-teardown, ensuring Helm releases can uninstall before losing connectivity.
+Teardown ordering derives from the data too. A component's depends_on
+edges become Usage resources holding a dependency until its dependents
+are gone; installs stay concurrent and rely on Helm retrying. The one
+hand-rendered piece is the gateway pair - the GatewayClass and Gateway
+read spec.gateway, which stays per-cluster API - plus the Usages
+sequencing their teardown ahead of the Envoy Gateway release.
 """
 
-import pathlib
-
 import grpc
-import yaml
 from crossplane.function import logging, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
@@ -46,100 +45,31 @@ from models.io.crossplane.m.kubernetes.providerconfig import (
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# Label key for composed resources that need deletion ordering via Usages.
+from function import gateway, stacks
+
+# Label key every rendered Release and Object carries, valued with its
+# composed-resource key, so Usage resourceSelectors can name any
+# component (or one doc of a bundle) mechanically.
 _LABEL_RESOURCE = "modelplane.ai/resource"
 
-# Annotation provider-helm reads as the Helm release name (see _helm_release).
+# Annotation provider-helm reads as the Helm release name. The stack
+# lists carry the release name per Chart entry (mp-<chart>): stable
+# across chart-version upgrades so provider-helm upgrades in place,
+# short enough that chart-derived names stay inside the 63-character
+# label limit, and mp- reserves a namespace so Modelplane can't adopt a
+# same-named release a user already runs. See issue #215 and the
+# design's "Ordering and identity".
 _EXTERNAL_NAME_ANNOTATION = "crossplane.io/external-name"
-
-# Reserved prefix for the Helm release names this function manages. Names every
-# release "mp-<chart>" so it's clearly modelplane-owned and can't adopt or
-# collide with a same-named release a user already runs in the same namespace
-# (e.g. a cluster's own "cert-manager"). See _helm_release.
-_RELEASE_NAME_PREFIX = "mp-"
-
-# CEL readiness query for the Envoy Gateway Object. The Gateway's LoadBalancer
-# address is assigned asynchronously by the controller after the Object is
-# applied. With the default SuccessfulCreate policy the Object is Ready the
-# instant it's created, so provider-kubernetes' poll-interval hook re-observes
-# it only on the slow (10m) drift poll - leaving status.atProvider.manifest
-# frozen at a pre-address snapshot, and the downstream scheduler with no gateway
-# address, for up to ~10m. Gating readiness on status.addresses keeps the Object
-# un-Ready until the address is observed, which drops the poll to ~30s so the
-# address propagates promptly. `object` is the observed Gateway manifest; the
-# has() guard keeps the query false (not erroring) before the controller first
-# writes status.addresses.
-_GATEWAY_READY_CEL = "has(object.status.addresses) && object.status.addresses.size() > 0"
 
 # Secret type that names the kubeconfig entry in the XR's secrets. Every other
 # entry's type is a provider identity type, which both ProviderConfigs stamp
 # verbatim as their identity.type.
 _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
 
-# Prometheus constants.
-_PROMETHEUS_NAMESPACE = "monitoring"
-_PROMETHEUS_FULLNAME_OVERRIDE = "prometheus"
-_PROMETHEUS_URL = f"http://{_PROMETHEUS_FULLNAME_OVERRIDE}-prometheus.{_PROMETHEUS_NAMESPACE}.svc.cluster.local:9090"
-_PROMETHEUS_CHART = "kube-prometheus-stack"
-_PROMETHEUS_REPO = "https://prometheus-community.github.io/helm-charts"
-
-_DRA_DRIVER_NAMESPACE = "dra-driver-nvidia-gpu"
-# Upstream default for the DRA driver's NVIDIA_DRIVER_ROOT. A ServingStack whose
-# nvidiaDriverRoot differs from this is on a platform (GKE) that relocates the
-# driver and restricts system-critical pods, which needs both DRA accommodations.
-_DEFAULT_NVIDIA_DRIVER_ROOT = "/"
-
-# Envoy AI Gateway constants. The AI Gateway controller supplies the ext-proc
-# extension server that Envoy Gateway delegates InferencePool backend resolution
-# to, so HTTPRoute -> InferencePool backendRefs (disaggregated serving) route.
-_AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
-_AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
-_AI_GATEWAY_VERSION = "v0.7.0"
-_AI_GATEWAY_CONTROLLER_FQDN = f"ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local"
-_AI_GATEWAY_CONTROLLER_PORT = 1063
-
-
-# Gateway API Inference Extension (GAIE) CRDs, providing the InferencePool that
-# disaggregated replicas front their decode endpoints with. Vendored from the
-# upstream release's manifests.yaml.
-_HERE = pathlib.Path(__file__).parent
-_GAIE_CRDS = [
-    doc
-    for doc in yaml.safe_load_all((_HERE / "gaie_crds.yaml").read_text())
-    if doc and doc.get("kind") == "CustomResourceDefinition"
-]
-
-# ModelExpress CRDs (ModelMetadata, ModelCacheEntry), the metadata backend the
-# shared ModelExpress server uses. Installed with the rest of the ModelExpress
-# bundle only when stack is Dynamo (see compose_modelexpress).
-_MODELEXPRESS_CRDS = [
-    doc
-    for doc in yaml.safe_load_all((_HERE / "modelexpress_crds.yaml").read_text())
-    if doc and doc.get("kind") == "CustomResourceDefinition"
-]
-
-# The shared ModelExpress server, one per Dynamo cluster. The name and the
-# `default` namespace are a cross-function contract: compose-model-replica
-# points engine pods at this Service by name and runs them in that namespace.
-# Both functions hard-code the strings, so they change together.
-_MODELEXPRESS_NAMESPACE = "default"
-# Server Deployment, its ServiceAccount/Role/RoleBinding, and its Service all
-# take this name; engine clients reach it at modelexpress-server:8001.
-_MODELEXPRESS_SERVER_NAME = "modelexpress-server"
-# Registry/repo of the ModelExpress server image; the tag is a ServingStack
-# knob (spec.dynamo.modelExpress), so only the version moves without an image
-# override.
-_MODELEXPRESS_SERVER_REPO = "nvcr.io/nvidia/ai-dynamo/modelexpress-server"
-_MODELEXPRESS_MOUNT = "/mnt/models"
-_MODELEXPRESS_PORT = 8001
-# Selector label for the server Deployment's pods and its Service.
-_MODELEXPRESS_SELECTOR = "modelplane.ai/modelexpress"
-
-# CEL readiness for the server Deployment, which publishes Available, not Ready,
-# matching the policy the rest of the pipeline derives workload readiness from.
-_MODELEXPRESS_SERVER_READY_CEL = (
-    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
-)
+# The (apiVersion, kind) a component's composed resources render as,
+# used by the derived Usages' of/by references.
+_RELEASE_REF = ("helm.m.crossplane.io/v1beta1", "Release")
+_OBJECT_REF = ("kubernetes.m.crossplane.io/v1alpha1", "Object")
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
@@ -156,48 +86,13 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     return meta.namespace
 
 
-def _gaie_crd_key(doc: dict) -> str:
-    """Stable composed-resource key for a GAIE CRD."""
-    return f"gaie-crd-{doc['metadata']['name']}"
-
-
-def _modelexpress_crd_key(doc: dict) -> str:
-    """Stable composed-resource key for a ModelExpress CRD."""
-    return f"modelexpress-crd-{doc['metadata']['name']}"
-
-
-def _helm_release(
-    chart: str,
-    repo: str,
-    version: str,
-    namespace: str,
-    provider_config: str,
-    values: dict | None = None,
-    labels: dict | None = None,
-    metadata_namespace: str | None = None,
-) -> helmv1beta1.Release:
-    """Build a Helm Release targeting a remote (or local) cluster.
-
-    The crossplane.io/external-name annotation sets a fixed "mp-<chart>" release
-    name, which provider-helm uses verbatim. Left unset, the release inherits the
-    composed resource's generated "<inferencecluster>-<hash>" name; charts derive
-    resource names from it and append suffixes, so names can exceed the 63-char
-    label-value limit and break consumers like Cilium's per-pod CiliumIdentity.
-    "mp-<chart>" keeps every derived name short regardless of InferenceCluster
-    name (worst case is the DRA driver's ServiceAccount at 54 chars), is stable
-    across chart-version upgrades so provider-helm upgrades in place, and its
-    "mp-" prefix reserves a namespace for the releases this function owns. Each
-    chart runs once per workload cluster, so the name is unique. See issue #215."""
-    md = metav1.ObjectMeta(
-        annotations={_EXTERNAL_NAME_ANNOTATION: f"{_RELEASE_NAME_PREFIX}{chart}"},
-        # Only set fields that are present; under exclude_unset, an explicit
-        # namespace=None or labels=None would leak a null into the metadata.
-        **({"namespace": metadata_namespace} if metadata_namespace is not None else {}),
-        **({"labels": labels} if labels is not None else {}),
-    )
-
+def _helm_release(chart: stacks.Chart, provider_config: str) -> helmv1beta1.Release:
+    """Build a Helm Release for a Chart entry, targeting the remote cluster."""
     release = helmv1beta1.Release(
-        metadata=md,
+        metadata=metav1.ObjectMeta(
+            annotations={_EXTERNAL_NAME_ANNOTATION: chart.release},
+            labels={_LABEL_RESOURCE: chart.key},
+        ),
         spec=helmv1beta1.Spec(
             providerConfigRef=helmv1beta1.ProviderConfigRef(
                 kind="ProviderConfig",
@@ -205,16 +100,16 @@ def _helm_release(
             ),
             forProvider=helmv1beta1.ForProvider(
                 chart=helmv1beta1.Chart(
-                    name=chart,
-                    repository=repo,
-                    version=version,
+                    name=chart.chart,
+                    repository=chart.repository,
+                    version=chart.version,
                 ),
-                namespace=namespace,
+                namespace=chart.namespace,
             ),
         ),
     )
-    if values:
-        release.spec.forProvider.values = values
+    if chart.values:
+        release.spec.forProvider.values = chart.values
     return release
 
 
@@ -222,7 +117,6 @@ def _k8s_object(
     provider_config: str,
     manifest: dict,
     metadata: metav1.ObjectMeta | None = None,
-    management_policies: list | None = None,
     *,
     cel_query: str | None = None,
 ) -> k8sobjv1alpha1.Object:
@@ -232,7 +126,7 @@ def _k8s_object(
     which suits resources with no meaningful runtime readiness. Pass cel_query
     for an Object whose readiness must reflect a controller-populated field of
     the observed manifest - it selects the DeriveFromCelQuery policy with that
-    query (see _GATEWAY_READY_CEL), which also keeps provider-kubernetes
+    query (see gateway.READY_CEL), which also keeps provider-kubernetes
     re-observing on its fast poll until the query passes.
     """
     obj = k8sobjv1alpha1.Object(
@@ -250,8 +144,6 @@ def _k8s_object(
             ),
         ),
     )
-    if management_policies:
-        obj.spec.managementPolicies = management_policies
     if cel_query is not None:
         obj.spec.readiness = k8sobjv1alpha1.Readiness(
             policy="DeriveFromCelQuery",
@@ -260,61 +152,33 @@ def _k8s_object(
     return obj
 
 
-def _prometheus_release(version: str, provider_config: str) -> helmv1beta1.Release:
-    """Build a kube-prometheus-stack Helm release for a backend cluster."""
-    return _helm_release(
-        chart=_PROMETHEUS_CHART,
-        repo=_PROMETHEUS_REPO,
-        version=version,
-        namespace=_PROMETHEUS_NAMESPACE,
-        provider_config=provider_config,
-        values={
-            "fullnameOverride": _PROMETHEUS_FULLNAME_OVERRIDE,
-            "prometheus": {
-                "prometheusSpec": {
-                    # Discover PodMonitors across all namespaces.
-                    "podMonitorSelectorNilUsesHelmValues": False,
-                    "podMonitorNamespaceSelector": {},
-                    # Scrape Envoy Gateway proxy pods for upstream request
-                    # metrics (envoy_cluster_upstream_rq_active). Envoy
-                    # Gateway is used for ingress, and this metric measures
-                    # in-flight requests at the proxy level.
-                    "additionalScrapeConfigs": [
-                        {
-                            "job_name": "envoy-gateway-proxy",
-                            "kubernetes_sd_configs": [
-                                {
-                                    "role": "pod",
-                                    "namespaces": {
-                                        "names": ["envoy-gateway-system"],
-                                    },
-                                },
-                            ],
-                            "relabel_configs": [
-                                {
-                                    "source_labels": [
-                                        "__meta_kubernetes_pod_label_app_kubernetes_io_component",
-                                    ],
-                                    "action": "keep",
-                                    "regex": "proxy",
-                                },
-                                {
-                                    "source_labels": ["__address__"],
-                                    "action": "replace",
-                                    "regex": "([^:]+)(?::\\d+)?",
-                                    "replacement": "$1:19001",
-                                    "target_label": "__address__",
-                                },
-                            ],
-                            "metrics_path": "/stats/prometheus",
-                        },
-                    ],
-                },
-            },
-            # Disable components we don't need for observability.
-            "grafana": {"enabled": False},
-            "alertmanager": {"enabled": False},
-        },
+def _usage(
+    of_ref: tuple[str, str],
+    of_key: str,
+    by_ref: tuple[str, str],
+    by_key: str,
+) -> usagev1beta1.Usage:
+    """Build a Usage holding `of` (a dependency) until `by` is gone."""
+    return usagev1beta1.Usage(
+        spec=usagev1beta1.Spec(
+            of=usagev1beta1.Of(
+                apiVersion=of_ref[0],
+                kind=of_ref[1],
+                resourceSelector=usagev1beta1.ResourceSelectorModel(
+                    matchControllerRef=True,
+                    matchLabels={_LABEL_RESOURCE: of_key},
+                ),
+            ),
+            by=usagev1beta1.By(
+                apiVersion=by_ref[0],
+                kind=by_ref[1],
+                resourceSelector=usagev1beta1.ResourceSelector(
+                    matchControllerRef=True,
+                    matchLabels={_LABEL_RESOURCE: by_key},
+                ),
+            ),
+            replayDeletion=True,
+        ),
     )
 
 
@@ -351,30 +215,22 @@ class Composer:
 
     def compose(self) -> None:
         self.compose_provider_configs()
-        self.compose_usages()
-        self.compose_cert_manager()
-        self.compose_envoy_gateway()
-        self.compose_ai_gateway()
-        self.compose_gaie_crds()
-        self.compose_prometheus()
-        # The cluster's stack selects which gang scheduler and weight-
-        # distribution components this installs. Dynamo: Grove + KAI for
-        # gang scheduling, plus the shared ModelExpress server (and its CRDs).
-        # Standard: LeaderWorkerSet, and none of the ModelExpress resources.
-        if self.xr.spec.stack == "Dynamo":
-            self.compose_grove()
-            self.compose_kai_scheduler()
-            self.compose_kai_queues()
-            self.compose_kai_usages()
-            self.compose_modelexpress_crds()
-            self.compose_modelexpress()
-        else:
-            self.compose_leader_worker_set()
-        self.compose_node_feature_discovery()
-        self.compose_dra_driver()
-        self.compose_gateway()
+
+        # The XRD requires and enums both fields, so the join can only
+        # fail if the API and the stacks package disagree on a value -
+        # a build defect worth a fatal result rather than a crash.
+        try:
+            components = stacks.components(self.xr.spec.cloud, self.xr.spec.stack or "Standard")
+        except ValueError as err:
+            response.fatal(self.rsp, str(err))
+            return
+
+        rendered = self.compose_components(components)
+        rendered += self.compose_gateway()
+        self.compose_component_usages(components)
+        self.compose_gateway_usages()
         self.write_status()
-        self.mark_readiness()
+        self.mark_readiness(rendered)
 
     def compose_provider_configs(self) -> None:
         """Build ProviderConfigs from the XR's secrets.
@@ -454,799 +310,120 @@ class Composer:
             ),
         )
 
-    def compose_usages(self) -> None:
-        """Compose Usages ordering the Envoy Gateway teardown.
+    def compose_components(self, components: list[stacks.Component]) -> list[str]:
+        """Render every component of the joined stack.
 
-        The Envoy Gateway controller must outlive the Gateway and GatewayClass
-        resources it manages: they carry finalizers it has to process on delete.
-        The chain is Gateway Object → GatewayClass Object → envoy-gateway
-        Release.
+        A Chart renders as one provider-helm Release under the entry's
+        key; a Manifests entry as one provider-kubernetes Object per
+        doc, keyed by stacks.doc_keys. Everything carries the
+        _LABEL_RESOURCE label the derived Usages select on, and
+        everything is gated on the ProviderConfigs being observed (see
+        provider_configs_observed) so first creation doesn't race them.
 
-        ProviderConfig protection (every Release and Object must outlive the
-        ProviderConfig it references) is handled generically by the
-        compose-usages pipeline function, which runs after this one.
-        """
-        # GatewayClass Object protected by Gateway Object. The GatewayClass
-        # has a gateway-exists-finalizer that the EG controller won't remove
-        # while Gateways reference it.
-        resource.update(
-            self.rsp.desired.resources["usage-gateway-class-by-gateway"],
-            usagev1beta1.Usage(
-                spec=usagev1beta1.Spec(
-                    of=usagev1beta1.Of(
-                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
-                        kind="Object",
-                        resourceSelector=usagev1beta1.ResourceSelectorModel(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "gateway-class"},
-                        ),
-                    ),
-                    by=usagev1beta1.By(
-                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
-                        kind="Object",
-                        resourceSelector=usagev1beta1.ResourceSelector(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "gateway"},
-                        ),
-                    ),
-                    replayDeletion=True,
-                ),
-            ),
-        )
-        self.rsp.desired.resources["usage-gateway-class-by-gateway"].ready = fnv1.READY_TRUE
-
-        # Envoy Gateway Release protected by GatewayClass Object. The EG
-        # controller must be running to process the GatewayClass's
-        # gateway-exists-finalizer during deletion.
-        resource.update(
-            self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"],
-            usagev1beta1.Usage(
-                spec=usagev1beta1.Spec(
-                    of=usagev1beta1.Of(
-                        apiVersion="helm.m.crossplane.io/v1beta1",
-                        kind="Release",
-                        resourceSelector=usagev1beta1.ResourceSelectorModel(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "envoy-gateway"},
-                        ),
-                    ),
-                    by=usagev1beta1.By(
-                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
-                        kind="Object",
-                        resourceSelector=usagev1beta1.ResourceSelector(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "gateway-class"},
-                        ),
-                    ),
-                    replayDeletion=True,
-                ),
-            ),
-        )
-        self.rsp.desired.resources["usage-envoy-gw-by-gateway-class"].ready = fnv1.READY_TRUE
-
-    def compose_cert_manager(self) -> None:
-        """Compose cert-manager. Gated on ProviderConfigs being observed."""
-        pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "cert-manager" in self.req.observed.resources):
-            return
-
-        v = self.xr.spec.versions or v1alpha1.Versions()
-        resource.update(
-            self.rsp.desired.resources["cert-manager"],
-            _helm_release(
-                chart="cert-manager",
-                repo="https://charts.jetstack.io",
-                version=v.certManager,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-                namespace="cert-manager",
-                provider_config=_pc_name(self.xr),
-                values={"crds": {"enabled": True, "keep": False}},
-            ),
-        )
-
-    def compose_envoy_gateway(self) -> None:
-        """Compose Envoy Gateway. Gated on ProviderConfigs being observed.
-
-        The extensionManager block points Envoy Gateway at the Envoy AI Gateway
-        controller's ext-proc server and declares InferencePool a backend
-        resource, so HTTPRoute -> InferencePool backendRefs (disaggregated
-        serving) resolve. enableBackend turns on the Backend API the AI Gateway
-        relies on.
+        Returns the composed-resource keys it rendered, for readiness.
         """
         pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "envoy-gateway" in self.req.observed.resources):
-            return
+        pc = _pc_name(self.xr)
+        rendered: list[str] = []
+        for c in components:
+            if isinstance(c, stacks.Chart):
+                if not (pc_observed or c.key in self.req.observed.resources):
+                    continue
+                resource.update(self.rsp.desired.resources[c.key], _helm_release(c, pc))
+                rendered.append(c.key)
+                continue
+            for key, doc in zip(stacks.doc_keys(c), c.manifests, strict=True):
+                if not (pc_observed or key in self.req.observed.resources):
+                    continue
+                resource.update(
+                    self.rsp.desired.resources[key],
+                    _k8s_object(
+                        pc,
+                        doc,
+                        metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: key}),
+                        cel_query=c.ready,
+                    ),
+                )
+                rendered.append(key)
+        return rendered
 
-        v = self.xr.spec.versions or v1alpha1.Versions()
-        resource.update(
-            self.rsp.desired.resources["envoy-gateway"],
-            _helm_release(
-                chart="gateway-helm",
-                repo="oci://docker.io/envoyproxy",
-                version=v.envoyGateway,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-                namespace="envoy-gateway-system",
-                provider_config=_pc_name(self.xr),
-                labels={_LABEL_RESOURCE: "envoy-gateway"},
-                values={
-                    "config": {
-                        "envoyGateway": {
-                            "extensionApis": {"enableBackend": True},
-                            "extensionManager": {
-                                "hooks": {
-                                    "xdsTranslator": {
-                                        "translation": {
-                                            "listener": {"includeAll": True},
-                                            "route": {"includeAll": True},
-                                            "cluster": {"includeAll": True},
-                                            "secret": {"includeAll": True},
-                                        },
-                                        "post": ["Translation", "Cluster", "Route"],
-                                    },
-                                },
-                                "service": {
-                                    "fqdn": {
-                                        "hostname": _AI_GATEWAY_CONTROLLER_FQDN,
-                                        "port": _AI_GATEWAY_CONTROLLER_PORT,
-                                    },
-                                },
-                                "backendResources": [
-                                    {
-                                        "group": "inference.networking.k8s.io",
-                                        "kind": "InferencePool",
-                                        "version": "v1",
-                                    },
-                                ],
-                            },
-                        },
-                    },
-                },
-            ),
-        )
+    def compose_component_usages(self, components: list[stacks.Component]) -> None:
+        """Derive teardown-ordering Usages from the components' edges.
 
-    def compose_ai_gateway(self) -> None:
-        """Compose the Envoy AI Gateway CRDs and controller. Gated on the same
-        ProviderConfigs as Envoy Gateway.
+        Crossplane applies composed resources concurrently, so without a
+        Usage nothing sequences deletion. Each depends_on edge becomes
+        one Usage per (dependency doc, dependent doc) pair, holding the
+        dependency until the dependent is gone: the kai-scheduler
+        release outlives the Queue CRs whose CRD it owns, cert-manager
+        outlives the Envoy Gateway release whose webhooks need it, and
+        so on. Usages reference nothing on the remote cluster, so they
+        compose ungated and are ready on arrival.
+        """
+        refs: dict[str, tuple[str, str]] = {}
+        docs: dict[str, list[str]] = {}
+        for c in components:
+            keys = stacks.doc_keys(c)
+            docs[c.key] = keys
+            for key in keys:
+                refs[key] = _RELEASE_REF if isinstance(c, stacks.Chart) else _OBJECT_REF
 
-        The controller runs the ext-proc extension server that Envoy Gateway's
-        extensionManager delegates InferencePool backend resolution to.
+        for c in components:
+            for dep in c.depends_on:
+                for of_key in docs[dep]:
+                    for by_key in docs[c.key]:
+                        key = f"usage-{of_key}-by-{by_key}"
+                        resource.update(
+                            self.rsp.desired.resources[key],
+                            _usage(refs[of_key], of_key, refs[by_key], by_key),
+                        )
+                        self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
+
+    def compose_gateway(self) -> list[str]:
+        """Compose the GatewayClass and Gateway on the remote cluster.
+
+        The one hand-rendered pair, from function/gateway.py: both read
+        spec.gateway, which stays per-cluster API rather than stack
+        data. Gated on ProviderConfigs like every component.
+
+        Returns the composed-resource keys it rendered, for readiness.
         """
         pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "ai-gateway-crds" in self.req.observed.resources):
-            return
-
-        resource.update(
-            self.rsp.desired.resources["ai-gateway-crds"],
-            _helm_release(
-                chart="ai-gateway-crds-helm",
-                repo=_AI_GATEWAY_REPO,
-                version=_AI_GATEWAY_VERSION,
-                namespace=_AI_GATEWAY_NAMESPACE,
-                provider_config=_pc_name(self.xr),
-            ),
-        )
-        resource.update(
-            self.rsp.desired.resources["ai-gateway"],
-            _helm_release(
-                chart="ai-gateway-helm",
-                repo=_AI_GATEWAY_REPO,
-                version=_AI_GATEWAY_VERSION,
-                namespace=_AI_GATEWAY_NAMESPACE,
-                provider_config=_pc_name(self.xr),
-            ),
-        )
-
-    def compose_gaie_crds(self) -> None:
-        """Compose the Gateway API Inference Extension (GAIE) CRDs as
-        provider-kubernetes Objects on the remote cluster. Gated on the same
-        ProviderConfigs as Envoy Gateway.
-        """
-        pc_observed = self.provider_configs_observed()
-        for doc in _GAIE_CRDS:
-            key = _gaie_crd_key(doc)
+        pc = _pc_name(self.xr)
+        rendered: list[str] = []
+        for key, manifest, cel in gateway.objects(self.xr.spec.gateway):
             if not (pc_observed or key in self.req.observed.resources):
                 continue
             resource.update(
                 self.rsp.desired.resources[key],
-                _k8s_object(_pc_name(self.xr), doc),
+                _k8s_object(
+                    pc,
+                    manifest,
+                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: key}),
+                    cel_query=cel,
+                ),
             )
-            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
-                self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
+            rendered.append(key)
+        return rendered
 
-    def compose_modelexpress_crds(self) -> None:
-        """Compose the ModelExpress CRDs (ModelMetadata, ModelCacheEntry) as
-        provider-kubernetes Objects on the remote cluster. Gated on the same
-        ProviderConfigs as Envoy Gateway. Installed only when stack is Dynamo,
-        alongside the rest of the ModelExpress bundle.
+    def compose_gateway_usages(self) -> None:
+        """Compose Usages ordering the hand-rendered gateway teardown.
+
+        The Envoy Gateway controller must outlive the Gateway and
+        GatewayClass it manages: they carry finalizers it has to process
+        on delete. The chain is Gateway Object -> GatewayClass Object ->
+        envoy-gateway Release (a stack component, labelled by the
+        renderer). These are hand-written because the gateway pair isn't
+        stack data; every other ordering edge derives from depends_on.
         """
-        pc_observed = self.provider_configs_observed()
-        for doc in _MODELEXPRESS_CRDS:
-            key = _modelexpress_crd_key(doc)
-            if not (pc_observed or key in self.req.observed.resources):
-                continue
+        for key, of_ref, of_key, by_ref, by_key in (
+            ("usage-gateway-class-by-gateway", _OBJECT_REF, "gateway-class", _OBJECT_REF, "gateway"),
+            ("usage-envoy-gateway-by-gateway-class", _RELEASE_REF, "envoy-gateway", _OBJECT_REF, "gateway-class"),
+        ):
             resource.update(
                 self.rsp.desired.resources[key],
-                _k8s_object(_pc_name(self.xr), doc),
+                _usage(of_ref, of_key, by_ref, by_key),
             )
-            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
-                self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
-
-    def compose_modelexpress(self) -> None:
-        """Compose the shared ModelExpress server in `default`.
-
-        One server per cluster: it's metadata-only, coordinating P2P weight
-        transfer between engine pods that opt into --load-format modelexpress.
-        It holds no weights itself, so it needs no shared storage - its cache
-        directory is an emptyDir. Engine pods keep their own per-cache PVC
-        (compose-model-cache) and register with this server at load.
-
-        The whole bundle - ServiceAccount, Role, RoleBinding, Service, and the
-        server Deployment - composes as soon as the ProviderConfigs are
-        observed.
-        """
-        pc_observed = self.provider_configs_observed()
-        pc = _pc_name(self.xr)
-        d = self.xr.spec.dynamo or v1alpha1.Dynamo()
-        image = f"{_MODELEXPRESS_SERVER_REPO}:{d.modelExpress}"
-
-        # RBAC the server needs for the Kubernetes CRD metadata backend:
-        # ModelMetadata (P2P worker coordination) and ModelCacheEntry (the
-        # download registry), plus ConfigMaps holding tensor descriptors too
-        # large for a ModelMetadata status field. Mirrors ModelExpress's own
-        # Helm chart Role.
-        if pc_observed or "modelexpress-server-sa" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["modelexpress-server-sa"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "v1",
-                        "kind": "ServiceAccount",
-                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
-                    },
-                ),
-            )
-        if pc_observed or "modelexpress-server-role" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["modelexpress-server-role"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "rbac.authorization.k8s.io/v1",
-                        "kind": "Role",
-                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
-                        "rules": [
-                            {
-                                "apiGroups": ["modelexpress.nvidia.com"],
-                                "resources": ["modelmetadatas", "modelmetadatas/status"],
-                                "verbs": ["get", "list", "create", "update", "patch", "delete"],
-                            },
-                            {
-                                "apiGroups": [""],
-                                "resources": ["configmaps"],
-                                "verbs": ["get", "list", "create", "update", "patch", "delete"],
-                            },
-                            {
-                                "apiGroups": ["modelexpress.nvidia.com"],
-                                "resources": ["modelcacheentries", "modelcacheentries/status"],
-                                "verbs": ["get", "list", "create", "update", "patch", "delete"],
-                            },
-                        ],
-                    },
-                ),
-            )
-        if pc_observed or "modelexpress-server-rolebinding" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["modelexpress-server-rolebinding"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "rbac.authorization.k8s.io/v1",
-                        "kind": "RoleBinding",
-                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
-                        "subjects": [
-                            {
-                                "kind": "ServiceAccount",
-                                "name": _MODELEXPRESS_SERVER_NAME,
-                                "namespace": _MODELEXPRESS_NAMESPACE,
-                            }
-                        ],
-                        "roleRef": {
-                            "apiGroup": "rbac.authorization.k8s.io",
-                            "kind": "Role",
-                            "name": _MODELEXPRESS_SERVER_NAME,
-                        },
-                    },
-                ),
-            )
-        if pc_observed or "modelexpress-server-svc" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["modelexpress-server-svc"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "v1",
-                        "kind": "Service",
-                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
-                        "spec": {
-                            "selector": {_MODELEXPRESS_SELECTOR: _MODELEXPRESS_SERVER_NAME},
-                            "ports": [{"name": "grpc", "port": _MODELEXPRESS_PORT, "targetPort": _MODELEXPRESS_PORT}],
-                        },
-                    },
-                ),
-            )
-
-        if pc_observed or "modelexpress-server" in self.req.observed.resources:
-            # Both cache variables point at an emptyDir: the server is
-            # metadata-only and holds no weights, so it needs no storage.
-            # Engine pods seed from their own per-cache PVC.
-            select = {_MODELEXPRESS_SELECTOR: _MODELEXPRESS_SERVER_NAME}
-            resource.update(
-                self.rsp.desired.resources["modelexpress-server"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "apps/v1",
-                        "kind": "Deployment",
-                        "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
-                        "spec": {
-                            "replicas": 1,
-                            "selector": {"matchLabels": select},
-                            "template": {
-                                "metadata": {"labels": select},
-                                "spec": {
-                                    "serviceAccountName": _MODELEXPRESS_SERVER_NAME,
-                                    "containers": [
-                                        {
-                                            "name": "modelexpress-server",
-                                            "image": image,
-                                            "ports": [{"containerPort": _MODELEXPRESS_PORT}],
-                                            "env": [
-                                                {
-                                                    "name": "MODEL_EXPRESS_CACHE_DIRECTORY",
-                                                    "value": _MODELEXPRESS_MOUNT,
-                                                },
-                                                {"name": "HF_HUB_CACHE", "value": _MODELEXPRESS_MOUNT},
-                                                {"name": "MX_METADATA_BACKEND", "value": "kubernetes"},
-                                                {
-                                                    "name": "POD_NAMESPACE",
-                                                    "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}},
-                                                },
-                                            ],
-                                            "volumeMounts": [{"name": "cache", "mountPath": _MODELEXPRESS_MOUNT}],
-                                            # Readiness keeps the Service from
-                                            # advertising a server that isn't
-                                            # listening yet; liveness restarts
-                                            # one that stops.
-                                            "readinessProbe": {
-                                                "tcpSocket": {"port": _MODELEXPRESS_PORT},
-                                                "periodSeconds": 10,
-                                            },
-                                            "livenessProbe": {
-                                                "tcpSocket": {"port": _MODELEXPRESS_PORT},
-                                                "periodSeconds": 20,
-                                            },
-                                        }
-                                    ],
-                                    "volumes": [{"name": "cache", "emptyDir": {}}],
-                                },
-                            },
-                        },
-                    },
-                    cel_query=_MODELEXPRESS_SERVER_READY_CEL,
-                ),
-            )
-            if resource.get_condition(self.req.observed.resources.get("modelexpress-server"), "Ready").status == "True":
-                self.rsp.desired.resources["modelexpress-server"].ready = fnv1.READY_TRUE
-
-    def compose_prometheus(self) -> None:
-        """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
-        observed. Provides cluster observability (metrics scraping)."""
-        pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "prometheus" in self.req.observed.resources):
-            return
-
-        v = self.xr.spec.versions or v1alpha1.Versions()
-        resource.update(
-            self.rsp.desired.resources["prometheus"],
-            _prometheus_release(v.prometheus, _pc_name(self.xr)),  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-        )
-
-    def compose_leader_worker_set(self) -> None:
-        """Compose LeaderWorkerSet. Gated on ProviderConfigs being observed."""
-        pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "leader-worker-set" in self.req.observed.resources):
-            return
-
-        s = self.xr.spec.standard or v1alpha1.Standard()
-        resource.update(
-            self.rsp.desired.resources["leader-worker-set"],
-            _helm_release(
-                chart="lws",
-                repo="oci://registry.k8s.io/lws/charts",
-                version=s.leaderWorkerSet,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-                namespace="lws-system",
-                provider_config=_pc_name(self.xr),
-            ),
-        )
-
-    def compose_grove(self) -> None:
-        """Compose Grove. Gated on ProviderConfigs being observed.
-
-        Grove gang-schedules a multi-node engine as a PodCliqueSet: a leader
-        clique and a worker clique, each carrying its own command, replacing
-        LeaderWorkerSet. Grove hands the gang-scheduling decision to KAI (see
-        compose_kai_scheduler); it creates no PodGroups of its own.
-        """
-        pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "grove" in self.req.observed.resources):
-            return
-
-        d = self.xr.spec.dynamo or v1alpha1.Dynamo()
-        resource.update(
-            self.rsp.desired.resources["grove"],
-            _helm_release(
-                chart="grove-charts",
-                repo="oci://ghcr.io/ai-dynamo/grove",
-                version=d.grove,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-                namespace="grove-system",
-                provider_config=_pc_name(self.xr),
-            ),
-        )
-
-    def compose_kai_scheduler(self) -> None:
-        """Compose KAI Scheduler. Gated on ProviderConfigs being observed.
-
-        KAI is the scheduler Grove hands its PodGangs to; a Grove
-        PodCliqueSet's pods set schedulerName: kai-scheduler and KAI binds
-        each gang all-or-nothing. Grove itself creates no scheduler-side
-        queue or priority CRs — see compose_kai_queues.
-        """
-        pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "kai-scheduler" in self.req.observed.resources):
-            return
-
-        d = self.xr.spec.dynamo or v1alpha1.Dynamo()
-        resource.update(
-            self.rsp.desired.resources["kai-scheduler"],
-            _helm_release(
-                chart="kai-scheduler",
-                repo="oci://ghcr.io/kai-scheduler/kai-scheduler",
-                version=d.kaiScheduler,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-                namespace="kai-scheduler",
-                provider_config=_pc_name(self.xr),
-                labels={_LABEL_RESOURCE: "kai-scheduler"},
-            ),
-        )
-
-    def compose_kai_queues(self) -> None:
-        """Compose the Queue CRs every Grove gang schedules into.
-
-        KAI refuses to schedule a pod whose queue doesn't exist. Its chart
-        installs a default hierarchy, but nothing ties Modelplane's workloads to
-        it, so Modelplane owns its own small two-level hierarchy: an unbounded
-        root queue and a child queue every Grove-composed PodCliqueSet is
-        labelled into. Owning both ends keeps the label the backend stamps and
-        the queue it names in one place. Quotas of -1 mean
-        unbounded — Modelplane's own scheduler (compose-model-deployment)
-        already decides what fits on a cluster; KAI's queue is just the
-        admission point its gang-scheduler requires.
-        """
-        pc_observed = self.provider_configs_observed()
-        pc = _pc_name(self.xr)
-
-        if pc_observed or "kai-queue-root" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["kai-queue-root"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "scheduling.run.ai/v2",
-                        "kind": "Queue",
-                        "metadata": {"name": "modelplane-root"},
-                        "spec": {
-                            "resources": {
-                                "cpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
-                                "gpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
-                                "memory": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
-                            },
-                        },
-                    },
-                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "kai-queue-root"}),
-                ),
-            )
-
-        if pc_observed or "kai-queue" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["kai-queue"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "scheduling.run.ai/v2",
-                        "kind": "Queue",
-                        "metadata": {"name": "modelplane"},
-                        "spec": {
-                            "parentQueue": "modelplane-root",
-                            "resources": {
-                                "cpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
-                                "gpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
-                                "memory": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
-                            },
-                        },
-                    },
-                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "kai-queue"}),
-                ),
-            )
-
-    def compose_kai_usages(self) -> None:
-        """Compose Usages ordering the KAI Scheduler teardown after its Queues.
-
-        Queue is a CRD the kai-scheduler Release owns. Without an ordering
-        Usage, uninstalling the release can remove that CRD while
-        kai-queue-root/kai-queue CRs still exist, and their delete then hangs
-        waiting for a controller that's already gone — the same failure
-        CONTRIBUTING.md's KServe CRD-ordering example describes. This holds
-        the Release until both Queue Objects are gone.
-        """
-        for queue_key in ("kai-queue-root", "kai-queue"):
-            resource.update(
-                self.rsp.desired.resources[f"usage-kai-scheduler-by-{queue_key}"],
-                usagev1beta1.Usage(
-                    spec=usagev1beta1.Spec(
-                        of=usagev1beta1.Of(
-                            apiVersion="helm.m.crossplane.io/v1beta1",
-                            kind="Release",
-                            resourceSelector=usagev1beta1.ResourceSelectorModel(
-                                matchControllerRef=True,
-                                matchLabels={_LABEL_RESOURCE: "kai-scheduler"},
-                            ),
-                        ),
-                        by=usagev1beta1.By(
-                            apiVersion="kubernetes.m.crossplane.io/v1alpha1",
-                            kind="Object",
-                            resourceSelector=usagev1beta1.ResourceSelector(
-                                matchControllerRef=True,
-                                matchLabels={_LABEL_RESOURCE: queue_key},
-                            ),
-                        ),
-                        replayDeletion=True,
-                    ),
-                ),
-            )
-            self.rsp.desired.resources[f"usage-kai-scheduler-by-{queue_key}"].ready = fnv1.READY_TRUE
-
-    def compose_node_feature_discovery(self) -> None:
-        """Compose Node Feature Discovery. Gated on ProviderConfigs being
-        observed. NFD labels GPU nodes (e.g. feature.node.kubernetes.io/pci-10de
-        for NVIDIA) so the DRA driver can target its kubelet plugin to them."""
-        pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "node-feature-discovery" in self.req.observed.resources):
-            return
-
-        v = self.xr.spec.versions or v1alpha1.Versions()
-        resource.update(
-            self.rsp.desired.resources["node-feature-discovery"],
-            _helm_release(
-                chart="node-feature-discovery",
-                repo="oci://registry.k8s.io/nfd/charts",
-                version=v.nodeFeatureDiscovery,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-                namespace="node-feature-discovery",
-                provider_config=_pc_name(self.xr),
-                # The worker must run on the very nodes it is supposed to
-                # label: the DRA driver's kubelet plugin schedules only onto
-                # nodes carrying an NFD GPU label (feature.node.kubernetes.io/
-                # pci-10de.present and friends, see the chart's kubeletPlugin
-                # affinity). But the cluster compositions taint GPU nodes with
-                # nvidia.com/gpu, and the NFD chart's worker tolerates nothing
-                # by default. Without this toleration the chain breaks
-                # silently: no worker on the GPU node, no pci-10de label, no
-                # kubelet plugin, no ResourceSlices and every GPU
-                # ResourceClaim stays unallocatable ("cannot allocate all
-                # claims") with all components looking healthy. The DRA
-                # driver itself already tolerates this taint by default;
-                # Exists matches every value (true on EKS/Nebius, present on
-                # GKE).
-                values={
-                    "worker": {
-                        "tolerations": [
-                            {
-                                "key": "nvidia.com/gpu",
-                                "operator": "Exists",
-                                "effect": "NoSchedule",
-                            },
-                        ],
-                    },
-                },
-            ),
-        )
-
-    def compose_dra_driver(self) -> None:
-        """Compose the NVIDIA DRA driver. Gated on ProviderConfigs being
-        observed. The driver publishes each GPU node's devices as DRA
-        ResourceSlices and registers the gpu.nvidia.com DeviceClass that
-        ModelReplica ResourceClaims request through, replacing the legacy
-        device plugin. GPU allocation is opt-in (gpuResourcesEnabledOverride);
-        ComputeDomains (Multi-Node NVLink) is disabled - we don't use it, and
-        it would pull in extra prerequisites (GPU Feature Discovery)."""
-        pc_observed = self.provider_configs_observed()
-        if not (pc_observed or "dra-driver" in self.req.observed.resources):
-            return
-
-        v = self.xr.spec.versions or v1alpha1.Versions()
-        # nvidiaDriverRoot is set by the cluster composition for platforms that
-        # install the NVIDIA driver off the upstream default (/) — GKE uses
-        # /home/kubernetes/bin/nvidia. Without it the kubelet plugin's init
-        # container can't find nvidia-smi / libnvidia-ml and never starts. A
-        # non-default value is the serving stack's signal that it's on such a
-        # platform; the serving stack never inspects its own cloud.
-        driver_root = self.xr.spec.nvidiaDriverRoot or _DEFAULT_NVIDIA_DRIVER_ROOT
-        dra_values = {
-            "gpuResourcesEnabledOverride": True,
-            "resources": {"computeDomains": {"enabled": False}},
-        }
-        if driver_root != _DEFAULT_NVIDIA_DRIVER_ROOT:
-            dra_values["nvidiaDriverRoot"] = driver_root
-        resource.update(
-            self.rsp.desired.resources["dra-driver"],
-            _helm_release(
-                chart="dra-driver-nvidia-gpu",
-                repo="oci://registry.k8s.io/dra-driver-nvidia/charts",
-                version=v.nvidiaDraDriver,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
-                namespace=_DRA_DRIVER_NAMESPACE,
-                provider_config=_pc_name(self.xr),
-                values=dra_values,
-            ),
-        )
-
-        # The DRA driver's kubelet plugin runs at system-node-critical priority.
-        # GKE only admits system-node-critical / system-cluster-critical pods in a
-        # namespace that has a ResourceQuota permitting those priority classes, so
-        # without this the daemonset gets FailedCreate ("insufficient quota to
-        # match these scopes") and never publishes ResourceSlices. Lay it down
-        # everywhere: we only know GKE needs it, but it only *grants* headroom for
-        # those two priority classes (it constrains nothing), so it's harmless on
-        # clusters that don't restrict them (EKS, self-managed).
-        resource.update(
-            self.rsp.desired.resources["dra-driver-critical-pods-quota"],
-            _k8s_object(
-                _pc_name(self.xr),
-                {
-                    "apiVersion": "v1",
-                    "kind": "ResourceQuota",
-                    "metadata": {
-                        "name": "allow-critical-pods",
-                        "namespace": _DRA_DRIVER_NAMESPACE,
-                    },
-                    "spec": {
-                        "hard": {"pods": "1000"},
-                        "scopeSelector": {
-                            "matchExpressions": [
-                                {
-                                    "operator": "In",
-                                    "scopeName": "PriorityClass",
-                                    "values": [
-                                        "system-node-critical",
-                                        "system-cluster-critical",
-                                    ],
-                                },
-                            ],
-                        },
-                    },
-                },
-            ),
-        )
-
-    def compose_gateway(self) -> None:
-        """Compose the gateway namespace, EnvoyProxy, GatewayClass, and Gateway on
-        the remote cluster. Gated on ProviderConfigs being observed."""
-        pc_observed = self.provider_configs_observed()
-        pc = _pc_name(self.xr)
-
-        gw = self.xr.spec.gateway or v1alpha1.Gateway()
-
-        if gw.listeners:
-            listeners = [{"name": ln.name, "protocol": ln.protocol, "port": ln.port} for ln in gw.listeners]
-        else:
-            listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
-
-        # The Gateway (and the model-serving HTTPRoutes that target it) live in
-        # modelplane-system on the remote cluster. Create the namespace; unlike
-        # the old KServe path (whose chart created its kserve namespace), nothing
-        # else provisions it.
-        if pc_observed or "gateway-namespace" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["gateway-namespace"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "v1",
-                        "kind": "Namespace",
-                        "metadata": {"name": "modelplane-system"},
-                    },
-                ),
-            )
-
-        # EnvoyProxy pins the managed LoadBalancer Service's externalTrafficPolicy
-        # to Cluster. Envoy Gateway defaults it to Local, which some clouds' load
-        # balancers reject (Nebius returns SyncLoadBalancerFailed and never assigns
-        # an external IP, leaving the gateway address pending and the cluster
-        # not-Ready). Cluster is accepted by every cloud the provider runs on
-        # (GKE, EKS, Nebius); the inference gateway does not need client source-IP
-        # preservation. The GatewayClass references it via parametersRef below. It
-        # gets no teardown Usage (unlike the Gateway/GatewayClass, which carry Envoy
-        # Gateway finalizers): it is a plain config object referenced only by
-        # parametersRef. If Envoy Gateway is found to finalize a referenced
-        # EnvoyProxy, give it a Usage protected-by gateway-class (see compose_usages).
-        if pc_observed or "gateway-proxy" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["gateway-proxy"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                        "kind": "EnvoyProxy",
-                        "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
-                        "spec": {
-                            "provider": {
-                                "type": "Kubernetes",
-                                "kubernetes": {
-                                    "envoyService": {"externalTrafficPolicy": "Cluster"},
-                                },
-                            },
-                        },
-                    },
-                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "gateway-proxy"}),
-                ),
-            )
-
-        if pc_observed or "gateway-class" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["gateway-class"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "gateway.networking.k8s.io/v1",
-                        "kind": "GatewayClass",
-                        "metadata": {"name": gw.className},
-                        "spec": {
-                            "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
-                            "parametersRef": {
-                                "group": "gateway.envoyproxy.io",
-                                "kind": "EnvoyProxy",
-                                "name": "inference-gateway",
-                                "namespace": "modelplane-system",
-                            },
-                        },
-                    },
-                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "gateway-class"}),
-                ),
-            )
-
-        if pc_observed or "gateway" in self.req.observed.resources:
-            resource.update(
-                self.rsp.desired.resources["gateway"],
-                _k8s_object(
-                    pc,
-                    {
-                        "apiVersion": "gateway.networking.k8s.io/v1",
-                        "kind": "Gateway",
-                        "metadata": {
-                            "name": "inference-gateway",
-                            "namespace": "modelplane-system",
-                        },
-                        "spec": {
-                            "gatewayClassName": gw.className,
-                            "listeners": [
-                                {
-                                    **ln,
-                                    "allowedRoutes": {"namespaces": {"from": "All"}},
-                                }
-                                for ln in listeners
-                            ],
-                        },
-                    },
-                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: "gateway"}),
-                    cel_query=_GATEWAY_READY_CEL,
-                ),
-            )
+            self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
     def write_status(self) -> None:
         """Extract the gateway address from the observed Gateway Object and
@@ -1270,49 +447,21 @@ class Composer:
             status.gateway = v1alpha1.GatewayModel(address=gateway_address)
         resource.update_status(self.rsp.desired.composite, status)
 
-    def mark_readiness(self) -> None:
-        """Mark composed resources as ready. Resources that don't need external
-        readiness tracking are always marked ready. Others are marked ready when
-        their observed condition is True."""
-        # These resources don't have meaningful readiness signals — mark them
-        # ready unconditionally so they don't block the XR.
-        always_ready = [
-            "provider-config-kubernetes",
-            "provider-config-helm",
-        ]
-        for r in always_ready:
+    def mark_readiness(self, rendered: list[str]) -> None:
+        """Mark composed resources as ready.
+
+        The ProviderConfigs have no readiness signal of their own, so
+        they're ready on arrival. Everything rendered from the stack (and
+        the gateway pair) is ready when its observed Ready condition is
+        True - for Releases that's the Helm release deployed, for Objects
+        the readiness policy (SuccessfulCreate, or the entry's CEL query).
+        """
+        for r in ("provider-config-kubernetes", "provider-config-helm"):
             if r in self.rsp.desired.resources:
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
-        condition_ready = [
-            "cert-manager",
-            "envoy-gateway",
-            "ai-gateway-crds",
-            "ai-gateway",
-            "prometheus",
-            "grove",
-            "kai-scheduler",
-            "kai-queue-root",
-            "kai-queue",
-            "modelexpress-server-sa",
-            "modelexpress-server-role",
-            "modelexpress-server-rolebinding",
-            "modelexpress-server-svc",
-            "modelexpress-server",
-            "leader-worker-set",
-            "node-feature-discovery",
-            "dra-driver",
-            "dra-driver-critical-pods-quota",
-            "gateway-namespace",
-            "gateway-proxy",
-            "gateway-class",
-            "gateway",
-        ]
-        for r in condition_ready:
-            if (
-                r in self.rsp.desired.resources
-                and resource.get_condition(self.req.observed.resources.get(r), "Ready").status == "True"
-            ):
+        for r in rendered:
+            if resource.get_condition(self.req.observed.resources.get(r), "Ready").status == "True":
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
     def provider_configs_observed(self) -> bool:

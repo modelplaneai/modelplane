@@ -49,14 +49,14 @@ _AI_GATEWAY_VERSION = "v0.7.0"
 # runs.
 _DRA_DRIVER_NAMESPACE = "nvidia-dra-driver"
 
-_FUNCTION_DIR = pathlib.Path(__file__).parent.parent
+_CRDS_DIR = pathlib.Path(__file__).parent / "crds"
 
 
 def _crds(filename: str) -> list[dict[str, Any]]:
-    """Load the CRDs from a YAML file vendored beside fn.py."""
+    """Load the CRDs from a YAML file vendored under stacks/crds/."""
     return [
         doc
-        for doc in yaml.safe_load_all((_FUNCTION_DIR / filename).read_text())
+        for doc in yaml.safe_load_all((_CRDS_DIR / filename).read_text())
         if doc and doc.get("kind") == "CustomResourceDefinition"
     ]
 
@@ -134,7 +134,7 @@ COMPONENTS: list[Component] = [
     # Vendored from the upstream release's manifests.yaml.
     Manifests(
         key="gaie-crds",
-        manifests=_crds("gaie_crds.yaml"),
+        manifests=_crds("gaie.yaml"),
     ),
     # The Gateway (and the model-serving HTTPRoutes that target it) live
     # in modelplane-system on the remote cluster; nothing else

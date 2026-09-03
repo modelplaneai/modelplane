@@ -12,11 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the compose-serving-stack function."""
+"""Tests for the compose-serving-stack function.
 
+Two layers. The Case table compares whole RunFunctionResponses for the
+Existing/Dynamo stack across the reconcile passes; its expectations are
+built from the provider models with literal arguments typed here, never
+from the stacks package, so a stack-data change shows up as a test diff.
+The golden inventory then pins the composed-resource key set - the
+identity contract; renaming a key deletes and recreates the remote
+resource - for every cloud and stack, as frozen literals.
+"""
+
+import copy
+import dataclasses
+import pathlib
 import unittest
-from typing import Literal
 
+import yaml
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from function import fn
@@ -24,6 +36,13 @@ from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1
+from models.io.crossplane.m.helm.providerconfig import v1beta1 as helmpcv1beta1
+from models.io.crossplane.m.helm.release import v1beta1 as helmv1beta1
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
+from models.io.crossplane.m.kubernetes.providerconfig import (
+    v1alpha1 as k8spcv1alpha1,
+)
+from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 
@@ -31,904 +50,652 @@ def setUpModule() -> None:
     logging.configure(level=logging.Level.DISABLED)
 
 
-# Precomputed child_name values for test-backend.
+# Precomputed child_name value for test-backend.
 _PC_NAME = "test-backend-cluster-63fde"
 
-# Shared resource dicts used across test cases.
-_PROVIDER_CONFIG_KUBERNETES = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "ProviderConfig",
-    "metadata": {"name": _PC_NAME},
-    "spec": {
-        "credentials": {
-            "secretRef": {
-                "key": "kubeconfig",
-                "name": "kube-secret",
-                "namespace": "test-ns",
-            },
-            "source": "Secret",
-        },
-        "identity": {
-            "secretRef": {
-                "key": "private_key",
-                "name": "sa-secret",
-                "namespace": "test-ns",
-            },
-            "source": "Secret",
-            "type": "GoogleApplicationCredentials",
-        },
-    },
-}
+_RELEASE_REF = ("helm.m.crossplane.io/v1beta1", "Release")
+_OBJECT_REF = ("kubernetes.m.crossplane.io/v1alpha1", "Object")
 
-_PROVIDER_CONFIG_HELM = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "ProviderConfig",
-    "metadata": {"name": _PC_NAME},
-    "spec": {
-        "credentials": {
-            "secretRef": {
-                "key": "kubeconfig",
-                "name": "kube-secret",
-                "namespace": "test-ns",
-            },
-            "source": "Secret",
-        },
-        "identity": {
-            "secretRef": {
-                "key": "private_key",
-                "name": "sa-secret",
-                "namespace": "test-ns",
-            },
-            "source": "Secret",
-            "type": "GoogleApplicationCredentials",
-        },
-    },
-}
+_GATEWAY_READY_CEL = "has(object.status.addresses) && object.status.addresses.size() > 0"
+_MODELEXPRESS_READY_CEL = (
+    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+)
 
-_USAGE_ENVOY_GW_BY_GATEWAY_CLASS = {
-    "apiVersion": "protection.crossplane.io/v1beta1",
-    "kind": "Usage",
-    "spec": {
-        "by": {
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-            "kind": "Object",
-            "resourceSelector": {
-                "matchControllerRef": True,
-                "matchLabels": {"modelplane.ai/resource": "gateway-class"},
-            },
-        },
-        "of": {
-            "apiVersion": "helm.m.crossplane.io/v1beta1",
-            "kind": "Release",
-            "resourceSelector": {
-                "matchControllerRef": True,
-                "matchLabels": {"modelplane.ai/resource": "envoy-gateway"},
-            },
-        },
-        "replayDeletion": True,
-    },
-}
-
-_USAGE_GATEWAY_CLASS_BY_GATEWAY = {
-    "apiVersion": "protection.crossplane.io/v1beta1",
-    "kind": "Usage",
-    "spec": {
-        "by": {
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-            "kind": "Object",
-            "resourceSelector": {
-                "matchControllerRef": True,
-                "matchLabels": {"modelplane.ai/resource": "gateway"},
-            },
-        },
-        "of": {
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-            "kind": "Object",
-            "resourceSelector": {
-                "matchControllerRef": True,
-                "matchLabels": {"modelplane.ai/resource": "gateway-class"},
-            },
-        },
-        "replayDeletion": True,
-    },
-}
-
-_CERT_MANAGER = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"annotations": {"crossplane.io/external-name": "mp-cert-manager"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "cert-manager",
-                "repository": "https://charts.jetstack.io",
-                "version": "v1.17.1",
-            },
-            "namespace": "cert-manager",
-            "values": {
-                "crds": {
-                    "enabled": True,
-                    "keep": False,
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_ENVOY_GATEWAY = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {
-        "annotations": {"crossplane.io/external-name": "mp-gateway-helm"},
-        "labels": {"modelplane.ai/resource": "envoy-gateway"},
-    },
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "gateway-helm",
-                "repository": "oci://docker.io/envoyproxy",
-                "version": "v1.8.1",
-            },
-            "namespace": "envoy-gateway-system",
-            "values": {
-                "config": {
-                    "envoyGateway": {
-                        "extensionApis": {"enableBackend": True},
-                        "extensionManager": {
-                            "hooks": {
-                                "xdsTranslator": {
-                                    "translation": {
-                                        "listener": {"includeAll": True},
-                                        "route": {"includeAll": True},
-                                        "cluster": {"includeAll": True},
-                                        "secret": {"includeAll": True},
-                                    },
-                                    "post": ["Translation", "Cluster", "Route"],
-                                },
-                            },
-                            "service": {
-                                "fqdn": {
-                                    "hostname": "ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local",
-                                    "port": 1063,
-                                },
-                            },
-                            "backendResources": [
-                                {
-                                    "group": "inference.networking.k8s.io",
-                                    "kind": "InferencePool",
-                                    "version": "v1",
-                                },
-                            ],
-                        },
-                    },
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_AI_GATEWAY_CRDS = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"annotations": {"crossplane.io/external-name": "mp-ai-gateway-crds-helm"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "ai-gateway-crds-helm",
-                "repository": "oci://docker.io/envoyproxy",
-                "version": "v0.7.0",
-            },
-            "namespace": "envoy-ai-gateway-system",
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_AI_GATEWAY = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"annotations": {"crossplane.io/external-name": "mp-ai-gateway-helm"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "ai-gateway-helm",
-                "repository": "oci://docker.io/envoyproxy",
-                "version": "v0.7.0",
-            },
-            "namespace": "envoy-ai-gateway-system",
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
+# Resolve the vendored CRD bundles via the installed function package:
+# the sandboxed test check runs against the venv's copy, not the tree.
+_CRDS_DIR = pathlib.Path(fn.__file__).parent / "stacks" / "crds"
 
 
-def _gaie_crd_desired(ready: bool) -> dict:
-    """The GAIE CRDs composed as provider-kubernetes Objects on the remote
-    cluster, built from the same vendored bundle and helper the function
-    composes so the test stays in sync. When ready is True each Object is marked
-    READY_TRUE, matching a pass where the Objects are observed Ready."""
-    out = {}
-    for doc in fn._GAIE_CRDS:
-        key = fn._gaie_crd_key(doc)
-        res = fnv1.Resource()
-        resource.update(res, fn._k8s_object(_PC_NAME, doc))
-        if ready:
-            res.ready = fnv1.READY_TRUE
-        out[key] = res
-    return out
+def _crds(filename: str) -> list[dict]:
+    """The CRDs a vendored bundle carries, content straight from the file."""
+    return [
+        doc
+        for doc in yaml.safe_load_all((_CRDS_DIR / filename).read_text())
+        if doc and doc.get("kind") == "CustomResourceDefinition"
+    ]
 
 
-def _gaie_crd_observed() -> dict:
-    """Observed GAIE CRD Objects, each reporting Ready=True."""
-    out = {}
-    for doc in fn._GAIE_CRDS:
-        out[fn._gaie_crd_key(doc)] = fnv1.Resource(
-            resource=resource.dict_to_struct(
-                {
-                    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                    "kind": "Object",
-                    "status": {"conditions": [{"type": "Ready", "status": "True"}]},
-                }
-            )
-        )
-    return out
-
-
-def _modelexpress_crd_desired(ready: bool) -> dict:
-    """The ModelExpress CRDs composed as provider-kubernetes Objects on the
-    remote cluster, mirroring _gaie_crd_desired."""
-    out = {}
-    for doc in fn._MODELEXPRESS_CRDS:
-        key = fn._modelexpress_crd_key(doc)
-        res = fnv1.Resource()
-        resource.update(res, fn._k8s_object(_PC_NAME, doc))
-        if ready:
-            res.ready = fnv1.READY_TRUE
-        out[key] = res
-    return out
-
-
-def _modelexpress_crd_observed() -> dict:
-    """Observed ModelExpress CRD Objects, each reporting Ready=True."""
-    out = {}
-    for doc in fn._MODELEXPRESS_CRDS:
-        out[fn._modelexpress_crd_key(doc)] = fnv1.Resource(
-            resource=resource.dict_to_struct(
-                {
-                    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                    "kind": "Object",
-                    "status": {"conditions": [{"type": "Ready", "status": "True"}]},
-                }
-            )
-        )
-    return out
-
-
-_MX_NS = fn._MODELEXPRESS_NAMESPACE
-_MX_NAME = fn._MODELEXPRESS_SERVER_NAME
-
-_MODELEXPRESS_SERVER_SA = {
-    "apiVersion": "v1",
-    "kind": "ServiceAccount",
-    "metadata": {"name": _MX_NAME, "namespace": _MX_NS},
-}
-_MODELEXPRESS_SERVER_ROLE = {
-    "apiVersion": "rbac.authorization.k8s.io/v1",
-    "kind": "Role",
-    "metadata": {"name": _MX_NAME, "namespace": _MX_NS},
-    "rules": [
-        {
-            "apiGroups": ["modelexpress.nvidia.com"],
-            "resources": ["modelmetadatas", "modelmetadatas/status"],
-            "verbs": ["get", "list", "create", "update", "patch", "delete"],
-        },
-        {
-            "apiGroups": [""],
-            "resources": ["configmaps"],
-            "verbs": ["get", "list", "create", "update", "patch", "delete"],
-        },
-        {
-            "apiGroups": ["modelexpress.nvidia.com"],
-            "resources": ["modelcacheentries", "modelcacheentries/status"],
-            "verbs": ["get", "list", "create", "update", "patch", "delete"],
-        },
-    ],
-}
-_MODELEXPRESS_SERVER_ROLEBINDING = {
-    "apiVersion": "rbac.authorization.k8s.io/v1",
-    "kind": "RoleBinding",
-    "metadata": {"name": _MX_NAME, "namespace": _MX_NS},
-    "subjects": [{"kind": "ServiceAccount", "name": _MX_NAME, "namespace": _MX_NS}],
-    "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": _MX_NAME},
-}
-_MODELEXPRESS_SERVER_SVC = {
-    "apiVersion": "v1",
-    "kind": "Service",
-    "metadata": {"name": _MX_NAME, "namespace": _MX_NS},
-    "spec": {
-        "selector": {fn._MODELEXPRESS_SELECTOR: _MX_NAME},
-        "ports": [{"name": "grpc", "port": fn._MODELEXPRESS_PORT, "targetPort": fn._MODELEXPRESS_PORT}],
-    },
-}
-_MODELEXPRESS_SERVER_DEPLOYMENT = {
-    "apiVersion": "apps/v1",
-    "kind": "Deployment",
-    "metadata": {"name": _MX_NAME, "namespace": _MX_NS},
-    "spec": {
-        "replicas": 1,
-        "selector": {"matchLabels": {fn._MODELEXPRESS_SELECTOR: _MX_NAME}},
-        "template": {
-            "metadata": {"labels": {fn._MODELEXPRESS_SELECTOR: _MX_NAME}},
-            "spec": {
-                "serviceAccountName": _MX_NAME,
-                "containers": [
-                    {
-                        "name": "modelexpress-server",
-                        "image": f"{fn._MODELEXPRESS_SERVER_REPO}:0.4.1",
-                        "ports": [{"containerPort": fn._MODELEXPRESS_PORT}],
-                        "env": [
-                            {"name": "MODEL_EXPRESS_CACHE_DIRECTORY", "value": fn._MODELEXPRESS_MOUNT},
-                            {"name": "HF_HUB_CACHE", "value": fn._MODELEXPRESS_MOUNT},
-                            {"name": "MX_METADATA_BACKEND", "value": "kubernetes"},
-                            {"name": "POD_NAMESPACE", "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}},
-                        ],
-                        "volumeMounts": [{"name": "cache", "mountPath": fn._MODELEXPRESS_MOUNT}],
-                        "readinessProbe": {"tcpSocket": {"port": fn._MODELEXPRESS_PORT}, "periodSeconds": 10},
-                        "livenessProbe": {"tcpSocket": {"port": fn._MODELEXPRESS_PORT}, "periodSeconds": 20},
-                    }
-                ],
-                "volumes": [{"name": "cache", "emptyDir": {}}],
-            },
-        },
-    },
-}
-
-
-def _modelexpress_bundle_desired() -> dict:
-    """The shared ModelExpress server bundle composed as provider-kubernetes
-    Objects: RBAC, Service, and the metadata-only server Deployment (an emptyDir
-    cache, no shared PVC)."""
-    manifests = {
-        "modelexpress-server-sa": _MODELEXPRESS_SERVER_SA,
-        "modelexpress-server-role": _MODELEXPRESS_SERVER_ROLE,
-        "modelexpress-server-rolebinding": _MODELEXPRESS_SERVER_ROLEBINDING,
-        "modelexpress-server-svc": _MODELEXPRESS_SERVER_SVC,
-    }
-    out = {}
-    for key, manifest in manifests.items():
-        res = fnv1.Resource()
-        resource.update(res, fn._k8s_object(_PC_NAME, manifest))
-        out[key] = res
-    dep = fnv1.Resource()
-    resource.update(
-        dep,
-        fn._k8s_object(_PC_NAME, _MODELEXPRESS_SERVER_DEPLOYMENT, cel_query=fn._MODELEXPRESS_SERVER_READY_CEL),
-    )
-    out["modelexpress-server"] = dep
-    return out
-
-
-_GATEWAY = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "Object",
-    "metadata": {
-        "labels": {"modelplane.ai/resource": "gateway"},
-    },
-    "spec": {
-        "forProvider": {
-            "manifest": {
-                "apiVersion": "gateway.networking.k8s.io/v1",
-                "kind": "Gateway",
-                "metadata": {
-                    "name": "inference-gateway",
-                    "namespace": "modelplane-system",
-                },
-                "spec": {
-                    "gatewayClassName": "envoy",
-                    "listeners": [
-                        {
-                            "allowedRoutes": {
-                                "namespaces": {"from": "All"},
-                            },
-                            "name": "http",
-                            "port": 80.0,
-                            "protocol": "HTTP",
-                        },
-                    ],
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-        "readiness": {
-            "policy": "DeriveFromCelQuery",
-            "celQuery": fn._GATEWAY_READY_CEL,
-        },
-    },
-}
-
-_GATEWAY_NAMESPACE = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "Object",
-    "spec": {
-        "forProvider": {
-            "manifest": {
-                "apiVersion": "v1",
-                "kind": "Namespace",
-                "metadata": {"name": "modelplane-system"},
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_GATEWAY_PROXY = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "Object",
-    "metadata": {
-        "labels": {"modelplane.ai/resource": "gateway-proxy"},
-    },
-    "spec": {
-        "forProvider": {
-            "manifest": {
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1",
-                "kind": "EnvoyProxy",
-                "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
-                "spec": {
-                    "provider": {
-                        "type": "Kubernetes",
-                        "kubernetes": {
-                            "envoyService": {"externalTrafficPolicy": "Cluster"},
-                        },
-                    },
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_GATEWAY_CLASS = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "Object",
-    "metadata": {
-        "labels": {"modelplane.ai/resource": "gateway-class"},
-    },
-    "spec": {
-        "forProvider": {
-            "manifest": {
-                "apiVersion": "gateway.networking.k8s.io/v1",
-                "kind": "GatewayClass",
-                "metadata": {"name": "envoy"},
-                "spec": {
-                    "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
-                    "parametersRef": {
-                        "group": "gateway.envoyproxy.io",
-                        "kind": "EnvoyProxy",
-                        "name": "inference-gateway",
-                        "namespace": "modelplane-system",
-                    },
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_GROVE = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"annotations": {"crossplane.io/external-name": "mp-grove-charts"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "grove-charts",
-                "repository": "oci://ghcr.io/ai-dynamo/grove",
-                "version": "v0.1.0-alpha.12-rc2",
-            },
-            "namespace": "grove-system",
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_KAI_SCHEDULER = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {
-        "annotations": {"crossplane.io/external-name": "mp-kai-scheduler"},
-        "labels": {"modelplane.ai/resource": "kai-scheduler"},
-    },
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "kai-scheduler",
-                "repository": "oci://ghcr.io/kai-scheduler/kai-scheduler",
-                "version": "v0.16.8",
-            },
-            "namespace": "kai-scheduler",
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_KAI_QUEUE_ROOT = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "Object",
-    "metadata": {
-        "labels": {"modelplane.ai/resource": "kai-queue-root"},
-    },
-    "spec": {
-        "forProvider": {
-            "manifest": {
-                "apiVersion": "scheduling.run.ai/v2",
-                "kind": "Queue",
-                "metadata": {"name": "modelplane-root"},
-                "spec": {
-                    "resources": {
-                        "cpu": {"quota": -1.0, "limit": -1.0, "overQuotaWeight": 1.0},
-                        "gpu": {"quota": -1.0, "limit": -1.0, "overQuotaWeight": 1.0},
-                        "memory": {"quota": -1.0, "limit": -1.0, "overQuotaWeight": 1.0},
-                    },
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_KAI_QUEUE = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "Object",
-    "metadata": {
-        "labels": {"modelplane.ai/resource": "kai-queue"},
-    },
-    "spec": {
-        "forProvider": {
-            "manifest": {
-                "apiVersion": "scheduling.run.ai/v2",
-                "kind": "Queue",
-                "metadata": {"name": "modelplane"},
-                "spec": {
-                    "parentQueue": "modelplane-root",
-                    "resources": {
-                        "cpu": {"quota": -1.0, "limit": -1.0, "overQuotaWeight": 1.0},
-                        "gpu": {"quota": -1.0, "limit": -1.0, "overQuotaWeight": 1.0},
-                        "memory": {"quota": -1.0, "limit": -1.0, "overQuotaWeight": 1.0},
-                    },
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-
-def _usage_kai_scheduler_by(queue_key: str) -> dict:
-    """A Usage holding the kai-scheduler Release until the named Queue Object
-    (kai-queue-root or kai-queue) is gone."""
-    return {
-        "apiVersion": "protection.crossplane.io/v1beta1",
-        "kind": "Usage",
-        "spec": {
-            "by": {
-                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                "kind": "Object",
-                "resourceSelector": {
-                    "matchControllerRef": True,
-                    "matchLabels": {"modelplane.ai/resource": queue_key},
-                },
-            },
-            "of": {
-                "apiVersion": "helm.m.crossplane.io/v1beta1",
-                "kind": "Release",
-                "resourceSelector": {
-                    "matchControllerRef": True,
-                    "matchLabels": {"modelplane.ai/resource": "kai-scheduler"},
-                },
-            },
-            "replayDeletion": True,
-        },
-    }
-
-
-_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE_ROOT = _usage_kai_scheduler_by("kai-queue-root")
-_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE = _usage_kai_scheduler_by("kai-queue")
-
-_NODE_FEATURE_DISCOVERY = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"annotations": {"crossplane.io/external-name": "mp-node-feature-discovery"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "node-feature-discovery",
-                "repository": "oci://registry.k8s.io/nfd/charts",
-                "version": "0.18.3",
-            },
-            "namespace": "node-feature-discovery",
-            # The worker labels GPU nodes for the DRA driver, so it must
-            # tolerate the GPU taint the cluster compositions apply.
-            "values": {
-                "worker": {
-                    "tolerations": [
-                        {
-                            "key": "nvidia.com/gpu",
-                            "operator": "Exists",
-                            "effect": "NoSchedule",
-                        },
-                    ],
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_DRA_DRIVER = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"annotations": {"crossplane.io/external-name": "mp-dra-driver-nvidia-gpu"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "dra-driver-nvidia-gpu",
-                "repository": "oci://registry.k8s.io/dra-driver-nvidia/charts",
-                "version": "0.4.0",
-            },
-            "namespace": "dra-driver-nvidia-gpu",
-            "values": {
-                "gpuResourcesEnabledOverride": True,
-                "resources": {"computeDomains": {"enabled": False}},
-                "nvidiaDriverRoot": "/home/kubernetes/bin/nvidia",
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_DRA_DRIVER_QUOTA = {
-    "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-    "kind": "Object",
-    "spec": {
-        "forProvider": {
-            "manifest": {
-                "apiVersion": "v1",
-                "kind": "ResourceQuota",
-                "metadata": {
-                    "name": "allow-critical-pods",
-                    "namespace": "dra-driver-nvidia-gpu",
-                },
-                "spec": {
-                    "hard": {"pods": "1000"},
-                    "scopeSelector": {
-                        "matchExpressions": [
-                            {
-                                "operator": "In",
-                                "scopeName": "PriorityClass",
-                                "values": [
-                                    "system-node-critical",
-                                    "system-cluster-critical",
-                                ],
-                            },
-                        ],
-                    },
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-_PROMETHEUS = {
-    "apiVersion": "helm.m.crossplane.io/v1beta1",
-    "kind": "Release",
-    "metadata": {"annotations": {"crossplane.io/external-name": "mp-kube-prometheus-stack"}},
-    "spec": {
-        "forProvider": {
-            "chart": {
-                "name": "kube-prometheus-stack",
-                "repository": "https://prometheus-community.github.io/helm-charts",
-                "version": "72.6.2",
-            },
-            "namespace": "monitoring",
-            "values": {
-                "alertmanager": {"enabled": False},
-                "fullnameOverride": "prometheus",
-                "grafana": {"enabled": False},
-                "prometheus": {
-                    "prometheusSpec": {
-                        "additionalScrapeConfigs": [
-                            {
-                                "job_name": "envoy-gateway-proxy",
-                                "kubernetes_sd_configs": [
-                                    {
-                                        "namespaces": {
-                                            "names": ["envoy-gateway-system"],
-                                        },
-                                        "role": "pod",
-                                    },
-                                ],
-                                "metrics_path": "/stats/prometheus",
-                                "relabel_configs": [
-                                    {
-                                        "action": "keep",
-                                        "regex": "proxy",
-                                        "source_labels": [
-                                            "__meta_kubernetes_pod_label_app_kubernetes_io_component",
-                                        ],
-                                    },
-                                    {
-                                        "action": "replace",
-                                        "regex": "([^:]+)(?::\\d+)?",
-                                        "replacement": "$1:19001",
-                                        "source_labels": ["__address__"],
-                                        "target_label": "__address__",
-                                    },
-                                ],
-                            },
-                        ],
-                        "podMonitorNamespaceSelector": {},
-                        "podMonitorSelectorNilUsesHelmValues": False,
-                    },
-                },
-            },
-        },
-        "providerConfigRef": {
-            "kind": "ProviderConfig",
-            "name": _PC_NAME,
-        },
-    },
-}
-
-
-def _base_request(
-    nvidia_driver_root: str = "/home/kubernetes/bin/nvidia",
-    name: str = "test-backend",
-    stack: Literal["Standard", "Dynamo"] = "Dynamo",
-) -> fnv1.RunFunctionRequest:
-    """Build the base RunFunctionRequest used by all test cases.
-
-    Defaults to the GKE driver root, which drives the DRA driver's
-    nvidiaDriverRoot override and the critical-pods quota. Defaults the stack to
-    Dynamo so the Grove/KAI and ModelExpress fixtures below apply; the Standard
-    path has its own test.
-    """
-    spec = v1alpha1.Spec(
-        # The cloud is required by the XRD but not yet read by the
-        # function; these fixtures are rewritten when it is.
-        cloud="Existing",
-        secrets=[
-            v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
-            v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
-        ],
-        nvidiaDriverRoot=nvidia_driver_root,
-        stack=stack,
-    )
+def _request(cloud: str, stack: str, observed: dict | None = None) -> fnv1.RunFunctionRequest:
+    """Build a RunFunctionRequest for a test-backend ServingStack."""
     return fnv1.RunFunctionRequest(
         observed=fnv1.State(
             composite=fnv1.Resource(
                 resource=resource.dict_to_struct(
                     v1alpha1.ServingStack(
-                        metadata=metav1.ObjectMeta(
-                            name=name,
-                            namespace="test-ns",
+                        metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                        spec=v1alpha1.Spec(
+                            cloud=cloud,  # ty: ignore[invalid-argument-type]  # cases pass values of the literal
+                            stack=stack,  # ty: ignore[invalid-argument-type]
+                            secrets=[
+                                v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
+                                v1alpha1.Secret(
+                                    type="GoogleApplicationCredentials", name="sa-secret", key="private_key"
+                                ),
+                            ],
                         ),
-                        spec=spec,
                     ).model_dump(exclude_none=True, mode="json")
                 ),
             ),
+            resources=observed or {},
         ),
     )
 
 
+def _release(
+    key: str,
+    release: str,
+    namespace: str,
+    chart: str,
+    repository: str,
+    version: str,
+    values: dict | None = None,
+) -> fnv1.Resource:
+    """The expected Release for a Chart entry, built from literal arguments."""
+    model = helmv1beta1.Release(
+        metadata=metav1.ObjectMeta(
+            annotations={"crossplane.io/external-name": release},
+            labels={"modelplane.ai/resource": key},
+        ),
+        spec=helmv1beta1.Spec(
+            providerConfigRef=helmv1beta1.ProviderConfigRef(kind="ProviderConfig", name=_PC_NAME),
+            forProvider=helmv1beta1.ForProvider(
+                chart=helmv1beta1.Chart(name=chart, repository=repository, version=version),
+                namespace=namespace,
+            ),
+        ),
+    )
+    if values:
+        model.spec.forProvider.values = values
+    res = fnv1.Resource()
+    resource.update(res, model)
+    return res
+
+
+def _object(key: str, manifest: dict, cel: str | None = None) -> fnv1.Resource:
+    """The expected Object for one manifest, built from literal arguments."""
+    model = k8sobjv1alpha1.Object(
+        metadata=metav1.ObjectMeta(labels={"modelplane.ai/resource": key}),
+        spec=k8sobjv1alpha1.Spec(
+            providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(kind="ProviderConfig", name=_PC_NAME),
+            forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
+        ),
+    )
+    if cel is not None:
+        model.spec.readiness = k8sobjv1alpha1.Readiness(policy="DeriveFromCelQuery", celQuery=cel)
+    res = fnv1.Resource()
+    resource.update(res, model)
+    return res
+
+
+def _usage(of_ref: tuple[str, str], of_key: str, by_ref: tuple[str, str], by_key: str) -> fnv1.Resource:
+    """The expected teardown Usage for one dependency edge, ready on arrival."""
+    res = fnv1.Resource()
+    resource.update(
+        res,
+        usagev1beta1.Usage(
+            spec=usagev1beta1.Spec(
+                of=usagev1beta1.Of(
+                    apiVersion=of_ref[0],
+                    kind=of_ref[1],
+                    resourceSelector=usagev1beta1.ResourceSelectorModel(
+                        matchControllerRef=True,
+                        matchLabels={"modelplane.ai/resource": of_key},
+                    ),
+                ),
+                by=usagev1beta1.By(
+                    apiVersion=by_ref[0],
+                    kind=by_ref[1],
+                    resourceSelector=usagev1beta1.ResourceSelector(
+                        matchControllerRef=True,
+                        matchLabels={"modelplane.ai/resource": by_key},
+                    ),
+                ),
+                replayDeletion=True,
+            ),
+        ),
+    )
+    res.ready = fnv1.READY_TRUE
+    return res
+
+
+def _provider_configs() -> dict[str, fnv1.Resource]:
+    """The two expected ProviderConfigs, ready on arrival."""
+    k8s = fnv1.Resource()
+    resource.update(
+        k8s,
+        k8spcv1alpha1.ProviderConfig(
+            metadata=metav1.ObjectMeta(name=_PC_NAME),
+            spec=k8spcv1alpha1.Spec(
+                credentials=k8spcv1alpha1.Credentials(
+                    source="Secret",
+                    secretRef=k8spcv1alpha1.SecretRef(name="kube-secret", namespace="test-ns", key="kubeconfig"),
+                ),
+                identity=k8spcv1alpha1.Identity(
+                    type="GoogleApplicationCredentials",
+                    source="Secret",
+                    secretRef=k8spcv1alpha1.SecretRef(name="sa-secret", namespace="test-ns", key="private_key"),
+                ),
+            ),
+        ),
+    )
+    k8s.ready = fnv1.READY_TRUE
+    helm = fnv1.Resource()
+    resource.update(
+        helm,
+        helmpcv1beta1.ProviderConfig(
+            metadata=metav1.ObjectMeta(name=_PC_NAME),
+            spec=helmpcv1beta1.Spec(
+                credentials=helmpcv1beta1.Credentials(
+                    source="Secret",
+                    secretRef=helmpcv1beta1.SecretRef(name="kube-secret", namespace="test-ns", key="kubeconfig"),
+                ),
+                identity=helmpcv1beta1.Identity(
+                    type="GoogleApplicationCredentials",
+                    source="Secret",
+                    secretRef=helmpcv1beta1.SecretRef(name="sa-secret", namespace="test-ns", key="private_key"),
+                ),
+            ),
+        ),
+    )
+    helm.ready = fnv1.READY_TRUE
+    return {"provider-config-kubernetes": k8s, "provider-config-helm": helm}
+
+
+def _observed_pcs() -> dict[str, fnv1.Resource]:
+    """Observed ProviderConfigs, which gate the rest of the stack open."""
+    return {
+        "provider-config-kubernetes": fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
+            )
+        ),
+        "provider-config-helm": fnv1.Resource(
+            resource=resource.dict_to_struct({"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"})
+        ),
+    }
+
+
+# The Usages every Existing/Dynamo pass composes: the two hand-written
+# gateway-chain edges, and one derived edge per depends_on in the joined
+# stack data.
+_EXISTING_DYNAMO_USAGES = {
+    "usage-gateway-class-by-gateway": _usage(_OBJECT_REF, "gateway-class", _OBJECT_REF, "gateway"),
+    "usage-envoy-gateway-by-gateway-class": _usage(_RELEASE_REF, "envoy-gateway", _OBJECT_REF, "gateway-class"),
+    "usage-cert-manager-by-envoy-gateway": _usage(_RELEASE_REF, "cert-manager", _RELEASE_REF, "envoy-gateway"),
+    "usage-ai-gateway-crds-by-ai-gateway": _usage(_RELEASE_REF, "ai-gateway-crds", _RELEASE_REF, "ai-gateway"),
+    "usage-gateway-namespace-by-gateway-proxy": _usage(_OBJECT_REF, "gateway-namespace", _OBJECT_REF, "gateway-proxy"),
+    "usage-kai-scheduler-by-kai-queue-root": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue-root"),
+    "usage-kai-scheduler-by-kai-queue": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue"),
+    "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server": _usage(
+        _OBJECT_REF, "modelexpress-crds-modelmetadatas.modelexpress.nvidia.com", _OBJECT_REF, "modelexpress-server"
+    ),
+    "usage-modelexpress-crds-modelcacheentries.modelexpress.nvidia.com-by-modelexpress-server": _usage(
+        _OBJECT_REF, "modelexpress-crds-modelcacheentries.modelexpress.nvidia.com", _OBJECT_REF, "modelexpress-server"
+    ),
+}
+
+
+def _kai_queue(name: str, parent: str | None) -> dict:
+    spec: dict = {
+        "resources": {
+            "cpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+            "gpu": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+            "memory": {"quota": -1, "limit": -1, "overQuotaWeight": 1},
+        },
+    }
+    if parent:
+        spec["parentQueue"] = parent
+    return {"apiVersion": "scheduling.run.ai/v2", "kind": "Queue", "metadata": {"name": name}, "spec": spec}
+
+
+_MX_META = {"name": "modelexpress-server", "namespace": "default"}
+_MX_SELECT = {"modelplane.ai/modelexpress": "modelexpress-server"}
+
+
+def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
+    """Every component the Existing/Dynamo stack renders, as literals."""
+    out: dict[str, fnv1.Resource] = {}
+
+    # --- the Existing cloud half (hand-written Modelplane pins) ---
+    out["cert-manager"] = _release(
+        key="cert-manager",
+        release="mp-cert-manager",
+        namespace="cert-manager",
+        chart="cert-manager",
+        repository="https://charts.jetstack.io",
+        version="v1.17.1",
+        values={"crds": {"enabled": True, "keep": False}},
+    )
+    out["kube-prometheus-stack"] = _release(
+        key="kube-prometheus-stack",
+        release="mp-kube-prometheus-stack",
+        namespace="monitoring",
+        chart="kube-prometheus-stack",
+        repository="https://prometheus-community.github.io/helm-charts",
+        version="72.6.2",
+        values={
+            "fullnameOverride": "prometheus",
+            "prometheus": {
+                "prometheusSpec": {
+                    "podMonitorSelectorNilUsesHelmValues": False,
+                    "podMonitorNamespaceSelector": {},
+                    "additionalScrapeConfigs": [
+                        {
+                            "job_name": "envoy-gateway-proxy",
+                            "kubernetes_sd_configs": [
+                                {"role": "pod", "namespaces": {"names": ["envoy-gateway-system"]}},
+                            ],
+                            "relabel_configs": [
+                                {
+                                    "source_labels": [
+                                        "__meta_kubernetes_pod_label_app_kubernetes_io_component",
+                                    ],
+                                    "action": "keep",
+                                    "regex": "proxy",
+                                },
+                                {
+                                    "source_labels": ["__address__"],
+                                    "action": "replace",
+                                    "regex": "([^:]+)(?::\\d+)?",
+                                    "replacement": "$1:19001",
+                                    "target_label": "__address__",
+                                },
+                            ],
+                            "metrics_path": "/stats/prometheus",
+                        },
+                    ],
+                },
+            },
+            "grafana": {"enabled": False},
+            "alertmanager": {"enabled": False},
+        },
+    )
+    out["node-feature-discovery"] = _release(
+        key="node-feature-discovery",
+        release="mp-node-feature-discovery",
+        namespace="node-feature-discovery",
+        chart="node-feature-discovery",
+        repository="oci://registry.k8s.io/nfd/charts",
+        version="0.18.3",
+        values={
+            "worker": {
+                "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
+            },
+        },
+    )
+    out["nvidia-dra-driver-gpu"] = _release(
+        key="nvidia-dra-driver-gpu",
+        release="mp-dra-driver-nvidia-gpu",
+        namespace="nvidia-dra-driver",
+        chart="dra-driver-nvidia-gpu",
+        repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
+        version="0.4.0",
+        values={
+            "gpuResourcesEnabledOverride": True,
+            "resources": {"computeDomains": {"enabled": False}},
+        },
+    )
+
+    # --- the common half ---
+    out["envoy-gateway"] = _release(
+        key="envoy-gateway",
+        release="mp-gateway-helm",
+        namespace="envoy-gateway-system",
+        chart="gateway-helm",
+        repository="oci://docker.io/envoyproxy",
+        version="v1.8.1",
+        values={
+            "config": {
+                "envoyGateway": {
+                    "extensionApis": {"enableBackend": True},
+                    "extensionManager": {
+                        "hooks": {
+                            "xdsTranslator": {
+                                "translation": {
+                                    "listener": {"includeAll": True},
+                                    "route": {"includeAll": True},
+                                    "cluster": {"includeAll": True},
+                                    "secret": {"includeAll": True},
+                                },
+                                "post": ["Translation", "Cluster", "Route"],
+                            },
+                        },
+                        "service": {
+                            "fqdn": {
+                                "hostname": "ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local",
+                                "port": 1063,
+                            },
+                        },
+                        "backendResources": [
+                            {"group": "inference.networking.k8s.io", "kind": "InferencePool", "version": "v1"},
+                        ],
+                    },
+                },
+            },
+        },
+    )
+    out["ai-gateway-crds"] = _release(
+        key="ai-gateway-crds",
+        release="mp-ai-gateway-crds-helm",
+        namespace="envoy-ai-gateway-system",
+        chart="ai-gateway-crds-helm",
+        repository="oci://docker.io/envoyproxy",
+        version="v0.7.0",
+    )
+    out["ai-gateway"] = _release(
+        key="ai-gateway",
+        release="mp-ai-gateway-helm",
+        namespace="envoy-ai-gateway-system",
+        chart="ai-gateway-helm",
+        repository="oci://docker.io/envoyproxy",
+        version="v0.7.0",
+    )
+    for doc in _crds("gaie.yaml"):
+        key = f"gaie-crds-{doc['metadata']['name']}"
+        out[key] = _object(key, doc)
+    out["gateway-namespace"] = _object(
+        "gateway-namespace",
+        {"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "modelplane-system"}},
+    )
+    out["gateway-proxy"] = _object(
+        "gateway-proxy",
+        {
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "EnvoyProxy",
+            "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "provider": {
+                    "type": "Kubernetes",
+                    "kubernetes": {"envoyService": {"externalTrafficPolicy": "Cluster"}},
+                },
+            },
+        },
+    )
+    out["dra-driver-critical-pods-quota"] = _object(
+        "dra-driver-critical-pods-quota",
+        {
+            "apiVersion": "v1",
+            "kind": "ResourceQuota",
+            "metadata": {"name": "allow-critical-pods", "namespace": "nvidia-dra-driver"},
+            "spec": {
+                "hard": {"pods": "1000"},
+                "scopeSelector": {
+                    "matchExpressions": [
+                        {
+                            "operator": "In",
+                            "scopeName": "PriorityClass",
+                            "values": ["system-node-critical", "system-cluster-critical"],
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
+    # --- the Dynamo half ---
+    out["grove"] = _release(
+        key="grove",
+        release="mp-grove-charts",
+        namespace="grove-system",
+        chart="grove-charts",
+        repository="oci://ghcr.io/ai-dynamo/grove",
+        version="v0.1.0-alpha.12-rc2",
+    )
+    out["kai-scheduler"] = _release(
+        key="kai-scheduler",
+        release="mp-kai-scheduler",
+        namespace="kai-scheduler",
+        chart="kai-scheduler",
+        repository="oci://ghcr.io/kai-scheduler/kai-scheduler",
+        version="v0.16.8",
+    )
+    out["kai-queue-root"] = _object("kai-queue-root", _kai_queue("modelplane-root", None))
+    out["kai-queue"] = _object("kai-queue", _kai_queue("modelplane", "modelplane-root"))
+    for doc in _crds("modelexpress.yaml"):
+        key = f"modelexpress-crds-{doc['metadata']['name']}"
+        out[key] = _object(key, doc)
+    out["modelexpress-server-sa"] = _object(
+        "modelexpress-server-sa",
+        {"apiVersion": "v1", "kind": "ServiceAccount", "metadata": _MX_META},
+    )
+    out["modelexpress-server-role"] = _object(
+        "modelexpress-server-role",
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "Role",
+            "metadata": _MX_META,
+            "rules": [
+                {
+                    "apiGroups": ["modelexpress.nvidia.com"],
+                    "resources": ["modelmetadatas", "modelmetadatas/status"],
+                    "verbs": ["get", "list", "create", "update", "patch", "delete"],
+                },
+                {
+                    "apiGroups": [""],
+                    "resources": ["configmaps"],
+                    "verbs": ["get", "list", "create", "update", "patch", "delete"],
+                },
+                {
+                    "apiGroups": ["modelexpress.nvidia.com"],
+                    "resources": ["modelcacheentries", "modelcacheentries/status"],
+                    "verbs": ["get", "list", "create", "update", "patch", "delete"],
+                },
+            ],
+        },
+    )
+    out["modelexpress-server-rolebinding"] = _object(
+        "modelexpress-server-rolebinding",
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "RoleBinding",
+            "metadata": _MX_META,
+            "subjects": [{"kind": "ServiceAccount", "name": "modelexpress-server", "namespace": "default"}],
+            "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "modelexpress-server"},
+        },
+    )
+    out["modelexpress-server-svc"] = _object(
+        "modelexpress-server-svc",
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": _MX_META,
+            "spec": {
+                "selector": _MX_SELECT,
+                "ports": [{"name": "grpc", "port": 8001, "targetPort": 8001}],
+            },
+        },
+    )
+    out["modelexpress-server"] = _object(
+        "modelexpress-server",
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": _MX_META,
+            "spec": {
+                "replicas": 1,
+                "selector": {"matchLabels": _MX_SELECT},
+                "template": {
+                    "metadata": {"labels": _MX_SELECT},
+                    "spec": {
+                        "serviceAccountName": "modelexpress-server",
+                        "containers": [
+                            {
+                                "name": "modelexpress-server",
+                                "image": "nvcr.io/nvidia/ai-dynamo/modelexpress-server:0.4.1",
+                                "ports": [{"containerPort": 8001}],
+                                "env": [
+                                    {"name": "MODEL_EXPRESS_CACHE_DIRECTORY", "value": "/mnt/models"},
+                                    {"name": "HF_HUB_CACHE", "value": "/mnt/models"},
+                                    {"name": "MX_METADATA_BACKEND", "value": "kubernetes"},
+                                    {
+                                        "name": "POD_NAMESPACE",
+                                        "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}},
+                                    },
+                                ],
+                                "volumeMounts": [{"name": "cache", "mountPath": "/mnt/models"}],
+                                "readinessProbe": {"tcpSocket": {"port": 8001}, "periodSeconds": 10},
+                                "livenessProbe": {"tcpSocket": {"port": 8001}, "periodSeconds": 20},
+                            },
+                        ],
+                        "volumes": [{"name": "cache", "emptyDir": {}}],
+                    },
+                },
+            },
+        },
+        cel=_MODELEXPRESS_READY_CEL,
+    )
+
+    # --- the hand-rendered gateway pair ---
+    out["gateway-class"] = _object(
+        "gateway-class",
+        {
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "GatewayClass",
+            "metadata": {"name": "envoy"},
+            "spec": {
+                "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+                "parametersRef": {
+                    "group": "gateway.envoyproxy.io",
+                    "kind": "EnvoyProxy",
+                    "name": "inference-gateway",
+                    "namespace": "modelplane-system",
+                },
+            },
+        },
+    )
+    out["gateway"] = _object(
+        "gateway",
+        {
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "Gateway",
+            "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
+            "spec": {
+                "gatewayClassName": "envoy",
+                "listeners": [
+                    {
+                        "name": "http",
+                        "protocol": "HTTP",
+                        "port": 80,
+                        "allowedRoutes": {"namespaces": {"from": "All"}},
+                    },
+                ],
+            },
+        },
+        cel=_GATEWAY_READY_CEL,
+    )
+
+    return out
+
+
+def _response(resources: dict[str, fnv1.Resource], status: dict | None = None) -> fnv1.RunFunctionResponse:
+    """A whole expected response: 60s TTL, empty context, the XR status."""
+    return fnv1.RunFunctionResponse(
+        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+        desired=fnv1.State(
+            composite=fnv1.Resource(resource=resource.dict_to_struct({"status": status if status is not None else {}})),
+            resources=resources,
+        ),
+        context=structpb.Struct(),
+    )
+
+
+@dataclasses.dataclass
+class Case:
+    name: str
+    req: fnv1.RunFunctionRequest
+    want: fnv1.RunFunctionResponse
+
+
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
-    """Tests for FunctionRunner.RunFunction."""
+    maxDiff = None
 
     @classmethod
     def setUpClass(cls) -> None:
         cls.runner = fn.FunctionRunner()
 
-    async def test_first_pass(self) -> None:
-        """First pass composes provider configs and usages; releases gated."""
-        req = _base_request()
+    async def test_compose(self) -> None:
+        # Second pass: PCs observed, the whole stack renders.
+        full = _provider_configs() | _EXISTING_DYNAMO_USAGES | _existing_dynamo_stack()
 
-        want = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {}}),
-                ),
-                resources={
-                    "provider-config-helm": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_HELM),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_KUBERNETES),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-envoy-gw-by-gateway-class": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_ENVOY_GW_BY_GATEWAY_CLASS),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-gateway-class-by-gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kai-scheduler-by-kai-queue-root": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE_ROOT),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kai-scheduler-by-kai-queue": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                },
+        # Third pass: every rendered resource observed Ready (the gateway
+        # with its address assigned), so everything is marked ready and
+        # the address lands in the XR status.
+        rendered = [k for k in _existing_dynamo_stack() if k != "gateway"]
+        observed_ready = _observed_pcs()
+        for key in rendered:
+            observed_ready[key] = fnv1.Resource(
+                resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+            )
+        observed_ready["gateway"] = fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "status": {
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                        "atProvider": {
+                            "manifest": {"status": {"addresses": [{"type": "IPAddress", "value": "203.0.113.7"}]}},
+                        },
+                    },
+                }
+            )
+        )
+        # Every component observed Ready; PCs and Usages are ready on arrival.
+        all_ready = copy.deepcopy(full)
+        for res in all_ready.values():
+            res.ready = fnv1.READY_TRUE
+
+        cases = [
+            Case(
+                name="first pass composes only the provider configs and usages",
+                req=_request("Existing", "Dynamo"),
+                # Everything targeting the remote cluster is gated on the
+                # ProviderConfigs having been observed; Usages reference
+                # nothing remote and compose immediately.
+                want=_response(_provider_configs() | _EXISTING_DYNAMO_USAGES),
             ),
-            context=structpb.Struct(),
-        )
+            Case(
+                name="second pass renders the whole Existing/Dynamo stack",
+                req=_request("Existing", "Dynamo", observed=_observed_pcs()),
+                want=_response(full),
+            ),
+            Case(
+                name="third pass marks observed-ready resources and writes the gateway address",
+                req=_request("Existing", "Dynamo", observed=observed_ready),
+                want=_response(all_ready, status={"gateway": {"address": "203.0.113.7"}}),
+            ),
+        ]
+        for case in cases:
+            with self.subTest(case.name):
+                got = await self.runner.RunFunction(case.req, None)
+                self.assertEqual(
+                    json_format.MessageToDict(case.want),
+                    json_format.MessageToDict(got),
+                    "-want, +got",
+                )
 
-        got = await self.runner.RunFunction(req, None)
-        self.assertEqual(
-            json_format.MessageToDict(want),
-            json_format.MessageToDict(got),
-            "-want, +got",
-        )
-
-    async def test_non_gcp_identity(self) -> None:
-        """A non-GCP identity secret stamps its own type on both ProviderConfigs.
-
-        The identity secret's type is the provider identity type verbatim, so a
-        Nebius (or any other cloud's) credential authenticates as that cloud
-        rather than being forced to GoogleApplicationCredentials.
-        """
+    async def test_identity_secret_type_flows_to_provider_configs(self) -> None:
+        """A non-GCP identity secret's type is stamped verbatim on both
+        ProviderConfigs rather than being forced to GoogleApplicationCredentials,
+        and its own namespace wins over the XR's."""
         req = fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=fnv1.Resource(
@@ -943,6 +710,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         type="NebiusServiceAccountCredentials",
                                         name="nebius-secret",
                                         key="credentials.json",
+                                        namespace="other-ns",
                                     ),
                                 ],
                             ),
@@ -951,524 +719,148 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
         )
-
         got = await self.runner.RunFunction(req, None)
-        got_resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
-        want_identity = {
-            "secretRef": {"key": "credentials.json", "name": "nebius-secret", "namespace": "test-ns"},
-            "source": "Secret",
-            "type": "NebiusServiceAccountCredentials",
-        }
-        for pc in ("provider-config-kubernetes", "provider-config-helm"):
-            self.assertEqual(
-                want_identity,
-                got_resources[pc]["resource"]["spec"]["identity"],
-                f"{pc} identity",
-            )
+        pc = resource.struct_to_dict(got.desired.resources["provider-config-kubernetes"].resource)
+        self.assertEqual("NebiusServiceAccountCredentials", pc["spec"]["identity"]["type"])
+        self.assertEqual("other-ns", pc["spec"]["identity"]["secretRef"]["namespace"])
+        helm_pc = resource.struct_to_dict(got.desired.resources["provider-config-helm"].resource)
+        self.assertEqual("NebiusServiceAccountCredentials", helm_pc["spec"]["identity"]["type"])
 
-    async def test_leader_worker_set_backend(self) -> None:
-        """The Standard stack installs LWS instead of Grove, KAI, and ModelExpress.
 
-        spec.stack gates the whole Dynamo bundle: Dynamo installs Grove + KAI
-        (the four Grove/KAI resources and their teardown Usages) plus the
-        ModelExpress CRDs and server; Standard installs the lws chart and none of
-        them.
-        """
-        req = _base_request(stack="Standard")
-        req.observed.resources["provider-config-helm"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-        req.observed.resources["provider-config-kubernetes"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
+# The composed-resource key a component renders under is its identity:
+# renaming one deletes and recreates the remote resource (for an Object
+# holding a CRD, the CRD and its CRs). This pins the full key set per
+# cloud and stack, including the Usage keys derived from depends_on, as
+# reviewed literals. A failure here means the stack data changed a key -
+# make sure that's intended, then update the inventory and the release
+# notes.
 
-        got = await self.runner.RunFunction(req, None)
-        got_resources = json_format.MessageToDict(got).get("desired", {}).get("resources", {})
+_ALWAYS = frozenset(
+    {
+        "provider-config-kubernetes",
+        "provider-config-helm",
+        "gateway",
+        "gateway-class",
+        "usage-gateway-class-by-gateway",
+        "usage-envoy-gateway-by-gateway-class",
+    }
+)
 
-        self.assertIn("leader-worker-set", got_resources)
-        lws_chart = got_resources["leader-worker-set"]["resource"]["spec"]["forProvider"]["chart"]
-        self.assertEqual(lws_chart["name"], "lws")
-        self.assertEqual(lws_chart["repository"], "oci://registry.k8s.io/lws/charts")
-        # Pins the version too: it now comes from spec.standard.leaderWorkerSet
-        # rather than spec.versions.leaderWorkerSet, and a Standard cluster's
-        # composed output shouldn't change with that move.
-        self.assertEqual(lws_chart["version"], "v0.8.0")
+_COMMON = frozenset(
+    {
+        "ai-gateway",
+        "ai-gateway-crds",
+        "dra-driver-critical-pods-quota",
+        "envoy-gateway",
+        "gaie-crds-inferenceobjectives.inference.networking.x-k8s.io",
+        "gaie-crds-inferencepools.inference.networking.k8s.io",
+        "gaie-crds-inferencepools.inference.networking.x-k8s.io",
+        "gateway-namespace",
+        "gateway-proxy",
+        "usage-ai-gateway-crds-by-ai-gateway",
+        "usage-cert-manager-by-envoy-gateway",
+        "usage-gateway-namespace-by-gateway-proxy",
+    }
+)
 
-        for absent in (
-            "grove",
-            "kai-scheduler",
-            "kai-queue-root",
-            "kai-queue",
-            "usage-kai-scheduler-by-kai-queue-root",
-            "usage-kai-scheduler-by-kai-queue",
-            "modelexpress-server-sa",
-            "modelexpress-server-role",
-            "modelexpress-server-rolebinding",
-            "modelexpress-server-svc",
-        ):
-            self.assertNotIn(absent, got_resources)
+_STANDARD = frozenset(
+    {
+        "leader-worker-set",
+    }
+)
 
-        self.assertFalse(any(k.startswith("modelexpress-crd-") for k in got_resources))
+_DYNAMO = frozenset(
+    {
+        "grove",
+        "kai-queue",
+        "kai-queue-root",
+        "kai-scheduler",
+        "modelexpress-crds-modelcacheentries.modelexpress.nvidia.com",
+        "modelexpress-crds-modelmetadatas.modelexpress.nvidia.com",
+        "modelexpress-server",
+        "modelexpress-server-role",
+        "modelexpress-server-rolebinding",
+        "modelexpress-server-sa",
+        "modelexpress-server-svc",
+        "usage-kai-scheduler-by-kai-queue",
+        "usage-kai-scheduler-by-kai-queue-root",
+        "usage-modelexpress-crds-modelcacheentries.modelexpress.nvidia.com-by-modelexpress-server",
+        "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server",
+    }
+)
 
-    async def test_modelexpress_server_is_metadata_only(self) -> None:
-        """The shared ModelExpress server composes once the ProviderConfigs are
-        observed, with no shared cache PVC: its cache directory is an emptyDir."""
-        req = _base_request()
-        for pc in ("provider-config-helm", "provider-config-kubernetes"):
-            req.observed.resources[pc].CopyFrom(
-                fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
-                    ),
-                ),
-            )
-        got = await self.runner.RunFunction(req, None)
-        self.assertIn("modelexpress-server-svc", got.desired.resources)
-        self.assertNotIn("modelexpress-cache-pvc", got.desired.resources)
+_EKS = frozenset(
+    {
+        "cert-manager",
+        "gpu-operator",
+        "k8s-ephemeral-storage-metrics",
+        "kube-prometheus-stack",
+        "node-feature-discovery",
+        "nodewright-operator",
+        "nvidia-dra-driver-gpu",
+        "nvsentinel",
+        "prometheus-adapter",
+        "prometheus-operator-crds",
+        "usage-cert-manager-by-gpu-operator",
+        "usage-cert-manager-by-nvsentinel",
+        "usage-gpu-operator-by-nvidia-dra-driver-gpu",
+        "usage-gpu-operator-by-nvsentinel",
+        "usage-kube-prometheus-stack-by-gpu-operator",
+        "usage-kube-prometheus-stack-by-k8s-ephemeral-storage-metrics",
+        "usage-kube-prometheus-stack-by-prometheus-adapter",
+        "usage-node-feature-discovery-by-gpu-operator",
+        "usage-prometheus-operator-crds-by-k8s-ephemeral-storage-metrics",
+        "usage-prometheus-operator-crds-by-kube-prometheus-stack",
+        "usage-prometheus-operator-crds-by-nvsentinel",
+    }
+)
 
-        dep = resource.struct_to_dict(got.desired.resources["modelexpress-server"].resource)
-        dep_manifest = dep["spec"]["forProvider"]["manifest"]
-        self.assertEqual(dep_manifest["metadata"]["name"], "modelexpress-server")
-        pod_spec = dep_manifest["spec"]["template"]["spec"]
-        self.assertEqual(pod_spec["serviceAccountName"], "modelexpress-server")
-        # The cache directory is an emptyDir, not a shared PVC.
-        self.assertEqual(pod_spec["volumes"], [{"name": "cache", "emptyDir": {}}])
-        # The image tag comes from the spec.dynamo.modelExpress knob (default).
-        container = pod_spec["containers"][0]
-        self.assertEqual(container["image"], f"{fn._MODELEXPRESS_SERVER_REPO}:0.4.1")
-        # The server container probes its gRPC port so the Service only
-        # advertises it once it's accepting connections.
-        self.assertEqual(container["readinessProbe"]["tcpSocket"]["port"], fn._MODELEXPRESS_PORT)
-        self.assertEqual(container["livenessProbe"]["tcpSocket"]["port"], fn._MODELEXPRESS_PORT)
-        self.assertEqual(dep["spec"]["readiness"]["celQuery"], fn._MODELEXPRESS_SERVER_READY_CEL)
+# AKS additionally carries the gpu-operator's toolkit-hardening manifest.
+_AKS = _EKS | frozenset(
+    {
+        "gpu-operator-manifests",
+        "usage-gpu-operator-by-gpu-operator-manifests",
+    }
+)
 
-    async def test_second_pass(self) -> None:
-        """Observed PCs ungate Helm releases, CRD objects, and gateway objects."""
-        req = _base_request()
-        req.observed.resources["provider-config-helm"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-        req.observed.resources["provider-config-kubernetes"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
+_GKE = _EKS
 
-        want = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct({"status": {}}),
-                ),
-                resources={
-                    "cert-manager": fnv1.Resource(
-                        resource=resource.dict_to_struct(_CERT_MANAGER),
-                    ),
-                    "envoy-gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_ENVOY_GATEWAY),
-                    ),
-                    "ai-gateway-crds": fnv1.Resource(
-                        resource=resource.dict_to_struct(_AI_GATEWAY_CRDS),
-                    ),
-                    "ai-gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_AI_GATEWAY),
-                    ),
-                    **_gaie_crd_desired(ready=False),
-                    **_modelexpress_crd_desired(ready=False),
-                    **_modelexpress_bundle_desired(),
-                    "gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY),
-                    ),
-                    "gateway-namespace": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
-                    ),
-                    "gateway-proxy": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY_PROXY),
-                    ),
-                    "gateway-class": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY_CLASS),
-                    ),
-                    "grove": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GROVE),
-                    ),
-                    "kai-scheduler": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KAI_SCHEDULER),
-                    ),
-                    "kai-queue-root": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KAI_QUEUE_ROOT),
-                    ),
-                    "kai-queue": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KAI_QUEUE),
-                    ),
-                    "node-feature-discovery": fnv1.Resource(
-                        resource=resource.dict_to_struct(_NODE_FEATURE_DISCOVERY),
-                    ),
-                    "dra-driver": fnv1.Resource(
-                        resource=resource.dict_to_struct(_DRA_DRIVER),
-                    ),
-                    "dra-driver-critical-pods-quota": fnv1.Resource(
-                        resource=resource.dict_to_struct(_DRA_DRIVER_QUOTA),
-                    ),
-                    "prometheus": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROMETHEUS),
-                    ),
-                    "provider-config-helm": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_HELM),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_KUBERNETES),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-envoy-gw-by-gateway-class": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_ENVOY_GW_BY_GATEWAY_CLASS),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-gateway-class-by-gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kai-scheduler-by-kai-queue-root": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE_ROOT),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kai-scheduler-by-kai-queue": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                },
-            ),
-            context=structpb.Struct(),
-        )
+_HAND_WRITTEN = frozenset(
+    {
+        "cert-manager",
+        "kube-prometheus-stack",
+        "node-feature-discovery",
+        "nvidia-dra-driver-gpu",
+    }
+)
 
-        got = await self.runner.RunFunction(req, None)
-        self.assertEqual(
-            json_format.MessageToDict(want),
-            json_format.MessageToDict(got),
-            "-want, +got",
-        )
+_INVENTORY = {
+    "EKS": _EKS,
+    "AKS": _AKS,
+    "GKE": _GKE,
+    "Nebius": _HAND_WRITTEN,
+    "Vultr": _HAND_WRITTEN,
+    "Existing": _HAND_WRITTEN,
+}
 
-    async def test_default_driver_root_skips_override_keeps_quota(self) -> None:
-        """With the default driver root (/), e.g. EKS, the DRA driver gets no
-        nvidiaDriverRoot override, but the critical-pods quota is still composed
-        (it's laid down everywhere — harmless where priority isn't restricted)."""
-        req = _base_request(nvidia_driver_root="/")
-        req.observed.resources["provider-config-helm"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-        req.observed.resources["provider-config-kubernetes"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
 
-        got = await self.runner.RunFunction(req, None)
+class TestKeyInventory(unittest.IsolatedAsyncioTestCase):
+    maxDiff = None
 
-        self.assertIn("dra-driver-critical-pods-quota", got.desired.resources)
-        dra_values = resource.struct_to_dict(got.desired.resources["dra-driver"].resource)["spec"]["forProvider"][
-            "values"
-        ]
-        self.assertNotIn("nvidiaDriverRoot", dra_values)
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
 
-    async def test_gateway_gated_on_address(self) -> None:
-        """The Gateway Object carries the DeriveFromCelQuery readiness, and is
-        only marked ready once provider-kubernetes reports Ready=True (which it
-        derives from the address-gating CEL query). This keeps the Object on the
-        fast re-observe poll until the LoadBalancer address is observed, instead
-        of freezing at a pre-address snapshot on the slow drift poll (#121)."""
-        req = _base_request()
-        req.observed.resources["provider-config-helm"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-        req.observed.resources["provider-config-kubernetes"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
+    async def test_composed_resource_keys(self) -> None:
+        for cloud, cloud_keys in _INVENTORY.items():
+            for stack, stack_keys in (("Standard", _STANDARD), ("Dynamo", _DYNAMO)):
+                with self.subTest(cloud=cloud, stack=stack):
+                    got = await self.runner.RunFunction(_request(cloud, stack, observed=_observed_pcs()), None)
+                    self.assertEqual(
+                        _ALWAYS | _COMMON | cloud_keys | stack_keys,
+                        set(got.desired.resources.keys()),
+                    )
 
-        # Before the address is observed there's no Ready condition: the desired
-        # Gateway Object must not be marked ready, and no address is surfaced.
-        req.observed.resources["gateway"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object"}
-                ),
-            ),
-        )
-        got = await self.runner.RunFunction(req, None)
-        self.assertEqual(
-            got.desired.resources["gateway"].ready,
-            fnv1.READY_UNSPECIFIED,
-            "gateway must not be ready before its address is observed",
-        )
-        self.assertEqual(
-            resource.struct_to_dict(got.desired.resources["gateway"].resource)["spec"]["readiness"],
-            {"policy": "DeriveFromCelQuery", "celQuery": fn._GATEWAY_READY_CEL},
-            "gateway Object must gate readiness on its address via CEL",
-        )
-        self.assertNotIn(
-            "gateway",
-            resource.struct_to_dict(got.desired.composite.resource).get("status", {}),
-            "no gateway address should be surfaced before it's observed",
-        )
 
-        # Once provider-kubernetes derives Ready=True from the CEL query (the
-        # address is now in the observed manifest), the Object is marked ready
-        # and the address propagates to the XR status.
-        req.observed.resources["gateway"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "status": {
-                            "conditions": [{"type": "Ready", "status": "True"}],
-                            "atProvider": {
-                                "manifest": {"status": {"addresses": [{"value": "172.18.255.200"}]}},
-                            },
-                        },
-                    }
-                ),
-            ),
-        )
-        got = await self.runner.RunFunction(req, None)
-        self.assertEqual(
-            got.desired.resources["gateway"].ready,
-            fnv1.READY_TRUE,
-            "gateway must be ready once provider-kubernetes observes the address",
-        )
-        self.assertEqual(
-            resource.struct_to_dict(got.desired.composite.resource)["status"]["gateway"]["address"],
-            "172.18.255.200",
-            "gateway address must surface to the XR status once observed",
-        )
-
-    async def test_gateway_proxy_marked_ready_when_observed_ready(self) -> None:
-        """The EnvoyProxy (gateway-proxy) is a config-only Object with no runtime
-        readiness of its own, so it is marked ready from the Ready condition
-        provider-kubernetes reports on apply, exactly like gateway-namespace and
-        gateway-class. Left out of mark_readiness it would sit at
-        READY_UNSPECIFIED and block the ServingStack XR from ever reaching
-        Ready."""
-        req = _base_request()
-        req.observed.resources["provider-config-helm"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-        req.observed.resources["provider-config-kubernetes"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-
-        # Composed but not yet observed Ready: it must not be marked ready.
-        got = await self.runner.RunFunction(req, None)
-        self.assertEqual(
-            got.desired.resources["gateway-proxy"].ready,
-            fnv1.READY_UNSPECIFIED,
-            "gateway-proxy must not be ready before it is observed Ready",
-        )
-
-        # Once provider-kubernetes reports the EnvoyProxy Object Ready=True it is
-        # marked ready, so it does not hold the composite XR from Ready.
-        req.observed.resources["gateway-proxy"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
-                    }
-                ),
-            ),
-        )
-        got = await self.runner.RunFunction(req, None)
-        self.assertEqual(
-            got.desired.resources["gateway-proxy"].ready,
-            fnv1.READY_TRUE,
-            "gateway-proxy must be ready once provider-kubernetes observes it Ready",
-        )
-
-    async def test_third_pass(self) -> None:
-        """Steady state: composed releases report Ready, and the gateway address is
-        surfaced from the observed Object's manifest. The observed gateway Object
-        carries no Ready condition here, so the gateway Object itself stays unready."""
-        req = _base_request()
-        req.observed.resources["provider-config-helm"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "helm.m.crossplane.io/v1beta1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-        req.observed.resources["provider-config-kubernetes"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {"apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ProviderConfig"}
-                ),
-            ),
-        )
-        for r in ("cert-manager", "ai-gateway-crds", "ai-gateway"):
-            req.observed.resources[r].CopyFrom(
-                fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        {
-                            "apiVersion": "helm.m.crossplane.io/v1beta1",
-                            "kind": "Release",
-                            "status": {"conditions": [{"type": "Ready", "status": "True"}]},
-                        }
-                    ),
-                ),
-            )
-        req.observed.resources["gateway"].CopyFrom(
-            fnv1.Resource(
-                resource=resource.dict_to_struct(
-                    {
-                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                        "kind": "Object",
-                        "status": {
-                            "atProvider": {
-                                "manifest": {"status": {"addresses": [{"value": "172.18.255.200"}]}},
-                            },
-                        },
-                    }
-                ),
-            ),
-        )
-        for key, observed in _gaie_crd_observed().items():
-            req.observed.resources[key].CopyFrom(observed)
-        for key, observed in _modelexpress_crd_observed().items():
-            req.observed.resources[key].CopyFrom(observed)
-
-        want = fnv1.RunFunctionResponse(
-            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        {"status": {"gateway": {"address": "172.18.255.200"}}},
-                    ),
-                ),
-                resources={
-                    "cert-manager": fnv1.Resource(
-                        resource=resource.dict_to_struct(_CERT_MANAGER),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "envoy-gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_ENVOY_GATEWAY),
-                    ),
-                    "ai-gateway-crds": fnv1.Resource(
-                        resource=resource.dict_to_struct(_AI_GATEWAY_CRDS),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "ai-gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_AI_GATEWAY),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    **_gaie_crd_desired(ready=True),
-                    **_modelexpress_crd_desired(ready=True),
-                    **_modelexpress_bundle_desired(),
-                    # The Gateway Object's observed manifest carries the
-                    # address, so write_status surfaces it - but the observed
-                    # Object has no Ready condition here, so it stays unready.
-                    "gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY),
-                    ),
-                    "gateway-namespace": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY_NAMESPACE),
-                    ),
-                    "gateway-proxy": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY_PROXY),
-                    ),
-                    "gateway-class": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GATEWAY_CLASS),
-                    ),
-                    "grove": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GROVE),
-                    ),
-                    "kai-scheduler": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KAI_SCHEDULER),
-                    ),
-                    "kai-queue-root": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KAI_QUEUE_ROOT),
-                    ),
-                    "kai-queue": fnv1.Resource(
-                        resource=resource.dict_to_struct(_KAI_QUEUE),
-                    ),
-                    "node-feature-discovery": fnv1.Resource(
-                        resource=resource.dict_to_struct(_NODE_FEATURE_DISCOVERY),
-                    ),
-                    "dra-driver": fnv1.Resource(
-                        resource=resource.dict_to_struct(_DRA_DRIVER),
-                    ),
-                    "dra-driver-critical-pods-quota": fnv1.Resource(
-                        resource=resource.dict_to_struct(_DRA_DRIVER_QUOTA),
-                    ),
-                    "prometheus": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROMETHEUS),
-                    ),
-                    "provider-config-helm": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_HELM),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_PROVIDER_CONFIG_KUBERNETES),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-envoy-gw-by-gateway-class": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_ENVOY_GW_BY_GATEWAY_CLASS),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-gateway-class-by-gateway": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_GATEWAY_CLASS_BY_GATEWAY),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kai-scheduler-by-kai-queue-root": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE_ROOT),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "usage-kai-scheduler-by-kai-queue": fnv1.Resource(
-                        resource=resource.dict_to_struct(_USAGE_KAI_SCHEDULER_BY_KAI_QUEUE),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                },
-            ),
-            context=structpb.Struct(),
-        )
-
-        got = await self.runner.RunFunction(req, None)
-        self.assertEqual(
-            json_format.MessageToDict(want),
-            json_format.MessageToDict(got),
-            "-want, +got",
-        )
+if __name__ == "__main__":
+    unittest.main()

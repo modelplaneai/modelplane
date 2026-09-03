@@ -52,14 +52,14 @@ _MODELEXPRESS_SERVER_READY_CEL = (
     'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
 )
 
-_FUNCTION_DIR = pathlib.Path(__file__).parent.parent
+_CRDS_DIR = pathlib.Path(__file__).parent / "crds"
 
 
 def _crds(filename: str) -> list[dict[str, Any]]:
-    """Load the CRDs from a YAML file vendored beside fn.py."""
+    """Load the CRDs from a YAML file vendored under stacks/crds/."""
     return [
         doc
-        for doc in yaml.safe_load_all((_FUNCTION_DIR / filename).read_text())
+        for doc in yaml.safe_load_all((_CRDS_DIR / filename).read_text())
         if doc and doc.get("kind") == "CustomResourceDefinition"
     ]
 
@@ -127,7 +127,7 @@ COMPONENTS: list[Component] = [
     # release.
     Manifests(
         key="modelexpress-crds",
-        manifests=_crds("modelexpress_crds.yaml"),
+        manifests=_crds("modelexpress.yaml"),
     ),
     # The shared ModelExpress server, one per Dynamo cluster. It's
     # metadata-only, coordinating P2P weight transfer between engine
