@@ -2239,7 +2239,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 },
                                 "spec": {
                                     "region": "ewr",
-                                    "kubernetesVersion": "v1.36.1+3",
+                                    "kubernetesVersion": "v1.36.2+1",
                                     "nodePools": [
                                         {
                                             "name": "l40s-pool",
@@ -2325,7 +2325,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         },
                         "spec": {
                             "region": "ewr",
-                            "kubernetesVersion": "v1.36.1+3",
+                            "kubernetesVersion": "v1.36.2+1",
                             "credentials": {
                                 "type": "ProviderConfig",
                                 "name": "my-vultr-account",

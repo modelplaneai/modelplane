@@ -284,7 +284,7 @@ spec:
                         maxLength: 32
                       kubernetesVersion:
                         type: string
-                        default: "v1.36.1+3"
+                        default: "v1.36.2+1"
                         description: >-
                           VKE cluster Kubernetes version. VKE requires an
                           exact version string including the build suffix;

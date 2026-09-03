@@ -101,7 +101,7 @@ def _cluster(
             "forProvider": {
                 "label": "test-cluster",
                 "region": "ewr",
-                "version": "v1.36.1+3",
+                "version": "v1.36.2+1",
                 "haControlplanes": True,
                 "nodePools": _SYSTEM_POOL,
             },
