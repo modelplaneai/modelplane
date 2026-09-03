@@ -69,6 +69,9 @@ allow-star-arg-any = true
 "functions/*/function/fn.py" = ["N802"]
 # The docs manifest validator is a CLI script; print is its output.
 "docs/utils/validate/**" = ["T201"]
+# Generated serving stack lists carry upstream chart values verbatim; long
+# string literals and unicode arrive from the recipes.
+"functions/*/function/stacks/clouds/generated/**" = ["E501", "RUF001", "RUF002", "RUF003"]
 # main.py is the click CLI entrypoint: boolean flags are idiomatic, and it
 # catches Exception at the top level to report startup failures cleanly.
 "functions/*/function/main.py" = ["FBT001", "BLE001"]
