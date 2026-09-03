@@ -75,6 +75,9 @@ allow-star-arg-any = true
 # main.py is the click CLI entrypoint: boolean flags are idiomatic, and it
 # catches Exception at the top level to report startup failures cleanly.
 "functions/*/function/main.py" = ["FBT001", "BLE001"]
+# The serving stack generator is a CLI script: its classification report
+# prints to stderr, and its recipe transform is legitimately branchy.
+"functions/compose-serving-stack/generate.py" = ["T201", "PLR0912", "PLR0915"]
 
 [tool.ty.environment]
 # The functions target Python 3.12 (see tool.ruff target-version).

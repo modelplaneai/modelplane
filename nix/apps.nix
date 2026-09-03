@@ -333,6 +333,37 @@
       );
     };
 
+  # Regenerate the AICR-derived serving stack component lists (see
+  # design/serving-stack-generation.md). Writes
+  # functions/compose-serving-stack/function/stacks/clouds/generated/aicr/,
+  # then formats and lints exactly what it wrote so `nix flake check`'s
+  # python check passes on the output. The generator asserts the aicr on
+  # PATH matches its pin, so bumping aicr means updating nix/aicr.nix and
+  # generate.py together. Extra args name the clouds to regenerate, e.g.:
+  # nix run .#stacks -- gke
+  stacks =
+    { aicr }:
+    {
+      type = "app";
+      meta.description = "Regenerate the AICR-derived serving stack lists";
+      program = pkgs.lib.getExe (
+        pkgs.writeShellApplication {
+          name = "modelplane-stacks";
+          runtimeInputs = [
+            aicr
+            (pkgs.python312.withPackages (ps: [ ps.pyyaml ]))
+            pkgs.unstable.ruff
+          ];
+          inheritPath = false;
+          text = ''
+            python3 functions/compose-serving-stack/generate.py "$@"
+            ruff format functions/compose-serving-stack/function/stacks/clouds/generated/
+            ruff check functions/compose-serving-stack/function/stacks/clouds/generated/
+          '';
+        }
+      );
+    };
+
   # Serve the docs site locally with live reload. Extra args pass through to
   # hugo server, e.g.: nix run .#docs-serve -- --port 8080
   docsServe = _: {
