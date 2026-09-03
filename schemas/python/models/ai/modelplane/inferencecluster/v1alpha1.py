@@ -115,7 +115,7 @@ class Vultr(BaseModel):
     """
     Vultr ProviderConfig or ClusterProviderConfig used to authenticate to the Vultr API. Defaults to the ClusterProviderConfig named default.
     """
-    kubernetesVersion: str | None = 'v1.36.1+3'
+    kubernetesVersion: str | None = 'v1.36.2+1'
     """
     VKE cluster Kubernetes version. VKE requires an exact version string including the build suffix; list current versions with vultr-cli kubernetes versions. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
     """
