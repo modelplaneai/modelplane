@@ -18,6 +18,16 @@ dev = [
   # Type stubs for the dynamically generated protobuf modules, so ty can
   # resolve the Struct and Duration types the functions and tests use.
   "types-protobuf>=4.24",
+  # Imported by the docs manifest validator (docs/utils/validate). Declared here
+  # rather than borrowed from whichever composition function happens to pull
+  # them in, so dropping a function's dependency can't break the check.
+  #
+  # pydantic can't be declared where it belongs, on crossplane-models, whose
+  # generated modules all import it: the Crossplane CLI writes that package's
+  # pyproject.toml, and nix run .#build deletes and recreates the whole
+  # schemas/ tree, so an edit there survives until the next build.
+  "pyyaml>=6.0",
+  "pydantic>=2.0",
 ]
 
 [tool.ruff]

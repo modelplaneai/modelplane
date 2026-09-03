@@ -65,9 +65,54 @@ _LABEL_DEPLOYMENT = "modelplane.ai/deployment"
 _LABEL_INDEX = "modelplane.ai/replica-index"
 
 
-# Scheme for gateway-facing URLs. Traffic between the control plane gateway
-# and remote cluster gateways uses plain HTTP; TLS terminates at the edge.
-_GATEWAY_SCHEME = "http"
+# The hop from a fleet gateway to a cluster gateway crosses whatever network
+# separates two clusters, so TLS is originated to it and the cluster gateway
+# requires a client certificate in return. Neither is configurable: a composed
+# endpoint is always https, and a cluster gateway always refuses a request that
+# arrives without a fleet gateway's certificate.
+_GATEWAY_SCHEME = "https"
+
+# Injected into every engine container so an engine can be started under the
+# name Modelplane routes to, rather than Modelplane having to be told what the
+# engine was started with. Reference it in the engine's args:
+#
+#   args:
+#   - --model=Qwen/Qwen3-8B
+#   - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
+#
+# An engine only answers to the name it was started with, and a caller names a
+# ModelService rather than a deployment, so something has to reconcile the two.
+# Doing it this way means the name can't drift: the alternative, a field
+# declaring what the engine was started with, is a second place to write the
+# same string and a 404 when the two disagree.
+SERVED_MODEL_NAME_ENV = "MODELPLANE_SERVED_MODEL_NAME"
+
+
+def _inject_served_model_name(template: mrv1alpha1.Template, served: str) -> None:
+    """Put SERVED_MODEL_NAME_ENV ahead of a container's own env entries.
+
+    Ahead, because env expansion is left to right, so an arg or a later env
+    entry referencing $(MODELPLANE_SERVED_MODEL_NAME) only resolves if this
+    comes first. A user entry of the same name is dropped rather than
+    duplicated: the whole point is that Modelplane decides this value, and
+    honouring an override would let the engine answer to a name nothing routes
+    to.
+    """
+    if template.spec is None:
+        return
+    for container in template.spec.containers:
+        existing = [e for e in container.env or [] if e.name != SERVED_MODEL_NAME_ENV]
+        container.env = [mrv1alpha1.EnvItem(name=SERVED_MODEL_NAME_ENV, value=served), *existing]
+
+
+def served_model_name(namespace: str, deployment: str) -> str:
+    """The name every replica of a deployment serves under.
+
+    Namespaced, so two deployments in different namespaces can't collide on a
+    shared engine name, and so a ModelService can rewrite one model name for a
+    whole deployment rather than one per replica.
+    """
+    return f"{namespace}/{deployment}"
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
@@ -353,12 +398,21 @@ class Composer:
     def _child_labels(self, cluster_info: scheduling.Candidate) -> dict[str, str]:
         """Labels for a composed ModelReplica or ModelEndpoint.
 
-        The user's template labels first, then the labels Modelplane manages, so
-        a managed key always wins over a colliding one (the XRD also rejects
-        template labels under the modelplane.ai/ prefix).
+        The user's template labels first, then the cluster's placement labels,
+        then the labels Modelplane manages, so a managed key always wins over a
+        colliding one (the XRD also rejects template labels under the
+        modelplane.ai/ prefix, and placement labels likewise).
+
+        The cluster's placement labels are what let a ModelService select
+        endpoints by where they are: the fact is declared once on the
+        InferenceCluster and inherited by everything composed there, rather than
+        repeated on each replica. A cluster's labels beat the deployment's own
+        template labels on a collision, because the cluster is the authority on
+        where it is.
         """
         metadata = self.xr.spec.template.metadata
         labels = dict((metadata.labels if metadata else None) or {})
+        labels.update(cluster_info.placement_labels)
         labels[_LABEL_DEPLOYMENT] = _name(self.xr.metadata)
         labels[_LABEL_CLUSTER] = cluster_info.name
         labels[_LABEL_INDEX] = str(cluster_info.index)
@@ -413,12 +467,15 @@ class Composer:
         pin; the scheduler guarantees at least one member of every engine
         carries requests.
         """
+        served = served_model_name(_namespace(self.xr.metadata), _name(self.xr.metadata))
         members = []
         for member, mp in zip(engine.members, placement.members, strict=True):
+            template = mrv1alpha1.Template.model_validate(member.template.model_dump(exclude_unset=True))
+            _inject_served_model_name(template, served)
             replica_member = mrv1alpha1.Member(
                 role=member.role,
                 nodePoolName=mp.pool,
-                template=mrv1alpha1.Template.model_validate(member.template.model_dump(exclude_unset=True)),
+                template=template,
             )
             # A claimless member omits deviceRequests rather than carrying an
             # empty list; setting [] would serialize a literal empty array into
@@ -453,32 +510,35 @@ class Composer:
     def compose_endpoints(self, matched: list[scheduling.Candidate]) -> None:
         """Compose one ModelEndpoint per matched replica.
 
-        Endpoints are labeled with the deployment name so a ModelService
-        can select them. The URL points at the per-replica path on the
-        remote cluster's gateway. The rewritePath tells ModelService what
-        URL prefix to rewrite to on the remote cluster. The path is
-        per-replica — /<namespace>/<replica-name>/ — matching the HTTPRoute
-        emitted by compose-model-replica's backends (named after the replica
-        so co-located replicas on one cluster don't collide).
+        Endpoints carry the deployment name as a label so a ModelService can
+        select them. Each describes its replica the way an external provider
+        would be described by hand: an origin, the path its API is served under,
+        and the name the backend knows the model by.
 
-        Replicas pinned to clusters that are currently unavailable (no
-        gateway address) get no endpoint. Routing must not direct
-        traffic at a dead backend. When the cluster recovers and its
-        gateway address is observed again the endpoint will be composed
-        on the next reconcile.
+        The origin is the cluster gateway's hostname, never its address. Envoy
+        AI Gateway applies per-backend model rewriting, credentials and priority
+        failover only when every backend in a route is addressed by hostname;
+        given an address it keeps passing traffic and silently stops applying
+        them. The path is per-replica, matching the HTTPRoute
+        compose-model-replica composes on the cluster gateway, so co-located
+        replicas don't collide.
 
-        For the same reason an endpoint is withheld until its ModelReplica
-        is Ready. The replica's Ready tracks both the engine workloads
-        serving and the remote Service and HTTPRoute that front them - the
-        whole traffic path the endpoint advertises. Composing the endpoint
-        any earlier routes traffic at pods still pulling images or loading
-        weights, returning 503s during deployment and scale-up (#102). The
-        endpoint is composed on the reconcile that first observes the
-        replica Ready, and withdrawn again if the replica later goes
-        not-Ready, pulling a dead backend out of rotation.
+        Every replica of a deployment serves under the deployment's own name, so
+        a ModelService fanning over them can rewrite one model name for the
+        whole set rather than one per replica.
+
+        A replica whose cluster has no hostname gets no endpoint, and so does
+        one whose ModelReplica isn't Ready. The replica's Ready tracks the
+        engine workloads serving and the remote Service and HTTPRoute that front
+        them, which is the whole path this endpoint advertises. Composing it any
+        earlier routes traffic at pods still pulling images or loading weights,
+        returning 503s during deployment and scale-up (#102). The endpoint
+        appears on the reconcile that first observes the replica Ready, and is
+        withdrawn again if the replica stops being Ready, pulling a dead backend
+        out of rotation.
         """
         for cluster_info in matched:
-            if not cluster_info.gateway_address:
+            if not cluster_info.gateway_hostname:
                 continue
 
             replica_observed = self.req.observed.resources.get(name.replica_key(cluster_info))
@@ -489,21 +549,24 @@ class Composer:
             # resources) is the per-placement routing key. Must match the name
             # composed in compose_replicas so routing lands on this replica.
             replica_name = name.replica(_name(self.xr.metadata), cluster_info)
-            rewrite_path = f"/{_namespace(self.xr.metadata)}/{replica_name}/"
+            namespace = _namespace(self.xr.metadata)
             endpoint_key = name.endpoint_key(cluster_info)
-            url = f"{_GATEWAY_SCHEME}://{cluster_info.gateway_address}{rewrite_path}v1"
 
             resource.update(
                 self.rsp.desired.resources[endpoint_key],
                 mev1alpha1.ModelEndpoint(
                     metadata=metav1.ObjectMeta(
                         name=replica_name,
-                        namespace=_namespace(self.xr.metadata),
+                        namespace=namespace,
                         labels=self._child_labels(cluster_info),
                     ),
                     spec=mev1alpha1.Spec(
-                        url=url,
-                        rewritePath=rewrite_path,
+                        origin=f"{_GATEWAY_SCHEME}://{cluster_info.gateway_hostname}",
+                        api=mev1alpha1.Api(
+                            schema="OpenAI",
+                            prefix=f"/{namespace}/{replica_name}/v1",
+                        ),
+                        model=served_model_name(namespace, _name(self.xr.metadata)),
                     ),
                 ),
             )

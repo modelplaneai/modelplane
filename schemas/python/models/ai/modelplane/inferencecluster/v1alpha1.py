@@ -241,6 +241,21 @@ class NodePool(BaseModel):
     """
 
 
+class Metadata(BaseModel):
+    labels: dict[str, constr(max_length=63)] | None = Field(None, max_length=16)
+    """
+    Labels stamped onto every ModelReplica and ModelEndpoint composed on this cluster, so a fact about the cluster is declared once here rather than repeated on each of them.
+    This is how a self-hosted endpoint gets its region: a ModelService selects endpoints by label, so a service scoped to a region selects only the endpoints in it. These are your labels, under your own prefix. Modelplane carries and matches them, and never interprets them, so "eu" means no more to it than "prod".
+    """
+
+
+class Placement(BaseModel):
+    metadata: Metadata | None = None
+    """
+    Metadata to project.
+    """
+
+
 class Taint(BaseModel):
     effect: Literal['NoSchedule', 'NoExecute']
     key: constr(min_length=1)
@@ -256,6 +271,10 @@ class Spec(BaseModel):
     nodePools: list[NodePool] | None = Field(None, max_length=8, min_length=1)
     """
     GPU node pools available on this cluster. Each pool references an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools for control-plane components are provisioned automatically.
+    """
+    placement: Placement | None = None
+    """
+    Facts about where this cluster is, projected onto everything Modelplane composes here.
     """
     stack: Literal['Standard', 'Dynamo'] | None = 'Standard'
     """
@@ -286,7 +305,15 @@ class Condition(BaseModel):
 class Gateway(BaseModel):
     address: str | None = None
     """
-    External IP of the inference gateway on the remote cluster. Used by ModelDeployment for unified endpoint routing.
+    External address of the inference gateway on the remote cluster. Modelplane resolves status.gateway.hostname to this itself, on each InferenceGateway's cluster, so a platform publishes no DNS for it.
+    """
+    caCertificate: constr(max_length=16384) | None = None
+    """
+    PEM certificate of the CA that signed this gateway's serving certificate. An InferenceGateway validates against it, so it reaches the cluster it meant to rather than whatever else answers on that address. Written once cert-manager on the cluster has issued.
+    """
+    hostname: str | None = None
+    """
+    The internal name an InferenceGateway addresses this cluster's gateway by, derived by Modelplane and resolved to status.gateway.address on each gateway's cluster. Published once the gateway has an address and traffic to it is mutually authenticated. ModelDeployment composes a ModelEndpoint origin from it, and withholds the endpoint while it's unset.
     """
 
 

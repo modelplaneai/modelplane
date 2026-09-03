@@ -330,6 +330,38 @@ spec:
                 enum:
                 - Standard
                 - Dynamo
+              placement:
+                type: object
+                description: >-
+                  Facts about where this cluster is, projected onto everything
+                  Modelplane composes here.
+                properties:
+                  metadata:
+                    type: object
+                    description: Metadata to project.
+                    properties:
+                      labels:
+                        type: object
+                        description: >-
+                          Labels stamped onto every ModelReplica and
+                          ModelEndpoint composed on this cluster, so a fact about
+                          the cluster is declared once here rather than repeated
+                          on each of them.
+
+                          This is how a self-hosted endpoint gets its region: a
+                          ModelService selects endpoints by label, so a service
+                          scoped to a region selects only the endpoints in it.
+                          These are your labels, under your own prefix.
+                          Modelplane carries and matches them, and never
+                          interprets them, so "eu" means no more to it than
+                          "prod".
+                        additionalProperties:
+                          type: string
+                          maxLength: 63
+                        maxProperties: 16
+                        x-kubernetes-validations:
+                        - rule: "self.all(k, !k.startsWith('modelplane.ai/'))"
+                          message: spec.placement.metadata.labels must not use the reserved modelplane.ai/ prefix.
               taints:
                 type: array
                 description: >-
@@ -499,8 +531,29 @@ spec:
                   address:
                     type: string
                     description: >-
-                      External IP of the inference gateway on the remote cluster.
-                      Used by ModelDeployment for unified endpoint routing.
+                      External address of the inference gateway on the remote
+                      cluster. Modelplane resolves status.gateway.hostname to
+                      this itself, on each InferenceGateway's cluster, so a
+                      platform publishes no DNS for it.
+                  hostname:
+                    type: string
+                    description: >-
+                      The internal name an InferenceGateway addresses this
+                      cluster's gateway by, derived by Modelplane and resolved to
+                      status.gateway.address on each gateway's cluster. Published
+                      once the gateway has an address and traffic to it is
+                      mutually authenticated. ModelDeployment composes a
+                      ModelEndpoint origin from it, and withholds the endpoint
+                      while it's unset.
+                  caCertificate:
+                    type: string
+                    maxLength: 16384
+                    description: >-
+                      PEM certificate of the CA that signed this gateway's
+                      serving certificate. An InferenceGateway validates against
+                      it, so it reaches the cluster it meant to rather than
+                      whatever else answers on that address. Written once
+                      cert-manager on the cluster has issued.
               cache:
                 type: object
                 description: >-

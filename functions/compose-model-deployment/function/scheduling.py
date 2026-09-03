@@ -198,11 +198,15 @@ class Candidate:
     # same deployment on the same cluster. Stable across reconciles for a
     # retained replica.
     index: int
-    # The cluster's gateway address. Empty if the cluster is pinned but
-    # currently unavailable (no Ready condition or no gateway address).
-    # Callers should not compose a ModelEndpoint when this is empty -
-    # there is nothing to route traffic to.
-    gateway_address: str = ""
+    # The name this cluster's gateway is addressable by. Empty if the cluster is
+    # pinned but currently unavailable: no Ready condition, no gateway address,
+    # or no DNS published for it. Callers must not compose a ModelEndpoint when
+    # this is empty, because there is no name to route traffic to.
+    gateway_hostname: str = ""
+    # The cluster's spec.placement.metadata.labels, projected onto the
+    # ModelReplica and ModelEndpoint composed here. How a self-hosted endpoint
+    # gets its region, so a region-scoped ModelService can select it.
+    placement_labels: dict[str, str] = field(default_factory=dict)
     # Per-engine placement: the pool each member of the replica's engines was
     # assigned and that member's resolved device requests. One entry per engine
     # in deployment order. Always populated for a scheduled replica.
@@ -306,14 +310,20 @@ def compile_engines(deployment: mdv1alpha1.ModelDeployment) -> list[_CompiledEng
 
 
 def _cluster_ready(cluster: icv1alpha1.InferenceCluster) -> bool:
-    """Check that the cluster is Ready and has a gateway address.
+    """Check that the cluster is Ready and its gateway is addressable by name.
 
-    A cluster without a Ready=True condition hasn't finished provisioning
-    or has become unavailable. A cluster without a gateway address can't
-    receive routed traffic. Both must be true for the cluster to be
-    schedulable for new placements.
+    A cluster without a Ready=True condition hasn't finished provisioning or has
+    become unavailable. A cluster whose gateway has no hostname can't receive
+    routed traffic: an InferenceGateway addresses a cluster by name, because
+    Envoy AI Gateway only applies per-backend model rewriting, credentials and
+    priority failover when every backend in a route is a hostname.
+
+    The cluster decides when to publish that hostname, and withholds it until
+    traffic to it is mutually authenticated as well as addressable, so this is
+    also what keeps work off a cluster whose gateway isn't serving. See
+    compose-inference-cluster's write_status for the conditions.
     """
-    if not cluster.status or not cluster.status.gateway or not cluster.status.gateway.address:
+    if not cluster.status or not cluster.status.gateway or not cluster.status.gateway.hostname:
         return False
     return any(c.type == "Ready" and c.status == "True" for c in cluster.status.conditions or [])
 
@@ -622,7 +632,8 @@ def _retain(
             Candidate(
                 name=cluster_name,
                 index=identity[1],
-                gateway_address=_gateway_address(cluster),
+                gateway_hostname=_gateway_hostname(cluster),
+                placement_labels=_placement_labels(cluster),
                 engines=placements,
             )
         )
@@ -880,7 +891,8 @@ def _fill(
             Candidate(
                 name=name,
                 index=index,
-                gateway_address=_gateway_address(cluster),
+                gateway_hostname=_gateway_hostname(cluster),
+                placement_labels=_placement_labels(cluster),
                 engines=placements,
             )
         )
@@ -938,11 +950,25 @@ def _lowest_free_index(used: set[int]) -> int:
     return i
 
 
-def _gateway_address(cluster: icv1alpha1.InferenceCluster) -> str:
-    """The cluster's gateway address, or empty when degraded/unset."""
+def _placement_labels(cluster: icv1alpha1.InferenceCluster) -> dict[str, str]:
+    """The cluster's placement labels, or {} when it declares none."""
+    placement = cluster.spec.placement
+    if not placement or not placement.metadata or not placement.metadata.labels:
+        return {}
+    return dict(placement.metadata.labels)
+
+
+def _gateway_hostname(cluster: icv1alpha1.InferenceCluster) -> str:
+    """The name the cluster's gateway is addressable by, or empty when unset.
+
+    Modelplane derives the name and publishes it once the gateway is both
+    addressable and mutually authenticated, so an empty value means one of: no
+    address yet, no CA of its own, or no fleet gateway CA for it to demand a
+    client certificate against.
+    """
     if not cluster.status or not cluster.status.gateway:
         return ""
-    return cluster.status.gateway.address or ""
+    return cluster.status.gateway.hostname or ""
 
 
 def _scale_down(retained: list[Candidate], desired: int) -> list[Candidate]:

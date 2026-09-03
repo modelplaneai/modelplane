@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "compose-inference-gateway"
 version = "0.0.0"
-description = "Compose the control plane routing gateway with Envoy Gateway and MetalLB."
+description = "Compose the fleet gateway: the front door for inference requests."
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 dependencies = [
@@ -13,7 +13,6 @@ dependencies = [
   "click>=8.1.0",
   "grpcio>=1.73.1",
   "crossplane-models",
-  "pyyaml>=6.0",
 ]
 
 [tool.uv.sources]

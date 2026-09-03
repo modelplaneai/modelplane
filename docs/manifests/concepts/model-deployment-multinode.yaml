@@ -66,7 +66,7 @@ spec:
                 - -c
                 - >-
                   exec vllm serve Qwen/Qwen3-Coder-480B-A35B-Instruct
-                  --served-model-name=qwen3-coder
+                  --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                   --tensor-parallel-size=8
                   --pipeline-parallel-size=2
                   --distributed-executor-backend=mp
@@ -94,7 +94,7 @@ spec:
                 - -c
                 - >-
                   exec vllm serve Qwen/Qwen3-Coder-480B-A35B-Instruct
-                  --served-model-name=qwen3-coder
+                  --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                   --tensor-parallel-size=8
                   --pipeline-parallel-size=2
                   --distributed-executor-backend=mp

@@ -182,15 +182,17 @@ def _pool(name: str, *, nodes: int = 2, devices: list[dict] | None = None) -> di
 def _cluster(
     name: str,
     *,
+    placement_labels: dict[str, str] | None = None,
     ready: bool = True,
-    gateway_address: str = "10.0.0.1",
+    gateway_hostname: str = "cluster-a.clusters.example.com",
     pools: list[dict] | None = None,
     taints: list[icv1alpha1.Taint] | None = None,
 ) -> icv1alpha1.InferenceCluster:
     """Construct an InferenceCluster with the given readiness and pools.
 
-    A "ready" cluster has a Ready=True condition and a gateway address.
-    Setting ready=False or gateway_address="" produces a degraded cluster
+    A "ready" cluster has a Ready=True condition and a gateway hostname. An
+    address alone is not enough: a fleet gateway addresses a cluster by name.
+    Setting ready=False or gateway_hostname="" produces a degraded cluster
     the scheduler will retain but not pick anew.
     """
     if pools is None:
@@ -215,10 +217,19 @@ def _cluster(
                 existing=icv1alpha1.Existing(secretRef=icv1alpha1.SecretRef(name="k")),
             ),
             taints=taints,
+            placement=(
+                icv1alpha1.Placement(metadata=icv1alpha1.Metadata(labels=placement_labels))
+                if placement_labels
+                else None
+            ),
         ),
         status=icv1alpha1.Status(
             conditions=conditions,
-            gateway=icv1alpha1.Gateway(address=gateway_address) if gateway_address else icv1alpha1.Gateway(),
+            gateway=(
+                icv1alpha1.Gateway(address="10.0.0.1", hostname=gateway_hostname)
+                if gateway_hostname
+                else icv1alpha1.Gateway(address="10.0.0.1")
+            ),
             providerConfigRef=icv1alpha1.ProviderConfigRef(name=name),
             gpuPools=[icv1alpha1.GpuPool(**p) for p in pools],
         ),
@@ -380,11 +391,18 @@ def _cand(
     device_requests: list[scheduling.DeviceRequest] | None = None,
     pipeline: int = 1,
     engines: list[scheduling.EnginePlacement] | None = None,
-    **kwargs: str,
+    gateway_hostname: str = "",
+    placement_labels: dict[str, str] | None = None,
 ) -> scheduling.Candidate:
     if engines is None:
         engines = [_placement(pool=pool, device_requests=device_requests, pipeline=pipeline)]
-    return scheduling.Candidate(name=name, index=index, engines=engines, **kwargs)
+    return scheduling.Candidate(
+        name=name,
+        index=index,
+        engines=engines,
+        gateway_hostname=gateway_hostname,
+        placement_labels=placement_labels or {},
+    )
 
 
 class TestSchedule(unittest.TestCase):
@@ -411,7 +429,7 @@ class TestSchedule(unittest.TestCase):
                 deployment=_deployment(),
                 clusters=[_cluster("cluster-a")],
                 all_replicas=[],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="default")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com", pool="default")],
             ),
             Case(
                 name="not-ready cluster is not picked for a new replica",
@@ -423,7 +441,7 @@ class TestSchedule(unittest.TestCase):
             Case(
                 name="cluster without gateway address is not picked",
                 deployment=_deployment(),
-                clusters=[_cluster("cluster-a", gateway_address="")],
+                clusters=[_cluster("cluster-a", gateway_hostname="")],
                 all_replicas=[],
                 want=[],
             ),
@@ -437,34 +455,40 @@ class TestSchedule(unittest.TestCase):
             Case(
                 name="existing replica is retained on its pinned cluster",
                 deployment=_deployment(),
-                clusters=[_cluster("cluster-a"), _cluster("cluster-b", gateway_address="10.0.0.2")],
+                clusters=[
+                    _cluster("cluster-a"),
+                    _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
+                ],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
                 # cluster-a wins even though cluster-b is also viable. The pin
                 # still matches, so it's retained with its resolved pool/requests.
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com")],
             ),
             Case(
                 name="degraded pinned cluster is retained with empty gateway",
                 deployment=_deployment(),
-                clusters=[_cluster("cluster-a", ready=False, gateway_address="")],
+                clusters=[_cluster("cluster-a", ready=False, gateway_hostname="")],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
-                want=[_cand(name="cluster-a", gateway_address="")],
+                want=[_cand(name="cluster-a", gateway_hostname="")],
             ),
             Case(
                 name="deleted pinned cluster triggers re-placement",
                 deployment=_deployment(),
-                clusters=[_cluster("cluster-b", gateway_address="10.0.0.2")],
+                clusters=[_cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com")],
                 all_replicas=[_replica("my-model", "cluster-a")],
-                want=[_cand(name="cluster-b", gateway_address="10.0.0.2", pool="default")],
+                want=[_cand(name="cluster-b", gateway_hostname="cluster-b.clusters.example.com", pool="default")],
             ),
             Case(
                 name="scale up places new replicas on additional clusters",
                 deployment=_deployment(replicas=2),
-                clusters=[_cluster("cluster-a"), _cluster("cluster-b", gateway_address="10.0.0.2")],
+                clusters=[
+                    _cluster("cluster-a"),
+                    _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
+                ],
                 all_replicas=[_replica("my-model", "cluster-a")],
                 want=[
-                    _cand(name="cluster-a", gateway_address="10.0.0.1"),
-                    _cand(name="cluster-b", gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com"),
+                    _cand(name="cluster-b", gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -474,7 +498,7 @@ class TestSchedule(unittest.TestCase):
                 # second replica can be placed - not even on the same cluster.
                 clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=1)])],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1", pool="default")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com", pool="default")],
             ),
             Case(
                 name="two replicas pack onto one cluster when it is the only option",
@@ -484,8 +508,8 @@ class TestSchedule(unittest.TestCase):
                 clusters=[_cluster("cluster-a", pools=[_pool("default", nodes=2)])],
                 all_replicas=[],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-a", index=1, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -494,12 +518,16 @@ class TestSchedule(unittest.TestCase):
                 # Both clusters can hold two replicas, but we prefer one each.
                 clusters=[
                     _cluster("cluster-a", pools=[_pool("default", nodes=2)]),
-                    _cluster("cluster-b", gateway_address="10.0.0.2", pools=[_pool("default", nodes=2)]),
+                    _cluster(
+                        "cluster-b",
+                        gateway_hostname="cluster-b.clusters.example.com",
+                        pools=[_pool("default", nodes=2)],
+                    ),
                 ],
                 all_replicas=[],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-b", index=0, gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-b", index=0, gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -509,13 +537,17 @@ class TestSchedule(unittest.TestCase):
                 # the third lands back on cluster-a (lowest load, name tiebreak).
                 clusters=[
                     _cluster("cluster-a", pools=[_pool("default", nodes=4)]),
-                    _cluster("cluster-b", gateway_address="10.0.0.2", pools=[_pool("default", nodes=4)]),
+                    _cluster(
+                        "cluster-b",
+                        gateway_hostname="cluster-b.clusters.example.com",
+                        pools=[_pool("default", nodes=4)],
+                    ),
                 ],
                 all_replicas=[],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-b", index=0, gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-a", index=1, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-b", index=0, gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -526,13 +558,17 @@ class TestSchedule(unittest.TestCase):
                 # so it packs onto a.
                 clusters=[
                     _cluster("cluster-a", pools=[_pool("default", nodes=4)]),
-                    _cluster("cluster-b", gateway_address="10.0.0.2", pools=[_pool("default", nodes=1)]),
+                    _cluster(
+                        "cluster-b",
+                        gateway_hostname="cluster-b.clusters.example.com",
+                        pools=[_pool("default", nodes=1)],
+                    ),
                 ],
                 all_replicas=[],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-b", index=0, gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-a", index=1, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-b", index=0, gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -542,12 +578,16 @@ class TestSchedule(unittest.TestCase):
                 # replica prefers empty cluster-b over packing onto a.
                 clusters=[
                     _cluster("cluster-a", pools=[_pool("default", nodes=4)]),
-                    _cluster("cluster-b", gateway_address="10.0.0.2", pools=[_pool("default", nodes=4)]),
+                    _cluster(
+                        "cluster-b",
+                        gateway_hostname="cluster-b.clusters.example.com",
+                        pools=[_pool("default", nodes=4)],
+                    ),
                 ],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-b", index=0, gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-b", index=0, gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -561,9 +601,9 @@ class TestSchedule(unittest.TestCase):
                     _replica_with_pool("my-model", "cluster-a", pool="default", index=2),
                 ],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=2, gateway_address="10.0.0.1", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-a", index=1, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-a", index=2, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -574,7 +614,11 @@ class TestSchedule(unittest.TestCase):
                 # spread across a/0 and b/0.
                 clusters=[
                     _cluster("cluster-a", pools=[_pool("default", nodes=4)]),
-                    _cluster("cluster-b", gateway_address="10.0.0.2", pools=[_pool("default", nodes=4)]),
+                    _cluster(
+                        "cluster-b",
+                        gateway_hostname="cluster-b.clusters.example.com",
+                        pools=[_pool("default", nodes=4)],
+                    ),
                 ],
                 all_replicas=[
                     _replica_with_pool("my-model", "cluster-a", pool="default", index=0),
@@ -582,8 +626,8 @@ class TestSchedule(unittest.TestCase):
                     _replica_with_pool("my-model", "cluster-b", pool="default", index=0),
                 ],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-b", index=0, gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-b", index=0, gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -602,8 +646,8 @@ class TestSchedule(unittest.TestCase):
                 # pipeline=4 shape but still charged its observed 2 nodes in the
                 # ledger.
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pipeline=4),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pipeline=4),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pipeline=4),
+                    _cand(name="cluster-a", index=1, gateway_hostname="cluster-a.clusters.example.com", pipeline=4),
                 ],
             ),
             Case(
@@ -616,7 +660,11 @@ class TestSchedule(unittest.TestCase):
                 # a global index comparison.
                 clusters=[
                     _cluster("cluster-a", pools=[_pool("default", nodes=4)]),
-                    _cluster("cluster-b", gateway_address="10.0.0.2", pools=[_pool("default", nodes=4)]),
+                    _cluster(
+                        "cluster-b",
+                        gateway_hostname="cluster-b.clusters.example.com",
+                        pools=[_pool("default", nodes=4)],
+                    ),
                 ],
                 all_replicas=[
                     _replica_with_pool("my-model", "cluster-a", pool="default", index=0),
@@ -624,8 +672,8 @@ class TestSchedule(unittest.TestCase):
                     _replica_with_pool("my-model", "cluster-b", pool="default", index=3),
                 ],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-b", index=3, gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-b", index=3, gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -637,33 +685,36 @@ class TestSchedule(unittest.TestCase):
                     _replica_with_pool("my-model", "cluster-a", pool="default", index=1),
                 ],
                 want=[
-                    _cand(name="cluster-a", index=0, gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-a", index=1, gateway_address="10.0.0.1", pool="default"),
+                    _cand(name="cluster-a", index=0, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-a", index=1, gateway_hostname="cluster-a.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
                 name="scale down across clusters drops higher cluster name at equal index",
                 deployment=_deployment(replicas=1),
-                clusters=[_cluster("cluster-a"), _cluster("cluster-b", gateway_address="10.0.0.2")],
+                clusters=[
+                    _cluster("cluster-a"),
+                    _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
+                ],
                 all_replicas=[
                     _replica("my-model", "cluster-b"),
                     _replica("my-model", "cluster-a"),
                 ],
                 # Both at index 0, so the (index, name) tiebreak keeps cluster-a.
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com")],
             ),
             Case(
                 name="new placement is alphabetical for determinism",
                 deployment=_deployment(replicas=2),
                 clusters=[
-                    _cluster("cluster-c", gateway_address="10.0.0.3"),
+                    _cluster("cluster-c", gateway_hostname="cluster-c.clusters.example.com"),
                     _cluster("cluster-a"),
-                    _cluster("cluster-b", gateway_address="10.0.0.2"),
+                    _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
                 ],
                 all_replicas=[],
                 want=[
-                    _cand(name="cluster-a", gateway_address="10.0.0.1", pool="default"),
-                    _cand(name="cluster-b", gateway_address="10.0.0.2", pool="default"),
+                    _cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com", pool="default"),
+                    _cand(name="cluster-b", gateway_hostname="cluster-b.clusters.example.com", pool="default"),
                 ],
             ),
             Case(
@@ -681,14 +732,14 @@ class TestSchedule(unittest.TestCase):
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
                 # Retained on its pin: the single node it already occupies isn't
                 # charged against itself, so it stays rather than being evicted.
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com")],
             ),
             Case(
                 name="replica labeled for our deployment but pinned to unknown cluster is ignored",
                 deployment=_deployment(),
-                clusters=[_cluster("cluster-b", gateway_address="10.0.0.2")],
+                clusters=[_cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com")],
                 all_replicas=[_replica("my-model", "cluster-a")],
-                want=[_cand(name="cluster-b", gateway_address="10.0.0.2", pool="default")],
+                want=[_cand(name="cluster-b", gateway_hostname="cluster-b.clusters.example.com", pool="default")],
             ),
             Case(
                 name="another deployment pinned to a deleted pool consumes no capacity",
@@ -704,7 +755,7 @@ class TestSchedule(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved()],
                     )
@@ -735,7 +786,7 @@ class TestSchedule(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="a",
                         device_requests=[_resolved()],
                     )
@@ -768,14 +819,17 @@ class TestSchedule(unittest.TestCase):
                 deployment=_deployment(),
                 clusters=[_cluster("cluster-a")],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com")],
             ),
             Case(
                 name="scale-up shortfall is not filled, only the retained replica remains",
                 deployment=_deployment(replicas=3),
-                clusters=[_cluster("cluster-a"), _cluster("cluster-b", gateway_address="10.0.0.2")],
+                clusters=[
+                    _cluster("cluster-a"),
+                    _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
+                ],
                 all_replicas=[_replica_with_pool("my-model", "cluster-a", pool="default")],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com")],
             ),
         ]
 
@@ -798,7 +852,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved()],
                     )
@@ -860,7 +914,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved(name="gpu")],
                     )
@@ -923,7 +977,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[
                             _resolved(name="gpu-a", count=4),
@@ -956,7 +1010,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved(name="gpu")],
                     )
@@ -985,7 +1039,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved()],
                     )
@@ -1014,7 +1068,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="b",
                         device_requests=[_resolved(name="gpu")],
                     )
@@ -1041,7 +1095,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="a",
                         device_requests=[_resolved(name="gpu")],
                     )
@@ -1082,7 +1136,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved(name="gpu")],
                     )
@@ -1106,14 +1160,14 @@ class TestScheduleNodeSelector(unittest.TestCase):
                     _cand(
                         name="cluster-a",
                         index=0,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved()],
                     ),
                     _cand(
                         name="cluster-a",
                         index=1,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="frontier",
                         device_requests=[_resolved()],
                     ),
@@ -1137,7 +1191,7 @@ class TestScheduleNodeSelector(unittest.TestCase):
                 want=[
                     _cand(
                         name="cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pool="b",
                         device_requests=[_resolved(count=8)],
                     )
@@ -1210,7 +1264,7 @@ class TestScheduleMembers(unittest.TestCase):
                     scheduling.Candidate(
                         name="cluster-a",
                         index=0,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         engines=[
                             scheduling.EnginePlacement(
                                 name=_ENGINE,
@@ -1299,7 +1353,7 @@ class TestScheduleMembers(unittest.TestCase):
                 clusters=[
                     _cluster(
                         "cluster-a",
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         pools=[
                             _pool("small", nodes=8, devices=[_gpu_device(memory="40Gi")]),
                             _pool("big", nodes=1, devices=[_gpu_device(memory="141Gi")]),
@@ -1307,7 +1361,7 @@ class TestScheduleMembers(unittest.TestCase):
                     ),
                     _cluster(
                         "cluster-b",
-                        gateway_address="10.0.0.2",
+                        gateway_hostname="cluster-b.clusters.example.com",
                         pools=[_pool("big", nodes=2, devices=[_gpu_device(memory="141Gi")])],
                     ),
                 ],
@@ -1316,7 +1370,7 @@ class TestScheduleMembers(unittest.TestCase):
                     scheduling.Candidate(
                         name="cluster-b",
                         index=0,
-                        gateway_address="10.0.0.2",
+                        gateway_hostname="cluster-b.clusters.example.com",
                         engines=[
                             scheduling.EnginePlacement(
                                 name=_ENGINE,
@@ -1368,7 +1422,7 @@ class TestScheduleMembers(unittest.TestCase):
                     scheduling.Candidate(
                         name="cluster-a",
                         index=0,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         engines=[
                             scheduling.EnginePlacement(
                                 name=_ENGINE,
@@ -1413,7 +1467,7 @@ class TestScheduleMembers(unittest.TestCase):
                     scheduling.Candidate(
                         name="cluster-a",
                         index=0,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         engines=[
                             scheduling.EnginePlacement(
                                 name=_ENGINE,
@@ -1454,7 +1508,7 @@ class TestScheduleMembers(unittest.TestCase):
                     scheduling.Candidate(
                         name="cluster-a",
                         index=0,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         engines=[
                             scheduling.EnginePlacement(
                                 name=_ENGINE,
@@ -1514,7 +1568,7 @@ class TestScheduleMembers(unittest.TestCase):
                     scheduling.Candidate(
                         name="cluster-a",
                         index=0,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         engines=[
                             scheduling.EnginePlacement(
                                 name=_ENGINE,
@@ -1574,7 +1628,7 @@ class TestScheduleMembers(unittest.TestCase):
                         ],
                     )
                 ],
-                want=[_cand(name="cluster-a", gateway_address="10.0.0.1")],
+                want=[_cand(name="cluster-a", gateway_hostname="cluster-a.clusters.example.com")],
             ),
             Case(
                 name="a member shape change re-places the replica",
@@ -1588,7 +1642,7 @@ class TestScheduleMembers(unittest.TestCase):
                     scheduling.Candidate(
                         name="cluster-a",
                         index=0,
-                        gateway_address="10.0.0.1",
+                        gateway_hostname="cluster-a.clusters.example.com",
                         engines=[
                             scheduling.EnginePlacement(
                                 name=_ENGINE,
@@ -1626,7 +1680,10 @@ class TestScheduleTaints(unittest.TestCase):
         return [(c.name, c.index) for c in got]
 
     def test_noschedule_keeps_new_replicas_off(self) -> None:
-        clusters = [_cluster("cluster-a", taints=[self._MAINT]), _cluster("cluster-b", gateway_address="10.0.0.2")]
+        clusters = [
+            _cluster("cluster-a", taints=[self._MAINT]),
+            _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
+        ]
         got = scheduling.schedule(_deployment(replicas=1), clusters, [])
         self.assertEqual(self._names(got), [("cluster-b", 0)])
 
@@ -1644,7 +1701,10 @@ class TestScheduleTaints(unittest.TestCase):
 
     def test_noexecute_drains_and_reschedules(self) -> None:
         existing = _replica("my-model", "cluster-a")
-        clusters = [_cluster("cluster-a", taints=[self._DECOMM]), _cluster("cluster-b", gateway_address="10.0.0.2")]
+        clusters = [
+            _cluster("cluster-a", taints=[self._DECOMM]),
+            _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
+        ]
         got = scheduling.schedule(_deployment(replicas=1), clusters, [existing])
         self.assertEqual(self._names(got), [("cluster-b", 0)])
 
@@ -1668,7 +1728,10 @@ class TestScheduleTaints(unittest.TestCase):
         tolerates only NoSchedule is still drained by a NoExecute taint."""
         tol = mdv1alpha1.Toleration(key="modelplane.ai/decommission", operator="Exists", effect="NoSchedule")
         existing = _replica("my-model", "cluster-a")
-        clusters = [_cluster("cluster-a", taints=[self._DECOMM]), _cluster("cluster-b", gateway_address="10.0.0.2")]
+        clusters = [
+            _cluster("cluster-a", taints=[self._DECOMM]),
+            _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
+        ]
         got = scheduling.schedule(_deployment(replicas=1, tolerations=[tol]), clusters, [existing])
         self.assertEqual(self._names(got), [("cluster-b", 0)])
 
@@ -1679,7 +1742,7 @@ class TestScheduleTaints(unittest.TestCase):
         tol = mdv1alpha1.Toleration(key="modelplane.ai/maintenance", operator="Exists")
         clusters = [
             _cluster("cluster-a", taints=[self._MAINT, other]),
-            _cluster("cluster-b", gateway_address="10.0.0.2"),
+            _cluster("cluster-b", gateway_hostname="cluster-b.clusters.example.com"),
         ]
         got = scheduling.schedule(_deployment(replicas=1, tolerations=[tol]), clusters, [])
         self.assertEqual(self._names(got), [("cluster-b", 0)])
@@ -1708,3 +1771,25 @@ class TestScheduleTaints(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPlacementLabels(unittest.TestCase):
+    """A cluster's placement labels reach the Candidate, and so the ModelReplica
+    and ModelEndpoint composed from it.
+
+    This is how a self-hosted endpoint gets its region: a ModelService selects
+    endpoints by label, so without it a region-scoped service can't select its
+    own replicas, and it can't label them by hand because Modelplane owns them.
+    """
+
+    def test_labels_reach_the_candidate(self) -> None:
+        got = scheduling.schedule(
+            _deployment(replicas=1),
+            [_cluster("cluster-a", placement_labels={"example.org/region": "eu"})],
+            [],
+        )
+        self.assertEqual([c.placement_labels for c in got], [{"example.org/region": "eu"}])
+
+    def test_a_cluster_declaring_none_yields_none(self) -> None:
+        got = scheduling.schedule(_deployment(replicas=1), [_cluster("cluster-a")], [])
+        self.assertEqual([c.placement_labels for c in got], [{}])

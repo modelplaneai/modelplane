@@ -31,70 +31,78 @@ has ample headroom. Apply the platform side first, then the ML side.
 
 ## Send a request
 
-Read the endpoint's public address from the `ModelService` status:
+Read the Messages API base URL from the gateway serving the service. The gateway
+publishes one per API it speaks:
 
 ```bash
-ADDRESS=$(kubectl get ms qwen3-8b -n ml-team -o jsonpath='{.status.address}')
+ADDRESS=$(kubectl get ig local -o jsonpath='{.status.endpoints.anthropic}')
 ```
 
-Post to `/v1/messages` in the Messages API shape. The `model` field is the
-engine's `--served-model-name` (`qwen`); `max_tokens` is required:
+Post to `/messages` under it. The `model` field is the `ModelService`, as
+`<namespace>/<service>`, and the gateway rewrites it to whatever the engine was
+started as; `max_tokens` is required:
 
 ```bash
-curl "$ADDRESS/v1/messages" \
+curl "$ADDRESS/messages" \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
-    "model": "qwen",
+    "model": "ml-team/qwen3-8b",
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```
 
-`status.address` is the in-cluster gateway address, so run the request from
-inside the cluster if your shell can't reach it directly:
+A gateway with no `hostname` answers on its load balancer address, which may be
+in-cluster only, so run the request from inside the cluster if your shell can't
+reach it:
 
 ```bash
 kubectl run -i --rm curl-test \
   --image=curlimages/curl \
   --restart=Never \
   --env="ADDRESS=$ADDRESS" \
-  -- sh -c 'curl -s "$ADDRESS/v1/messages" \
+  -- sh -c 'curl -s "$ADDRESS/messages" \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
-  -d "{\"model\":\"qwen\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}"'
+  -d "{\"model\":\"ml-team/qwen3-8b\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}"'
 ```
 
 ## Point Claude Code at it
 
-Claude Code appends `/v1/messages` to `ANTHROPIC_BASE_URL`, so point it at the
-service address and map its model tiers onto the served name. vLLM doesn't check
-the auth token, so any non-empty value works. Claude Code reserves 32000 output
+Claude Code appends `/v1/messages` to `ANTHROPIC_BASE_URL`. The gateway's
+Anthropic base URL already ends in `/anthropic/v1`, so strip that suffix and let
+Claude Code add its own. Map every model tier onto the `ModelService`, since one
+model serves them all here. This gateway authenticates nobody and vLLM ignores
+the token, so any non-empty value works. Claude Code reserves 32000 output
 tokens by default, which alone leaves little context room on a small model; cap
 it with `CLAUDE_CODE_MAX_OUTPUT_TOKENS` so the input and output fit under the
 engine's `--max-model-len` (40960 here):
 
 ```bash
-export ANTHROPIC_BASE_URL="$ADDRESS"
+export ANTHROPIC_BASE_URL="${ADDRESS%/anthropic/v1}/anthropic"
 export ANTHROPIC_AUTH_TOKEN=dummy
-export ANTHROPIC_DEFAULT_OPUS_MODEL=qwen
-export ANTHROPIC_DEFAULT_SONNET_MODEL=qwen
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen
+export ANTHROPIC_DEFAULT_OPUS_MODEL=ml-team/qwen3-8b
+export ANTHROPIC_DEFAULT_SONNET_MODEL=ml-team/qwen3-8b
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=ml-team/qwen3-8b
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=8192
 claude
 ```
 
-The gateway must be reachable from wherever `claude` runs. If `$ADDRESS` is
-in-cluster only, forward the Traefik gateway service to a local port:
+The gateway must be reachable from wherever `claude` runs. If its address is
+in-cluster only, forward the gateway's service to a local port. Envoy Gateway
+names that service after the `Gateway` it belongs to and appends a hash, so
+select it by label rather than by name, against the cluster the gateway runs on:
 
 ```bash
-kubectl -n traefik-system port-forward svc/traefik 8080:80
+kubectl -n envoy-gateway-system port-forward 8080:80 \
+  "$(kubectl -n envoy-gateway-system get svc -o name \
+     -l gateway.envoyproxy.io/owning-gateway-name=fleet-gateway)"
 ```
 
-Then point `ANTHROPIC_BASE_URL` at the local port, keeping the service's
-`/<namespace>/<service>` path prefix so Claude Code's `/v1/messages` still routes:
+Then point `ANTHROPIC_BASE_URL` at the local port:
 
 ```bash
-export ANTHROPIC_BASE_URL="http://localhost:8080/ml-team/qwen3-8b"
+export ANTHROPIC_BASE_URL="http://localhost:8080/anthropic"
 ```
 <!-- vale write-good.Passive = YES -->

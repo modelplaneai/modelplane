@@ -12,9 +12,8 @@ spec:
       name: west-gke-sa-key
       key: private_key
   versions:
-    gatewayApi: "v1.5.1"
-    certManager: "v1.17.1"
-    envoyGateway: "v1.8.1"
+    certManager: "v1.21.1"
+    envoyGateway: "v1.8.4"
   gateway:
     listeners:
       - name: http

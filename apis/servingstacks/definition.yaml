@@ -123,26 +123,33 @@ spec:
                   tested combination. Override individual versions to upgrade
                   components independently.
                 properties:
-                  gatewayApi:
-                    type: string
-                    default: "v1.5.1"
-                    description: Gateway API CRD version.
-                    minLength: 1
-                    maxLength: 32
                   certManager:
                     type: string
-                    default: "v1.17.1"
+                    default: "v1.21.1"
                     description: cert-manager chart version.
+                    minLength: 1
+                    maxLength: 32
+                  trustManager:
+                    type: string
+                    default: "v0.24.0"
+                    description: >-
+                      trust-manager chart version. trust-manager distributes the
+                      cluster gateway's CA certificate without its private key,
+                      which is what lets the control plane read the certificate
+                      to hand to a fleet gateway.
                     minLength: 1
                     maxLength: 32
                   envoyGateway:
                     type: string
-                    default: "v1.8.1"
+                    default: "v1.8.4"
                     description: >-
                       Envoy Gateway chart version. Must support InferencePool
                       backend resources (the disaggregated-serving routing
                       path), which requires v1.8.x or newer; older releases lack
                       the Gateway API CRDs (ListenerSet) the AI Gateway needs.
+                      Envoy AI Gateway v1.1.x is tested against Envoy Gateway
+                      v1.8.x with Gateway API v1.5.x, so v1.9.x is out of range
+                      until the AI Gateway release that pairs with it.
                     minLength: 1
                     maxLength: 32
                   prometheus:
@@ -230,6 +237,44 @@ spec:
                       GatewayClass named envoy.
                     minLength: 1
                     maxLength: 63
+                  hostname:
+                    type: string
+                    description: >-
+                      The name this cluster's gateway is reached by, projected
+                      from the InferenceCluster. The gateway serves a
+                      certificate for it, so an InferenceGateway can originate
+                      TLS and know it reached the right cluster. Without it the
+                      gateway serves plain HTTP and carries no traffic, since an
+                      InferenceGateway addresses a cluster by name.
+                    minLength: 1
+                    maxLength: 253
+                  clientCAs:
+                    type: array
+                    description: >-
+                      PEM certificates of the CAs whose client certificates this
+                      gateway accepts, one per InferenceGateway in the fleet.
+                      Projected from the InferenceCluster, which reads them from
+                      each gateway's status.
+
+                      Presenting one of these is how a caller proves it is a
+                      fleet gateway. Requests without one are refused, which is
+                      what makes a fleet gateway the only thing that can reach
+                      the engines behind this cluster's gateway.
+                    maxItems: 32
+                    items:
+                      type: object
+                      required: [name, certificate]
+                      properties:
+                        name:
+                          type: string
+                          description: The InferenceGateway this CA belongs to.
+                          minLength: 1
+                          maxLength: 253
+                        certificate:
+                          type: string
+                          description: The CA certificate, PEM encoded.
+                          minLength: 1
+                          maxLength: 16384
                   listeners:
                     type: array
                     description: >-
@@ -276,6 +321,14 @@ spec:
                     description: >-
                       The gateway's external address, once assigned by the
                       cloud load balancer.
+                  caCertificate:
+                    type: string
+                    maxLength: 16384
+                    description: >-
+                      PEM certificate of the CA that signed this gateway's
+                      serving certificate. An InferenceGateway validates the
+                      gateway against it, so it reaches the cluster it meant to
+                      and not whatever answers on that address.
             type: object
         required:
         - spec

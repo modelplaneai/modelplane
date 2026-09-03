@@ -177,7 +177,6 @@ dependencies = [
     { name = "crossplane-function-sdk-python" },
     { name = "crossplane-models" },
     { name = "grpcio" },
-    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -186,7 +185,6 @@ requires-dist = [
     { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
-    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
@@ -506,6 +504,8 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "crossplane-function-sdk-python" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "types-protobuf" },
 ]
 
@@ -514,6 +514,8 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "types-protobuf", specifier = ">=4.24" },
 ]
 

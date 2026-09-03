@@ -16,6 +16,9 @@ spec:
       secretRef:
         name: local-cluster-kubeconfig
         key: kubeconfig
+  # No gateway hostname: Modelplane derives the cluster gateway's internal name
+  # and resolves it itself (compose-inference-gateway composes a Service for it
+  # on the fleet gateway's cluster). A platform publishes no DNS per cluster.
   nodePools:
   - name: gpu-synthetic
     className: synthetic-gpu

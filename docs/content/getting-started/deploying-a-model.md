@@ -58,23 +58,23 @@ the placement.
 
 ## Expose the model
 
-A `ModelService` selects `ModelEndpoints` by label and creates a Gateway API
-`HTTPRoute` that routes to them. Modelplane creates one `ModelEndpoint` per
-replica, labeled with the deployment name:
+A `ModelService` selects `ModelEndpoints` by label and publishes them as one
+model a caller can name. Modelplane creates one `ModelEndpoint` per replica,
+labeled with the deployment name:
 
 {{< manifests "getting-started/model-service.yaml" >}}
 
-The request path is `/<namespace>/<modelservice-name>/...` (`/ml-team/qwen/` in
-this example), from the `ModelService` named `qwen`. The `model` field in the
-request body is the Hugging Face id `Qwen/Qwen2.5-0.5B-Instruct`, since this
-deployment doesn't set `--served-model-name`.
+Callers name the model rather than a path: it's `<namespace>/<service>`, so
+`ml-team/qwen` here. The gateway rewrites that to whatever the engine was
+started as, so the Hugging Face id this deployment serves under never reaches
+the caller.
 
 ## Send a request
 
-Read the endpoint's public address from the `ModelService` status:
+Read the OpenAI base URL from the gateway:
 
 ```bash
-ADDRESS=$(kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}')
+ADDRESS=$(kubectl get ig local -o jsonpath='{.status.endpoints.openAI}')
 ```
 
 Send a request to it:
@@ -84,9 +84,9 @@ kubectl run -i --rm curl-test \
   --image=curlimages/curl \
   --restart=Never \
   --env="ADDRESS=$ADDRESS" \
-  -- sh -c 'curl -v "$ADDRESS/v1/chat/completions" \
+  -- sh -c 'curl -v "$ADDRESS/chat/completions" \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}"'
+  -d "{\"model\":\"ml-team/qwen\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}"'
 ```
 
 The request routes to the replica on the cluster Modelplane placed it on.

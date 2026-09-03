@@ -71,6 +71,58 @@ _RELEASE_NAME_PREFIX = "mp-"
 # writes status.addresses.
 _GATEWAY_READY_CEL = "has(object.status.addresses) && object.status.addresses.size() > 0"
 
+# The cluster gateway's own PKI, issued by cert-manager, which the serving stack
+# already installs. Composition functions are called repeatedly and must be a
+# pure function of their inputs, so they can't generate key material; a
+# controller has to. The private keys never leave this cluster.
+#
+# A self-signed issuer signs a CA, the CA signs the gateway's serving
+# certificate, and the CA's certificate is published in status so an
+# InferenceGateway can validate against it. One CA per cluster rather than one
+# per fleet: no shared private key has to be distributed, and compromising one
+# cluster doesn't let anyone impersonate another.
+_SELFSIGNED_ISSUER = "modelplane-selfsigned"
+_CA_ISSUER = "modelplane-cluster-ca"
+_CA_SECRET = "modelplane-cluster-ca"
+_GATEWAY_SERVING_SECRET = "cluster-gateway-serving"
+
+# The trust-manager Bundle republishing the CA certificate, and so also the
+# ConfigMap it syncs, which is what the control plane reads. See
+# compose_gateway_pki.
+_CA_BUNDLE = "modelplane-cluster-ca"
+
+# Where the CAs whose client certificates the gateway accepts are assembled.
+_CLIENT_CA_BUNDLE = "modelplane-fleet-gateway-cas"
+
+# A cert-manager Certificate is Ready once it has issued.
+_CERTIFICATE_READY_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+)
+
+# The ProviderConfigs carry no readiness of their own: they're configuration
+# rather than infrastructure, so nothing external reports on them.
+_ALWAYS_READY = frozenset({"provider-config-kubernetes", "provider-config-helm"})
+
+# A Gateway API policy reports acceptance per attachment, under status.ancestors
+# rather than status.conditions. Envoy Gateway answers a ClientTrafficPolicy it
+# can't translate by setting Accepted=False here and a 500 direct response on
+# every route of the target listener, so a policy that isn't accepted takes the
+# cluster gateway down rather than leaving it unprotected. Without this the
+# Object reports ready on creation and the cluster looks healthy while every
+# request fails.
+_POLICY_ACCEPTED_CEL = (
+    "has(object.status) && has(object.status.ancestors) && "
+    "object.status.ancestors.exists(a, has(a.conditions) && "
+    "a.conditions.exists(c, c.type == 'Accepted' && c.status == 'True'))"
+)
+
+# A trust-manager Bundle is Synced once it has written its target ConfigMaps.
+_BUNDLE_SYNCED_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')"
+)
+
 # Secret type that names the kubeconfig entry in the XR's secrets. Every other
 # entry's type is a provider identity type, which both ProviderConfigs stamp
 # verbatim as their identity.type.
@@ -94,9 +146,12 @@ _DEFAULT_NVIDIA_DRIVER_ROOT = "/"
 # to, so HTTPRoute -> InferencePool backendRefs (disaggregated serving) route.
 _AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
 _AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
-_AI_GATEWAY_VERSION = "v0.7.0"
+_AI_GATEWAY_VERSION = "v1.1.0"
 _AI_GATEWAY_CONTROLLER_FQDN = f"ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local"
 _AI_GATEWAY_CONTROLLER_PORT = 1063
+# The header the fleet gateway stamps the authenticated caller's identity onto.
+# Also mapped into AI Gateway request metadata (see compose_ai_gateway).
+_CALLER_HEADER = "x-modelplane-caller"
 
 
 # Gateway API Inference Extension (GAIE) CRDs, providing the InferencePool that
@@ -167,6 +222,7 @@ def _modelexpress_crd_key(doc: dict) -> str:
 
 
 def _helm_release(
+    *,
     chart: str,
     repo: str,
     version: str,
@@ -318,6 +374,11 @@ def _prometheus_release(version: str, provider_config: str) -> helmv1beta1.Relea
     )
 
 
+def _pem(cert: str) -> str:
+    """A PEM certificate ending in a newline, so several concatenate cleanly."""
+    return cert if cert.endswith("\n") else cert + "\n"
+
+
 def _pc_name(xr: v1alpha1.ServingStack) -> str:
     """Derive the ProviderConfig name from the XR."""
     return resource.child_name(_name(xr.metadata), "cluster")
@@ -353,6 +414,7 @@ class Composer:
         self.compose_provider_configs()
         self.compose_usages()
         self.compose_cert_manager()
+        self.compose_trust_manager()
         self.compose_envoy_gateway()
         self.compose_ai_gateway()
         self.compose_gaie_crds()
@@ -373,6 +435,7 @@ class Composer:
         self.compose_node_feature_discovery()
         self.compose_dra_driver()
         self.compose_gateway()
+        self.compose_gateway_pki()
         self.write_status()
         self.mark_readiness()
 
@@ -454,6 +517,18 @@ class Composer:
             ),
         )
 
+    def serves_gateway(self) -> bool:
+        """Whether this cluster's gateway should be serving.
+
+        A cluster given a hostname is fleet facing, and a fleet-facing gateway
+        serves mutually authenticated HTTPS or nothing at all, so it waits for a
+        fleet gateway CA to demand a client certificate against. A cluster with
+        no hostname isn't fleet facing and serves plain HTTP; it never publishes
+        a hostname, so it is never schedulable and nothing routes to it.
+        """
+        gw = self.xr.spec.gateway or v1alpha1.Gateway()
+        return not gw.hostname or bool(gw.clientCAs or [])
+
     def compose_usages(self) -> None:
         """Compose Usages ordering the Envoy Gateway teardown.
 
@@ -469,31 +544,37 @@ class Composer:
         # GatewayClass Object protected by Gateway Object. The GatewayClass
         # has a gateway-exists-finalizer that the EG controller won't remove
         # while Gateways reference it.
-        resource.update(
-            self.rsp.desired.resources["usage-gateway-class-by-gateway"],
-            usagev1beta1.Usage(
-                spec=usagev1beta1.Spec(
-                    of=usagev1beta1.Of(
-                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
-                        kind="Object",
-                        resourceSelector=usagev1beta1.ResourceSelectorModel(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "gateway-class"},
+        #
+        # Only while there is a Gateway to be protected by. A Usage whose "by"
+        # selector matches nothing errors on every reconcile, and compose_gateway
+        # withholds the Gateway from a fleet-facing cluster with no fleet gateway
+        # CA to trust.
+        if self.serves_gateway():
+            resource.update(
+                self.rsp.desired.resources["usage-gateway-class-by-gateway"],
+                usagev1beta1.Usage(
+                    spec=usagev1beta1.Spec(
+                        of=usagev1beta1.Of(
+                            apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                            kind="Object",
+                            resourceSelector=usagev1beta1.ResourceSelectorModel(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_RESOURCE: "gateway-class"},
+                            ),
                         ),
-                    ),
-                    by=usagev1beta1.By(
-                        apiVersion="kubernetes.m.crossplane.io/v1alpha1",
-                        kind="Object",
-                        resourceSelector=usagev1beta1.ResourceSelector(
-                            matchControllerRef=True,
-                            matchLabels={_LABEL_RESOURCE: "gateway"},
+                        by=usagev1beta1.By(
+                            apiVersion="kubernetes.m.crossplane.io/v1alpha1",
+                            kind="Object",
+                            resourceSelector=usagev1beta1.ResourceSelector(
+                                matchControllerRef=True,
+                                matchLabels={_LABEL_RESOURCE: "gateway"},
+                            ),
                         ),
+                        replayDeletion=True,
                     ),
-                    replayDeletion=True,
                 ),
-            ),
-        )
-        self.rsp.desired.resources["usage-gateway-class-by-gateway"].ready = fnv1.READY_TRUE
+            )
+            self.rsp.desired.resources["usage-gateway-class-by-gateway"].ready = fnv1.READY_TRUE
 
         # Envoy Gateway Release protected by GatewayClass Object. The EG
         # controller must be running to process the GatewayClass's
@@ -539,7 +620,82 @@ class Composer:
                 version=v.certManager,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
                 namespace="cert-manager",
                 provider_config=_pc_name(self.xr),
-                values={"crds": {"enabled": True, "keep": False}},
+                # Keep the CRDs on uninstall. The PKI below, and every
+                # InferenceGateway's client PKI, are Certificates and Issuers
+                # composed as provider-kubernetes Objects. Take their CRDs away
+                # and provider-kubernetes can't observe them: the RESTMapper
+                # returns a no-kind-match, which isn't a not-found, so Observe
+                # errors and never releases the Object's finalizer. Since those
+                # Objects belong to other XRs, nothing here can order itself
+                # after them on teardown.
+                values={"crds": {"enabled": True, "keep": True}},
+            ),
+        )
+
+    def compose_trust_manager(self) -> None:
+        """Compose trust-manager. Gated on ProviderConfigs being observed.
+
+        It publishes the cluster CA's certificate into a ConfigMap so the control
+        plane can read it without reading the Secret that holds the private key
+        too. See compose_gateway_pki.
+
+        trust-manager only reads source Secrets from one namespace, its "trust
+        namespace", which defaults to the namespace it runs in. The CA lives in
+        modelplane-system, so it runs there rather than moving the CA to it: the
+        Secret is cert-manager's, and a copy of it on the way to a namespace
+        chosen for trust-manager's convenience would be another copy of the key.
+
+        Installed on every cluster, because any cluster may host an
+        InferenceGateway and a gateway's client PKI publishes its CA through a
+        Bundle on the cluster it runs on. A cluster that serves no traffic of its
+        own still needs this; gating it on anything fleet-facing would leave a
+        gateway-only cluster unable to publish a CA, and since a cluster only
+        becomes schedulable once some gateway has, that would wedge the fleet.
+
+        Gated on our own self-signed Issuer existing, because this chart contains
+        an Issuer and a Certificate for its own webhook and Helm applies custom
+        resources last. Installed alongside cert-manager those lose a race with
+        cert-manager's validating webhook, Helm marks the release failed, and
+        provider-helm only rolls a failed release back when spec.rollbackLimit is
+        set, which nothing here does. The release then stays failed, so
+        trust-manager never starts, and because creating a Bundle goes through
+        trust-manager's own webhook in turn, no CA is ever published.
+
+        An Issuer we composed proves the same webhook admits the same kind of
+        object, and it's a provider-kubernetes Object rather than a Helm release,
+        so it retries forever instead of failing terminally.
+        """
+        pc_observed = self.provider_configs_observed()
+        if not (pc_observed or "trust-manager" in self.req.observed.resources):
+            return
+        cert_manager_admits = (
+            resource.get_condition(self.req.observed.resources.get("gateway-selfsigned-issuer"), "Ready").status
+            == "True"
+        )
+        if not (cert_manager_admits or "trust-manager" in self.req.observed.resources):
+            return
+
+        v = self.xr.spec.versions or v1alpha1.Versions()
+        resource.update(
+            self.rsp.desired.resources["trust-manager"],
+            _helm_release(
+                chart="trust-manager",
+                repo="oci://quay.io/jetstack/charts",
+                version=v.trustManager,  # ty: ignore[invalid-argument-type]  # XRD defaults this version and forbids null
+                namespace="modelplane-system",
+                provider_config=_pc_name(self.xr),
+                values={
+                    # Kept for the same reason as cert-manager's: the Bundles
+                    # are Objects owned by other XRs, and an Object whose CRD
+                    # has gone can't be observed, so it never finalizes.
+                    "crds": {"enabled": True, "keep": True},
+                    "app": {"trust": {"namespace": "modelplane-system"}},
+                    # The default package is a public-CA trust store, for
+                    # Bundles that set useDefaultCAs. These trust one private CA
+                    # each, so disabling it drops an init container and the
+                    # image pull it waits on.
+                    "defaultPackage": {"enabled": False},
+                },
             ),
         )
 
@@ -608,6 +764,28 @@ class Composer:
 
         The controller runs the ext-proc extension server that Envoy Gateway's
         extensionManager delegates InferencePool backend resolution to.
+
+        logRequestHeaderAttributes copies the caller identity into the
+        io.envoy.ai_gateway metadata namespace, via a header_to_metadata filter
+        on each listener, so the fleet gateway's access log can read the caller
+        from metadata rather than from the request header. The distinction
+        matters because the header is stripped again before the request reaches
+        a backend Modelplane doesn't operate, so as not to disclose a tenant's
+        identity to a third-party provider. Reading the log from the header
+        instead would lose the caller from exactly those records, which is where
+        provider spend gets attributed.
+
+        This is deliberately not left unset. Unset, the controller defaults the
+        mapping to "agent-session-id:session.id", which we don't use, and any
+        non-empty mapping makes the PostTranslateModify hook walk every listener
+        looking for an HTTP connection manager and error on the first filter
+        chain without one. One TCPRoute or UDPRoute Gateway elsewhere on this
+        cluster's Envoy Gateway then gets the whole xDS update rejected, taking
+        every Gateway including ours to Programmed=False. So this trades a
+        conditional, loud, upstream-tracked failure (envoyproxy/ai-gateway#2600,
+        fix in flight as #2601) for silent loss of the caller dimension on every
+        request served by a third-party endpoint. Setting an empty string
+        restores the workaround at that cost.
         """
         pc_observed = self.provider_configs_observed()
         if not (pc_observed or "ai-gateway-crds" in self.req.observed.resources):
@@ -631,6 +809,7 @@ class Composer:
                 version=_AI_GATEWAY_VERSION,
                 namespace=_AI_GATEWAY_NAMESPACE,
                 provider_config=_pc_name(self.xr),
+                values={"controller": {"logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller"}},
             ),
         )
 
@@ -648,8 +827,6 @@ class Composer:
                 self.rsp.desired.resources[key],
                 _k8s_object(_pc_name(self.xr), doc),
             )
-            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
-                self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
     def compose_modelexpress_crds(self) -> None:
         """Compose the ModelExpress CRDs (ModelMetadata, ModelCacheEntry) as
@@ -666,8 +843,6 @@ class Composer:
                 self.rsp.desired.resources[key],
                 _k8s_object(_pc_name(self.xr), doc),
             )
-            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
-                self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
     def compose_modelexpress(self) -> None:
         """Compose the shared ModelExpress server in `default`.
@@ -834,8 +1009,6 @@ class Composer:
                     cel_query=_MODELEXPRESS_SERVER_READY_CEL,
                 ),
             )
-            if resource.get_condition(self.req.observed.resources.get("modelexpress-server"), "Ready").status == "True":
-                self.rsp.desired.resources["modelexpress-server"].ready = fnv1.READY_TRUE
 
     def compose_prometheus(self) -> None:
         """Compose the kube-prometheus-stack. Gated on ProviderConfigs being
@@ -1134,6 +1307,213 @@ class Composer:
             ),
         )
 
+    def compose_gateway_pki(self) -> None:
+        """Compose the cluster gateway's certificate, and the requirement that a
+        caller present one of its own.
+
+        Only once the cluster has a name: a certificate needs a subject, and a
+        cluster with no name carries no traffic anyway, because an
+        InferenceGateway addresses a cluster by name.
+
+        cert-manager does the key generation, which a composition function can't:
+        it runs on every reconcile and has to be a pure function of its inputs.
+
+        The ClientTrafficPolicy is what makes the fleet gateway the only thing
+        that can reach the engines behind this gateway. Until at least one
+        InferenceGateway has published a CA there is nothing to trust, and
+        requiring a certificate signed by an empty set would refuse everything,
+        so the requirement waits for the first one, and serves_gateway withholds
+        the listener it would have governed until then.
+        """
+        pc_observed = self.provider_configs_observed()
+        pc = _pc_name(self.xr)
+        gw = self.xr.spec.gateway or v1alpha1.Gateway()
+
+        # Composed on every cluster, not just a fleet-facing one, because it is
+        # what tells trust-manager that cert-manager is ready for it (see
+        # compose_trust_manager). Any cluster may host an InferenceGateway, whose
+        # client PKI needs trust-manager whether or not the cluster it runs on
+        # serves traffic itself, and a self-signed Issuer costs nothing.
+        if pc_observed or "gateway-selfsigned-issuer" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["gateway-selfsigned-issuer"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "cert-manager.io/v1",
+                        "kind": "Issuer",
+                        "metadata": {"name": _SELFSIGNED_ISSUER, "namespace": "modelplane-system"},
+                        "spec": {"selfSigned": {}},
+                    },
+                ),
+            )
+
+        if not gw.hostname:
+            return
+
+        certs: list[tuple[str, dict]] = [
+            (
+                "gateway-ca-certificate",
+                {
+                    "apiVersion": "cert-manager.io/v1",
+                    "kind": "Certificate",
+                    "metadata": {"name": _CA_ISSUER, "namespace": "modelplane-system"},
+                    "spec": {
+                        "isCA": True,
+                        # Truncated to the 64-byte X.509 commonName limit: the
+                        # gateway hostname is a full Service FQDN, so the prefix
+                        # plus the name overflows it. Cosmetic anyway, since the
+                        # fleet gateway trusts this CA by its certificate and
+                        # validates the serving one by SAN, not by this name.
+                        "commonName": f"modelplane cluster CA {gw.hostname}"[:64],
+                        "secretName": _CA_SECRET,
+                        "duration": "87600h",
+                        "renewBefore": "8760h",
+                        "privateKey": {"algorithm": "ECDSA", "size": 256},
+                        "issuerRef": {"name": _SELFSIGNED_ISSUER, "kind": "Issuer", "group": "cert-manager.io"},
+                    },
+                },
+            ),
+            (
+                "gateway-ca-issuer",
+                {
+                    "apiVersion": "cert-manager.io/v1",
+                    "kind": "Issuer",
+                    "metadata": {"name": _CA_ISSUER, "namespace": "modelplane-system"},
+                    "spec": {"ca": {"secretName": _CA_SECRET}},
+                },
+            ),
+            (
+                "gateway-serving-certificate",
+                {
+                    "apiVersion": "cert-manager.io/v1",
+                    "kind": "Certificate",
+                    "metadata": {"name": _GATEWAY_SERVING_SECRET, "namespace": "modelplane-system"},
+                    "spec": {
+                        "secretName": _GATEWAY_SERVING_SECRET,
+                        "dnsNames": [gw.hostname],
+                        "duration": "2160h",
+                        "renewBefore": "720h",
+                        "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
+                        "issuerRef": {"name": _CA_ISSUER, "kind": "Issuer", "group": "cert-manager.io"},
+                    },
+                },
+            ),
+        ]
+        for key, manifest in certs:
+            if not (pc_observed or key in self.req.observed.resources):
+                continue
+            cel = _CERTIFICATE_READY_CEL if manifest["kind"] == "Certificate" else None
+            resource.update(self.rsp.desired.resources[key], _k8s_object(pc, manifest, cel_query=cel))
+
+        # Republish the CA certificate on its own, so the control plane can read
+        # it without reading the private key next to it.
+        #
+        # cert-manager writes ca.crt and tls.key into one Secret. Observing that
+        # Secret would mean provider-kubernetes copying the whole thing into the
+        # Object's status, private key included, where anyone who can get objects
+        # could read it and mint a certificate any cluster would accept. Running
+        # provider-kubernetes with --sanitize-secrets, as prerequisites.yaml
+        # does, is no answer on its own: it redacts the data, so the read comes
+        # back empty and mTLS is silently disabled instead.
+        #
+        # A Bundle takes one named key from a Secret and writes it to a ConfigMap,
+        # so the key is read once, in-cluster, by a controller already entitled to
+        # it. trust-manager also rejects any PEM block that isn't a CERTIFICATE,
+        # so it can't be made to republish a key by naming the wrong source key.
+        if pc_observed or "gateway-ca-bundle" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["gateway-ca-bundle"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "trust.cert-manager.io/v1alpha1",
+                        "kind": "Bundle",
+                        # Cluster-scoped, and it names the ConfigMap it syncs.
+                        "metadata": {"name": _CA_BUNDLE},
+                        "spec": {
+                            "sources": [{"secret": {"name": _CA_SECRET, "key": "ca.crt"}}],
+                            "target": {
+                                "configMap": {"key": "ca.crt"},
+                                # A target syncs to every namespace by default.
+                                # Only modelplane-system reads it.
+                                "namespaceSelector": {
+                                    "matchLabels": {"kubernetes.io/metadata.name": "modelplane-system"}
+                                },
+                            },
+                        },
+                    },
+                    cel_query=_BUNDLE_SYNCED_CEL,
+                ),
+            )
+
+        # Observed, not managed: trust-manager owns this ConfigMap, and this only
+        # needs to read the certificate back out so status can publish it.
+        if pc_observed or "gateway-ca-configmap" in self.req.observed.resources:
+            resource.update(
+                self.rsp.desired.resources["gateway-ca-configmap"],
+                _k8s_object(
+                    pc,
+                    {
+                        "apiVersion": "v1",
+                        "kind": "ConfigMap",
+                        "metadata": {"name": _CA_BUNDLE, "namespace": "modelplane-system"},
+                    },
+                    management_policies=["Observe"],
+                ),
+            )
+
+        # With nothing to trust there is no HTTPS listener either (see
+        # compose_gateway), so there is nothing to attach a policy to.
+        client_cas = gw.clientCAs or []
+        if not client_cas:
+            return
+        if not (pc_observed or "gateway-client-ca-bundle" in self.req.observed.resources):
+            return
+        # One ConfigMap holding every fleet gateway's CA, concatenated, which is
+        # what a PEM trust bundle is.
+        resource.update(
+            self.rsp.desired.resources["gateway-client-ca-bundle"],
+            _k8s_object(
+                pc,
+                {
+                    "apiVersion": "v1",
+                    "kind": "ConfigMap",
+                    "metadata": {"name": _CLIENT_CA_BUNDLE, "namespace": "modelplane-system"},
+                    "data": {
+                        "ca.crt": "".join(_pem(ca.certificate) for ca in sorted(client_cas, key=lambda c: c.name))
+                    },
+                },
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["gateway-client-auth"],
+            _k8s_object(
+                pc,
+                {
+                    "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                    "kind": "ClientTrafficPolicy",
+                    "metadata": {"name": "cluster-gateway-client-auth", "namespace": "modelplane-system"},
+                    "spec": {
+                        "targetRefs": [
+                            {
+                                "group": "gateway.networking.k8s.io",
+                                "kind": "Gateway",
+                                "name": "inference-gateway",
+                                "sectionName": "https",
+                            }
+                        ],
+                        "tls": {
+                            "clientValidation": {
+                                "caCertificateRefs": [{"kind": "ConfigMap", "group": "", "name": _CLIENT_CA_BUNDLE}]
+                            }
+                        },
+                    },
+                },
+                cel_query=_POLICY_ACCEPTED_CEL,
+            ),
+        )
+
     def compose_gateway(self) -> None:
         """Compose the gateway namespace, EnvoyProxy, GatewayClass, and Gateway on
         the remote cluster. Gated on ProviderConfigs being observed."""
@@ -1142,10 +1522,61 @@ class Composer:
 
         gw = self.xr.spec.gateway or v1alpha1.Gateway()
 
+        listeners: list[dict] = []
         if gw.listeners:
             listeners = [{"name": ln.name, "protocol": ln.protocol, "port": ln.port} for ln in gw.listeners]
         else:
             listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
+
+        # A cluster given a hostname is fleet facing, and a fleet-facing gateway
+        # serves mutually authenticated HTTPS or it serves nothing at all.
+        #
+        # Nothing at all, because there are only unsafe alternatives. The
+        # gateway's Service is a public load balancer with a port per listener,
+        # and the model-serving HTTPRoutes carry no sectionName, so they attach
+        # to every listener there is: an HTTP listener alongside HTTPS, or left
+        # in place while no CA is trusted, serves the engines to anything on the
+        # internet with no certificate asked for. An HTTPS listener without its
+        # ClientTrafficPolicy is worse, because it looks like it asks. Nothing in
+        # the cluster wants either: the endpoint picker is an ext_proc the
+        # gateway calls, not a client of it.
+        #
+        # So while no fleet gateway has published a CA, this composes no Gateway,
+        # which leaves the routes nothing to attach to and no load balancer to
+        # reach. The cluster publishes no hostname in that state either, so it
+        # takes no new work, and one that loses its last fleet gateway stops
+        # serving the work it already has rather than serving it in the clear.
+        #
+        # A cluster with no hostname isn't fleet facing and keeps the plain HTTP
+        # listener. It is never schedulable, so nothing routes to it.
+        #
+        # The namespace and the EnvoyProxy are composed either way: the PKI and
+        # trust-manager live in that namespace, and withholding it would stop the
+        # CA that this gate is waiting for from ever being issued.
+        serve_gateway = self.serves_gateway()
+        if not serve_gateway:
+            # Nothing else reports this. With no Gateway there is no address, so
+            # the cluster publishes no hostname and every ModelDeployment
+            # targeting it says only that it found insufficient capacity, which
+            # points at the node pools rather than at the missing front door.
+            response.warning(
+                self.rsp,
+                f"Gateway {gw.hostname} not served: no InferenceGateway has published a client CA for this "
+                "cluster to trust, and serving without one would accept unauthenticated callers",
+            )
+        if gw.hostname:
+            listeners = [
+                {
+                    "name": "https",
+                    "protocol": "HTTPS",
+                    "port": 443,
+                    "hostname": gw.hostname,
+                    "tls": {
+                        "mode": "Terminate",
+                        "certificateRefs": [{"name": _GATEWAY_SERVING_SECRET}],
+                    },
+                }
+            ]
 
         # The Gateway (and the model-serving HTTPRoutes that target it) live in
         # modelplane-system on the remote cluster. Create the namespace; unlike
@@ -1220,7 +1651,7 @@ class Composer:
                 ),
             )
 
-        if pc_observed or "gateway" in self.req.observed.resources:
+        if serve_gateway and (pc_observed or "gateway" in self.req.observed.resources):
             resource.update(
                 self.rsp.desired.resources["gateway"],
                 _k8s_object(
@@ -1248,6 +1679,22 @@ class Composer:
                 ),
             )
 
+    def observed_ca_certificate(self) -> str | None:
+        """The cluster CA's certificate, read off the ConfigMap trust-manager
+        syncs. A ConfigMap holds it as plain text, so unlike a Secret there is
+        nothing to decode.
+
+        Absent until cert-manager has issued and trust-manager has synced, which
+        is why an InferenceGateway composes no backend for this cluster and the
+        cluster publishes no hostname before then.
+        """
+        obj = self.req.observed.resources.get("gateway-ca-configmap")
+        if obj is None:
+            return None
+        d = resource.struct_to_dict(obj.resource)
+        data = d.get("status", {}).get("atProvider", {}).get("manifest", {}).get("data", {})
+        return data.get("ca.crt") or None
+
     def write_status(self) -> None:
         """Extract the gateway address from the observed Gateway Object and
         write it to the XR's status."""
@@ -1266,54 +1713,30 @@ class Composer:
                 gateway_address = addresses[0].get("value")
 
         status = v1alpha1.Status()
-        if gateway_address:
-            status.gateway = v1alpha1.GatewayModel(address=gateway_address)
+        ca = self.observed_ca_certificate()
+        if gateway_address or ca:
+            status.gateway = v1alpha1.GatewayModel()
+            if gateway_address:
+                status.gateway.address = gateway_address
+            if ca:
+                status.gateway.caCertificate = ca
         resource.update_status(self.rsp.desired.composite, status)
 
     def mark_readiness(self) -> None:
-        """Mark composed resources as ready. Resources that don't need external
-        readiness tracking are always marked ready. Others are marked ready when
-        their observed condition is True."""
-        # These resources don't have meaningful readiness signals — mark them
-        # ready unconditionally so they don't block the XR.
-        always_ready = [
-            "provider-config-kubernetes",
-            "provider-config-helm",
-        ]
-        for r in always_ready:
-            if r in self.rsp.desired.resources:
-                self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
+        """Mark each composed resource ready once its observed counterpart is.
 
-        condition_ready = [
-            "cert-manager",
-            "envoy-gateway",
-            "ai-gateway-crds",
-            "ai-gateway",
-            "prometheus",
-            "grove",
-            "kai-scheduler",
-            "kai-queue-root",
-            "kai-queue",
-            "modelexpress-server-sa",
-            "modelexpress-server-role",
-            "modelexpress-server-rolebinding",
-            "modelexpress-server-svc",
-            "modelexpress-server",
-            "leader-worker-set",
-            "node-feature-discovery",
-            "dra-driver",
-            "dra-driver-critical-pods-quota",
-            "gateway-namespace",
-            "gateway-proxy",
-            "gateway-class",
-            "gateway",
-        ]
-        for r in condition_ready:
+        The pipeline has no auto-ready function, so a desired resource's
+        readiness is whatever this says, and anything it says nothing about holds
+        the XR not-Ready however healthy it is. That makes an unschedulable
+        cluster the cost of forgetting one, so this covers whatever is composed
+        rather than a list naming each resource.
+        """
+        for key, res in self.rsp.desired.resources.items():
             if (
-                r in self.rsp.desired.resources
-                and resource.get_condition(self.req.observed.resources.get(r), "Ready").status == "True"
+                key in _ALWAYS_READY
+                or resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True"
             ):
-                self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
+                res.ready = fnv1.READY_TRUE
 
     def provider_configs_observed(self) -> bool:
         """Check if both ProviderConfigs have been persisted by Crossplane from

@@ -15,46 +15,121 @@ spec:
     served: true
     referenceable: true
     additionalPrinterColumns:
-    - name: URL
+    - name: ORIGIN
       type: string
-      jsonPath: .spec.url
+      jsonPath: .spec.origin
+    - name: MODEL
+      type: string
+      jsonPath: .spec.model
     schema:
       openAPIV3Schema:
+        description: >-
+          A ModelEndpoint is somewhere a request can be served: one replica of a
+          ModelDeployment, or a model at a provider like Together or Groq. It
+          describes a backend well enough for a gateway to talk to it without
+          knowing where it came from, which is what lets a ModelService fan over
+          endpoints Modelplane runs and endpoints it merely buys from.
+
+          Modelplane composes one per replica. You write them by hand for
+          anything it doesn't run.
         type: object
         required: [spec]
         properties:
           spec:
             type: object
-            required: [url]
+            required: [origin]
             properties:
-              url:
+              origin:
                 type: string
                 description: >-
-                  URL of the inference endpoint. Used to configure
-                  routing to this endpoint.
+                  Scheme and host of the backend, with no path: an https origin
+                  gets TLS originated to it. A port is only needed for a
+                  non-default one.
+
+                  The host must be a name, never an address. Envoy AI Gateway
+                  applies per-backend model rewriting, credentials and priority
+                  failover only when every backend in a route is addressed by
+                  hostname; given an address it keeps passing traffic but
+                  silently stops applying them, which would send a caller's own
+                  model name to a provider with no credential attached.
                 minLength: 1
-              rewritePath:
+                maxLength: 2048
+                x-kubernetes-validations:
+                - rule: "self.startsWith('http://') || self.startsWith('https://')"
+                  message: spec.origin must start with http:// or https://.
+                # Every rule on a field is evaluated, so this one has to tolerate
+                # an origin the rule above already rejected rather than indexing
+                # past the end of the split and reporting a CEL runtime error.
+                # It also catches a trailing slash, which would otherwise join
+                # with api.prefix to make a double slash.
+                - rule: "!self.contains('://') || self.split('://')[1].split('/').size() == 1"
+                  message: spec.origin must be scheme and host only; put the API's path in spec.api.prefix.
+              api:
+                type: object
+                description: >-
+                  The API this backend speaks, and where it serves it. Defaults
+                  to the OpenAI API under /v1, which is what most providers and
+                  every Modelplane-composed endpoint serve.
+                properties:
+                  schema:
+                    type: string
+                    description: >-
+                      The API the backend speaks. A gateway translates between
+                      this and whatever the caller sent, so an OpenAI client can
+                      reach an Anthropic backend and the reverse.
+                    default: OpenAI
+                    enum: [OpenAI, Anthropic]
+                  prefix:
+                    type: string
+                    description: >-
+                      The path the backend serves that API under: /v1 for most,
+                      /openai/v1 for Groq, and a per-replica path for a
+                      Modelplane-composed endpoint, whose cluster gateway
+                      distinguishes replicas by path.
+                    default: /v1
+                    minLength: 1
+                    maxLength: 512
+                    x-kubernetes-validations:
+                    - rule: "self.startsWith('/')"
+                      message: spec.api.prefix must start with a slash.
+              model:
                 type: string
                 description: >-
-                  Path prefix that requests should be rewritten to when
-                  routed through this endpoint. Used by ModelService to
-                  configure URLRewrite on its HTTPRoute. For Modelplane-
-                  composed endpoints this is the per-replica serving path
-                  on the remote cluster's gateway, e.g. /ml-team/qwen-demo/.
+                  The name this backend knows the model by, which a gateway
+                  rewrites the request's model to on the way out. Unset, the
+                  caller's model name passes through unchanged.
+
+                  A caller names a ModelService and gets back whichever model
+                  actually served, the way asking OpenAI for gpt-4o returns
+                  gpt-4o-2024-08-06.
+                minLength: 1
+                maxLength: 253
+              credentialRef:
+                type: object
+                description: >-
+                  Secret holding this backend's credential, which the gateway
+                  attaches on the way out. The credential never reaches the
+                  caller, and the caller's own credential never reaches the
+                  backend. An endpoint whose Secret is missing carries no
+                  traffic and says so in its conditions.
+                required: [name]
+                properties:
+                  name:
+                    type: string
+                    description: >-
+                      Secret in this ModelEndpoint's namespace, with the
+                      credential under the key named by key.
+                    minLength: 1
+                    maxLength: 253
+                  key:
+                    type: string
+                    description: The Secret key holding the credential.
+                    default: apiKey
+                    minLength: 1
+                    maxLength: 253
           status:
             type: object
             properties:
-              routing:
-                type: object
-                description: >-
-                  Routing details for this endpoint. ModelService reads
-                  backendName to build HTTPRoute backendRefs.
-                properties:
-                  backendName:
-                    type: string
-                    description: >-
-                      Crossplane-generated name of the Backend resource
-                      composed by this endpoint.
               conditions:
                 type: array
                 items:

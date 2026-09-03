@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, conint
+from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -42,14 +42,25 @@ class Crossplane(BaseModel):
 
 
 class Selector(BaseModel):
-    matchLabels: dict[str, str]
+    matchLabels: dict[str, constr(max_length=63)] = Field(
+        ..., max_length=16, min_length=1
+    )
 
 
 class Endpoint(BaseModel):
+    priority: conint(ge=0, le=63) | None = 0
+    """
+    Lower is preferred. Entries at the same priority share traffic by weight; a higher number is only tried when nothing below it has a healthy endpoint, which is what makes a provider a failover for capacity you run.
+    A request that fails over is retried against the next endpoint and gets that endpoint's own model name, credential and path. Retrying is only possible until the first byte reaches the caller, because after that the tokens are already sent, so a backend that dies mid-stream truncates the response instead.
+    """
     selector: Selector
+    """
+    Selects ModelEndpoints in this ModelService's namespace. Scope a service to a region by selecting only endpoints in it; Modelplane stamps an InferenceCluster's labels onto every endpoint composed there, so the region is declared once on the cluster.
+    """
     weight: conint(ge=1, le=1000000) | None = 1
     """
-    Weight determines the share of traffic sent to this entry's endpoints, relative to the other entries. An entry with weight 2 receives twice the traffic of an entry with weight 1. The weight is spread as evenly as possible across all endpoints the entry matches.
+    Share of traffic for this entry relative to the other entries at the same priority, spread as evenly as possible across the endpoints it matches. A pair of entries weighted 90 and 10 is a canary.
+    At least 1. A weight of 0 doesn't deprioritise a backend, it drops it from the gateway's load assignment entirely, which is indistinguishable from removing the entry and easy to mistake for parking it. Remove the entry instead.
     """
 
 
@@ -58,9 +69,11 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    endpoints: list[Endpoint] = Field(..., min_length=1)
+    endpoints: list[Endpoint] = Field(..., max_length=32, min_length=1)
     """
-    Endpoints to route traffic to. Each entry selects a set of ModelEndpoints by label. Traffic is split across entries in proportion to their weights, and load-balanced as evenly as possible across the endpoints an entry matches.
+    A priority order over ModelEndpoints, each entry selecting a set of them by label.
+    The two knobs work on different timescales. priority is failure: a tier is only used once the tiers above it have no healthy endpoints left. weight is everything that isn't failure, and is how you shift traffic deliberately, whether canarying a new deployment or preferring capacity you've already paid for until it stops keeping up.
+    Modelplane never adjusts a weight. It is whatever it was last written to be, by a person or by something watching the fleet's load and cost.
     """
 
 
@@ -73,14 +86,36 @@ class Condition(BaseModel):
     type: str
 
 
-class Status(BaseModel):
+class Endpoints(BaseModel):
+    ready: int | None = None
+    total: int | None = None
+
+
+class Gateway(BaseModel):
     address: str | None = None
+    hostname: str | None = None
     """
-    Public address where this service is reachable.
+    The name that gateway answers on, if it has one.
     """
+    name: str | None = None
+
+
+class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    endpoints: Endpoints | None = None
+    """
+    Observed endpoint counts, across all priorities.
+    """
+    gateways: list[Gateway] | None = None
+    """
+    The InferenceGateways serving this service, which is every gateway whose serviceSelector matches it. Empty means no gateway serves this service and no caller can reach it.
+    """
+    model: str | None = None
+    """
+    The name a caller passes as the request's model. Namespaced, so two services can't collide and the namespace serving a caller is legible in what it passes.
     """
 
 

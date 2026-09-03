@@ -15,11 +15,20 @@ spec:
     served: true
     referenceable: true
     additionalPrinterColumns:
-    - name: ADDRESS
+    - name: MODEL
       type: string
-      jsonPath: .status.address
+      jsonPath: .status.model
     schema:
       openAPIV3Schema:
+        description: >-
+          A ModelService is one model as a caller sees it: a stable name that
+          resolves to whichever ModelEndpoint should serve the next request. The
+          endpoints behind it can be replicas Modelplane runs, models bought from
+          a provider, or both, in more than one region.
+
+          A caller reaches it by naming it as the model in an ordinary OpenAI or
+          Anthropic request to any InferenceGateway that serves it. There is no
+          per-service address.
         type: object
         required: [spec]
         properties:
@@ -30,41 +39,108 @@ spec:
               endpoints:
                 type: array
                 description: >-
-                  Endpoints to route traffic to. Each entry selects a
-                  set of ModelEndpoints by label. Traffic is split across
-                  entries in proportion to their weights, and load-balanced
-                  as evenly as possible across the endpoints an entry matches.
+                  A priority order over ModelEndpoints, each entry selecting a
+                  set of them by label.
+
+                  The two knobs work on different timescales. priority is
+                  failure: a tier is only used once the tiers above it have no
+                  healthy endpoints left. weight is everything that isn't
+                  failure, and is how you shift traffic deliberately, whether
+                  canarying a new deployment or preferring capacity you've
+                  already paid for until it stops keeping up.
+
+                  Modelplane never adjusts a weight. It is whatever it was last
+                  written to be, by a person or by something watching the fleet's
+                  load and cost.
                 minItems: 1
+                maxItems: 32
                 items:
                   type: object
                   required: [selector]
                   properties:
+                    priority:
+                      type: integer
+                      description: >-
+                        Lower is preferred. Entries at the same priority share
+                        traffic by weight; a higher number is only tried when
+                        nothing below it has a healthy endpoint, which is what
+                        makes a provider a failover for capacity you run.
+
+                        A request that fails over is retried against the next
+                        endpoint and gets that endpoint's own model name,
+                        credential and path. Retrying is only possible until the
+                        first byte reaches the caller, because after that the
+                        tokens are already sent, so a backend that dies
+                        mid-stream truncates the response instead.
+                      minimum: 0
+                      maximum: 63
+                      default: 0
                     weight:
                       type: integer
                       description: >-
-                        Weight determines the share of traffic sent to this
-                        entry's endpoints, relative to the other entries. An
-                        entry with weight 2 receives twice the traffic of an
-                        entry with weight 1. The weight is spread as evenly as
-                        possible across all endpoints the entry matches.
+                        Share of traffic for this entry relative to the other
+                        entries at the same priority, spread as evenly as
+                        possible across the endpoints it matches. A pair of
+                        entries weighted 90 and 10 is a canary.
+
+                        At least 1. A weight of 0 doesn't deprioritise a
+                        backend, it drops it from the gateway's load assignment
+                        entirely, which is indistinguishable from removing the
+                        entry and easy to mistake for parking it. Remove the
+                        entry instead.
                       minimum: 1
                       maximum: 1000000
                       default: 1
                     selector:
                       type: object
+                      description: >-
+                        Selects ModelEndpoints in this ModelService's namespace.
+                        Scope a service to a region by selecting only endpoints
+                        in it; Modelplane stamps an InferenceCluster's labels
+                        onto every endpoint composed there, so the region is
+                        declared once on the cluster.
                       required: [matchLabels]
                       properties:
                         matchLabels:
                           type: object
                           additionalProperties:
                             type: string
+                            maxLength: 63
+                          minProperties: 1
+                          maxProperties: 16
           status:
             type: object
             properties:
-              address:
+              model:
                 type: string
                 description: >-
-                  Public address where this service is reachable.
+                  The name a caller passes as the request's model. Namespaced, so
+                  two services can't collide and the namespace serving a caller
+                  is legible in what it passes.
+              gateways:
+                type: array
+                description: >-
+                  The InferenceGateways serving this service, which is every
+                  gateway whose serviceSelector matches it. Empty means no
+                  gateway serves this service and no caller can reach it.
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    hostname:
+                      type: string
+                      description: The name that gateway answers on, if it has one.
+                    address:
+                      type: string
+              endpoints:
+                type: object
+                description: Observed endpoint counts, across all priorities.
+                properties:
+                  total:
+                    type: integer
+                  ready:
+                    type: integer
               conditions:
                 type: array
                 items:
