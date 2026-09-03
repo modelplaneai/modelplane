@@ -45,6 +45,13 @@ _MODELEXPRESS_PORT = 8001
 # Selector label for the server Deployment's pods and its Service.
 _MODELEXPRESS_SELECTOR = {"modelplane.ai/modelexpress": _MODELEXPRESS_SERVER_NAME}
 
+# CEL readiness for the server Deployment, which publishes Available,
+# not Ready, matching the policy the rest of the pipeline derives
+# workload readiness from.
+_MODELEXPRESS_SERVER_READY_CEL = (
+    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+)
+
 _FUNCTION_DIR = pathlib.Path(__file__).parent.parent
 
 
@@ -127,22 +134,26 @@ COMPONENTS: list[Component] = [
     # pods that opt into --load-format modelexpress. It holds no weights
     # itself, so its cache directory is an emptyDir; engine pods keep
     # their own per-cache PVC and register with this server at load.
-    # depends_on: the server writes CRs of the CRDs above, so they must
-    # outlive it for cleanup to resolve.
+    # One entry per object: only the Deployment carries a readiness CEL
+    # and the depends_on edge, and a single-doc entry keeps its key.
     Manifests(
-        key="modelexpress-server",
-        depends_on=["modelexpress-crds"],
+        key="modelexpress-server-sa",
         manifests=[
             {
                 "apiVersion": "v1",
                 "kind": "ServiceAccount",
                 "metadata": {"name": _MODELEXPRESS_SERVER_NAME, "namespace": _MODELEXPRESS_NAMESPACE},
             },
-            # RBAC for the Kubernetes CRD metadata backend: ModelMetadata
-            # (P2P worker coordination) and ModelCacheEntry (the download
-            # registry), plus ConfigMaps holding tensor descriptors too
-            # large for a ModelMetadata status field. Mirrors
-            # ModelExpress's own Helm chart Role.
+        ],
+    ),
+    # RBAC for the Kubernetes CRD metadata backend: ModelMetadata
+    # (P2P worker coordination) and ModelCacheEntry (the download
+    # registry), plus ConfigMaps holding tensor descriptors too
+    # large for a ModelMetadata status field. Mirrors ModelExpress's
+    # own Helm chart Role.
+    Manifests(
+        key="modelexpress-server-role",
+        manifests=[
             {
                 "apiVersion": "rbac.authorization.k8s.io/v1",
                 "kind": "Role",
@@ -165,6 +176,11 @@ COMPONENTS: list[Component] = [
                     },
                 ],
             },
+        ],
+    ),
+    Manifests(
+        key="modelexpress-server-rolebinding",
+        manifests=[
             {
                 "apiVersion": "rbac.authorization.k8s.io/v1",
                 "kind": "RoleBinding",
@@ -182,6 +198,11 @@ COMPONENTS: list[Component] = [
                     "name": _MODELEXPRESS_SERVER_NAME,
                 },
             },
+        ],
+    ),
+    Manifests(
+        key="modelexpress-server-svc",
+        manifests=[
             {
                 "apiVersion": "v1",
                 "kind": "Service",
@@ -191,6 +212,15 @@ COMPONENTS: list[Component] = [
                     "ports": [{"name": "grpc", "port": _MODELEXPRESS_PORT, "targetPort": _MODELEXPRESS_PORT}],
                 },
             },
+        ],
+    ),
+    # depends_on: the server writes CRs of the CRDs above, so they must
+    # outlive it for cleanup to resolve.
+    Manifests(
+        key="modelexpress-server",
+        depends_on=["modelexpress-crds"],
+        ready=_MODELEXPRESS_SERVER_READY_CEL,
+        manifests=[
             {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",

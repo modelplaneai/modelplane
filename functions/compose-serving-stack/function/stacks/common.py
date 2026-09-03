@@ -43,9 +43,11 @@ _AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
 _AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
 _AI_GATEWAY_VERSION = "v0.7.0"
 
-# Must match the namespace the NVIDIA DRA driver chart installs into
-# (the hand-written cloud files and fn.py's _DRA_DRIVER_NAMESPACE).
-_DRA_DRIVER_NAMESPACE = "dra-driver-nvidia-gpu"
+# Must match the namespace the NVIDIA DRA driver installs into on every
+# cloud: AICR's recipes use nvidia-dra-driver, and the hand-written
+# cloud halves align on it so this quota lands where the kubelet plugin
+# runs.
+_DRA_DRIVER_NAMESPACE = "nvidia-dra-driver"
 
 _FUNCTION_DIR = pathlib.Path(__file__).parent.parent
 

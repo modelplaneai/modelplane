@@ -67,7 +67,9 @@ v1alpha*, so a bump is a review, not a chore. In order:
    adds; classify it with a reason.
 4. Expect the managed-path assertions to fail closed if a values path
    moved or a --set stopped landing; re-derive the path from the new
-   chart before loosening anything.
+   chart before loosening anything. MODELPLANE_VALUES fails closed too
+   if a new recipe starts carrying one of its paths - decide whose
+   value wins and move the path to the right table.
 5. Both embedded catalog documents carry an apiVersion (v1alpha2 and
    v1alpha3 today) that can move in any release.
 6. The Kubernetes floor union re-checks against `k8s_default` in
@@ -467,6 +469,66 @@ MANAGED = {
     "nvsentinel": [
         (("labeler", "assumeDriverInstalled"), True, "no driver pod to observe with the operator's driver off"),
     ],
+    "kube-prometheus-stack": [
+        (("grafana", "enabled"), False, "Modelplane doesn't use Grafana dashboards"),
+        (("alertmanager", "enabled"), False, "Modelplane doesn't route alerts"),
+    ],
+}
+
+# Values Modelplane adds that AICR's recipes carry no opinion on,
+# deep-set into the hydrated bundle after the merge. Unlike MANAGED
+# these aren't --set (a structured value can't ride a --set flag) and
+# need no assertion - the generator writes them itself. They keep the
+# monitoring shape identical on every cloud: the collecting-engine-
+# metrics guide's PodMonitors and the envoy proxy scrape config work
+# the same on a generated cloud as on a hand-written one.
+MODELPLANE_VALUES = {
+    "kube-prometheus-stack": [
+        (
+            ("prometheus", "prometheusSpec", "podMonitorSelectorNilUsesHelmValues"),
+            False,
+            "discover user PodMonitors (the collecting-engine-metrics guide) beyond the release's own",
+        ),
+        (
+            ("prometheus", "prometheusSpec", "podMonitorNamespaceSelector"),
+            {},
+            "discover PodMonitors across all namespaces",
+        ),
+        (
+            ("prometheus", "prometheusSpec", "additionalScrapeConfigs"),
+            [
+                {
+                    "job_name": "envoy-gateway-proxy",
+                    "kubernetes_sd_configs": [
+                        {
+                            "role": "pod",
+                            "namespaces": {
+                                "names": ["envoy-gateway-system"],
+                            },
+                        },
+                    ],
+                    "relabel_configs": [
+                        {
+                            "source_labels": [
+                                "__meta_kubernetes_pod_label_app_kubernetes_io_component",
+                            ],
+                            "action": "keep",
+                            "regex": "proxy",
+                        },
+                        {
+                            "source_labels": ["__address__"],
+                            "action": "replace",
+                            "regex": "([^:]+)(?::\\d+)?",
+                            "replacement": "$1:19001",
+                            "target_label": "__address__",
+                        },
+                    ],
+                    "metrics_path": "/stats/prometheus",
+                },
+            ],
+            "scrape envoy proxy pods for in-flight request metrics (envoy_cluster_upstream_rq_active)",
+        ),
+    ],
 }
 
 # Per-cloud expected values where a cloud legitimately differs.
@@ -654,6 +716,14 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
                 )
             via = "the catalog fork" if (name, path) in owned else "aicr bundle --set"
             findings.append(f"managed path: {dotted} = {expected} ({why}; via {via})")
+        for path, value, why in MODELPLANE_VALUES.get(name, []):
+            if lookup(values, path) not in (ABSENT, value):
+                sys.exit(
+                    f"modelplane value {name}.{'.'.join(path)} collides with a "
+                    "recipe-carried value - reconcile the tables, fail closed"
+                )
+            set_path(values, path, value)
+            findings.append(f"modelplane value: {name}.{'.'.join(path)} ({why})")
 
         depends = []
         for dep in ref.get("dependencyRefs", []):

@@ -240,7 +240,7 @@ COMPONENTS: list[Component] = [
                         },
                     ],
                 },
-                "enabled": True,
+                "enabled": False,
             },
             "crds": {
                 "enabled": False,
@@ -248,7 +248,7 @@ COMPONENTS: list[Component] = [
             "fullnameOverride": "kube-prometheus",
             "grafana": {
                 "adminPassword": "admin",
-                "enabled": True,
+                "enabled": False,
                 "fullnameOverride": "grafana",
                 "resources": {
                     "limits": {
@@ -310,6 +310,42 @@ COMPONENTS: list[Component] = [
                     "tolerations": [
                         {
                             "operator": "Exists",
+                        },
+                    ],
+                    "podMonitorSelectorNilUsesHelmValues": False,
+                    "podMonitorNamespaceSelector": {},
+                    "additionalScrapeConfigs": [
+                        {
+                            "job_name": "envoy-gateway-proxy",
+                            "kubernetes_sd_configs": [
+                                {
+                                    "role": "pod",
+                                    "namespaces": {
+                                        "names": [
+                                            "envoy-gateway-system",
+                                        ],
+                                    },
+                                },
+                            ],
+                            "relabel_configs": [
+                                {
+                                    "source_labels": [
+                                        "__meta_kubernetes_pod_label_app_kubernetes_io_component",
+                                    ],
+                                    "action": "keep",
+                                    "regex": "proxy",
+                                },
+                                {
+                                    "source_labels": [
+                                        "__address__",
+                                    ],
+                                    "action": "replace",
+                                    "regex": "([^:]+)(?::\\d+)?",
+                                    "replacement": "$1:19001",
+                                    "target_label": "__address__",
+                                },
+                            ],
+                            "metrics_path": "/stats/prometheus",
                         },
                     ],
                 },

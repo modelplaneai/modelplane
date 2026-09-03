@@ -28,7 +28,7 @@ from the join tables.
 from function.stacks import common, dynamo, standard
 from function.stacks.clouds import existing, nebius, vultr
 from function.stacks.clouds.generated.aicr import aks, eks, gke
-from function.stacks.components import Chart, Component, Manifests
+from function.stacks.components import Chart, Component, Manifests, doc_keys
 
 __all__ = [
     "Chart",
@@ -36,6 +36,7 @@ __all__ = [
     "Manifests",
     "clouds",
     "components",
+    "doc_keys",
     "stacks",
 ]
 
@@ -87,6 +88,14 @@ def components(cloud: str, stack: str) -> list[Component]:
     duplicates = sorted({k for k in keys if keys.count(k) > 1})
     if duplicates:
         raise ValueError(f"{cloud}/{stack}: duplicate component keys {duplicates}")
+
+    # The composed-resource keys a component renders under (one per
+    # manifest for a multi-doc bundle) must be unique across the join
+    # too, or two components would fight over one desired resource.
+    rendered = [k for c in joined for k in doc_keys(c)]
+    duplicates = sorted({k for k in rendered if rendered.count(k) > 1})
+    if duplicates:
+        raise ValueError(f"{cloud}/{stack}: duplicate composed-resource keys {duplicates}")
 
     known = set(keys)
     for c in joined:

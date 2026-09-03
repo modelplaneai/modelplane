@@ -60,14 +60,35 @@ class Manifests:
     vendored from upstream releases, the gateway objects, the
     kai-scheduler Queues, the ModelExpress server bundle. `key` and
     `depends_on` behave as on Chart.
+
+    `ready` is an optional CEL query over the observed manifest,
+    applied to every doc in the entry (see fn.py's _k8s_object): use it
+    when readiness must reflect a controller-populated status field,
+    and keep an entry to one doc when only that doc has one.
     """
 
     key: str
     manifests: list[dict[str, Any]]
     depends_on: list[str] = field(default_factory=list)
+    ready: str | None = None
 
 
 # A plain assignment rather than a `type` statement: the packages
 # declare requires-python >=3.11, and the `type` keyword needs 3.12.
 # Type checkers treat this as an implicit alias either way.
 Component = Chart | Manifests
+
+
+def doc_keys(component: Component) -> list[str]:
+    """Composed-resource keys for a component, in manifest order.
+
+    A Chart, and a Manifests entry with one doc, renders under the
+    entry's key verbatim. A multi-doc Manifests renders one Object per
+    doc, keyed `<key>-<metadata.name>`. Renaming a key deletes and
+    recreates the composed resource - for an Object that deletes the
+    remote object - so a bundle growing from one doc to several (or
+    shrinking to one) renames its keys; keep that reviewable.
+    """
+    if isinstance(component, Chart) or len(component.manifests) == 1:
+        return [component.key]
+    return [f"{component.key}-{doc['metadata']['name']}" for doc in component.manifests]

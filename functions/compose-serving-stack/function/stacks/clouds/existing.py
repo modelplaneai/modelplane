@@ -126,7 +126,9 @@ COMPONENTS: list[Component] = [
     Chart(
         key="nvidia-dra-driver-gpu",
         release="mp-dra-driver-nvidia-gpu",
-        namespace="dra-driver-nvidia-gpu",
+        # AICR's namespace for this chart; the generated clouds and the
+        # critical-pods quota in common.py align on it.
+        namespace="nvidia-dra-driver",
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
         version="0.4.0",

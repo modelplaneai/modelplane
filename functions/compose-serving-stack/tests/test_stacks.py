@@ -53,6 +53,32 @@ class TestComponents(unittest.TestCase):
                         with self.subTest(cloud=cloud, stack=stack, key=c.key):
                             self.assertTrue(c.manifests, "a Manifests entry can't be empty")
 
+    def test_multi_doc_manifests_derive_per_doc_keys(self) -> None:
+        for cloud in stacks.clouds():
+            for stack in stacks.stacks():
+                for c in stacks.components(cloud, stack):
+                    keys = stacks.doc_keys(c)
+                    if isinstance(c, stacks.Chart) or len(c.manifests) == 1:
+                        self.assertEqual([c.key], keys)
+                        continue
+                    with self.subTest(cloud=cloud, stack=stack, key=c.key):
+                        self.assertEqual(
+                            [f"{c.key}-{doc['metadata']['name']}" for doc in c.manifests],
+                            keys,
+                            "a multi-doc bundle renders one Object per doc, keyed <key>-<name>",
+                        )
+
+    def test_ready_entries_are_single_doc(self) -> None:
+        # A readiness CEL query applies to every doc in an entry, so an
+        # entry carrying one keeps to a single manifest - a Service or
+        # ServiceAccount has no status conditions to satisfy it.
+        for cloud in stacks.clouds():
+            for stack in stacks.stacks():
+                for c in stacks.components(cloud, stack):
+                    if isinstance(c, stacks.Manifests) and c.ready is not None:
+                        with self.subTest(cloud=cloud, stack=stack, key=c.key):
+                            self.assertEqual(1, len(c.manifests))
+
     def test_unknown_cloud_and_stack_fail_closed(self) -> None:
         with self.assertRaises(ValueError):
             stacks.components("Mars", "Standard")

@@ -117,6 +117,34 @@ in
         touch $out/.python-checks-passed
       '';
 
+  # Fail if the generated serving stack lists are stale: regenerate them
+  # from the embedded catalog with the pinned aicr (fully offline - the
+  # recipes resolve from the catalog the binary embeds) and diff against
+  # what's checked in. Catches a generator change committed without
+  # `nix run .#stacks`, a hand-edit to a generated file, and any
+  # non-determinism in the pipeline.
+  stacks-current =
+    pkgs.runCommand "modelplane-stacks-current"
+      {
+        nativeBuildInputs = [
+          pkgs.aicr
+          (pkgs.python312.withPackages (ps: [ ps.pyyaml ]))
+          pkgs.unstable.ruff
+        ];
+      }
+      ''
+        cp -r ${self} src
+        chmod -R u+w src
+        cd src
+        export HOME=$TMPDIR
+        python3 functions/compose-serving-stack/generate.py
+        ruff format functions/compose-serving-stack/function/stacks/clouds/generated/
+        diff -ru ${self}/functions/compose-serving-stack/function/stacks/clouds/generated \
+          functions/compose-serving-stack/function/stacks/clouds/generated
+        mkdir -p $out
+        touch $out/.stacks-current
+      '';
+
   # Fail if any hand-written source file is missing its Apache 2.0 license
   # header. Scoped to the files we author: the composition functions and the
   # docs manifest validator. Generated models under schemas/python carry their
