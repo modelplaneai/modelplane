@@ -41,21 +41,6 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
-class Dynamo(BaseModel):
-    grove: constr(min_length=1, max_length=32) | None = 'v0.1.0-alpha.12-rc2'
-    """
-    Grove chart version. Grove gang-schedules a multi-node engine as a PodCliqueSet when stack is Dynamo. Pinned at v0.1.0-alpha.12-rc2 or later: earlier releases append Grove's own env vars after template env instead of prepending them (grove#753), which blocks Modelplane from aliasing MODELPLANE_LEADER_ADDRESS to them.
-    """
-    kaiScheduler: constr(min_length=1, max_length=32) | None = 'v0.16.8'
-    """
-    KAI Scheduler chart version. Grove hands a PodCliqueSet's gang-scheduling to KAI, which binds each gang all-or-nothing against a Queue.
-    """
-    modelExpress: constr(min_length=1, max_length=32) | None = '0.4.1'
-    """
-    ModelExpress server image tag. The metadata-only server coordinates peer-to-peer weight transfer between engine pods that opt into --load-format modelexpress.
-    """
-
-
 class Listener(BaseModel):
     name: constr(min_length=1, max_length=63)
     """
@@ -106,40 +91,6 @@ class Secret(BaseModel):
     """
 
 
-class Standard(BaseModel):
-    leaderWorkerSet: constr(min_length=1, max_length=32) | None = 'v0.8.0'
-    """
-    LeaderWorkerSet chart version.
-    """
-
-
-class Versions(BaseModel):
-    certManager: constr(min_length=1, max_length=32) | None = 'v1.17.1'
-    """
-    cert-manager chart version.
-    """
-    envoyGateway: constr(min_length=1, max_length=32) | None = 'v1.8.1'
-    """
-    Envoy Gateway chart version. Must support InferencePool backend resources (the disaggregated-serving routing path), which requires v1.8.x or newer; older releases lack the Gateway API CRDs (ListenerSet) the AI Gateway needs.
-    """
-    gatewayApi: constr(min_length=1, max_length=32) | None = 'v1.5.1'
-    """
-    Gateway API CRD version.
-    """
-    nodeFeatureDiscovery: constr(min_length=1, max_length=32) | None = '0.18.3'
-    """
-    Node Feature Discovery chart version. NFD labels GPU nodes so the NVIDIA DRA driver targets its kubelet plugin to them.
-    """
-    nvidiaDraDriver: constr(min_length=1, max_length=32) | None = '0.4.0'
-    """
-    NVIDIA DRA driver chart version. Publishes GPUs as DRA ResourceSlices and the gpu.nvidia.com DeviceClass that ModelReplica ResourceClaims bind through.
-    """
-    prometheus: constr(min_length=1, max_length=32) | None = '72.6.2'
-    """
-    kube-prometheus-stack chart version.
-    """
-
-
 class Spec(BaseModel):
     cloud: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Existing']
     """
@@ -149,17 +100,9 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    dynamo: Dynamo | None = None
-    """
-    Version pins for Dynamo-stack components. Ignored when stack is Standard.
-    """
     gateway: Gateway | None = None
     """
     Configuration for the cluster's inference traffic gateway.
-    """
-    nvidiaDriverRoot: constr(max_length=512) | None = '/'
-    """
-    Host path where the NVIDIA driver is installed, passed to the DRA driver as nvidiaDriverRoot. Defaults to / (the upstream default), which suits EKS and self-managed clusters. Set it for platforms that install the driver elsewhere — GKE uses /home/kubernetes/bin/nvidia. A non-default value also makes the serving stack compose a ResourceQuota permitting the DRA driver's system-critical pods, which GKE requires. The cluster composition sets this; the serving stack never inspects its own cloud.
     """
     secrets: list[Secret] = Field(..., max_length=8, min_length=1)
     """
@@ -168,14 +111,6 @@ class Spec(BaseModel):
     stack: Literal['Standard', 'Dynamo'] | None = 'Standard'
     """
     Which serving stack this installs. Standard (the default) is the Modelplane-composed serving layer: a Deployment or LeaderWorkerSet, Gateway API, and the endpoint picker. Dynamo swaps in NVIDIA's components: Grove with the KAI Scheduler for multi-node gang scheduling, and a shared ModelExpress server for weight distribution. Propagated from the InferenceCluster.
-    """
-    standard: Standard | None = None
-    """
-    Version pins for Standard-stack components. Ignored when stack is Dynamo.
-    """
-    versions: Versions | None = None
-    """
-    Version pins for each component. Defaults are the latest tested combination. Override individual versions to upgrade components independently.
     """
 
 

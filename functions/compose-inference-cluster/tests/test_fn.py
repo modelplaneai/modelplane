@@ -1306,7 +1306,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "key": "credentials.json",
                                         },
                                     ],
-                                    "nvidiaDriverRoot": "/home/kubernetes/bin/nvidia",
                                 },
                             }
                         ),

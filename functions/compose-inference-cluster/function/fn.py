@@ -57,10 +57,6 @@ CLUSTER_SOURCE_NEBIUS = "Nebius"
 CLUSTER_SOURCE_VULTR = "Vultr"
 CLUSTER_SOURCE_EXISTING = "Existing"
 
-# GKE installs the NVIDIA driver here rather than at the default / root; the
-# ServingStack passes it to the DRA driver so its kubelet plugin starts.
-_GKE_NVIDIA_DRIVER_ROOT = "/home/kubernetes/bin/nvidia"
-
 # Condition types and reasons for the InferenceCluster XR.
 CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
 CONDITION_TYPE_BACKEND_READY = "BackendReady"
@@ -285,9 +281,7 @@ class Composer:
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready=gke_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(
-                    backend_secrets, CLUSTER_SOURCE_GKE, nvidia_driver_root=_GKE_NVIDIA_DRIVER_ROOT
-                )
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_GKE)
             self.compose_gke_usage()
 
         if gke_ready:
@@ -487,25 +481,19 @@ class Composer:
         self,
         backend_secrets: list[ssv1alpha1.Secret],
         cloud: str,
-        nvidia_driver_root: str | None = None,
     ) -> None:
         """Compose a ServingStack XR with the given secrets.
 
         cloud names the cluster's source (this XR's spec.cluster.source)
-        and selects the component list the serving stack installs.
-
-        nvidia_driver_root is set for provisioned GKE clusters, where the NVIDIA
-        driver lives off the default / path; the serving stack consumes it
-        without inspecting its own cloud. Left None for EKS / existing clusters,
-        which keep the ServingStack's default root.
+        and selects the component list the serving stack installs -
+        including cloud specifics like where GKE's node image puts the
+        NVIDIA driver, which used to ride here as nvidiaDriverRoot.
         """
         spec = ssv1alpha1.Spec(
             secrets=backend_secrets,
             stack=self.xr.spec.stack,
             cloud=cloud,  # ty: ignore[invalid-argument-type]  # every caller passes a CLUSTER_SOURCE_* value of the literal
         )
-        if nvidia_driver_root is not None:
-            spec.nvidiaDriverRoot = nvidia_driver_root
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(
