@@ -27,6 +27,7 @@ from the join tables.
 
 from function.stacks import common, dynamo, standard
 from function.stacks.clouds import existing, nebius, vultr
+from function.stacks.clouds.generated.aicr import aks, eks, gke
 from function.stacks.components import Chart, Component, Manifests
 
 __all__ = [
@@ -38,10 +39,13 @@ __all__ = [
     "stacks",
 ]
 
-# The cloud halves. EKS, AKS and GKE join a file from
-# clouds/generated/aicr/ instead; they are mapped here when
-# `nix run .#stacks` writes those files.
+# The cloud halves, keyed by the InferenceCluster's source values. EKS,
+# AKS and GKE come from clouds/generated/aicr/, written by
+# `nix run .#stacks`; the rest are hand-written in clouds/.
 _CLOUDS: dict[str, list[Component]] = {
+    "EKS": eks.COMPONENTS,
+    "AKS": aks.COMPONENTS,
+    "GKE": gke.COMPONENTS,
     "Nebius": nebius.COMPONENTS,
     "Vultr": vultr.COMPONENTS,
     "Existing": existing.COMPONENTS,
