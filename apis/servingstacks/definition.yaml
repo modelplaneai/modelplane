@@ -4,6 +4,8 @@ metadata:
   name: servingstacks.infrastructure.modelplane.ai
 spec:
   group: infrastructure.modelplane.ai
+  defaultCompositionRef:
+    name: servingstacks.infrastructure.modelplane.ai
   names:
     categories:
     - crossplane
@@ -31,6 +33,7 @@ spec:
           spec:
             description: ServingStackSpec defines the desired state of ServingStack.
             required:
+            - cloud
             - secrets
             # A ServingStack is machine-generated, but the API server still
             # serves and accepts it, so this lets the compose function trust
@@ -42,6 +45,22 @@ spec:
             - rule: "self.secrets.exists(s, s.type == 'Kubeconfig')"
               message: spec.secrets must include a Kubeconfig entry.
             properties:
+              cloud:
+                type: string
+                description: >-
+                  The cloud the target cluster runs on. Selects the fixed set
+                  of components and versions this stack installs there, which
+                  is resolved per cloud at build time and changes only with a
+                  Modelplane release. Mirrors
+                  InferenceCluster.spec.cluster.source; the cluster
+                  composition sets it.
+                enum:
+                - GKE
+                - EKS
+                - AKS
+                - Nebius
+                - Vultr
+                - Existing
               secrets:
                 type: array
                 description: >-

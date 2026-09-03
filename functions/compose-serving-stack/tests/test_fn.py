@@ -841,6 +841,9 @@ def _base_request(
     path has its own test.
     """
     spec = v1alpha1.Spec(
+        # The cloud is required by the XRD but not yet read by the
+        # function; these fixtures are rewritten when it is.
+        cloud="Existing",
         secrets=[
             v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
             v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
@@ -933,6 +936,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         v1alpha1.ServingStack(
                             metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
                             spec=v1alpha1.Spec(
+                                cloud="Nebius",
                                 secrets=[
                                     v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
                                     v1alpha1.Secret(

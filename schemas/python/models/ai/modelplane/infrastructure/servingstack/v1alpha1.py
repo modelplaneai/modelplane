@@ -141,6 +141,10 @@ class Versions(BaseModel):
 
 
 class Spec(BaseModel):
+    cloud: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Existing']
+    """
+    The cloud the target cluster runs on. Selects the fixed set of components and versions this stack installs there, which is resolved per cloud at build time and changes only with a Modelplane release. Mirrors InferenceCluster.spec.cluster.source; the cluster composition sets it.
+    """
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource

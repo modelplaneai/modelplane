@@ -4,6 +4,7 @@ metadata:
   name: west-gke-stack
   namespace: platform
 spec:
+  cloud: GKE
   secrets:
     - type: Kubeconfig
       name: west-gke-kubeconfig

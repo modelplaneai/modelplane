@@ -285,7 +285,9 @@ class Composer:
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready=gke_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets, nvidia_driver_root=_GKE_NVIDIA_DRIVER_ROOT)
+                self.compose_serving_stack(
+                    backend_secrets, CLUSTER_SOURCE_GKE, nvidia_driver_root=_GKE_NVIDIA_DRIVER_ROOT
+                )
             self.compose_gke_usage()
 
         if gke_ready:
@@ -323,7 +325,7 @@ class Composer:
         backend_secrets = self.resolve_eks_backend_secrets(eks_ready=eks_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_EKS)
             self.compose_eks_usage()
 
         if eks_ready:
@@ -359,7 +361,7 @@ class Composer:
         backend_secrets = self.resolve_aks_backend_secrets(aks_ready=aks_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_AKS)
             self.compose_aks_usage()
 
         if aks_ready:
@@ -405,7 +407,7 @@ class Composer:
         backend_secrets = self.resolve_nebius_backend_secrets(nebius_ready=nebius_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_NEBIUS)
             self.compose_nebius_usage()
 
         if nebius_ready:
@@ -441,7 +443,7 @@ class Composer:
         backend_secrets = self.resolve_vultr_backend_secrets(vultr_ready=vultr_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_VULTR)
             self.compose_vultr_usage()
 
         if vultr_ready:
@@ -476,7 +478,7 @@ class Composer:
                 # type defaults to GCP in the XRD; coalesce so it's never None.
                 ssv1alpha1.Secret(type=identity.type or _IDENTITY_TYPE_GCP, name=identity.name, key=identity.key),
             )
-        self.compose_serving_stack(backend_secrets)
+        self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_EXISTING)
 
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=True)
@@ -484,16 +486,24 @@ class Composer:
     def compose_serving_stack(
         self,
         backend_secrets: list[ssv1alpha1.Secret],
+        cloud: str,
         nvidia_driver_root: str | None = None,
     ) -> None:
         """Compose a ServingStack XR with the given secrets.
+
+        cloud names the cluster's source (this XR's spec.cluster.source)
+        and selects the component list the serving stack installs.
 
         nvidia_driver_root is set for provisioned GKE clusters, where the NVIDIA
         driver lives off the default / path; the serving stack consumes it
         without inspecting its own cloud. Left None for EKS / existing clusters,
         which keep the ServingStack's default root.
         """
-        spec = ssv1alpha1.Spec(secrets=backend_secrets, stack=self.xr.spec.stack)
+        spec = ssv1alpha1.Spec(
+            secrets=backend_secrets,
+            stack=self.xr.spec.stack,
+            cloud=cloud,  # ty: ignore[invalid-argument-type]  # every caller passes a CLUSTER_SOURCE_* value of the literal
+        )
         if nvidia_driver_root is not None:
             spec.nvidiaDriverRoot = nvidia_driver_root
         resource.update(

@@ -331,6 +331,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
+                                    "cloud": "Existing",
                                     "stack": "Standard",
                                     "secrets": [
                                         {
@@ -663,6 +664,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
+                                    "cloud": "Existing",
                                     "stack": "Standard",
                                     "secrets": [
                                         {
@@ -1290,6 +1292,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     "namespace": "modelplane-system",
                                 },
                                 "spec": {
+                                    "cloud": "GKE",
                                     "stack": "Standard",
                                     "secrets": [
                                         {
@@ -1441,6 +1444,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "cloud": "EKS",
                             "stack": "Standard",
                             "secrets": [
                                 {
@@ -1759,6 +1763,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "cloud": "Nebius",
                             "stack": "Standard",
                             "secrets": [
                                 {
@@ -2066,6 +2071,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "cloud": "AKS",
                             "stack": "Standard",
                             "secrets": [
                                 {
@@ -2458,6 +2464,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "namespace": "modelplane-system",
                         },
                         "spec": {
+                            "cloud": "Vultr",
                             "stack": "Standard",
                             "secrets": [
                                 {
