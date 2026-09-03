@@ -961,10 +961,10 @@ def _placement_labels(cluster: icv1alpha1.InferenceCluster) -> dict[str, str]:
 def _gateway_hostname(cluster: icv1alpha1.InferenceCluster) -> str:
     """The name the cluster's gateway is addressable by, or empty when unset.
 
-    The cluster echoes it from spec.gateway.hostname once its gateway is both
+    Modelplane derives the name and publishes it once the gateway is both
     addressable and mutually authenticated, so an empty value means one of: no
-    DNS published, no address yet, no CA of its own, or no fleet gateway CA for
-    it to demand a client certificate against.
+    address yet, no CA of its own, or no fleet gateway CA for it to demand a
+    client certificate against.
     """
     if not cluster.status or not cluster.status.gateway:
         return ""

@@ -188,13 +188,6 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
-class Gateway(BaseModel):
-    hostname: constr(min_length=1, max_length=253) | None = None
-    """
-    DNS name that resolves to this cluster's gateway address, published by you once the cluster reports status.gateway.address. An InferenceGateway addresses this cluster by name rather than by address, so replicas here carry no traffic until the name resolves. A name is required because Envoy AI Gateway only applies per-backend model rewriting, credentials and priority failover when every backend in a route is addressed by hostname; given an address it silently stops applying them.
-    """
-
-
 class CapacityBlock(BaseModel):
     capacityReservationId: constr(
         pattern=r'^cr-[0-9a-f]+$', min_length=4, max_length=64
@@ -275,10 +268,6 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    gateway: Gateway | None = None
-    """
-    Configuration for this cluster's inference traffic gateway, which fronts the engine pods and is what an InferenceGateway forwards to.
-    """
     nodePools: list[NodePool] | None = Field(None, max_length=8, min_length=1)
     """
     GPU node pools available on this cluster. Each pool references an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools for control-plane components are provisioned automatically.
@@ -313,10 +302,10 @@ class Condition(BaseModel):
     type: str
 
 
-class GatewayModel(BaseModel):
+class Gateway(BaseModel):
     address: str | None = None
     """
-    External address of the inference gateway on the remote cluster. Point spec.gateway.hostname at this.
+    External address of the inference gateway on the remote cluster. Modelplane resolves status.gateway.hostname to this itself, on each InferenceGateway's cluster, so a platform publishes no DNS for it.
     """
     caCertificate: constr(max_length=16384) | None = None
     """
@@ -324,7 +313,7 @@ class GatewayModel(BaseModel):
     """
     hostname: str | None = None
     """
-    The name an InferenceGateway addresses this cluster's gateway by, echoed from spec.gateway.hostname once the gateway has an address. ModelDeployment composes a ModelEndpoint origin from it, and withholds the endpoint while it's unset.
+    The internal name an InferenceGateway addresses this cluster's gateway by, derived by Modelplane and resolved to status.gateway.address on each gateway's cluster. Published once the gateway has an address and traffic to it is mutually authenticated. ModelDeployment composes a ModelEndpoint origin from it, and withholds the endpoint while it's unset.
     """
 
 
@@ -380,7 +369,7 @@ class Status(BaseModel):
     """
     Conditions of the resource.
     """
-    gateway: GatewayModel | None = None
+    gateway: Gateway | None = None
     gpuPools: list[GpuPool] | None = Field(None, max_length=8)
     """
     Schedulable GPU node pools on this cluster, derived from the referenced classes and the per-pool node counts. ModelDeployment scheduling matches against these.

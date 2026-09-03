@@ -31,6 +31,8 @@ endpoint wins. This function owns everything gateway-scoped, and nothing
 per-service.
 """
 
+import ipaddress
+
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -86,6 +88,11 @@ _ANTHROPIC_PREFIX = "/anthropic/v1"
 # The path a geo-DNS record or a fronting edge health checks to decide whether
 # this gateway is in rotation.
 _HEALTHZ_PATH = "/healthz"
+
+# The cluster gateway serves HTTPS here. The resolving Service and its
+# EndpointSlice carry the port so it reads coherently, though Envoy resolves the
+# name to an address and connects on the Backend's own port regardless.
+_CLUSTER_GATEWAY_PORT = 443
 
 # This gateway's own PKI, issued by cert-manager on its cluster, which the
 # serving stack installs there. A composition function runs on every reconcile
@@ -192,6 +199,19 @@ def _name(md) -> str:  # noqa: ANN001  # generated ObjectMeta models vary by kin
     return md.name if md and md.name else ""
 
 
+def _ip_version(address: str) -> int | None:
+    """The IP version of an address, or None if it isn't an IP literal.
+
+    A cluster gateway's address is either an IP literal or a load balancer's own
+    DNS name, and the two are resolved differently. Parsing rather than matching,
+    because IPv6 is not a thing to write a regex for.
+    """
+    try:
+        return ipaddress.ip_address(address).version
+    except ValueError:
+        return None
+
+
 def _wrap(provider_config: str, manifest: dict, *, cel_query: str | None = None) -> k8sobjv1alpha1.Object:
     """Wrap a manifest in a provider-kubernetes Object for the gateway's cluster.
 
@@ -258,6 +278,7 @@ class Composer:
         self.compose_envoy_proxy()
         self.compose_gateway()
         self.compose_client_pki()
+        self.compose_cluster_names()
         self.compose_caller_auth()
         self.compose_failover_policy()
         self.compose_healthz()
@@ -296,6 +317,14 @@ class Composer:
             name="gateways",
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceGateway",
+        )
+        # Every InferenceCluster, to resolve each cluster gateway's name to its
+        # address on this gateway's cluster (see compose_cluster_names).
+        response.require_resources(
+            self.rsp,
+            name="clusters",
+            api_version="modelplane.ai/v1alpha1",
+            kind="InferenceCluster",
         )
         if self.xr.spec.auth:
             response.require_resources(
@@ -710,6 +739,89 @@ class Composer:
         d = resource.struct_to_dict(obj.resource)
         data = d.get("status", {}).get("atProvider", {}).get("manifest", {}).get("data", {})
         return data.get("ca.crt") or None
+
+    def compose_cluster_names(self) -> None:
+        """Resolve each cluster gateway's internal name to its address, here.
+
+        A ModelService's backends address a cluster gateway by the name
+        compose-inference-cluster derives, carried on ModelEndpoint.spec.origin,
+        and Envoy resolves that name itself. So this gateway's cluster needs a
+        Service of that name pointing at the cluster gateway's address, for every
+        cluster this gateway might route to, its own included when that cluster
+        serves models too. A platform publishes no DNS for any of them.
+
+        A cluster that hasn't published both an address and its name has no
+        gateway to reach yet, so it gets no Service.
+        """
+        if "clusters" not in self.req.required_resources:
+            return
+        for c in request.get_required_resources(self.req, "clusters"):
+            cluster = icv1alpha1.InferenceCluster.model_validate(c)
+            gw = cluster.status.gateway if cluster.status else None
+            if not (gw and gw.address and gw.hostname):
+                continue
+            self.compose_cluster_name(gw.hostname, gw.address)
+
+    def compose_cluster_name(self, hostname: str, address: str) -> None:
+        """Compose the Service that resolves one cluster gateway's name.
+
+        The Service's name is the hostname's first label, so its cluster-DNS name
+        is the whole hostname; the derivation lives in compose-inference-cluster
+        and this only splits the label back off. An address that is an IP is
+        served by a headless Service and an EndpointSlice carrying it; a hostname,
+        which is how a cloud load balancer names itself, by an ExternalName
+        Service. The resolvable name is identical either way, so the Backend that
+        points at it, the SNI, and the certificate SAN never branch on this.
+        """
+        label = hostname.split(".", 1)[0]
+        version = _ip_version(address)
+        if version is None:
+            resource.update(
+                self.rsp.desired.resources[f"cluster-name-{label}"],
+                _wrap(
+                    self.pc,
+                    {
+                        "apiVersion": "v1",
+                        "kind": "Service",
+                        "metadata": {"name": label, "namespace": REMOTE_NAMESPACE},
+                        "spec": {"type": "ExternalName", "externalName": address},
+                    },
+                ),
+            )
+            return
+        # Selectorless and headless: cluster DNS answers with the EndpointSlice's
+        # address directly, so Envoy connects to the load balancer rather than
+        # hairpinning through a ClusterIP.
+        resource.update(
+            self.rsp.desired.resources[f"cluster-name-{label}"],
+            _wrap(
+                self.pc,
+                {
+                    "apiVersion": "v1",
+                    "kind": "Service",
+                    "metadata": {"name": label, "namespace": REMOTE_NAMESPACE},
+                    "spec": {"clusterIP": "None", "ports": [{"name": "https", "port": _CLUSTER_GATEWAY_PORT}]},
+                },
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources[f"cluster-name-slice-{label}"],
+            _wrap(
+                self.pc,
+                {
+                    "apiVersion": "discovery.k8s.io/v1",
+                    "kind": "EndpointSlice",
+                    "metadata": {
+                        "name": label,
+                        "namespace": REMOTE_NAMESPACE,
+                        "labels": {"kubernetes.io/service-name": label},
+                    },
+                    "addressType": f"IPv{version}",
+                    "ports": [{"name": "https", "port": _CLUSTER_GATEWAY_PORT}],
+                    "endpoints": [{"addresses": [address], "conditions": {"ready": True}}],
+                },
+            ),
+        )
 
     def compose_caller_auth(self) -> None:
         """A SecurityPolicy authenticating callers against the selected Secrets.

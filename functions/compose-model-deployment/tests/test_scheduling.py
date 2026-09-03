@@ -226,9 +226,9 @@ def _cluster(
         status=icv1alpha1.Status(
             conditions=conditions,
             gateway=(
-                icv1alpha1.GatewayModel(address="10.0.0.1", hostname=gateway_hostname)
+                icv1alpha1.Gateway(address="10.0.0.1", hostname=gateway_hostname)
                 if gateway_hostname
-                else icv1alpha1.GatewayModel(address="10.0.0.1")
+                else icv1alpha1.Gateway(address="10.0.0.1")
             ),
             providerConfigRef=icv1alpha1.ProviderConfigRef(name=name),
             gpuPools=[icv1alpha1.GpuPool(**p) for p in pools],

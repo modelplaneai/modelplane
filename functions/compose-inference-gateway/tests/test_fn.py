@@ -75,6 +75,23 @@ def _cluster(*, provider_config: str | None = _PC) -> dict:
     }
 
 
+def _cluster_with_gateway(name: str, *, address: str, hostname: str) -> dict:
+    """An observed InferenceCluster whose gateway has published an address and
+    the internal name Modelplane derived for it."""
+    return {
+        "apiVersion": "modelplane.ai/v1alpha1",
+        "kind": "InferenceCluster",
+        "metadata": {"name": name},
+        "spec": {
+            "cluster": {
+                "source": "Existing",
+                "existing": {"secretRef": {"name": f"{name}-kubeconfig", "key": "kubeconfig"}},
+            }
+        },
+        "status": {"gateway": {"address": address, "hostname": hostname}},
+    }
+
+
 def _gateway_xr(name: str, cluster: str) -> dict:
     """Another InferenceGateway, for the one-per-cluster contest."""
     return {
@@ -111,6 +128,7 @@ def _requirements(*, auth: bool = False, tls: int = 0) -> fnv1.Requirements:
             api_version="modelplane.ai/v1alpha1", kind="InferenceCluster", match_name=_CLUSTER
         ),
         "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+        "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
     }
     if auth:
         reqs["caller-secrets"] = fnv1.ResourceSelector(
@@ -632,6 +650,96 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             next(iter(got.conditions)).reason,
             fn.CONDITION_REASON_WAITING_FOR_GATEWAY,
             "an address alone isn't readiness; the Gateway must be programmed",
+        )
+
+    async def test_resolves_each_cluster_gateway_name(self) -> None:
+        """A Service per cluster gateway, resolving its name to its address here.
+
+        A ModelService's backends address a cluster gateway by the name
+        compose-inference-cluster derived, and this gateway's Envoy resolves it,
+        so its cluster needs a Service of that name. An IP is served by a
+        headless Service and an EndpointSlice; a hostname, which is how a cloud
+        load balancer names itself, by an ExternalName Service. A cluster that
+        hasn't published both an address and a name gets neither.
+        """
+        ipv4 = "prod-ipv4-gateway-aaaaa.modelplane-system.svc.cluster.local"
+        ipv6 = "prod-ipv6-gateway-bbbbb.modelplane-system.svc.cluster.local"
+        dns = "prod-dns-gateway-ccccc.modelplane-system.svc.cluster.local"
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_xr()))),
+            required_resources=_required(
+                cluster=[_cluster()],
+                gateways=[_gateway_xr("eu", _CLUSTER)],
+                clusters=[
+                    _cluster(),  # this gateway's own cluster, no gateway published yet
+                    _cluster_with_gateway("prod-ipv4", address="203.0.113.7", hostname=ipv4),
+                    _cluster_with_gateway("prod-ipv6", address="2001:db8::1", hostname=ipv6),
+                    _cluster_with_gateway("prod-dns", address="lb-x.elb.amazonaws.com", hostname=dns),
+                ],
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+
+        resolvers = {
+            key: resource.struct_to_dict(res.resource)
+            for key, res in got.desired.resources.items()
+            if key.startswith("cluster-name")
+        }
+        for key, obj in resolvers.items():
+            self.assertEqual(
+                obj["spec"]["providerConfigRef"],
+                {"kind": "ClusterProviderConfig", "name": _PC},
+                f"{key} is composed against this gateway's own cluster",
+            )
+        manifests = {key: obj["spec"]["forProvider"]["manifest"] for key, obj in resolvers.items()}
+        self.assertEqual(
+            manifests,
+            {
+                "cluster-name-prod-ipv4-gateway-aaaaa": {
+                    "apiVersion": "v1",
+                    "kind": "Service",
+                    "metadata": {"name": "prod-ipv4-gateway-aaaaa", "namespace": fn.REMOTE_NAMESPACE},
+                    "spec": {"clusterIP": "None", "ports": [{"name": "https", "port": 443}]},
+                },
+                "cluster-name-slice-prod-ipv4-gateway-aaaaa": {
+                    "apiVersion": "discovery.k8s.io/v1",
+                    "kind": "EndpointSlice",
+                    "metadata": {
+                        "name": "prod-ipv4-gateway-aaaaa",
+                        "namespace": fn.REMOTE_NAMESPACE,
+                        "labels": {"kubernetes.io/service-name": "prod-ipv4-gateway-aaaaa"},
+                    },
+                    "addressType": "IPv4",
+                    "ports": [{"name": "https", "port": 443}],
+                    "endpoints": [{"addresses": ["203.0.113.7"], "conditions": {"ready": True}}],
+                },
+                "cluster-name-prod-ipv6-gateway-bbbbb": {
+                    "apiVersion": "v1",
+                    "kind": "Service",
+                    "metadata": {"name": "prod-ipv6-gateway-bbbbb", "namespace": fn.REMOTE_NAMESPACE},
+                    "spec": {"clusterIP": "None", "ports": [{"name": "https", "port": 443}]},
+                },
+                "cluster-name-slice-prod-ipv6-gateway-bbbbb": {
+                    "apiVersion": "discovery.k8s.io/v1",
+                    "kind": "EndpointSlice",
+                    "metadata": {
+                        "name": "prod-ipv6-gateway-bbbbb",
+                        "namespace": fn.REMOTE_NAMESPACE,
+                        "labels": {"kubernetes.io/service-name": "prod-ipv6-gateway-bbbbb"},
+                    },
+                    "addressType": "IPv6",
+                    "ports": [{"name": "https", "port": 443}],
+                    "endpoints": [{"addresses": ["2001:db8::1"], "conditions": {"ready": True}}],
+                },
+                "cluster-name-prod-dns-gateway-ccccc": {
+                    "apiVersion": "v1",
+                    "kind": "Service",
+                    "metadata": {"name": "prod-dns-gateway-ccccc", "namespace": fn.REMOTE_NAMESPACE},
+                    "spec": {"type": "ExternalName", "externalName": "lb-x.elb.amazonaws.com"},
+                },
+            },
+            "IP clusters get a headless Service + EndpointSlice, the hostname cluster an ExternalName, "
+            "and the own cluster with nothing published gets neither",
         )
 
     async def test_a_rejected_caller_policy_is_not_ready(self) -> None:

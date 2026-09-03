@@ -1360,7 +1360,12 @@ class Composer:
                     "metadata": {"name": _CA_ISSUER, "namespace": "modelplane-system"},
                     "spec": {
                         "isCA": True,
-                        "commonName": f"modelplane cluster CA {gw.hostname}",
+                        # Truncated to the 64-byte X.509 commonName limit: the
+                        # gateway hostname is a full Service FQDN, so the prefix
+                        # plus the name overflows it. Cosmetic anyway, since the
+                        # fleet gateway trusts this CA by its certificate and
+                        # validates the serving one by SAN, not by this name.
+                        "commonName": f"modelplane cluster CA {gw.hostname}"[:64],
                         "secretName": _CA_SECRET,
                         "duration": "87600h",
                         "renewBefore": "8760h",

@@ -188,7 +188,7 @@ def _cluster(
                     lastTransitionTime=_TRANSITION_TIME,
                 )
             ],
-            gateway=icv1alpha1.GatewayModel(address="10.0.0.1", hostname=hostname) if hostname else None,
+            gateway=icv1alpha1.Gateway(address="10.0.0.1", hostname=hostname) if hostname else None,
             providerConfigRef=icv1alpha1.ProviderConfigRef(name=name),
             gpuPools=[
                 icv1alpha1.GpuPool(

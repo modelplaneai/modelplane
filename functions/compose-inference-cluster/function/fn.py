@@ -109,6 +109,27 @@ def _name(meta: metav1.ObjectMeta | None) -> str:
     return meta.name
 
 
+def _gateway_hostname(cluster_name: str) -> str:
+    """The internal name a fleet gateway addresses this cluster's gateway by.
+
+    Modelplane derives and resolves this itself, so a platform publishes no DNS
+    per cluster: compose-inference-gateway composes a Service of this name on
+    each fleet gateway's cluster, pointing at this cluster's gateway address. The
+    name doubles as the SNI a fleet gateway sends and the SAN on this cluster
+    gateway's serving certificate, so it is stable and identical from every
+    cluster.
+
+    The first label is the Service's name, which must be a DNS-1035 label:
+    lowercase alphanumeric and '-', starting with a letter. A cluster name is a
+    DNS-1123 subdomain, so it may contain dots or start with a digit; leading
+    with a literal keeps the label valid, and dots become dashes so it stays a
+    single label. NOTE(negz): assumes the cluster's DNS domain is the default
+    cluster.local.
+    """
+    label = resource.child_name("gateway", cluster_name.replace(".", "-"))
+    return f"{label}.{_NAMESPACE_SYSTEM}.svc.cluster.local"
+
+
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
@@ -530,20 +551,18 @@ class Composer:
             spec.nvidiaDriverRoot = nvidia_driver_root
 
         # The gateway's name and the CAs it should accept client certificates
-        # from. The name comes from this cluster's own spec; the CAs from every
-        # InferenceGateway in the fleet, because any of them may forward here and
-        # each signs its client certificate with its own CA. Presenting one is
-        # how a caller proves it is a fleet gateway, which is what stops anything
-        # else reaching the engines behind this cluster's gateway.
-        gateway = ssv1alpha1.Gateway()
-        if self.xr.spec.gateway and self.xr.spec.gateway.hostname:
-            gateway.hostname = self.xr.spec.gateway.hostname
+        # from. The name is Modelplane's own, derived from this cluster's name;
+        # the CAs are from every InferenceGateway in the fleet, because any of
+        # them may forward here and each signs its client certificate with its
+        # own CA. Presenting one is how a caller proves it is a fleet gateway,
+        # which is what stops anything else reaching the engines behind this
+        # cluster's gateway.
+        gateway = ssv1alpha1.Gateway(hostname=_gateway_hostname(_name(self.xr.metadata)))
         if self.gateway_cas:
             gateway.clientCAs = [
                 ssv1alpha1.ClientCA(name=name, certificate=cert) for name, cert in sorted(self.gateway_cas.items())
             ]
-        if gateway.hostname or gateway.clientCAs:
-            spec.gateway = gateway
+        spec.gateway = gateway
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(
@@ -616,7 +635,7 @@ class Composer:
             status.cache = v1alpha1.CacheModel(storageClassName=cache_storage_class)
         gateway_address = self.observed_gateway_address()
         if gateway_address:
-            status.gateway = v1alpha1.GatewayModel(address=gateway_address)
+            status.gateway = v1alpha1.Gateway(address=gateway_address)
             # Republished from the ServingStack so an InferenceGateway can
             # validate this cluster's gateway without reading a ServingStack,
             # which is machine-generated and not something another composition
@@ -643,8 +662,8 @@ class Composer:
             # serves_gateway). Publishing the hostname anyway would make the
             # cluster schedulable when it has no front door, so every request
             # routed to it would be stranded.
-            if ca and self.gateway_cas and self.xr.spec.gateway and self.xr.spec.gateway.hostname:
-                status.gateway.hostname = self.xr.spec.gateway.hostname
+            if ca and self.gateway_cas:
+                status.gateway.hostname = _gateway_hostname(_name(self.xr.metadata))
         resource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self, *, cluster_ready: bool) -> None:

@@ -1639,6 +1639,26 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "trust-manager owns this ConfigMap; Crossplane must not write it",
         )
 
+    async def test_ca_common_name_fits_the_x509_limit(self) -> None:
+        """The derived gateway hostname is a full Service FQDN, so the CA
+        certificate commonName that embeds it must be truncated to the 64-byte
+        X.509 limit, which cert-manager's webhook rejects if exceeded."""
+        long_hostname = "g" + "a" * 62 + ".modelplane-system.svc.cluster.local"
+        req = _base_request(
+            gateway=v1alpha1.Gateway(
+                hostname=long_hostname,
+                clientCAs=[v1alpha1.ClientCA(name="fleet", certificate="-----BEGIN CERTIFICATE-----\nfleet\n")],
+            )
+        )
+        _observe_provider_configs(req)
+
+        got = await self.runner.RunFunction(req, None)
+
+        cn = resource.struct_to_dict(got.desired.resources["gateway-ca-certificate"].resource)["spec"]["forProvider"][
+            "manifest"
+        ]["spec"]["commonName"]
+        self.assertLessEqual(len(cn.encode()), 64, "CA commonName exceeds the 64-byte X.509 limit")
+
     async def test_ca_certificate_published_from_the_observed_configmap(self) -> None:
         """status.gateway.caCertificate comes from the ConfigMap trust-manager
         syncs, as plain text rather than base64."""
