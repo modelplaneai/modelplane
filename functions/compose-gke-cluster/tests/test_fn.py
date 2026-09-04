@@ -274,6 +274,7 @@ def _iam_binding(
             "forProvider": {
                 "role": "roles/container.admin",
                 "member": f"serviceAccount:{sa_email}",
+                "project": "my-gcp-project",
             },
         },
     }

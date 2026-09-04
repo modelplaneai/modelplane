@@ -19,8 +19,21 @@ against this capacity without knowing which cluster it runs on.
 - AWS access key ID and secret access key
 {{< /tab >}}
 {{< tab "GKE" >}}
-- A GCP account with permissions to create GKE clusters, VPCs, and IAM roles
-- A GCP service account JSON key
+- A GCP service account JSON key, granted these roles on the project:
+
+  | Role | Needed for |
+  |---|---|
+  | `roles/container.admin` | the cluster and its node pools |
+  | `roles/compute.admin` | the VPC network and subnet |
+  | `roles/serviceusage.serviceUsageAdmin` | enabling the APIs the cluster needs |
+  | `roles/iam.serviceAccountAdmin` | the node service account |
+  | `roles/iam.serviceAccountKeyAdmin` | the node service account's key |
+  | `roles/iam.serviceAccountUser` | attaching that account to the nodes |
+  | `roles/resourcemanager.projectIamAdmin` | granting the node account `container.admin` |
+
+  The last one is worth a look before you hand the key over. Modelplane grants
+  the node service account `roles/container.admin`, so the credential doing the
+  provisioning has to be able to set project IAM policy.
 {{< /tab >}}
 {{< tab "AKS" >}}
 - An Azure account with permissions to create AKS clusters and managed identities

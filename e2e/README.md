@@ -51,6 +51,26 @@ server exposes both, so the pod goes Ready without a real model or GPU.
 | Control-plane `InferenceGateway` + cross-cluster routing to the replica | |
 | Status propagation and foreground-deletion ordering | |
 
+### Why cloud provisioning cannot be tested here
+
+`lean-control-plane.yaml` trims the control plane to what a BYO cluster needs,
+and both trims stop a cloud `InferenceCluster` from reconciling at all. Neither
+announces itself, so this is what to expect if you point this control plane at a
+real cloud:
+
+- The MRAP activates only `*.kubernetes.m.crossplane.io` and
+  `*.helm.m.crossplane.io`. A cloud provider's managed resources are then never
+  activated, so they sit with **no status conditions at all** — which reads as
+  nothing happening rather than as an error.
+- The `dormant-cloud-providers` `ImageConfig` maps every
+  `xpkg.upbound.io/upbound/provider-*` to a zero-replica runtime config. Editing
+  that `ImageConfig` is not enough on its own: it is resolved when a package
+  revision reconciles, so existing Deployments keep their replica count until
+  something scales them.
+
+Undoing both is possible but leaves a control plane that is no longer the one CI
+runs, so prefer a separate control plane for cloud work.
+
 ## Prerequisites
 
 - **Docker** with real headroom — **≥ 16 GB memory** and **plenty of disk**
