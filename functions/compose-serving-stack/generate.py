@@ -874,7 +874,18 @@ def emit(
     digest: str,
     floor: str | None,
 ) -> None:
-    fields = ["key", "release", "namespace", "chart", "repository", "version", "wait", "depends_on", "values", "manifests"]
+    fields = [
+        "key",
+        "release",
+        "namespace",
+        "chart",
+        "repository",
+        "version",
+        "wait",
+        "depends_on",
+        "values",
+        "manifests",
+    ]
     names = ["Chart", "Component"]
     if any(entry["type"] == "Manifests" for entry in components):
         names.append("Manifests")

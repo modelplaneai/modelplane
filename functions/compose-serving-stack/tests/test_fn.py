@@ -109,6 +109,7 @@ def _release(
     repository: str,
     version: str,
     values: dict | None = None,
+    *,
     wait: bool = False,
 ) -> fnv1.Resource:
     """The expected Release for a Chart entry, built from literal arguments."""
@@ -182,7 +183,7 @@ def _usage(of_ref: tuple[str, str], of_key: str, by_ref: tuple[str, str], by_key
     return res
 
 
-def _provider_configs(ready: bool = True) -> dict[str, fnv1.Resource]:
+def _provider_configs(*, ready: bool = True) -> dict[str, fnv1.Resource]:
     """The two expected ProviderConfigs.
 
     Ready only once observed: on the first pass they and the Usages are
