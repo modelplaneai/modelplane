@@ -373,9 +373,15 @@ CLOUDS = {
     },
 }
 
-# aicr rejects its own wildcard toleration under AKS admission.
+# aicr rejects its own wildcard toleration under AKS admission, so the
+# AKS bundle takes an explicit one. The value must match the taint
+# compose-aks-cluster puts on GPU pools (_GPU_TAINT, nvidia.com/gpu=
+# true) - an Equal toleration with any other value excludes every
+# accelerated daemonset (NFD's worker first, and with it the label the
+# DRA kubelet plugin schedules on) from exactly the nodes it exists
+# for.
 BUNDLE_EXTRA = {
-    "aks": ["--accelerated-node-toleration", "nvidia.com/gpu=present:NoSchedule"],
+    "aks": ["--accelerated-node-toleration", "nvidia.com/gpu=true:NoSchedule"],
 }
 
 # Recipe component name -> the key we emit it as. The key and the

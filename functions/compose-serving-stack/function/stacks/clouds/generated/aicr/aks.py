@@ -70,13 +70,13 @@ COMPONENTS: list[Component] = [
                 "kubeletStateDir": "",
                 "resources": {"limits": {"memory": "256Mi"}, "requests": {"cpu": "50m", "memory": "128Mi"}},
                 "tolerations": [
-                    {"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "present"}
+                    {"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "true"}
                 ],
             },
             "worker": {
                 "enable": True,
                 "tolerations": [
-                    {"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "present"}
+                    {"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "true"}
                 ],
             },
         },
@@ -211,9 +211,7 @@ COMPONENTS: list[Component] = [
         values={
             "ccManager": {"enabled": False},
             "daemonsets": {
-                "tolerations": [
-                    {"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "present"}
-                ]
+                "tolerations": [{"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "true"}]
             },
             "dcgm": {"enabled": True},
             "dcgmExporter": {
@@ -470,7 +468,7 @@ done
                 "podAnnotations": {"aicr.run/gpu-operator-chart-version": "v26.3.3"},
                 "priorityClassName": "",
                 "tolerations": [
-                    {"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "present"}
+                    {"effect": "NoSchedule", "key": "nvidia.com/gpu", "operator": "Equal", "value": "true"}
                 ],
             },
             "nameOverride": "nvidia-dra-driver-gpu",
