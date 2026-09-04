@@ -119,6 +119,8 @@ COMPONENTS: list[Component] = [
         chart="ai-gateway-crds-helm",
         repository=_AI_GATEWAY_REPO,
         version=_AI_GATEWAY_VERSION,
+        # ai-gateway depends on this chart.
+        wait=True,
     ),
     Chart(
         key="ai-gateway",

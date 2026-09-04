@@ -49,33 +49,10 @@ in their header. Every component in a recipe must be classified in
 ALLOW or DROP - an unknown component fails the run, else NVIDIA adding
 a component would silently appear on every Modelplane cluster.
 
-Bumping aicr
-------------
-
-aicr releases about every two weeks and its schemas are still
-v1alpha*, so a bump is a review, not a chore. In order:
-
-1. Update AICR_PIN here and `version` in nix/aicr.nix together, with
-   hashes from the release's aicr_checksums.txt. The two must move in
-   lockstep; check_pin() fails closed on a mismatch.
-2. Re-sync GKE_COS_OVERLAY: diff it against the new tag's
-   recipes/overlays/gke-cos.yaml and re-apply the one change (the dra
-   profile value, the 1.35 floor, and the DRA selector paths on the
-   stock values for union totality). The file is high-churn upstream.
-   The fork is deleted the day NVIDIA/aicr#2515 or #2517 lands.
-3. Expect ALLOW/DROP to fail closed on any component the new catalog
-   adds; classify it with a reason.
-4. Expect the managed-path assertions to fail closed if a values path
-   moved or a --set stopped landing; re-derive the path from the new
-   chart before loosening anything. MODELPLANE_VALUES fails closed too
-   if a new recipe starts carrying one of its paths - decide whose
-   value wins and move the path to the right table.
-5. Both embedded catalog documents carry an apiVersion (v1alpha2 and
-   v1alpha3 today) that can move in any release.
-6. The Kubernetes floor union re-checks against `k8s_default` in
-   CLOUDS, which must track the cloud cluster XRD defaults.
-7. Regenerate, run twice to confirm no diff, and review the
-   generated/aicr diff as the release's stack change.
+Bumping the pinned aicr is a reviewed stack change - it moves the
+components and versions every managed cluster runs on the next
+Modelplane release. The procedure lives in CONTRIBUTING.md, "Bumping
+aicr".
 """
 
 import ast
@@ -93,7 +70,8 @@ import yaml
 # The aicr release this file is synced against: check_pin() refuses any
 # other, because GKE_COS_OVERLAY forks a file embedded in that exact
 # release and the ALLOW/DROP tables classify that release's catalog.
-# Moves together with `version` in nix/aicr.nix; see "Bumping aicr".
+# Moves together with `version` in nix/aicr.nix; see CONTRIBUTING.md,
+# "Bumping aicr".
 AICR_PIN = "0.20.0"
 
 ROOT = pathlib.Path(__file__).parent
@@ -699,8 +677,8 @@ def check_pin() -> None:
     if match.group(1) != AICR_PIN:
         sys.exit(
             f"aicr {match.group(1)} on PATH, but this generator is synced "
-            f'against {AICR_PIN}: follow "Bumping aicr" in generate.py\'s '
-            "docstring (and update nix/aicr.nix) rather than mixing releases"
+            f'against {AICR_PIN}: follow "Bumping aicr" in CONTRIBUTING.md '
+            "(and update nix/aicr.nix) rather than mixing releases"
         )
 
 
@@ -806,6 +784,18 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
                 }
             )
 
+    # A chart another component depends on renders with helm --wait, so
+    # its Ready means healthy and the function's install gate orders
+    # dependents on health rather than deploy. Derived from the kept
+    # edges, so the graph and the waits can't drift apart. (cert-manager
+    # also picks this up from its in-recipe dependents; the cross-half
+    # envoy-gateway edge needs it too.)
+    depended_on = {dep for entry in components for dep in entry.get("depends_on", [])}
+    for entry in components:
+        if entry["type"] == "Chart" and entry["key"] in depended_on:
+            entry["wait"] = True
+            findings.append(f"wait: {entry['key']} (another component depends on it)")
+
     return components, findings
 
 
@@ -857,25 +847,20 @@ def floors(
     return floor, findings
 
 
-def pyfmt(value: object, indent: int) -> str:
-    """Render a value as a Python literal, nested dicts one key per line."""
-    pad = " " * indent
+def pyfmt(value: object) -> str:
+    """Render a value as a Python literal.
+
+    Nearly repr, and layout is ruff format's job (the .#stacks app runs
+    it over the output). The one thing ruff can't do is the reason this
+    exists: a multi-line string must be emitted triple-quoted, because
+    repr escapes its newlines into one enormous line that ruff will
+    never split - and a per-line diff of a config blob (dcgm-exporter's
+    metrics CSV) is what makes a bump reviewable.
+    """
     if isinstance(value, dict):
-        if not value:
-            return "{}"
-        lines = ["{"]
-        for k, v in value.items():
-            lines.append(f"{pad}    {k!r}: {pyfmt(v, indent + 4)},")
-        lines.append(pad + "}")
-        return "\n".join(lines)
+        return "{" + ", ".join(f"{k!r}: {pyfmt(v)}" for k, v in value.items()) + "}"
     if isinstance(value, list):
-        if not value:
-            return "[]"
-        lines = ["["]
-        for item in value:
-            lines.append(f"{pad}    {pyfmt(item, indent + 4)},")
-        lines.append(pad + "]")
-        return "\n".join(lines)
+        return "[" + ", ".join(pyfmt(item) for item in value) + "]"
     if isinstance(value, str) and "\n" in value and '"""' not in value and not value.endswith('"'):
         return f'"""{value}"""'
     return repr(value)
@@ -889,7 +874,7 @@ def emit(
     digest: str,
     floor: str | None,
 ) -> None:
-    fields = ["key", "release", "namespace", "chart", "repository", "version", "depends_on", "values", "manifests"]
+    fields = ["key", "release", "namespace", "chart", "repository", "version", "wait", "depends_on", "values", "manifests"]
     names = ["Chart", "Component"]
     if any(entry["type"] == "Manifests" for entry in components):
         names.append("Manifests")
@@ -915,7 +900,7 @@ def emit(
         for field in fields:
             if field not in entry:
                 continue
-            lines.append(f"        {field}={pyfmt(entry[field], 8)},")
+            lines.append(f"        {field}={pyfmt(entry[field])},")
         lines.append("    ),")
     lines += ["]", ""]
     text = "\n".join(lines)

@@ -24,12 +24,14 @@ stack's own file. See design/serving-stack-generation.md.
 from function.stacks import common, dynamo, standard
 from function.stacks.clouds import existing, nebius, vultr
 from function.stacks.clouds.generated.aicr import aks, eks, gke
-from function.stacks.components import Chart, Component, Manifests, doc_keys
+from function.stacks.components import Chart, Cloud, Component, Manifests, Stack, doc_keys
 
 __all__ = [
     "Chart",
+    "Cloud",
     "Component",
     "Manifests",
+    "Stack",
     "clouds",
     "components",
     "doc_keys",
@@ -39,7 +41,7 @@ __all__ = [
 # The cloud halves, keyed by the InferenceCluster's source values. EKS,
 # AKS and GKE come from clouds/generated/aicr/, written by
 # `nix run .#stacks`; the rest are hand-written in clouds/.
-_CLOUDS: dict[str, list[Component]] = {
+_CLOUDS: dict[Cloud, list[Component]] = {
     "EKS": eks.COMPONENTS,
     "AKS": aks.COMPONENTS,
     "GKE": gke.COMPONENTS,
@@ -48,23 +50,23 @@ _CLOUDS: dict[str, list[Component]] = {
     "Existing": existing.COMPONENTS,
 }
 
-_STACKS: dict[str, list[Component]] = {
+_STACKS: dict[Stack, list[Component]] = {
     "Standard": standard.COMPONENTS,
     "Dynamo": dynamo.COMPONENTS,
 }
 
 
-def clouds() -> list[str]:
+def clouds() -> list[Cloud]:
     """The clouds a stack can be joined for."""
     return list(_CLOUDS)
 
 
-def stacks() -> list[str]:
+def stacks() -> list[Stack]:
     """The stacks a stack can be joined for."""
     return list(_STACKS)
 
 
-def components(cloud: str, stack: str) -> list[Component]:
+def components(cloud: Cloud, stack: Stack) -> list[Component]:
     """Join the component lists for a cloud and stack.
 
     Fails closed, at import or test time rather than on a cluster: on an

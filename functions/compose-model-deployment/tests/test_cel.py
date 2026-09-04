@@ -320,7 +320,3 @@ class TestCompile(unittest.TestCase):
     def test_invalid_expression_raises(self) -> None:
         with self.assertRaises(cel.CELCompileError):
             cel.Program("not ) valid (")
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -32,72 +32,24 @@ COMPONENTS: list[Component] = [
         chart="cert-manager",
         repository="https://charts.jetstack.io",
         version="v1.20.2",
+        wait=True,
         values={
             "cainjector": {
                 "resources": {
-                    "limits": {
-                        "cpu": "50m",
-                        "memory": "320Mi",
-                    },
-                    "requests": {
-                        "cpu": "50m",
-                        "memory": "320Mi",
-                    },
+                    "limits": {"cpu": "50m", "memory": "320Mi"},
+                    "requests": {"cpu": "50m", "memory": "320Mi"},
                 },
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "tolerations": [{"operator": "Exists"}],
             },
-            "crds": {
-                "enabled": True,
-            },
+            "crds": {"enabled": True},
             "fullnameOverride": "cert-manager",
-            "prometheus": {
-                "servicemonitor": {
-                    "enabled": False,
-                },
-            },
-            "resources": {
-                "limits": {
-                    "cpu": "50m",
-                    "memory": "90Mi",
-                },
-                "requests": {
-                    "cpu": "50m",
-                    "memory": "90Mi",
-                },
-            },
-            "startupapicheck": {
-                "enabled": True,
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-            },
-            "tolerations": [
-                {
-                    "operator": "Exists",
-                },
-            ],
+            "prometheus": {"servicemonitor": {"enabled": False}},
+            "resources": {"limits": {"cpu": "50m", "memory": "90Mi"}, "requests": {"cpu": "50m", "memory": "90Mi"}},
+            "startupapicheck": {"enabled": True, "tolerations": [{"operator": "Exists"}]},
+            "tolerations": [{"operator": "Exists"}],
             "webhook": {
-                "resources": {
-                    "limits": {
-                        "cpu": "50m",
-                        "memory": "40Mi",
-                    },
-                    "requests": {
-                        "cpu": "50m",
-                        "memory": "40Mi",
-                    },
-                },
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "resources": {"limits": {"cpu": "50m", "memory": "40Mi"}, "requests": {"cpu": "50m", "memory": "40Mi"}},
+                "tolerations": [{"operator": "Exists"}],
             },
         },
     ),
@@ -108,50 +60,18 @@ COMPONENTS: list[Component] = [
         chart="node-feature-discovery",
         repository="https://kubernetes-sigs.github.io/node-feature-discovery/charts",
         version="0.19.0",
+        wait=True,
         values={
-            "gc": {
-                "enable": True,
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-            },
-            "master": {
-                "enable": True,
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-            },
+            "gc": {"enable": True, "tolerations": [{"operator": "Exists"}]},
+            "master": {"enable": True, "tolerations": [{"operator": "Exists"}]},
             "topologyUpdater": {
                 "createCRDs": True,
                 "enable": False,
                 "kubeletStateDir": "",
-                "resources": {
-                    "limits": {
-                        "memory": "256Mi",
-                    },
-                    "requests": {
-                        "cpu": "50m",
-                        "memory": "128Mi",
-                    },
-                },
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "resources": {"limits": {"memory": "256Mi"}, "requests": {"cpu": "50m", "memory": "128Mi"}},
+                "tolerations": [{"operator": "Exists"}],
             },
-            "worker": {
-                "enable": True,
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-            },
+            "worker": {"enable": True, "tolerations": [{"operator": "Exists"}]},
         },
     ),
     Chart(
@@ -164,37 +84,18 @@ COMPONENTS: list[Component] = [
         values={
             "controllerManager": {
                 "manager": {
-                    "env": {
-                        "copyDirRoot": "/etc/nodewright",
-                        "reapplyOnReboot": "true",
-                    },
+                    "env": {"copyDirRoot": "/etc/nodewright", "reapplyOnReboot": "true"},
                     "resources": {
-                        "limits": {
-                            "cpu": "1000m",
-                            "memory": "4000Mi",
-                        },
-                        "requests": {
-                            "cpu": "1000m",
-                            "memory": "2000Mi",
-                        },
+                        "limits": {"cpu": "1000m", "memory": "4000Mi"},
+                        "requests": {"cpu": "1000m", "memory": "2000Mi"},
                     },
                 },
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "tolerations": [{"operator": "Exists"}],
             },
             "fullnameOverride": "skyhook-operator",
             "limitRange": {
-                "default": {
-                    "cpu": "1",
-                    "memory": "1Gi",
-                },
-                "defaultRequest": {
-                    "cpu": "500m",
-                    "memory": "512Mi",
-                },
+                "default": {"cpu": "1", "memory": "1Gi"},
+                "defaultRequest": {"cpu": "500m", "memory": "512Mi"},
             },
         },
     ),
@@ -205,9 +106,8 @@ COMPONENTS: list[Component] = [
         chart="prometheus-operator-crds",
         repository="https://prometheus-community.github.io/helm-charts",
         version="28.0.1",
-        values={
-            "enabled": True,
-        },
+        wait=True,
+        values={"enabled": True},
     ),
     Chart(
         key="kube-prometheus-stack",
@@ -216,126 +116,61 @@ COMPONENTS: list[Component] = [
         chart="kube-prometheus-stack",
         repository="https://prometheus-community.github.io/helm-charts",
         version="84.4.0",
-        depends_on=[
-            "prometheus-operator-crds",
-        ],
+        wait=True,
+        depends_on=["prometheus-operator-crds"],
         values={
             "alertmanager": {
                 "alertmanagerSpec": {
                     "resources": {
-                        "limits": {
-                            "cpu": "500m",
-                            "memory": "512Mi",
-                        },
-                        "requests": {
-                            "cpu": "100m",
-                            "memory": "128Mi",
-                        },
+                        "limits": {"cpu": "500m", "memory": "512Mi"},
+                        "requests": {"cpu": "100m", "memory": "128Mi"},
                     },
-                    "tolerations": [
-                        {
-                            "operator": "Exists",
-                        },
-                    ],
+                    "tolerations": [{"operator": "Exists"}],
                 },
                 "enabled": False,
             },
-            "crds": {
-                "enabled": False,
-            },
+            "crds": {"enabled": False},
             "fullnameOverride": "kube-prometheus",
             "grafana": {
                 "adminPassword": "admin",
                 "enabled": False,
                 "fullnameOverride": "grafana",
                 "resources": {
-                    "limits": {
-                        "cpu": "500m",
-                        "memory": "512Mi",
-                    },
-                    "requests": {
-                        "cpu": "100m",
-                        "memory": "128Mi",
-                    },
+                    "limits": {"cpu": "500m", "memory": "512Mi"},
+                    "requests": {"cpu": "100m", "memory": "128Mi"},
                 },
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "tolerations": [{"operator": "Exists"}],
             },
-            "kube-state-metrics": {
-                "fullnameOverride": "kube-state-metrics",
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-            },
-            "nodeExporter": {
-                "enabled": True,
-            },
+            "kube-state-metrics": {"fullnameOverride": "kube-state-metrics", "tolerations": [{"operator": "Exists"}]},
+            "nodeExporter": {"enabled": True},
             "prometheus": {
                 "prometheusSpec": {
-                    "resources": {
-                        "limits": {
-                            "cpu": 2,
-                            "memory": "2Gi",
-                        },
-                        "requests": {
-                            "cpu": "500m",
-                            "memory": "1Gi",
-                        },
-                    },
+                    "resources": {"limits": {"cpu": 2, "memory": "2Gi"}, "requests": {"cpu": "500m", "memory": "1Gi"}},
                     "retention": "15d",
                     "serviceMonitorNamespaceSelector": {},
                     "serviceMonitorSelectorNilUsesHelmValues": False,
                     "storageSpec": {
                         "volumeClaimTemplate": {
-                            "spec": {
-                                "accessModes": [
-                                    "ReadWriteOnce",
-                                ],
-                                "resources": {
-                                    "requests": {
-                                        "storage": "50Gi",
-                                    },
-                                },
-                            },
-                        },
+                            "spec": {"accessModes": ["ReadWriteOnce"], "resources": {"requests": {"storage": "50Gi"}}}
+                        }
                     },
-                    "tolerations": [
-                        {
-                            "operator": "Exists",
-                        },
-                    ],
+                    "tolerations": [{"operator": "Exists"}],
                     "podMonitorSelectorNilUsesHelmValues": False,
                     "podMonitorNamespaceSelector": {},
                     "additionalScrapeConfigs": [
                         {
                             "job_name": "envoy-gateway-proxy",
                             "kubernetes_sd_configs": [
-                                {
-                                    "role": "pod",
-                                    "namespaces": {
-                                        "names": [
-                                            "envoy-gateway-system",
-                                        ],
-                                    },
-                                },
+                                {"role": "pod", "namespaces": {"names": ["envoy-gateway-system"]}}
                             ],
                             "relabel_configs": [
                                 {
-                                    "source_labels": [
-                                        "__meta_kubernetes_pod_label_app_kubernetes_io_component",
-                                    ],
+                                    "source_labels": ["__meta_kubernetes_pod_label_app_kubernetes_io_component"],
                                     "action": "keep",
                                     "regex": "proxy",
                                 },
                                 {
-                                    "source_labels": [
-                                        "__address__",
-                                    ],
+                                    "source_labels": ["__address__"],
                                     "action": "replace",
                                     "regex": "([^:]+)(?::\\d+)?",
                                     "replacement": "$1:19001",
@@ -343,43 +178,19 @@ COMPONENTS: list[Component] = [
                                 },
                             ],
                             "metrics_path": "/stats/prometheus",
-                        },
+                        }
                     ],
-                },
+                }
             },
             "prometheus-node-exporter": {
                 "fullnameOverride": "prometheus-node-exporter",
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "tolerations": [{"operator": "Exists"}],
             },
             "prometheusOperator": {
-                "admissionWebhooks": {
-                    "patch": {
-                        "tolerations": [
-                            {
-                                "operator": "Exists",
-                            },
-                        ],
-                    },
-                },
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "admissionWebhooks": {"patch": {"tolerations": [{"operator": "Exists"}]}},
+                "tolerations": [{"operator": "Exists"}],
             },
-            "thanosRuler": {
-                "thanosRulerSpec": {
-                    "tolerations": [
-                        {
-                            "operator": "Exists",
-                        },
-                    ],
-                },
-            },
+            "thanosRuler": {"thanosRulerSpec": {"tolerations": [{"operator": "Exists"}]}},
         },
     ),
     Chart(
@@ -389,29 +200,13 @@ COMPONENTS: list[Component] = [
         chart="gpu-operator",
         repository="https://helm.ngc.nvidia.com/nvidia",
         version="v26.3.3",
-        depends_on=[
-            "node-feature-discovery",
-            "cert-manager",
-            "kube-prometheus-stack",
-        ],
+        wait=True,
+        depends_on=["node-feature-discovery", "cert-manager", "kube-prometheus-stack"],
         values={
-            "ccManager": {
-                "enabled": False,
-            },
-            "cdi": {
-                "default": True,
-                "enabled": True,
-            },
-            "daemonsets": {
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-            },
-            "dcgm": {
-                "enabled": True,
-            },
+            "ccManager": {"enabled": False},
+            "cdi": {"default": True, "enabled": True},
+            "daemonsets": {"tolerations": [{"operator": "Exists"}]},
+            "dcgm": {"enabled": True},
             "dcgmExporter": {
                 "config": {
                     "create": True,
@@ -480,91 +275,43 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
 """,
                     "name": "dcgm-exporter",
                 },
-                "serviceMonitor": {
-                    "enabled": True,
-                    "honorLabels": True,
-                    "interval": "30s",
-                },
+                "serviceMonitor": {"enabled": True, "honorLabels": True, "interval": "30s"},
             },
             "devicePlugin": {
                 "enabled": False,
                 "env": [
-                    {
-                        "name": "DP_DISABLE_HEALTHCHECKS",
-                        "value": "x",
-                    },
-                    {
-                        "name": "DEVICE_LIST_STRATEGY",
-                        "value": "cdi-cri,cdi-annotations,volume-mounts",
-                    },
+                    {"name": "DP_DISABLE_HEALTHCHECKS", "value": "x"},
+                    {"name": "DEVICE_LIST_STRATEGY", "value": "cdi-cri,cdi-annotations,volume-mounts"},
                 ],
             },
             "driver": {
                 "enabled": False,
                 "maxParallelUpgrades": 5,
-                "rdma": {
-                    "enabled": False,
-                },
+                "rdma": {"enabled": False},
                 "useOpenKernelModules": True,
                 "version": "580.173.02",
             },
             "fullnameOverride": "gpu-operator",
-            "gdrcopy": {
-                "enabled": False,
-            },
-            "gfd": {
-                "enabled": True,
-            },
-            "hostPaths": {
-                "driverInstallDir": "/home/kubernetes/bin/nvidia",
-            },
-            "kataSandboxDevicePlugin": {
-                "enabled": False,
-            },
-            "migManager": {
-                "enabled": True,
-            },
-            "nfd": {
-                "enabled": False,
-            },
+            "gdrcopy": {"enabled": False},
+            "gfd": {"enabled": True},
+            "hostPaths": {"driverInstallDir": "/home/kubernetes/bin/nvidia"},
+            "kataSandboxDevicePlugin": {"enabled": False},
+            "migManager": {"enabled": True},
+            "nfd": {"enabled": False},
             "operator": {
                 "resources": {
-                    "limits": {
-                        "cpu": "500m",
-                        "memory": "700Mi",
-                    },
-                    "requests": {
-                        "cpu": "200m",
-                        "memory": "300Mi",
-                    },
+                    "limits": {"cpu": "500m", "memory": "700Mi"},
+                    "requests": {"cpu": "200m", "memory": "300Mi"},
                 },
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "tolerations": [{"operator": "Exists"}],
                 "upgradeCRD": True,
             },
             "toolkit": {
                 "enabled": False,
-                "env": [
-                    {
-                        "name": "RUNTIME_CONFIG_SOURCE",
-                        "value": "file",
-                    },
-                ],
+                "env": [{"name": "RUNTIME_CONFIG_SOURCE", "value": "file"}],
                 "installDir": "/home/kubernetes/bin/nvidia",
             },
-            "validator": {
-                "plugin": {
-                    "env": [
-                        {
-                            "name": "WITH_WORKLOAD",
-                            "value": "false",
-                        },
-                    ],
-                },
-            },
+            "validator": {"plugin": {"env": [{"name": "WITH_WORKLOAD", "value": "false"}]}},
         },
     ),
     Chart(
@@ -574,10 +321,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         chart="k8s-ephemeral-storage-metrics",
         repository="https://jmcgrath207.github.io/k8s-ephemeral-storage-metrics/chart",
         version="1.19.2",
-        depends_on=[
-            "kube-prometheus-stack",
-            "prometheus-operator-crds",
-        ],
+        depends_on=["kube-prometheus-stack", "prometheus-operator-crds"],
         values={
             "deploy_type": "Deployment",
             "log_level": "info",
@@ -591,15 +335,8 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                 "ephemeral_storage_node_percentage": True,
                 "ephemeral_storage_pod_usage": True,
             },
-            "prometheus": {
-                "enable": True,
-                "release": "kube-prometheus-stack",
-            },
-            "tolerations": [
-                {
-                    "operator": "Exists",
-                },
-            ],
+            "prometheus": {"enable": True, "release": "kube-prometheus-stack"},
+            "tolerations": [{"operator": "Exists"}],
         },
     ),
     Chart(
@@ -609,45 +346,24 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         chart="dra-driver-nvidia-gpu",
         repository="oci://registry.k8s.io/dra-driver-nvidia/charts",
         version="0.4.1",
-        depends_on=[
-            "gpu-operator",
-        ],
+        depends_on=["gpu-operator"],
         values={
             "controller": {
                 "affinity": {},
-                "podAnnotations": {
-                    "aicr.run/gpu-operator-chart-version": "v26.3.3",
-                },
+                "podAnnotations": {"aicr.run/gpu-operator-chart-version": "v26.3.3"},
                 "priorityClassName": "",
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "tolerations": [{"operator": "Exists"}],
             },
             "fullnameOverride": "nvidia-dra-driver-gpu",
             "gpuResourcesEnabledOverride": True,
             "kubeletPlugin": {
-                "podAnnotations": {
-                    "aicr.run/gpu-operator-chart-version": "v26.3.3",
-                },
+                "podAnnotations": {"aicr.run/gpu-operator-chart-version": "v26.3.3"},
                 "priorityClassName": "",
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
+                "tolerations": [{"operator": "Exists"}],
             },
             "nameOverride": "nvidia-dra-driver-gpu",
             "nvidiaDriverRoot": "/home/kubernetes/bin/nvidia",
-            "resources": {
-                "computeDomains": {
-                    "enabled": False,
-                },
-                "gpus": {
-                    "enabled": True,
-                },
-            },
+            "resources": {"computeDomains": {"enabled": False}, "gpus": {"enabled": True}},
         },
     ),
     Chart(
@@ -657,47 +373,18 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         chart="nvsentinel",
         repository="oci://ghcr.io/nvidia",
         version="v1.20.0",
-        depends_on=[
-            "cert-manager",
-            "gpu-operator",
-            "prometheus-operator-crds",
-        ],
+        depends_on=["cert-manager", "gpu-operator", "prometheus-operator-crds"],
         values={
             "fullnameOverride": "nvsentinel",
-            "global": {
-                "systemNodeTolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-                "tolerations": [
-                    {
-                        "operator": "Exists",
-                    },
-                ],
-            },
-            "janitor-provider": {
-                "csp": {
-                    "provider": "generic",
-                },
-            },
-            "labeler": {
-                "assumeDriverInstalled": True,
-            },
-            "networkPolicy": {
-                "enabled": False,
-            },
+            "global": {"systemNodeTolerations": [{"operator": "Exists"}], "tolerations": [{"operator": "Exists"}]},
+            "janitor-provider": {"csp": {"provider": "generic"}},
+            "labeler": {"assumeDriverInstalled": True},
+            "networkPolicy": {"enabled": False},
             "platformConnector": {
                 "maxUnavailable": 1,
                 "resources": {
-                    "limits": {
-                        "cpu": "200m",
-                        "memory": "512Mi",
-                    },
-                    "requests": {
-                        "cpu": "200m",
-                        "memory": "512Mi",
-                    },
+                    "limits": {"cpu": "200m", "memory": "512Mi"},
+                    "requests": {"cpu": "200m", "memory": "512Mi"},
                 },
                 "updateStrategy": "RollingUpdate",
             },
@@ -710,115 +397,57 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
         chart="prometheus-adapter",
         repository="https://prometheus-community.github.io/helm-charts",
         version="5.3.0",
-        depends_on=[
-            "kube-prometheus-stack",
-        ],
+        depends_on=["kube-prometheus-stack"],
         values={
             "metricsRelistInterval": "30s",
-            "prometheus": {
-                "port": 9090,
-                "url": "http://kube-prometheus-prometheus",
-            },
+            "prometheus": {"port": 9090, "url": "http://kube-prometheus-prometheus"},
             "replicas": 1,
-            "resources": {
-                "limits": {
-                    "cpu": "250m",
-                    "memory": "256Mi",
-                },
-                "requests": {
-                    "cpu": "100m",
-                    "memory": "128Mi",
-                },
-            },
+            "resources": {"limits": {"cpu": "250m", "memory": "256Mi"}, "requests": {"cpu": "100m", "memory": "128Mi"}},
             "rules": {
                 "custom": [
                     {
                         "metricsQuery": "last_over_time(<<.Series>>[1m])",
-                        "name": {
-                            "as": "gpu_utilization",
-                            "matches": "DCGM_FI_DEV_GPU_UTIL",
-                        },
+                        "name": {"as": "gpu_utilization", "matches": "DCGM_FI_DEV_GPU_UTIL"},
                         "resources": {
-                            "overrides": {
-                                "namespace": {
-                                    "resource": "namespace",
-                                },
-                                "pod": {
-                                    "resource": "pod",
-                                },
-                            },
+                            "overrides": {"namespace": {"resource": "namespace"}, "pod": {"resource": "pod"}}
                         },
                         "seriesQuery": 'DCGM_FI_DEV_GPU_UTIL{namespace!="",pod!=""}',
                     },
                     {
                         "metricsQuery": "last_over_time(<<.Series>>[1m])",
-                        "name": {
-                            "as": "gpu_memory_used",
-                            "matches": "DCGM_FI_DEV_FB_USED",
-                        },
+                        "name": {"as": "gpu_memory_used", "matches": "DCGM_FI_DEV_FB_USED"},
                         "resources": {
-                            "overrides": {
-                                "namespace": {
-                                    "resource": "namespace",
-                                },
-                                "pod": {
-                                    "resource": "pod",
-                                },
-                            },
+                            "overrides": {"namespace": {"resource": "namespace"}, "pod": {"resource": "pod"}}
                         },
                         "seriesQuery": 'DCGM_FI_DEV_FB_USED{namespace!="",pod!=""}',
                     },
                     {
                         "metricsQuery": "last_over_time(<<.Series>>[1m])",
-                        "name": {
-                            "as": "gpu_power_usage",
-                            "matches": "DCGM_FI_DEV_POWER_USAGE",
-                        },
+                        "name": {"as": "gpu_power_usage", "matches": "DCGM_FI_DEV_POWER_USAGE"},
                         "resources": {
-                            "overrides": {
-                                "namespace": {
-                                    "resource": "namespace",
-                                },
-                                "pod": {
-                                    "resource": "pod",
-                                },
-                            },
+                            "overrides": {"namespace": {"resource": "namespace"}, "pod": {"resource": "pod"}}
                         },
                         "seriesQuery": 'DCGM_FI_DEV_POWER_USAGE{namespace!="",pod!=""}',
                     },
                     {
                         "metricsQuery": "last_over_time(<<.Series>>{<<.LabelMatchers>>}[1m])",
-                        "name": {
-                            "as": "workload_gpu_utilization",
-                            "matches": "DCGM_FI_DEV_GPU_UTIL",
-                        },
+                        "name": {"as": "workload_gpu_utilization", "matches": "DCGM_FI_DEV_GPU_UTIL"},
                         "resources": {
                             "overrides": {
-                                "exported_namespace": {
-                                    "resource": "namespace",
-                                },
-                                "exported_pod": {
-                                    "resource": "pod",
-                                },
-                            },
+                                "exported_namespace": {"resource": "namespace"},
+                                "exported_pod": {"resource": "pod"},
+                            }
                         },
                         "seriesQuery": 'DCGM_FI_DEV_GPU_UTIL{exported_namespace!="",exported_pod!=""}',
                     },
                     {
                         "metricsQuery": "last_over_time(<<.Series>>{<<.LabelMatchers>>}[1m])",
-                        "name": {
-                            "as": "workload_gpu_memory_used",
-                            "matches": "DCGM_FI_DEV_FB_USED",
-                        },
+                        "name": {"as": "workload_gpu_memory_used", "matches": "DCGM_FI_DEV_FB_USED"},
                         "resources": {
                             "overrides": {
-                                "exported_namespace": {
-                                    "resource": "namespace",
-                                },
-                                "exported_pod": {
-                                    "resource": "pod",
-                                },
-                            },
+                                "exported_namespace": {"resource": "namespace"},
+                                "exported_pod": {"resource": "pod"},
+                            }
                         },
                         "seriesQuery": 'DCGM_FI_DEV_FB_USED{exported_namespace!="",exported_pod!=""}',
                     },
@@ -827,44 +456,25 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                 "external": [
                     {
                         "metricsQuery": "avg(avg_over_time(DCGM_FI_DEV_GPU_UTIL[2m]))",
-                        "name": {
-                            "as": "dcgm_gpu_utilization",
-                            "matches": "DCGM_FI_DEV_GPU_UTIL",
-                        },
-                        "resources": {
-                            "namespaced": False,
-                        },
+                        "name": {"as": "dcgm_gpu_utilization", "matches": "DCGM_FI_DEV_GPU_UTIL"},
+                        "resources": {"namespaced": False},
                         "seriesQuery": "DCGM_FI_DEV_GPU_UTIL",
                     },
                     {
                         "metricsQuery": "avg(avg_over_time(DCGM_FI_DEV_FB_USED[2m]))",
-                        "name": {
-                            "as": "dcgm_gpu_memory_used",
-                            "matches": "DCGM_FI_DEV_FB_USED",
-                        },
-                        "resources": {
-                            "namespaced": False,
-                        },
+                        "name": {"as": "dcgm_gpu_memory_used", "matches": "DCGM_FI_DEV_FB_USED"},
+                        "resources": {"namespaced": False},
                         "seriesQuery": "DCGM_FI_DEV_FB_USED",
                     },
                     {
                         "metricsQuery": "avg(avg_over_time(DCGM_FI_DEV_POWER_USAGE[2m]))",
-                        "name": {
-                            "as": "dcgm_gpu_power_usage",
-                            "matches": "DCGM_FI_DEV_POWER_USAGE",
-                        },
-                        "resources": {
-                            "namespaced": False,
-                        },
+                        "name": {"as": "dcgm_gpu_power_usage", "matches": "DCGM_FI_DEV_POWER_USAGE"},
+                        "resources": {"namespaced": False},
                         "seriesQuery": "DCGM_FI_DEV_POWER_USAGE",
                     },
                 ],
             },
-            "tolerations": [
-                {
-                    "operator": "Exists",
-                },
-            ],
+            "tolerations": [{"operator": "Exists"}],
         },
     ),
 ]

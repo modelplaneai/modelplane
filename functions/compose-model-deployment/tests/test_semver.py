@@ -128,7 +128,3 @@ class TestParseRejects(unittest.TestCase):
         for case in cases:
             with self.subTest(case.name), self.assertRaises(ValueError):
                 semver.parse(case.input)
-
-
-if __name__ == "__main__":
-    unittest.main()

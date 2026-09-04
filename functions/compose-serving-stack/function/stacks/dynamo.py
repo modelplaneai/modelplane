@@ -105,6 +105,9 @@ COMPONENTS: list[Component] = [
         chart="kai-scheduler",
         repository="oci://ghcr.io/kai-scheduler/kai-scheduler",
         version="v0.16.8",
+        # The Queue CRs below depend on this chart: KAI must serve the
+        # Queue CRD and its webhook before they are first applied.
+        wait=True,
     ),
     # KAI refuses to schedule a pod whose queue doesn't exist. Its chart
     # installs a default hierarchy, but nothing ties Modelplane's

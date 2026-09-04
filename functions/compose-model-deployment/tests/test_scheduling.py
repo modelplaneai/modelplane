@@ -1704,7 +1704,3 @@ class TestScheduleTaints(unittest.TestCase):
         clusters = [_cluster("cluster-a", taints=[self._MAINT, self._DECOMM])]
         got = scheduling.schedule(_deployment(replicas=1, tolerations=[tol]), clusters, [])
         self.assertEqual(self._names(got), [("cluster-a", 0)])
-
-
-if __name__ == "__main__":
-    unittest.main()

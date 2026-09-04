@@ -353,6 +353,46 @@ are Linux images assembled entirely from data — a prebuilt Python interpreter
 and dependency wheels plus our own source — so there's no cross-compilation. The
 same is true of `nix run .#build`.
 
+## Bumping aicr
+
+The serving stack's EKS, AKS and GKE component lists are generated from
+NVIDIA AICR recipes by `functions/compose-serving-stack/generate.py`
+(`nix run .#stacks`), pinned to one aicr release. A bump changes the
+components and versions every managed cluster runs on the next
+Modelplane release, so it lands as a reviewed stack change, never as an
+auto-merged dependency update. aicr releases about every two weeks and
+its schemas are still `v1alpha*`, so expect the generator's fail-closed
+checks to trip. In order:
+
+1. Update `AICR_PIN` in generate.py and `version` in `nix/aicr.nix`
+   together, with hashes from the release's `aicr_checksums.txt`. The
+   two must move in lockstep; the generator refuses a mismatched aicr.
+2. Re-sync the embedded gke-cos fork (`GKE_COS_OVERLAY` in generate.py):
+   diff it against the new tag's `recipes/overlays/gke-cos.yaml` and
+   re-apply the one change (the `dra` profile value, the 1.35 floor, and
+   the DRA selector paths on the stock values for union totality). The
+   file is high-churn upstream. The fork is deleted the day
+   NVIDIA/aicr#2515 or #2517 lands.
+3. Expect `ALLOW`/`DROP` to fail closed on any component the new catalog
+   adds; classify it with a reason.
+4. Expect the managed-path assertions to fail closed if a values path
+   moved or a `--set` stopped landing; re-derive the path from the new
+   chart before loosening anything. `MODELPLANE_VALUES` fails closed too
+   if a new recipe starts carrying one of its paths - decide whose value
+   wins and move the path to the right table.
+5. Both embedded catalog documents carry an apiVersion that can move in
+   any release.
+6. The Kubernetes floor union re-checks against `k8s_default` in
+   `CLOUDS`, which must track the cloud cluster XRD defaults.
+7. `nix run .#stacks`, run twice to confirm no diff, and review the
+   generated diff as the release's stack change. The `stacks-current`
+   flake check regenerates in the sandbox and fails CI on a stale or
+   hand-edited generated file.
+
+Where a bumped component also exists in the hand-written cloud halves
+(`function/stacks/clouds/`), mirror the shared pins there so one review
+moves both.
+
 ## Working on the docs site
 
 The documentation site under `docs/` is a [Hugo](https://gohugo.io/) project.

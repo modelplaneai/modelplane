@@ -5,8 +5,8 @@
 # The version here and AICR_PIN in
 # functions/compose-serving-stack/generate.py move together: the
 # generator asserts `aicr --version` matches its pin and fails closed on
-# a mismatch. To bump, follow the "Bumping aicr" section of that file's
-# docstring and refresh the hashes from the release's aicr_checksums.txt:
+# a mismatch. To bump, follow "Bumping aicr" in CONTRIBUTING.md and
+# refresh the hashes from the release's aicr_checksums.txt:
 #
 #   https://github.com/NVIDIA/aicr/releases/download/v<version>/aicr_checksums.txt
 _final: prev:

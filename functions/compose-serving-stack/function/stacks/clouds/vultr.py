@@ -23,9 +23,12 @@ No node-feature-discovery here: VKE pre-installs a managed GPU
 Operator add-on that runs NFD with tolerate-everything workers, and a
 second instance would race it over the same label namespace. That
 add-on also leaves the driver and toolkit to the node image (so the
-DRA driver's default root holds) and runs a device plugin whose
-nvidia.com/gpu ledger coexists with the DRA ResourceSlices; Modelplane
-replicas claim via DRA only.
+DRA driver's default root holds). Its device plugin would advertise
+nvidia.com/gpu beside the DRA ResourceSlices - two allocators with
+independent ledgers over the same devices - so compose-vultr-cluster
+labels Modelplane's GPU pools nvidia.com/gpu.deploy.device-plugin=false,
+which the operator respects, leaving the DRA driver the sole allocator
+on those nodes.
 """
 
 from function.stacks.components import Chart, Component
@@ -38,6 +41,9 @@ COMPONENTS: list[Component] = [
         chart="cert-manager",
         repository="https://charts.jetstack.io",
         version="v1.20.2",
+        # envoy-gateway in common.py depends on this chart (a cross-half
+        # edge), so its Ready must mean healthy, not just deployed.
+        wait=True,
         values={"crds": {"enabled": True, "keep": False}},
     ),
     Chart(

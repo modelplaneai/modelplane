@@ -109,6 +109,7 @@ def _release(
     repository: str,
     version: str,
     values: dict | None = None,
+    wait: bool = False,
 ) -> fnv1.Resource:
     """The expected Release for a Chart entry, built from literal arguments."""
     model = helmv1beta1.Release(
@@ -124,6 +125,9 @@ def _release(
             ),
         ),
     )
+    if wait:
+        model.spec.forProvider.wait = True
+        model.spec.forProvider.waitTimeout = "10m"
     if values:
         model.spec.forProvider.values = values
     res = fnv1.Resource()
@@ -178,8 +182,13 @@ def _usage(of_ref: tuple[str, str], of_key: str, by_ref: tuple[str, str], by_key
     return res
 
 
-def _provider_configs() -> dict[str, fnv1.Resource]:
-    """The two expected ProviderConfigs, ready on arrival."""
+def _provider_configs(ready: bool = True) -> dict[str, fnv1.Resource]:
+    """The two expected ProviderConfigs.
+
+    Ready only once observed: on the first pass they and the Usages are
+    the whole desired state, and ready-on-arrival would let the
+    composite report Ready before any stack component exists.
+    """
     k8s = fnv1.Resource()
     resource.update(
         k8s,
@@ -198,7 +207,8 @@ def _provider_configs() -> dict[str, fnv1.Resource]:
             ),
         ),
     )
-    k8s.ready = fnv1.READY_TRUE
+    if ready:
+        k8s.ready = fnv1.READY_TRUE
     helm = fnv1.Resource()
     resource.update(
         helm,
@@ -217,7 +227,8 @@ def _provider_configs() -> dict[str, fnv1.Resource]:
             ),
         ),
     )
-    helm.ready = fnv1.READY_TRUE
+    if ready:
+        helm.ready = fnv1.READY_TRUE
     return {"provider-config-kubernetes": k8s, "provider-config-helm": helm}
 
 
@@ -284,6 +295,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         chart="cert-manager",
         repository="https://charts.jetstack.io",
         version="v1.20.2",
+        wait=True,
         values={"crds": {"enabled": True, "keep": False}},
     )
     out["kube-prometheus-stack"] = _release(
@@ -401,6 +413,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         chart="ai-gateway-crds-helm",
         repository="oci://docker.io/envoyproxy",
         version="v0.7.0",
+        wait=True,
     )
     out["ai-gateway"] = _release(
         key="ai-gateway",
@@ -468,6 +481,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         chart="kai-scheduler",
         repository="oci://ghcr.io/kai-scheduler/kai-scheduler",
         version="v0.16.8",
+        wait=True,
     )
     out["kai-queue-root"] = _object("kai-queue-root", _kai_queue("modelplane-root", None))
     out["kai-queue"] = _object("kai-queue", _kai_queue("modelplane", "modelplane-root"))
@@ -681,8 +695,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 req=_request("Existing", "Dynamo"),
                 # Everything targeting the remote cluster is gated on the
                 # ProviderConfigs having been observed; Usages reference
-                # nothing remote and compose immediately.
-                want=_response(_provider_configs() | _EXISTING_DYNAMO_USAGES),
+                # nothing remote and compose immediately. The unready
+                # ProviderConfigs keep the composite unready until the
+                # stack actually renders.
+                want=_response(_provider_configs(ready=False) | _EXISTING_DYNAMO_USAGES),
             ),
             Case(
                 name="second pass renders the dependency-free wave",
@@ -885,7 +901,3 @@ class TestKeyInventory(unittest.IsolatedAsyncioTestCase):
                         )
                     got = await self.runner.RunFunction(_request(cloud, stack, observed=observed), None)
                     self.assertEqual(expected, set(got.desired.resources.keys()))
-
-
-if __name__ == "__main__":
-    unittest.main()

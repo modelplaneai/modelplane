@@ -79,12 +79,25 @@ class TestComponents(unittest.TestCase):
                         with self.subTest(cloud=cloud, stack=stack, key=c.key):
                             self.assertEqual(1, len(c.manifests))
 
+    def test_depended_on_charts_wait(self) -> None:
+        # A chart another component depends on renders with helm --wait,
+        # so its Ready means healthy and the install gate orders
+        # dependents on health rather than deploy. Without this, the
+        # gate would open the moment Helm accepted the manifests.
+        for cloud in stacks.clouds():
+            for stack in stacks.stacks():
+                joined = stacks.components(cloud, stack)
+                depended_on = {dep for c in joined for dep in c.depends_on}
+                for c in joined:
+                    if isinstance(c, stacks.Chart) and c.key in depended_on:
+                        with self.subTest(cloud=cloud, stack=stack, key=c.key):
+                            self.assertTrue(c.wait, "a depended-on chart must set wait")
+
     def test_unknown_cloud_and_stack_fail_closed(self) -> None:
+        # The Literal types reject these at type-checking time; this
+        # exercises the runtime guard behind them, which catches the API
+        # and the stacks package disagreeing on a value.
         with self.assertRaises(ValueError):
-            stacks.components("Mars", "Standard")
+            stacks.components("Mars", "Standard")  # ty: ignore[invalid-argument-type]
         with self.assertRaises(ValueError):
-            stacks.components("Nebius", "Turbo")
-
-
-if __name__ == "__main__":
-    unittest.main()
+            stacks.components("Nebius", "Turbo")  # ty: ignore[invalid-argument-type]

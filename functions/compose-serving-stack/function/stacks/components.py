@@ -24,7 +24,13 @@ see design/serving-stack-generation.md.
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+# The clouds and stacks the join can select - the values of ServingStack
+# spec.cloud and spec.stack, so a wrong or unsupported value fails type
+# checking at the caller.
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Existing"]
+Stack = Literal["Standard", "Dynamo"]
 
 
 @dataclass
@@ -39,9 +45,17 @@ class Chart:
     can't adopt a same-named release a user already runs.
 
     `depends_on` names components this one needs, by key, resolved
-    against the joined list for a cloud and stack. It drives teardown
-    ordering (a dependency outlives its dependents); installs stay
-    concurrent and rely on Helm retrying.
+    against the joined list for a cloud and stack. It drives ordering in
+    both directions: teardown (a dependency outlives its dependents) and
+    install (a dependent is first created once its dependencies report
+    Ready).
+
+    `wait` renders as provider-helm's wait (helm --wait): the release
+    reports Ready only once its workloads roll out, not when Helm
+    accepts the manifests. Set it on every chart another component
+    depends on, so the install gate orders on health rather than
+    deploy - the generator derives it from the dependency edges, and the
+    hand-written files state it where a cross-half edge lands on them.
     """
 
     key: str
@@ -50,6 +64,7 @@ class Chart:
     chart: str
     repository: str
     version: str
+    wait: bool = False
     depends_on: list[str] = field(default_factory=list)
     values: dict[str, Any] | None = None
 

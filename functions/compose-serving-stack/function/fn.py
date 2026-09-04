@@ -111,6 +111,13 @@ def _helm_release(chart: stacks.Chart, provider_config: str) -> helmv1beta1.Rele
             ),
         ),
     )
+    if chart.wait:
+        # Helm --wait: Ready means the workloads rolled out, so the
+        # install gate orders dependents on health, not deploy. The
+        # default 5m can be tight for the big monitoring charts on a
+        # fresh cluster pulling images.
+        release.spec.forProvider.wait = True
+        release.spec.forProvider.waitTimeout = "10m"
     if chart.values:
         release.spec.forProvider.values = chart.values
     return release
@@ -219,14 +226,11 @@ class Composer:
     def compose(self) -> None:
         self.compose_provider_configs()
 
-        # The XRD requires and enums both fields, so the join can only
-        # fail if the API and the stacks package disagree on a value -
-        # a build defect worth a fatal result rather than a crash.
-        try:
-            components = stacks.components(self.xr.spec.cloud, self.xr.spec.stack or "Standard")
-        except ValueError as err:
-            response.fatal(self.rsp, str(err))
-            return
+        # The XRD requires and enums both fields, so the join raising means the
+        # API and the stacks package disagree on a value, a broken Modelplane
+        # build, not a cluster condition. Let it crash rather than dress it up
+        # as a fatal result.
+        components = stacks.components(self.xr.spec.cloud, self.xr.spec.stack or "Standard")
 
         rendered = self.compose_components(components)
         rendered += self.compose_gateway()
@@ -472,14 +476,20 @@ class Composer:
     def mark_readiness(self, rendered: list[str]) -> None:
         """Mark composed resources as ready.
 
-        The ProviderConfigs have no readiness signal of their own, so
-        they're ready on arrival. Everything rendered from the stack (and
-        the gateway pair) is ready when its observed Ready condition is
-        True - for Releases that's the Helm release deployed, for Objects
-        the readiness policy (SuccessfulCreate, or the entry's CEL query).
+        The ProviderConfigs have no readiness condition of their own,
+        but they must not be ready on arrival: on the first reconcile
+        they and the Usages are the only desired resources, and marking
+        them ready would let the composite report Ready before a single
+        stack component exists. Observed - the same gate the rest of the
+        stack opens on - is what makes them count. Everything rendered
+        from the stack (and the gateway pair) is ready when its observed
+        Ready condition is True - for Releases that's the Helm release
+        deployed (its workloads rolled out, where the entry sets wait),
+        for Objects the readiness policy (SuccessfulCreate, or the
+        entry's CEL query).
         """
         for r in ("provider-config-kubernetes", "provider-config-helm"):
-            if r in self.rsp.desired.resources:
+            if r in self.rsp.desired.resources and r in self.req.observed.resources:
                 self.rsp.desired.resources[r].ready = fnv1.READY_TRUE
 
         for r in rendered:

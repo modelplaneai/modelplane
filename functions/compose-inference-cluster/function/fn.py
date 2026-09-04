@@ -30,6 +30,8 @@ to host control-plane components (Envoy Gateway, Prometheus, etc.).
 The system pool is not exposed in the user-facing API.
 """
 
+from typing import Final, Literal
+
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -49,13 +51,16 @@ from models.io.crossplane.protection.clusterusage import v1beta1 as clusterusage
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# Cluster source discriminator values from the XRD enum.
-CLUSTER_SOURCE_GKE = "GKE"
-CLUSTER_SOURCE_EKS = "EKS"
-CLUSTER_SOURCE_AKS = "AKS"
-CLUSTER_SOURCE_NEBIUS = "Nebius"
-CLUSTER_SOURCE_VULTR = "Vultr"
-CLUSTER_SOURCE_EXISTING = "Existing"
+# Cluster source discriminator values from the XRD enum. The Literal
+# mirrors ServingStack spec.cloud, so passing a wrong or unsupported
+# cloud fails type checking; Final makes each constant a literal type.
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Existing"]
+CLUSTER_SOURCE_GKE: Final = "GKE"
+CLUSTER_SOURCE_EKS: Final = "EKS"
+CLUSTER_SOURCE_AKS: Final = "AKS"
+CLUSTER_SOURCE_NEBIUS: Final = "Nebius"
+CLUSTER_SOURCE_VULTR: Final = "Vultr"
+CLUSTER_SOURCE_EXISTING: Final = "Existing"
 
 # Condition types and reasons for the InferenceCluster XR.
 CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
@@ -480,7 +485,7 @@ class Composer:
     def compose_serving_stack(
         self,
         backend_secrets: list[ssv1alpha1.Secret],
-        cloud: str,
+        cloud: Cloud,
     ) -> None:
         """Compose a ServingStack XR with the given secrets.
 
@@ -492,7 +497,7 @@ class Composer:
         spec = ssv1alpha1.Spec(
             secrets=backend_secrets,
             stack=self.xr.spec.stack,
-            cloud=cloud,  # ty: ignore[invalid-argument-type]  # every caller passes a CLUSTER_SOURCE_* value of the literal
+            cloud=cloud,
         )
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],

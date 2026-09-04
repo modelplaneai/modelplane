@@ -1660,7 +1660,3 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         for key in ("provider-config-kubernetes", "provider-config-helm"):
             got_dict = resource.struct_to_dict(rs[key].resource)
             self.assertNotIn("providerConfigRef", got_dict.get("spec", {}), f"{key} should not have providerConfigRef")
-
-
-if __name__ == "__main__":
-    unittest.main()

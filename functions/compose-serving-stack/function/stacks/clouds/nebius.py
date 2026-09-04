@@ -31,6 +31,9 @@ COMPONENTS: list[Component] = [
         chart="cert-manager",
         repository="https://charts.jetstack.io",
         version="v1.20.2",
+        # envoy-gateway in common.py depends on this chart (a cross-half
+        # edge), so its Ready must mean healthy, not just deployed.
+        wait=True,
         values={"crds": {"enabled": True, "keep": False}},
     ),
     Chart(
