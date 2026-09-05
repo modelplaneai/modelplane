@@ -196,6 +196,7 @@ COMPONENTS: list[Component] = [
     Manifests(
         key="gpu-operator-pre-manifests",
         manifests=[
+            {"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "gpu-operator"}},
             {
                 "apiVersion": "v1",
                 "kind": "ResourceQuota",
@@ -212,7 +213,7 @@ COMPONENTS: list[Component] = [
                         ]
                     },
                 },
-            }
+            },
         ],
     ),
     Chart(
@@ -329,7 +330,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                 "upgradeCRD": True,
             },
             "toolkit": {
-                "enabled": False,
+                "enabled": True,
                 "env": [{"name": "RUNTIME_CONFIG_SOURCE", "value": "file"}],
                 "installDir": "/home/kubernetes/bin/nvidia",
             },

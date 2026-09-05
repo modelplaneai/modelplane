@@ -515,11 +515,23 @@ MODELPLANE_VALUES = {
     ],
 }
 
-# Per-cloud expected values where a cloud legitimately differs.
+# Per-cloud expected values (and the reason) where a cloud
+# legitimately differs from the global table.
 MANAGED_CLOUD = {
     "gke": {
-        # Google's installer puts the driver here under every gpuStack value.
-        ("nvidia-dra-driver-gpu", ("nvidiaDriverRoot",)): "/home/kubernetes/bin/nvidia",
+        ("nvidia-dra-driver-gpu", ("nvidiaDriverRoot",)): (
+            "/home/kubernetes/bin/nvidia",
+            "Google's installer puts the driver here under every gpuStack value",
+        ),
+        # Forcing the toolkit off here leaves every operand failing
+        # pod-sandbox creation with 'no runtime for "nvidia" is
+        # configured'; the node-image assumption behind the global
+        # toolkit=false holds everywhere but on COS.
+        ("gpu-operator", ("toolkit", "enabled")): (
+            True,
+            "COS ships no nvidia containerd runtime; per Google's and AICR's "
+            "GKE guidance the operator's toolkit configures one",
+        ),
     },
 }
 
@@ -562,10 +574,11 @@ def recipe_extra(cloud: str, catalog: pathlib.Path) -> list[str]:
 
 def managed(cloud: str) -> dict[str, list[tuple[ValuePath, object, str]]]:
     """The MANAGED table with per-cloud expected values substituted."""
+    overrides = MANAGED_CLOUD.get(cloud, {})
     out = {}
     for component, entries in MANAGED.items():
         out[component] = [
-            (path, MANAGED_CLOUD.get(cloud, {}).get((component, path), value), why) for path, value, why in entries
+            (path, *overrides.get((component, path), (value, why))) for path, value, why in entries
         ]
     return out
 
@@ -760,10 +773,21 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
         # so they exist before its pods and outlive it on teardown.
         pre = sorted(bundle_dir.glob(f"[0-9][0-9][0-9]-{name}-pre/templates/*.yaml"))
         if pre:
-            manifests = []
+            # The chart's namespace leads the entry: aicr's helm
+            # deployer installs the pre chart with --create-namespace,
+            # and without the namespace the pre Objects can't apply
+            # while the chart that would create it waits on them - a
+            # deadlock the first GKE run hit.
+            manifests = [
+                {
+                    "apiVersion": "v1",
+                    "kind": "Namespace",
+                    "metadata": {"name": ref["namespace"]},
+                },
+            ]
             for f in pre:
                 manifests.extend(d for d in yaml.safe_load_all(f.read_text()) if d)
-            findings.append(f"pre-manifests: {name}: {len(manifests)} objects ({', '.join(f.name for f in pre)})")
+            findings.append(f"pre-manifests: {name}: {len(manifests)} objects (namespace + {', '.join(f.name for f in pre)})")
             components.append(
                 {
                     "type": "Manifests",

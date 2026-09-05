@@ -857,8 +857,10 @@ _AKS = _EKS | frozenset(
 # system-node-critical pods in a namespace without one; aicr#915).
 _GKE = _EKS | frozenset(
     {
-        "gpu-operator-pre-manifests",
-        "usage-gpu-operator-pre-manifests-by-gpu-operator",
+        "gpu-operator-pre-manifests-gpu-operator",
+        "gpu-operator-pre-manifests-aicr-gke-critical-pods",
+        "usage-gpu-operator-pre-manifests-gpu-operator-by-gpu-operator",
+        "usage-gpu-operator-pre-manifests-aicr-gke-critical-pods-by-gpu-operator",
     }
 )
 
