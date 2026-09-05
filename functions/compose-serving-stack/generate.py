@@ -535,6 +535,21 @@ MANAGED_CLOUD = {
     },
 }
 
+# Managed paths that exist only on one cloud, appended to that cloud's
+# table (MANAGED_CLOUD can only override global entries). GKE auto-runs
+# a managed DCGM exporter on GPU nodes (gke-managed-system), and DCGM's
+# profiling module is single-client per GPU - a second exporter dies
+# with 'the third-party Profiling module returned an unrecoverable
+# error'. GPU telemetry on GKE is the platform's, like the driver.
+MANAGED_CLOUD_EXTRA = {
+    "gke": {
+        "gpu-operator": [
+            (("dcgm", "enabled"), False, "GKE's managed DCGM owns the GPU's single-client profiling module"),
+            (("dcgmExporter", "enabled"), False, "GKE's managed dcgm-exporter provides GPU telemetry"),
+        ],
+    },
+}
+
 # Paths the cloud's catalog data already sets - the gke fork's dra
 # profile value owns the advertiser paths (aicr rejects a --set on a
 # profile-owned path) and its overlay sets the driver root. Asserted in
@@ -578,6 +593,8 @@ def managed(cloud: str) -> dict[str, list[tuple[ValuePath, object, str]]]:
     out = {}
     for component, entries in MANAGED.items():
         out[component] = [(path, *overrides.get((component, path), (value, why))) for path, value, why in entries]
+    for component, entries in MANAGED_CLOUD_EXTRA.get(cloud, {}).items():
+        out.setdefault(component, []).extend(entries)
     return out
 
 

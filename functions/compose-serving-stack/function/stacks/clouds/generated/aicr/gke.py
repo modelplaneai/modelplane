@@ -229,7 +229,7 @@ COMPONENTS: list[Component] = [
             "ccManager": {"enabled": False},
             "cdi": {"default": True, "enabled": True},
             "daemonsets": {"tolerations": [{"operator": "Exists"}]},
-            "dcgm": {"enabled": True},
+            "dcgm": {"enabled": False},
             "dcgmExporter": {
                 "config": {
                     "create": True,
@@ -298,6 +298,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
 """,
                     "name": "dcgm-exporter",
                 },
+                "enabled": False,
                 "serviceMonitor": {"enabled": True, "honorLabels": True, "interval": "30s"},
             },
             "devicePlugin": {
