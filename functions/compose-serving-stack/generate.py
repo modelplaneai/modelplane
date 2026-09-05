@@ -577,9 +577,7 @@ def managed(cloud: str) -> dict[str, list[tuple[ValuePath, object, str]]]:
     overrides = MANAGED_CLOUD.get(cloud, {})
     out = {}
     for component, entries in MANAGED.items():
-        out[component] = [
-            (path, *overrides.get((component, path), (value, why))) for path, value, why in entries
-        ]
+        out[component] = [(path, *overrides.get((component, path), (value, why))) for path, value, why in entries]
     return out
 
 
@@ -787,7 +785,9 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             ]
             for f in pre:
                 manifests.extend(d for d in yaml.safe_load_all(f.read_text()) if d)
-            findings.append(f"pre-manifests: {name}: {len(manifests)} objects (namespace + {', '.join(f.name for f in pre)})")
+            findings.append(
+                f"pre-manifests: {name}: {len(manifests)} objects (namespace + {', '.join(f.name for f in pre)})"
+            )
             components.append(
                 {
                     "type": "Manifests",
