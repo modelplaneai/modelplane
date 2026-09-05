@@ -752,6 +752,27 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             else:
                 sys.exit(f"dependency {name} -> {dep!r} names an unclassified component - fail closed")
 
+        # The bundler ships pre-manifests at sync-wave N-1 - resources
+        # the chart's own pods depend on, like the critical-pods
+        # ResourceQuota it synthesizes for gkeCriticalPriority
+        # components (GKE rejects system-node-critical pods in a
+        # namespace without one; aicr#915). The chart depends on them,
+        # so they exist before its pods and outlive it on teardown.
+        pre = sorted(bundle_dir.glob(f"[0-9][0-9][0-9]-{name}-pre/templates/*.yaml"))
+        if pre:
+            manifests = []
+            for f in pre:
+                manifests.extend(d for d in yaml.safe_load_all(f.read_text()) if d)
+            findings.append(f"pre-manifests: {name}: {len(manifests)} objects ({', '.join(f.name for f in pre)})")
+            components.append(
+                {
+                    "type": "Manifests",
+                    "key": f"{key}-pre-manifests",
+                    "manifests": manifests,
+                }
+            )
+            depends.append(f"{key}-pre-manifests")
+
         entry = {
             "type": "Chart",
             "key": key,
@@ -772,11 +793,14 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
         # Components are not always just charts: on AKS the
         # gpu-operator carries a toolkit-hardening manifest. The bundle
         # materializes them under <NNN>-<name>-post/templates/, and
-        # they render as provider-kubernetes Objects.
-        if ref.get("manifestFiles"):
-            rendered = sorted(bundle_dir.glob(f"[0-9][0-9][0-9]-{name}-post/templates/*.yaml"))
-            if not rendered:
-                sys.exit(f"component {name!r} carries manifestFiles the bundle did not render - fail closed")
+        # they render as provider-kubernetes Objects. Like the
+        # pre-manifests above, the bundle is the source of truth, not
+        # the recipe: the registry can supply default manifestFiles a
+        # componentRef never declares. A manifest that disappears on a
+        # bump shows up as a dropped key in the generated diff and the
+        # golden inventory test.
+        rendered = sorted(bundle_dir.glob(f"[0-9][0-9][0-9]-{name}-post/templates/*.yaml"))
+        if rendered:
             manifests = []
             for f in rendered:
                 manifests.extend(d for d in yaml.safe_load_all(f.read_text()) if d)
@@ -789,6 +813,23 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
                     "manifests": manifests,
                 }
             )
+
+    # The bundle is consumed fail-closed, like the recipe: every
+    # component directory must belong to a classified component and use
+    # a layout this transform reads (main, -pre, -post). A new suffix or
+    # an unclassified name means aicr grew a bundle shape we would
+    # otherwise silently drop - the pre-manifests were exactly that
+    # once (a GKE critical-pods quota discarded unread).
+    for bundle_entry in sorted(bundle_dir.iterdir()):
+        if not bundle_entry.is_dir() or not re.match(r"\d{3}-", bundle_entry.name):
+            continue
+        rest = bundle_entry.name[4:]
+        for suffix in ("-pre", "-post"):
+            if rest.endswith(suffix):
+                rest = rest[: -len(suffix)]
+                break
+        if rest not in ALLOW and rest not in DROP:
+            sys.exit(f"bundle directory {bundle_entry.name!r} belongs to no classified component - fail closed")
 
     # A chart another component depends on renders with helm --wait, so
     # its Ready means healthy and the function's install gate orders

@@ -22,7 +22,7 @@
 # Recipe: base -> monitoring-hpa -> gke-cos -> gke-cos-inference (sha256:1f882873ccff)
 # Kubernetes floor: 1.35; gke XRD default 1.35
 
-from function.stacks.components import Chart, Component
+from function.stacks.components import Chart, Component, Manifests
 
 COMPONENTS: list[Component] = [
     Chart(
@@ -193,6 +193,28 @@ COMPONENTS: list[Component] = [
             "thanosRuler": {"thanosRulerSpec": {"tolerations": [{"operator": "Exists"}]}},
         },
     ),
+    Manifests(
+        key="gpu-operator-pre-manifests",
+        manifests=[
+            {
+                "apiVersion": "v1",
+                "kind": "ResourceQuota",
+                "metadata": {"name": "aicr-gke-critical-pods", "namespace": "gpu-operator"},
+                "spec": {
+                    "hard": {"pods": "32"},
+                    "scopeSelector": {
+                        "matchExpressions": [
+                            {
+                                "operator": "In",
+                                "scopeName": "PriorityClass",
+                                "values": ["system-node-critical", "system-cluster-critical"],
+                            }
+                        ]
+                    },
+                },
+            }
+        ],
+    ),
     Chart(
         key="gpu-operator",
         release="mp-gpu-operator",
@@ -201,7 +223,7 @@ COMPONENTS: list[Component] = [
         repository="https://helm.ngc.nvidia.com/nvidia",
         version="v26.3.3",
         wait=True,
-        depends_on=["node-feature-discovery", "cert-manager", "kube-prometheus-stack"],
+        depends_on=["node-feature-discovery", "cert-manager", "kube-prometheus-stack", "gpu-operator-pre-manifests"],
         values={
             "ccManager": {"enabled": False},
             "cdi": {"default": True, "enabled": True},

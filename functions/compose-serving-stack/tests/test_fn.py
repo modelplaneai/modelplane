@@ -852,7 +852,15 @@ _AKS = _EKS | frozenset(
     }
 )
 
-_GKE = _EKS
+# GKE additionally carries the critical-pods ResourceQuota aicr's
+# bundler synthesizes as a gpu-operator pre-manifest (GKE rejects
+# system-node-critical pods in a namespace without one; aicr#915).
+_GKE = _EKS | frozenset(
+    {
+        "gpu-operator-pre-manifests",
+        "usage-gpu-operator-pre-manifests-by-gpu-operator",
+    }
+)
 
 _HAND_WRITTEN = frozenset(
     {
