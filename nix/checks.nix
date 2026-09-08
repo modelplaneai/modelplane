@@ -73,14 +73,9 @@ let
       '';
 in
 {
-  # Verify the docs site builds. The build is the check.
-  docs = docs.site;
-
-  # Lint docs prose with Vale.
+  # Lint docs prose with Vale. The site that renders this content is the
+  # docs-site repo, which builds and link-checks it where it deploys.
   docs-vale = docs.vale;
-
-  # Check docs internal links with htmltest.
-  docs-htmltest = docs.htmltest;
 
   # Validate the example manifests the docs show against the generated Pydantic
   # models, so an example that drifts from the live API schema fails CI. Covers
@@ -162,7 +157,7 @@ in
           -ignore '**/*.toml' \
           -ignore '**/*.yaml' \
           -ignore '**/*.yml' \
-          functions/ docs/utils/validate/ nix.sh docs/vercel-build.sh
+          functions/ docs/utils/validate/ nix.sh
         mkdir -p $out
         touch $out/.license-check-passed
       '';

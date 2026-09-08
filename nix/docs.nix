@@ -1,98 +1,11 @@
-# The documentation site (https://modelplane.ai).
+# Docs checks that run against the content in this repo.
 #
-# The site is a Hugo project under docs/. Two asset pipelines feed it:
-#
-#   - JavaScript is bundled by webpack and committed to git (see the
-#     docs-generate app), so the Hugo build needs no Node step for it.
-#
-#   - CSS is compiled from SCSS by Hugo, then run through PostCSS to prune
-#     unused Bootstrap rules (PurgeCSS), sort media queries, and minify
-#     (LightningCSS). Hugo shells out to the `postcss` CLI, so the build needs
-#     a node_modules tree on disk. We build it reproducibly from
-#     docs/package-lock.json with fetchNpmDeps, so the Hugo build stays inside
-#     the Nix sandbox with no network.
+# The Hugo project that renders this content - config, layouts, theme, asset
+# pipelines - is the docs-site repo, which is also what builds and deploys the
+# published site. What lives here is the content and the linting of it, so a
+# prose change fails CI in the repo where it was written.
 { pkgs, self }:
 let
-  # node_modules for the PostCSS pipeline, built from the committed lockfile.
-  # Update fetchNpmDeps.hash below whenever docs/package-lock.json changes:
-  #   nix run nixpkgs#prefetch-npm-deps -- docs/package-lock.json
-  nodeModules = pkgs.stdenv.mkDerivation {
-    pname = "modelplane-docs-node-modules";
-    version = "0";
-    src = ./../docs;
-
-    nativeBuildInputs = [
-      pkgs.nodejs
-      pkgs.npmHooks.npmConfigHook
-    ];
-
-    npmDeps = pkgs.fetchNpmDeps {
-      src = ./../docs;
-      hash = "sha256-kiwL9KU3l65W38B3OZh4JxxJPhPgp940zaIiTvXLAlk=";
-    };
-
-    dontBuild = true;
-
-    # cp -a copies node_modules verbatim, preserving any symlinks (e.g. under
-    # .bin) as npmConfigHook left them; cp -r would dereference them.
-    installPhase = ''
-      runHook preInstall
-      mkdir -p $out
-      cp -a node_modules $out/node_modules
-      runHook postInstall
-    '';
-  };
-  # Build the Hugo site inside the Nix sandbox, so:
-  #
-  #   HUGO_ENABLEGITINFO=false   no .git in the sandbox; git metadata is
-  #                              cosmetic (last-modified dates).
-  #   HUGO_ENVIRONMENT=production   selects the PostCSS+PurgeCSS CSS pipeline.
-  #   baseURL                    the site is served under the /docs path of
-  #                              modelplane.ai (the marketing site proxies
-  #                              /docs/* here), so every Permalink, canonical
-  #                              tag, asset, and sitemap URL must carry the
-  #                              /docs prefix. Only the production artifact is
-  #                              served there; `hugo server` (docs-serve) keeps
-  #                              the baseURL = "/" from hugo.toml for local dev.
-  #                              Vercel PR previews override HUGO_BASEURL with
-  #                              the preview's own URL so the deployment is
-  #                              self-contained and reviewable (it is served at
-  #                              the deployment root, not under /docs). Pure
-  #                              flake eval returns "" for getEnv, so CI and
-  #                              production builds keep the canonical URL and
-  #                              stay reproducible/cached; previews pass
-  #                              --impure (see docs/vercel-build.sh).
-  #
-  # PostCSS resolves plugins from node_modules via NODE_PATH, and Hugo finds
-  # the postcss CLI through the node_modules/.bin on PATH.
-  mkSite =
-    {
-      name,
-      baseURL,
-    }:
-    pkgs.runCommand name
-      {
-        nativeBuildInputs = [
-          pkgs.hugo
-          pkgs.nodejs
-        ];
-        env = {
-          HUGO_ENABLEGITINFO = "false";
-          HUGO_ENVIRONMENT = "production";
-          HUGO_BASEURL = baseURL;
-        };
-      }
-      ''
-        cp -r ${self}/docs src
-        cp -r ${self}/apis apis
-        chmod -R u+w src
-        cd src
-        ln -s ${nodeModules}/node_modules node_modules
-        export PATH="$PWD/node_modules/.bin:$PATH"
-        export NODE_PATH="$PWD/node_modules"
-        hugo --minify --destination "$out"
-      '';
-
   # Vale lints prose against a set of style packages (Google, Microsoft, etc.)
   # that it normally downloads with `vale sync`. The sandbox has no network, so
   # we sync them in a fixed-output derivation instead: it is allowed network
@@ -115,24 +28,23 @@ let
       ''
         export HOME=$TMPDIR
         cp ${self}/docs/utils/vale/.vale.ini .vale.ini
-        # Since Vale 3.12, sync installs packages into the XDG data
-        # directory rather than the config's StylesPath.
+        # Since Vale 3.12, sync installs packages into the user data directory
+        # rather than the config's StylesPath, and that directory is
+        # platform-specific: XDG on Linux, Application Support on macOS. Copy
+        # from wherever it landed, so this builds on a maintainer's Mac as well
+        # as in CI.
         vale sync --config="$PWD/.vale.ini"
         mkdir -p $out
-        cp -r "$HOME/.local/share/vale/styles/"* $out/
+        for styles in \
+          "$HOME/.local/share/vale/styles" \
+          "$HOME/Library/Application Support/vale/styles"; do
+          if [ -d "$styles" ]; then
+            cp -r "$styles"/* $out/
+          fi
+        done
       '';
 in
 {
-  # The built static site, served at docs.modelplane.ai.
-  site = mkSite {
-    name = "modelplane-docs";
-    baseURL =
-      let
-        envBaseURL = builtins.getEnv "HUGO_BASEURL";
-      in
-      if envBaseURL != "" then envBaseURL else "https://docs.modelplane.ai/";
-  };
-
   # Lint docs prose with Vale. Merges the network-synced style packages with the
   # repo's local Modelplane style and vocabulary into one StylesPath, then lints
   # offline.
@@ -158,25 +70,5 @@ in
             vale --config="$PWD/.vale.ini"
         mkdir -p $out
         touch $out/.vale-passed
-      '';
-
-  # Check internal links with htmltest against a site built with the local
-  # baseURL ("/" from hugo.toml). htmltest resolves links relative to the site
-  # root, so it must not run against the production artifact, whose links carry
-  # the /docs prefix. CheckExternal is false in .htmltest.yml, so this needs no
-  # network.
-  htmltest =
-    pkgs.runCommand "modelplane-docs-htmltest"
-      {
-        nativeBuildInputs = [ pkgs.htmltest ];
-      }
-      ''
-        htmltest --conf ${self}/docs/utils/htmltest/.htmltest.yml \
-          ${mkSite {
-            name = "modelplane-docs-local";
-            baseURL = "/";
-          }}
-        mkdir -p $out
-        touch $out/.htmltest-passed
       '';
 }

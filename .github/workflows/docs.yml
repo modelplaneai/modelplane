@@ -1,0 +1,77 @@
+name: Docs
+
+# The docs site lives in modelplaneai/docs-site: the Hugo project, the theme,
+# the build, and the Vercel project. This repo owns the prose and tells that
+# repo when to render it. Nothing here builds the site, and nothing there
+# writes back to this repo.
+#
+# On a pull request, the site deploys a preview of that revision and aliases it
+# to a hostname derived from the pull request number - which is why the link
+# can be posted here immediately, from this repo's own token, before that build
+# finishes.
+#
+# On a merge, the site rebuilds every version from the tip of each branch it
+# serves. That is what publishes a docs change: nothing pins a content
+# revision, so publishing is a rebuild.
+on:
+  pull_request:
+    paths: ['docs/**', 'apis/**']
+  push:
+    branches: [main, 'release-*']
+    paths: ['docs/**', 'apis/**']
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: docs-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+
+    # A pull request from a fork gets no secrets and no write token, so it
+    # cannot dispatch or comment. Reviewers preview those locally, with
+    # `nix run github:modelplaneai/docs-site#preview`.
+    if: >-
+      github.event_name == 'push'
+      || github.event.pull_request.head.repo.full_name == github.repository
+
+    env:
+      SITE_REPO: modelplaneai/docs-site
+
+    steps:
+      # The head sha rather than the merge commit: it is what the reviewer is
+      # reading, and it exists in this repo for the site to fetch.
+      - name: Request a preview
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_SITE_DISPATCH_TOKEN }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.number }}
+        run: |
+          gh api "repos/$SITE_REPO/dispatches" \
+            -f event_type=content-preview \
+            -f "client_payload[ref]=$REF" \
+            -f "client_payload[pr]=$PR"
+
+      # Once per pull request. The hostname follows from the number, so it
+      # stays correct as the branch is pushed to and rebuilt.
+      - name: Post the preview link
+        if: github.event.action == 'opened' || github.event.action == 'reopened'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.number }}
+        run: |
+          gh pr comment "$PR" --body \
+            "Docs preview: https://modelplane-docs-pr-${PR}.vercel.app (ready once the site's Content workflow finishes)"
+
+      - name: Publish
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_SITE_DISPATCH_TOKEN }}
+        run: |
+          gh api "repos/$SITE_REPO/dispatches" \
+            -f event_type=content-published
