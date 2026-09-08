@@ -1,6 +1,6 @@
 # Generating the serving stack
 
-**Status:** Draft
+**Status:** Accepted
 **Date:** September 2026
 **Authors:** Nic Cope (@negz), Christopher Haar (@haarchri)
 
@@ -45,6 +45,11 @@ because they are the price:
   exception is the GPU driver on clouds whose node image supplies it: that
   version follows the image, so it can move as nodes and pools cycle, with no
   release involved.
+
+Together they draw a line through day-zero model support. A model that runs
+on the runtime a release already ships works the day it appears. A model that
+needs a newer runtime, CUDA major, driver or GPU generation waits for a
+Modelplane release, and takes the whole fleet with it.
 
 Each of these is a limit the design accepts. If one of them turns out to bite,
 [future improvements](#future-improvements) sketches the path out and the
@@ -433,6 +438,14 @@ versions against stack versions, per stack, per cloud, and it only means
 anything if it's tested, so the end-to-end suite multiplies by the depth of the
 matrix. The composition functions would branch on the observed stack version,
 and some of the APIs they'd branch over are alpha.
+
+The same trade sets the shape of a regulated deployment. Where a serving stack
+update must prove out in dev and test before production, the unit of staging is
+the control plane: one Modelplane per environment, promoted by upgrading each
+in turn. Running and operating a control plane per environment is a real cost
+of this design. Letting one control plane roll a stack across environments
+gradually means decoupling stack versions from Modelplane versions, the same
+compatibility matrix, with the same testing bill, as the per-cluster pin above.
 
 Patch releases and backports let a cluster take a cert-manager fix without
 taking a Grove bump, inside a combination Modelplane tested. That means
