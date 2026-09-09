@@ -230,7 +230,7 @@ class Composer:
         # API and the stacks package disagree on a value, a broken Modelplane
         # build, not a cluster condition. Let it crash rather than dress it up
         # as a fatal result.
-        components = stacks.components(self.xr.spec.cloud, self.xr.spec.stack or "Standard")
+        components = stacks.join(self.xr.spec.cloud, self.xr.spec.stack or "Standard")
 
         rendered = self.compose_components(components)
         rendered += self.compose_gateway()
@@ -322,7 +322,7 @@ class Composer:
 
         A Chart renders as one provider-helm Release under the entry's
         key; a Manifests entry as one provider-kubernetes Object per
-        doc, keyed by stacks.doc_keys. Everything carries the
+        doc, keyed by stacks.components.doc_keys. Everything carries the
         _LABEL_RESOURCE label the derived Usages select on, and
         everything is gated on the ProviderConfigs being observed (see
         provider_configs_observed) so first creation doesn't race them.
@@ -340,7 +340,7 @@ class Composer:
         """
         pc_observed = self.provider_configs_observed()
         pc = _pc_name(self.xr)
-        docs = {c.key: stacks.doc_keys(c) for c in components}
+        docs = {c.key: stacks.components.doc_keys(c) for c in components}
 
         def deps_ready(c: stacks.Component) -> bool:
             return all(
@@ -358,7 +358,7 @@ class Composer:
                 resource.update(self.rsp.desired.resources[c.key], _helm_release(c, pc))
                 rendered.append(c.key)
                 continue
-            for key, doc in zip(stacks.doc_keys(c), c.manifests, strict=True):
+            for key, doc in zip(stacks.components.doc_keys(c), c.manifests, strict=True):
                 if not (gate or key in self.req.observed.resources):
                     continue
                 resource.update(
@@ -388,7 +388,7 @@ class Composer:
         refs: dict[str, tuple[str, str]] = {}
         docs: dict[str, list[str]] = {}
         for c in components:
-            keys = stacks.doc_keys(c)
+            keys = stacks.components.doc_keys(c)
             docs[c.key] = keys
             for key in keys:
                 refs[key] = _RELEASE_REF if isinstance(c, stacks.Chart) else _OBJECT_REF

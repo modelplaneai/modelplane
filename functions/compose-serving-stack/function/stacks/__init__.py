@@ -21,10 +21,10 @@ none does), common.py for the components on every stack, and the
 stack's own file. See design/serving-stack-generation.md.
 """
 
-from function.stacks import common, dynamo, standard
+from function.stacks import common, components, dynamo, standard
 from function.stacks.clouds import existing, nebius, vultr
 from function.stacks.clouds.generated.aicr import aks, eks, gke
-from function.stacks.components import Chart, Cloud, Component, Manifests, Stack, doc_keys
+from function.stacks.components import Chart, Cloud, Component, Manifests, Stack
 
 __all__ = [
     "Chart",
@@ -34,7 +34,7 @@ __all__ = [
     "Stack",
     "clouds",
     "components",
-    "doc_keys",
+    "join",
     "stacks",
 ]
 
@@ -66,7 +66,7 @@ def stacks() -> list[Stack]:
     return list(_STACKS)
 
 
-def components(cloud: Cloud, stack: Stack) -> list[Component]:
+def join(cloud: Cloud, stack: Stack) -> list[Component]:
     """Join the component lists for a cloud and stack.
 
     Fails closed, at import or test time rather than on a cluster: on an
@@ -90,7 +90,7 @@ def components(cloud: Cloud, stack: Stack) -> list[Component]:
     # The composed-resource keys a component renders under (one per
     # manifest for a multi-doc bundle) must be unique across the join
     # too, or two components would fight over one desired resource.
-    rendered = [k for c in joined for k in doc_keys(c)]
+    rendered = [k for c in joined for k in components.doc_keys(c)]
     duplicates = sorted({k for k in rendered if rendered.count(k) > 1})
     if duplicates:
         raise ValueError(f"{cloud}/{stack}: duplicate composed-resource keys {duplicates}")

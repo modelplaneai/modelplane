@@ -30,13 +30,13 @@ class TestComponents(unittest.TestCase):
         for cloud in stacks.clouds():
             for stack in stacks.stacks():
                 with self.subTest(cloud=cloud, stack=stack):
-                    got = stacks.components(cloud, stack)
+                    got = stacks.join(cloud, stack)
                     self.assertTrue(got, "a joined stack can't be empty")
 
     def test_charts_have_reserved_release_names(self) -> None:
         for cloud in stacks.clouds():
             for stack in stacks.stacks():
-                for c in stacks.components(cloud, stack):
+                for c in stacks.join(cloud, stack):
                     if isinstance(c, stacks.Chart):
                         with self.subTest(cloud=cloud, stack=stack, key=c.key):
                             self.assertEqual(
@@ -48,7 +48,7 @@ class TestComponents(unittest.TestCase):
     def test_manifests_are_populated(self) -> None:
         for cloud in stacks.clouds():
             for stack in stacks.stacks():
-                for c in stacks.components(cloud, stack):
+                for c in stacks.join(cloud, stack):
                     if isinstance(c, stacks.Manifests):
                         with self.subTest(cloud=cloud, stack=stack, key=c.key):
                             self.assertTrue(c.manifests, "a Manifests entry can't be empty")
@@ -56,8 +56,8 @@ class TestComponents(unittest.TestCase):
     def test_multi_doc_manifests_derive_per_doc_keys(self) -> None:
         for cloud in stacks.clouds():
             for stack in stacks.stacks():
-                for c in stacks.components(cloud, stack):
-                    keys = stacks.doc_keys(c)
+                for c in stacks.join(cloud, stack):
+                    keys = stacks.components.doc_keys(c)
                     if isinstance(c, stacks.Chart) or len(c.manifests) == 1:
                         self.assertEqual([c.key], keys)
                         continue
@@ -74,7 +74,7 @@ class TestComponents(unittest.TestCase):
         # ServiceAccount has no status conditions to satisfy it.
         for cloud in stacks.clouds():
             for stack in stacks.stacks():
-                for c in stacks.components(cloud, stack):
+                for c in stacks.join(cloud, stack):
                     if isinstance(c, stacks.Manifests) and c.ready is not None:
                         with self.subTest(cloud=cloud, stack=stack, key=c.key):
                             self.assertEqual(1, len(c.manifests))
@@ -86,7 +86,7 @@ class TestComponents(unittest.TestCase):
         # gate would open the moment Helm accepted the manifests.
         for cloud in stacks.clouds():
             for stack in stacks.stacks():
-                joined = stacks.components(cloud, stack)
+                joined = stacks.join(cloud, stack)
                 depended_on = {dep for c in joined for dep in c.depends_on}
                 for c in joined:
                     if isinstance(c, stacks.Chart) and c.key in depended_on:
@@ -98,6 +98,6 @@ class TestComponents(unittest.TestCase):
         # exercises the runtime guard behind them, which catches the API
         # and the stacks package disagreeing on a value.
         with self.assertRaises(ValueError):
-            stacks.components("Mars", "Standard")  # ty: ignore[invalid-argument-type]
+            stacks.join("Mars", "Standard")  # ty: ignore[invalid-argument-type]
         with self.assertRaises(ValueError):
-            stacks.components("Nebius", "Turbo")  # ty: ignore[invalid-argument-type]
+            stacks.join("Nebius", "Turbo")  # ty: ignore[invalid-argument-type]
