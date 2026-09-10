@@ -1,9 +1,0 @@
-{{ define "main" }}
-{{ if and (not .Content) .Pages }}
-  {{ $first := index (.Pages.ByWeight) 0 }}
-  <script>window.location.replace("{{ $first.Permalink }}");</script>
-  <noscript><meta http-equiv="refresh" content="0; url={{ $first.Permalink }}"></noscript>
-{{ else }}
-  {{ partial "single-list" . }}
-{{ end }}
-{{ end }}

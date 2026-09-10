@@ -6,18 +6,6 @@ result
 .direnv
 __pycache__/
 
-# Docs Resources #
-######################
-docs/resources/*
-docs/resources/_gen/assets/*
-docs/public/*
-docs/hugo
-docs/hugo-*
-docs/.hugo_build.lock
-docs/hugo_stats.json
-docs/node_modules
-docs/utils/webpack/node_modules
-
 # Local superpowers planning artifacts (specs/plans/notes) — not repo content
 docs/superpowers/
 

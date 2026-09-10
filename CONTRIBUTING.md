@@ -395,31 +395,27 @@ moves both.
 
 ## Working on the docs site
 
-The documentation site under `docs/` is a [Hugo](https://gohugo.io/) project.
-`nix flake check` builds it as one of its checks, so a broken site fails CI.
+Docs prose lives here under `docs/content/`, with the example manifests it
+embeds under `docs/manifests/` and the API reference's grouping in `docs/data/`.
+The site that renders it — the [Hugo](https://gohugo.io/) project, its layouts,
+theme, and asset pipelines — is the
+[docs-site](https://github.com/modelplaneai/docs-site) repo. Edit prose here;
+edit the site there.
 
-Run the commands below from the repository root, not from `docs/`. They're flake
-apps (`nix run .#...`), so they resolve against the flake at the root regardless
-of which file you're editing.
-
-Preview it locally with live reload:
-
-```bash
-nix run .#docs-serve            # http://localhost:1313
-```
-
-`nix build .#docs` produces the production site in `result/`. The production
-build compiles the theme's SCSS and runs it through PostCSS to strip unused
-CSS, sort media queries, and minify. Those Node dependencies are pinned in
-`docs/package-lock.json` and built reproducibly; the local preview skips them.
-
-The site's JavaScript bundle is built by webpack and committed to git under the
-theme's assets. Rebuild it after changing anything under
-`docs/utils/webpack/src/` and commit the result:
+Preview what you are editing, with live reload, from the root of this repo:
 
 ```bash
-nix run .#docs-generate
+nix run github:modelplaneai/docs-site#preview  # http://localhost:1313
 ```
+
+The site serves this working tree, so the pages you see are the files under
+your cursor: no branch to push, no pin to move, and nothing about Hugo checked
+in here. The version switcher lists every version and those links 404 locally,
+since only this one is being served.
+
+Versions are this repo's `release-X.Y` branches: whatever is on `release-0.2` is
+what the 0.2 docs say. The site repo builds each of them, decides which release
+is latest, and deploys; see [RELEASING.md](RELEASING.md).
 
 ### Manifest shortcodes
 
@@ -474,13 +470,18 @@ validator is `docs/utils/validate/validate_manifests.py`.
 
 ### Linting and link checking
 
-Docs prose is linted with [Vale](https://vale.sh) and internal links are checked
-with [htmltest](https://github.com/wjdp/htmltest). Both run as flake checks, so
-run them with the rest of CI:
+Docs prose is linted with [Vale](https://vale.sh), which runs as a flake check,
+so run it with the rest of CI:
 
 ```bash
 nix flake check
 ```
+
+Internal links are checked with [htmltest](https://github.com/wjdp/htmltest)
+against the built site, which means it runs in the site repo, not here. Nothing
+there pins a revision of this repo, so a content change that breaks a link
+fails on the next build there: the preview of your pull request, or the
+rebuild your merge triggers.
 
 Custom Modelplane rules live in `docs/utils/vale/styles/Modelplane/`.
 
@@ -495,13 +496,25 @@ CI runs them on every pull request via the same check (see
 
 ### Deployment
 
-The site deploys to [Vercel](https://vercel.com/). Vercel builds it with the
-same `nix build .#docs` derivation that `nix flake check` verifies, so what
-ships matches what CI checks. `vercel.json` points the build at
-[`docs/vercel-build.sh`](docs/vercel-build.sh), which installs Nix into
-Vercel's build image, runs the build, and writes the static site to `public/`.
-Vercel's GitHub app drives deploys as usual: preview URLs on pull requests
-(including from forks) and production on merge to `main`.
+The site repo holds the only Vercel project.
+[`.github/workflows/docs.yml`](.github/workflows/docs.yml) here asks it to
+render, and never renders anything itself:
+
+| Here | There |
+|---|---|
+| a pull request touching `docs/` or `apis/` | deploys that revision as a preview |
+| a merge to `main` or a `release-*` branch | rebuilds every version into production |
+
+A merge is what publishes: nothing there pins a content revision, so
+publishing is a rebuild that reads the tip of every branch.
+
+The preview link is posted on the pull request as soon as it opens, because the
+hostname follows from the pull request number rather than from the deployment —
+so the site repo needs no write access here. It answers once that repo's
+`Content` workflow finishes, a minute or so later.
+
+A pull request from a fork gets neither secrets nor a write token, so it gets
+no preview; use the local command above.
 
 ## Releasing
 
