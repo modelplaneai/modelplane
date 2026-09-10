@@ -1,7 +1,7 @@
 ---
 title: API Reference
 weight: 50
-description: Every Modelplane API type, grouped by Platform, Models, and Composed.
+description: Every Modelplane API type, grouped by Platform, Models, and Infrastructure.
 product: reference
 ---
 

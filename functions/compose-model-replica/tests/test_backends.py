@@ -1327,7 +1327,3 @@ class TestKvBlockSize(unittest.TestCase):
         cfg = routing._disaggregated_epp_config_yaml(32)
         self.assertIn("blockSizeTokens: 32", cfg)
         self.assertNotIn("BLOCK_SIZE_TOKENS", cfg)
-
-
-if __name__ == "__main__":
-    unittest.main()

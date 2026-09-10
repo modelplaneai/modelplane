@@ -5,7 +5,7 @@ metadata:
 spec:
   group: modelplane.ai
   names:
-    categories: [crossplane, modelplane]
+    categories: [crossplane, modelplane, models]
     kind: ModelDeployment
     plural: modeldeployments
     shortNames: [md]

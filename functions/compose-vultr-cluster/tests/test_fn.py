@@ -101,7 +101,7 @@ def _cluster(
             "forProvider": {
                 "label": "test-cluster",
                 "region": "ewr",
-                "version": "v1.36.1+3",
+                "version": "v1.36.2+1",
                 "haControlplanes": True,
                 "nodePools": _SYSTEM_POOL,
             },
@@ -268,6 +268,7 @@ _GPU_POOL_GOLDEN = _node_pool(
     labels=[
         {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
         {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
+        {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
     ],
     taints=_GPU_TAINTS,
     auto_scaler=True,
@@ -435,6 +436,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         labels=[
                                             {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
                                             {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
+                                            {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
                                         ],
                                         taints=_GPU_TAINTS,
                                     ),

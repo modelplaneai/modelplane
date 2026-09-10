@@ -95,7 +95,7 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    kubernetesVersion: constr(min_length=1, max_length=16) | None = 'v1.36.1+3'
+    kubernetesVersion: constr(min_length=1, max_length=16) | None = 'v1.36.2+1'
     """
     VKE cluster Kubernetes version. VKE requires an exact version string including the build suffix; list current versions with vultr-cli kubernetes versions. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
     """

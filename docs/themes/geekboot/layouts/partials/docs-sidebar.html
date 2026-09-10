@@ -16,29 +16,33 @@
 <nav class="bd-links-nav w-100" aria-label="Docs navigation">
 
   {{ if $isRef }}
-    {{/* ── Reference tab: landing, then one page per type grouped by apigroups ── */}}
+    {{/* ── Reference tab: landing, then one page per type grouped by the
+         apiGroup param each generated page carries (assigned in
+         content/reference/_content.gotmpl from hugo.Data.apigroups). Ungrouped
+         kinds render under "Other" rather than disappearing. ── */}}
     {{ with $ref }}
       <div class="nav-group">
         <a class="nav-section-link nav-top-link{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
       </div>
     {{ end }}
-    {{ range hugo.Data.apigroups.groups }}
-      <div class="nav-group">
-        <div class="nav-group-label">{{ .title }}</div>
-        <div class="nav-children">
-          {{ range .kinds }}
-            {{ $k := . }}
-            {{ range $plural, $dir := hugo.Data.apis.crds }}
-              {{ $crd := $dir.definition }}
-              {{ if and $crd (eq $crd.spec.names.kind $k) }}
-                {{ with site.GetPage (printf "/reference/%s" $plural) }}
-                  <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ $k }}</a>
-                {{ end }}
-              {{ end }}
+    {{ $refPages := $ref.RegularPages.ByWeight }}
+    {{ $ungrouped := where $refPages "Params.apiGroup" "other" }}
+    {{ $groups := hugo.Data.apigroups.groups }}
+    {{ if $ungrouped }}
+      {{ $groups = $groups | append (dict "id" "other" "title" "Other") }}
+    {{ end }}
+    {{ range $groups }}
+      {{ $groupPages := where $refPages "Params.apiGroup" .id }}
+      {{ if $groupPages }}
+        <div class="nav-group">
+          <div class="nav-group-label">{{ .title }}</div>
+          <div class="nav-children">
+            {{ range $groupPages }}
+              <a class="bd-links d-flex{{ if eq . $current }} active{{ end }}" href="{{ .Permalink }}">{{ .Title }}</a>
             {{ end }}
-          {{ end }}
+          </div>
         </div>
-      </div>
+      {{ end }}
     {{ end }}
   {{ else if $isRecipes }}
     {{/* ── Recipes tab: the catalog landing, then recipes grouped by vendor.

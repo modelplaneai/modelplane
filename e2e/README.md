@@ -53,22 +53,24 @@ server exposes both, so the pod goes Ready without a real model or GPU.
 
 ### Why cloud provisioning cannot be tested here
 
-`lean-control-plane.yaml` trims the control plane to what a BYO cluster needs,
-and both trims stop a cloud `InferenceCluster` from reconciling at all. Neither
-announces itself, so this is what to expect if you point this control plane at a
-real cloud:
+`lean-control-plane.yaml` trims the control plane to what the BYO
+(`source: Existing`) scenario needs. That's all the e2e runs, and it carries no
+cloud credentials, so it never creates a cloud `InferenceCluster` and never
+provisions a cloud cluster. This is what that looks like, and what to expect if
+you point this control plane at a real cloud without adding one:
 
-- The MRAP activates only `*.kubernetes.m.crossplane.io` and
-  `*.helm.m.crossplane.io`. A cloud provider's managed resources are then never
-  activated, so they sit with **no status conditions at all** — which reads as
-  nothing happening rather than as an error.
-- The `dormant-cloud-providers` `ImageConfig` maps every
-  `xpkg.upbound.io/upbound/provider-*` to a zero-replica runtime config. Editing
-  that `ImageConfig` is not enough on its own: it is resolved when a package
-  revision reconciles, so existing Deployments keep their replica count until
-  something scales them.
+- The lean MRAP activates only `*.kubernetes.m.crossplane.io` and
+  `*.helm.m.crossplane.io`, and nothing composes a cloud activation policy, so a
+  cloud provider's managed resources are never activated. They sit with **no
+  status conditions at all** — which reads as nothing happening rather than as
+  an error.
+- Because those providers declare the safe-start capability, Crossplane scales
+  their controllers to zero while their managed resources are inactive, so a
+  dormant cloud provider runs no pod at all.
 
-Undoing both is possible but leaves a control plane that is no longer the one CI
+A cloud `InferenceCluster` would compose its own additive policy activating its
+cloud's kinds and wake that provider; the e2e just never creates one. Undoing
+these trims is possible but leaves a control plane that is no longer the one CI
 runs, so prefer a separate control plane for cloud work.
 
 ## Prerequisites

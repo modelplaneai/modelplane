@@ -8,6 +8,7 @@ spec:
     categories:
     - crossplane
     - modelplane
+    - infrastructure
     kind: GKECluster
     plural: gkeclusters
     shortNames:

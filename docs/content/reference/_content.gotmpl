@@ -1,14 +1,17 @@
 {{/*
   Generates one reference page per CRD from the definition.yaml files mounted at
-  site.Data.apis.crds.<plural>.definition. Grouping and order come from
-  site.Data.apigroups (see docs/data/apigroups.yaml); a kind not listed in any
-  group still gets a page, sorted last under "Other".
+  site.Data.apis.crds.<plural>.definition. Each CRD's group is read from its own
+  spec.names.categories: the category matching a group id in
+  site.Data.apigroups (docs/data/apigroups.yaml) picks the section, which only
+  supplies titles, descriptions, and section order. A CRD whose categories
+  match no group still gets a page, sorted last under "Other".
 
   Each page carries product=crd plus the plural/kind/group it needs; the
   crd-single partial (via single-list.html) renders the schema. Weight encodes
-  group order (×100) then position within the group, so the section lists pages
-  Platform → Models → Infrastructure in the order authored.
+  group order (×100) plus arrival order — the crds map ranges in key order, so
+  pages within a group list alphabetically.
 */}}
+{{ $seen := 0 }}
 {{ range $plural, $dir := site.Data.apis.crds }}
   {{ $crd := $dir.definition }}
   {{ if $crd }}
@@ -24,18 +27,20 @@
       {{ end }}
     {{ end }}
 
-    {{/* Find this kind's group and order. Weights start at 1: Hugo treats a 0
-         weight as "unset" and sorts it last, which would wrap the first page. */}}
+    {{/* Match a group id against the XRD's own categories. Weights start at 1:
+         Hugo treats a 0 weight as "unset" and sorts it last, which would wrap
+         the first page. The shared $seen counter is safe because it stays
+         below the ×100 gap between group bases. */}}
+    {{ $seen = add $seen 1 }}
     {{ $groupId := "other" }}
     {{ $groupTitle := "Other" }}
-    {{ $weight := 9999 }}
+    {{ $weight := add 9900 $seen }}
+    {{ $categories := $crd.spec.names.categories | default slice }}
     {{ range $gi, $group := site.Data.apigroups.groups }}
-      {{ range $ki, $k := $group.kinds }}
-        {{ if eq $k $kind }}
-          {{ $groupId = $group.id }}
-          {{ $groupTitle = $group.title }}
-          {{ $weight = add (mul (add $gi 1) 100) (add $ki 1) }}
-        {{ end }}
+      {{ if in $categories $group.id }}
+        {{ $groupId = $group.id }}
+        {{ $groupTitle = $group.title }}
+        {{ $weight = add (mul (add $gi 1) 100) $seen }}
       {{ end }}
     {{ end }}
 

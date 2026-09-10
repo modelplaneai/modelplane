@@ -1,19 +1,22 @@
 # Crossplane converts every provider CRD into an inactive
 # ManagedResourceDefinition and only creates the CRD once a
-# ManagedResourceActivationPolicy activates it. This policy activates just the
-# managed resource kinds Modelplane's compositions actually compose, so only
-# those ~40 kinds become live CRDs instead of the ~900 the provider families
-# define between them.
+# ManagedResourceActivationPolicy activates it. A provider with the safe-start
+# capability, like the upbound provider families, scales its runtime to zero
+# until one of its definitions is active, so activating a kind is what runs the
+# provider that serves it.
+#
+# This policy activates only provider-helm and provider-kubernetes, which serve
+# every control plane. compose-inference-cluster composes a second, cluster-
+# scoped policy activating just the kinds the cloud it provisions needs, so a
+# control plane runs a cloud's providers only once it has an InferenceCluster on
+# that cloud, rather than all of them from here.
 #
 # It ships in the Configuration package, so it installs with the Modelplane
 # APIs. For it to take effect, install Crossplane with an empty default
 # activation (provider.defaultActivations=[]); see the installation guide. Its
-# default is "*", which activates every CRD and makes this policy a no-op.
-#
-# Keep this in sync with the compositions. A managed resource kind a
-# composition composes but this policy omits stays inactive, and composing it
-# fails because its CRD does not exist. Activation is one-way: removing an entry
-# here does not deactivate a CRD on a running control plane.
+# default is "*", which activates every CRD and makes on-demand activation a
+# no-op. Activation is one-way: removing an entry from a policy does not
+# deactivate a CRD on a running control plane.
 apiVersion: apiextensions.crossplane.io/v1alpha1
 kind: ManagedResourceActivationPolicy
 metadata:
@@ -23,51 +26,3 @@ spec:
   # provider-helm and provider-kubernetes (serving stack, gateway, caches).
   - releases.helm.m.crossplane.io
   - objects.kubernetes.m.crossplane.io
-  # AWS (EKS clusters).
-  - eips.ec2.aws.m.upbound.io
-  - internetgateways.ec2.aws.m.upbound.io
-  - launchtemplates.ec2.aws.m.upbound.io
-  - natgateways.ec2.aws.m.upbound.io
-  - routes.ec2.aws.m.upbound.io
-  - routetables.ec2.aws.m.upbound.io
-  - routetableassociations.ec2.aws.m.upbound.io
-  - securitygroups.ec2.aws.m.upbound.io
-  - securitygroupegressrules.ec2.aws.m.upbound.io
-  - securitygroupingressrules.ec2.aws.m.upbound.io
-  - subnets.ec2.aws.m.upbound.io
-  - vpcs.ec2.aws.m.upbound.io
-  - filesystems.efs.aws.m.upbound.io
-  - mounttargets.efs.aws.m.upbound.io
-  - addons.eks.aws.m.upbound.io
-  - clusters.eks.aws.m.upbound.io
-  - clusterauths.eks.aws.m.upbound.io
-  - nodegroups.eks.aws.m.upbound.io
-  - podidentityassociations.eks.aws.m.upbound.io
-  - policies.iam.aws.m.upbound.io
-  - roles.iam.aws.m.upbound.io
-  - rolepolicyattachments.iam.aws.m.upbound.io
-  # GCP (GKE clusters).
-  - projectiammembers.cloudplatform.gcp.m.upbound.io
-  - projectservices.cloudplatform.gcp.m.upbound.io
-  - serviceaccounts.cloudplatform.gcp.m.upbound.io
-  - serviceaccountkeys.cloudplatform.gcp.m.upbound.io
-  - networks.compute.gcp.m.upbound.io
-  - subnetworks.compute.gcp.m.upbound.io
-  - clusters.container.gcp.m.upbound.io
-  - nodepools.container.gcp.m.upbound.io
-  # Azure (AKS clusters).
-  - kubernetesclusters.containerservice.azure.m.upbound.io
-  - kubernetesclusternodepools.containerservice.azure.m.upbound.io
-  - subnets.network.azure.m.upbound.io
-  - virtualnetworks.network.azure.m.upbound.io
-  - resourcegroups.azure.m.upbound.io
-  # Nebius (managed Kubernetes clusters).
-  - filesystems.compute.nebius.m.upbound.io
-  - gpuclusters.compute.nebius.m.upbound.io
-  - clusters.mk8s.nebius.m.upbound.io
-  - nodegroups.mk8s.nebius.m.upbound.io
-  - networks.vpc.nebius.m.upbound.io
-  - subnets.vpc.nebius.m.upbound.io
-  # Vultr (VKE clusters).
-  - kubernetes.vke.vultr.m.upbound.io
-  - kubernetesnodepools.vke.vultr.m.upbound.io

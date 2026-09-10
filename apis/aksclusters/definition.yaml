@@ -8,6 +8,7 @@ spec:
     categories:
     - crossplane
     - modelplane
+    - infrastructure
     kind: AKSCluster
     plural: aksclusters
     shortNames:

@@ -151,17 +151,22 @@
 
             # Pin Crossplane to the version e2e/run.sh uses: without a pin the
             # CLI installs the latest release
-            version_args=(--crossplane-version=2.3.4)
+            version_args=(--crossplane-version=2.4.0)
             for arg in "$@"; do
               case "$arg" in
                 --crossplane-version | --crossplane-version=*) version_args=() ;;
               esac
             done
 
+            # Skip the default ManagedResourceActivationPolicy: it activates
+            # every MRD each installed provider ships, and this project pulls
+            # in the full AWS/GCP/Azure provider families. The compositions
+            # activate exactly the MRs they compose.
+            #
             # On failure, dump the package revision state: installs time out
             # with only "context deadline exceeded", and under nix.sh the
             # cluster is gone by the time anyone can look at it.
-            if ! crossplane project run "''${timeout_args[@]}" "''${version_args[@]}" "$@"; then
+            if ! crossplane project run --no-default-mrap "''${timeout_args[@]}" "''${version_args[@]}" "$@"; then
               echo ""
               echo "crossplane project run failed; package revision state:"
               for cluster in $(kind get clusters 2>/dev/null); do
@@ -328,6 +333,37 @@
             ln -s ${functionsPkg} _output/functions
 
             exec bash e2e/run.sh "$@"
+          '';
+        }
+      );
+    };
+
+  # Regenerate the AICR-derived serving stack component lists (see
+  # design/serving-stack-generation.md). Writes
+  # functions/compose-serving-stack/function/stacks/clouds/generated/aicr/,
+  # then formats and lints exactly what it wrote so `nix flake check`'s
+  # python check passes on the output. The generator asserts the aicr on
+  # PATH matches its pin, so bumping aicr means updating nix/aicr.nix and
+  # generate.py together. Extra args name the clouds to regenerate, e.g.:
+  # nix run .#stacks -- gke
+  stacks =
+    { aicr }:
+    {
+      type = "app";
+      meta.description = "Regenerate the AICR-derived serving stack lists";
+      program = pkgs.lib.getExe (
+        pkgs.writeShellApplication {
+          name = "modelplane-stacks";
+          runtimeInputs = [
+            aicr
+            (pkgs.python312.withPackages (ps: [ ps.pyyaml ]))
+            pkgs.unstable.ruff
+          ];
+          inheritPath = false;
+          text = ''
+            python3 functions/compose-serving-stack/generate.py "$@"
+            ruff format functions/compose-serving-stack/function/stacks/clouds/generated/
+            ruff check functions/compose-serving-stack/function/stacks/clouds/generated/
           '';
         }
       );

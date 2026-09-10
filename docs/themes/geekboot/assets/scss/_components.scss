@@ -461,6 +461,23 @@ a.mp-chip:hover {
   .mp-row-ctx { display: none; }
 }
 
+// ── API reference rows (reference landing) ────────────────────
+// Reuses the recipe-row shell. The id column stretches so a one-line
+// description fits under the kind name, and the chips shrink to content.
+.mp-crd-row .mp-row-id { flex: 1 1 24rem; }
+.mp-crd-row .mp-row-chips { flex: 0 0 auto; }
+.mp-row-desc {
+  font-size: 0.78rem;
+  color: var(--mp-card-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+@media (max-width: 800px) {
+  .mp-crd-row .mp-row-id { flex-basis: 100%; }
+}
+
 // ── Browse-all recipe table (/recipes/all/) ───────────────────
 .mp-table-wrap {
   background: var(--mp-card-bg);

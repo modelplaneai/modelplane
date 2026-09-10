@@ -30,6 +30,8 @@ to host control-plane components (Envoy Gateway, Prometheus, etc.).
 The system pool is not exposed in the user-facing API.
 """
 
+from typing import Final, Literal
+
 import grpc
 from crossplane.function import logging, request, resource, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -42,6 +44,9 @@ from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alph
 from models.ai.modelplane.infrastructure.nebiuscluster import v1alpha1 as nebiusv1alpha1
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alpha1
 from models.ai.modelplane.infrastructure.vultrcluster import v1alpha1 as vultrv1alpha1
+from models.io.crossplane.apiextensions.managedresourceactivationpolicy import (
+    v1alpha1 as mrapv1alpha1,
+)
 from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
@@ -49,17 +54,16 @@ from models.io.crossplane.protection.clusterusage import v1beta1 as clusterusage
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
-# Cluster source discriminator values from the XRD enum.
-CLUSTER_SOURCE_GKE = "GKE"
-CLUSTER_SOURCE_EKS = "EKS"
-CLUSTER_SOURCE_AKS = "AKS"
-CLUSTER_SOURCE_NEBIUS = "Nebius"
-CLUSTER_SOURCE_VULTR = "Vultr"
-CLUSTER_SOURCE_EXISTING = "Existing"
-
-# GKE installs the NVIDIA driver here rather than at the default / root; the
-# ServingStack passes it to the DRA driver so its kubelet plugin starts.
-_GKE_NVIDIA_DRIVER_ROOT = "/home/kubernetes/bin/nvidia"
+# Cluster source discriminator values from the XRD enum. The Literal
+# mirrors ServingStack spec.cloud, so passing a wrong or unsupported
+# cloud fails type checking; Final makes each constant a literal type.
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Existing"]
+CLUSTER_SOURCE_GKE: Final = "GKE"
+CLUSTER_SOURCE_EKS: Final = "EKS"
+CLUSTER_SOURCE_AKS: Final = "AKS"
+CLUSTER_SOURCE_NEBIUS: Final = "Nebius"
+CLUSTER_SOURCE_VULTR: Final = "Vultr"
+CLUSTER_SOURCE_EXISTING: Final = "Existing"
 
 # Condition types and reasons for the InferenceCluster XR.
 CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
@@ -99,6 +103,68 @@ _IDENTITY_TYPE_GCP = "GoogleApplicationCredentials"
 
 # Identity type for Nebius service account credentials.
 _IDENTITY_TYPE_NEBIUS = "NebiusServiceAccountCredentials"
+
+# The managed resource kinds each cloud's cluster XR composes, and so the
+# ManagedResourceDefinitions its activation policy activates. Only this
+# cluster-scoped XR can compose the (cluster-scoped) policy; the namespaced
+# cluster XRs it composes cannot. Keep each list in sync with the resources
+# compose-<cloud>-cluster composes - a kind composed but missing here never
+# gets a CRD, and composing it fails the whole reconcile. provider-helm and
+# provider-kubernetes are omitted: the Configuration's own policy keeps those
+# active for every control plane.
+_ACTIVATE_AWS = (
+    "eips.ec2.aws.m.upbound.io",
+    "internetgateways.ec2.aws.m.upbound.io",
+    "launchtemplates.ec2.aws.m.upbound.io",
+    "natgateways.ec2.aws.m.upbound.io",
+    "routes.ec2.aws.m.upbound.io",
+    "routetables.ec2.aws.m.upbound.io",
+    "routetableassociations.ec2.aws.m.upbound.io",
+    "securitygroups.ec2.aws.m.upbound.io",
+    "securitygroupegressrules.ec2.aws.m.upbound.io",
+    "securitygroupingressrules.ec2.aws.m.upbound.io",
+    "subnets.ec2.aws.m.upbound.io",
+    "vpcs.ec2.aws.m.upbound.io",
+    "filesystems.efs.aws.m.upbound.io",
+    "mounttargets.efs.aws.m.upbound.io",
+    "addons.eks.aws.m.upbound.io",
+    "clusters.eks.aws.m.upbound.io",
+    "clusterauths.eks.aws.m.upbound.io",
+    "nodegroups.eks.aws.m.upbound.io",
+    "podidentityassociations.eks.aws.m.upbound.io",
+    "policies.iam.aws.m.upbound.io",
+    "roles.iam.aws.m.upbound.io",
+    "rolepolicyattachments.iam.aws.m.upbound.io",
+)
+_ACTIVATE_GCP = (
+    "projectiammembers.cloudplatform.gcp.m.upbound.io",
+    "projectservices.cloudplatform.gcp.m.upbound.io",
+    "serviceaccounts.cloudplatform.gcp.m.upbound.io",
+    "serviceaccountkeys.cloudplatform.gcp.m.upbound.io",
+    "networks.compute.gcp.m.upbound.io",
+    "subnetworks.compute.gcp.m.upbound.io",
+    "clusters.container.gcp.m.upbound.io",
+    "nodepools.container.gcp.m.upbound.io",
+)
+_ACTIVATE_AZURE = (
+    "kubernetesclusters.containerservice.azure.m.upbound.io",
+    "kubernetesclusternodepools.containerservice.azure.m.upbound.io",
+    "subnets.network.azure.m.upbound.io",
+    "virtualnetworks.network.azure.m.upbound.io",
+    "resourcegroups.azure.m.upbound.io",
+)
+_ACTIVATE_NEBIUS = (
+    "filesystems.compute.nebius.m.upbound.io",
+    "gpuclusters.compute.nebius.m.upbound.io",
+    "clusters.mk8s.nebius.m.upbound.io",
+    "nodegroups.mk8s.nebius.m.upbound.io",
+    "networks.vpc.nebius.m.upbound.io",
+    "subnets.vpc.nebius.m.upbound.io",
+)
+_ACTIVATE_VULTR = (
+    "kubernetes.vke.vultr.m.upbound.io",
+    "kubernetesnodepools.vke.vultr.m.upbound.io",
+)
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
@@ -169,6 +235,44 @@ class Composer:
             self.compose_existing(cluster.existing)
         else:
             response.warning(self.rsp, f"unsupported cluster source: {source}")
+
+    def compose_activation(self, kinds: tuple[str, ...]) -> None:
+        """Activate the cloud managed resource kinds the cluster XR composes.
+
+        The policy is cluster scoped, so only this cluster-scoped XR can compose
+        it; the namespaced cluster XR it composes cannot. _activation_ready then
+        gates the cluster XR on the policy taking effect, so its managed
+        resources aren't composed before the API server knows their kinds.
+        """
+        resource.update(
+            self.rsp.desired.resources["activation"],
+            mrapv1alpha1.ManagedResourceActivationPolicy(
+                spec=mrapv1alpha1.Spec(activate=list(kinds)),
+            ),
+        )
+
+    def _activation_ready(self, kinds: tuple[str, ...]) -> bool:
+        """Whether the policy this function composed has activated every kind.
+
+        Read from the policy's own status.activated (the definitions it has set
+        Active), so no ManagedResourceDefinition (each of which carries a full
+        CRD schema) has to be pulled into the request. The policy reports
+        Healthy even when it matched no definitions, e.g. while a provider is
+        still installing, so this checks the kinds are present rather than
+        trusting Healthy.
+
+        TODO(negz): gate on an Established condition instead once the policy
+        reports one (crossplane/crossplane#7822). status.activated means the
+        policy set these definitions Active, not that their CRDs exist, so a
+        managed resource composed in the window before a CRD is served can
+        still fail its apply until the next reconcile.
+        """
+        activation = self.req.observed.resources.get("activation")
+        if activation is None:
+            return False
+        status = resource.struct_to_dict(activation.resource).get("status") or {}
+        activated = status.get("activated") or []
+        return all(kind in activated for kind in kinds)
 
     def compose_replica_guard(self) -> None:
         """Block deletion of the InferenceCluster while ModelReplicas use it.
@@ -267,7 +371,10 @@ class Composer:
             response.warning(self.rsp, "GKE configuration is required when source is GKE")
             return
 
-        self.compose_gke_cluster(gke)
+        self.compose_activation(_ACTIVATE_GCP)
+        if self._activation_ready(_ACTIVATE_GCP) or "gke-cluster" in self.req.observed.resources:
+            self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
+            self.compose_gke_cluster(gke)
 
         gke_ready = resource.get_condition(self.req.observed.resources.get("gke-cluster"), "Ready").status == "True"
         kubeconfig_secret = self.observed_gke_secret(_SECRET_TYPE_KUBECONFIG)
@@ -285,7 +392,7 @@ class Composer:
         backend_secrets = self.resolve_gke_backend_secrets(gke_ready=gke_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets, nvidia_driver_root=_GKE_NVIDIA_DRIVER_ROOT)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_GKE)
             self.compose_gke_usage()
 
         if gke_ready:
@@ -311,7 +418,10 @@ class Composer:
             response.warning(self.rsp, "EKS configuration is required when source is EKS")
             return
 
-        self.compose_eks_cluster(eks)
+        self.compose_activation(_ACTIVATE_AWS)
+        if self._activation_ready(_ACTIVATE_AWS) or "eks-cluster" in self.req.observed.resources:
+            self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
+            self.compose_eks_cluster(eks)
 
         eks_ready = resource.get_condition(self.req.observed.resources.get("eks-cluster"), "Ready").status == "True"
         kubeconfig = self.observed_eks_secret(_SECRET_TYPE_KUBECONFIG)
@@ -323,7 +433,7 @@ class Composer:
         backend_secrets = self.resolve_eks_backend_secrets(eks_ready=eks_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_EKS)
             self.compose_eks_usage()
 
         if eks_ready:
@@ -347,7 +457,10 @@ class Composer:
             response.warning(self.rsp, "AKS configuration is required when source is AKS")
             return
 
-        self.compose_aks_cluster(aks)
+        self.compose_activation(_ACTIVATE_AZURE)
+        if self._activation_ready(_ACTIVATE_AZURE) or "aks-cluster" in self.req.observed.resources:
+            self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
+            self.compose_aks_cluster(aks)
 
         aks_ready = resource.get_condition(self.req.observed.resources.get("aks-cluster"), "Ready").status == "True"
         kubeconfig = self.observed_aks_secret(_SECRET_TYPE_KUBECONFIG)
@@ -359,7 +472,7 @@ class Composer:
         backend_secrets = self.resolve_aks_backend_secrets(aks_ready=aks_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_AKS)
             self.compose_aks_usage()
 
         if aks_ready:
@@ -385,7 +498,10 @@ class Composer:
             response.warning(self.rsp, "Nebius configuration is required when source is Nebius")
             return
 
-        self.compose_nebius_cluster(nebius)
+        self.compose_activation(_ACTIVATE_NEBIUS)
+        if self._activation_ready(_ACTIVATE_NEBIUS) or "nebius-cluster" in self.req.observed.resources:
+            self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
+            self.compose_nebius_cluster(nebius)
 
         nebius_ready = (
             resource.get_condition(self.req.observed.resources.get("nebius-cluster"), "Ready").status == "True"
@@ -405,7 +521,7 @@ class Composer:
         backend_secrets = self.resolve_nebius_backend_secrets(nebius_ready=nebius_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_NEBIUS)
             self.compose_nebius_usage()
 
         if nebius_ready:
@@ -429,7 +545,10 @@ class Composer:
             response.warning(self.rsp, "Vultr configuration is required when source is Vultr")
             return
 
-        self.compose_vultr_cluster(vultr)
+        self.compose_activation(_ACTIVATE_VULTR)
+        if self._activation_ready(_ACTIVATE_VULTR) or "vultr-cluster" in self.req.observed.resources:
+            self.rsp.desired.resources["activation"].ready = fnv1.READY_TRUE
+            self.compose_vultr_cluster(vultr)
 
         vultr_ready = resource.get_condition(self.req.observed.resources.get("vultr-cluster"), "Ready").status == "True"
         kubeconfig = self.observed_vultr_secret(_SECRET_TYPE_KUBECONFIG)
@@ -441,7 +560,7 @@ class Composer:
         backend_secrets = self.resolve_vultr_backend_secrets(vultr_ready=vultr_ready, backend_exists=backend_exists)
         if backend_secrets or backend_exists:
             if backend_secrets:
-                self.compose_serving_stack(backend_secrets)
+                self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_VULTR)
             self.compose_vultr_usage()
 
         if vultr_ready:
@@ -476,7 +595,7 @@ class Composer:
                 # type defaults to GCP in the XRD; coalesce so it's never None.
                 ssv1alpha1.Secret(type=identity.type or _IDENTITY_TYPE_GCP, name=identity.name, key=identity.key),
             )
-        self.compose_serving_stack(backend_secrets)
+        self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_EXISTING)
 
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=True)
@@ -484,18 +603,20 @@ class Composer:
     def compose_serving_stack(
         self,
         backend_secrets: list[ssv1alpha1.Secret],
-        nvidia_driver_root: str | None = None,
+        cloud: Cloud,
     ) -> None:
         """Compose a ServingStack XR with the given secrets.
 
-        nvidia_driver_root is set for provisioned GKE clusters, where the NVIDIA
-        driver lives off the default / path; the serving stack consumes it
-        without inspecting its own cloud. Left None for EKS / existing clusters,
-        which keep the ServingStack's default root.
+        cloud names the cluster's source (this XR's spec.cluster.source)
+        and selects the component list the serving stack installs,
+        including cloud specifics like where the node image puts the
+        NVIDIA driver.
         """
-        spec = ssv1alpha1.Spec(secrets=backend_secrets, stack=self.xr.spec.stack)
-        if nvidia_driver_root is not None:
-            spec.nvidiaDriverRoot = nvidia_driver_root
+        spec = ssv1alpha1.Spec(
+            secrets=backend_secrets,
+            stack=self.xr.spec.stack,
+            cloud=cloud,
+        )
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(

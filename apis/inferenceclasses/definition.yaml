@@ -5,7 +5,7 @@ metadata:
 spec:
   group: modelplane.ai
   names:
-    categories: [crossplane, modelplane]
+    categories: [crossplane, modelplane, platform]
     kind: InferenceClass
     plural: inferenceclasses
     shortNames: [icl]

@@ -136,14 +136,15 @@ esac
 
 log "Building + running the control plane"
 cd "$ROOT"
-# Install the config with the lean control-plane trims (narrowed MRAP + scale-to-0)
-# applied before the providers. prerequisites.yaml is applied afterwards with
-# kubectl, not through --init-resources: it opens with a comment-only YAML
-# document that `crossplane project run` rejects but kubectl skips.
+# Install the config with the lean control-plane's narrowed MRAP applied before
+# the providers, so the cloud providers stay dormant (safe-start scales them to
+# zero). prerequisites.yaml is applied afterwards with kubectl, not through
+# --init-resources: it opens with a comment-only YAML document that `crossplane
+# project run` rejects but kubectl skips.
 crossplane project run \
 	--control-plane-name "$CP" --cluster-admin --timeout 25m \
 	--init-resources "$ROOT/e2e/lean-control-plane.yaml" \
-	--crossplane-version=2.3.4
+	--crossplane-version=2.4.0
 
 # Config healthy. Finish the setup the getting-started flow does by hand (as the
 # nix run app now does too, PR #375): apply the RBAC prerequisites, then point

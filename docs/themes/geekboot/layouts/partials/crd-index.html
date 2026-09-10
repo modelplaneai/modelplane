@@ -1,34 +1,45 @@
 {{/*
-  Reference landing (product: reference). Renders the page body, then a card per
-  CRD grouped by hugo.Data.apigroups. Cards link to the generated per-type pages
-  and pull their summary from the page Description, so new CRDs appear here once
-  they're added to a group.
+  Reference landing (product: reference). Renders the page body, then one row
+  per CRD grouped by the apiGroup param each generated page carries (assigned
+  in content/reference/_content.gotmpl from hugo.Data.apigroups). Rows reuse
+  the recipe-row look: kind and a one-line description on the left, then
+  scope and apiVersion chips read from the CRD's definition. Kinds
+  that fall into no group render under "Other" at the end rather than
+  disappearing.
 */}}
 {{ .Content }}
 
-{{ range hugo.Data.apigroups.groups }}
-  <section class="api-index-group">
-    <h2 id="{{ .id }}">{{ .title }}</h2>
-    {{ with .description }}<p>{{ . }}</p>{{ end }}
-    <div class="mp-cards mp-cards--2">
-      {{ $group := . }}
-      {{ range $group.kinds }}
-        {{ $k := . }}
-        {{ range $plural, $dir := hugo.Data.apis.crds }}
-          {{ $crd := $dir.definition }}
-          {{ if and $crd (eq $crd.spec.names.kind $k) }}
-            {{ $page := site.GetPage (printf "/reference/%s" $plural) }}
-            {{ with $page }}
-              <a class="mp-card mp-card--link" href="{{ .Permalink }}">
-                <span class="mp-card-head"><span class="mp-card-title">{{ $k }}</span></span>
-                {{ with .Description }}<span class="mp-card-note">{{ . }}</span>{{ end }}
-                <span class="mp-card-link">&rarr;</span>
-              </a>
-            {{ end }}
-          {{ end }}
-        {{ end }}
-      {{ end }}
-    </div>
-  </section>
+{{ $refPages := .RegularPages.ByWeight }}
+{{ $ungrouped := where $refPages "Params.apiGroup" "other" }}
+{{ $groups := hugo.Data.apigroups.groups }}
+{{ if $ungrouped }}
+  {{ $groups = $groups | append (dict "id" "other" "title" "Other") }}
 {{ end }}
 
+{{ range $groups }}
+  {{ $groupPages := where $refPages "Params.apiGroup" .id }}
+  {{ if $groupPages }}
+    <section class="api-index-group">
+      <h2 id="{{ .id }}">{{ .title }}</h2>
+      {{ with .description }}<p>{{ . }}</p>{{ end }}
+      <div class="mp-recipe-rows">
+        {{ range $groupPages }}
+          {{ $def := (index hugo.Data.apis.crds .Params.plural).definition }}
+          {{ $ver := "" }}
+          {{ range $def.spec.versions }}{{ if or .served (not $ver) }}{{ $ver = .name }}{{ end }}{{ end }}
+          <a class="mp-recipe-row mp-crd-row" href="{{ .Permalink }}">
+            <span class="mp-row-id">
+              <span class="mp-row-name">{{ .Title }}</span>
+              {{ with .Description }}<span class="mp-row-desc">{{ . }}</span>{{ end }}
+            </span>
+            <span class="mp-row-chips">
+              <span class="mp-vchip">{{ $def.spec.scope }}</span>
+              <span class="mp-vchip">{{ $def.spec.group }}/{{ $ver }}</span>
+            </span>
+            <span class="mp-row-meta"><span class="mp-row-arrow">&rarr;</span></span>
+          </a>
+        {{ end }}
+      </div>
+    </section>
+  {{ end }}
+{{ end }}

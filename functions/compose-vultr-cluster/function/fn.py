@@ -60,6 +60,16 @@ _SYSTEM_POOL_MAX_NODES = 2
 _LABEL_GPU = "modelplane.ai/gpu"
 _LABEL_POOL = "modelplane.ai/pool"
 
+# Silences the device plugin of VKE's managed GPU Operator add-on on
+# Modelplane's GPU nodes: the operator respects a pre-set false label
+# and won't run the plugin there, leaving the DRA driver's
+# ResourceSlices as the sole GPU allocator. Without it, the plugin's
+# nvidia.com/gpu ledger and the ResourceSlices would book the same
+# physical devices independently. The add-on's DCGM metrics and GPU
+# feature discovery keep running; only the competing allocator goes.
+_LABEL_DEVICE_PLUGIN_KEY = "nvidia.com/gpu.deploy.device-plugin"
+_LABEL_DEVICE_PLUGIN_VALUE = "false"
+
 # Secret type written to XR status. compose-inference-cluster reads this to
 # wire the kubeconfig into a ClusterProviderConfig.
 _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
@@ -279,6 +289,7 @@ class Composer:
         labels = [vkenodepoolv1beta1.Label(key=_LABEL_POOL, value=pool.name)]
         if pool.role == "GPU" and pool.gpu:
             labels.append(vkenodepoolv1beta1.Label(key=_LABEL_GPU, value=pool.gpu.acceleratorType))
+            labels.append(vkenodepoolv1beta1.Label(key=_LABEL_DEVICE_PLUGIN_KEY, value=_LABEL_DEVICE_PLUGIN_VALUE))
 
         fp = vkenodepoolv1beta1.ForProvider(
             label=pool.name,

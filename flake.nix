@@ -12,8 +12,6 @@
     # tracking the latest uv_build releases.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    crossplane-cli.url = "github:crossplane/cli/v2.5.0";
-
     # uv2nix reads a uv workspace's uv.lock and generates Nix derivations
     # for each Python package, using pyproject.nix's build infrastructure.
     pyproject-nix = {
@@ -42,7 +40,6 @@
       self,
       nixpkgs,
       nixpkgs-unstable,
-      crossplane-cli,
       pyproject-nix,
       uv2nix,
       pyproject-build-systems,
@@ -103,6 +100,8 @@
               # Current Upbound CLI; nixpkgs' package lags the stable
               # channel (see nix/upbound.nix).
               (import ./nix/upbound.nix)
+              # NVIDIA AICR CLI; nixpkgs has no package (see nix/aicr.nix).
+              (import ./nix/aicr.nix)
             ];
           };
         };
@@ -157,7 +156,7 @@
       apps = forAllSystems (
         { pkgs, system, ... }:
         let
-          deps = import ./nix/deps.nix { inherit pkgs crossplane-cli; };
+          deps = import ./nix/deps.nix { inherit pkgs; };
           apps = import ./nix/apps.nix { inherit pkgs; };
           crossplane = deps.crossplane { inherit system; };
           functionsPkg = self.packages.${system}.functions or null;
@@ -178,6 +177,7 @@
           };
           stop = apps.stop { inherit crossplane; };
           e2e = apps.e2e { inherit crossplane functionsPkg; };
+          stacks = apps.stacks { inherit (pkgs) aicr; };
           docs-serve = apps.docsServe { };
           docs-generate = apps.docsGenerate { };
         }
@@ -186,7 +186,7 @@
       devShells = forAllSystems (
         { pkgs, system, ... }:
         let
-          deps = import ./nix/deps.nix { inherit pkgs crossplane-cli; };
+          deps = import ./nix/deps.nix { inherit pkgs; };
           crossplane = deps.crossplane { inherit system; };
         in
         {
@@ -194,6 +194,7 @@
             buildInputs = [
               crossplane
               pkgs.upbound
+              pkgs.aicr
               pkgs.kubectl
               pkgs.kubernetes-helm
               pkgs.kind
@@ -222,6 +223,7 @@
               echo "  nix run .#build               nix run .#push"
               echo "  nix run .#run                 nix run .#stop"
               echo "  nix run .#docs-serve          nix run .#docs-generate"
+              echo "  nix run .#stacks"
               echo ""
             '';
           };
