@@ -105,8 +105,9 @@ end.
 ## Accelerating with ModelExpress
 
 A cache's weights always live on its own PVC, portable across every cluster. On a
-Dynamo cluster (`InferenceCluster.spec.stack: Dynamo`) the serving stack also
-runs a [ModelExpress](https://github.com/ai-dynamo/modelexpress) server, and
+[Dynamo cluster]({{< ref "/platform/inference-cluster.md#serving-stack" >}}) the
+serving stack also runs a
+[ModelExpress](https://github.com/ai-dynamo/modelexpress) server, and
 Modelplane injects ModelExpress env into every engine pod that references a
 cache. An engine opts in with `--load-format modelexpress`: the first replica
 loads from its PVC seed and publishes itself as a source, and later replicas pull
