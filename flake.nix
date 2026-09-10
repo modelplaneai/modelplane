@@ -12,8 +12,6 @@
     # tracking the latest uv_build releases.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    crossplane-cli.url = "github:crossplane/cli/v2.5.0";
-
     # uv2nix reads a uv workspace's uv.lock and generates Nix derivations
     # for each Python package, using pyproject.nix's build infrastructure.
     pyproject-nix = {
@@ -42,7 +40,6 @@
       self,
       nixpkgs,
       nixpkgs-unstable,
-      crossplane-cli,
       pyproject-nix,
       uv2nix,
       pyproject-build-systems,
@@ -159,7 +156,7 @@
       apps = forAllSystems (
         { pkgs, system, ... }:
         let
-          deps = import ./nix/deps.nix { inherit pkgs crossplane-cli; };
+          deps = import ./nix/deps.nix { inherit pkgs; };
           apps = import ./nix/apps.nix { inherit pkgs; };
           crossplane = deps.crossplane { inherit system; };
           functionsPkg = self.packages.${system}.functions or null;
@@ -189,7 +186,7 @@
       devShells = forAllSystems (
         { pkgs, system, ... }:
         let
-          deps = import ./nix/deps.nix { inherit pkgs crossplane-cli; };
+          deps = import ./nix/deps.nix { inherit pkgs; };
           crossplane = deps.crossplane { inherit system; };
         in
         {

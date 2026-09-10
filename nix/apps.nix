@@ -158,10 +158,15 @@
               esac
             done
 
+            # Skip the default ManagedResourceActivationPolicy: it activates
+            # every MRD each installed provider ships, and this project pulls
+            # in the full AWS/GCP/Azure provider families. The compositions
+            # activate exactly the MRs they compose.
+            #
             # On failure, dump the package revision state: installs time out
             # with only "context deadline exceeded", and under nix.sh the
             # cluster is gone by the time anyone can look at it.
-            if ! crossplane project run "''${timeout_args[@]}" "''${version_args[@]}" "$@"; then
+            if ! crossplane project run --no-default-mrap "''${timeout_args[@]}" "''${version_args[@]}" "$@"; then
               echo ""
               echo "crossplane project run failed; package revision state:"
               for cluster in $(kind get clusters 2>/dev/null); do
