@@ -43,6 +43,7 @@ from models.ai.modelplane.infrastructure.ekscluster import v1alpha1 as eksv1alph
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from models.ai.modelplane.infrastructure.nebiuscluster import v1alpha1 as nebiusv1alpha1
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alpha1
+from models.ai.modelplane.infrastructure.vultrbaremetalcluster import v1alpha1 as vbmv1alpha1
 from models.ai.modelplane.infrastructure.vultrcluster import v1alpha1 as vultrv1alpha1
 from models.io.crossplane.apiextensions.managedresourceactivationpolicy import (
     v1alpha1 as mrapv1alpha1,
@@ -57,13 +58,29 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 # Cluster source discriminator values from the XRD enum. The Literal
 # mirrors ServingStack spec.cloud, so passing a wrong or unsupported
 # cloud fails type checking; Final makes each constant a literal type.
-Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Existing"]
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "VultrBaremetal", "Existing"]
 CLUSTER_SOURCE_GKE: Final = "GKE"
 CLUSTER_SOURCE_EKS: Final = "EKS"
 CLUSTER_SOURCE_AKS: Final = "AKS"
 CLUSTER_SOURCE_NEBIUS: Final = "Nebius"
 CLUSTER_SOURCE_VULTR: Final = "Vultr"
+CLUSTER_SOURCE_VULTR_BAREMETAL: Final = "VultrBaremetal"
 CLUSTER_SOURCE_EXISTING: Final = "Existing"
+
+# The accelerator vendors each cloud's serving stack can install. Kept
+# in sync with ACCELERATOR_VENDORS in compose-serving-stack's stacks
+# package, which is the authoritative table next to the component lists
+# themselves. Existing is BYO: the cluster's operator manages the
+# accelerator stack, so any vendor goes.
+_CLOUD_ACCELERATOR_VENDORS: Final[dict[str, frozenset[str]]] = {
+    CLUSTER_SOURCE_GKE: frozenset({"NVIDIA"}),
+    CLUSTER_SOURCE_EKS: frozenset({"NVIDIA"}),
+    CLUSTER_SOURCE_AKS: frozenset({"NVIDIA"}),
+    CLUSTER_SOURCE_NEBIUS: frozenset({"NVIDIA"}),
+    CLUSTER_SOURCE_VULTR: frozenset({"NVIDIA"}),
+    CLUSTER_SOURCE_VULTR_BAREMETAL: frozenset({"AMD", "NVIDIA"}),
+    CLUSTER_SOURCE_EXISTING: frozenset({"AMD", "NVIDIA"}),
+}
 
 # Condition types and reasons for the InferenceCluster XR.
 CONDITION_TYPE_CLUSTER_READY = "ClusterReady"
@@ -76,6 +93,7 @@ CONDITION_REASON_WAITING_FOR_CLASSES = "WaitingForClasses"
 CONDITION_REASON_BACKEND_HEALTHY = "BackendHealthy"
 CONDITION_REASON_INSTALLING = "Installing"
 CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
+CONDITION_REASON_UNSUPPORTED_DEVICES = "UnsupportedDevices"
 
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "serving-stack"
@@ -221,6 +239,31 @@ class Composer:
             return
 
         source = cluster.source
+
+        # A cloud's serving stack can only drive the accelerator vendors
+        # it has components for - an AMD-device class on an NVIDIA-only
+        # cloud would provision GPUs nothing can drive. Checked here
+        # rather than at admission: the class alone doesn't know which
+        # cluster will reference it, only the pairing does.
+        supported = _CLOUD_ACCELERATOR_VENDORS.get(source)
+        unsupported = sorted(set(self.accelerator_vendors()) - supported) if supported is not None else []
+        if unsupported:
+            msg = (
+                f"{', '.join(unsupported)} devices are not supported on {source}: "
+                f"its serving stack installs only {', '.join(sorted(supported or []))} accelerator stacks"
+            )
+            response.set_conditions(
+                self.rsp,
+                resource.Condition(
+                    typ=CONDITION_TYPE_CLUSTER_READY,
+                    status="False",
+                    reason=CONDITION_REASON_UNSUPPORTED_DEVICES,
+                    message=msg,
+                ),
+            )
+            response.warning(self.rsp, msg)
+            return
+
         if source == CLUSTER_SOURCE_GKE:
             self.compose_gke(cluster.gke)
         elif source == CLUSTER_SOURCE_EKS:
@@ -231,6 +274,8 @@ class Composer:
             self.compose_nebius(cluster.nebius)
         elif source == CLUSTER_SOURCE_VULTR:
             self.compose_vultr(cluster.vultr)
+        elif source == CLUSTER_SOURCE_VULTR_BAREMETAL:
+            self.compose_vultr_baremetal(cluster.vultrBaremetal)
         elif source == CLUSTER_SOURCE_EXISTING:
             self.compose_existing(cluster.existing)
         else:
@@ -571,6 +616,65 @@ class Composer:
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=vultr_ready)
 
+    def compose_vultr_baremetal(self, vultr_baremetal: v1alpha1.VultrBaremetal | None) -> None:
+        """Compose an InferenceCluster backed by Modelplane-provisioned
+        Vultr bare metal servers running k3s. Composes the
+        VultrBaremetalCluster XR, waits for it to be ready, then wires
+        its kubeconfig into the backend.
+
+        The k3s kubeconfig embeds a static client certificate, so the
+        kubeconfig alone is enough to reach the cluster and no identity
+        is layered on the ClusterProviderConfig. The backend gets the
+        GPU vendors the classes name, so the serving stack installs only
+        the matching GPU operators.
+        """
+        if not vultr_baremetal:
+            response.warning(self.rsp, "VultrBaremetal configuration is required when source is VultrBaremetal")
+            return
+
+        self.compose_vultr_baremetal_cluster(vultr_baremetal)
+
+        ready = (
+            resource.get_condition(self.req.observed.resources.get("vultr-baremetal-cluster"), "Ready").status == "True"
+        )
+        kubeconfig = self.observed_vultr_baremetal_secret(_SECRET_TYPE_KUBECONFIG)
+        backend_exists = BACKEND_RESOURCE_KEY in self.req.observed.resources
+
+        if ready and kubeconfig:
+            self.compose_cluster_provider_config(kubeconfig.name, kubeconfig.key)
+
+        backend_secrets = self.resolve_vultr_baremetal_backend_secrets(ready=ready, backend_exists=backend_exists)
+        if backend_secrets or backend_exists:
+            if backend_secrets:
+                self.compose_serving_stack(
+                    backend_secrets, CLUSTER_SOURCE_VULTR_BAREMETAL, accelerators=self.accelerator_vendors()
+                )
+            self.compose_vultr_baremetal_usage()
+
+        if ready:
+            self.rsp.desired.resources["vultr-baremetal-cluster"].ready = fnv1.READY_TRUE
+            if not backend_exists:
+                response.normal(self.rsp, "Vultr bare metal cluster ready, composing backend")
+
+        self.write_status(self.gpu_pools())
+        self.derive_conditions(cluster_ready=ready)
+
+    def accelerator_vendors(self) -> list[Literal["AMD", "NVIDIA"]]:
+        """The accelerator vendors the resolved classes' devices name,
+        from each device's DRA driver (gpu.amd.com, gpu.nvidia.com).
+        Sorted so the composed ServingStack spec is deterministic."""
+        vendors: set[Literal["AMD", "NVIDIA"]] = set()
+        for pool in self.xr.spec.nodePools or []:
+            cls = self.classes.get(pool.className)
+            if not cls:
+                continue
+            for device in cls.spec.devices or []:
+                if "amd" in device.driver:
+                    vendors.add("AMD")
+                elif "nvidia" in device.driver:
+                    vendors.add("NVIDIA")
+        return sorted(vendors)
+
     def compose_existing(self, existing: v1alpha1.Existing | None) -> None:
         """Compose an InferenceCluster backed by a user-supplied cluster.
         No gating needed — the kubeconfig secret is provided by the user."""
@@ -604,19 +708,24 @@ class Composer:
         self,
         backend_secrets: list[ssv1alpha1.Secret],
         cloud: Cloud,
+        accelerators: list[Literal["AMD", "NVIDIA"]] | None = None,
     ) -> None:
         """Compose a ServingStack XR with the given secrets.
 
         cloud names the cluster's source (this XR's spec.cluster.source)
         and selects the component list the serving stack installs,
         including cloud specifics like where the node image puts the
-        NVIDIA driver.
+        NVIDIA driver. accelerators, when set, filters the cloud's
+        vendor-tagged components to the vendors the classes actually
+        name.
         """
         spec = ssv1alpha1.Spec(
             secrets=backend_secrets,
             stack=self.xr.spec.stack,
             cloud=cloud,
         )
+        if accelerators:
+            spec.accelerators = accelerators
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(
@@ -1215,6 +1324,137 @@ class Composer:
         if not vultr_secrets:
             return None
         return next((s for s in vultr_secrets if s.type == secret_type), None)
+
+    def compose_vultr_baremetal_cluster(self, vultr_baremetal: v1alpha1.VultrBaremetal) -> None:
+        """Compose a VultrBaremetalCluster XR.
+
+        Combines the cluster-level config (region, management server,
+        SSH key pair, k3s release) with GPU pools derived from the
+        user's node pools + referenced classes.
+        """
+        pools: list[vbmv1alpha1.NodePool] = []
+
+        for pool in self.xr.spec.nodePools or []:
+            cls = self.classes.get(pool.className)
+            if not cls or not cls.spec.provisioning or not cls.spec.provisioning.vultrBaremetal:
+                msg = f"InferenceClass {pool.className} has no VultrBaremetal provisioning block"
+                response.set_conditions(
+                    self.rsp,
+                    resource.Condition(
+                        typ=CONDITION_TYPE_CLUSTER_READY,
+                        status="False",
+                        reason=CONDITION_REASON_INVALID_NODE_POOL,
+                        message=msg,
+                    ),
+                )
+                response.warning(self.rsp, msg)
+                return
+            prov = cls.spec.provisioning.vultrBaremetal
+            pools.append(
+                vbmv1alpha1.NodePool(
+                    name=pool.name,
+                    plan=prov.plan,
+                    nodeCount=pool.nodeCount,
+                    gpu=vbmv1alpha1.Gpu(acceleratorType=prov.accelerator.type),
+                ),
+            )
+
+        ssh = vultr_baremetal.ssh
+        spec = vbmv1alpha1.Spec(
+            region=vultr_baremetal.region,
+            ssh=vbmv1alpha1.Ssh(
+                secretRef=vbmv1alpha1.SecretRef(
+                    name=ssh.secretRef.name,
+                    privateKeyKey=ssh.secretRef.privateKeyKey,
+                    publicKeyKey=ssh.secretRef.publicKeyKey,
+                ),
+                username=ssh.username,
+            ),
+            nodePools=pools,
+        )
+        if vultr_baremetal.management:
+            spec.management = vbmv1alpha1.Management(
+                plan=vultr_baremetal.management.plan,
+                osId=vultr_baremetal.management.osId,
+            )
+        if vultr_baremetal.k3s:
+            spec.k3s = vbmv1alpha1.K3s(channel=vultr_baremetal.k3s.channel)
+        if vultr_baremetal.credentials:
+            spec.credentials = vbmv1alpha1.Credentials(
+                type=vultr_baremetal.credentials.type,
+                name=vultr_baremetal.credentials.name,
+            )
+        resource.update(
+            self.rsp.desired.resources["vultr-baremetal-cluster"],
+            vbmv1alpha1.VultrBaremetalCluster(
+                metadata=metav1.ObjectMeta(
+                    name=_name(self.xr.metadata),
+                    namespace=_NAMESPACE_SYSTEM,
+                ),
+                spec=spec,
+            ),
+        )
+
+    def compose_vultr_baremetal_usage(self) -> None:
+        """Block VultrBaremetalCluster deletion until the backend is deleted."""
+        resource.update(
+            self.rsp.desired.resources["usage-vultr-baremetal-by-backend"],
+            usagev1beta1.Usage(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=usagev1beta1.Spec(
+                    of=usagev1beta1.Of(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="VultrBaremetalCluster",
+                        resourceSelector=usagev1beta1.ResourceSelectorModel(matchControllerRef=True),
+                    ),
+                    by=usagev1beta1.By(
+                        apiVersion="infrastructure.modelplane.ai/v1alpha1",
+                        kind="ServingStack",
+                        resourceSelector=usagev1beta1.ResourceSelector(matchControllerRef=True),
+                    ),
+                    replayDeletion=True,
+                ),
+            ),
+        )
+        self.rsp.desired.resources["usage-vultr-baremetal-by-backend"].ready = fnv1.READY_TRUE
+
+    def resolve_vultr_baremetal_backend_secrets(
+        self, *, ready: bool, backend_exists: bool
+    ) -> list[ssv1alpha1.Secret] | None:
+        """Resolve secrets for the backend from VultrBaremetalCluster
+        status. Falls back to the observed backend's spec.secrets if the
+        cluster's secrets aren't available but the backend already exists."""
+        secrets = self.observed_vultr_baremetal_secrets()
+
+        if ready and secrets:
+            return [ssv1alpha1.Secret(type=s.type, name=s.name, key=s.key) for s in secrets]
+
+        if backend_exists:
+            observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+            if observed:
+                d = resource.struct_to_dict(observed.resource)
+                observed_secrets = d.get("spec", {}).get("secrets", [])
+                if observed_secrets:
+                    return [ssv1alpha1.Secret(type=s["type"], name=s["name"], key=s["key"]) for s in observed_secrets]
+
+        return None
+
+    def observed_vultr_baremetal_secrets(self) -> list[vbmv1alpha1.Secret] | None:
+        """Read the VultrBaremetalCluster's status.secrets from observed state."""
+        observed = self.req.observed.resources.get("vultr-baremetal-cluster")
+        if not observed:
+            return None
+        cluster = vbmv1alpha1.VultrBaremetalCluster.model_validate(resource.struct_to_dict(observed.resource))
+        if not cluster.status:
+            return None
+        return cluster.status.secrets
+
+    def observed_vultr_baremetal_secret(self, secret_type: str) -> vbmv1alpha1.Secret | None:
+        """Read a specific secret from the observed VultrBaremetalCluster status."""
+        secrets = self.observed_vultr_baremetal_secrets()
+        if not secrets:
+            return None
+        return next((s for s in secrets if s.type == secret_type), None)
 
     def compose_eks_usage(self) -> None:
         """Block EKSCluster deletion until the backend is deleted."""

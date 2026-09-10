@@ -229,8 +229,13 @@ class Composer:
         # The XRD requires and enums both fields, so the join raising means the
         # API and the stacks package disagree on a value, a broken Modelplane
         # build, not a cluster condition. Let it crash rather than dress it up
-        # as a fatal result.
-        components = stacks.join(self.xr.spec.cloud, self.xr.spec.stack or "Standard")
+        # as a fatal result. spec.accelerators, when set, filters the cloud's
+        # vendor-tagged accelerator components to the vendors actually present.
+        components = stacks.join(
+            self.xr.spec.cloud,
+            self.xr.spec.stack or "Standard",
+            accelerator_vendors=self.xr.spec.accelerators,
+        )
 
         rendered = self.compose_components(components)
         rendered += self.compose_gateway()

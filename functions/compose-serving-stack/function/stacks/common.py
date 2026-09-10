@@ -181,10 +181,13 @@ COMPONENTS: list[Component] = [
     # priority. GKE only admits such pods in a namespace whose
     # ResourceQuota permits those priority classes; without it the
     # daemonset gets FailedCreate and never publishes ResourceSlices.
-    # Laid down everywhere: it only grants headroom, so it's harmless on
-    # clusters that don't restrict them.
+    # Laid down everywhere the NVIDIA stack runs: it only grants
+    # headroom, so it's harmless on clusters that don't restrict them.
+    # The vendor tag keeps it off clusters where nothing creates the
+    # nvidia-dra-driver namespace, where the Object could never apply.
     Manifests(
         key="dra-driver-critical-pods-quota",
+        accelerator_vendor="NVIDIA",
         manifests=[
             {
                 "apiVersion": "v1",

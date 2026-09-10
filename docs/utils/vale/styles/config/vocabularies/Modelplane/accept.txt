@@ -29,6 +29,11 @@ ModelReplica
 ModelReplicas
 ModelService
 ModelServices
+K3sCluster
+VultrBaremetalCluster
+VultrBaremetal
+VultrCluster
+ServiceLB
 
 # Spec fields and config keys
 clusterSelector

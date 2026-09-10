@@ -217,6 +217,11 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                                 "operator": "Exists",
                                                                 "effect": "NoSchedule",
                                                             },
+                                                            {
+                                                                "key": "amd.com/gpu",
+                                                                "operator": "Exists",
+                                                                "effect": "NoSchedule",
+                                                            },
                                                         ],
                                                     },
                                                 },

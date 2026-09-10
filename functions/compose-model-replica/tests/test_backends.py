@@ -232,7 +232,10 @@ _NATIVE_WANT = {
                             "resourceClaimTemplateName": resource.child_name("r", "main", "standalone", "devices"),
                         }
                     ],
-                    "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
+                    "tolerations": [
+                        {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                        {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                    ],
                 },
             },
         },
@@ -258,7 +261,10 @@ def _clique(manifest: dict, name: str) -> dict:
 
 def _pcs(leader_container: dict, worker_container: dict, *, worker_replicas: int = 1, copies: int = 1) -> dict:
     node_selector = {"modelplane.ai/pool": "frontier"}
-    tolerations = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
+    tolerations = [
+        {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+        {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+    ]
 
     def pod_spec(container: dict, role: str) -> dict:
         return {
@@ -619,7 +625,11 @@ class TestBackendManifests(unittest.TestCase):
         self.assertNotIn("resources", leader["containers"][0])
         self.assertEqual(leader["nodeSelector"], {"modelplane.ai/pool": "frontier"})
         self.assertEqual(
-            leader["tolerations"], [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
+            leader["tolerations"],
+            [
+                {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+            ],
         )
 
         worker = _clique(manifest, "worker")["spec"]["podSpec"]

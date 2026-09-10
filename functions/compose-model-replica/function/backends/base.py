@@ -551,12 +551,18 @@ def engine_resources() -> dict:
     return {"claims": [{"name": _POD_CLAIM_NAME}]}
 
 
-# Taint GPU node groups carry so non-GPU pods don't land on them. A pod that
-# claims a GPU must tolerate it to schedule there. With GPUs bound via DRA (not
-# the device plugin's extended resource), nothing injects this toleration for us
-# - the ExtendedResourceToleration admission controller only acts on
-# nvidia.com/gpu resource requests, which DRA pods don't make.
-_GPU_TOLERATION = {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}
+# Taints GPU node groups carry so non-GPU pods don't land on them. A pod that
+# claims a GPU must tolerate its pool's taint to schedule there. With GPUs
+# bound via DRA (not the device plugin's extended resource), nothing injects
+# these tolerations for us - the ExtendedResourceToleration admission
+# controller only acts on nvidia.com/gpu resource requests, which DRA pods
+# don't make. The pool carries one vendor's taint; tolerating the other
+# vendor's too is harmless, so both are always added rather than threading
+# the vendor through here.
+_GPU_TOLERATIONS = [
+    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+    {"key": "amd.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+]
 
 # Node label identifying the pool a node belongs to. compose-eks-cluster and
 # compose-gke-cluster stamp it on every node group they provision; the scheduler
@@ -597,7 +603,7 @@ def place_pod(pod_spec: dict, replica: v1alpha1.ModelReplica, engine: v1alpha1.E
         pod_spec["resourceClaims"] = [
             {"name": _POD_CLAIM_NAME, "resourceClaimTemplateName": claim_template_name(replica, engine, member)}
         ]
-    pod_spec.setdefault("tolerations", []).append(_GPU_TOLERATION)
+    pod_spec.setdefault("tolerations", []).extend(_GPU_TOLERATIONS)
 
 
 def resource_claim_template(

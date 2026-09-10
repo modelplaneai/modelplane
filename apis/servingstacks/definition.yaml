@@ -60,7 +60,24 @@ spec:
                 - AKS
                 - Nebius
                 - Vultr
+                - VultrBaremetal
                 - Existing
+              accelerators:
+                type: array
+                description: >-
+                  Accelerator vendors present in the target cluster.
+                  Filters the cloud's vendor-tagged components: only the
+                  device stacks for the listed vendors are installed.
+                  When omitted, no vendor filtering happens and every
+                  component installs. Derived from the InferenceClasses
+                  by the cluster composition; only clouds whose component
+                  lists carry vendor tags (VultrBaremetal) are affected.
+                maxItems: 2
+                items:
+                  type: string
+                  enum:
+                  - AMD
+                  - NVIDIA
               secrets:
                 type: array
                 description: >-

@@ -1,0 +1,242 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: vultrbaremetalclusters.infrastructure.modelplane.ai
+spec:
+  group: infrastructure.modelplane.ai
+  names:
+    categories:
+    - crossplane
+    - modelplane
+    - infrastructure
+    kind: VultrBaremetalCluster
+    plural: vultrbaremetalclusters
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    additionalPrinterColumns:
+    - name: REGION
+      type: string
+      jsonPath: .spec.region
+    schema:
+      openAPIV3Schema:
+        description: >-
+          A VultrBaremetalCluster provisions Vultr bare metal servers and
+          installs a k3s cluster onto them. One CPU-only management server
+          runs the k3s server; each GPU pool's servers join as k3s agents.
+          Vultr bare metal has no autoscaling, so pools are fixed size. It
+          outputs a Secret containing the cluster kubeconfig. The
+          management server is a single point of failure for the cluster
+          control plane. Bare metal provisioning takes tens of minutes.
+        properties:
+          spec:
+            description: >-
+              VultrBaremetalClusterSpec defines the desired state of
+              VultrBaremetalCluster.
+            required:
+            - region
+            - ssh
+            - nodePools
+            properties:
+              region:
+                type: string
+                description: >-
+                  Vultr region for all servers (e.g. ewr, ord). Bare metal
+                  plan availability varies by region; check with
+                  vultr-cli plans list --type vbm.
+                minLength: 1
+                maxLength: 32
+              management:
+                type: object
+                default: {}
+                description: >-
+                  The CPU-only bare metal server that runs the k3s server
+                  (the management plane).
+                properties:
+                  plan:
+                    type: string
+                    default: vbm-6c-32gb-amd
+                    description: >-
+                      Vultr bare metal plan for the management server. The
+                      default is a CPU-only plan available in most regions
+                      that offer bare metal.
+                    minLength: 1
+                    maxLength: 63
+                  osId:
+                    type: integer
+                    default: 2284
+                    description: >-
+                      Vultr operating system ID installed on the server.
+                      Defaults to Ubuntu 24.04 LTS x64; list IDs with
+                      vultr-cli os list.
+              ssh:
+                type: object
+                description: >-
+                  SSH key pair used to reach the servers. The public key
+                  is registered with Vultr and installed on every server;
+                  the private key drives the k3s install over SSH.
+                required:
+                - secretRef
+                properties:
+                  secretRef:
+                    type: object
+                    description: >-
+                      Secret holding the SSH key pair, in the same
+                      namespace as this VultrBaremetalCluster.
+                    required:
+                    - name
+                    properties:
+                      name:
+                        type: string
+                        description: Name of the Secret.
+                        minLength: 1
+                        maxLength: 253
+                      privateKeyKey:
+                        type: string
+                        default: ssh-privatekey
+                        description: Key within the Secret that holds the private key.
+                        minLength: 1
+                        maxLength: 253
+                      publicKeyKey:
+                        type: string
+                        default: ssh-publickey
+                        description: Key within the Secret that holds the public key.
+                        minLength: 1
+                        maxLength: 253
+                  username:
+                    type: string
+                    default: root
+                    description: >-
+                      SSH user the servers accept the key for. Vultr
+                      installs keys for root by default.
+                    minLength: 1
+                    maxLength: 63
+              credentials:
+                type: object
+                description: >-
+                  Vultr ProviderConfig or ClusterProviderConfig used to
+                  authenticate to the Vultr API. Defaults to the
+                  ClusterProviderConfig named default.
+                properties:
+                  type:
+                    type: string
+                    default: ClusterProviderConfig
+                    enum:
+                    - ProviderConfig
+                    - ClusterProviderConfig
+                  name:
+                    type: string
+                    default: default
+                    minLength: 1
+                    maxLength: 253
+              k3s:
+                type: object
+                default: {}
+                description: The k3s release installed on the servers.
+                properties:
+                  channel:
+                    type: string
+                    default: v1.34
+                    description: >-
+                      k3s release channel. Defaults to the first channel
+                      where Dynamic Resource Allocation (how GPUs bind to
+                      pods) is generally available.
+                    minLength: 1
+                    maxLength: 32
+              nodePools:
+                type: array
+                description: >-
+                  GPU bare metal pools that join the cluster as workers.
+                  Fixed size; Vultr bare metal has no autoscaling.
+                minItems: 1
+                maxItems: 8
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys:
+                - name
+                items:
+                  type: object
+                  required:
+                  - name
+                  - plan
+                  - gpu
+                  properties:
+                    name:
+                      type: string
+                      description: Unique name for this pool.
+                      minLength: 1
+                      maxLength: 40
+                    plan:
+                      type: string
+                      description: >-
+                        Vultr bare metal plan ID for the pool's servers
+                        (e.g. vbm-256c-3072gb-8-mi355x-gpu).
+                      minLength: 1
+                      maxLength: 63
+                    nodeCount:
+                      type: integer
+                      default: 1
+                      description: Number of servers in this pool.
+                      minimum: 1
+                      maximum: 64
+                    osId:
+                      type: integer
+                      description: >-
+                        Vultr operating system ID for the pool's servers.
+                        Defaults to the management server's osId.
+                    gpu:
+                      type: object
+                      description: GPU configuration.
+                      required:
+                      - acceleratorType
+                      properties:
+                        acceleratorType:
+                          type: string
+                          description: >-
+                            GPU accelerator type (e.g. amd-mi355x). Used
+                            to label the pool's nodes; the actual GPU and
+                            count are determined by the plan.
+                          minLength: 1
+                          maxLength: 63
+            type: object
+          status:
+            description: >-
+              VultrBaremetalClusterStatus defines the observed state of
+              VultrBaremetalCluster.
+            properties:
+              secrets:
+                type: array
+                description: >-
+                  Secrets produced by this cluster. Consumers use these to
+                  authenticate to the cluster. All secrets are in the same
+                  namespace as this VultrBaremetalCluster.
+                items:
+                  type: object
+                  required:
+                  - type
+                  - name
+                  - key
+                  properties:
+                    type:
+                      type: string
+                      description: >-
+                        The type of credential this secret contains.
+                        Kubeconfig contains a kubeconfig file with the
+                        cluster endpoint, CA certificate, and a static
+                        client certificate.
+                      enum:
+                      - Kubeconfig
+                    name:
+                      type: string
+                      description: Name of the Secret.
+                      maxLength: 253
+                    key:
+                      type: string
+                      description: >-
+                        Key within the Secret that holds the credential data.
+                      maxLength: 253
+            type: object
+        required:
+        - spec
+        type: object
+    served: true

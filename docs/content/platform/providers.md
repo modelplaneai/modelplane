@@ -12,7 +12,7 @@ A provider can show up here in three ways:
 
 {{< hint "note" >}}
 - **Provisioning supported.** Modelplane creates and manages the whole cluster
-  from an `InferenceCluster`, selected through `provisioning.provider`. GKE, EKS, AKS, Nebius mk8s, Vultr VKE work this way today.
+  from an `InferenceCluster`, selected through `provisioning.provider`. GKE, EKS, AKS, Nebius mk8s, Vultr VKE, and Vultr Bare Metal (K3s) work this way today.
 - **Bring your own supported.** Register a cluster you already run with
   `source: Existing`. This works on any provider whose Kubernetes meets
   Modelplane's requirements (Dynamic Resource Allocation and a recent Kubernetes
@@ -53,16 +53,19 @@ native provisioning.
 | Tencent Cloud (TKE) | {{< accel nvidia >}} | Planned | ✓ | {{< repolink "https://github.com/crossplane-contrib/provider-tencentcloud" "provider-tencentcloud" "community" >}} |
 | Voltage Park | {{< accel nvidia >}} | Planned | ✓ | none yet |
 | Vultr (VKE) | {{< accel nvidia >}} {{< accel amd >}} | ✓ | ✓ | {{< repolink "https://github.com/upbound/provider-vultr" "provider-vultr" "community" >}} |
+| Vultr (Bare Metal, K3s) | {{< accel amd >}} {{< accel nvidia >}} | ✓ | ✓ | {{< repolink "https://github.com/upbound/provider-vultr" "provider-vultr" "community" >}} |
 {{< /table >}}
 
 {{< hint "note" >}}
 **On-premises and bare metal.** Bring an on-prem cluster the same way as any
 other: stand up Kubernetes on your own hardware (like NVIDIA DGX BasePOD
 or SuperPOD) with NVIDIA Base Command Manager, Run:ai, or your own tooling, then
-register it with `source: Existing`. Provisioning it for you is on the roadmap
-too. Modelplane can drive NVIDIA Base Command Manager or other bare-metal
-Kubernetes provisioners through Crossplane, the same pattern it uses in the
-cloud.
+register it with `source: Existing`. On Vultr, Modelplane provisions bare metal
+natively: `source: VultrBaremetal` creates the servers and installs a K3s
+cluster onto them over SSH (a single K3s server, exposed through K3s's built-in
+ServiceLB rather than a cloud load balancer). The K3s layer only needs machine
+addresses and SSH credentials, so the same pattern extends to other bare-metal
+providers through Crossplane.
 <!-- vale ai-tells.ShipOveruse = NO -->
 
 {{< /hint >}}

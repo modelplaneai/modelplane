@@ -44,10 +44,12 @@ spec:
                   message: spec.provisioning.nebius is required when spec.provisioning.provider is Nebius.
                 - rule: "self.provider != 'Vultr' || has(self.vultr)"
                   message: spec.provisioning.vultr is required when spec.provisioning.provider is Vultr.
+                - rule: "self.provider != 'VultrBaremetal' || has(self.vultrBaremetal)"
+                  message: spec.provisioning.vultrBaremetal is required when spec.provisioning.provider is VultrBaremetal.
                 properties:
                   provider:
                     type: string
-                    enum: [GKE, EKS, AKS, Nebius, Vultr]
+                    enum: [GKE, EKS, AKS, Nebius, Vultr, VultrBaremetal]
                   gke:
                     type: object
                     required: [machineType, accelerator]
@@ -236,6 +238,41 @@ spec:
                               GPU accelerator type (e.g. nvidia-l40s,
                               nvidia-a100). Informational - reported on
                               the consuming InferenceCluster's status.
+                            minLength: 1
+                            maxLength: 63
+                          count:
+                            type: integer
+                            minimum: 1
+                            maximum: 16
+                  vultrBaremetal:
+                    type: object
+                    required: [plan, accelerator]
+                    properties:
+                      plan:
+                        type: string
+                        description: >-
+                          Vultr bare metal plan ID (e.g.
+                          vbm-256c-3072gb-8-mi355x-gpu). The plan
+                          determines the GPU model and count; the
+                          accelerator block below is informational.
+                        minLength: 1
+                        maxLength: 63
+                      accelerator:
+                        type: object
+                        description: >-
+                          GPU accelerator the plan carries. Provisioning
+                          input only: the scheduler matches against
+                          spec.devices, not this block. The type's vendor
+                          prefix (amd-, nvidia-) selects the GPU node
+                          taint and labels.
+                        required: [type, count]
+                        properties:
+                          type:
+                            type: string
+                            description: >-
+                              GPU accelerator type (e.g. amd-mi355x,
+                              nvidia-h100). Reported on the consuming
+                              InferenceCluster's status.
                             minLength: 1
                             maxLength: 63
                           count:

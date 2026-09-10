@@ -125,6 +125,70 @@ class Vultr(BaseModel):
     """
 
 
+class K3s(BaseModel):
+    channel: constr(min_length=1, max_length=32) | None = 'v1.34'
+    """
+    k3s release channel. Defaults to the first channel where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
+    """
+
+
+class Management(BaseModel):
+    osId: int | None = 2284
+    """
+    Vultr operating system ID installed on every server. Defaults to Ubuntu 24.04 LTS x64; list IDs with vultr-cli os list.
+    """
+    plan: constr(min_length=1, max_length=63) | None = 'vbm-6c-32gb-amd'
+    """
+    Vultr bare metal plan for the management server. The default is a CPU-only plan available in most regions that offer bare metal.
+    """
+
+
+class SecretRefModel(BaseModel):
+    name: constr(min_length=1, max_length=253)
+    privateKeyKey: constr(min_length=1, max_length=253) | None = 'ssh-privatekey'
+    """
+    Key within the Secret that holds the private key.
+    """
+    publicKeyKey: constr(min_length=1, max_length=253) | None = 'ssh-publickey'
+    """
+    Key within the Secret that holds the public key.
+    """
+
+
+class Ssh(BaseModel):
+    secretRef: SecretRefModel
+    """
+    Secret holding the SSH key pair. The Secret must exist in the modelplane-system namespace.
+    """
+    username: constr(min_length=1, max_length=63) | None = 'root'
+    """
+    SSH user the servers accept the key for. Vultr installs keys for root by default.
+    """
+
+
+class VultrBaremetal(BaseModel):
+    credentials: Credentials | None = None
+    """
+    Vultr ProviderConfig or ClusterProviderConfig used to authenticate to the Vultr API. Defaults to the ClusterProviderConfig named default.
+    """
+    k3s: K3s | None = Field({}, validate_default=True)
+    """
+    The k3s release installed on the servers.
+    """
+    management: Management | None = Field({}, validate_default=True)
+    """
+    The CPU-only bare metal server that runs the k3s server (the management plane).
+    """
+    region: constr(min_length=1, max_length=32)
+    """
+    Vultr region for all servers (e.g. ewr, ord). Bare metal plan availability varies by region; check with vultr-cli plans list --type vbm.
+    """
+    ssh: Ssh
+    """
+    SSH key pair used to reach the servers. The public key is registered with Vultr and installed on every server; the private key drives the k3s install over SSH.
+    """
+
+
 class Cluster(BaseModel):
     aks: Aks | None = None
     """
@@ -146,13 +210,19 @@ class Cluster(BaseModel):
     """
     Nebius mk8s cluster configuration. Required when source is Nebius; may be empty, since every field has a default. The cluster is created in the project the referenced ProviderConfig or ClusterProviderConfig sets as its projectID; Nebius projects are bound to a region, so the project also determines where the cluster runs.
     """
-    source: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Existing']
+    source: Literal[
+        'GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'VultrBaremetal', 'Existing'
+    ]
     """
     Cluster provisioning method.
     """
     vultr: Vultr | None = None
     """
     Vultr Kubernetes Engine (VKE) cluster configuration. Required when source is Vultr.
+    """
+    vultrBaremetal: VultrBaremetal | None = None
+    """
+    Vultr bare metal (k3s) cluster configuration. Required when source is VultrBaremetal. Provisions bare metal servers - one CPU-only management server plus the GPU pools - and installs a k3s cluster onto them over SSH. Bare metal has no autoscaling, so pools are fixed size, and provisioning takes tens of minutes.
     """
 
 

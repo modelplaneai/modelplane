@@ -29,8 +29,15 @@ from typing import Any, Literal
 # The clouds and stacks the join can select - the values of ServingStack
 # spec.cloud and spec.stack, so a wrong or unsupported value fails type
 # checking at the caller.
-Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Existing"]
+Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "VultrBaremetal", "Existing"]
 Stack = Literal["Standard", "Dynamo"]
+
+# The accelerator vendors a component can be tagged with - the values
+# of ServingStack spec.accelerators entries. A tagged component only
+# survives a join filtered to a vendor list that includes its tag; an
+# untagged component always installs. GPU vendors today; grows with
+# whatever accelerator families land next (TPU, Trainium, ...).
+AcceleratorVendor = Literal["AMD", "NVIDIA"]
 
 
 @dataclass
@@ -56,6 +63,10 @@ class Chart:
     depends on, so the install gate orders on health rather than
     deploy - the generator derives it from the dependency edges, and the
     hand-written files state it where a cross-half edge lands on them.
+
+    `accelerator_vendor` marks a component as part of one vendor's
+    accelerator stack, so the join can drop it on clusters without that
+    vendor's devices. Leave it unset for components every cluster needs.
     """
 
     key: str
@@ -67,6 +78,7 @@ class Chart:
     wait: bool = False
     depends_on: list[str] = field(default_factory=list)
     values: dict[str, Any] | None = None
+    accelerator_vendor: AcceleratorVendor | None = None
 
 
 @dataclass
@@ -82,12 +94,15 @@ class Manifests:
     applied to every doc in the entry (see fn.py's _k8s_object): use it
     when readiness must reflect a controller-populated status field,
     and keep an entry to one doc when only that doc has one.
+
+    `accelerator_vendor` behaves as on Chart.
     """
 
     key: str
     manifests: list[dict[str, Any]]
     depends_on: list[str] = field(default_factory=list)
     ready: str | None = None
+    accelerator_vendor: AcceleratorVendor | None = None
 
 
 # A plain assignment rather than a `type` statement: the packages

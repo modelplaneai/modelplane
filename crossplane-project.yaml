@@ -37,6 +37,10 @@ spec:
       pathPrefix: _output/functions/compose-inference-cluster
   - source: Tarball
     tarball:
+      name: compose-k3s-cluster
+      pathPrefix: _output/functions/compose-k3s-cluster
+  - source: Tarball
+    tarball:
       name: compose-nebius-cluster
       pathPrefix: _output/functions/compose-nebius-cluster
   - source: Tarball
@@ -75,6 +79,10 @@ spec:
     tarball:
       name: compose-vultr-cluster
       pathPrefix: _output/functions/compose-vultr-cluster
+  - source: Tarball
+    tarball:
+      name: compose-vultr-baremetal-cluster
+      pathPrefix: _output/functions/compose-vultr-baremetal-cluster
   dependencies:
   - type: crd
     git:
@@ -159,3 +167,9 @@ spec:
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-vultr
       version: v1.0.0
+  - type: xpkg
+    xpkg:
+      apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      package: xpkg.upbound.io/crossplane-contrib/provider-k3s
+      version: v0.4.0

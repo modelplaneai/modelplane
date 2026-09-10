@@ -128,6 +128,7 @@ COMPONENTS: list[Component] = [
     # (/): the node image puts the driver at the default root.
     Chart(
         key="nvidia-dra-driver-gpu",
+        accelerator_vendor="NVIDIA",
         release="mp-dra-driver-nvidia-gpu",
         namespace="nvidia-dra-driver",
         chart="dra-driver-nvidia-gpu",

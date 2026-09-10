@@ -14,6 +14,7 @@ members = [
     "compose-inference-class",
     "compose-inference-cluster",
     "compose-inference-gateway",
+    "compose-k3s-cluster",
     "compose-model-cache",
     "compose-model-deployment",
     "compose-model-endpoint",
@@ -22,6 +23,7 @@ members = [
     "compose-nebius-cluster",
     "compose-serving-stack",
     "compose-usages",
+    "compose-vultr-baremetal-cluster",
     "compose-vultr-cluster",
     "crossplane-models",
     "modelplane",
@@ -190,6 +192,25 @@ requires-dist = [
 ]
 
 [[package]]
+name = "compose-k3s-cluster"
+version = "0.0.0"
+source = { editable = "functions/compose-k3s-cluster" }
+dependencies = [
+    { name = "click" },
+    { name = "crossplane-function-sdk-python" },
+    { name = "crossplane-models" },
+    { name = "grpcio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "crossplane-models", editable = "schemas/python" },
+    { name = "grpcio", specifier = ">=1.73.1" },
+]
+
+[[package]]
 name = "compose-model-cache"
 version = "0.0.0"
 source = { editable = "functions/compose-model-cache" }
@@ -330,6 +351,25 @@ requires-dist = [
 name = "compose-usages"
 version = "0.0.0"
 source = { editable = "functions/compose-usages" }
+dependencies = [
+    { name = "click" },
+    { name = "crossplane-function-sdk-python" },
+    { name = "crossplane-models" },
+    { name = "grpcio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "crossplane-models", editable = "schemas/python" },
+    { name = "grpcio", specifier = ">=1.73.1" },
+]
+
+[[package]]
+name = "compose-vultr-baremetal-cluster"
+version = "0.0.0"
+source = { editable = "functions/compose-vultr-baremetal-cluster" }
 dependencies = [
     { name = "click" },
     { name = "crossplane-function-sdk-python" },

@@ -2560,6 +2560,359 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+        # --- Case 16: VultrBaremetal first pass composes the
+        # VultrBaremetalCluster XR only. The AMD class flows into the
+        # pool and, later, into the ServingStack's accelerators. ---
+        inference_class_mi355x = {
+            "apiVersion": "modelplane.ai/v1alpha1",
+            "kind": "InferenceClass",
+            "metadata": {"name": "gpu-mi355x-vbm"},
+            "spec": {
+                "devices": [
+                    {
+                        "name": "gpu",
+                        "claim": "DRA",
+                        "driver": "gpu.amd.com",
+                        "deviceClassName": "gpu.amd.com",
+                        "count": 8,
+                        "capacity": {"memory": {"value": "288Gi"}},
+                    },
+                ],
+                "provisioning": {
+                    "provider": "VultrBaremetal",
+                    "vultrBaremetal": {
+                        "plan": "vbm-256c-3072gb-8-mi355x-gpu",
+                        "accelerator": {"type": "amd-mi355x", "count": 8},
+                    },
+                },
+            },
+        }
+        class_selector_mi355x = fnv1.ResourceSelector(
+            api_version="modelplane.ai/v1alpha1",
+            kind="InferenceClass",
+            match_name="gpu-mi355x-vbm",
+        )
+
+        req16 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="VultrBaremetal",
+                                    vultrBaremetal=v1alpha1.VultrBaremetal(
+                                        region="ord",
+                                        ssh=v1alpha1.Ssh(secretRef=v1alpha1.SecretRefModel(name="bm-ssh")),
+                                    ),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="mi355x-pool",
+                                        className="gpu-mi355x-vbm",
+                                        nodeCount=1,
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req16.required_resources["class-gpu-mi355x-vbm"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_mi355x)),
+        )
+
+        baremetal_status = {
+            "status": {
+                "providerConfigRef": {
+                    "name": "test-cluster-cluster-kubeconfig-d0f89",
+                },
+                "namespace": "modelplane-system",
+                "gpuPools": [
+                    {
+                        "name": "mi355x-pool",
+                        "nodes": 1,
+                        "devices": [
+                            {
+                                "name": "gpu",
+                                "claim": "DRA",
+                                "driver": "gpu.amd.com",
+                                "deviceClassName": "gpu.amd.com",
+                                "count": 8,
+                                "capacity": {"memory": {"value": "288Gi"}},
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+
+        want16 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(resource=resource.dict_to_struct(baremetal_status)),
+                resources={
+                    "vultr-baremetal-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "VultrBaremetalCluster",
+                                "metadata": {
+                                    "name": "test-cluster",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "region": "ord",
+                                    "ssh": {
+                                        "secretRef": {
+                                            "name": "bm-ssh",
+                                            "privateKeyKey": "ssh-privatekey",
+                                            "publicKeyKey": "ssh-publickey",
+                                        },
+                                        "username": "root",
+                                    },
+                                    "management": {
+                                        "plan": "vbm-6c-32gb-amd",
+                                        "osId": 2284,
+                                    },
+                                    "k3s": {"channel": "v1.34"},
+                                    "nodePools": [
+                                        {
+                                            "name": "mi355x-pool",
+                                            "plan": "vbm-256c-3072gb-8-mi355x-gpu",
+                                            "nodeCount": 1,
+                                            "gpu": {"acceleratorType": "amd-mi355x"},
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCluster",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want16.requirements.resources["class-gpu-mi355x-vbm"].CopyFrom(class_selector_mi355x)
+
+        # --- Case 17: VultrBaremetal cluster ready - kubeconfig observed
+        # on the VultrBaremetalCluster status. The k3s kubeconfig embeds a
+        # static client certificate, so the ClusterProviderConfig carries
+        # no identity. The ServingStack gets cloud VultrBaremetal and the
+        # GPU vendors derived from the classes, so only the AMD GPU stack
+        # installs. ---
+        req17 = fnv1.RunFunctionRequest()
+        req17.CopyFrom(req16)
+        req17.observed.resources["vultr-baremetal-cluster"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "VultrBaremetalCluster",
+                        "metadata": {"name": "test-cluster", "namespace": "modelplane-system"},
+                        "spec": {
+                            "region": "ord",
+                            "ssh": {"secretRef": {"name": "bm-ssh"}},
+                            "nodePools": [
+                                {
+                                    "name": "mi355x-pool",
+                                    "plan": "vbm-256c-3072gb-8-mi355x-gpu",
+                                    "gpu": {"acceleratorType": "amd-mi355x"},
+                                },
+                            ],
+                        },
+                        "status": {
+                            "conditions": [
+                                {
+                                    "type": "Ready",
+                                    "status": "True",
+                                    "reason": "Available",
+                                    "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                },
+                            ],
+                            "secrets": [
+                                {
+                                    "type": "Kubeconfig",
+                                    "name": "test-cluster-bm-kubeconfig-abcde",
+                                    "key": "kubeconfig",
+                                },
+                            ],
+                        },
+                    }
+                ),
+            ),
+        )
+
+        want17 = fnv1.RunFunctionResponse()
+        want17.CopyFrom(want16)
+        want17.desired.resources["vultr-baremetal-cluster"].ready = fnv1.READY_TRUE
+        want17.desired.resources["cluster-provider-config-kubernetes"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                        "kind": "ClusterProviderConfig",
+                        "metadata": {"name": "test-cluster-cluster-kubeconfig-d0f89"},
+                        "spec": {
+                            "credentials": {
+                                "source": "Secret",
+                                "secretRef": {
+                                    "namespace": "modelplane-system",
+                                    "name": "test-cluster-bm-kubeconfig-abcde",
+                                    "key": "kubeconfig",
+                                },
+                            },
+                        },
+                    }
+                ),
+                ready=fnv1.READY_TRUE,
+            ),
+        )
+        want17.desired.resources["serving-stack"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "ServingStack",
+                        "metadata": {
+                            "name": "test-cluster-serving-stack-fd00b",
+                            "namespace": "modelplane-system",
+                        },
+                        "spec": {
+                            "cloud": "VultrBaremetal",
+                            "stack": "Standard",
+                            "accelerators": ["AMD"],
+                            "secrets": [
+                                {
+                                    "type": "Kubeconfig",
+                                    "name": "test-cluster-bm-kubeconfig-abcde",
+                                    "key": "kubeconfig",
+                                },
+                            ],
+                        },
+                    }
+                ),
+            ),
+        )
+        want17.desired.resources["usage-vultr-baremetal-by-backend"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "protection.crossplane.io/v1beta1",
+                        "kind": "Usage",
+                        "metadata": {"namespace": "modelplane-system"},
+                        "spec": {
+                            "of": {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "VultrBaremetalCluster",
+                                "resourceSelector": {"matchControllerRef": True},
+                            },
+                            "by": {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "ServingStack",
+                                "resourceSelector": {"matchControllerRef": True},
+                            },
+                            "replayDeletion": True,
+                        },
+                    }
+                ),
+                ready=fnv1.READY_TRUE,
+            ),
+        )
+        del want17.conditions[:]
+        want17.conditions.extend(
+            [
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="ClusterRunning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Installing",
+                ),
+            ]
+        )
+        want17.results.append(
+            fnv1.Result(
+                severity=fnv1.SEVERITY_NORMAL,
+                message="Vultr bare metal cluster ready, composing backend",
+            )
+        )
+
+        # --- Case 18: an AMD class referenced from an NVIDIA-only cloud
+        # gates with UnsupportedDevices. The class itself is valid (its
+        # provisioning could target VultrBaremetal too); only the pairing
+        # with a cloud whose stack is NVIDIA-only is rejected. ---
+        req18 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="Vultr",
+                                    vultr=v1alpha1.Vultr(region="ewr"),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="mi355x-pool",
+                                        className="gpu-mi355x-vbm",
+                                        nodeCount=1,
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req18.required_resources["class-gpu-mi355x-vbm"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_mi355x)),
+        )
+
+        want18 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="UnsupportedDevices",
+                    message="AMD devices are not supported on Vultr: its serving stack installs only NVIDIA accelerator stacks",
+                ),
+            ],
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message="AMD devices are not supported on Vultr: its serving stack installs only NVIDIA accelerator stacks",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want18.requirements.resources["class-gpu-mi355x-vbm"].CopyFrom(class_selector_mi355x)
+
         # Every compose path emits the ModelReplica guard requirement.
         for want in (
             want1,
@@ -2578,6 +2931,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             want14,
             want_creds_vultr,
             want15,
+            want16,
+            want17,
+            want18,
         ):
             want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
@@ -2804,6 +3160,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="Vultr cluster ready composes CPC without identity, ServingStack, and Usage",
                 req=req15,
                 want=want15,
+            ),
+            Case(
+                name="VultrBaremetal first pass composes VultrBaremetalCluster XR only",
+                req=req16,
+                want=want16,
+            ),
+            Case(
+                name="VultrBaremetal ready composes CPC, ServingStack with AMD accelerators, and Usage",
+                req=req17,
+                want=want17,
+            ),
+            Case(
+                name="AMD class on an NVIDIA-only cloud gates with UnsupportedDevices",
+                req=req18,
+                want=want18,
             ),
             *guard_cases,
         ]

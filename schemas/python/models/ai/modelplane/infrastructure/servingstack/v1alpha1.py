@@ -92,7 +92,11 @@ class Secret(BaseModel):
 
 
 class Spec(BaseModel):
-    cloud: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'Existing']
+    accelerators: list[Literal['AMD', 'NVIDIA']] | None = Field(None, max_length=2)
+    """
+    Accelerator vendors present in the target cluster. Filters the cloud's vendor-tagged components: only the device stacks for the listed vendors are installed. When omitted, no vendor filtering happens and every component installs. Derived from the InferenceClasses by the cluster composition; only clouds whose component lists carry vendor tags (VultrBaremetal) are affected.
+    """
+    cloud: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'VultrBaremetal', 'Existing']
     """
     The cloud the target cluster runs on. Selects the fixed set of components and versions this stack installs there, which is resolved per cloud at build time and changes only with a Modelplane release. Mirrors InferenceCluster.spec.cluster.source; the cluster composition sets it.
     """

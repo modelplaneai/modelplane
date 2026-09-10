@@ -1,0 +1,215 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: k3sclusters.infrastructure.modelplane.ai
+spec:
+  group: infrastructure.modelplane.ai
+  names:
+    categories:
+    - crossplane
+    - modelplane
+    kind: K3sCluster
+    plural: k3sclusters
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    additionalPrinterColumns:
+    - name: CONTROL-PLANE
+      type: string
+      jsonPath: .spec.controlPlane.host
+    schema:
+      openAPIV3Schema:
+        description: >-
+          A K3sCluster installs a k3s cluster onto existing machines over
+          SSH. The control plane machine runs the k3s server; each worker
+          joins as a k3s agent. It is provider-agnostic: any set of
+          reachable Linux hosts works, whether bare metal or virtual. It
+          outputs a Secret containing the cluster kubeconfig. The
+          kubeconfig embeds a static client certificate, so consumers need
+          nothing beyond it to reach the cluster. The control plane is a
+          single server; it is a single point of failure for the cluster
+          control plane.
+        properties:
+          spec:
+            description: K3sClusterSpec defines the desired state of K3sCluster.
+            required:
+            - controlPlane
+            - auth
+            properties:
+              controlPlane:
+                type: object
+                description: >-
+                  The machine that runs the k3s server (the management
+                  plane). Must be reachable over SSH from the control
+                  plane running Modelplane.
+                required:
+                - host
+                properties:
+                  host:
+                    type: string
+                    description: DNS name or IP address of the machine.
+                    minLength: 1
+                    maxLength: 253
+                  port:
+                    type: integer
+                    default: 22
+                    description: SSH port.
+                    minimum: 1
+                    maximum: 65535
+              workers:
+                type: array
+                description: >-
+                  Machines that join the cluster as k3s agents (the worker
+                  plane). Labels and taints are applied at registration
+                  time via k3s agent arguments.
+                maxItems: 64
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys:
+                - name
+                items:
+                  type: object
+                  required:
+                  - name
+                  - host
+                  properties:
+                    name:
+                      type: string
+                      description: Unique name for this worker.
+                      minLength: 1
+                      maxLength: 63
+                    host:
+                      type: string
+                      description: DNS name or IP address of the machine.
+                      minLength: 1
+                      maxLength: 253
+                    port:
+                      type: integer
+                      default: 22
+                      description: SSH port.
+                      minimum: 1
+                      maximum: 65535
+                    labels:
+                      type: object
+                      description: Node labels applied to this worker.
+                      additionalProperties:
+                        type: string
+                    taints:
+                      type: array
+                      description: Node taints applied to this worker.
+                      maxItems: 8
+                      items:
+                        type: object
+                        required:
+                        - key
+                        - effect
+                        properties:
+                          key:
+                            type: string
+                            minLength: 1
+                            maxLength: 253
+                          value:
+                            type: string
+                            maxLength: 63
+                          effect:
+                            type: string
+                            enum:
+                            - NoSchedule
+                            - PreferNoSchedule
+                            - NoExecute
+              auth:
+                type: object
+                description: >-
+                  SSH authentication used to reach every machine. All
+                  machines must accept the same user and private key.
+                required:
+                - secretRef
+                properties:
+                  username:
+                    type: string
+                    default: root
+                    description: SSH user. Must be root or have passwordless sudo.
+                    minLength: 1
+                    maxLength: 63
+                  secretRef:
+                    type: object
+                    description: >-
+                      Secret holding the SSH private key, in the same
+                      namespace as this K3sCluster.
+                    required:
+                    - name
+                    properties:
+                      name:
+                        type: string
+                        description: Name of the Secret.
+                        minLength: 1
+                        maxLength: 253
+                      key:
+                        type: string
+                        default: ssh-privatekey
+                        description: Key within the Secret that holds the private key.
+                        minLength: 1
+                        maxLength: 253
+              version:
+                type: object
+                description: >-
+                  The k3s release to install. Defaults to the v1.34
+                  channel, the first where Dynamic Resource Allocation
+                  (how GPUs bind to pods) is generally available.
+                x-kubernetes-validations:
+                - rule: "!(has(self.channel) && has(self.version))"
+                  message: channel and version are mutually exclusive.
+                properties:
+                  channel:
+                    type: string
+                    description: >-
+                      k3s release channel (e.g. stable, v1.34). Installs
+                      the channel's latest release.
+                    minLength: 1
+                    maxLength: 32
+                  version:
+                    type: string
+                    description: >-
+                      Exact k3s version to install (e.g. v1.34.1+k3s1).
+                    minLength: 1
+                    maxLength: 32
+            type: object
+          status:
+            description: K3sClusterStatus defines the observed state of K3sCluster.
+            properties:
+              secrets:
+                type: array
+                description: >-
+                  Secrets produced by this cluster. Consumers use these to
+                  authenticate to the cluster. All secrets are in the same
+                  namespace as this K3sCluster.
+                items:
+                  type: object
+                  required:
+                  - type
+                  - name
+                  - key
+                  properties:
+                    type:
+                      type: string
+                      description: >-
+                        The type of credential this secret contains.
+                        Kubeconfig contains a kubeconfig file with the
+                        cluster endpoint, CA certificate, and a static
+                        client certificate.
+                      enum:
+                      - Kubeconfig
+                    name:
+                      type: string
+                      description: Name of the Secret.
+                      maxLength: 253
+                    key:
+                      type: string
+                      description: >-
+                        Key within the Secret that holds the credential data.
+                      maxLength: 253
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
