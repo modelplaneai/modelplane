@@ -17,7 +17,8 @@ WL=modelplane-e2e-workload
 # Pinned so the workload cluster has the DRA APIs the serving stack's NVIDIA DRA
 # driver needs (resource.k8s.io, GA in k8s 1.34). The control-plane cluster that
 # project run creates needs no DRA, so its image doesn't matter here.
-WL_NODE_IMAGE=kindest/node:v1.34.0@sha256:7416a61b42b1662ca6ca89f02028ac133a309a2a30ba309614e8ec94d976dc5a
+# v1.34.2 or newer: older kubelets deadlock on an idle DRA connection (k/k#133934).
+WL_NODE_IMAGE=kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256
 METALLB_URL=https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
 # Pinned by digest (a multi-arch manifest list) so a moving :latest can't flake
 # the verify curl pod.
@@ -50,6 +51,10 @@ if kind get clusters 2>/dev/null | grep -qx "$WL"; then
 	# older one lacks the DRA APIs and would fail the run confusingly later.
 	ver="$(kubectl --context "$WLCTX" get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || true)"
 	case "$ver" in
+	v1.34.0 | v1.34.1)
+		echo "workload cluster $WL is $ver, whose kubelet deadlocks on an idle DRA connection (fixed in v1.34.2); recreate it with: nix run .#e2e -- --clean" >&2
+		exit 1
+		;;
 	v1.34.*) log "Reusing workload cluster $WL ($ver)" ;;
 	*)
 		echo "workload cluster $WL is ${ver:-unreachable}, but v1.34 is required for the DRA APIs; recreate it with: nix run .#e2e -- --clean" >&2
