@@ -68,6 +68,16 @@ engines:
       nodes: 1              # one worker pod per node
 ```
 
+Modelplane injects the gang's coordination env, so a worker's command can find
+the leader and its own rank. `$(MODELPLANE_LEADER_ADDRESS)` is the leader's
+address on either [serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}).
+`$(MODELPLANE_RANK)` is the pod's node rank (0 on the leader, `1..N` on the
+workers) on Standard, but isn't injected on Dynamo yet
+([#418](https://github.com/modelplaneai/modelplane/issues/418)). A gang on Dynamo
+derives its rank from Grove's `GROVE_PCLQ_POD_INDEX` instead,
+`$$((GROVE_PCLQ_POD_INDEX + 1))` on the workers (`$$` escapes Kubernetes' own
+expansion, leaving `$((...))` for the shell).
+
 A member's `env` can read pod fields through `valueFrom.fieldRef`, like setting
 vLLM's `VLLM_HOST_IP` from `status.podIP`, which multi-NIC RDMA nodes need so the
 engine binds the right interface instead of guessing it.
