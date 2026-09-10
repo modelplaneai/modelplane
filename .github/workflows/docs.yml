@@ -13,8 +13,14 @@ name: Docs
 # On a merge, the site rebuilds every version from the tip of each branch it
 # serves. That is what publishes a docs change: nothing pins a content
 # revision, so publishing is a rebuild.
+#
+# The trigger is pull_request_target so that a fork's pull request is previewed
+# too. That runs this workflow in the base repository's context, with secrets,
+# so it must never execute anything from the pull request - and it doesn't:
+# there is no checkout here, and no step reads a file from the branch. Never
+# add one.
 on:
-  pull_request:
+  pull_request_target:
     paths: ['docs/**', 'apis/**']
   push:
     branches: [main, 'release-*']
@@ -31,22 +37,16 @@ concurrency:
 jobs:
   render:
     runs-on: ubuntu-24.04
-
-    # A pull request from a fork gets no secrets and no write token, so it
-    # cannot dispatch or comment. Reviewers preview those locally, with
-    # `nix run github:modelplaneai/docs-site#preview`.
-    if: >-
-      github.event_name == 'push'
-      || github.event.pull_request.head.repo.full_name == github.repository
-
     env:
       SITE_REPO: modelplaneai/docs-site
 
     steps:
       # The head sha rather than the merge commit: it is what the reviewer is
-      # reading, and it exists in this repo for the site to fetch.
+      # reading. A fork's commits are reachable here through refs/pull/<n>/head,
+      # so the site can fetch that sha from this repo without knowing the fork
+      # exists.
       - name: Request a preview
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request_target'
         env:
           GH_TOKEN: ${{ secrets.DOCS_SITE_DISPATCH_TOKEN }}
           REF: ${{ github.event.pull_request.head.sha }}
@@ -66,7 +66,7 @@ jobs:
           PR: ${{ github.event.number }}
         run: |
           gh pr comment "$PR" --body \
-            "Docs preview: https://modelplane-docs-pr-${PR}.vercel.app (ready once the site's Content workflow finishes)"
+            "Docs preview: https://modelplane-docs-pr-${PR}.vercel.app (ready once the site's Content wor
 
       - name: Publish
         if: github.event_name == 'push'
