@@ -8,8 +8,6 @@
 versions:
   - version: "main"
     url: "https://main.docs.modelplane.ai"
-  - version: "0.1"
-    url: "https://v0-1.docs.modelplane.ai"
   - version: "0.2"
     url: "https://v0-2.docs.modelplane.ai"
   - version: "0.3"
