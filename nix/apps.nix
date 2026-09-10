@@ -31,7 +31,7 @@
             -ignore '**/*.toml' \
             -ignore '**/*.yaml' \
             -ignore '**/*.yml' \
-            functions/ docs/utils/validate/ nix.sh docs/vercel-build.sh
+            functions/ docs/utils/validate/ nix.sh
 
           echo "Formatting and linting Nix..."
           statix fix .

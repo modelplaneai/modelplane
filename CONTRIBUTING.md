@@ -478,9 +478,10 @@ nix flake check
 ```
 
 Internal links are checked with [htmltest](https://github.com/wjdp/htmltest)
-against the built site, which means it runs in the site repo, not here. A
-content change that breaks a link fails there, when the site repo's pin for this
-repo moves.
+against the built site, which means it runs in the site repo, not here. Nothing
+there pins a revision of this repo, so a content change that breaks a link
+fails on the next build there: the preview of your pull request, or the
+rebuild your merge triggers.
 
 Custom Modelplane rules live in `docs/utils/vale/styles/Modelplane/`.
 
