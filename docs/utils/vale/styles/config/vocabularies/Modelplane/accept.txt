@@ -251,6 +251,7 @@ H100
 H200
 EFA
 BF16
+FP16
 FP8
 INT4
 AWQ
@@ -530,6 +531,8 @@ all-or-nothing
 [Pp]eer-to-peer
 [Gg]ang-schedules?
 routable
+pipeline-parallel
+Qwen2.5-14B
 
 agent
 requirement
