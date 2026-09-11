@@ -1,0 +1,27 @@
+# EKS g6.8xlarge, one NVIDIA L4 per node. A single L4 can't hold the 14B model,
+# so the gang spans two nodes. This node has enough memory to hold the weights as
+# they load, and the 100 GB disk holds the vLLM image.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: l4-1x-g6
+spec:
+  description: "EKS g6.8xlarge, 1x NVIDIA L4"
+  provisioning:
+    provider: EKS
+    eks:
+      instanceType: g6.8xlarge
+      diskSizeGb: 100
+      accelerator:
+        type: nvidia-l4
+        count: 1
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.nvidia.com
+    deviceClassName: gpu.nvidia.com
+    count: 1
+    attributes:
+      architecture: { string: Ada Lovelace }
+    capacity:
+      memory: { value: "23034Mi" }   # L4's real reported VRAM (not the nominal 24GB)
