@@ -1,0 +1,14 @@
+# The shared read-write-many cache the gang serves from, hydrated once from
+# Hugging Face. Both gang pods mount it and read weights from it over EFS,
+# instead of each pulling its own copy. Qwen2.5-14B is open, so it needs no
+# token. Its FP16 weights are about 29 GB, so sizeGiB leaves headroom.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelCache
+metadata:
+  name: qwen2-5-14b
+  namespace: ml-team
+spec:
+  source: HuggingFace
+  huggingFace:
+    repo: Qwen/Qwen2.5-14B-Instruct
+    sizeGiB: 40
