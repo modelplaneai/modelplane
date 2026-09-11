@@ -21,6 +21,8 @@ EKSCluster
 ServingStack
 ModelCache
 ModelCaches
+MetricMapping
+MetricMappings
 ModelDeployment
 ModelDeployments
 ModelEndpoint
@@ -573,3 +575,5 @@ DGX
 BasePOD
 SuperPOD
 Run:ai
+OTLP
+OpenTelemetry
