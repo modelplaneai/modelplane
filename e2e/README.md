@@ -94,7 +94,7 @@ against. The control-plane cluster needs no DRA.
 
 ```bash
 nix run .#e2e              # bring up both clusters + deploy the mock model
-nix run .#e2e -- --verify  # same, then wait for readiness and assert a live 200
+nix run .#e2e -- --verify  # same, then wait for readiness and run the behavioral suite
 nix run .#e2e -- --clean   # tear both clusters down
 ```
 
@@ -119,10 +119,16 @@ kubectl run curl -n ml-team --rm -it --image=curlimages/curl@sha256:7c12af72ceb3
   -d '{"model":"mock","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}'
 ```
 
-`--verify` runs both of those (OpenAI then Anthropic) and exits non-zero on
-failure. It's the exact command the `E2E` CI workflow runs, so a green `--verify`
-locally and a green CI run mean the same thing; use the manual curls above to
-poke the endpoints interactively.
+`--verify` goes further than those curls: it runs [`verify/test_serving.py`](verify/test_serving.py)
+from a pod on the control plane and asserts what came back — the response shapes
+both surfaces promise, that the last user turn reaches the engine, that a
+streamed response arrives as `text/event-stream` frames rather than one buffered
+blob, and that malformed input and unrouted paths fail. The suite goes in as a
+ConfigMap and runs under a stock `python:3.12-alpine` pod; it imports only the
+stdlib, so nothing is built or installed. It exits non-zero on failure and is the
+exact command the `E2E` CI workflow runs, so a green `--verify` locally and a
+green CI run mean the same thing; use the manual curls above to poke the
+endpoints interactively.
 
 ## How it's structured
 

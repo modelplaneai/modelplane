@@ -37,6 +37,8 @@ spec:
                 - |
                   import json, http.server
                   class H(http.server.BaseHTTPRequestHandler):
+                      # HTTP/1.1 so the streaming path can chunk, the way a real engine does.
+                      protocol_version = "HTTP/1.1"
                       def _s(self, o, c=200):
                           b = json.dumps(o).encode()
                           self.send_response(c)
@@ -44,6 +46,24 @@ spec:
                           self.send_header("content-length", str(len(b)))
                           self.end_headers()
                           self.wfile.write(b)
+                      def _sse(self, frames):
+                          self.send_response(200)
+                          self.send_header("content-type", "text/event-stream")
+                          self.send_header("cache-control", "no-cache")
+                          self.send_header("transfer-encoding", "chunked")
+                          self.end_headers()
+                          for f in [*frames, "[DONE]"]:
+                              b = ("data: " + (f if isinstance(f, str) else json.dumps(f)) + "\n\n").encode()
+                              self.wfile.write(b"%X\r\n" % len(b) + b + b"\r\n")
+                              self.wfile.flush()
+                          self.wfile.write(b"0\r\n\r\n")
+                      def _read(self):
+                          n = int(self.headers.get("content-length") or 0)
+                          try:
+                              r = json.loads(self.rfile.read(n) or b"{}")
+                          except ValueError:
+                              return None
+                          return r if isinstance(r, dict) and r.get("messages") else None
                       def do_GET(self):
                           if self.path == "/health":
                               self._s({"status": "ok"})
@@ -52,27 +72,46 @@ spec:
                           else:
                               self._s({"error": "not found"}, 404)
                       def do_POST(self):
-                          n = int(self.headers.get("content-length") or 0)
-                          self.rfile.read(n)
-                          text = "Hello from the Modelplane local mock engine."
-                          if self.path.startswith("/v1/messages"):
+                          req = self._read()
+                          anthropic = self.path.startswith("/v1/messages")
+                          if not anthropic and not self.path.startswith("/v1/chat/completions"):
+                              self._s({"error": "not found"}, 404)
+                          elif req is None:
+                              self._s({"error": "messages is required"}, 400)
+                          else:
+                              self._answer(req, anthropic)
+                      def _answer(self, req, anthropic):
+                          model = req.get("model") or "mock"
+                          # Echo the last user turn back, so a caller can tell its request reached the engine.
+                          turns = [m.get("content") or "" for m in req["messages"] if m.get("role") == "user"]
+                          text = "Echo: " + (turns[-1] if turns else "")
+                          if anthropic:
                               # Anthropic Messages API; vLLM serves it alongside the OpenAI routes.
                               self._s({
                                   "id": "msg-mock", "type": "message", "role": "assistant",
-                                  "model": "mock", "stop_reason": "end_turn",
+                                  "model": model, "stop_reason": "end_turn",
                                   "content": [{"type": "text", "text": text}],
-                                  "usage": {"input_tokens": 1, "output_tokens": 1},
+                                  "usage": {"input_tokens": len(turns), "output_tokens": 1},
                               })
+                          elif req.get("stream"):
+                              head = {"id": "chatcmpl-mock", "object": "chat.completion.chunk", "model": model}
+                              frames = [dict(head, choices=[{"index": 0, "delta": {"role": "assistant"}}])]
+                              frames += [dict(head, choices=[{"index": 0, "delta": {"content": w + " "}}]) for w in text.split()]
+                              frames.append(dict(head, choices=[{"index": 0, "delta": {}, "finish_reason": "stop"}]))
+                              self._sse(frames)
                           else:
                               self._s({
-                                  "id": "chatcmpl-mock", "object": "chat.completion", "model": "mock",
+                                  "id": "chatcmpl-mock", "object": "chat.completion", "model": model,
                                   "choices": [{"index": 0, "finish_reason": "stop",
                                                "message": {"role": "assistant", "content": text}}],
-                                  "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                                  "usage": {"prompt_tokens": len(turns), "completion_tokens": 1,
+                                            "total_tokens": len(turns) + 1},
                               })
                       def log_message(self, *a):
                           pass
-                  http.server.HTTPServer(("0.0.0.0", 8000), H).serve_forever()
+                  # Threaded: HTTP/1.1 keeps connections alive, so a single-threaded server
+                  # would block the probes and the endpoint-picker behind one client.
+                  http.server.ThreadingHTTPServer(("0.0.0.0", 8000), H).serve_forever()
                 # The ModelDeployment container template is a curated subset
                 # (name/image/command/args/env); the composition wires the port,
                 # readiness, and any GPU resources itself (it assumes port 8000). So

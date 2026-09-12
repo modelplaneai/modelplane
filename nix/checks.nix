@@ -111,8 +111,8 @@ in
         cp -r ${self} src
         chmod -R u+w src
         cd src
-        ruff format --check functions/ docs/utils/validate/
-        ruff check functions/ docs/utils/validate/
+        ruff format --check functions/ docs/utils/validate/ e2e/verify/
+        ruff check functions/ docs/utils/validate/ e2e/verify/
         mkdir -p $out
         touch $out/.python-checks-passed
       '';
@@ -146,11 +146,12 @@ in
       '';
 
   # Fail if any hand-written source file is missing its Apache 2.0 license
-  # header. Scoped to the files we author: the composition functions and the
-  # docs manifest validator. Generated models under schemas/python carry their
-  # own codegen banner, and config (*.toml) and vendored upstream CRDs (*.yaml)
-  # are excluded. addlicense -check only reads, so it runs against the store
-  # path directly. Run 'nix run .#fix' to add any missing headers.
+  # header. Scoped to the files we author: the composition functions, the docs
+  # manifest validator, and the e2e verify suite. Generated models under
+  # schemas/python carry their own codegen banner, and config (*.toml) and
+  # vendored upstream CRDs (*.yaml) are excluded. addlicense -check only reads,
+  # so it runs against the store path directly. Run 'nix run .#fix' to add any
+  # missing headers.
   license =
     pkgs.runCommand "modelplane-license-check"
       {
@@ -162,7 +163,7 @@ in
           -ignore '**/*.toml' \
           -ignore '**/*.yaml' \
           -ignore '**/*.yml' \
-          functions/ docs/utils/validate/ nix.sh docs/vercel-build.sh
+          functions/ docs/utils/validate/ e2e/verify/ nix.sh docs/vercel-build.sh
         mkdir -p $out
         touch $out/.license-check-passed
       '';

@@ -19,9 +19,9 @@ WL=modelplane-e2e-workload
 # project run creates needs no DRA, so its image doesn't matter here.
 WL_NODE_IMAGE=kindest/node:v1.34.0@sha256:7416a61b42b1662ca6ca89f02028ac133a309a2a30ba309614e8ec94d976dc5a
 METALLB_URL=https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
-# Pinned by digest (a multi-arch manifest list) so a moving :latest can't flake
-# the verify curl pod.
-CURL_IMAGE=curlimages/curl@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+# The same python:3.12-alpine digest the mock engine runs, so the e2e pins one
+# image. The suite is stdlib-only, so the stock image needs no pip install.
+PYTHON_IMAGE=python@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df
 ROOT="$(git rev-parse --show-toplevel)"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -181,9 +181,9 @@ fi
 
 # --verify: project run returns once the config is healthy and the resources are
 # applied, so the serving-stack install and model rollout are still reconciling.
-# Wait for the ModelService to publish an address, then route a real request to
-# the engine and assert a 200. Any failure exits non-zero — that is what makes
-# this usable as a CI gate.
+# Wait for the ModelService to publish an address, then run the behavioral suite
+# in e2e/verify against it. Any failure exits non-zero — that is what makes this
+# usable as a CI gate.
 log "Verifying the model serves end to end"
 ns=ml-team
 svc=mock
@@ -201,52 +201,62 @@ done
 log "ModelService address: $addr"
 
 # The address is on the kind Docker subnet the host can't route to on macOS, so
-# curl from a pod on the control plane, reading the status from the pod's logs
-# (not `run -i`, whose attach drops output on a headless runner). curl_status
-# runs one throwaway pod per call and echoes the HTTP code; it polls the logs
-# (curl writes the code once, then exits) so a failed attempt costs seconds, and
-# a unique pod name per call keeps retries from reading a prior pod's output.
-curl_status() {
-	local pod="$1" url="$2"
-	shift 2
-	kubectl --context "$cpctx" -n "$ns" run "$pod" --restart=Never \
-		--labels=app.kubernetes.io/name=e2e-verify --image="$CURL_IMAGE" \
-		--command -- curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$url" "$@" \
-		>/dev/null 2>&1 || true
-	local c=""
-	for _ in $(seq 1 30); do
-		c="$(kubectl --context "$cpctx" -n "$ns" logs "$pod" 2>/dev/null | tr -dc '0-9' || true)"
-		[ -n "$c" ] && break
-		sleep 2
-	done
-	printf '%s' "$c"
-}
+# the suite runs from a pod on the control plane. It ships as a ConfigMap rather
+# than an image we'd have to build and push, and the stock python image runs it
+# as-is because it imports nothing outside the stdlib.
+log "Running the behavioral suite (e2e/verify) against $addr"
+kubectl --context "$cpctx" -n "$ns" create configmap e2e-verify-suite \
+	--from-file=test_serving.py="$ROOT/e2e/verify/test_serving.py" \
+	--dry-run=client -o yaml | kubectl --context "$cpctx" apply -f -
 
-# OpenAI /v1/chat/completions, retried: the address can publish a moment before
-# the cross-cluster route is serving, and a slower CI runner widens that gap.
-oai='{"model":"'"$svc"'","messages":[{"role":"user","content":"ping"}]}'
-code=""
-for attempt in $(seq 1 10); do
-	code="$(curl_status "e2e-verify-oai-$attempt" "$addr/v1/chat/completions" -H 'content-type: application/json' -d "$oai")"
-	log "verify attempt $attempt (OpenAI): HTTP ${code:-none}"
-	[ "$code" = "200" ] && break
+# A rerun against a live cluster would otherwise hit an immutable completed pod.
+kubectl --context "$cpctx" -n "$ns" delete pod e2e-verify --now >/dev/null 2>&1 || true
+kubectl --context "$cpctx" apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-verify
+  namespace: $ns
+  labels:
+    app.kubernetes.io/name: e2e-verify
+spec:
+  restartPolicy: Never
+  containers:
+    - name: verify
+      image: $PYTHON_IMAGE
+      command: [python, -u, /suite/test_serving.py, -v]
+      env:
+        - name: MODELPLANE_ADDRESS
+          value: "$addr"
+        - name: MODELPLANE_MODEL
+          value: "$svc"
+      volumeMounts:
+        - name: suite
+          mountPath: /suite
+  volumes:
+    - name: suite
+      configMap:
+        name: e2e-verify-suite
+EOF
+
+# The suite waits for the route itself, so the only wait here is for the pod to
+# finish. Poll the phase: kubectl wait has no single condition for "ran, either
+# way", and a Failed pod is a result to report, not an error to time out on.
+phase=""
+for _ in $(seq 1 90); do
+	phase="$(kubectl --context "$cpctx" -n "$ns" get pod e2e-verify -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+	case "$phase" in
+	Succeeded | Failed) break ;;
+	esac
 	sleep 10
 done
-[ "$code" = "200" ] || {
-	echo "verify: $addr/v1/chat/completions did not return 200 within retries (last: ${code:-none})" >&2
-	kubectl --context "$cpctx" -n "$ns" delete pod -l app.kubernetes.io/name=e2e-verify --now >/dev/null 2>&1 || true
-	exit 1
-}
 
-# Anthropic Messages API on the same address: vLLM serves /v1/messages alongside
-# the OpenAI routes (PR #360) and the route preserves the path. Serving is up by
-# now, so one attempt suffices.
-ant='{"model":"'"$svc"'","max_tokens":16,"messages":[{"role":"user","content":"ping"}]}'
-mcode="$(curl_status e2e-verify-anthropic "$addr/v1/messages" -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' -d "$ant")"
-log "verify (Anthropic /v1/messages): HTTP ${mcode:-none}"
-kubectl --context "$cpctx" -n "$ns" delete pod -l app.kubernetes.io/name=e2e-verify --now >/dev/null 2>&1 || true
-[ "$mcode" = "200" ] || {
-	echo "verify: $addr/v1/messages did not return 200 (last: ${mcode:-none})" >&2
+# unittest writes to stderr, and the logs are the failure report on a red run.
+kubectl --context "$cpctx" -n "$ns" logs e2e-verify 2>&1 || true
+kubectl --context "$cpctx" -n "$ns" delete pod e2e-verify --now >/dev/null 2>&1 || true
+kubectl --context "$cpctx" -n "$ns" delete configmap e2e-verify-suite >/dev/null 2>&1 || true
+[ "$phase" = "Succeeded" ] || {
+	echo "verify: the behavioral suite did not pass (pod phase: ${phase:-none})" >&2
 	exit 1
 }
-log "End to end OK: $addr serves OpenAI (/v1/chat/completions) and Anthropic (/v1/messages)"
+log "End to end OK: $addr passes the behavioral suite in e2e/verify"
