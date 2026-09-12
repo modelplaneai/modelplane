@@ -20,8 +20,8 @@ Each cluster has:
 - **Labels** for organizational metadata: tier, region, provider. These are the
   matching surface for `ModelDeployment.clusterSelector`.
 
-Modelplane installs the serving stack it needs on every cluster it manages,
-including existing clusters, which it assumes are solely for its use.
+Modelplane installs a serving stack on every cluster it manages, including
+existing clusters, which it assumes are solely for its use.
 
 ## Ownership and requirements
 
@@ -51,6 +51,45 @@ The `cluster.source` discriminator picks one of two models:
   Modelplane's requirements, including labeling each pool's nodes
   `modelplane.ai/pool=<pool-name>` (see
   [how scheduling pins placement]({{< ref "/architecture/scheduling.md#pinning-placement-to-a-pool" >}})).
+
+## Serving stack
+
+`spec.stack` selects the serving layer the cluster runs: `Standard` (the default)
+or `Dynamo`. The field is immutable, so recreate the cluster to change it.
+
+Both stacks compose a single-node engine the same way, as a Deployment, and front
+it the same way, with Gateway API and an endpoint picker. They differ in how they
+run a multi-node gang and distribute its weights:
+
+- **Standard** composes a gang as a LeaderWorkerSet. It has no gang scheduler, so
+  the pods schedule independently.
+- **Dynamo** installs NVIDIA's [Grove](https://github.com/ai-dynamo/grove) and the
+  [KAI Scheduler](https://github.com/NVIDIA/KAI-Scheduler) in place of the
+  LeaderWorkerSet controller, and composes a gang as a Grove `PodCliqueSet` that
+  they gang-schedule all-or-nothing and topology-aware. It also runs a
+  [ModelExpress](https://github.com/ai-dynamo/modelexpress) server that moves
+  weights between replicas over the fabric, so a later replica pulls a model from
+  a peer's GPU rather than reading storage again.
+
+A `ModelDeployment` looks the same on either stack. On `Dynamo` an engine can
+opt into peer-to-peer weight loading with `--load-format modelexpress`. An
+engine that does this will work on `Standard` too, but won't load weights
+peer-to-peer. See
+[model caching]({{< ref "/models/model-cache.md#accelerating-with-modelexpress" >}})
+for more details.
+
+{{< hint "note" >}}
+A multi-node gang on `Dynamo` derives its node rank from Grove's
+`GROVE_PCLQ_POD_INDEX`, because Modelplane doesn't inject `$(MODELPLANE_RANK)`
+there yet. This is a temporary gap, not by design:
+[#418](https://github.com/modelplaneai/modelplane/issues/418) tracks closing it,
+so a gang command reads the same on both stacks.
+[Multi-node deployments]({{< ref "/models/model-deployment.md#multi-node" >}}) show
+the rank a gang computes until then.
+{{< /hint >}}
+
+Composing a full Dynamo graph deployment, for its frontend and request routing,
+is planned.
 
 ## Examples
 
