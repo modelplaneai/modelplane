@@ -26,6 +26,13 @@ you can bring your own through an `InferenceCluster` with `source: Existing`.
 
 All inference clusters managed by a single Modelplane control cluster.
 
+## Serving stack
+
+The per-cluster software layer that turns a stock engine into a routable serving
+instance: `Standard` (the default, Modelplane-composed Deployments and
+LeaderWorkerSets) or `Dynamo` (NVIDIA's Grove, KAI Scheduler, and ModelExpress).
+Set by `InferenceCluster.spec.stack`.
+
 ## Platform
 
 The inference infrastructure the platform team

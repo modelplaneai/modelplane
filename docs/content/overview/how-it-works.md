@@ -141,11 +141,10 @@ re-converges.
 A single-node deployment composes to a Kubernetes Deployment fronted by a
 service. When a model is too large for one node, an engine becomes a gang: a
 `Leader` member and one or more `Worker` members serving the model together
-across nodes. By default Modelplane composes the gang into a LeaderWorkerSet;
-a cluster can opt into Grove + KAI Scheduler for gang scheduling by setting
-`InferenceCluster.spec.stack: Dynamo`. Gang deployments
-should stage their weights through a `ModelCache`, so the pods share one copy
-instead of each pulling the same model.
+across nodes. How Modelplane composes and schedules the gang depends on the
+cluster's [serving stack]({{< ref "/platform/inference-cluster.md#serving-stack" >}}),
+Standard or Dynamo. Gang deployments should stage their weights through a
+`ModelCache`, so the pods share one copy instead of each pulling the same model.
 
 Disaggregated serving splits prefill and decode into separate engines
 (`serving.mode: PrefillDecode`) that run on the same cluster and hand off the KV
