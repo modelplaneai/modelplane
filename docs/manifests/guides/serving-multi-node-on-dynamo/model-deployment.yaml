@@ -1,0 +1,101 @@
+# Qwen2.5-14B served across two L4 nodes as a gang. The FP16 weights (~29 GB)
+# don't fit one L4's 23 GB, so the engine is a Leader + Worker gang,
+# pipeline-parallel across two g6.8xlarge nodes with one L4 each. Both pods mount
+# the shared ModelCache.
+#
+# The cluster runs the Dynamo stack, so Grove and the KAI Scheduler gang-schedule
+# the two pods, and Modelplane composes them as a Grove PodCliqueSet.
+# $(MODELPLANE_LEADER_ADDRESS) resolves to the leader on Dynamo, but
+# $(MODELPLANE_RANK) isn't injected there yet (modelplaneai/modelplane#418), so
+# each command sets its own --node-rank: 0 on the leader, and
+# $$((GROVE_PCLQ_POD_INDEX + 1)) on the worker ($$ escapes past Kubernetes,
+# leaving $((...)) for the shell to evaluate).
+#
+# Notes on the engine flags:
+#   --pipeline-parallel-size=2 splits the model across the two nodes;
+#     --tensor-parallel-size=1 keeps one GPU per node. Pipeline parallelism sends
+#     only activations between nodes, so it stays light on the network.
+#   --distributed-executor-backend=mp is vLLM's native multiprocessing multi-node
+#     path; vllm/vllm-openai:v0.23.0 no longer ships Ray.
+#   --load-format modelexpress loads weights through the ModelExpress server the
+#     Dynamo stack runs. The first replica seeds from the cache and publishes
+#     itself; later replicas pull their weights peer-to-peer from a replica that
+#     already has them. The vLLM image doesn't ship the loader, so pip install it
+#     first. --load-format=runai_streamer is the alternative that always reads the
+#     cache directly, on any stack.
+#   --max-model-len=8192 caps context so the KV cache fits alongside the weights.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen2-5-14b
+  namespace: ml-team
+spec:
+  replicas: 1
+  template:
+    spec:
+      modelCacheRef:
+        name: qwen2-5-14b
+      engines:
+      - name: qwen
+        members:
+        - role: Leader
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 1
+              selectors:
+              - cel: |
+                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: vllm/vllm-openai:v0.23.0
+                command:
+                - /bin/sh
+                - -c
+                - >-
+                  pip install --index-url https://pypi.nvidia.com modelexpress &&
+                  exec vllm serve Qwen/Qwen2.5-14B-Instruct
+                  --served-model-name=qwen2.5-14b
+                  --tensor-parallel-size=1
+                  --pipeline-parallel-size=2
+                  --distributed-executor-backend=mp
+                  --nnodes=2 --node-rank=0
+                  --master-addr=$(MODELPLANE_LEADER_ADDRESS)
+                  --load-format modelexpress
+                  --max-model-len=8192
+                  --gpu-memory-utilization=0.90
+                  --port=8000
+        - role: Worker
+          worker:
+            nodes: 1
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 1
+              selectors:
+              - cel: |
+                  device.capacity["gpu.nvidia.com"].memory.compareTo(quantity("20Gi")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: vllm/vllm-openai:v0.23.0
+                command:
+                - /bin/sh
+                - -c
+                - >-
+                  pip install --index-url https://pypi.nvidia.com modelexpress &&
+                  exec vllm serve Qwen/Qwen2.5-14B-Instruct
+                  --served-model-name=qwen2.5-14b
+                  --tensor-parallel-size=1
+                  --pipeline-parallel-size=2
+                  --distributed-executor-backend=mp
+                  --nnodes=2 --node-rank=$$((GROVE_PCLQ_POD_INDEX + 1))
+                  --master-addr=$(MODELPLANE_LEADER_ADDRESS)
+                  --headless
+                  --load-format modelexpress
+                  --max-model-len=8192
+                  --gpu-memory-utilization=0.90
+                  --port=8000

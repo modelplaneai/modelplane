@@ -1,0 +1,25 @@
+# An EKS cluster running the Dynamo serving stack, with a two-node L4 pool so a
+# gang can span both nodes. spec.stack: Dynamo installs Grove and the KAI
+# Scheduler, which gang-schedule the leader and worker together and compose them
+# as a Grove PodCliqueSet, and ModelExpress, which serves cached weights to the
+# gang and moves them between replicas peer-to-peer.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: eks-us-east
+  labels:
+    modelplane.ai/region: us-east
+spec:
+  stack: Dynamo
+  cluster:
+    source: EKS
+    eks:
+      region: us-east-1
+  nodePools:
+  - name: gpu-l4
+    className: l4-1x-g6
+    nodeCount: 2
+    minNodeCount: 2
+    maxNodeCount: 2
+    zones:
+    - us-east-1b
