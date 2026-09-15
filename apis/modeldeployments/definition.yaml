@@ -40,11 +40,14 @@ spec:
             properties:
               replicas:
                 type: integer
-                minimum: 1
+                minimum: 0
                 maximum: 10
                 description: >-
                   How many ModelReplicas to fan out to. Each replica is a
                   complete serving instance scheduled to one InferenceCluster.
+                  0 parks the deployment: its replicas and endpoints are
+                  removed but the object and its spec remain, and conditions
+                  report ScaledToZero.
               template:
                 type: object
                 required: [spec]
