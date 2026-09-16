@@ -31,19 +31,15 @@ all behind one endpoint.
 
 ## Before you begin
 
-You'll need [kind](https://kind.sigs.k8s.io/),
-[kubectl](https://kubernetes.io/docs/tasks/tools/), and
-[Helm](https://helm.sh/docs/intro/install/) installed, plus an AWS or GCP account
-with permission to create clusters. Each step covers what it needs as you reach
-it.
+You'll need an AWS or GCP account with permission to create clusters. Each step
+covers what it needs as you reach it.
 
 ## The tour
 
-1. [Installation]({{< ref "getting-started/installation.md" >}}): stand up the Modelplane control plane.
+1. [Install the control plane]({{< ref "/install" >}}): install Modelplane on a Kubernetes cluster.
 2. [Build the platform]({{< ref "getting-started/build-the-platform.md" >}}): provision your first GPU cluster.
 3. [Deploying a model]({{< ref "getting-started/deploying-a-model.md" >}}): serve a model and send it a request.
 4. [Scale the platform]({{< ref "getting-started/scale-the-platform.md" >}}): grow to a multi-region fleet.
 5. [Scale the model]({{< ref "getting-started/scale-the-model.md" >}}): serve the model from two regions behind one endpoint.
 
-First, follow the [Installation]({{< ref "getting-started/installation.md"
->}}) guide.
+First, [install the control plane]({{< ref "/install" >}}).
