@@ -75,10 +75,12 @@ ResourceClaim
 ResourceClaims
 ResourceSlice
 ResourceSlices
+ComputeDomains
 DeviceRequest
 DeviceRequests
 HTTPRoute
 HTTPRoutes
+GatewayClass
 URLRewrite
 ClusterRole
 ClusterRoles
@@ -236,6 +238,7 @@ europe-central2
 # Acronyms
 GPU
 GPUs
+CDI
 CSI
 DRA
 NIC
