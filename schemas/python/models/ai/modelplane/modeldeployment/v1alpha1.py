@@ -275,9 +275,9 @@ class SpecModel1(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    replicas: conint(ge=1, le=10)
+    replicas: conint(ge=0, le=10)
     """
-    How many ModelReplicas to fan out to. Each replica is a complete serving instance scheduled to one InferenceCluster.
+    How many ModelReplicas to fan out to. Each replica is a complete serving instance scheduled to one InferenceCluster. 0 parks the deployment: its replicas and endpoints are removed but the object and its spec remain, and conditions report ScaledToZero.
     """
     template: TemplateModel
     """

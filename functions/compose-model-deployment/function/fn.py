@@ -54,6 +54,7 @@ CONDITION_REASON_SCHEDULING = "Scheduling"
 CONDITION_REASON_NO_REPLICAS_SCHEDULED = "NoReplicasScheduled"
 CONDITION_REASON_ALL_REPLICAS_READY = "AllReplicasReady"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
+CONDITION_REASON_SCALED_TO_ZERO = "ScaledToZero"
 
 # Label keys stamped on the ModelReplicas and ModelEndpoints this function
 # composes, identifying the deployment and cluster they belong to.
@@ -165,6 +166,13 @@ class Composer:
         self.fill = True
 
     def compose(self) -> None:
+        # 0 desired parks the deployment: compose no replicas or endpoints so
+        # Crossplane prunes the existing ones. Handled before resolve_inputs
+        # because a parked deployment needs no clusters - going through the
+        # normal path would misreport it as NoClusters or InsufficientCapacity.
+        if int(self.xr.spec.replicas) == 0:
+            self.report_scaled_to_zero()
+            return
         if not self.resolve_inputs():
             return
         try:
@@ -507,6 +515,42 @@ class Composer:
                     ),
                 ),
             )
+
+    def report_scaled_to_zero(self) -> None:
+        """Report a deployment deliberately parked at zero replicas.
+
+        Both conditions read True: at zero desired there is nothing left to
+        schedule or to wait on, the same way a Kubernetes Deployment at zero
+        replicas reports Available. The ScaledToZero reason is what separates
+        a parked deployment from one that wants replicas and can't place them.
+        """
+        # Transition event while composed resources still exist; once they're
+        # pruned the observed set is empty and the event stops.
+        if self.req.observed.resources:
+            response.normal(self.rsp, "Scaled to zero: removing all replicas")
+
+        resource.update_status(
+            self.rsp.desired.composite,
+            v1alpha1.Status(replicas=v1alpha1.Replicas(total=0, ready=0)),
+        )
+        response.set_conditions(
+            self.rsp,
+            resource.Condition(
+                typ=CONDITION_TYPE_REPLICAS_SCHEDULED,
+                status="True",
+                reason=CONDITION_REASON_SCALED_TO_ZERO,
+                message="0 replicas desired",
+            ),
+            resource.Condition(
+                typ=CONDITION_TYPE_REPLICAS_READY,
+                status="True",
+                reason=CONDITION_REASON_SCALED_TO_ZERO,
+                message="0 replicas desired",
+            ),
+        )
+        # An XR with no composed resources is trivially ready; make the parked
+        # state explicit rather than leaning on that default.
+        self.rsp.desired.composite.ready = fnv1.READY_TRUE
 
     def write_status(self, matched: list[scheduling.Candidate]) -> None:
         """Write deployment status: replica counts."""

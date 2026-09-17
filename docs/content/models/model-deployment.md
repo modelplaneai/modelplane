@@ -235,6 +235,13 @@ the fleet. Because the deployment exposes the Kubernetes scale subresource,
 `kubectl scale` and KEDA work without anything extra. There's no in-cluster pod
 autoscaling.
 
+`spec.replicas` accepts 0 to 10. Scaling to 0 parks the deployment: its
+replicas and endpoints are removed while the object and its spec stay, so a
+KEDA scaler can idle an expensive deployment and later restore it. A parked
+deployment stays `Ready` and its `ReplicasScheduled` and `ReplicasReady`
+conditions report `ScaledToZero`, distinguishing it from one that wants
+replicas and can't place them.
+
 ## Choosing a topology
 
 | Topology | Use when | How you set it |
