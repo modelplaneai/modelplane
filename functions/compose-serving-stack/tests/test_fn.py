@@ -341,6 +341,11 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
             },
             "grafana": {"enabled": False},
             "alertmanager": {"enabled": False},
+            "prometheus-node-exporter": {
+                "tolerations": [
+                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                ],
+            },
         },
     )
     out["node-feature-discovery"] = _release(

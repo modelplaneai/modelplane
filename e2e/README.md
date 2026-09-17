@@ -95,6 +95,7 @@ against. The control-plane cluster needs no DRA.
 ```bash
 nix run .#e2e              # bring up both clusters + deploy the mock model
 nix run .#e2e -- --verify  # same, then wait for readiness and assert a live 200
+nix run .#e2e -- --cloud eks   # install the EKS serving stack on KWOK-faked GPU pools
 nix run .#e2e -- --clean   # tear both clusters down
 ```
 
@@ -159,7 +160,62 @@ e2e/
     30-inference-cluster.yaml # source: Existing -> the workload cluster
     40-model-deployment.yaml
     50-model-service.yaml
+  clouds/                    # --cloud mode: cloud stacks on KWOK-faked GPU pools
+    values-{eks,aks,gke}.yaml # the matrix: per-cloud node shape + stack cloud
+    nodes.yaml               # fake GPU Nodes, templated from the values
+    serving-stack.yaml       # the ServingStack XR, templated from the values
+    verify-placement.sh      # placement/toleration audit (run by Chainsaw)
+    chainsaw/                # the (single, values-driven) Chainsaw test + config
 ```
+
+## Cloud serving stacks on kind (`--cloud`)
+
+`--cloud eks|aks|gke|nebius|vultr|existing` installs that cloud's serving
+stack — the AICR-generated component lists for EKS/AKS/GKE, or the
+hand-written halves for Nebius, Vultr and Existing —
+onto the same workload kind cluster, with no cloud credentials. The trick is
+[KWOK](https://kwok.sigs.k8s.io): `run.sh` installs its pinned `kwok` and
+`stage-fast` charts, and the Chainsaw test applies two fake Nodes labelled and
+tainted exactly like that cloud's GPU pools. The real kind node plays the
+untainted system pool, so system components install and run for real; the
+GPU-toleration DaemonSets fan out to the fake nodes, where KWOK marks their
+pods Running — which is all helm `--wait` and the composition's readiness
+gates need.
+
+The clouds are one values-driven matrix: `clouds/values-<cloud>.yaml` holds
+everything cloud-specific (the fake nodes' labels, the GPU taint value, the
+stack's `spec.cloud`, and the DaemonSets expected to fan out to the GPU
+pool), and Chainsaw binds it into the shared `nodes.yaml` and
+`serving-stack.yaml` templates. Adding fidelity for a cloud means editing its
+values file, not a copy of the test.
+
+The `ServingStack` XR is applied directly (`clouds/serving-stack.yaml`)
+rather than through an `InferenceCluster`, because `source: Existing`
+hard-wires `cloud: Existing`; the XRD accepts exactly the shape the cluster
+compositions compose, so `compose-serving-stack` is exercised end to end
+through real provider-helm/provider-kubernetes.
+
+One Chainsaw run does apply + wait + assert, so cloud mode always verifies
+(`--verify` is implied; `--no-apply` stops before the test and prints the
+manual command). The asserts are two-sided:
+
+- **DaemonSet fan-out**: the values file's `expectedDaemonsets` (the DRA
+  kubelet plugin, NFD worker, node-exporter; toolkit-hardening on AKS) reach
+  their expected ready counts — a toleration too *narrow* (e.g. the wrong
+  `Equal` value on AKS) shows up as a shortfall.
+- **Placement/toleration audit** (`clouds/verify-placement.sh`): no pod
+  outside the GPU allowlist carries a wildcard or `nvidia.com/gpu` toleration,
+  nothing unexpected sits on a fake GPU node, and GPU-only pods never sit on
+  the system pool — a toleration too *broad* (the "tolerates every taint"
+  class of bug) fails here even when the scheduler happened to keep the pod on
+  the system node.
+
+What cloud mode does **not** test: AKS's admission rejection of wildcard
+tolerations (the audit approximates it client-side), real DRA allocation and
+driver/toolkit behaviour on GPU nodes (all faked by KWOK; the model e2e's
+dra-example-driver path covers DRA allocation), the EKS EFA driver and GKE's
+`nvidia-driver-installer` (installed by the cluster compositions/platform, not
+the serving stack), and the model/inference path (covered by the model e2e).
 
 ## Why the extra moving parts
 

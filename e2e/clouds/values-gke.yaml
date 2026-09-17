@@ -1,0 +1,27 @@
+# The GKE leg of the cloud e2e matrix; see values-eks.yaml for the shape.
+# Carries the pool labels the dra gpuStack profile requires
+# (gke-no-default-nvidia-gpu-device-plugin disables GKE's managed device
+# plugin; cloud.google.com/gke-nvidia-gpu-dra-driver is what the autoscaler
+# models DRA ResourceSlices from). The taint is GKE's own managed GPU taint
+# (value "present"); the GKE stack tolerates it with operator: Exists, so the
+# value only matters for fidelity.
+cloud: GKE
+slug: gke
+expectedDaemonsets: >-
+  nvidia-dra-driver/nvidia-dra-driver-gpu-kubelet-plugin=2
+  node-feature-discovery/mp-node-feature-discovery-worker=3
+  monitoring/prometheus-node-exporter=3
+node:
+  gpuTaintValue: present
+  labels:
+    type: kwok
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    node.kubernetes.io/instance-type: a3-highgpu-8g
+    cloud.google.com/gke-accelerator: nvidia-h100-80gb
+    cloud.google.com/gke-nvidia-gpu-dra-driver: "true"
+    gke-no-default-nvidia-gpu-device-plugin: "true"
+    modelplane.ai/pool: gpu-fake
+    modelplane.ai/gpu: h100
+    nvidia.com/gpu.present: "true"
+    feature.node.kubernetes.io/pci-10de.present: "true"

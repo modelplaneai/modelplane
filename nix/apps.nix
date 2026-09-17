@@ -321,6 +321,9 @@
             pkgs.gawk
             pkgs.kind
             pkgs.kubectl
+            pkgs.kubernetes-helm
+            pkgs.kyverno-chainsaw
+            pkgs.jq
             pkgs.curl
             pkgs.docker-client
             pkgs.git

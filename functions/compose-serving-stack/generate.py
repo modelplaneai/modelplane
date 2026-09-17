@@ -47,7 +47,10 @@ detail (drops, managed paths, dropped dependencies, manifests,
 constraint floors) goes to stderr; the generated files carry provenance
 in their header. Every component in a recipe must be classified in
 ALLOW or DROP - an unknown component fails the run, else NVIDIA adding
-a component would silently appear on every Modelplane cluster.
+a component would silently appear on every Modelplane cluster. Every
+wildcard toleration the bundle stamps on a pod must likewise be
+classified in TOLERATIONS, else that pod schedules onto tainted GPU
+nodes (see the table).
 
 Bumping the pinned aicr is a reviewed stack change - it moves the
 components and versions every managed cluster runs on the next
@@ -384,6 +387,94 @@ BUNDLE_EXTRA = {
     "aks": ["--accelerated-node-toleration", "nvidia.com/gpu=true:NoSchedule"],
 }
 
+# The bundler stamps a wildcard toleration - a bare {operator: Exists},
+# tolerating every taint - onto every pod it renders, Deployments
+# included. On a Modelplane cluster that puts cert-manager, the
+# Prometheus stack and the rest on GPU nodes: the cluster compositions
+# taint GPU pools (nvidia.com/gpu=true:NoSchedule on EKS and AKS; GKE
+# taints its GPU pools itself) exactly so that only GPU workloads land
+# there, and a tolerate-everything pod squats on accelerated capacity
+# and stalls autoscaler scale-down. So the transform rewrites every
+# wildcard the bundle ships, per the table below: node-scoped workloads
+# that must reach GPU nodes tolerate exactly the GPU taint (GPU,
+# matching the hand-written stacks' NFD worker and the EKS
+# composition's EFA driver), everything else tolerates nothing (SYSTEM)
+# and schedules on the untainted system pool. A toleration the bundle
+# already scoped (AKS's --accelerated-node-toleration form above)
+# passes through untouched.
+WILDCARD_TOLERATION = [{"operator": "Exists"}]
+
+# Tolerate nothing: schedule on the untainted system pool only.
+SYSTEM: list[Values] = []
+
+# Tolerate exactly the GPU taint, whatever its value (true on EKS and
+# AKS; GKE's own taint carries present).
+GPU: list[Values] = [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}]
+
+# Recipe component name -> dotted values path -> the tolerations that
+# replace a wildcard found there. Like ALLOW/DROP this fails closed: a
+# wildcard at an unclassified path fails the run, else an aicr bump
+# could put a new control-plane pod back on GPU nodes.
+TOLERATIONS = {
+    "cert-manager": {
+        "tolerations": SYSTEM,
+        "cainjector.tolerations": SYSTEM,
+        "webhook.tolerations": SYSTEM,
+        "startupapicheck.tolerations": SYSTEM,
+    },
+    "nfd": {
+        # The worker and topology updater must label GPU nodes - the
+        # DRA kubelet plugin schedules on a label the worker applies
+        # (see BUNDLE_EXTRA).
+        "worker.tolerations": GPU,
+        "topologyUpdater.tolerations": GPU,
+        "master.tolerations": SYSTEM,
+        "gc.tolerations": SYSTEM,
+    },
+    "kube-prometheus-stack": {
+        "prometheus-node-exporter.tolerations": GPU,
+        "alertmanager.alertmanagerSpec.tolerations": SYSTEM,
+        "grafana.tolerations": SYSTEM,
+        "kube-state-metrics.tolerations": SYSTEM,
+        "prometheus.prometheusSpec.tolerations": SYSTEM,
+        "prometheusOperator.tolerations": SYSTEM,
+        "prometheusOperator.admissionWebhooks.patch.tolerations": SYSTEM,
+        "thanosRuler.thanosRulerSpec.tolerations": SYSTEM,
+    },
+    "prometheus-adapter": {
+        "tolerations": SYSTEM,
+    },
+    "k8s-ephemeral-storage-metrics": {
+        # A DaemonSet: ephemeral-storage metrics come from every node.
+        "tolerations": GPU,
+    },
+    "gpu-operator": {
+        "daemonsets.tolerations": GPU,
+        "operator.tolerations": SYSTEM,
+    },
+    "nvidia-dra-driver-gpu": {
+        "kubeletPlugin.tolerations": GPU,
+        "controller.tolerations": SYSTEM,
+    },
+    "nvsentinel": {
+        # The chart's one toleration knob is global, shared by its node
+        # health monitors (which must reach GPU nodes) and its control
+        # plane - the GPU taint is the narrowest scope the chart allows.
+        "global.tolerations": GPU,
+    },
+    "nodewright-operator": {
+        "controllerManager.tolerations": SYSTEM,
+    },
+}
+
+# Same classification for the bundle's rendered manifests, keyed by
+# (recipe component, kind, name); the tolerations apply to every
+# wildcard in the manifest. The toolkit-hardening DaemonSet exists to
+# reconfigure containerd on GPU nodes.
+MANIFEST_TOLERATIONS = {
+    ("gpu-operator", "DaemonSet", "nvidia-toolkit-hardening"): GPU,
+}
+
 # Recipe component name -> the key we emit it as. The key and the
 # mp-prefixed release name are Modelplane's, not AICR's, so a
 # component's identity survives upstream renames (see the design's
@@ -654,6 +745,72 @@ def prune_nulls(values: Values, prefix: tuple[str, ...] = ()) -> list[str]:
     return pruned
 
 
+def scope_tolerations(name: str, values: Values) -> list[str]:
+    """Rewrite the bundler's wildcard tolerations per TOLERATIONS.
+
+    Mutates values in place and returns findings. A wildcard at a path
+    the table doesn't classify fails the run - fail closed, like
+    ALLOW/DROP.
+    """
+    table = TOLERATIONS.get(name, {})
+    findings = []
+
+    def walk(node: object, prefix: tuple[str, ...]) -> None:
+        if isinstance(node, dict):
+            for key, val in node.items():
+                if key == "tolerations" and val == WILDCARD_TOLERATION:
+                    dotted = ".".join((*prefix, key))
+                    if dotted not in table:
+                        sys.exit(
+                            f"wildcard toleration at unclassified path "
+                            f"{name}.{dotted}: classify it in TOLERATIONS - fail closed"
+                        )
+                    scoped = table[dotted]
+                    node[key] = [dict(t) for t in scoped]
+                    findings.append(
+                        f"scoped toleration: {name}.{dotted} -> "
+                        + ("the GPU taint" if scoped else "none (system pool only)")
+                    )
+                else:
+                    walk(val, (*prefix, key))
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                walk(item, (*prefix, f"[{i}]"))
+
+    walk(values, ())
+    return findings
+
+
+def scope_manifest_tolerations(name: str, manifest: Values) -> list[str]:
+    """scope_tolerations for a rendered manifest, keyed by kind and name."""
+    key = (name, manifest.get("kind"), manifest.get("metadata", {}).get("name"))
+    findings = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for k, val in node.items():
+                if k == "tolerations" and val == WILDCARD_TOLERATION:
+                    if key not in MANIFEST_TOLERATIONS:
+                        sys.exit(
+                            f"wildcard toleration in manifest {key[1]}/{key[2]} of "
+                            f"{name}: classify it in MANIFEST_TOLERATIONS - fail closed"
+                        )
+                    scoped = MANIFEST_TOLERATIONS[key]
+                    node[k] = [dict(t) for t in scoped]
+                    findings.append(
+                        f"scoped toleration: {name} manifest {key[1]}/{key[2]} -> "
+                        + ("the GPU taint" if scoped else "none (system pool only)")
+                    )
+                else:
+                    walk(val)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(manifest)
+    return findings
+
+
 def version_key(version: str | None) -> tuple[int, ...]:
     return tuple(int(x) for x in re.findall(r"\d+", version or "0"))
 
@@ -767,6 +924,7 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             findings.append(f"modelplane value: {name}.{'.'.join(path)} ({why})")
         for dotted in prune_nulls(values):
             findings.append(f"pruned null: {name}.{dotted} (a Helm tombstone; see prune_nulls)")
+        findings += scope_tolerations(name, values)
 
         depends = []
         for dep in ref.get("dependencyRefs", []):
@@ -802,6 +960,8 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             ]
             for f in pre:
                 manifests.extend(d for d in yaml.safe_load_all(f.read_text()) if d)
+            for doc in manifests:
+                findings += scope_manifest_tolerations(name, doc)
             findings.append(
                 f"pre-manifests: {name}: {len(manifests)} objects (namespace + {', '.join(f.name for f in pre)})"
             )
@@ -845,6 +1005,8 @@ def transform(cloud: str, recipe: Values, bundle_dir: pathlib.Path) -> tuple[lis
             manifests = []
             for f in rendered:
                 manifests.extend(d for d in yaml.safe_load_all(f.read_text()) if d)
+            for doc in manifests:
+                findings += scope_manifest_tolerations(name, doc)
             findings.append(f"manifests: {name}: {len(manifests)} objects ({', '.join(f.name for f in rendered)})")
             components.append(
                 {
