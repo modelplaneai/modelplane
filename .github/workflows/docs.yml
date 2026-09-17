@@ -79,7 +79,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.number }}
         run: |
-          gh pr comment "$PR" --body \
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
             "Docs preview: https://modelplane-docs-pr-${PR}.vercel.app (ready once the site's Content workflow finishes)"
 
       - name: Publish
