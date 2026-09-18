@@ -37,5 +37,5 @@ spec:
                 image: vllm/vllm-openai:v0.23.0
                 args:
                 - --model=Qwen/Qwen2.5-72B-Instruct-AWQ
-                - --served-model-name=qwen-72b
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --max-model-len=8192

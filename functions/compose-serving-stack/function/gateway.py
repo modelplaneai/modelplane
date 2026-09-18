@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The inference gateway pair, rendered from the XR's spec.
+"""The cluster gateway pair, rendered from the XR's spec.
 
 The GatewayClass and Gateway are the one part of the serving stack that
 isn't build-time data: they read spec.gateway (className, listeners),
@@ -27,6 +27,10 @@ Manifests entry with.
 from typing import Any
 
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1
+
+# The Secret cert-manager issues the gateway's serving certificate into (see
+# fn.compose_gateway_pki). The HTTPS listener terminates TLS with it.
+_GATEWAY_SERVING_SECRET = "cluster-gateway-serving"
 
 # CEL readiness query for the Gateway Object. The Gateway's LoadBalancer
 # address is assigned asynchronously by the controller after the Object is
@@ -51,6 +55,37 @@ def objects(gw: v1alpha1.Gateway | None) -> list[tuple[str, dict[str, Any], str 
     else:
         listeners = [{"name": "http", "protocol": "HTTP", "port": 80}]
 
+    # A cluster given a hostname is one InferenceGateways route to, and that hop
+    # serves mutually authenticated HTTPS or it serves nothing at all.
+    #
+    # Nothing at all, because there are only unsafe alternatives. The
+    # gateway's Service is a public load balancer with a port per listener,
+    # and the model-serving HTTPRoutes carry no sectionName, so they attach
+    # to every listener there is: an HTTP listener alongside HTTPS, or left
+    # in place while no CA is trusted, serves the engines to anything on the
+    # internet with no certificate asked for. An HTTPS listener without its
+    # ClientTrafficPolicy is worse, because it looks like it asks. Nothing in
+    # the cluster wants either: the endpoint picker is an ext_proc the
+    # gateway calls, not a client of it.
+    #
+    # So while no InferenceGateway has published a CA, fn.serves_gateway
+    # withholds the Gateway entirely (this only shapes its listeners). A
+    # cluster with no hostname keeps the plain HTTP listener; it is never
+    # schedulable, so nothing routes to it.
+    if gw.hostname:
+        listeners = [
+            {
+                "name": "https",
+                "protocol": "HTTPS",
+                "port": 443,
+                "hostname": gw.hostname,
+                "tls": {
+                    "mode": "Terminate",
+                    "certificateRefs": [{"name": _GATEWAY_SERVING_SECRET}],
+                },
+            }
+        ]
+
     return [
         (
             "gateway-class",
@@ -65,7 +100,7 @@ def objects(gw: v1alpha1.Gateway | None) -> list[tuple[str, dict[str, Any], str 
                     "parametersRef": {
                         "group": "gateway.envoyproxy.io",
                         "kind": "EnvoyProxy",
-                        "name": "inference-gateway",
+                        "name": "cluster-gateway",
                         "namespace": "modelplane-system",
                     },
                 },
@@ -78,7 +113,7 @@ def objects(gw: v1alpha1.Gateway | None) -> list[tuple[str, dict[str, Any], str 
                 "apiVersion": "gateway.networking.k8s.io/v1",
                 "kind": "Gateway",
                 "metadata": {
-                    "name": "inference-gateway",
+                    "name": "cluster-gateway",
                     "namespace": "modelplane-system",
                 },
                 "spec": {

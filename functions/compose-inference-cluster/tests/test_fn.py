@@ -27,6 +27,11 @@ from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.inferencecluster import v1alpha1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
+# The internal name Modelplane derives for this cluster's gateway, which
+# compose-inference-gateway resolves. Built from the SDK's own child_name, so the
+# namespace and suffix are asserted independently of the function under test.
+_GATEWAY_HOSTNAME = f"{resource.child_name('gateway', 'test-cluster')}.modelplane-system.svc.cluster.local"
+
 
 @dataclasses.dataclass
 class Case:
@@ -83,6 +88,12 @@ def _eks_ready_extras(want: fnv1.RunFunctionResponse, storage_class: str) -> Non
     want.desired.resources["eks-cluster"].ready = fnv1.READY_TRUE
     status = want.desired.composite.resource.fields["status"].struct_value
     status.fields["cache"].struct_value.fields["storageClassName"].string_value = storage_class
+
+
+def _gateways_selector() -> fnv1.ResourceSelector:
+    """Every InferenceGateway. A cluster gateway accepts client certificates
+    from each of their CAs, which is how an InferenceGateway proves itself."""
+    return fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway")
 
 
 def _replicas_selector(cluster_name: str) -> fnv1.ResourceSelector:
@@ -202,6 +213,7 @@ def _early_return_guard_case() -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctio
         desired=fnv1.State(resources={"usage-replicas": _guard_clusterusage()}),
         context=structpb.Struct(),
     )
+    want.requirements.resources["gateways"].CopyFrom(_gateways_selector())
     want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
     want.requirements.resources["class-gpu-l4"].CopyFrom(
         fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l4")
@@ -368,6 +380,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 },
                                 "spec": {
                                     "cloud": "Existing",
+                                    "gateway": {"hostname": _GATEWAY_HOSTNAME},
                                     "stack": "Standard",
                                     "secrets": [
                                         {
@@ -467,6 +480,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         backend1b.resource.CopyFrom(resource.dict_to_struct(backend1b_dict))
         # want1 gains the replica-guard requirement in place from the guard cases
         # below, after this snapshot; add it here so want1b matches on its own.
+        want1b.requirements.resources["gateways"].CopyFrom(_gateways_selector())
         want1b.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         # --- Case 2: GKE cluster first pass - no observed GKE, classes resolved. ---
@@ -701,6 +715,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 },
                                 "spec": {
                                     "cloud": "Existing",
+                                    "gateway": {"hostname": _GATEWAY_HOSTNAME},
                                     "stack": "Standard",
                                     "secrets": [
                                         {
@@ -1329,6 +1344,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                 },
                                 "spec": {
                                     "cloud": "GKE",
+                                    "gateway": {"hostname": _GATEWAY_HOSTNAME},
                                     "stack": "Standard",
                                     "secrets": [
                                         {
@@ -1480,6 +1496,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         },
                         "spec": {
                             "cloud": "EKS",
+                            "gateway": {"hostname": _GATEWAY_HOSTNAME},
                             "stack": "Standard",
                             "secrets": [
                                 {
@@ -1799,6 +1816,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         },
                         "spec": {
                             "cloud": "Nebius",
+                            "gateway": {"hostname": _GATEWAY_HOSTNAME},
                             "stack": "Standard",
                             "secrets": [
                                 {
@@ -2107,6 +2125,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         },
                         "spec": {
                             "cloud": "AKS",
+                            "gateway": {"hostname": _GATEWAY_HOSTNAME},
                             "stack": "Standard",
                             "secrets": [
                                 {
@@ -2500,6 +2519,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         },
                         "spec": {
                             "cloud": "Vultr",
+                            "gateway": {"hostname": _GATEWAY_HOSTNAME},
                             "stack": "Standard",
                             "secrets": [
                                 {
@@ -2579,6 +2599,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             want_creds_vultr,
             want15,
         ):
+            want.requirements.resources["gateways"].CopyFrom(_gateways_selector())
             want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         # The guard cases reuse case 1's request and response.
@@ -2715,6 +2736,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             context=structpb.Struct(),
         )
         want_creds.requirements.resources["class-gpu-l4"].CopyFrom(class_selector)
+        want_creds.requirements.resources["gateways"].CopyFrom(_gateways_selector())
         want_creds.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
 
         # Every cloud cluster composes an activation policy; with the policy
@@ -2816,3 +2838,129 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(got),
                     "-want, +got",
                 )
+
+
+class TestGatewayStatus(unittest.IsolatedAsyncioTestCase):
+    """The hostname gate, which is what keeps a cluster off the schedule until
+    traffic to it is mutually authenticated in both directions."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
+
+    @staticmethod
+    def _request(*, address: str | None, ca: str | None, gateway_cas: list[str]) -> fnv1.RunFunctionRequest:
+        """A cluster and whatever its serving stack and the fleet's gateways have
+        published so far. The gateway name is Modelplane's own, so nothing
+        configures it."""
+        xr = v1alpha1.InferenceCluster(
+            metadata=metav1.ObjectMeta(name="test-cluster", namespace="modelplane-system"),
+            spec=v1alpha1.Spec(
+                cluster=v1alpha1.Cluster(
+                    source="Existing",
+                    existing=v1alpha1.Existing(secretRef=v1alpha1.SecretRef(name="my-kubeconfig")),
+                ),
+            ),
+        )
+        stack_status: dict = {"conditions": [{"type": "Ready", "status": "True"}]}
+        gateway: dict = {}
+        if address:
+            gateway["address"] = address
+        if ca:
+            gateway["caCertificate"] = ca
+        if gateway:
+            stack_status["gateway"] = gateway
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json"))
+                ),
+                resources={
+                    "serving-stack": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "ServingStack",
+                                "metadata": {"name": "test-cluster-serving-stack-fd00b"},
+                                "status": stack_status,
+                            }
+                        ),
+                    ),
+                },
+            ),
+        )
+        for i, cert in enumerate(gateway_cas):
+            req.required_resources["gateways"].items.append(
+                fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "InferenceGateway",
+                            "metadata": {"name": f"fleet-{i}"},
+                            "spec": {"clusterName": "test-cluster"},
+                            "status": {"clientCACertificate": cert},
+                        }
+                    ),
+                )
+            )
+        return req
+
+    async def _gateway_status(self, req: fnv1.RunFunctionRequest) -> dict:
+        got = await self.runner.RunFunction(req, None)
+        return resource.struct_to_dict(got.desired.composite.resource).get("status", {}).get("gateway", {})
+
+    async def test_hostname_published_once_both_directions_are_authenticated(self) -> None:
+        """An address to reach, this cluster's CA so an InferenceGateway can tell
+        it reached the right cluster, and an InferenceGateway CA so the cluster
+        gateway demands a client certificate."""
+        status = await self._gateway_status(
+            self._request(address="34.55.100.10", ca="cluster-ca", gateway_cas=["fleet-ca"])
+        )
+        self.assertEqual(
+            status,
+            {
+                "address": "34.55.100.10",
+                "caCertificate": "cluster-ca",
+                "hostname": _GATEWAY_HOSTNAME,
+            },
+        )
+
+    async def test_no_hostname_without_an_inference_gateway_ca(self) -> None:
+        """The case that matters: the cluster gateway only demands a client
+        certificate when it has a CA to check against, and with none it serves no
+        Gateway at all. Publishing the hostname anyway would make the cluster
+        schedulable when nothing is listening on it, so every request routed
+        there would be stranded."""
+        status = await self._gateway_status(self._request(address="34.55.100.10", ca="cluster-ca", gateway_cas=[]))
+        self.assertEqual(status, {"address": "34.55.100.10", "caCertificate": "cluster-ca"})
+
+    async def test_no_hostname_without_this_clusters_ca(self) -> None:
+        """Without it an InferenceGateway can't validate the cluster gateway it
+        reaches, so it would have to fall back to the public trust store."""
+        status = await self._gateway_status(self._request(address="34.55.100.10", ca=None, gateway_cas=["fleet-ca"]))
+        self.assertEqual(status, {"address": "34.55.100.10"})
+
+    async def test_no_gateway_status_before_an_address(self) -> None:
+        """A hostname that resolves to nothing strands every request routed to
+        it, and the CA is republished from the same status."""
+        status = await self._gateway_status(self._request(address=None, ca="cluster-ca", gateway_cas=["fleet-ca"]))
+        self.assertEqual(status, {})
+
+
+class TestGatewayHostname(unittest.TestCase):
+    """The derived gateway hostname doubles as an SNI and a certificate SAN, so
+    two clusters must never derive the same one."""
+
+    def test_dots_become_a_single_dns_label(self) -> None:
+        """A dotted cluster name is a DNS-1123 subdomain, but the first segment
+        of the hostname has to be one DNS-1035 label."""
+        hostname = fn._gateway_hostname("eu.example")
+        label = hostname.split(".")[0]
+        self.assertNotIn(".", label)
+        self.assertTrue(label.startswith("gateway-"))
+
+    def test_names_differing_only_in_dots_do_not_collide(self) -> None:
+        """The bug this guards: sanitising '.' to '-' before hashing mapped
+        'eu.example' and 'eu-example' onto one hostname, so one cluster's Service
+        shadowed the other's under a certificate it accepted."""
+        self.assertNotEqual(fn._gateway_hostname("eu.example"), fn._gateway_hostname("eu-example"))

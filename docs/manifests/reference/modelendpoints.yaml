@@ -1,10 +1,28 @@
-# ModelEndpoints are composed automatically by ModelDeployment.
-# Create manually only to register an external inference endpoint.
+# ModelDeployment composes a ModelEndpoint per replica. Write one by hand only
+# to register a model Modelplane doesn't run, like this one at Together.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelEndpoint
 metadata:
-  name: qwen-72b-replica-0
+  name: together-qwen-72b
   namespace: ml-team
+  labels:
+    modelplane.ai/endpoint: together-qwen-72b
 spec:
-  url: http://10.0.1.50/ml-team/qwen-72b/
-  rewritePath: /ml-team/qwen-72b/
+  # Scheme and host, no path. An https origin gets TLS originated to it. The
+  # host must be a name; an address stops the gateway applying the model
+  # rewrite, the credential and priority failover.
+  origin: https://api.together.xyz
+  api:
+    # OpenAI (the default) or Anthropic. The gateway translates between this
+    # and whatever the caller sent.
+    schema: OpenAI
+    # The path this backend serves that API under. /v1 for most, /openai/v1 for
+    # Groq, a per-replica path for a Modelplane-composed endpoint.
+    prefix: /v1
+  # The name this backend knows the model by. Unset, the caller's model name
+  # passes through unchanged.
+  model: Qwen/Qwen2.5-72B-Instruct-Turbo
+  # This backend's credential, attached by the gateway on the way out. It never
+  # reaches the caller, and the caller's own credential never reaches here.
+  credentialRef:
+    name: together-api-key

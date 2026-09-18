@@ -50,7 +50,7 @@ spec:
                 image: vllm/vllm-openai:v0.25.1
                 command: ["vllm", "serve", "poolside/Laguna-S-2.1-FP8"]
                 args:
-                - --served-model-name=laguna
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --tensor-parallel-size=8
                 - --max-model-len=262144
                 - --gpu-memory-utilization=0.9

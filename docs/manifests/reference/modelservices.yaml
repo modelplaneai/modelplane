@@ -3,8 +3,31 @@ kind: ModelService
 metadata:
   name: qwen-72b
   namespace: ml-team
+  labels:
+    # Matched by an InferenceGateway's serviceSelector. Your label, under your
+    # own prefix; Modelplane matches it and never interprets it.
+    example.org/region: eu
 spec:
   endpoints:
-    - selector:
+    # Entries at the same priority share traffic by weight, so this pair is a
+    # 90/10 canary across two deployments. name is a stable, unique-within-the-
+    # service handle Modelplane keys the entry's status and weighting by.
+    - name: stable
+      priority: 0
+      weight: 90
+      selector:
         matchLabels:
           modelplane.ai/deployment: qwen-72b
+    - name: canary
+      priority: 0
+      weight: 10
+      selector:
+        matchLabels:
+          modelplane.ai/deployment: qwen-72b-next
+    # A higher priority is only tried when nothing below it has a healthy
+    # endpoint, which makes this provider a failover for the capacity above.
+    - name: together
+      priority: 1
+      selector:
+        matchLabels:
+          modelplane.ai/endpoint: together-qwen-72b

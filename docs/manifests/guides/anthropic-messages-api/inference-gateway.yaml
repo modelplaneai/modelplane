@@ -1,23 +1,18 @@
-# The InferenceGateway creates a unified, OpenAI-compatible endpoint on the
-# control plane cluster. It installs Traefik Proxy and creates a Gateway that
-# routes traffic to model replicas on remote inference clusters.
+# An InferenceGateway is the front door for inference requests: the only address
+# a caller sees. It speaks the OpenAI and Anthropic APIs, authenticates callers,
+# and resolves the model a request names to a ModelService.
 #
-# Create one InferenceGateway per control plane. It must be named "default".
+# It runs on an InferenceCluster, named by spec.clusterName. A gateway has to run
+# somewhere, and Modelplane reuses InferenceCluster rather than a separate kind
+# for it. That cluster can serve models too, or with no GPU pools host the
+# gateway and nothing else.
 #
-# For kind or bare-metal clusters, set loadBalancer to MetalLB and configure an
-# address pool. For cloud clusters with native LoadBalancer support, omit the
-# loadBalancer field entirely.
+# This one is the smallest useful shape: no hostname, no certificate and no
+# caller keys, so it answers on its address over plain HTTP and authenticates
+# nobody. Fine for getting started, not for an untrusted network.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceGateway
 metadata:
-  name: default
+  name: local
 spec:
-  backend: Traefik
-  traefik:
-    version: "40.2.0"
-
-    # Remove the loadBalancer section if your cluster supports LoadBalancer
-    # services natively (e.g. GKE, EKS).
-    loadBalancer: MetalLB
-    metallb:
-      addressPool: "172.18.255.200-172.18.255.250"
+  clusterName: nebius-eu-north

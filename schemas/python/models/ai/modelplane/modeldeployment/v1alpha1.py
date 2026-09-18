@@ -122,6 +122,7 @@ class Container(BaseModel):
     args: list[str] | None = None
     """
     Container args, passed through to the serving engine. Includes the model identifier (e.g. --model=...) and any parallelism flags.
+    Pass --served-model-name $(MODELPLANE_SERVED_MODEL_NAME), the variable Modelplane injects, so the engine answers to the name a gateway routes to. An engine started under a literal name returns 404 for every request.
     """
     command: list[str] | None = None
     """

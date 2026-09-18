@@ -46,7 +46,7 @@ spec:
                 image: vllm/vllm-openai:v0.23.0
                 args:
                 - "--model=Qwen/Qwen3-8B"
-                - "--served-model-name=qwen"
+                - "--served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)"
                 - "--max-model-len=16384"
                 - "--gpu-memory-utilization=0.92"
                 - "--reasoning-parser=qwen3"

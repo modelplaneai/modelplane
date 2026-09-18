@@ -47,7 +47,7 @@ spec:
                 command: ["python3", "-m", "sglang.launch_server"]
                 args:
                 - --model-path=poolside/Laguna-S-2.1-FP8
-                - --served-model-name=laguna
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --tp-size=8
                 - --context-length=262144
                 - --trust-remote-code

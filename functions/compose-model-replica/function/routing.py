@@ -468,7 +468,7 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
         "kind": "HTTPRoute",
         "metadata": {"name": name, "namespace": base.REMOTE_NAMESPACE},
         "spec": {
-            "parentRefs": [{"name": "inference-gateway", "namespace": "modelplane-system"}],
+            "parentRefs": [{"name": "cluster-gateway", "namespace": "modelplane-system"}],
             "rules": [
                 {
                     "matches": [{"path": {"type": "PathPrefix", "value": f"/{_namespace(replica.metadata)}/{name}/"}}],

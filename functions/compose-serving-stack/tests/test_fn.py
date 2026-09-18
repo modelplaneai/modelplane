@@ -136,15 +136,31 @@ def _release(
     return res
 
 
-def _object(key: str, manifest: dict, cel: str | None = None) -> fnv1.Resource:
-    """The expected Object for one manifest, built from literal arguments."""
+def _object(
+    key: str,
+    manifest: dict,
+    cel: str | None = None,
+    *,
+    labeled: bool = True,
+    management_policies: list | None = None,
+) -> fnv1.Resource:
+    """The expected Object for one manifest, built from literal arguments.
+
+    The gateway PKI objects carry no resource label (nothing selects them in
+    a Usage), so labeled=False builds them without one.
+    """
     model = k8sobjv1alpha1.Object(
-        metadata=metav1.ObjectMeta(labels={"modelplane.ai/resource": key}),
+        # Omit metadata entirely when unlabeled: a null metadata would serialize
+        # into the composed resource rather than being absent, as it is when the
+        # function passes none.
+        **({"metadata": metav1.ObjectMeta(labels={"modelplane.ai/resource": key})} if labeled else {}),
         spec=k8sobjv1alpha1.Spec(
             providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(kind="ProviderConfig", name=_PC_NAME),
             forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
         ),
     )
+    if management_policies:
+        model.spec.managementPolicies = management_policies
     if cel is not None:
         model.spec.readiness = k8sobjv1alpha1.Readiness(policy="DeriveFromCelQuery", celQuery=cel)
     res = fnv1.Resource()
@@ -256,6 +272,15 @@ _EXISTING_DYNAMO_USAGES = {
     "usage-cert-manager-by-envoy-gateway": _usage(_RELEASE_REF, "cert-manager", _RELEASE_REF, "envoy-gateway"),
     "usage-ai-gateway-crds-by-ai-gateway": _usage(_RELEASE_REF, "ai-gateway-crds", _RELEASE_REF, "ai-gateway"),
     "usage-gateway-namespace-by-gateway-proxy": _usage(_OBJECT_REF, "gateway-namespace", _OBJECT_REF, "gateway-proxy"),
+    "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
+        _RELEASE_REF, "cert-manager", _OBJECT_REF, "gateway-selfsigned-issuer"
+    ),
+    "usage-gateway-namespace-by-gateway-selfsigned-issuer": _usage(
+        _OBJECT_REF, "gateway-namespace", _OBJECT_REF, "gateway-selfsigned-issuer"
+    ),
+    "usage-gateway-selfsigned-issuer-by-trust-manager": _usage(
+        _OBJECT_REF, "gateway-selfsigned-issuer", _RELEASE_REF, "trust-manager"
+    ),
     "usage-kai-scheduler-by-kai-queue-root": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue-root"),
     "usage-kai-scheduler-by-kai-queue": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue"),
     "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server": _usage(
@@ -297,7 +322,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         repository="https://charts.jetstack.io",
         version="v1.20.2",
         wait=True,
-        values={"crds": {"enabled": True, "keep": False}},
+        values={"crds": {"enabled": True}},
     )
     out["kube-prometheus-stack"] = _release(
         key="kube-prometheus-stack",
@@ -376,7 +401,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-gateway-system",
         chart="gateway-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v1.8.1",
+        version="v1.8.4",
         values={
             "config": {
                 "envoyGateway": {
@@ -413,7 +438,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-ai-gateway-system",
         chart="ai-gateway-crds-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v0.7.0",
+        version="v1.1.0",
         wait=True,
     )
     out["ai-gateway"] = _release(
@@ -422,7 +447,8 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-ai-gateway-system",
         chart="ai-gateway-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v0.7.0",
+        version="v1.1.0",
+        values={"controller": {"logRequestHeaderAttributes": "x-modelplane-caller:caller"}},
     )
     for doc in _crds("gaie.yaml"):
         key = f"gaie-crds-{doc['metadata']['name']}"
@@ -436,7 +462,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         {
             "apiVersion": "gateway.envoyproxy.io/v1alpha1",
             "kind": "EnvoyProxy",
-            "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
             "spec": {
                 "provider": {
                     "type": "Kubernetes",
@@ -592,7 +618,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
                 "parametersRef": {
                     "group": "gateway.envoyproxy.io",
                     "kind": "EnvoyProxy",
-                    "name": "inference-gateway",
+                    "name": "cluster-gateway",
                     "namespace": "modelplane-system",
                 },
             },
@@ -603,7 +629,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         {
             "apiVersion": "gateway.networking.k8s.io/v1",
             "kind": "Gateway",
-            "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
             "spec": {
                 "gatewayClassName": "envoy",
                 "listeners": [
@@ -617,6 +643,35 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
             },
         },
         cel=_GATEWAY_READY_CEL,
+    )
+
+    # --- the gateway PKI trust anchor, common components on every cluster ---
+    # The self-signed Issuer and trust-manager are stack components laid down
+    # regardless of whether InferenceGateways route to the cluster: any cluster
+    # may host an InferenceGateway whose client PKI needs them. The rest of the
+    # PKI (the CA, the serving certificate, the client-auth policy) is gated on a
+    # hostname, which this stack has none of, so it's covered separately.
+    out["gateway-selfsigned-issuer"] = _object(
+        "gateway-selfsigned-issuer",
+        {
+            "apiVersion": "cert-manager.io/v1",
+            "kind": "Issuer",
+            "metadata": {"name": "modelplane-selfsigned", "namespace": "modelplane-system"},
+            "spec": {"selfSigned": {}},
+        },
+    )
+    out["trust-manager"] = _release(
+        key="trust-manager",
+        release="mp-trust-manager",
+        namespace="modelplane-system",
+        chart="trust-manager",
+        repository="oci://quay.io/jetstack/charts",
+        version="v0.25.0",
+        values={
+            "crds": {"enabled": True, "keep": True},
+            "app": {"trust": {"namespace": "modelplane-system"}},
+            "defaultPackage": {"enabled": False},
+        },
     )
 
     return out
@@ -661,6 +716,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "kai-queue-root",  # -> kai-scheduler
             "kai-queue",  # -> kai-scheduler
             "modelexpress-server",  # -> modelexpress-crds
+            "gateway-selfsigned-issuer",  # -> cert-manager, gateway-namespace
+            "trust-manager",  # -> gateway-selfsigned-issuer
         }
         first_wave = {k: v for k, v in full.items() if k not in dep_gated}
 
@@ -755,6 +812,178 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         helm_pc = resource.struct_to_dict(got.desired.resources["provider-config-helm"].resource)
         self.assertEqual("NebiusServiceAccountCredentials", helm_pc["spec"]["identity"]["type"])
 
+    async def test_cluster_gateway_composes_mtls_with_ca(self) -> None:
+        """A cluster given a hostname and an InferenceGateway CA serves mTLS: it
+        issues its own PKI, republishes the CA without its key, demands a client
+        certificate on an HTTPS-only listener, and publishes the CA in status.
+
+        The hostname is a full Service FQDN, so the CA certificate's commonName
+        overflows the 64-byte X.509 limit and is truncated.
+        """
+        hostname = "gateway-test-backend-12345.modelplane-system.svc.cluster.local"
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.ServingStack(
+                            metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                            spec=v1alpha1.Spec(
+                                cloud="Existing",
+                                stack="Standard",
+                                secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
+                                gateway=v1alpha1.Gateway(
+                                    hostname=hostname,
+                                    # Deliberately out of name order, to prove the
+                                    # bundle sorts before concatenating.
+                                    clientCAs=[
+                                        v1alpha1.ClientCA(name="fleet-b", certificate="BBB"),
+                                        v1alpha1.ClientCA(name="fleet-a", certificate="AAA"),
+                                    ],
+                                ),
+                            ),
+                        ).model_dump(exclude_none=True, mode="json")
+                    ),
+                ),
+                # PCs observed, the self-signed Issuer Ready (so trust-manager and
+                # the CA chain proceed), and the CA ConfigMap trust-manager syncs
+                # carrying the certificate back for status.
+                resources=_observed_pcs()
+                | {
+                    "gateway-selfsigned-issuer": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {"status": {"conditions": [{"type": "Ready", "status": "True"}]}}
+                        )
+                    ),
+                    "gateway-ca-configmap": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {"status": {"atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}}}}
+                        )
+                    ),
+                },
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+
+        def manifest(key: str) -> dict:
+            return resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+
+        ca_cert = manifest("gateway-ca-certificate")
+        self.assertEqual(f"modelplane cluster CA {hostname}"[:64], ca_cert["spec"]["commonName"])
+        self.assertLessEqual(len(ca_cert["spec"]["commonName"]), 64)
+        self.assertTrue(ca_cert["spec"]["isCA"])
+        self.assertEqual("modelplane-selfsigned", ca_cert["spec"]["issuerRef"]["name"])
+
+        serving = manifest("gateway-serving-certificate")
+        self.assertEqual([hostname], serving["spec"]["dnsNames"])
+        self.assertEqual("modelplane-cluster-ca", serving["spec"]["issuerRef"]["name"])
+
+        bundle = manifest("gateway-ca-bundle")
+        self.assertEqual("trust.cert-manager.io/v1alpha1", bundle["apiVersion"])
+        self.assertEqual([{"secret": {"name": "modelplane-cluster-ca", "key": "ca.crt"}}], bundle["spec"]["sources"])
+
+        # Observed only, never managed: trust-manager owns the ConfigMap.
+        ca_cm = got.desired.resources["gateway-ca-configmap"]
+        self.assertEqual(["Observe"], resource.struct_to_dict(ca_cm.resource)["spec"]["managementPolicies"])
+
+        # Every InferenceGateway's CA, sorted by name and concatenated.
+        client_bundle = manifest("gateway-client-ca-bundle")
+        self.assertEqual("AAA\nBBB\n", client_bundle["data"]["ca.crt"])
+
+        client_auth = manifest("gateway-client-auth")
+        self.assertEqual("ClientTrafficPolicy", client_auth["kind"])
+        self.assertEqual("https", client_auth["spec"]["targetRefs"][0]["sectionName"])
+        self.assertEqual(
+            "modelplane-inference-gateway-cas",
+            client_auth["spec"]["tls"]["clientValidation"]["caCertificateRefs"][0]["name"],
+        )
+
+        # HTTPS replaces HTTP: one listener, terminating TLS with the serving cert.
+        gateway = manifest("gateway")
+        self.assertEqual(
+            [
+                {
+                    "name": "https",
+                    "protocol": "HTTPS",
+                    "port": 443,
+                    "hostname": hostname,
+                    "tls": {"mode": "Terminate", "certificateRefs": [{"name": "cluster-gateway-serving"}]},
+                    "allowedRoutes": {"namespaces": {"from": "All"}},
+                }
+            ],
+            gateway["spec"]["listeners"],
+        )
+
+        status = resource.struct_to_dict(got.desired.composite.resource)["status"]
+        self.assertEqual("CLUSTERCA", status["gateway"]["caCertificate"])
+
+        # Every hostname-gated PKI resource must be tracked for readiness:
+        # compose_gateway_pki marks only the keys it returns, so one composed
+        # but not returned would silently hold the cluster un-Ready. Observe
+        # each Ready and assert it's marked ready, which fails if the key was
+        # dropped from the rendered list. (The self-signed Issuer and
+        # trust-manager are stack components, covered by the golden test.)
+        pki_keys = [
+            "gateway-ca-certificate",
+            "gateway-ca-issuer",
+            "gateway-serving-certificate",
+            "gateway-ca-bundle",
+            "gateway-ca-configmap",
+            "gateway-client-ca-bundle",
+            "gateway-client-auth",
+        ]
+        for key in pki_keys:
+            req.observed.resources[key].CopyFrom(
+                fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+                )
+            )
+        # Preserve the CA ConfigMap's data alongside its Ready condition.
+        req.observed.resources["gateway-ca-configmap"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "status": {
+                            "conditions": [{"type": "Ready", "status": "True"}],
+                            "atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}},
+                        }
+                    }
+                )
+            )
+        )
+        got = await self.runner.RunFunction(req, None)
+        for key in pki_keys:
+            self.assertEqual(fnv1.READY_TRUE, got.desired.resources[key].ready, f"{key} not marked ready")
+
+    async def test_cluster_gateway_without_ca_serves_nothing(self) -> None:
+        """A cluster given a hostname but no InferenceGateway CA withholds the
+        Gateway entirely rather than serving the engines unauthenticated, and
+        warns."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.ServingStack(
+                            metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                            spec=v1alpha1.Spec(
+                                cloud="Existing",
+                                stack="Standard",
+                                secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
+                                gateway=v1alpha1.Gateway(hostname="gw.clusters.example.com"),
+                            ),
+                        ).model_dump(exclude_none=True, mode="json")
+                    ),
+                ),
+                resources=_observed_pcs(),
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+        # The GatewayClass is still composed (the PKI needs the namespace and
+        # the class is harmless), but the Gateway is withheld.
+        self.assertIn("gateway-class", got.desired.resources)
+        self.assertNotIn("gateway", got.desired.resources)
+        self.assertNotIn("usage-gateway-class-by-gateway", got.desired.resources)
+        self.assertTrue(any(r.severity == fnv1.SEVERITY_WARNING for r in got.results))
+
 
 # The composed-resource key a component renders under is its identity:
 # renaming one deletes and recreates the remote resource (for an Object
@@ -786,9 +1015,14 @@ _COMMON = frozenset(
         "gaie-crds-inferencepools.inference.networking.x-k8s.io",
         "gateway-namespace",
         "gateway-proxy",
+        "gateway-selfsigned-issuer",
+        "trust-manager",
         "usage-ai-gateway-crds-by-ai-gateway",
         "usage-cert-manager-by-envoy-gateway",
+        "usage-cert-manager-by-gateway-selfsigned-issuer",
         "usage-gateway-namespace-by-gateway-proxy",
+        "usage-gateway-namespace-by-gateway-selfsigned-issuer",
+        "usage-gateway-selfsigned-issuer-by-trust-manager",
     }
 )
 

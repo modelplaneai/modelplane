@@ -26,7 +26,8 @@ over to the provider alongside your own replicas:
 
 {{< manifests "concepts/model-service-external.yaml" >}}
 
-The provider must speak the OpenAI API, since that's the contract a
-`ModelService` exposes. Anything OpenAI-compatible works; `url` and `rewritePath`
-are all that change between providers.
+Anything speaking the OpenAI or Anthropic API works. `origin` is the scheme and
+host to reach it at, with no path; `api.prefix` is the path the provider serves
+those APIs under, and `api.schema` which of the two it speaks. Only those change
+between providers.
 <!-- vale write-good.Passive = YES -->

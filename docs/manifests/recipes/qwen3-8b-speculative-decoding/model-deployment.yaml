@@ -61,7 +61,7 @@ spec:
                 args:
                 - "--model=Qwen/Qwen3-8B"
             # The id clients pass as "model" in OpenAI requests.
-                - "--served-model-name=qwen3-8b-spec"
+                - "--served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)"
             # Cap the context so the KV cache fits beside the weights on the L4.
                 - "--max-model-len=16384"
                 - "--gpu-memory-utilization=0.92"

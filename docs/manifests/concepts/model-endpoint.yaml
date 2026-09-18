@@ -1,20 +1,34 @@
-# Modelplane composes a ModelEndpoint per ModelReplica automatically. Create one
-# manually only to register an external inference endpoint with a ModelService,
-# for example a SaaS provider like Together or BaseTen.
+# Modelplane composes a ModelEndpoint per ModelReplica. Write one by hand only
+# to register a model it doesn't run, like this one at Together, so a
+# ModelService can fan over both.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelEndpoint
 metadata:
   name: kimi-k2-together
   namespace: ml-team
   labels:
-    # 1. A label of your own for a ModelService to select on. Any label
-    #    works; modelplane.ai/external-provider is a readable convention.
-    modelplane.ai/external-provider: together
+    # 1. A label of your own for a ModelService to select on. Any label works.
+    modelplane.ai/endpoint: kimi-k2-together
 spec:
-  # 2. The provider's base URL.
-  url: https://api.together.xyz/
-  # 3. The path to rewrite requests to. A ModelService receives requests at
-  #    /<namespace>/<service>/v1/... and strips only the /<namespace>/<service>/
-  #    prefix, so an OpenAI-compatible provider that already serves /v1/...
-  #    takes just /.
-  rewritePath: /
+  # 2. Scheme and host, no path. An https origin gets TLS originated to it.
+  #    This must be a name rather than an address: Envoy AI Gateway only applies
+  #    per-backend model rewriting, credentials and priority failover when every
+  #    backend in a route is addressed by hostname.
+  origin: https://api.together.xyz
+  api:
+    # 3. The API this backend speaks, and the path it serves it under. The
+    #    gateway translates between this and whatever the caller sent, so an
+    #    Anthropic client can reach an OpenAI backend and the reverse. Most
+    #    providers serve /v1; Groq serves /openai/v1.
+    schema: OpenAI
+    prefix: /v1
+  # 4. The name Together knows this model by. The gateway rewrites the request
+  #    body's model to it, so a caller keeps naming the ModelService and gets
+  #    back whichever model actually served.
+  model: moonshotai/Kimi-K2-Instruct
+  # 5. Together's API key, which the gateway attaches on the way out. It never
+  #    reaches the caller, and the caller's own key never reaches Together. Nor
+  #    does the caller's identity: Modelplane strips that header for any backend
+  #    it doesn't operate, while still recording the caller in the usage record.
+  credentialRef:
+    name: together-api-key

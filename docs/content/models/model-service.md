@@ -17,6 +17,11 @@ deployment and labels it. Two of those labels carry routing intent:
 - `modelplane.ai/deployment`: the deployment the replica belongs to.
 - `modelplane.ai/cluster`: the cluster the replica runs on.
 
+An `InferenceCluster` adds its own labels too. Whatever you put under its
+`spec.placement.metadata.labels` lands on every endpoint and replica scheduled
+there, so a service can select on a property of the cluster, like its region,
+declared once on the cluster rather than repeated on each deployment.
+
 Modelplane creates an endpoint only once its replica is Ready, serving and
 reachable, and withdraws it if the replica later goes unhealthy. A service only
 ever routes to replicas that can actually answer, so a deployment that's still
@@ -115,48 +120,71 @@ spec:
         modelplane.ai/external-provider: together
 ```
 
-Endpoints with different path layouts coexist behind the one URL.
+Endpoints served by different providers, on different paths, coexist behind the
+one model name.
+
+## How a service reaches its gateways
+
+An `InferenceGateway` names the services it serves, through a `serviceSelector`
+that matches a service's labels. A gateway with no selector serves every service.
+Label a service for a region and give that region's gateways a matching selector,
+and only they serve it.
+
+For every gateway that serves it, Modelplane composes a `ModelRoute` that renders
+the routing onto that gateway's cluster. You don't write `ModelRoute`s.
+`status.routes` counts them, and `kubectl get modelroutes -l
+modelplane.ai/service=<name>` shows each one, its gateway, and whether the route
+is ready there. Look there when a service is Ready but a gateway isn't serving
+it.
 
 ## Sending a request
 
-The service's public address is on `status.address`, in the form
-`http://<gateway>/<namespace>/<service-name>`:
+A caller names the model. The name is
+`<namespace>/<service>`. `status.routes` counts the gateways serving the service,
+and `kubectl get modelroutes -l modelplane.ai/service=<name>` lists them one per
+gateway, each with its address. Every gateway publishes a base URL per API it
+speaks:
 
 ```bash
-ADDRESS=$(kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}')
+ADDRESS=$(kubectl get ig local -o jsonpath='{.status.endpoints.openAI}')
 ```
 
-Append the OpenAI path and send a request. The `model` field is the name the
-engine serves (its `--served-model-name`, or the model's Hugging Face id if you
-didn't set one):
+Send a request naming the service. The gateway rewrites the name to whatever
+each endpoint's engine or provider expects, so one name reaches replicas and
+third-party providers alike:
 
 ```bash
-curl "$ADDRESS/v1/chat/completions" \
+curl "$ADDRESS/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen",
+    "model": "ml-team/qwen",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```
 
+`GET $ADDRESS/models` lists every model that gateway will route, which is how a
+caller discovers the name.
+
 ## Alternate APIs
 
-We call the endpoint OpenAI-compatible because the engines are, not because
-Modelplane imposes it. The route matches the `/<namespace>/<service>/` prefix and
-preserves the path below it on the way to the engine, so any API the engine serves
-is reachable on the same URL.
+The gateway speaks the OpenAI API and Anthropic's Messages API, and translates
+between them and whatever an endpoint speaks, so a caller can use either
+regardless of the engine behind it: `status.endpoints.anthropic` is the base URL
+for the Messages API, and a client that speaks it, including Claude Code via
+`ANTHROPIC_BASE_URL`, needs nothing else. See
+[the Messages API guide]({{< ref "/guides/anthropic-messages-api" >}}).
 
-Take a vLLM replica that also serves the Anthropic Messages API. It answers on
-`.../v1/messages`, so a client that speaks it (including Claude Code, via
-`ANTHROPIC_BASE_URL`) talks to it directly. The engine's operational paths come
-through the same way: `.../health` and the Prometheus `.../metrics` are reachable
-on the service URL.
+Because the gateway resolves a model name rather than forwarding a path, an
+engine's own operational paths are not exposed through it. Scrape `/metrics` and
+`/health` from the replica, not through the gateway. See
+[Collecting engine metrics]({{< ref "/guides/collecting-engine-metrics" >}}).
 
-There's one exception, and it's set by the deployment rather than the service.
+There's one exception to the translation, and it's set by the deployment rather
+than the service.
 [Disaggregated serving]({{< ref "model-deployment.md#disaggregated-serving" >}})
 reads OpenAI-format request bodies to pick a prefill and decode worker, so a
-request in another API shape still reaches the engine but skips that
-cache-aware routing. Unified serving forwards every API shape the same way.
+request that arrives in another API shape still reaches the engine but skips
+that cache-aware routing. Unified serving forwards every API shape the same way.
 
 ## Example
 

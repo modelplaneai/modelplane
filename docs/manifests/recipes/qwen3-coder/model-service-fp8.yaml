@@ -8,6 +8,7 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: qwen3-coder-sgl
+    selector:
       matchLabels:
         modelplane.ai/deployment: qwen3-coder-sgl

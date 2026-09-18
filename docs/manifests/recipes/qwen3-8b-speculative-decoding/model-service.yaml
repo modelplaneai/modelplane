@@ -10,6 +10,7 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: qwen3-8b-spec
+    selector:
       matchLabels:
         modelplane.ai/deployment: qwen3-8b-spec

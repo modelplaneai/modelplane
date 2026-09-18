@@ -55,7 +55,7 @@ spec:
                 image: vllm/vllm-openai:v0.23.0
                 command: ["vllm", "serve", "RedHatAI/Kimi-K2-Instruct-quantized.w4a16"]
                 args:
-                - --served-model-name=kimi-k2
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --quantization=compressed-tensors
                 - --tensor-parallel-size=1
                 - --data-parallel-size=8
@@ -98,7 +98,7 @@ spec:
                 image: vllm/vllm-openai:v0.23.0
                 command: ["vllm", "serve", "RedHatAI/Kimi-K2-Instruct-quantized.w4a16"]
                 args:
-                - --served-model-name=kimi-k2
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --quantization=compressed-tensors
                 - --tensor-parallel-size=1
                 - --data-parallel-size=8

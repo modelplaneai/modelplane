@@ -69,12 +69,12 @@ Update the `ModelService` to select both deployments. Each entry in
 
 {{< manifests "getting-started/model-service-multi.yaml" >}}
 
-The endpoint URL doesn't change. Clients that had this URL before still have it;
-they don't know the fleet changed. The gateway load-balances across both regions,
-and losing one region keeps the other serving. Send the same request as before:
+The model name doesn't change. Callers that had it before still have it; they
+don't know the fleet changed. The gateway load-balances across both regions, and
+losing one region keeps the other serving. Send the same request as before:
 
 ```bash
-ADDRESS=$(kubectl get ms qwen -n ml-team -o jsonpath='{.status.address}')
+ADDRESS=$(kubectl get ig local -o jsonpath='{.status.endpoints.openAI}')
 ```
 
 ```bash
@@ -82,9 +82,9 @@ kubectl run -i --rm curl-test \
   --image=curlimages/curl \
   --restart=Never \
   --env="ADDRESS=$ADDRESS" \
-  -- sh -c 'curl -v "$ADDRESS/v1/chat/completions" \
+  -- sh -c 'curl -v "$ADDRESS/chat/completions" \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}"'
+  -d "{\"model\":\"ml-team/qwen\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}"'
 ```
 
 ## That's the tour

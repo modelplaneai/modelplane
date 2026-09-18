@@ -7,6 +7,7 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: glm-air
+    selector:
       matchLabels:
         modelplane.ai/deployment: glm-air

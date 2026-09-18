@@ -50,7 +50,7 @@ spec:
                 - >-
                   exec python3 -m sglang.launch_server
                   --model-path Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
-                  --served-model-name qwen3-coder
+                  --served-model-name $(MODELPLANE_SERVED_MODEL_NAME)
                   --tp-size 8
                   --ep-size 8
                   --context-length 32768

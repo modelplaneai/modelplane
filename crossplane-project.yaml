@@ -65,6 +65,10 @@ spec:
       pathPrefix: _output/functions/compose-model-replica
   - source: Tarball
     tarball:
+      name: compose-model-route
+      pathPrefix: _output/functions/compose-model-route
+  - source: Tarball
+    tarball:
       name: compose-model-service
       pathPrefix: _output/functions/compose-model-service
   - source: Tarball

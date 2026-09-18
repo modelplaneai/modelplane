@@ -249,7 +249,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "spec": {
                                                 "parentRefs": [
                                                     {
-                                                        "name": "inference-gateway",
+                                                        "name": "cluster-gateway",
                                                         "namespace": "modelplane-system",
                                                     },
                                                 ],
