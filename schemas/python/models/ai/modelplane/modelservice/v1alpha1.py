@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, conint
+from pydantic import AwareDatetime, BaseModel, Field, conint, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -42,14 +42,42 @@ class Crossplane(BaseModel):
 
 
 class Selector(BaseModel):
-    matchLabels: dict[str, str]
+    matchLabels: dict[str, constr(max_length=63)] = Field(
+        ..., max_length=16, min_length=1
+    )
 
 
 class Endpoint(BaseModel):
+    name: constr(
+        pattern=r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$', min_length=1, max_length=63
+    )
+    """
+    A stable name for this entry, unique within the service. For example stable, canary, or a provider's name.
+    """
+    priority: conint(ge=0, le=63) | None = 0
+    """
+    Lower is preferred. Entries at the same priority share traffic by weight. A higher-numbered entry takes a growing share of traffic as lower-numbered ones lose healthy endpoints, and takes over entirely once they have none.
+    A failed request is retried, on another endpoint at the same priority if there is one and then at the next, and each attempt gets that endpoint's own model name, credential and path. Retrying is only possible until the first byte reaches the caller, because after that the tokens are already sent, so a backend that dies mid-stream truncates the response instead.
+    """
     selector: Selector
+    """
+    Selects ModelEndpoints in this ModelService's namespace. Scope a service to a region by selecting only endpoints in it; Modelplane stamps an InferenceCluster's labels onto every endpoint composed there, so the region is declared once on the cluster.
+    """
     weight: conint(ge=1, le=1000000) | None = 1
     """
-    Weight determines the share of traffic sent to this entry's endpoints, relative to the other entries. An entry with weight 2 receives twice the traffic of an entry with weight 1. The weight is spread as evenly as possible across all endpoints the entry matches.
+    Share of traffic for this entry relative to the other entries at the same priority, spread as evenly as possible across the endpoints it matches. A pair of entries weighted 90 and 10 is a canary.
+    At least 1. A weight of 0 doesn't deprioritise a backend, it drops it from the gateway's load assignment entirely, which is indistinguishable from removing the entry and easy to mistake for parking it. Remove the entry instead.
+    """
+
+
+class Timeouts(BaseModel):
+    idle: constr(pattern=r'^([0-9]{1,5}(h|m|s|ms)){1,4}$') | None = '60s'
+    """
+    How long an endpoint may send nothing. Before its first byte, the gateway abandons it, counts it as failed, and retries the request, on another endpoint if there is one. After that the stream is cut short. A streamed response sends its first byte after prefill, so for streaming callers this bounds time to first token and every gap between chunks. A non-streamed response sends nothing until it's complete, so if any caller doesn't stream, set this at least as long as request, or to 0s to disable it.
+    """
+    request: constr(pattern=r'^([0-9]{1,5}(h|m|s|ms)){1,4}$') | None = '300s'
+    """
+    How long a request may take end to end, including retries. Set it above the longest response you expect: prefill plus the maximum output tokens at the model's decode rate.
     """
 
 
@@ -58,9 +86,13 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    endpoints: list[Endpoint] = Field(..., min_length=1)
+    endpoints: list[Endpoint] = Field(..., max_length=32, min_length=1)
     """
-    Endpoints to route traffic to. Each entry selects a set of ModelEndpoints by label. Traffic is split across entries in proportion to their weights, and load-balanced as evenly as possible across the endpoints an entry matches.
+    A priority order over ModelEndpoints, each entry selecting a set of them by label. priority orders entries into failover tiers, and weight splits traffic within a tier, for canarying or biasing towards chosen capacity.
+    """
+    timeouts: Timeouts | None = Field({}, validate_default=True)
+    """
+    How long a gateway waits on this service's endpoints. The right values depend on the model and on whether callers stream, so set them from its observed response times.
     """
 
 
@@ -73,14 +105,23 @@ class Condition(BaseModel):
     type: str
 
 
+class Routes(BaseModel):
+    ready: conint(ge=0) | None = None
+    total: conint(ge=0) | None = None
+
+
 class Status(BaseModel):
-    address: str | None = None
-    """
-    Public address where this service is reachable.
-    """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    model: str | None = None
+    """
+    The name a caller passes as the request's model. Namespaced, so two services can't collide.
+    """
+    routes: Routes | None = None
+    """
+    Counts of the ModelRoutes this service composes, one per gateway that serves it. ready is how many are carrying traffic; total is how many gateways serve the service. Per-gateway detail, including each gateway's address, is on the ModelRoutes themselves: kubectl get modelroutes -l modelplane.ai/service=<name>.
     """
 
 

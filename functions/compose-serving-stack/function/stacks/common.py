@@ -17,11 +17,12 @@
 Modelplane's own half of the serving stack, where the Standard and
 Dynamo stacks don't differ: the gateway path (Envoy Gateway, Envoy AI
 Gateway and its CRDs, the Gateway API Inference Extension CRDs, the
-gateway namespace and EnvoyProxy) and the DRA critical-pods quota.
+gateway namespace and EnvoyProxy), the gateway's PKI (a self-signed
+Issuer and trust-manager) and the DRA critical-pods quota.
 
 The GatewayClass and Gateway are deliberately absent: they read
-spec.gateway (className, listeners), which stays per-cluster API, so the
-function renders them itself.
+spec.gateway (className, hostname), which is per-cluster configuration,
+so the function renders them itself.
 
 Versions here are Modelplane's pins: this file carries what no
 generator resolves - the contract surface a ModelReplica composes
@@ -46,10 +47,21 @@ _AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
 # Envoy AI Gateway v1.1.0.
 _AI_GATEWAY_VERSION = "v1.1.0"
 
-# The header the fleet gateway stamps the authenticated caller's identity
+# The header an InferenceGateway stamps the authenticated caller's identity
 # onto, mapped into AI Gateway request metadata (see the ai-gateway
 # component below).
 _CALLER_HEADER = "x-modelplane-caller"
+
+# The cluster gateway's cert-manager Issuer that signs its CA. Composed on
+# every cluster (see the gateway-selfsigned-issuer component); fn.py's PKI
+# names it as the CA certificate's issuer, so the two must agree.
+SELFSIGNED_ISSUER = "modelplane-selfsigned"
+
+# trust-manager republishes the cluster CA's certificate into a ConfigMap
+# without its private key, which is what lets the control plane read the
+# certificate to hand to an InferenceGateway. Modelplane's pin: it's gateway-path
+# contract surface, not hardware, so no generator resolves it.
+_TRUST_MANAGER_VERSION = "v0.25.0"
 
 # Must match the namespace every cloud half installs the NVIDIA DRA
 # driver into - generated and hand-written alike - so this quota lands
@@ -142,7 +154,7 @@ COMPONENTS: list[Component] = [
         version=_AI_GATEWAY_VERSION,
         depends_on=["ai-gateway-crds"],
         # logRequestHeaderAttributes copies the caller identity into the
-        # io.envoy.ai_gateway metadata namespace, so the fleet gateway's
+        # io.envoy.ai_gateway metadata namespace, so an InferenceGateway's
         # access log can read the caller from metadata rather than the
         # request header. The header is stripped before a request reaches
         # a backend Modelplane doesn't operate, so reading the log from the
@@ -192,7 +204,7 @@ COMPONENTS: list[Component] = [
             {
                 "apiVersion": "gateway.envoyproxy.io/v1alpha1",
                 "kind": "EnvoyProxy",
-                "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
+                "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
                 "spec": {
                     "provider": {
                         "type": "Kubernetes",
@@ -203,6 +215,55 @@ COMPONENTS: list[Component] = [
                 },
             },
         ],
+    ),
+    # The cluster gateway's mTLS trust anchor. A self-signed Issuer signs the
+    # per-cluster CA (fn.py's compose_gateway_pki), which signs the gateway's
+    # serving certificate. Every cluster's gateway CA roots in it.
+    # Ordered after cert-manager (its CRDs and admission webhook) and the
+    # namespace it lives in.
+    Manifests(
+        key="gateway-selfsigned-issuer",
+        depends_on=["cert-manager", "gateway-namespace"],
+        manifests=[
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Issuer",
+                "metadata": {"name": SELFSIGNED_ISSUER, "namespace": "modelplane-system"},
+                "spec": {"selfSigned": {}},
+            },
+        ],
+    ),
+    # trust-manager republishes the cluster CA's certificate into a ConfigMap
+    # without its private key, so the control plane reads the certificate
+    # through a Bundle (fn.py's compose_gateway_pki) rather than the Secret that
+    # holds the key too.
+    #
+    # Ordered after the self-signed Issuer, not just cert-manager: this chart
+    # ships its own Issuer and Certificate for its webhook, and Helm applies
+    # custom resources last, so installed alongside cert-manager they lose a
+    # race with its validating webhook and the release fails terminally
+    # (nothing sets rollbackLimit). An Issuer we composed reporting Ready proves
+    # the same webhook admits the same kind, and a component's install gate
+    # waits for exactly that.
+    Chart(
+        key="trust-manager",
+        release="mp-trust-manager",
+        namespace="modelplane-system",
+        chart="trust-manager",
+        repository="oci://quay.io/jetstack/charts",
+        version=_TRUST_MANAGER_VERSION,
+        depends_on=["gateway-selfsigned-issuer"],
+        values={
+            # Kept because the Bundles are Objects owned by other XRs, and an
+            # Object whose CRD has gone can't be observed, so it never
+            # finalizes.
+            "crds": {"enabled": True, "keep": True},
+            "app": {"trust": {"namespace": "modelplane-system"}},
+            # The default package is a public-CA trust store, for Bundles that
+            # set useDefaultCAs. These trust one private CA each, so disabling
+            # it drops an init container and the image pull it waits on.
+            "defaultPackage": {"enabled": False},
+        },
     ),
     # The DRA driver's kubelet plugin runs at system-node-critical
     # priority. GKE only admits such pods in a namespace whose

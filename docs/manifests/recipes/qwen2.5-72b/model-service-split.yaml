@@ -9,12 +9,14 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - weight: 50
+  - name: aks
+    weight: 50
     selector:
       matchLabels:
         modelplane.ai/deployment: qwen-72b
         modelplane.ai/cluster: aks-a100-single
-  - weight: 50
+  - name: nebius
+    weight: 50
     selector:
       matchLabels:
         modelplane.ai/deployment: qwen-72b

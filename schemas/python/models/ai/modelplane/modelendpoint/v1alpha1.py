@@ -5,9 +5,46 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, constr
+from pydantic import AwareDatetime, BaseModel, Field, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
+
+
+class Api(BaseModel):
+    prefix: constr(min_length=1, max_length=512) | None = '/v1'
+    """
+    The path the backend serves that API under: /v1 for most, /openai/v1 for Groq, and a per-replica path for a Modelplane-composed endpoint, whose cluster gateway distinguishes replicas by path.
+    """
+    schema_: Literal['OpenAI', 'Anthropic'] | None = Field('OpenAI', alias='schema')
+    """
+    The API the backend speaks. A gateway translates an Anthropic request for an OpenAI backend, but not the reverse: an Anthropic backend serves only Anthropic callers, and an OpenAI request routed to it fails.
+    """
+
+
+class SecretRef(BaseModel):
+    key: constr(min_length=1, max_length=253) | None = 'apiKey'
+    """
+    The Secret key holding the API key.
+    """
+    name: constr(min_length=1, max_length=253)
+
+
+class ApiKey(BaseModel):
+    secretRef: SecretRef
+    """
+    The Secret holding the API key, in this ModelEndpoint's namespace.
+    """
+
+
+class Credential(BaseModel):
+    apiKey: ApiKey | None = None
+    """
+    Authenticates to the backend with an API key. Required when method is APIKey.
+    """
+    method: Literal['APIKey'] = 'APIKey'
+    """
+    How the gateway authenticates to this backend. APIKey sends a key held in a Secret, in the x-api-key header to a backend whose api.schema is Anthropic, and as a bearer token in the Authorization header otherwise.
+    """
 
 
 class CompositionRef(BaseModel):
@@ -42,17 +79,27 @@ class Crossplane(BaseModel):
 
 
 class Spec(BaseModel):
+    api: Api | None = Field({}, validate_default=True)
+    """
+    The API this backend speaks, and where it serves it. Defaults to the OpenAI API under /v1, which most providers serve.
+    """
+    credential: Credential | None = None
+    """
+    This backend's credential, which the gateway attaches on the way out. When the gateway authenticates callers, the caller's own key never reaches the backend. An endpoint whose credential is missing carries no traffic and reports EndpointReady=False.
+    """
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    rewritePath: str | None = None
+    model: constr(min_length=1, max_length=253) | None = None
     """
-    Path prefix that requests should be rewritten to when routed through this endpoint. Used by ModelService to configure URLRewrite on its HTTPRoute. For Modelplane- composed endpoints this is the per-replica serving path on the remote cluster's gateway, e.g. /ml-team/qwen-demo/.
+    The name this backend knows the model by, which a gateway rewrites the request's model to on the way out. Unset, the caller's model name passes through unchanged.
+    A caller names a ModelService and gets back whichever model actually served: ask for ml-team/assistant and the response names the model that answered, such as Qwen/Qwen3-8B.
     """
-    url: constr(min_length=1)
+    origin: constr(min_length=1, max_length=2048)
     """
-    URL of the inference endpoint. Used to configure routing to this endpoint.
+    Scheme and host of the backend, with no path: an https origin gets TLS originated to it. A port is only needed for a non-default one.
+    The host must be a name, never an address.
     """
 
 
@@ -65,21 +112,10 @@ class Condition(BaseModel):
     type: str
 
 
-class Routing(BaseModel):
-    backendName: str | None = None
-    """
-    Crossplane-generated name of the Backend resource composed by this endpoint.
-    """
-
-
 class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
-    """
-    routing: Routing | None = None
-    """
-    Routing details for this endpoint. ModelService reads backendName to build HTTPRoute backendRefs.
     """
 
 

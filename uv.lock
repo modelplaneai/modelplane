@@ -18,6 +18,7 @@ members = [
     "compose-model-deployment",
     "compose-model-endpoint",
     "compose-model-replica",
+    "compose-model-route",
     "compose-model-service",
     "compose-nebius-cluster",
     "compose-serving-stack",
@@ -177,7 +178,6 @@ dependencies = [
     { name = "crossplane-function-sdk-python" },
     { name = "crossplane-models" },
     { name = "grpcio" },
-    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -186,7 +186,6 @@ requires-dist = [
     { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
     { name = "crossplane-models", editable = "schemas/python" },
     { name = "grpcio", specifier = ">=1.73.1" },
-    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
@@ -252,6 +251,25 @@ requires-dist = [
 name = "compose-model-replica"
 version = "0.0.0"
 source = { editable = "functions/compose-model-replica" }
+dependencies = [
+    { name = "click" },
+    { name = "crossplane-function-sdk-python" },
+    { name = "crossplane-models" },
+    { name = "grpcio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "crossplane-models", editable = "schemas/python" },
+    { name = "grpcio", specifier = ">=1.73.1" },
+]
+
+[[package]]
+name = "compose-model-route"
+version = "0.0.0"
+source = { editable = "functions/compose-model-route" }
 dependencies = [
     { name = "click" },
     { name = "crossplane-function-sdk-python" },

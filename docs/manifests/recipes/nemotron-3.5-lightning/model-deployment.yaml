@@ -45,7 +45,7 @@ spec:
                 image: vllm/vllm-openai:v0.27.1
                 command: ["vllm", "serve", "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"]
                 args:
-                - --served-model-name=nemotron-3.5-lightning
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --moe-backend=humming
                 - --linear-backend=humming
                 - --max-num-seqs=256

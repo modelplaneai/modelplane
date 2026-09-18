@@ -10,6 +10,7 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: laguna
+    selector:
       matchLabels:
         modelplane.ai/deployment: laguna

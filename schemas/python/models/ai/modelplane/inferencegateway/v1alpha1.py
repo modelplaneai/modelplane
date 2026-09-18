@@ -5,9 +5,34 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel
+from pydantic import AwareDatetime, BaseModel, Field, constr
 
 from ....io.k8s.apimachinery.pkg.apis.meta import v1
+
+
+class SecretSelector(BaseModel):
+    matchLabels: dict[str, constr(max_length=63)] = Field(
+        ..., max_length=16, min_length=1
+    )
+
+
+class ApiKey(BaseModel):
+    secretSelector: SecretSelector
+    """
+    Selects Secrets holding caller API keys. Each key in a selected Secret is one caller: the entry's name is the caller's identity and its value is the key.
+    The gateway stamps the resolved identity onto every request and every usage record, and never forwards the caller's key.
+    """
+
+
+class Auth(BaseModel):
+    apiKey: ApiKey | None = None
+    """
+    Authenticates callers by API key. Required when method is APIKey.
+    """
+    method: Literal['APIKey'] = 'APIKey'
+    """
+    How the gateway authenticates callers. APIKey matches the key a caller presents against keys held in Secrets.
+    """
 
 
 class CompositionRef(BaseModel):
@@ -42,40 +67,48 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
-class Metallb(BaseModel):
-    addressPool: str
-    """
-    IP address range for the MetalLB pool (e.g. "172.18.255.200-172.18.255.250"). Must be within the cluster's network CIDR.
-    """
+class ServiceSelector(BaseModel):
+    matchLabels: dict[str, constr(max_length=63)] = Field(
+        ..., max_length=16, min_length=1
+    )
 
 
-class Traefik(BaseModel):
-    loadBalancer: Literal['MetalLB'] | None = None
+class CertificateRef(BaseModel):
+    name: constr(min_length=1, max_length=253)
+
+
+class Tls(BaseModel):
+    certificateRefs: list[CertificateRef] = Field(..., max_length=8, min_length=1)
     """
-    Load balancer implementation for the gateway Service. Omit for cloud environments where a native LB controller is available.
-    """
-    metallb: Metallb | None = None
-    """
-    MetalLB configuration. Required when loadBalancer is MetalLB. Use for kind or bare-metal clusters.
-    """
-    version: str
-    """
-    Traefik Helm chart version.
+    Secrets holding the gateway's certificates, of type kubernetes.io/tls, in the same namespace as this Modelplane's other gateway Secrets. Modelplane copies them to the gateway's cluster.
+    The gateway presents whichever certificate matches the name a caller asked for, so one certificate can cover several names or each can have its own.
     """
 
 
 class Spec(BaseModel):
-    backend: Literal['Traefik'] = 'Traefik'
+    auth: Auth | None = None
     """
-    Gateway implementation.
+    Authenticates callers. Omit it and the gateway authenticates nobody, so anything that can reach the address can invoke any ModelService it serves, and set its own x-modelplane-caller identity on every usage record. Omitting auth is only appropriate behind something that has already established who is calling and that the gateway is reachable only through it; with auth set, the gateway derives the caller header itself and overwrites any a caller sent.
+    Modelplane authenticates callers; it does not authorize them. Every authenticated caller can reach every ModelService this gateway serves, and /v1/models lists them all regardless of caller. To narrow what a caller can reach, narrow the gateway with serviceSelector or run a separate gateway for them.
+    """
+    clusterName: constr(min_length=1, max_length=253)
+    """
+    The InferenceCluster this gateway runs on, which decides its region and its address. A cluster hosts at most one gateway.
+    The cluster needs no GPU pools: one with none can host a gateway and nothing else. A cluster that serves models can host a gateway too.
+    Immutable. To move a gateway, create one on the new cluster and move callers to its address.
     """
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    traefik: Traefik | None = None
+    serviceSelector: ServiceSelector | None = None
     """
-    Traefik Proxy configuration. Required when backend is Traefik.
+    Selects the ModelServices this gateway serves, by their labels. Absent, it serves every one.
+    This is how a gateway is scoped: to a region, so an EU service is only reachable through EU gateways; to your public services on an internet-facing front door; or to a named set on a dedicated gateway. These are your labels, under your own prefix.
+    """
+    tls: Tls | None = None
+    """
+    Serves callers over HTTPS, on the DNS names you point at status.address and issue its certificates for. Without it the caller's hop is unencrypted.
     """
 
 
@@ -88,14 +121,34 @@ class Condition(BaseModel):
     type: str
 
 
+class Endpoints(BaseModel):
+    anthropic: str | None = None
+    """
+    Base URL for Anthropic's Messages API.
+    """
+    openAI: str | None = None
+    """
+    Base URL for the OpenAI API. A caller sets its SDK's base_url to this and names a ModelService as the model.
+    """
+
+
 class Status(BaseModel):
     address: str | None = None
     """
-    External address of the control plane gateway. Backend-agnostic — works for any routing implementation.
+    The address this gateway answers on, and what its DNS names should point at. It is also the target to health check, at /healthz on port 80 over plain HTTP even when the gateway terminates TLS, to decide whether this gateway is in rotation.
+    /healthz answers 200 whenever this gateway's proxy is running and serving. It says nothing about whether any ModelService is reachable through it, so a gateway with no healthy backend stays in rotation and answers requests with a 503. Read each ModelService's RoutingReady for that.
+    """
+    clientCACertificate: constr(max_length=16384) | None = None
+    """
+    PEM certificate of the CA that signs this gateway's client certificate. Every InferenceCluster accepts client certificates from it.
     """
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    endpoints: Endpoints | None = None
+    """
+    The URLs this gateway serves each API at, built from its address. Published only without tls: a gateway serving HTTPS is reached on its DNS names, at https://<name>/v1 for the OpenAI API and https://<name>/anthropic/v1 for Anthropic's.
     """
 
 

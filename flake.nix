@@ -63,6 +63,7 @@
         "compose-model-deployment"
         "compose-model-endpoint"
         "compose-model-replica"
+        "compose-model-route"
         "compose-model-service"
         "compose-usages"
       ];

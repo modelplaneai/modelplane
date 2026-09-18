@@ -12,8 +12,13 @@ spec:
     - type: GoogleApplicationCredentials
       name: west-gke-sa-key
       key: private_key
+  # Projected from the InferenceCluster: the name InferenceGateways reach this
+  # cluster's gateway by, and the CAs whose client certificates it accepts.
   gateway:
-    listeners:
-      - name: http
-        port: 80
-        protocol: HTTP
+    hostname: gateway-west-gke-1a2b3.modelplane-system.svc.cluster.local
+    clientCAs:
+      - name: eu
+        certificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIBszCCAVmgAwIBAgIQ…
+          -----END CERTIFICATE-----

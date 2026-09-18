@@ -9,9 +9,11 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: kimi-k2
+    selector:
       matchLabels:
         modelplane.ai/deployment: kimi-k2          # your own replicas
-  - selector:
+  - name: together
+    selector:
       matchLabels:
         modelplane.ai/external-provider: together  # the endpoint above

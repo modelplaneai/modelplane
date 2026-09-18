@@ -9,9 +9,11 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: qwen-demo
+    selector:
       matchLabels:
         modelplane.ai/deployment: qwen-demo
-  - selector:
+  - name: qwen-west
+    selector:
       matchLabels:
         modelplane.ai/deployment: qwen-west
