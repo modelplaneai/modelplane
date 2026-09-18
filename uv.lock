@@ -506,6 +506,8 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "crossplane-function-sdk-python" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "types-protobuf" },
 ]
 
@@ -514,6 +516,8 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "crossplane-function-sdk-python", specifier = ">=0.14.0" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "types-protobuf", specifier = ">=4.24" },
 ]
 
