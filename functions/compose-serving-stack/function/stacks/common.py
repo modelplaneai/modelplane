@@ -41,7 +41,15 @@ from function.stacks.components import Chart, Component, Manifests
 # HTTPRoute -> InferencePool backendRefs (disaggregated serving) route.
 _AI_GATEWAY_NAMESPACE = "envoy-ai-gateway-system"
 _AI_GATEWAY_REPO = "oci://docker.io/envoyproxy"
-_AI_GATEWAY_VERSION = "v0.7.0"
+# AIGatewayRoute's streamIdleTimeout, which resets a backend that hangs
+# before the first token so the request can be retried elsewhere, arrived in
+# Envoy AI Gateway v1.1.0.
+_AI_GATEWAY_VERSION = "v1.1.0"
+
+# The header the fleet gateway stamps the authenticated caller's identity
+# onto, mapped into AI Gateway request metadata (see the ai-gateway
+# component below).
+_CALLER_HEADER = "x-modelplane-caller"
 
 # Must match the namespace every cloud half installs the NVIDIA DRA
 # driver into - generated and hand-written alike - so this quota lands
@@ -67,7 +75,10 @@ COMPONENTS: list[Component] = [
         namespace="envoy-gateway-system",
         chart="gateway-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v1.8.1",
+        # Envoy AI Gateway v1.1.x is tested against Envoy Gateway v1.8.x
+        # with Gateway API v1.5.x, so v1.9.x is out of range until the AI
+        # Gateway release that pairs with it.
+        version="v1.8.4",
         # cert-manager lives in every cloud half - generated or
         # hand-written - so this edge crosses the halves and resolves
         # against the joined list. Envoy Gateway needs it for its
@@ -130,6 +141,22 @@ COMPONENTS: list[Component] = [
         repository=_AI_GATEWAY_REPO,
         version=_AI_GATEWAY_VERSION,
         depends_on=["ai-gateway-crds"],
+        # logRequestHeaderAttributes copies the caller identity into the
+        # io.envoy.ai_gateway metadata namespace, so the fleet gateway's
+        # access log can read the caller from metadata rather than the
+        # request header. The header is stripped before a request reaches
+        # a backend Modelplane doesn't operate, so reading the log from the
+        # header would lose the caller from the third-party records that
+        # attribute provider spend.
+        #
+        # Any non-empty mapping, the controller's default of
+        # "agent-session-id:session.id" included, makes the PostTranslateModify
+        # hook walk every listener for an HTTP connection manager and error on
+        # the first filter chain without one, taking a co-located TCP/UDPRoute
+        # Gateway's whole xDS update down with it (envoyproxy/ai-gateway#2600,
+        # fix in flight as #2601). That failure is visible, where a lost caller
+        # isn't.
+        values={"controller": {"logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller"}},
     ),
     # Gateway API Inference Extension CRDs, providing the InferencePool
     # that disaggregated replicas front their decode endpoints with.

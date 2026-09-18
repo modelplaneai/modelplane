@@ -376,7 +376,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-gateway-system",
         chart="gateway-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v1.8.1",
+        version="v1.8.4",
         values={
             "config": {
                 "envoyGateway": {
@@ -413,7 +413,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-ai-gateway-system",
         chart="ai-gateway-crds-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v0.7.0",
+        version="v1.1.0",
         wait=True,
     )
     out["ai-gateway"] = _release(
@@ -422,7 +422,8 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-ai-gateway-system",
         chart="ai-gateway-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v0.7.0",
+        version="v1.1.0",
+        values={"controller": {"logRequestHeaderAttributes": "x-modelplane-caller:caller"}},
     )
     for doc in _crds("gaie.yaml"):
         key = f"gaie-crds-{doc['metadata']['name']}"
