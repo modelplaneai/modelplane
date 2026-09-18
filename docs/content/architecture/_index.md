@@ -82,7 +82,7 @@ lets Modelplane spend its effort on the part that's actually inference-specific.
 
 Modelplane runs on a **control cluster** and manages a fleet of **workload
 clusters**, the `InferenceCluster`s. The split is deliberate: the control plane
-holds no GPUs and serves no tokens. It schedules, composes, and routes; the
+holds no GPUs and serves no tokens. It schedules and composes, and the
 workload clusters do the serving.
 
 The control cluster runs Crossplane, the Modelplane composition functions (one
