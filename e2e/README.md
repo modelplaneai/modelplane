@@ -1,7 +1,7 @@
 # Local end-to-end test (no cloud, no GPU)
 
 Exercise the full Modelplane path — publish capacity, register a cluster, deploy
-a model, route a request through the control-plane gateway — on local `kind`
+a model, route a request through the InferenceGateway — on local `kind`
 clusters, with **no cloud provider and no GPU**.
 
 This is the integration layer. The composition functions run in-cluster against
@@ -12,17 +12,16 @@ can gate a merge where the cloud e2e can't.
 
 It uses **two clusters**, mirroring a real deployment:
 
-- a **control-plane** cluster (crossplane + the Configuration + the
-  `InferenceGateway`), managed by `crossplane project run`;
+- a **control-plane** cluster (crossplane + the Configuration), managed by
+  `crossplane project run`;
 - a **workload** cluster registered via `source: Existing`, where the serving
-  stack and the model run.
+  stack, both gateways and the model run.
 
-Two clusters rather than one because the control-plane `InferenceGateway`
-(Traefik) and the workload `ServingStack` (Envoy) both install the Gateway API
-CRDs — co-located on one cluster they race for the same cluster-scoped CRDs and
-the gateway wedges (`encountered composed resource without required
-composition-resource-name annotation`). Separate clusters, as in production,
-avoid it.
+Two clusters rather than one because that's the shape Modelplane is for: a
+control plane that installs nothing on itself, and clusters that run everything.
+Both gateways live on the workload cluster: the InferenceGateway as the front
+door and the cluster gateway fronting the engines. The control plane runs only
+Crossplane and the providers.
 
 Two Modelplane primitives make it cloud-free:
 
@@ -48,7 +47,7 @@ server exposes both, so the pod goes Ready without a real model or GPU.
 | `ModelDeployment` → `ModelReplica` → `ModelEndpoint` → `ModelService` wiring | Real GPU drivers / CUDA (fake DRA devices only) |
 | DRA `ResourceClaim` → fake device binding (the real allocation path) | Multi-node / disaggregated (`PrefillDecode`) serving |
 | Serving-stack install on a real (BYO) workload cluster | Cloud provisioning (EKS/GKE/Nebius) |
-| Control-plane `InferenceGateway` + cross-cluster routing to the replica | |
+| `InferenceGateway` + cross-cluster routing to the replica | |
 | Status propagation and foreground-deletion ordering | |
 
 ### Why cloud provisioning cannot be tested here
@@ -100,26 +99,30 @@ nix run .#e2e -- --clean   # tear both clusters down
 
 `crossplane project run` installs the config and applies the resources, then
 returns; the serving-stack install and model rollout reconcile in the background.
-So wait for the `ModelService` to publish an address before curling. That address
-is on the kind Docker subnet, which the host can't route to on macOS, so curl
-from a pod on the control plane:
+So wait for the `ModelService` to become ready before curling. The gateway's
+address is on the kind Docker subnet, which the host can't route to on macOS, so
+curl from a pod on the control plane. The gateway authenticates callers, so send
+the key from `manifests/10-inference-gateway.yaml`:
 
 ```bash
-kubectl -n ml-team get ms mock -w          # wait for ADDRESS to appear
-addr=$(kubectl -n ml-team get ms mock -o jsonpath='{.status.address}')
+kubectl -n ml-team get ms mock -w          # wait for READY to be True
+oai=$(kubectl get ig local -o jsonpath='{.status.endpoints.openAI}')
+ant=$(kubectl get ig local -o jsonpath='{.status.endpoints.anthropic}')
 
 # OpenAI Chat Completions
 kubectl run curl -n ml-team --rm -it --image=curlimages/curl@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13 -- \
-  curl -s "$addr/v1/chat/completions" -H 'content-type: application/json' \
-  -d '{"model":"mock","messages":[{"role":"user","content":"hi"}]}'
+  curl -s "$oai/chat/completions" -H 'authorization: Bearer sk-e2e-caller' \
+  -H 'content-type: application/json' \
+  -d '{"model":"ml-team/mock","messages":[{"role":"user","content":"hi"}]}'
 
-# Anthropic Messages API (same address; vLLM and the mock serve both)
+# Anthropic Messages API, with the key in x-api-key
 kubectl run curl -n ml-team --rm -it --image=curlimages/curl@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13 -- \
-  curl -s "$addr/v1/messages" -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' \
-  -d '{"model":"mock","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}'
+  curl -s "$ant/messages" -H 'x-api-key: sk-e2e-caller' \
+  -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' \
+  -d '{"model":"ml-team/mock","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}'
 ```
 
-`--verify` runs both of those (OpenAI then Anthropic) and exits non-zero on
+`--verify` runs both of those, among other checks, and exits non-zero on
 failure. It's the exact command the `E2E` CI workflow runs, so a green `--verify`
 locally and a green CI run mean the same thing; use the manual curls above to
 poke the endpoints interactively.
@@ -132,21 +135,21 @@ run` flags can't express:
 
 1. Create the **workload** kind cluster (pinned v1.34).
 2. Install MetalLB on it (the serving stack doesn't) with a pool inside the
-   detected kind subnet and disjoint from the InferenceGateway's, install the
-   **dra-example-driver** (fake GPUs), and label its node for the `gpu-synthetic`
-   pool.
+   detected kind subnet, install the **dra-example-driver** (fake GPUs), and
+   label its node for the `gpu-synthetic` pool.
 3. `crossplane project run` for the **control plane**, with
    `lean-control-plane.yaml` as `--init-resources` so the provider trims land
    before the providers install.
 4. Finish the setup the getting-started flow does by hand (as the nix run app
    does since #375): `kubectl apply` the RBAC prerequisites, point provider-helm
-   at its DeploymentRuntimeConfig, add the workload kubeconfig Secret (`kind get
-   kubeconfig --internal`, reachable from control-plane pods over the shared kind
-   network), then apply the subnet-templated Modelplane manifests.
+   and provider-kubernetes at their DeploymentRuntimeConfigs, add the workload
+   kubeconfig Secret (`kind get kubeconfig --internal`, reachable from
+   control-plane pods over the shared kind network), then apply the
+   Modelplane manifests.
 
 Everything the control plane needs is a declarative manifest; the shell in
 `run.sh` is only the irreducible cross-cluster setup (a second cluster, its
-MetalLB and DRA driver, the cross-cluster kubeconfig).
+MetalLB and DRA driver, and the cross-cluster kubeconfig).
 
 ```
 e2e/
@@ -163,14 +166,12 @@ e2e/
 
 ## Why the extra moving parts
 
-- **MetalLB on both clusters.** Both gateways — control-plane Traefik and the
-  workload Envoy Gateway (whose readiness the serving stack gates on,
-  `_GATEWAY_READY_CEL`) — need `LoadBalancer` addresses kind can't provide. The
-  `InferenceGateway` installs MetalLB on the control plane itself
-  (`compose_metallb`, pool `.200-.250`); the serving stack does *not*, so `run.sh`
-  installs MetalLB on the workload cluster with a **disjoint** pool (`.100-.149`).
-  Both pools sit inside the detected kind Docker subnet (see caveat) so the
-  control plane can route across it to the workload gateway's IP.
+- **MetalLB on the workload cluster.** Both gateways run there, and both need
+  `LoadBalancer` addresses kind can't provide: the serving stack gates the
+  cluster gateway's readiness on having one (`READY_CEL` in its `gateway.py`).
+  Nothing Modelplane composes installs MetalLB, so `run.sh` does, with a pool
+  inside the detected kind Docker subnet (see caveat) so the control plane can
+  route to the addresses it hands out.
 - **Fake DRA driver.** A `claim: DRA` engine emits a `ResourceClaim`; with no DRA
   driver it stays Pending and the pod never schedules. `run.sh` applies the
   vendored **dra-example-driver**, which publishes fake `gpu.example.com` devices
@@ -187,15 +188,14 @@ e2e/
 
 - **Cross-cluster networking uses the detected kind subnet.** `run.sh` reads the
   `kind` Docker network's subnet (usually 172.18.0.0/16, but kind bumps to
-  172.19/... when earlier networks already hold 172.18) and derives both disjoint
-  MetalLB pools from it — the workload pool directly, the InferenceGateway's by
-  rewriting its manifest. A hardcoded 172.18 would leave the LB IP off-subnet and
-  the cross-cluster curl would time out.
+  172.19/... when earlier networks already hold 172.18) and derives the
+  workload cluster's MetalLB pool from it. A hardcoded 172.18 would leave the LB
+  IPs off-subnet and the cross-cluster curl would time out.
 - **Reconcile runs after the command returns.** `crossplane project run` waits
   for the config to install, then applies the resources and exits — it doesn't
   block on XR readiness. The serving-stack install (the long pole) and the model
-  rollout happen after, so watch the `ModelService` address rather than the
-  command's exit. `--timeout` in `run.sh` bounds the build and config install.
+  rollout happen after, so watch the `ModelService`'s `RoutingReady` rather than
+  the command's exit. `--timeout` in `run.sh` bounds the build and config install.
 - **Two DRA drivers on a GPU-less node.** The serving stack's **NVIDIA** DRA
   driver targets NFD-GPU-labelled nodes, so it sits at 0/0 (inert) yet its Helm
   release still reports Ready. The **dra-example-driver** `run.sh` installs is the
