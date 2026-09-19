@@ -153,7 +153,7 @@ class LLMDBackend:
         leader_worker_set = {
             "apiVersion": "leaderworkerset.x-k8s.io/v1",
             "kind": "LeaderWorkerSet",
-            "metadata": {"name": name, "namespace": base.REMOTE_NAMESPACE},
+            "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
             "spec": {
                 "replicas": int(engine.copies or 1),
                 "leaderWorkerTemplate": {

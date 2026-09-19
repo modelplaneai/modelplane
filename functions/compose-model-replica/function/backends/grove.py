@@ -196,7 +196,7 @@ class GroveBackend:
         pod_clique_set = {
             "apiVersion": "grove.io/v1alpha1",
             "kind": "PodCliqueSet",
-            "metadata": {"name": name, "namespace": base.REMOTE_NAMESPACE},
+            "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
             "spec": {
                 "replicas": 1,
                 "template": {

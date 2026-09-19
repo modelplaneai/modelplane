@@ -56,6 +56,13 @@ CONDITION_REASON_AUTH_NOT_ACCEPTED = "CallerAuthNotAccepted"
 # ServingStack already creates it there.
 REMOTE_NAMESPACE = "modelplane-system"
 
+# The label every namespace holding routes for this gateway carries: the team
+# namespaces compose-model-route mirrors here, and modelplane-system itself, which
+# holds the gateway's own healthz and redirect routes. The listeners select on it,
+# so a route attaches from any of them. A cross-function contract with
+# compose-model-route and compose-serving-stack, which labels modelplane-system.
+_NS_LABEL = "modelplane.ai/namespace"
+
 # The namespace on the control plane holding a gateway's Secrets: caller keys
 # and TLS certificates. An InferenceGateway is cluster-scoped, so it has no
 # namespace of its own to read them from.
@@ -106,15 +113,14 @@ _CLUSTER_GATEWAY_PORT = 443
 # serving stack installs there. A composition function runs on every reconcile
 # and must be a pure function of its inputs, so it can't generate key material.
 #
-# A self-signed issuer signs a CA, the CA signs the client certificate the
-# gateway presents to a cluster gateway, and the CA's certificate is published
-# in status. Every InferenceCluster accepts client certificates from it, which
-# is how this gateway proves itself and how anything else is refused. The
-# private key never leaves this cluster.
+# A self-signed issuer signs a CA, published both as a ClusterIssuer and, via a
+# Bundle, as its certificate in status. compose-model-route issues a client
+# certificate from the ClusterIssuer into each team's namespace, which the
+# gateway presents to a cluster gateway. Every InferenceCluster accepts client
+# certificates from this CA. The CA's private key never leaves this cluster.
 _SELFSIGNED_ISSUER = "inference-gateway-selfsigned"
 _CLIENT_CA_ISSUER = "inference-gateway-ca"
 _CLIENT_CA_SECRET = "inference-gateway-ca"
-_CLIENT_CERT_SECRET = "inference-gateway-client"
 
 # The trust-manager Bundle republishing the client CA's certificate, and so also
 # the ConfigMap it syncs, which is what the control plane reads. See
@@ -201,13 +207,12 @@ def _md(key: str) -> str:
 _USAGE_RECORD = {
     "caller": _md("caller"),
     "service": "%REQ(X-AI-EG-MODEL)%",
-    # The AIServiceBackend that served, as "<namespace>/<name>". That is the
-    # per-service copy of a ModelEndpoint rather than the endpoint itself, so
-    # it reads as "<remote ns>/<service ns>-<service>-<endpoint>". The
-    # ModelEndpoint's own identity isn't available to the gateway: it has no
-    # notion of one. Joining a record back to a ModelEndpoint therefore means
-    # matching on this and the service, and a name long enough to have been
-    # hashed can only be matched by recomputing it.
+    # The AIServiceBackend that served, as "<namespace>/<name>". That is a
+    # ModelRoute's copy of a ModelEndpoint rather than the endpoint itself: it
+    # sits in the team's mirrored namespace, named child_name(<route>,
+    # <endpoint>). The ModelEndpoint's own identity isn't available to the
+    # gateway: it has no notion of one. Joining a record back to a ModelEndpoint
+    # therefore means recomputing that name from the route and the endpoint.
     "endpoint": _md("ai_service_backend_name"),
     "served_model": _md("model_name_override"),
     "response_model": _md("response_model"),
@@ -602,17 +607,25 @@ class Composer:
         The HTTPS listener carries every certificate, and Envoy presents
         whichever matches the name the caller asked for.
 
-        Routes are accepted only from this namespace. Every route Modelplane
-        composes lands here, and accepting them from anywhere would let anyone
-        who can create an HTTPRoute on this cluster attach to the authenticated
-        front door, overriding its SecurityPolicy the way /healthz does.
+        Routes are accepted only from the namespaces compose-model-route mirrors
+        onto this cluster, selected by the label it stamps on them. Every route
+        Modelplane composes carries a team's ModelService into its own such
+        namespace; accepting routes from anywhere would let anyone who can create
+        an HTTPRoute on this cluster attach to the authenticated front door,
+        overriding its SecurityPolicy the way /healthz does.
         """
+        allowed = {
+            "namespaces": {
+                "from": "Selector",
+                "selector": {"matchExpressions": [{"key": _NS_LABEL, "operator": "Exists"}]},
+            }
+        }
         listeners: list[dict] = [
             {
                 "name": _LISTENER_HTTP,
                 "protocol": "HTTP",
                 "port": 80,
-                "allowedRoutes": {"namespaces": {"from": "Same"}},
+                "allowedRoutes": allowed,
             }
         ]
         if self.xr.spec.tls:
@@ -625,7 +638,7 @@ class Composer:
                         "mode": "Terminate",
                         "certificateRefs": [{"name": r.name} for r in self.xr.spec.tls.certificateRefs],
                     },
-                    "allowedRoutes": {"namespaces": {"from": "Same"}},
+                    "allowedRoutes": allowed,
                 }
             )
 
@@ -654,15 +667,17 @@ class Composer:
         )
 
     def compose_client_pki(self) -> None:
-        """Compose the certificate this gateway presents to a cluster gateway.
+        """Compose the CA whose certificates a cluster gateway trusts.
 
-        A cluster gateway refuses a request that arrives without one, so this is
-        what lets the InferenceGateway reach the engines behind it and stops
-        anything else. cert-manager on this gateway's cluster does the issuing.
-
-        The certificate's subject is this gateway's name. Nothing matches on it:
-        a cluster gateway checks the signing CA, not the subject, because what it
-        needs to know is that an InferenceGateway is calling rather than which one.
+        A cluster gateway refuses a request that arrives without a client
+        certificate this CA signed, which is what lets an InferenceGateway reach
+        the engines behind it and stops anything else. The CA is published as a
+        ClusterIssuer so compose-model-route can issue a client certificate from
+        it into each team's namespace, beside the backends that present it;
+        cert-manager on this cluster does the issuing. It's a ClusterIssuer rather
+        than a namespaced Issuer because a namespaced one would need the CA's
+        private key copied into every team namespace, whereas a ClusterIssuer
+        reads it once from the cluster-resource-namespace.
         """
         gateway = _name(self.xr.metadata)
         objects: list[tuple[str, dict, str | None]] = [
@@ -702,29 +717,14 @@ class Composer:
                 "client-ca-issuer",
                 {
                     "apiVersion": "cert-manager.io/v1",
-                    "kind": "Issuer",
-                    "metadata": {"name": _CLIENT_CA_ISSUER, "namespace": REMOTE_NAMESPACE},
+                    # Cluster-scoped: compose-model-route issues client certs from
+                    # it into team namespaces. cert-manager reads its CA secret
+                    # from the cluster-resource-namespace, set to modelplane-system.
+                    "kind": "ClusterIssuer",
+                    "metadata": {"name": _CLIENT_CA_ISSUER},
                     "spec": {"ca": {"secretName": _CLIENT_CA_SECRET}},
                 },
                 None,
-            ),
-            (
-                "client-certificate",
-                {
-                    "apiVersion": "cert-manager.io/v1",
-                    "kind": "Certificate",
-                    "metadata": {"name": _CLIENT_CERT_SECRET, "namespace": REMOTE_NAMESPACE},
-                    "spec": {
-                        "secretName": _CLIENT_CERT_SECRET,
-                        "commonName": f"inference-gateway-{gateway}"[:64],
-                        "usages": ["client auth", "digital signature", "key encipherment"],
-                        "duration": "2160h",
-                        "renewBefore": "720h",
-                        "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
-                        "issuerRef": {"name": _CLIENT_CA_ISSUER, "kind": "Issuer", "group": "cert-manager.io"},
-                    },
-                },
-                _CERTIFICATE_READY_CEL,
             ),
             # Republish the CA certificate on its own, so the control plane can
             # read it without reading the private key next to it. A cluster

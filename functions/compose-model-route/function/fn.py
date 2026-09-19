@@ -51,12 +51,24 @@ CONDITION_REASON_WAITING_FOR_CLUSTER = "WaitingForCluster"
 CONDITION_REASON_NO_ENDPOINTS = "NoReadyEndpoints"
 CONDITION_REASON_WAITING_FOR_ROUTE = "WaitingForRoute"
 
-# The namespace on the gateway's cluster that every composed object lands in. The
-# ServingStack already creates it there.
-REMOTE_NAMESPACE = "modelplane-system"
+# Objects land in a namespace mirroring the ModelRoute's own, so a service in
+# namespace `ml-team` on the control plane composes into child_name("mp",
+# "ml-team") on the gateway's cluster and can't collide with another team's. The
+# prefix keeps a team namespace named `default` or `kube-system` off the
+# cluster's own. The name and label are a cross-function contract with
+# compose-inference-gateway, whose Gateway selects routes by the label, and
+# compose-model-replica.
+_NS_PREFIX = "mp"
+_NS_LABEL = "modelplane.ai/namespace"
 
-# The Gateway compose-inference-gateway composes on each gateway's cluster.
+# The Gateway compose-inference-gateway composes on each gateway's cluster, and
+# the namespace it lives in. The route lands in the team's namespace and attaches
+# across to the gateway, which its listeners allow by the label.
 _GATEWAY_NAME = "inference-gateway"
+_GATEWAY_NAMESPACE = "modelplane-system"
+
+# The gateway's client-CA ClusterIssuer, composed by compose-inference-gateway.
+_CLIENT_CA_ISSUER = "inference-gateway-ca"
 
 # The Gateway listeners compose-inference-gateway names. A gateway that
 # terminates TLS serves inference on the HTTPS listener alone, redirecting :80 to
@@ -74,8 +86,7 @@ _MODEL_HEADER = "x-ai-eg-model"
 # which tenant is calling.
 _CALLER_HEADER = "x-modelplane-caller"
 
-# The Secret compose-inference-gateway has cert-manager issue for the
-# InferenceGateway's client certificate, in the same namespace on the same cluster.
+# The client certificate a backend presents to a cluster gateway.
 _CLIENT_CERT_SECRET = "inference-gateway-client"
 
 # The ModelEndpoint api.schema whose backends take their key in x-api-key.
@@ -88,6 +99,12 @@ _MAX_WEIGHT = 1000000
 _ROUTE_ACCEPTED_CEL = (
     "has(object.status) && has(object.status.conditions) && "
     "object.status.conditions.exists(c, c.type == 'Accepted' && c.status == 'True')"
+)
+
+# A cert-manager Certificate is Ready once it has issued.
+_CERTIFICATE_READY_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
 )
 
 # Token counts to capture per request. Declaring them is also what makes the
@@ -243,6 +260,12 @@ class Composer:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelRoute(**resource.struct_to_dict(req.observed.composite.resource))
+        # The namespace on the gateway's cluster this route's objects land in,
+        # mirroring the ModelRoute's own so teams can't collide.
+        self.namespace = resource.child_name(_NS_PREFIX, _namespace(self.xr.metadata))
+        # This ModelRoute's name (one per service and gateway). Per-endpoint
+        # objects are named from it so each route owns its own.
+        self.route_name = _name(self.xr.metadata)
         self.provider_config = ""
         self.address: str | None = None
         self.inference_listener = _LISTENER_HTTP
@@ -259,6 +282,7 @@ class Composer:
         if not self.resolve_inputs():
             self.write_status()
             return
+        self.compose_namespace()
         self.compose_backends()
         self.compose_route()
         self.write_status()
@@ -545,6 +569,61 @@ class Composer:
                         clusters.add(cluster)
         for cluster in sorted(clusters):
             self.compose_cluster_ca(cluster)
+        # Only a Modelplane endpoint does mTLS to a cluster gateway, so the client
+        # certificate is composed only when one is present.
+        if clusters:
+            self.compose_client_cert()
+
+    def compose_namespace(self) -> None:
+        """Compose the namespace this route's objects land in.
+
+        provider-kubernetes doesn't create a target namespace, so this does,
+        mirroring the ModelRoute's own. Every route in the namespace composes it
+        identically and none deletes it (the management policies omit Delete), so
+        one route's removal can't take the namespace from the others, nor leave it
+        Terminating.
+        """
+        obj = _k8s_object(
+            self.provider_config,
+            {
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "metadata": {"name": self.namespace, "labels": {_NS_LABEL: _namespace(self.xr.metadata)}},
+            },
+        )
+        obj.spec.managementPolicies = ["Observe", "Create", "Update"]
+        resource.update(self.rsp.desired.resources["namespace"], obj)
+
+    def compose_client_cert(self) -> None:
+        """Issue the client certificate this namespace's backends present.
+
+        A Modelplane backend does mTLS to a cluster gateway with a certificate
+        issued from the gateway's CA. Envoy Gateway reads a Backend's
+        clientCertificateRef only from the Backend's own namespace, so it's issued
+        here from the gateway's CA ClusterIssuer rather than shared from
+        modelplane-system. Like the namespace it's never deleted, so removing one
+        route doesn't drop the certificate the namespace's other backends present.
+        """
+        obj = _k8s_object(
+            self.provider_config,
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Certificate",
+                "metadata": {"name": _CLIENT_CERT_SECRET, "namespace": self.namespace},
+                "spec": {
+                    "secretName": _CLIENT_CERT_SECRET,
+                    "commonName": f"inference-gateway-{self.xr.spec.gatewayName}"[:64],
+                    "usages": ["client auth", "digital signature", "key encipherment"],
+                    "duration": "2160h",
+                    "renewBefore": "720h",
+                    "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
+                    "issuerRef": {"name": _CLIENT_CA_ISSUER, "kind": "ClusterIssuer", "group": "cert-manager.io"},
+                },
+            },
+            ready_when=_CERTIFICATE_READY_CEL,
+        )
+        obj.spec.managementPolicies = ["Observe", "Create", "Update"]
+        resource.update(self.rsp.desired.resources["client-certificate"], obj)
 
     def compose_cluster_ca(self, cluster: str) -> None:
         """Copy one cluster gateway's CA certificate to the gateway's cluster.
@@ -561,17 +640,24 @@ class Composer:
                 {
                     "apiVersion": "v1",
                     "kind": "ConfigMap",
-                    "metadata": {"name": resource.child_name("cluster-ca", cluster), "namespace": REMOTE_NAMESPACE},
+                    "metadata": {"name": resource.child_name("cluster-ca", cluster), "namespace": self.namespace},
                     "data": {"ca.crt": self.cluster_cas[cluster]},
                 },
             ),
         )
 
     def compose_backend(self, ep: mev1alpha1.ModelEndpoint) -> None:
-        ns = _namespace(self.xr.metadata)
-        svc = self.xr.spec.serviceName
         ep_name = _name(ep.metadata)
-        name = resource.child_name(ns, svc, ep_name)
+        # Named from the route and the endpoint, so each route owns its own
+        # backend objects: deleting one route can't withdraw an object another
+        # route still serves. Keyed in desired state by the endpoint alone (unique
+        # within a route), the composed object by both.
+        # NOTE(negz): child_name joins its parts, so two distinct (route,
+        # endpoint) pairs could in theory collide within a namespace. Both parts
+        # are already hashed names, so it can't happen by accident - only a
+        # malicious tenant brute-forcing the 5-char hash could force it, which the
+        # soft namespace boundary doesn't try to defend against.
+        name = resource.child_name(self.route_name, ep_name)
         scheme, _, host = ep.spec.origin.partition("://")
         hostname, _, port = host.partition(":")
         tls = scheme == "https"
@@ -610,7 +696,7 @@ class Composer:
         backend: dict = {
             "apiVersion": "gateway.envoyproxy.io/v1alpha1",
             "kind": "Backend",
-            "metadata": {"name": name, "namespace": REMOTE_NAMESPACE},
+            "metadata": {"name": name, "namespace": self.namespace},
             "spec": spec,
         }
         resource.update(self.rsp.desired.resources[f"backend-{ep_name}"], _k8s_object(self.provider_config, backend))
@@ -622,7 +708,7 @@ class Composer:
         service_backend: dict = {
             "apiVersion": "aigateway.envoyproxy.io/v1beta1",
             "kind": "AIServiceBackend",
-            "metadata": {"name": name, "namespace": REMOTE_NAMESPACE},
+            "metadata": {"name": name, "namespace": self.namespace},
             "spec": {
                 "schema": schema,
                 "backendRef": {"group": "gateway.envoyproxy.io", "kind": "Backend", "name": name},
@@ -642,7 +728,7 @@ class Composer:
         if ref is None:
             return
         secret = self.credentials.get(ep_name)
-        secret_name = resource.child_name(ns, svc, ep_name, "credential")
+        secret_name = resource.child_name(self.route_name, ep_name, "credential")
         key = ref.key or "apiKey"
         # The AI Gateway reads the credential from a fixed key, so a Secret
         # using another name is republished under the expected one rather than
@@ -655,7 +741,7 @@ class Composer:
                 {
                     "apiVersion": "v1",
                     "kind": "Secret",
-                    "metadata": {"name": secret_name, "namespace": REMOTE_NAMESPACE},
+                    "metadata": {"name": secret_name, "namespace": self.namespace},
                     "type": "Opaque",
                     "data": {"apiKey": data[key]},
                 },
@@ -675,7 +761,7 @@ class Composer:
                 {
                     "apiVersion": "aigateway.envoyproxy.io/v1beta1",
                     "kind": "BackendSecurityPolicy",
-                    "metadata": {"name": name, "namespace": REMOTE_NAMESPACE},
+                    "metadata": {"name": name, "namespace": self.namespace},
                     "spec": {
                         **auth,
                         "targetRefs": [
@@ -714,7 +800,7 @@ class Composer:
         for level, priority in enumerate(populated):
             for ep, weight in distributed[priority]:
                 ref: dict = {
-                    "name": resource.child_name(ns, svc, _name(ep.metadata)),
+                    "name": resource.child_name(self.route_name, _name(ep.metadata)),
                     "weight": weight,
                     "priority": level,
                 }
@@ -729,13 +815,14 @@ class Composer:
                 {
                     "apiVersion": "aigateway.envoyproxy.io/v1beta1",
                     "kind": "AIGatewayRoute",
-                    "metadata": {"name": resource.child_name(ns, svc), "namespace": REMOTE_NAMESPACE},
+                    "metadata": {"name": svc, "namespace": self.namespace},
                     "spec": {
                         "parentRefs": [
                             {
                                 "group": "gateway.networking.k8s.io",
                                 "kind": "Gateway",
                                 "name": _GATEWAY_NAME,
+                                "namespace": _GATEWAY_NAMESPACE,
                                 "sectionName": self.inference_listener,
                             }
                         ],

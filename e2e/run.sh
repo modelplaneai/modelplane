@@ -465,11 +465,15 @@ usage="$(kubectl --context "$WLCTX" -n envoy-gateway-system logs \
 	grep '"input_tokens":12' | tail -1 || true)"
 # Check each field on its own. The access log serialises its keys
 # alphabetically, so a single glob spanning two of them depends on that order.
+#
+# The endpoint is the ModelRoute's backend for it, in ml-team's mirrored
+# namespace (child_name("mp", "ml-team")) and named after the route
+# (child_name("mock", "local")) and the endpoint.
 missing=""
 for want in \
 	'"caller":"e2e"' \
 	'"service":"'"$model"'"' \
-	'"endpoint":"modelplane-system/ml-team-mock' \
+	'"endpoint":"mp-ml-team-51733/mock-local-' \
 	'"served_model":"ml-team/mock-demo"' \
 	'"input_tokens":12' \
 	'"output_tokens":9' \

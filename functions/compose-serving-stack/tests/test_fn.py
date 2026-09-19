@@ -344,7 +344,9 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         repository="https://charts.jetstack.io",
         version="v1.20.2",
         wait=True,
-        values={"crds": {"enabled": True}},
+        # clusterResourceNamespace is forced by fn._helm_release for every cloud's
+        # cert-manager (the ClusterIssuer CA lives in modelplane-system).
+        values={"crds": {"enabled": True}, "clusterResourceNamespace": "modelplane-system"},
     )
     out["kube-prometheus-stack"] = _release(
         key="kube-prometheus-stack",
@@ -477,7 +479,11 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         out[key] = _object(key, doc)
     out["gateway-namespace"] = _object(
         "gateway-namespace",
-        {"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "modelplane-system"}},
+        {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {"name": "modelplane-system", "labels": {"modelplane.ai/namespace": "modelplane-system"}},
+        },
     )
     out["gateway-proxy"] = _object(
         "gateway-proxy",
@@ -661,7 +667,14 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
                         "port": 443,
                         "hostname": _GATEWAY_HOSTNAME,
                         "tls": {"mode": "Terminate", "certificateRefs": [{"name": "cluster-gateway-serving"}]},
-                        "allowedRoutes": {"namespaces": {"from": "All"}},
+                        "allowedRoutes": {
+                            "namespaces": {
+                                "from": "Selector",
+                                "selector": {
+                                    "matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]
+                                },
+                            }
+                        },
                     },
                 ],
             },
@@ -1042,7 +1055,14 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     "port": 443,
                     "hostname": hostname,
                     "tls": {"mode": "Terminate", "certificateRefs": [{"name": "cluster-gateway-serving"}]},
-                    "allowedRoutes": {"namespaces": {"from": "All"}},
+                    "allowedRoutes": {
+                        "namespaces": {
+                            "from": "Selector",
+                            "selector": {
+                                "matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]
+                            },
+                        }
+                    },
                 }
             ],
             gateway["spec"]["listeners"],

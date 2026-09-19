@@ -69,6 +69,15 @@ _EXTERNAL_NAME_ANNOTATION = "crossplane.io/external-name"
 # verbatim as their identity.type.
 _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
 
+# cert-manager reads a ClusterIssuer's CA secret from its cluster-resource-
+# namespace. The InferenceGateway's client CA ClusterIssuer and its secret live
+# in modelplane-system, so the stack points cert-manager there rather than at its
+# own namespace. Forced here, over every cloud's cert-manager values, because it's
+# a cross-function contract with compose-inference-gateway. _CERT_MANAGER_KEY is
+# the component key the cloud lists use.
+_CERT_MANAGER_KEY = "cert-manager"
+_CLUSTER_RESOURCE_NAMESPACE = "modelplane-system"
+
 # The (apiVersion, kind) a component's composed resources render as,
 # used by the derived Usages' of/by references.
 _RELEASE_REF = ("helm.m.crossplane.io/v1beta1", "Release")
@@ -167,8 +176,11 @@ def _helm_release(chart: stacks.Chart, provider_config: str) -> helmv1beta1.Rele
         # fresh cluster pulling images.
         release.spec.forProvider.wait = True
         release.spec.forProvider.waitTimeout = "10m"
-    if chart.values:
-        release.spec.forProvider.values = chart.values
+    values = dict(chart.values) if chart.values else {}
+    if chart.key == _CERT_MANAGER_KEY:
+        values["clusterResourceNamespace"] = _CLUSTER_RESOURCE_NAMESPACE
+    if values:
+        release.spec.forProvider.values = values
     return release
 
 

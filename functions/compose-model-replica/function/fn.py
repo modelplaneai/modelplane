@@ -143,9 +143,9 @@ class Composer:
 
         Every engine composes to a Deployment, LeaderWorkerSet, or PodCliqueSet (with its
         members' ResourceClaimTemplates) via the backend its roles select; the
-        backends build no routing. routing.apply then fronts the engines with the
-        surface serving.mode selects: a Service (Unified) or an InferencePool +
-        endpoint picker (PrefillDecode).
+        backends build no routing. routing.apply then fronts the engines with an
+        InferencePool and endpoint picker, whose scoring serving.mode selects.
+        Everything lands in the namespace mirroring the replica's own.
         """
         # resolve_inputs runs first and returns False unless the cluster's
         # status.providerConfigRef.name is set, so it's present here.
@@ -161,6 +161,7 @@ class Composer:
             backend = _BACKENDS[base.select_backend(engine, stack)]()
             composed.update(backend.build(self.xr, engine, pc, label, stack))
         composed = routing.apply(composed, self.xr, pc)
+        composed["namespace"] = base.namespace_object(self.xr, pc)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
 

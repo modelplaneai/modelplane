@@ -31,6 +31,11 @@ from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 # fn.compose_gateway_pki). The HTTPS listener terminates TLS with it.
 _GATEWAY_SERVING_SECRET = "cluster-gateway-serving"
 
+# Label compose-model-replica stamps on the namespaces it mirrors onto this
+# cluster. The gateway's listeners select on it so a replica's HTTPRoute attaches
+# from its own team's namespace.
+_NS_LABEL = "modelplane.ai/namespace"
+
 # CEL readiness query for the Gateway Object. The Gateway's LoadBalancer
 # address is assigned asynchronously by the controller after the Object is
 # applied. With the default SuccessfulCreate policy the Object is Ready the
@@ -97,7 +102,14 @@ def objects(gw: v1alpha1.Gateway) -> list[tuple[str, dict[str, Any], str | None]
                                 "mode": "Terminate",
                                 "certificateRefs": [{"name": _GATEWAY_SERVING_SECRET}],
                             },
-                            "allowedRoutes": {"namespaces": {"from": "All"}},
+                            # Serving HTTPRoutes attach from the mirrored team
+                            # namespaces, selected by the label they carry.
+                            "allowedRoutes": {
+                                "namespaces": {
+                                    "from": "Selector",
+                                    "selector": {"matchExpressions": [{"key": _NS_LABEL, "operator": "Exists"}]},
+                                }
+                            },
                         }
                     ],
                 },

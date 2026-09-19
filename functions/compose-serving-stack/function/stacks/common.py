@@ -177,16 +177,22 @@ COMPONENTS: list[Component] = [
         key="gaie-crds",
         manifests=_crds("gaie.yaml"),
     ),
-    # The Gateway (and the model-serving HTTPRoutes that target it) live
-    # in modelplane-system on the remote cluster; nothing else
-    # provisions the namespace.
+    # Both gateways live here, with the fleet gateway's own healthz and redirect
+    # routes, and nothing else provisions the namespace. The gateways' listeners
+    # select routes by the modelplane.ai/namespace label, so this namespace carries
+    # it too, beside the mp-<ns> team namespaces compose-model-route and
+    # compose-model-replica mirror here. Without it the gateways' own routes
+    # wouldn't attach.
     Manifests(
         key="gateway-namespace",
         manifests=[
             {
                 "apiVersion": "v1",
                 "kind": "Namespace",
-                "metadata": {"name": "modelplane-system"},
+                "metadata": {
+                    "name": "modelplane-system",
+                    "labels": {"modelplane.ai/namespace": "modelplane-system"},
+                },
             },
         ],
     ),

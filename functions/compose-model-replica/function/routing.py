@@ -276,9 +276,10 @@ def _unified(
     # size; derive it from the first engine's flags (HACK, #179).
     block_size = _kv_block_size(_engine_args(out[base.workload_key(replica.spec.engines[0])]))
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
-    out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, selector))
+    ns = base.remote_namespace(replica)
+    out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, ns, selector))
     out[base.ROUTE_KEY] = base.wrap_object(provider_config, _http_route(replica, name))
-    out.update(_epp_objects(name, provider_config, _unified_epp_config_yaml(block_size)))
+    out.update(_epp_objects(name, ns, provider_config, _unified_epp_config_yaml(block_size)))
     return out
 
 
@@ -324,9 +325,10 @@ def _disaggregated(
     # the same as unified. The phase (role) labels _label_role adds are for the
     # EPP's prefill/decode filters, not for pool membership.
     selector = {base.LABEL_SERVING: base.serving_label(replica)}
-    out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, selector))
+    ns = base.remote_namespace(replica)
+    out["inference-pool"] = base.wrap_object(provider_config, _inference_pool(name, ns, selector))
     out[base.ROUTE_KEY] = base.wrap_object(provider_config, _http_route(replica, name))
-    out.update(_epp_objects(name, provider_config, _disaggregated_epp_config_yaml(block_size)))
+    out.update(_epp_objects(name, ns, provider_config, _disaggregated_epp_config_yaml(block_size)))
     return out
 
 
@@ -449,11 +451,11 @@ def _inject_nixl_plumbing(obj: k8sobjv1alpha1.Object) -> None:
             env.append({"name": "VLLM_NIXL_SIDE_CHANNEL_PORT", "value": _NIXL_SIDE_CHANNEL_PORT})
 
 
-def _inference_pool(name: str, selector: dict[str, str]) -> dict:
+def _inference_pool(name: str, namespace: str, selector: dict[str, str]) -> dict:
     return {
         "apiVersion": "inference.networking.k8s.io/v1",
         "kind": "InferencePool",
-        "metadata": {"name": f"{name}-pool", "namespace": base.REMOTE_NAMESPACE},
+        "metadata": {"name": f"{name}-pool", "namespace": namespace},
         "spec": {
             "selector": {"matchLabels": selector},
             "targetPorts": [{"number": base.ENGINE_PORT}],
@@ -466,7 +468,7 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "HTTPRoute",
-        "metadata": {"name": name, "namespace": base.REMOTE_NAMESPACE},
+        "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
         "spec": {
             "parentRefs": [{"name": "cluster-gateway", "namespace": "modelplane-system"}],
             "rules": [
@@ -488,13 +490,12 @@ def _http_route(replica: v1alpha1.ModelReplica, name: str) -> dict:
     }
 
 
-def _epp_objects(name: str, provider_config: str, config_yaml: str) -> dict[str, k8sobjv1alpha1.Object]:
+def _epp_objects(name: str, ns: str, provider_config: str, config_yaml: str) -> dict[str, k8sobjv1alpha1.Object]:
     """The endpoint picker: ServiceAccount, RBAC, ConfigMap, Deployment, Service.
 
     config_yaml is the rendered EndpointPickerConfig the picker runs with; it
     differs by serving strategy.
     """
-    ns = base.REMOTE_NAMESPACE
     epp = f"{name}-epp"
     sa = {"apiVersion": "v1", "kind": "ServiceAccount", "metadata": {"name": epp, "namespace": ns}}
     role = {

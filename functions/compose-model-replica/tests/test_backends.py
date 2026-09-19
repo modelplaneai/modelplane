@@ -164,7 +164,7 @@ def _claim_template(count: int, *, replica: str = "r", engine: str = "main", rol
     return {
         "apiVersion": "resource.k8s.io/v1",
         "kind": "ResourceClaimTemplate",
-        "metadata": {"name": resource.child_name(replica, engine, role, "devices"), "namespace": "default"},
+        "metadata": {"name": resource.child_name(replica, engine, role, "devices"), "namespace": "mp-ml-team-51733"},
         "spec": {
             "spec": {
                 "devices": {
@@ -201,7 +201,7 @@ _NATIVE_WANT = {
     "model-serving-main": {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
-        "metadata": {"name": _WORKLOAD_NAME, "namespace": "default"},
+        "metadata": {"name": _WORKLOAD_NAME, "namespace": "mp-ml-team-51733"},
         "spec": {
             "replicas": 1,
             "selector": {"matchLabels": {_WORKLOAD: _WORKLOAD_NAME}},
@@ -273,7 +273,7 @@ def _pcs(leader_container: dict, worker_container: dict, *, worker_replicas: int
     return {
         "apiVersion": "grove.io/v1alpha1",
         "kind": "PodCliqueSet",
-        "metadata": {"name": _GROVE_PCS_NAME, "namespace": "default"},
+        "metadata": {"name": _GROVE_PCS_NAME, "namespace": "mp-ml-team-51733"},
         "spec": {
             "replicas": 1,
             "template": {
@@ -656,7 +656,7 @@ class TestLLMDBackend(unittest.TestCase):
         manifest = self._lws(engine, replica)
         self.assertEqual(manifest["apiVersion"], "leaderworkerset.x-k8s.io/v1")
         self.assertEqual(manifest["kind"], "LeaderWorkerSet")
-        self.assertEqual(manifest["metadata"], {"name": _WORKLOAD_NAME, "namespace": "default"})
+        self.assertEqual(manifest["metadata"], {"name": _WORKLOAD_NAME, "namespace": "mp-ml-team-51733"})
         self.assertEqual(manifest["spec"]["replicas"], 2)
         # Gang size is the leader plus the worker's node count.
         self.assertEqual(manifest["spec"]["leaderWorkerTemplate"]["size"], 4)
@@ -1327,3 +1327,26 @@ class TestKvBlockSize(unittest.TestCase):
         cfg = routing._disaggregated_epp_config_yaml(32)
         self.assertIn("blockSizeTokens: 32", cfg)
         self.assertNotIn("BLOCK_SIZE_TOKENS", cfg)
+
+
+class TestRemoteNamespace(unittest.TestCase):
+    """The mirrored namespace a replica's objects land in. The expected names are
+    spelled out, because compose-model-route and compose-model-cache compose the
+    same namespace by the same derivation, and all three must agree."""
+
+    def test_remote_namespace(self) -> None:
+        cases = [
+            ("a short namespace keeps its name, prefixed and hashed", "ml-team", "mp-ml-team-51733"),
+            (
+                # 63 is the longest a namespace can be, so mp- plus it can't be
+                # used as is. It's truncated to leave room for the hash.
+                "the longest valid namespace still yields a valid one",
+                "a" * 63,
+                "mp-" + "a" * 54 + "-38bfb",
+            ),
+        ]
+        for name, namespace, want in cases:
+            with self.subTest(name):
+                got = base.remote_namespace(_replica(namespace=namespace))
+                self.assertEqual(got, want)
+                self.assertLessEqual(len(got), 63)

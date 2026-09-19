@@ -37,6 +37,12 @@ _CLUSTER_CA = "-----BEGIN CERTIFICATE-----\ncluster\n-----END CERTIFICATE-----\n
 _CLIENT_CA = "-----BEGIN CERTIFICATE-----\nclient\n-----END CERTIFICATE-----\n"
 
 
+def _be(ep: str) -> str:
+    """A composed backend object's name: child_name of the ModelRoute's own name
+    (service-gateway) and the endpoint's."""
+    return resource.child_name(f"{_SVC}-{_GW}", ep)
+
+
 @dataclasses.dataclass
 class Case:
     """A test case for compose-model-route."""
@@ -404,6 +410,8 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             set(got.desired.resources),
             {
+                "namespace",
+                "client-certificate",
                 "backend-self",
                 "aibackend-self",
                 "backend-together",
@@ -424,14 +432,9 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
                 {
                     "matches": [{"headers": [{"type": "Exact", "name": "x-ai-eg-model", "value": _MODEL}]}],
                     "backendRefs": [
+                        {"name": _be("self"), "weight": 1, "priority": 0, "modelNameOverride": "d"},
                         {
-                            "name": resource.child_name(_NS, _SVC, "self"),
-                            "weight": 1,
-                            "priority": 0,
-                            "modelNameOverride": "d",
-                        },
-                        {
-                            "name": resource.child_name(_NS, _SVC, "together"),
+                            "name": _be("together"),
                             "weight": 1,
                             "priority": 1,
                             "modelNameOverride": "Qwen/Qwen2.5",
@@ -485,6 +488,42 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
             {"apiKey": base64.b64encode(b"sk-tog").decode()},
         )
         self.assertEqual(_manifest(got, "cluster-ca-gw-eu")["data"], {"ca.crt": _CLUSTER_CA})
+
+        # Every composed object lands in the namespace mirroring the route's own.
+        for key in ("backend-self", "backend-together", "credential-together", "cluster-ca-gw-eu", "route"):
+            self.assertEqual(_manifest(got, key)["metadata"]["namespace"], "mp-ml-team-51733", key)
+
+        # The mirrored namespace itself: labelled for the gateway's route selector,
+        # and kept (no Delete) so one route's removal can't take it from others.
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.resources["namespace"].resource)["spec"]["managementPolicies"],
+            ["Observe", "Create", "Update"],
+        )
+        self.assertEqual(
+            _manifest(got, "namespace"),
+            {
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "metadata": {"name": "mp-ml-team-51733", "labels": {"modelplane.ai/namespace": "ml-team"}},
+            },
+        )
+
+        # The route lives in the team namespace but attaches across to the gateway.
+        self.assertEqual(route["spec"]["parentRefs"][0]["namespace"], "modelplane-system")
+
+        # The client certificate the backends present, issued from the gateway's CA
+        # ClusterIssuer into this namespace, and kept like the namespace.
+        self.assertEqual(
+            resource.struct_to_dict(got.desired.resources["client-certificate"].resource)["spec"]["managementPolicies"],
+            ["Observe", "Create", "Update"],
+        )
+        cert = _manifest(got, "client-certificate")
+        self.assertEqual(cert["metadata"], {"name": "inference-gateway-client", "namespace": "mp-ml-team-51733"})
+        self.assertEqual(cert["spec"]["secretName"], "inference-gateway-client")
+        self.assertEqual(
+            cert["spec"]["issuerRef"],
+            {"name": "inference-gateway-ca", "kind": "ClusterIssuer", "group": "cert-manager.io"},
+        )
 
     async def test_route_binds_to_the_listener_matching_the_gateways_tls(self) -> None:
         """A TLS gateway serves inference on its HTTPS listener alone, so the
@@ -540,8 +579,12 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
             ),
         )
         got = await self.runner.RunFunction(req, None)
+        # Neither endpoint is Modelplane-composed, so no client certificate is
+        # issued, though the mirrored namespace is still composed.
+        self.assertIn("namespace", got.desired.resources)
+        self.assertNotIn("client-certificate", got.desired.resources)
         refs = _manifest(got, "route")["spec"]["rules"][0]["backendRefs"]
-        self.assertEqual(refs, [{"name": resource.child_name(_NS, _SVC, "kimi-a"), "weight": 1, "priority": 0}])
+        self.assertEqual(refs, [{"name": _be("kimi-a"), "weight": 1, "priority": 0}])
         self.assertEqual(
             resource.struct_to_dict(got.desired.composite.resource)["status"]["endpoints"],
             {"total": 1, "ready": 1},
@@ -594,7 +637,7 @@ class TestWeights(unittest.IsolatedAsyncioTestCase):
             return [_endpoint(n, origin=f"https://{n}.example.com") for n in names_]
 
         def _ref(ep: str, weight: int, priority: int = 0) -> dict:
-            return {"name": resource.child_name(_NS, _SVC, ep), "weight": weight, "priority": priority}
+            return {"name": _be(ep), "weight": weight, "priority": priority}
 
         cases = [
             WeightCase(
@@ -673,9 +716,8 @@ class TestCredentials(unittest.IsolatedAsyncioTestCase):
         cls.runner = fn.FunctionRunner()
 
     async def test_credential_policy(self) -> None:
-        backend = resource.child_name(_NS, _SVC, "provider")
-        secret = resource.child_name(_NS, _SVC, "provider", "credential")
-        target = {"group": "aigateway.envoyproxy.io", "kind": "AIServiceBackend", "name": backend}
+        secret = resource.child_name(f"{_SVC}-{_GW}", "provider", "credential")
+        target = {"group": "aigateway.envoyproxy.io", "kind": "AIServiceBackend", "name": _be("provider")}
         cases = [
             CredentialCase(
                 name="a backend speaking OpenAI's API gets the key as a bearer token",
@@ -683,7 +725,7 @@ class TestCredentials(unittest.IsolatedAsyncioTestCase):
                 want={
                     "apiVersion": "aigateway.envoyproxy.io/v1beta1",
                     "kind": "BackendSecurityPolicy",
-                    "metadata": {"name": backend, "namespace": "modelplane-system"},
+                    "metadata": {"name": _be("provider"), "namespace": "mp-ml-team-51733"},
                     "spec": {
                         "type": "APIKey",
                         "apiKey": {"secretRef": {"name": secret}},
@@ -697,7 +739,7 @@ class TestCredentials(unittest.IsolatedAsyncioTestCase):
                 want={
                     "apiVersion": "aigateway.envoyproxy.io/v1beta1",
                     "kind": "BackendSecurityPolicy",
-                    "metadata": {"name": backend, "namespace": "modelplane-system"},
+                    "metadata": {"name": _be("provider"), "namespace": "mp-ml-team-51733"},
                     "spec": {
                         "type": "AnthropicAPIKey",
                         "anthropicAPIKey": {"secretRef": {"name": secret}},

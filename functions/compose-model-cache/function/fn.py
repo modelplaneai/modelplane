@@ -72,11 +72,14 @@ PHASE_HYDRATING: _Phase = "Hydrating"
 PHASE_READY: _Phase = "Ready"
 PHASE_FAILED: _Phase = "Failed"
 
-# Namespace on the workload cluster where the PVC + Job land. Must match the
-# namespace the serving pods mount from (native.py/llmd.py `_REMOTE_NAMESPACE`,
-# also "default"): a pod can only mount a PVC in its own namespace. The two
-# functions set this independently, so they are a contract — change together.
-REMOTE_NS = "default"
+# The PVC and Job land in a namespace mirroring the ModelCache's own, so a cache
+# in namespace `ml-team` composes into child_name("mp", "ml-team") on the
+# workload cluster. Must match the namespace the serving pods mount from
+# (compose-model-replica's base.remote_namespace): a pod can only mount a PVC in
+# its own namespace. The two functions set this independently, so they are a
+# contract - change together.
+_NS_PREFIX = "mp"
+NS_LABEL = "modelplane.ai/namespace"
 
 # Hydration container. python:3.11-slim has pip; we install huggingface_hub
 # at runtime. A Modelplane-owned image with the tool preinstalled is a
@@ -99,6 +102,10 @@ _JOB_TTL_SECONDS = 180
 # managementPolicies is on.) Re-adding the Job after a flap is a cheap skip.
 _ManagementPolicy = Literal["Observe", "Create", "Update", "Delete", "LateInitialize", "*"]
 _JOB_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update", "LateInitialize"]
+
+# The mirrored namespace keeps no-Delete management, so removing one cache never
+# deletes a namespace another cache (or a serving replica) still uses.
+_NS_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 
 
 def _storage_class(cluster: icv1alpha1.InferenceCluster) -> str | None:
@@ -186,6 +193,9 @@ class Composer:
         self.req = req
         self.rsp = rsp
         self.xr = v1alpha1.ModelCache(**resource.struct_to_dict(req.observed.composite.resource))
+        # The namespace on each workload cluster this cache's objects land in,
+        # mirroring the ModelCache's own.
+        self.namespace = resource.child_name(_NS_PREFIX, _namespace(self.xr.metadata))
         self.clusters: list[icv1alpha1.InferenceCluster] = []
         # The referenced authSecret key -> its base64 token value, read from the
         # control-plane Secret. Populated by resolve_inputs() once the XR
@@ -318,6 +328,12 @@ class Composer:
         assert cluster.status and cluster.status.providerConfigRef and cluster.status.providerConfigRef.name
         pc = cluster.status.providerConfigRef.name
         name = _name(cluster.metadata)
+        # provider-kubernetes won't create the target namespace, so this does,
+        # keeping it (no Delete) so removing one cache can't take it from another.
+        resource.update(
+            self.rsp.desired.resources[self._ns_key(name)],
+            self._wrap_remote(pc, self._namespace_manifest(), management_policies=_NS_MANAGEMENT),
+        )
         resource.update(
             self.rsp.desired.resources[self._pvc_key(name)],
             self._wrap_remote(pc, self._pvc_manifest(cluster), _PVC_READY_CEL),
@@ -347,13 +363,20 @@ class Composer:
                 self._wrap_remote(pc, self._job_manifest(), _JOB_READY_CEL, management_policies=_JOB_MANAGEMENT),
             )
 
+    def _namespace_manifest(self) -> dict:
+        return {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {"name": self.namespace, "labels": {NS_LABEL: _namespace(self.xr.metadata)}},
+        }
+
     def _pvc_manifest(self, cluster: icv1alpha1.InferenceCluster) -> dict:
         hf = self.xr.spec.huggingFace
         size_gib = int(hf.sizeGiB)  # ty: ignore[unresolved-attribute]  # XRD guarantees huggingFace is set; protobuf delivers XRD ints as float
         return {
             "apiVersion": "v1",
             "kind": "PersistentVolumeClaim",
-            "metadata": {"name": self._pvc_name(), "namespace": REMOTE_NS, "labels": self._labels()},
+            "metadata": {"name": self._pvc_name(), "namespace": self.namespace, "labels": self._labels()},
             "spec": {
                 "accessModes": ["ReadWriteMany"],
                 "storageClassName": _storage_class(cluster),
@@ -364,14 +387,13 @@ class Composer:
     def _auth_secret_manifest(self) -> dict:
         """The workload-cluster Secret carrying the propagated HF token.
 
-        Namespace-qualified name in REMOTE_NS, matching the PVC/Job, so caches
-        from different control-plane namespaces don't collide. `data` carries the
-        referenced authSecret key with its base64 value copied verbatim - the
-        hydration Job's env reads that same key from it."""
+        Named to match the PVC/Job, in the cache's mirrored namespace. `data`
+        carries the referenced authSecret key with its base64 value copied
+        verbatim - the hydration Job's env reads that same key from it."""
         return {
             "apiVersion": "v1",
             "kind": "Secret",
-            "metadata": {"name": self._auth_secret_name(), "namespace": REMOTE_NS, "labels": self._labels()},
+            "metadata": {"name": self._auth_secret_name(), "namespace": self.namespace, "labels": self._labels()},
             "data": self.auth_data,
         }
 
@@ -399,9 +421,9 @@ class Composer:
         return k8sobjv1alpha1.Object(spec=spec)
 
     # --- naming (must stay in sync with backends/base.cache_pvc_name) ---
-    # Both sides share resource.child_name("modelcache", namespace, name).
-    # Namespace-qualified so same-named caches from different Modelplane
-    # namespaces don't collide in the workload cluster's `default` namespace.
+    # Both sides share resource.child_name("modelcache", namespace, name), so the
+    # serving pods mount the PVC this composes by the same name in the same
+    # mirrored namespace.
     def _pvc_name(self) -> str:
         return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata))
 
@@ -410,6 +432,9 @@ class Composer:
 
     def _auth_secret_name(self) -> str:
         return resource.child_name("modelcache", _namespace(self.xr.metadata), _name(self.xr.metadata), "auth")
+
+    def _ns_key(self, cluster_name: str) -> str:
+        return f"namespace-{cluster_name}"
 
     def _pvc_key(self, cluster_name: str) -> str:
         return f"pvc-{cluster_name}"
@@ -428,7 +453,7 @@ class Composer:
         return {
             "apiVersion": "batch/v1",
             "kind": "Job",
-            "metadata": {"name": self._job_name(), "namespace": REMOTE_NS, "labels": self._labels()},
+            "metadata": {"name": self._job_name(), "namespace": self.namespace, "labels": self._labels()},
             "spec": {
                 "backoffLimit": 3,
                 "ttlSecondsAfterFinished": _JOB_TTL_SECONDS,

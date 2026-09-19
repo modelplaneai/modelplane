@@ -324,13 +324,13 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             sorted(got.desired.resources),
             sorted(
                 [
-                    # The client certificate this gateway presents to a cluster
-                    # gateway, which refuses a request that arrives without one.
+                    # The CA whose client certificates a cluster gateway trusts,
+                    # published as a ClusterIssuer for compose-model-route to issue
+                    # per-namespace client certificates from.
                     "client-ca-certificate",
                     "client-ca-issuer",
                     "client-ca-bundle",
                     "client-ca-configmap",
-                    "client-certificate",
                     "client-selfsigned-issuer",
                     "client-traffic-policy",
                     "envoy-proxy",
@@ -361,6 +361,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 f"{key} sets its own namespace, which a cluster-scoped XR must",
             )
             manifest = d["spec"]["forProvider"]["manifest"]
+            if manifest["kind"] == "ClusterIssuer":
+                # Cluster-scoped: compose-model-route issues client certs from it
+                # into team namespaces, so it has no namespace of its own.
+                self.assertNotIn(
+                    "namespace",
+                    manifest["metadata"],
+                    f"{key} is cluster-scoped, so it sets no namespace",
+                )
+                continue
             if manifest["kind"] == "Bundle":
                 # A Bundle is cluster-scoped, so it has no namespace of its own.
                 # It picks the namespace it syncs its ConfigMap to by selector.
@@ -520,8 +529,22 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         manifest = gw["spec"]["forProvider"]["manifest"]
         self.assertEqual(
             manifest["spec"]["listeners"],
-            [{"name": "http", "protocol": "HTTP", "port": 80, "allowedRoutes": {"namespaces": {"from": "Same"}}}],
-            "one HTTP listener, no hostname, accepting only this namespace's routes",
+            [
+                {
+                    "name": "http",
+                    "protocol": "HTTP",
+                    "port": 80,
+                    "allowedRoutes": {
+                        "namespaces": {
+                            "from": "Selector",
+                            "selector": {
+                                "matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]
+                            },
+                        }
+                    },
+                }
+            ],
+            "one HTTP listener, no hostname, accepting routes from the mirrored namespaces",
         )
         self.assertEqual(
             manifest["spec"]["infrastructure"]["parametersRef"],
@@ -577,7 +600,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 "client-ca-certificate",
                 "client-ca-configmap",
                 "client-ca-issuer",
-                "client-certificate",
                 "client-selfsigned-issuer",
                 "client-traffic-policy",
                 "envoy-proxy",
@@ -602,7 +624,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 "protocol": "HTTPS",
                 "port": 443,
                 "tls": {"mode": "Terminate", "certificateRefs": [{"name": "eu-tls-0"}]},
-                "allowedRoutes": {"namespaces": {"from": "Same"}},
+                "allowedRoutes": {
+                    "namespaces": {
+                        "from": "Selector",
+                        "selector": {"matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]},
+                    }
+                },
             },
         )
         self.assertEqual(got.requirements, _requirements(auth=True, tls=1))
@@ -838,10 +865,11 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             required_resources=_required(clusters=[_cluster()], gateways=[_gateway_xr(long_name, _CLUSTER)]),
         )
         got = await self.runner.RunFunction(req, None)
-        for key in ("client-ca-certificate", "client-certificate"):
-            manifest = resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
-            cn = manifest["spec"]["commonName"]
-            self.assertLessEqual(len(cn.encode()), 64, f"{key} commonName exceeds the 64-byte X.509 limit")
+        manifest = resource.struct_to_dict(got.desired.resources["client-ca-certificate"].resource)["spec"][
+            "forProvider"
+        ]["manifest"]
+        cn = manifest["spec"]["commonName"]
+        self.assertLessEqual(len(cn.encode()), 64, "client-ca-certificate commonName exceeds the 64-byte X.509 limit")
 
     async def test_a_rejected_caller_policy_is_not_ready(self) -> None:
         """A gateway whose caller policy was rejected refuses every request with
