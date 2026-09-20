@@ -26,7 +26,7 @@ spec:
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: starter
+  name: gke-us-central
   labels:
     modelplane.ai/region: us-central
 spec:

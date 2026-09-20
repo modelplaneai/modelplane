@@ -78,7 +78,7 @@ the copy-heavy case n-gram accelerates, so most output tokens are matched straig
 from the prompt:
 
 ```bash
-ADDR=$(kubectl get ig local -o jsonpath='{.status.endpoints.openAI}')
+ADDR=$(kubectl get ig public -o jsonpath='{.status.endpoints.openAI}')
 curl -s "$ADDR/chat/completions" -H 'Content-Type: application/json' -d '{
   "model": "ml-team/qwen3-8b-spec",
   "messages": [{"role":"user","content":"Return this Python function unchanged except rename the variable `total` to `subtotal`. Output only the code.\n\ndef cart(items):\n    total = 0\n    for item in items:\n        total += item.price\n    return total"}],

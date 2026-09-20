@@ -1,6 +1,6 @@
-# Exposes the kimi-k2 deployment as a single OpenAI-compatible URL. Read the
-# public address from status.address:
-#   kubectl get ms kimi-k2 -n ml-team -o jsonpath='{.status.address}'
+# Exposes the kimi-k2 deployment as one model a caller can name.
+# Name the model, ml-team/kimi-k2, in a request to an
+# InferenceGateway that serves it.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:

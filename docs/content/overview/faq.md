@@ -116,7 +116,7 @@ replica on a cluster and pool that fits and has free capacity.
 {{< /qa >}}
 
 {{< qa "Can I serve across regions and clusters behind one endpoint?" >}}
-Yes, that's the point. A `ModelService` exposes one OpenAI-compatible endpoint and
+Yes, that's the point. A `ModelService` gives callers one model name and
 load-balances across every replica of a deployment, wherever they run.
 {{< /qa >}}
 

@@ -1,7 +1,7 @@
 ---
 title: Deploying a model
 weight: 30
-description: Declare what your model needs and serve it behind a unified endpoint.
+description: Declare what your model needs and serve it behind an OpenAI-compatible endpoint.
 ---
 
 Now that the platform is provisioned, the ML team can declare what a model needs
@@ -65,16 +65,16 @@ labeled with the deployment name:
 {{< manifests "getting-started/model-service.yaml" >}}
 
 Callers name the model: it's `<namespace>/<service>`, so
-`ml-team/qwen` here. The gateway rewrites that to whatever the engine was
-started as, so the Hugging Face id this deployment serves under never reaches
-the caller.
+`ml-team/qwen` here. The gateway rewrites that to the name Modelplane gives the
+engine, which the deployment serves under by passing
+`--served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)`.
 
 ## Send a request
 
 Read the OpenAI base URL from the gateway:
 
 ```bash
-ADDRESS=$(kubectl get ig local -o jsonpath='{.status.endpoints.openAI}')
+ADDRESS=$(kubectl get ig public -o jsonpath='{.status.endpoints.openAI}')
 ```
 
 Send a request to it:
@@ -95,7 +95,7 @@ You should get a response in a few seconds:
 ```json {nocopy=true}
 {
   "id": "chatcmpl-c88b1429-067d-40a5-971c-ab9c54153c26",
-  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model": "ml-team/qwen-demo",
   "choices": [
     {
       "message": {

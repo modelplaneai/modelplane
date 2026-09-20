@@ -16,8 +16,7 @@ groups:
     title: Models
     description: >-
       Types ML teams author to deploy models, register endpoints, and expose
-      them behind one unified URL speaking the OpenAI and Anthropic Messages
-      APIs.
+      them under one model name over the OpenAI and Anthropic Messages APIs.
 
   - id: infrastructure
     title: Infrastructure

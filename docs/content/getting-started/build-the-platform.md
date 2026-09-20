@@ -190,7 +190,7 @@ kubectl apply -f {{< manifest-url "getting-started/gke/platform.yaml" >}}
 Modelplane provisions the cluster. This takes about 15 minutes:
 
 ```bash
-kubectl wait --for=condition=Ready ic/starter --timeout=20m
+kubectl wait --for=condition=Ready ic/gke-us-central --timeout=20m
 ```
 {{< /tab >}}
 
@@ -251,22 +251,37 @@ speaks the OpenAI and Anthropic APIs, authenticates callers, and resolves the
 model a request names to a `ModelService`.
 <!-- vale ai-tells.EmptyPadding = YES -->
 
-It runs on an `InferenceCluster`, named by `spec.clusterName`, so it comes after
-registering the cluster: it needs one to run on. Here it shares the cluster
-serving the model, which is fine.
+It runs on an `InferenceCluster`, named by `spec.clusterName`
+Each cloud's manifest names the cluster you just registered, so pick your
+cloud's tab.
 
-This one is the smallest useful shape: no hostname, no certificate and no caller
-keys, so it answers on its address over plain HTTP and authenticates nobody.
-Fine here, wrong on a network you don't trust. See
-[Set Up the Gateway]({{< ref "/platform/inference-gateway" >}}) for the
-production example.
+This one is the smallest useful shape: it answers on its address over plain HTTP
+and doesn't authenticate callers. See
+[Set Up the Gateway]({{< ref "/platform/inference-gateway" >}})
+for an example with TLS and authentication.
 
-{{< manifests "getting-started/inference-gateway.yaml" >}}
+{{< tabs >}}
+{{< tab "EKS" >}}
+{{< manifests "getting-started/eks/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "GKE" >}}
+{{< manifests "getting-started/gke/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "AKS" >}}
+{{< manifests "getting-started/aks/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "Nebius" >}}
+{{< manifests "getting-started/nebius/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "Vultr" >}}
+{{< manifests "getting-started/vultr/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< /tabs >}}
 
 Wait until the gateway is ready:
 
 ```bash
-kubectl wait --for=condition=Ready ig/local --timeout=5m
+kubectl wait --for=condition=Ready ig/public --timeout=5m
 ```
 
 With the cluster registered and a gateway in front of it, the ML team can deploy

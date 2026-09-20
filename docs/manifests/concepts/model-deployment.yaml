@@ -3,8 +3,9 @@
 # device requests, gated on available nodes. Each matched cluster gets one
 # ModelReplica.
 #
-# The control plane creates a unified OpenAI-compatible endpoint:
-#   http://<gateway-address>/<namespace>/<name>/v1/chat/completions
+# The deployment isn't reachable on its own. A ModelService that selects its
+# replicas exposes it as a model a caller names in an OpenAI or Anthropic request
+# to an InferenceGateway.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelDeployment
 metadata:

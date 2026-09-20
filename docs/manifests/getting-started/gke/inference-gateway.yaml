@@ -7,4 +7,4 @@ kind: InferenceGateway
 metadata:
   name: public
 spec:
-  clusterName: nebius-eu-north
+  clusterName: gke-us-central

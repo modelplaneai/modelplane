@@ -1,7 +1,7 @@
-# Exposes the qwen2-5-0-5b deployment's endpoints as a single OpenAI-compatible
-# URL. Modelplane labels each composed ModelEndpoint with the deployment name, so
-# this selector reaches every replica. Read the public address from status.address:
-#   kubectl get ms qwen2-5-0-5b -n ml-team -o jsonpath='{.status.address}'
+# Exposes the qwen2-5-0-5b deployment as one model a caller can name. Modelplane
+# labels each composed ModelEndpoint with the deployment name, so this selector
+# reaches every replica. Name the model,
+# ml-team/qwen2-5-0-5b, in a request to an InferenceGateway that serves it.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:

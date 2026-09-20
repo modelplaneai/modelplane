@@ -16,8 +16,7 @@ spec:
     method: APIKey
     apiKey:
       # Each key in a selected Secret is one caller: the entry's name is the
-      # caller's identity, its value is the key. Adding a caller means writing
-      # a Secret, not editing this gateway.
+      # caller's identity, its value is the key.
       secretSelector:
         matchLabels:
           modelplane.ai/inference-keys: "true"

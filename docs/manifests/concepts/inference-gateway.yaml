@@ -2,7 +2,7 @@
 # a caller sees. It runs on an InferenceCluster, named by spec.clusterName.
 #
 # This one is a production example: it answers on a name, over TLS, and
-# authenticates callers against keys it holds. Point eu.example.com at
+# authenticates callers by their API keys. Point eu.example.com at
 # status.address once the gateway reports one.
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceGateway
@@ -19,10 +19,8 @@ spec:
     method: APIKey
     apiKey:
       # Each key in a selected Secret is one caller: the entry's name is the
-      # identity, its value is the key. So adding a caller means writing a
-      # Secret rather than editing this gateway. The gateway stamps the
-      # identity onto every request and usage record, and never forwards the
-      # caller's key.
+      # identity, its value is the key. The gateway stamps the identity onto
+      # every request and usage record, and never forwards the caller's key.
       secretSelector:
         matchLabels:
           modelplane.ai/inference-keys: "true"

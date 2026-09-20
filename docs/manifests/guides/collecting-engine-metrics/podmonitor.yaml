@@ -2,7 +2,9 @@ apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
   name: qwen2-5-0-5b-metrics
-  namespace: default
+  # The namespace ml-team's pods land in on the cluster: mp-, the team's
+  # namespace, and a hash.
+  namespace: mp-ml-team-51733
 spec:
   selector:
     matchExpressions:

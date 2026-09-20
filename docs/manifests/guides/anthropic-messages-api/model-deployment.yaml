@@ -1,8 +1,6 @@
 # Qwen3-8B served on a single NVIDIA H100 (Nebius) by vLLM, exposed on the
-# Anthropic Messages API. vLLM's server registers /v1/messages (and
-# /v1/messages/count_tokens) alongside its OpenAI routes with no extra flag, so
-# this is an ordinary serve: the Anthropic surface comes for free, and
-# Modelplane preserves the path below the service prefix to reach it.
+# Anthropic Messages API. This is an ordinary serve: the gateway translates an
+# Anthropic request to the OpenAI API the engine speaks.
 #
 # The tool-calling flags are what make it usable from Claude Code, not decoration:
 #

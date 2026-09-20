@@ -1,8 +1,8 @@
-# One OpenAI-compatible endpoint for the deployment. Read its public address:
-#   kubectl get ms laguna -n ml-team -o jsonpath='{.status.address}'
-# then call it, e.g.:
-#   curl "$ADDR/v1/chat/completions" -H 'Content-Type: application/json' \
-#     -d '{"model":"laguna","messages":[{"role":"user","content":"hello"}]}'
+# Name the model, ml-team/laguna, in an OpenAI
+# request to an InferenceGateway that serves it, e.g.:
+#   ADDR=$(kubectl get ig public -o jsonpath='{.status.endpoints.openAI}')
+#   curl "$ADDR/chat/completions" -H 'Content-Type: application/json' \
+#     -d '{"model":"ml-team/laguna","messages":[{"role":"user","content":"hello"}]}'
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:

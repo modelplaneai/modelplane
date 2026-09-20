@@ -4,13 +4,12 @@ weight: 10
 description: Serve a model on the Anthropic Messages API and drive it from Claude Code.
 ---
 <!-- vale write-good.Passive = NO -->
-A vLLM server registers the Anthropic Messages API at `/v1/messages` alongside
-its OpenAI routes, with no extra flag. Modelplane's route matches the
-`/<namespace>/<service>/` prefix and preserves the path below it, so the same
-service URL answers both `/v1/chat/completions` and `/v1/messages`. A client that
-speaks the Messages API, including Claude Code via `ANTHROPIC_BASE_URL`, talks to
-the deployment directly. See
-[Alternate APIs]({{< ref "/models/model-service.md" >}}) for the routing detail.
+An `InferenceGateway` serves a `ModelService` whose backends speak OpenAI on
+both APIs, translating an Anthropic request to OpenAI, so one model answers
+OpenAI at `/v1/chat/completions` and Anthropic at `/anthropic/v1/messages`. A
+client that speaks the Messages API, including Claude Code via
+`ANTHROPIC_BASE_URL`, names the service as the model in its request. See
+[Alternate APIs]({{< ref "/models/model-service.md" >}}) for the detail.
 
 This recipe serves Qwen3-8B on a single NVIDIA H100 on Nebius, with tool calling
 on: `--enable-auto-tool-choice` and `--tool-call-parser=hermes` are what let
@@ -22,6 +21,8 @@ has ample headroom. Apply the platform side first, then the ML side.
 {{< manifests "guides/anthropic-messages-api/inference-class.yaml" >}}
 
 {{< manifests "guides/anthropic-messages-api/inference-cluster.yaml" >}}
+
+{{< manifests "guides/anthropic-messages-api/inference-gateway.yaml" >}}
 
 ## Deployment
 
@@ -35,12 +36,12 @@ Read the Messages API base URL from the gateway serving the service. The gateway
 publishes one per API it speaks:
 
 ```bash
-ADDRESS=$(kubectl get ig local -o jsonpath='{.status.endpoints.anthropic}')
+ADDRESS=$(kubectl get ig public -o jsonpath='{.status.endpoints.anthropic}')
 ```
 
 Post to `/messages` under it. The `model` field is the `ModelService`, as
-`<namespace>/<service>`, and the gateway rewrites it to whatever the engine was
-started as; `max_tokens` is required:
+`<namespace>/<service>`, and the gateway rewrites it to the name the engine
+serves under, `$(MODELPLANE_SERVED_MODEL_NAME)`; `max_tokens` is required:
 
 ```bash
 curl "$ADDRESS/messages" \

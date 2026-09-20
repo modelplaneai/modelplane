@@ -74,22 +74,22 @@ kubectl get podcliquesets.grove.io -A   # workload cluster
 
 {{< manifests "guides/serving-multi-node-on-dynamo/model-service.yaml" >}}
 
-Read the endpoint's address and send it a request. The `model` field is the
-`--served-model-name` the deployment sets:
+Read the address of an InferenceGateway that serves the model and send it a
+request, naming the model, `ml-team/qwen2-5-14b`, in the body:
 
 ```bash
-ADDRESS=$(kubectl get ms qwen2-5-14b -n ml-team -o jsonpath='{.status.address}')
+ADDRESS=$(kubectl get ig public -o jsonpath='{.status.endpoints.openAI}')
 kubectl run -i --rm curl-test \
   --image=curlimages/curl \
   --restart=Never \
   --env="ADDRESS=$ADDRESS" \
-  -- sh -c 'curl -s "$ADDRESS/v1/chat/completions" \
+  -- sh -c 'curl -s "$ADDRESS/chat/completions" \
   -H "Content-Type: application/json" \
-  -d "{\"model\":\"qwen2.5-14b\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}"'
+  -d "{\"model\":\"ml-team/qwen2-5-14b\",\"messages\":[{\"role\":\"user\",\"content\":\"What is Kubernetes in one sentence?\"}],\"max_tokens\":100}"'
 ```
 
-The request routes through the gateway to the leader, which serves the gang's one
-endpoint.
+The gateway resolves the model to the gang's one endpoint and routes the request
+to the leader.
 
 ## Scale out with peer-to-peer loading
 
@@ -113,8 +113,8 @@ Once the second gang starts, watch its leader load from the first over
 ModelExpress:
 
 ```bash
-kubectl logs -n default -l modelplane.ai/clique-role=leader -c engine --tail=-1 \
-  | grep "source worker"   # workload cluster
+kubectl logs -n mp-ml-team-51733 -l modelplane.ai/clique-role=leader -c engine --tail=-1 \
+  | grep "source worker"   # workload cluster, in ml-team's mirrored namespace
 # [Worker 0] Trying source worker 63d91022 (266 tensors)
 ```
 <!-- vale write-good.Passive = YES -->

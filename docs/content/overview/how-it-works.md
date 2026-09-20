@@ -25,7 +25,7 @@ model, and Modelplane composes the rest.
     <div class="mp-lane-title">Platform team creates</div>
     <a class="mp-chip" href="{{< ref "/platform/inference-gateway" >}}">
       <span class="mp-chip-name">InferenceGateway</span>
-      <span class="mp-chip-desc">The unified, OpenAI-compatible entry point on the control cluster.</span>
+      <span class="mp-chip-desc">The front door for inference requests, speaking the OpenAI and Anthropic APIs. Runs on an InferenceCluster.</span>
     </a>
     <a class="mp-chip" href="{{< ref "/platform/inference-class" >}}">
       <span class="mp-chip-name">InferenceClass</span>
@@ -44,7 +44,7 @@ model, and Modelplane composes the rest.
     </a>
     <a class="mp-chip" href="{{< ref "/models/model-service" >}}">
       <span class="mp-chip-name">ModelService</span>
-      <span class="mp-chip-desc">One OpenAI-compatible endpoint, load-balanced across the endpoints it selects.</span>
+      <span class="mp-chip-desc">One model name callers ask for, load-balanced across the endpoints it selects.</span>
     </a>
     <a class="mp-chip" href="{{< ref "/models/model-cache" >}}">
       <span class="mp-chip-name">ModelCache</span>
@@ -83,8 +83,8 @@ run continuously:
    `spec.replicas` adds or removes whole serving instances through the standard
    Kubernetes scale subresource, so `kubectl scale` or a KEDA `ScaledObject` work
    out of the box.
-4. **Routing.** A `ModelService` exposes one OpenAI-compatible endpoint through
-   the gateway and load-balances across the deployment's `ModelEndpoints`,
+4. **Routing.** A `ModelService` gives callers one model name to ask the gateway
+   for, and load-balances across the deployment's `ModelEndpoints`,
    wherever their replicas run. `ModelEndpoints` can also point at external
    inference services.
 5. **Caching.** A `ModelCache` stages model weights on cluster storage once, so
@@ -132,8 +132,8 @@ discovers the ready clusters (filtered by your label selector if you set one),
 matches each engine's device requests against their pools, and pins each replica
 to a cluster that fits. Modelplane composes a `ModelReplica` on each chosen
 cluster, turns it into the right serving workload there, creates a `ModelEndpoint`
-per replica, and your `ModelService` routes traffic across them through one stable
-endpoint on the gateway. Scale the deployment up or down and the same loop
+per replica, and your `ModelService` routes traffic across them under one stable
+model name on the gateway. Scale the deployment up or down and the same loop
 re-converges.
 
 ## Serving topologies

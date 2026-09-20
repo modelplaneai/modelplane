@@ -8,7 +8,7 @@ metadata:
   namespace: ml-team
   labels:
     # 1. A label of your own for a ModelService to select on. Any label works.
-    modelplane.ai/endpoint: kimi-k2-together
+    modelplane.ai/external-provider: together
 spec:
   # 2. Scheme and host, no path. An https origin gets TLS originated to it.
   #    This must be a name rather than an address: Envoy AI Gateway only applies

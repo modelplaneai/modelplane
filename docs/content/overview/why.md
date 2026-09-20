@@ -55,7 +55,7 @@ Modelplane does for the fleet what Kubernetes does for the cluster. It's the ope
 source control plane above your inference clusters across cloud, neocloud, and
 on-premise: it places model deployments, autoscales replicas, provisions and
 manages the infrastructure underneath, caches and distributes model weights, and
-routes inference through one unified gateway with fallback to managed providers.
+routes inference through an AI gateway with fallback to managed providers.
 It turns "I need this model served" into a stable endpoint for any ML team.
 
 Modelplane composes these projects rather than replacing them, and stays neutral

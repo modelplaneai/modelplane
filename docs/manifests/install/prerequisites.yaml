@@ -1,8 +1,8 @@
 # Modelplane prerequisites. Apply once after installing Crossplane.
 #
 # These resources grant Crossplane and provider-helm the permissions
-# needed to compose Gateway API, MetalLB, and Service/EndpointSlice
-# routing resources. They cannot be self-composed because Crossplane
+# Modelplane's compositions need, and configure provider-helm and
+# provider-kubernetes. They cannot be self-composed because Crossplane
 # needs the permissions before it can compose anything.
 ---
 apiVersion: v1

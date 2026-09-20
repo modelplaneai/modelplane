@@ -86,10 +86,9 @@ holds no GPUs and serves no tokens. It schedules and composes, and the
 workload clusters do the serving.
 
 The control cluster runs Crossplane, the Modelplane composition functions (one
-per resource, each a pod Crossplane calls per reconcile), the providers, and the
-control-plane gateway. It also holds every Modelplane resource and the
-`ProviderConfig`s that let the providers reach each workload cluster, built from
-that cluster's kubeconfig.
+per resource, each a pod Crossplane calls per reconcile), and the providers. It
+also holds every Modelplane resource and the `ProviderConfig`s that let the
+providers reach each workload cluster, built from that cluster's kubeconfig.
 
 Crossplane core drives everything. Each reconcile it asks a function what a
 resource should compose and gets back the desired resources. Core then reconciles
@@ -102,7 +101,6 @@ flowchart TB
         cp["Crossplane core"]
         fns["Modelplane functions\n(one pod per resource)"]
         prov["Providers\ngcp · aws · helm · kubernetes"]
-        gw["Control-plane gateway"]
     end
     subgraph fleet["Fleet"]
         wc1["Workload cluster A"]
@@ -110,7 +108,6 @@ flowchart TB
     end
     cp <-->|"desired state (gRPC)"| fns
     cp -->|composes| prov
-    cp -->|composes| gw
     prov -->|provision + install via kubeconfig| wc1
     prov -->|provision + install via kubeconfig| wc2
 ```
@@ -160,33 +157,36 @@ claim through.
 
 ## The request path
 
-A served request crosses two gateways, both built on Gateway API. The
-**control-plane gateway** is the front door: a `ModelService` composes an
-`HTTPRoute` on it that matches the service's path prefix and forwards to the
-matched `ModelEndpoint`s, each of which is a `Service` pointing at a workload
-cluster's gateway address. The **workload-cluster gateway** then routes from the
-cluster edge to the engine pods.
+A served request crosses two gateways, both Envoy AI Gateway. The
+[`InferenceGateway`]({{< ref "/platform/inference-gateway.md" >}}) is the front
+door: it runs on an `InferenceCluster` and is the only address a caller uses, the
+only point that acts on a request while it knows the whole fleet. A caller sends
+an ordinary OpenAI or Anthropic request, naming a `ModelService` as the model. It
+authenticates the caller and resolves that service to one of its
+`ModelEndpoint`s, by priority then weight. For the backend it picks, it rewrites
+the model name, credential and path. The target `InferenceCluster`'s own gateway
+then routes from the cluster edge to the engine pods, scoring them by cache
+locality and queue depth through an `InferencePool`.
 
 ```mermaid
 flowchart LR
     client["Client"]
-    cpgw["Control-plane gateway"]
-    wcgw["Workload-cluster gateway"]
+    fgw["InferenceGateway"]
+    cgw["Cluster's gateway"]
     engine["Engine pods\n(vLLM, SGLang, ...)"]
 
-    client -->|service path| cpgw
-    cpgw -->|per-replica path| wcgw
-    wcgw -->|engine path| engine
+    client -->|"model: ml-team/assistant"| fgw
+    fgw -->|"rewrite, mutual TLS"| cgw
+    cgw -->|endpoint picker| engine
 ```
 
-Each hop rewrites the path: the control plane rewrites the public prefix to the
-replica's path, and the workload gateway strips that down to what the engine
-serves. This per-backend path rewriting is the main thing the control-plane
-gateway has to support, and it narrows which Gateway API implementations can fill
-the role.
+The hop from the `InferenceGateway` to the cluster's gateway is mutually
+authenticated. A per-cluster PKI, issued by cert-manager and distributed by
+trust-manager, gives the `InferenceGateway` a client certificate the cluster's
+gateway trusts. A `ModelEndpoint` at a third-party provider is reached with that
+provider's credential over ordinary TLS.
 
-Which gateway sits at each layer is internal, not part of the API. The
-[`InferenceGateway`]({{< ref "/platform/inference-gateway.md" >}}) `backend` field
-is an enum precisely so the control-plane gateway can grow other options over
-time. Target the `ModelService` URL rather than either gateway directly.
+A caller names a `ModelService` and gets back whichever model served it, the way
+requesting `gpt-4o` from OpenAI returns `gpt-4o-2024-08-06`. Which Gateway API
+software sits at each layer is internal, not part of the API.
 <!-- vale write-good.Passive = YES -->

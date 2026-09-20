@@ -37,6 +37,9 @@ spec:
                 args:
                 - "-hf"
                 - "unsloth/GLM-4.5-Air-GGUF:IQ4_XS"
+                # llama.cpp's equivalent of --served-model-name.
+                - "-a"
+                - "$(MODELPLANE_SERVED_MODEL_NAME)"
                 - "--host"
                 - "0.0.0.0"
                 - "--port"
