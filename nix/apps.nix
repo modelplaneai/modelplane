@@ -177,10 +177,10 @@
               failed=1
             else
               # The control plane is up and healthy - finish the setup the
-              # getting-started flow otherwise does by hand. prerequisites.yaml
+              # install guide otherwise does by hand. prerequisites.yaml
               # carries the modelplane-system namespace, composition RBAC, and
               # provider-helm's DeploymentRuntimeConfig and ImageConfig.
-              kubectl apply -f docs/manifests/getting-started/prerequisites.yaml
+              kubectl apply -f docs/manifests/install/prerequisites.yaml
 
               # crossplane project run installs providers before
               # prerequisites.yaml is applied, and Crossplane resolves
