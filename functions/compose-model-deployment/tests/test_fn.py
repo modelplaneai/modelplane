@@ -430,6 +430,15 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             ),
         ).model_dump(exclude_none=True, mode="json")
 
+        # A deployment parked at zero replicas.
+        xr_zero = v1alpha1.ModelDeployment(
+            metadata=metav1.ObjectMeta(name="my-model", namespace="ml-team"),
+            spec=v1alpha1.SpecModel1(
+                replicas=0,
+                template=v1alpha1.TemplateModel(spec=v1alpha1.SpecModel(engines=[_ENGINE])),
+            ),
+        ).model_dump(exclude_none=True, mode="json")
+
         cases = [
             Case(
                 # First reconcile: the replica is composed but not yet observed
@@ -609,6 +618,85 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ],
                         context=structpb.Struct(),
                     )
+                ),
+            ),
+            Case(
+                # Zero desired parks the deployment before resolve_inputs runs:
+                # no requirements are declared (the want carries none), nothing
+                # is composed, and both conditions read True with the
+                # ScaledToZero reason rather than a capacity failure.
+                name="scaled to zero composes nothing and reports ScaledToZero",
+                req=_req(xr_zero),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ScaledToZero",
+                            message="0 replicas desired",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ScaledToZero",
+                            message="0 replicas desired",
+                        ),
+                    ],
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                # Scaling an existing deployment to zero: the observed replica
+                # and endpoint are absent from desired (pruned), and the
+                # transition is announced while they still exist.
+                name="scale to zero prunes observed replicas and emits an event",
+                req=_req(
+                    xr_zero,
+                    observed={
+                        "replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True),
+                        "endpoint-cluster-a-0": {
+                            "apiVersion": "modelplane.ai/v1alpha1",
+                            "kind": "ModelEndpoint",
+                            "metadata": {"name": "my-model-5ab63", "namespace": "ml-team"},
+                        },
+                    },
+                ),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                            ready=fnv1.READY_TRUE,
+                        ),
+                    ),
+                    conditions=[
+                        fnv1.Condition(
+                            type="ReplicasScheduled",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ScaledToZero",
+                            message="0 replicas desired",
+                        ),
+                        fnv1.Condition(
+                            type="ReplicasReady",
+                            status=fnv1.STATUS_CONDITION_TRUE,
+                            reason="ScaledToZero",
+                            message="0 replicas desired",
+                        ),
+                    ],
+                    results=[
+                        fnv1.Result(
+                            severity=fnv1.SEVERITY_NORMAL,
+                            message="Scaled to zero: removing all replicas",
+                        ),
+                    ],
+                    context=structpb.Struct(),
                 ),
             ),
             Case(
