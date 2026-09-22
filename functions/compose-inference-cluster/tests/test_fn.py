@@ -104,6 +104,20 @@ def _replicas_selector(cluster_name: str) -> fnv1.ResourceSelector:
     return sel
 
 
+def _routes_selector(cluster_name: str) -> fnv1.ResourceSelector:
+    """The ModelRoute requirement: routes scheduled to a cluster, across all
+    namespaces. Their teams' namespaces are mirrored alongside the replicas'."""
+    sel = fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelRoute")
+    sel.match_labels.labels.update({"modelplane.ai/cluster": cluster_name})
+    return sel
+
+
+def _caches_selector() -> fnv1.ResourceSelector:
+    """Every ModelCache. A cache fans out to many clusters, so it can't be
+    label-selected to one; the function filters by status.clusters[]."""
+    return fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="ModelCache")
+
+
 def _replica_item(name: str, namespace: str) -> fnv1.Resource:
     """An observed ModelReplica labelled for test-cluster."""
     return fnv1.Resource(
@@ -118,6 +132,77 @@ def _replica_item(name: str, namespace: str) -> fnv1.Resource:
                 },
             }
         )
+    )
+
+
+def _route_item(name: str, namespace: str) -> fnv1.Resource:
+    """An observed ModelRoute labelled for test-cluster."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "ModelRoute",
+                "metadata": {
+                    "name": name,
+                    "namespace": namespace,
+                    "labels": {"modelplane.ai/cluster": "test-cluster"},
+                },
+            }
+        )
+    )
+
+
+def _cache_item(name: str, namespace: str, clusters: list[str]) -> fnv1.Resource:
+    """An observed ModelCache staging onto the named clusters (status.clusters).
+
+    Caches carry no cluster label; the function reads status.clusters[] to tell
+    which cluster a cache lands on, so only those naming this one are mirrored."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "ModelCache",
+                "metadata": {"name": name, "namespace": namespace},
+                "spec": {"source": "HuggingFace"},
+                "status": {"clusters": [{"name": c, "phase": "Ready"} for c in clusters]},
+            }
+        )
+    )
+
+
+def _namespace_object(ns: str, name: str) -> fnv1.Resource:
+    """The mirrored namespace the function composes for a team with a replica or
+    route on the cluster, labelled for the gateways' route selector and kept (no
+    Delete). Marked ready so a new team's namespace can't flap the cluster's
+    readiness.
+
+    name is spelled out rather than computed with child_name, since the other
+    functions that land objects in it hardcode the same derivation, and a test
+    computing it the same way would pass whichever way any of them drifted."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"namespace": "modelplane-system"},
+                "spec": {
+                    "managementPolicies": ["Observe", "Create", "Update"],
+                    "providerConfigRef": {
+                        "kind": "ClusterProviderConfig",
+                        "name": "test-cluster-cluster-kubeconfig-d0f89",
+                    },
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "v1",
+                            "kind": "Namespace",
+                            "metadata": {"name": name, "labels": {"modelplane.ai/namespace": ns}},
+                        },
+                    },
+                },
+            }
+        ),
+        ready=fnv1.READY_TRUE,
     )
 
 
@@ -146,20 +231,35 @@ def _guard_clusterusage() -> fnv1.Resource:
 def _replica_guard_case(
     base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
 ) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
-    """Build the replica-guard case from a base request and response.
+    """Build the replica-guard-and-namespaces case from a base request and response.
 
     Observes two ModelReplicas in different namespaces, both labelled for the
     cluster, so the function composes a single reason-only ClusterUsage blocking
     the InferenceCluster's deletion regardless of replica count or namespace.
+
+    It also observes ModelRoutes and ModelCaches, so the mirrored namespaces the
+    function composes are the deduplicated union across all three: team-a
+    (replica), team-b (replica and route), team-c (route), team-d (cache staging
+    onto this cluster). A cache staging only onto another cluster (team-e) is
+    filtered out by its status.clusters[], proving the namespaces track what
+    actually lands here.
     """
     req = fnv1.RunFunctionRequest()
     req.CopyFrom(base_req)
     req.required_resources["model-replicas"].items.append(_replica_item("deploy-test-cluster-0", "team-a"))
     req.required_resources["model-replicas"].items.append(_replica_item("deploy-test-cluster-0", "team-b"))
+    req.required_resources["model-routes"].items.append(_route_item("svc-eu", "team-b"))
+    req.required_resources["model-routes"].items.append(_route_item("svc-eu", "team-c"))
+    req.required_resources["model-caches"].items.append(_cache_item("qwen", "team-d", ["test-cluster"]))
+    req.required_resources["model-caches"].items.append(_cache_item("kimi", "team-e", ["other-cluster"]))
 
     want = fnv1.RunFunctionResponse()
     want.CopyFrom(base_want)
     want.desired.resources["usage-replicas"].CopyFrom(_guard_clusterusage())
+    want.desired.resources["namespace-team-a"].CopyFrom(_namespace_object("team-a", "mp-team-a-bd964"))
+    want.desired.resources["namespace-team-b"].CopyFrom(_namespace_object("team-b", "mp-team-b-6bd62"))
+    want.desired.resources["namespace-team-c"].CopyFrom(_namespace_object("team-c", "mp-team-c-d79d9"))
+    want.desired.resources["namespace-team-d"].CopyFrom(_namespace_object("team-d", "mp-team-d-c2383"))
     return req, want
 
 
@@ -210,11 +310,18 @@ def _early_return_guard_case() -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctio
 
     want = fnv1.RunFunctionResponse(
         meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-        desired=fnv1.State(resources={"usage-replicas": _guard_clusterusage()}),
+        desired=fnv1.State(
+            resources={
+                "usage-replicas": _guard_clusterusage(),
+                "namespace-team-a": _namespace_object("team-a", "mp-team-a-bd964"),
+            }
+        ),
         context=structpb.Struct(),
     )
     want.requirements.resources["gateways"].CopyFrom(_gateways_selector())
     want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+    want.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
+    want.requirements.resources["model-caches"].CopyFrom(_caches_selector())
     want.requirements.resources["class-gpu-l4"].CopyFrom(
         fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceClass", match_name="gpu-l4")
     )
@@ -478,10 +585,13 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             }
         )
         backend1b.resource.CopyFrom(resource.dict_to_struct(backend1b_dict))
-        # want1 gains the replica-guard requirement in place from the guard cases
-        # below, after this snapshot; add it here so want1b matches on its own.
+        # want1 gains the replica, route, cache and gateway requirements in place
+        # from the guard cases below, after this snapshot; add them here so want1b
+        # matches on its own.
         want1b.requirements.resources["gateways"].CopyFrom(_gateways_selector())
         want1b.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+        want1b.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
+        want1b.requirements.resources["model-caches"].CopyFrom(_caches_selector())
 
         # --- Case 2: GKE cluster first pass - no observed GKE, classes resolved. ---
         req2 = fnv1.RunFunctionRequest(
@@ -2601,11 +2711,14 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         ):
             want.requirements.resources["gateways"].CopyFrom(_gateways_selector())
             want.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+            want.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
+            want.requirements.resources["model-caches"].CopyFrom(_caches_selector())
 
         # The guard cases reuse case 1's request and response.
         guard_cases = [
             Case(
-                "ModelReplicas scheduled to the cluster compose the deletion guard", *_replica_guard_case(req1, want1)
+                "ModelReplicas and ModelRoutes compose the guard and the mirrored namespaces",
+                *_replica_guard_case(req1, want1),
             ),
             Case("no ModelReplicas leaves the cluster deletable", *_empty_replicas_case(req1, want1)),
             Case("guard is composed even when compose returns early", *_early_return_guard_case()),
@@ -2738,6 +2851,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         want_creds.requirements.resources["class-gpu-l4"].CopyFrom(class_selector)
         want_creds.requirements.resources["gateways"].CopyFrom(_gateways_selector())
         want_creds.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+        want_creds.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
+        want_creds.requirements.resources["model-caches"].CopyFrom(_caches_selector())
 
         # Every cloud cluster composes an activation policy; with the policy
         # observed Healthy the cluster XR is composed.

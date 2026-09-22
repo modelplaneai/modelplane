@@ -344,9 +344,15 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         repository="https://charts.jetstack.io",
         version="v1.20.2",
         wait=True,
-        # clusterResourceNamespace is forced by fn._helm_release for every cloud's
-        # cert-manager (the ClusterIssuer CA lives in modelplane-system).
-        values={"crds": {"enabled": True}, "clusterResourceNamespace": "modelplane-system"},
+        # clusterResourceNamespace and enableCertificateOwnerRef are forced by
+        # fn._helm_release for every cloud's cert-manager: the ClusterIssuer CA
+        # lives in modelplane-system, and a deleted ModelRoute's client
+        # certificate Secret must go with its Certificate.
+        values={
+            "crds": {"enabled": True},
+            "clusterResourceNamespace": "modelplane-system",
+            "enableCertificateOwnerRef": True,
+        },
     )
     out["kube-prometheus-stack"] = _release(
         key="kube-prometheus-stack",

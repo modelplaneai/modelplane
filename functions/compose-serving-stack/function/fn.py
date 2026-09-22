@@ -75,6 +75,11 @@ _SECRET_TYPE_KUBECONFIG = "Kubeconfig"
 # own namespace. Forced here, over every cloud's cert-manager values, because it's
 # a cross-function contract with compose-inference-gateway. _CERT_MANAGER_KEY is
 # the component key the cloud lists use.
+#
+# cert-manager also owns each certificate's Secret by its Certificate, so
+# deleting the Certificate deletes the Secret. compose-model-route issues a
+# client certificate per ModelRoute, and without this every deleted route would
+# leave its client key behind, still valid against the cluster gateways.
 _CERT_MANAGER_KEY = "cert-manager"
 _CLUSTER_RESOURCE_NAMESPACE = "modelplane-system"
 
@@ -179,6 +184,7 @@ def _helm_release(chart: stacks.Chart, provider_config: str) -> helmv1beta1.Rele
     values = dict(chart.values) if chart.values else {}
     if chart.key == _CERT_MANAGER_KEY:
         values["clusterResourceNamespace"] = _CLUSTER_RESOURCE_NAMESPACE
+        values["enableCertificateOwnerRef"] = True
     if values:
         release.spec.forProvider.values = values
     return release

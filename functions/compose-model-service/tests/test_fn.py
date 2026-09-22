@@ -81,13 +81,14 @@ def _gateway(name: str, cluster: str, *, selector: dict[str, str] | None = None,
     return d
 
 
-def _route(gateway: str) -> dict:
+def _route(gateway: str, cluster: str) -> dict:
     """The ModelRoute the function composes for one gateway, as a plain dict.
 
     The endpoints are spelled out rather than derived from the service's, so a
     bug in the copy the function does can't hide in an expectation computed the
     same way. Every case here drives the single kimi-k2 entry, which the copy
-    fills to its priority/weight defaults.
+    fills to its priority/weight defaults. The cluster label carries the gateway's
+    clusterName, which compose-inference-cluster selects routes by.
     """
     route = mrtv1alpha1.ModelRoute(
         apiVersion="modelplane.ai/v1alpha1",
@@ -95,7 +96,11 @@ def _route(gateway: str) -> dict:
         metadata={
             "name": resource.child_name(_SVC, gateway),
             "namespace": _NS,
-            "labels": {"modelplane.ai/service": _SVC, "modelplane.ai/gateway": gateway},
+            "labels": {
+                "modelplane.ai/service": _SVC,
+                "modelplane.ai/gateway": gateway,
+                "modelplane.ai/cluster": cluster,
+            },
         },
         spec=mrtv1alpha1.Spec(
             gatewayName=gateway,
@@ -259,7 +264,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             ready=fnv1.READY_FALSE,
                         ),
                         resources={
-                            "route-eu": fnv1.Resource(resource=resource.dict_to_struct(_route("eu"))),
+                            "route-eu": fnv1.Resource(resource=resource.dict_to_struct(_route("eu", "gw-eu"))),
                         },
                     ),
                     context=structpb.Struct(),
@@ -304,8 +309,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             ready=fnv1.READY_FALSE,
                         ),
                         resources={
-                            "route-eu": fnv1.Resource(resource=resource.dict_to_struct(_route("eu"))),
-                            "route-us": fnv1.Resource(resource=resource.dict_to_struct(_route("us"))),
+                            "route-eu": fnv1.Resource(resource=resource.dict_to_struct(_route("eu", "gw-eu"))),
+                            "route-us": fnv1.Resource(resource=resource.dict_to_struct(_route("us", "gw-us"))),
                         },
                     ),
                     context=structpb.Struct(),
@@ -357,10 +362,10 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ),
                         resources={
                             "route-eu": fnv1.Resource(
-                                resource=resource.dict_to_struct(_route("eu")), ready=fnv1.READY_TRUE
+                                resource=resource.dict_to_struct(_route("eu", "gw-eu")), ready=fnv1.READY_TRUE
                             ),
                             "route-us": fnv1.Resource(
-                                resource=resource.dict_to_struct(_route("us")), ready=fnv1.READY_TRUE
+                                resource=resource.dict_to_struct(_route("us", "gw-us")), ready=fnv1.READY_TRUE
                             ),
                         },
                     ),

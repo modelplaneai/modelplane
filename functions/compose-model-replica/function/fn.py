@@ -161,7 +161,6 @@ class Composer:
             backend = _BACKENDS[base.select_backend(engine, stack)]()
             composed.update(backend.build(self.xr, engine, pc, label, stack))
         composed = routing.apply(composed, self.xr, pc)
-        composed["namespace"] = base.namespace_object(self.xr, pc)
         for key, obj in composed.items():
             resource.update(self.rsp.desired.resources[key], obj)
 

@@ -31,7 +31,7 @@ from models.ai.modelplane.infrastructure.servingstack import v1alpha1
 # fn.compose_gateway_pki). The HTTPS listener terminates TLS with it.
 _GATEWAY_SERVING_SECRET = "cluster-gateway-serving"
 
-# Label compose-model-replica stamps on the namespaces it mirrors onto this
+# Label compose-inference-cluster stamps on the namespaces it mirrors onto this
 # cluster. The gateway's listeners select on it so a replica's HTTPRoute attaches
 # from its own team's namespace.
 _NS_LABEL = "modelplane.ai/namespace"

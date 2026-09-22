@@ -57,10 +57,11 @@ CONDITION_REASON_AUTH_NOT_ACCEPTED = "CallerAuthNotAccepted"
 REMOTE_NAMESPACE = "modelplane-system"
 
 # The label every namespace holding routes for this gateway carries: the team
-# namespaces compose-model-route mirrors here, and modelplane-system itself, which
-# holds the gateway's own healthz and redirect routes. The listeners select on it,
-# so a route attaches from any of them. A cross-function contract with
-# compose-model-route and compose-serving-stack, which labels modelplane-system.
+# namespaces compose-inference-cluster mirrors here, and modelplane-system itself,
+# which holds the gateway's own healthz and redirect routes. The listeners select
+# on it, so a route attaches from any of them. A cross-function contract with
+# compose-inference-cluster and compose-serving-stack, which labels
+# modelplane-system.
 _NS_LABEL = "modelplane.ai/namespace"
 
 # The namespace on the control plane holding a gateway's Secrets: caller keys
@@ -607,9 +608,9 @@ class Composer:
         The HTTPS listener carries every certificate, and Envoy presents
         whichever matches the name the caller asked for.
 
-        Routes are accepted only from the namespaces compose-model-route mirrors
-        onto this cluster, selected by the label it stamps on them. Every route
-        Modelplane composes carries a team's ModelService into its own such
+        Routes are accepted only from the namespaces compose-inference-cluster
+        mirrors onto this cluster, selected by the label it stamps on them. Every
+        route Modelplane composes carries a team's ModelService into its own such
         namespace; accepting routes from anywhere would let anyone who can create
         an HTTPRoute on this cluster attach to the authenticated front door,
         overriding its SecurityPolicy the way /healthz does.

@@ -180,9 +180,8 @@ COMPONENTS: list[Component] = [
     # Both gateways live here, with the fleet gateway's own healthz and redirect
     # routes, and nothing else provisions the namespace. The gateways' listeners
     # select routes by the modelplane.ai/namespace label, so this namespace carries
-    # it too, beside the mp-<ns> team namespaces compose-model-route and
-    # compose-model-replica mirror here. Without it the gateways' own routes
-    # wouldn't attach.
+    # it too, beside the team namespaces compose-inference-cluster mirrors here.
+    # Without it the gateways' own routes wouldn't attach.
     Manifests(
         key="gateway-namespace",
         manifests=[

@@ -406,11 +406,11 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
         )
         got = await self.runner.RunFunction(req, None)
 
-        # The exact set, so an unexpected extra object fails the test.
+        # The exact set, so an unexpected extra object fails the test. The
+        # mirrored namespace isn't here: compose-inference-cluster composes it.
         self.assertEqual(
             set(got.desired.resources),
             {
-                "namespace",
                 "client-certificate",
                 "backend-self",
                 "aibackend-self",
@@ -459,15 +459,14 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
         )
 
         # The composed backend pins its cluster's CA and presents the client
-        # certificate; the third-party one uses the system trust store.
+        # certificate, both this route's own; the third-party one uses the
+        # system trust store.
         self.assertEqual(
             _manifest(got, "backend-self")["spec"]["tls"],
             {
-                "caCertificateRefs": [
-                    {"kind": "ConfigMap", "group": "", "name": resource.child_name("cluster-ca", "gw-eu")}
-                ],
+                "caCertificateRefs": [{"kind": "ConfigMap", "group": "", "name": "assistant-eu-gw-eu-ca-3dd16"}],
                 "sni": "gw-eu.example.com",
-                "clientCertificateRef": {"kind": "Secret", "group": "", "name": "inference-gateway-client"},
+                "clientCertificateRef": {"kind": "Secret", "group": "", "name": "assistant-eu-client-08324"},
             },
         )
         self.assertEqual(
@@ -487,42 +486,48 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
             _manifest(got, "credential-together")["data"],
             {"apiKey": base64.b64encode(b"sk-tog").decode()},
         )
-        self.assertEqual(_manifest(got, "cluster-ca-gw-eu")["data"], {"ca.crt": _CLUSTER_CA})
-
-        # Every composed object lands in the namespace mirroring the route's own.
-        for key in ("backend-self", "backend-together", "credential-together", "cluster-ca-gw-eu", "route"):
-            self.assertEqual(_manifest(got, key)["metadata"]["namespace"], "mp-ml-team-51733", key)
-
-        # The mirrored namespace itself: labelled for the gateway's route selector,
-        # and kept (no Delete) so one route's removal can't take it from others.
+        # Named for this route, so no other route in the namespace composes it.
         self.assertEqual(
-            resource.struct_to_dict(got.desired.resources["namespace"].resource)["spec"]["managementPolicies"],
-            ["Observe", "Create", "Update"],
-        )
-        self.assertEqual(
-            _manifest(got, "namespace"),
+            _manifest(got, "cluster-ca-gw-eu"),
             {
                 "apiVersion": "v1",
-                "kind": "Namespace",
-                "metadata": {"name": "mp-ml-team-51733", "labels": {"modelplane.ai/namespace": "ml-team"}},
+                "kind": "ConfigMap",
+                "metadata": {"name": "assistant-eu-gw-eu-ca-3dd16", "namespace": "mp-ml-team-51733"},
+                "data": {"ca.crt": _CLUSTER_CA},
             },
         )
+
+        # Every composed object lands in the namespace mirroring the route's own,
+        # which compose-inference-cluster composes.
+        for key in ("backend-self", "backend-together", "credential-together", "cluster-ca-gw-eu", "route"):
+            self.assertEqual(_manifest(got, key)["metadata"]["namespace"], "mp-ml-team-51733", key)
 
         # The route lives in the team namespace but attaches across to the gateway.
         self.assertEqual(route["spec"]["parentRefs"][0]["namespace"], "modelplane-system")
 
-        # The client certificate the backends present, issued from the gateway's CA
-        # ClusterIssuer into this namespace, and kept like the namespace.
-        self.assertEqual(
-            resource.struct_to_dict(got.desired.resources["client-certificate"].resource)["spec"]["managementPolicies"],
-            ["Observe", "Create", "Update"],
+        # The client certificate the backends present, issued from the gateway's
+        # CA ClusterIssuer into this namespace. Named for this route, so no other
+        # route in the namespace composes it, and deleted with the route.
+        self.assertNotIn(
+            "managementPolicies",
+            resource.struct_to_dict(got.desired.resources["client-certificate"].resource)["spec"],
         )
-        cert = _manifest(got, "client-certificate")
-        self.assertEqual(cert["metadata"], {"name": "inference-gateway-client", "namespace": "mp-ml-team-51733"})
-        self.assertEqual(cert["spec"]["secretName"], "inference-gateway-client")
         self.assertEqual(
-            cert["spec"]["issuerRef"],
-            {"name": "inference-gateway-ca", "kind": "ClusterIssuer", "group": "cert-manager.io"},
+            _manifest(got, "client-certificate"),
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Certificate",
+                "metadata": {"name": "assistant-eu-client-08324", "namespace": "mp-ml-team-51733"},
+                "spec": {
+                    "secretName": "assistant-eu-client-08324",
+                    "commonName": "inference-gateway-eu",
+                    "usages": ["client auth", "digital signature", "key encipherment"],
+                    "duration": "2160h",
+                    "renewBefore": "720h",
+                    "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
+                    "issuerRef": {"name": "inference-gateway-ca", "kind": "ClusterIssuer", "group": "cert-manager.io"},
+                },
+            },
         )
 
     async def test_route_binds_to_the_listener_matching_the_gateways_tls(self) -> None:
@@ -580,8 +585,7 @@ class TestCompose(unittest.IsolatedAsyncioTestCase):
         )
         got = await self.runner.RunFunction(req, None)
         # Neither endpoint is Modelplane-composed, so no client certificate is
-        # issued, though the mirrored namespace is still composed.
-        self.assertIn("namespace", got.desired.resources)
+        # issued.
         self.assertNotIn("client-certificate", got.desired.resources)
         refs = _manifest(got, "route")["spec"]["rules"][0]["backendRefs"]
         self.assertEqual(refs, [{"name": _be("kimi-a"), "weight": 1, "priority": 0}])

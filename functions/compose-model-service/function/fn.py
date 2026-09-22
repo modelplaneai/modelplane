@@ -47,6 +47,12 @@ CONDITION_REASON_WAITING_FOR_ROUTES = "WaitingForRoutes"
 _LABEL_SERVICE = "modelplane.ai/service"
 _LABEL_GATEWAY = "modelplane.ai/gateway"
 
+# Stamped on every composed ModelRoute with the name of the cluster its gateway
+# runs on, so compose-inference-cluster can select the routes landing on a given
+# cluster and compose the mirrored namespace their backends need. Kept in sync
+# with that function's _LABEL_CLUSTER.
+_LABEL_CLUSTER = "modelplane.ai/cluster"
+
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
     if meta is None or meta.name is None:
@@ -163,7 +169,7 @@ class Composer:
                 metadata=metav1.ObjectMeta(
                     name=resource.child_name(svc, gateway),
                     namespace=ns,
-                    labels={_LABEL_SERVICE: svc, _LABEL_GATEWAY: gateway},
+                    labels={_LABEL_SERVICE: svc, _LABEL_GATEWAY: gateway, _LABEL_CLUSTER: gw.spec.clusterName},
                 ),
                 spec=mrtv1alpha1.Spec(
                     gatewayName=gateway,

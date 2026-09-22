@@ -1331,8 +1331,9 @@ class TestKvBlockSize(unittest.TestCase):
 
 class TestRemoteNamespace(unittest.TestCase):
     """The mirrored namespace a replica's objects land in. The expected names are
-    spelled out, because compose-model-route and compose-model-cache compose the
-    same namespace by the same derivation, and all three must agree."""
+    spelled out, because compose-inference-cluster creates the namespace and
+    compose-model-route and compose-model-cache land objects in it by the same
+    derivation, and all four must agree."""
 
     def test_remote_namespace(self) -> None:
         cases = [

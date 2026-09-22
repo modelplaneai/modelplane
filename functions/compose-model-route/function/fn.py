@@ -53,13 +53,11 @@ CONDITION_REASON_WAITING_FOR_ROUTE = "WaitingForRoute"
 
 # Objects land in a namespace mirroring the ModelRoute's own, so a service in
 # namespace `ml-team` on the control plane composes into child_name("mp",
-# "ml-team") on the gateway's cluster and can't collide with another team's. The
-# prefix keeps a team namespace named `default` or `kube-system` off the
-# cluster's own. The name and label are a cross-function contract with
-# compose-inference-gateway, whose Gateway selects routes by the label, and
-# compose-model-replica.
+# "ml-team") on the gateway's cluster and can't collide with another team's.
+# compose-inference-cluster composes the namespace itself, once per team on the
+# cluster, so the name is a cross-function contract with it. The label it stamps
+# on the namespace is what compose-inference-gateway's Gateway selects routes by.
 _NS_PREFIX = "mp"
-_NS_LABEL = "modelplane.ai/namespace"
 
 # The Gateway compose-inference-gateway composes on each gateway's cluster, and
 # the namespace it lives in. The route lands in the team's namespace and attaches
@@ -85,9 +83,6 @@ _MODEL_HEADER = "x-ai-eg-model"
 # for a backend Modelplane doesn't operate, so a third-party provider isn't told
 # which tenant is calling.
 _CALLER_HEADER = "x-modelplane-caller"
-
-# The client certificate a backend presents to a cluster gateway.
-_CLIENT_CERT_SECRET = "inference-gateway-client"
 
 # The ModelEndpoint api.schema whose backends take their key in x-api-key.
 _SCHEMA_ANTHROPIC = "Anthropic"
@@ -282,7 +277,6 @@ class Composer:
         if not self.resolve_inputs():
             self.write_status()
             return
-        self.compose_namespace()
         self.compose_backends()
         self.compose_route()
         self.write_status()
@@ -360,10 +354,10 @@ class Composer:
         """Resolve the gateway this route is pinned to, and its cluster's
         ProviderConfig.
 
-        The gateway's client PKI has to have issued before backends are composed:
-        every composed endpoint's backend names the gateway's client certificate
-        Secret, issued from that CA, and Envoy Gateway fails a backend closed when
-        the Secret naming its certificate is missing.
+        The gateway's client CA has to have issued before backends are composed:
+        every composed endpoint's backend names this route's client certificate,
+        issued from that CA, and Envoy Gateway fails a backend closed when the
+        Secret holding it is missing.
         """
         gateways = request.get_required_resources(self.req, "gateway")
         if not gateways:
@@ -557,7 +551,8 @@ class Composer:
         """Per endpoint: how to reach it, what it speaks, and its credential.
 
         Plus, once per cluster rather than per endpoint, the CA certificate the
-        gateway validates that cluster's gateway against.
+        gateway validates that cluster's gateway against. And once for the whole
+        route, the client certificate its backends present.
         """
         clusters: set[str] = set()
         for entries in self.tiers.values():
@@ -574,44 +569,24 @@ class Composer:
         if clusters:
             self.compose_client_cert()
 
-    def compose_namespace(self) -> None:
-        """Compose the namespace this route's objects land in.
-
-        provider-kubernetes doesn't create a target namespace, so this does,
-        mirroring the ModelRoute's own. Every route in the namespace composes it
-        identically and none deletes it (the management policies omit Delete), so
-        one route's removal can't take the namespace from the others, nor leave it
-        Terminating.
-        """
-        obj = _k8s_object(
-            self.provider_config,
-            {
-                "apiVersion": "v1",
-                "kind": "Namespace",
-                "metadata": {"name": self.namespace, "labels": {_NS_LABEL: _namespace(self.xr.metadata)}},
-            },
-        )
-        obj.spec.managementPolicies = ["Observe", "Create", "Update"]
-        resource.update(self.rsp.desired.resources["namespace"], obj)
-
     def compose_client_cert(self) -> None:
-        """Issue the client certificate this namespace's backends present.
+        """Issue the client certificate this route's backends present.
 
         A Modelplane backend does mTLS to a cluster gateway with a certificate
         issued from the gateway's CA. Envoy Gateway reads a Backend's
         clientCertificateRef only from the Backend's own namespace, so it's issued
         here from the gateway's CA ClusterIssuer rather than shared from
-        modelplane-system. Like the namespace it's never deleted, so removing one
-        route doesn't drop the certificate the namespace's other backends present.
+        modelplane-system. It's named for the route, so each route has its own.
         """
+        name = resource.child_name(self.route_name, "client")
         obj = _k8s_object(
             self.provider_config,
             {
                 "apiVersion": "cert-manager.io/v1",
                 "kind": "Certificate",
-                "metadata": {"name": _CLIENT_CERT_SECRET, "namespace": self.namespace},
+                "metadata": {"name": name, "namespace": self.namespace},
                 "spec": {
-                    "secretName": _CLIENT_CERT_SECRET,
+                    "secretName": name,
                     "commonName": f"inference-gateway-{self.xr.spec.gatewayName}"[:64],
                     "usages": ["client auth", "digital signature", "key encipherment"],
                     "duration": "2160h",
@@ -622,16 +597,14 @@ class Composer:
             },
             ready_when=_CERTIFICATE_READY_CEL,
         )
-        obj.spec.managementPolicies = ["Observe", "Create", "Update"]
         resource.update(self.rsp.desired.resources["client-certificate"], obj)
 
     def compose_cluster_ca(self, cluster: str) -> None:
         """Copy one cluster gateway's CA certificate to the gateway's cluster.
 
         A ConfigMap because a CA certificate is public, and because Envoy Gateway
-        reads a Backend's caCertificateRefs from one. Keyed and named by the
-        cluster, so several routes reaching the same cluster converge on identical
-        content rather than fighting over it.
+        reads a Backend's caCertificateRefs from one. It's named for the route as
+        well as the cluster.
         """
         resource.update(
             self.rsp.desired.resources[f"cluster-ca-{cluster}"],
@@ -640,7 +613,10 @@ class Composer:
                 {
                     "apiVersion": "v1",
                     "kind": "ConfigMap",
-                    "metadata": {"name": resource.child_name("cluster-ca", cluster), "namespace": self.namespace},
+                    "metadata": {
+                        "name": resource.child_name(self.route_name, cluster, "ca"),
+                        "namespace": self.namespace,
+                    },
                     "data": {"ca.crt": self.cluster_cas[cluster]},
                 },
             ),
@@ -686,10 +662,14 @@ class Composer:
                 # to pin and a ConfigMap composed to hold it.
                 spec["tls"] = {
                     "caCertificateRefs": [
-                        {"kind": "ConfigMap", "group": "", "name": resource.child_name("cluster-ca", cluster)}
+                        {"kind": "ConfigMap", "group": "", "name": resource.child_name(self.route_name, cluster, "ca")}
                     ],
                     "sni": hostname,
-                    "clientCertificateRef": {"kind": "Secret", "group": "", "name": _CLIENT_CERT_SECRET},
+                    "clientCertificateRef": {
+                        "kind": "Secret",
+                        "group": "",
+                        "name": resource.child_name(self.route_name, "client"),
+                    },
                 }
             else:
                 spec["tls"] = {"wellKnownCACertificates": "System", "sni": hostname}

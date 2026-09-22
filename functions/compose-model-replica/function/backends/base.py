@@ -208,34 +208,15 @@ def modelexpress_security_context(replica: v1alpha1.ModelReplica, stack: str) ->
 # Serving workloads (and their ResourceClaimTemplate) land in a namespace
 # mirroring the ModelReplica's own, so a deployment in namespace `ml-team`
 # composes into child_name("mp", "ml-team") on the serving cluster and can't
-# collide with another team's. The hash keeps a long team namespace within
-# Kubernetes' 63 character limit, and the prefix keeps a team namespace named
-# `default` or `kube-system` off the cluster's own. The name and label are a
-# cross-function contract with compose-model-route and compose-model-cache.
+# collide with another team's. compose-inference-cluster composes the namespace
+# itself, once per team on the cluster; the name is a cross-function contract
+# with it.
 _NS_PREFIX = "mp"
-NS_LABEL = "modelplane.ai/namespace"
 
 
 def remote_namespace(replica: v1alpha1.ModelReplica) -> str:
     """The namespace on the serving cluster this replica's objects land in."""
     return resource.child_name(_NS_PREFIX, _namespace(replica.metadata))
-
-
-def namespace_object(replica: v1alpha1.ModelReplica, provider_config: str) -> "k8sobjv1alpha1.Object":
-    """The mirrored namespace itself, which provider-kubernetes won't create for
-    us. Every replica in the namespace composes it identically and none deletes
-    it (the management policies omit Delete), so one replica's removal can't take
-    the namespace from the others, nor leave it Terminating."""
-    obj = wrap_object(
-        provider_config,
-        {
-            "apiVersion": "v1",
-            "kind": "Namespace",
-            "metadata": {"name": remote_namespace(replica), "labels": {NS_LABEL: _namespace(replica.metadata)}},
-        },
-    )
-    obj.spec.managementPolicies = ["Observe", "Create", "Update"]
-    return obj
 
 
 # Port the engine serves its OpenAI-compatible API on. A contract shared with

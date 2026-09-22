@@ -202,26 +202,6 @@ _LABELS = {"modelplane.ai/modelcache": "qwen"}
 _TOKEN_B64 = "aGYtdG9rZW4tdmFsdWU="
 
 
-def _namespace_object(pc: str) -> dict:
-    """The mirrored namespace Object, kept (no Delete) so one cache's removal
-    can't take it from another."""
-    return {
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-        "kind": "Object",
-        "spec": {
-            "forProvider": {
-                "manifest": {
-                    "apiVersion": "v1",
-                    "kind": "Namespace",
-                    "metadata": {"name": "mp-ml-team-51733", "labels": {"modelplane.ai/namespace": "ml-team"}},
-                },
-            },
-            "managementPolicies": ["Observe", "Create", "Update"],
-            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": pc},
-        },
-    }
-
-
 def _pvc_object(pc: str, *, storage_class: str = "modelplane-rwx") -> dict:
     return {
         "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
@@ -340,9 +320,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     "pvc-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_pvc_object("cluster-a-pc"))),
                     "hydrate-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_job_object("cluster-a-pc"))),
                 },
@@ -386,9 +363,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     "auth-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_auth_object("cluster-a-pc"))),
                     "pvc-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_pvc_object("cluster-a-pc"))),
                     "hydrate-cluster-a": fnv1.Resource(
@@ -430,7 +404,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "namespace-eks-a": fnv1.Resource(resource=resource.dict_to_struct(_namespace_object("eks-a-pc"))),
                     "pvc-eks-a": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             _pvc_object("eks-a-pc", storage_class="modelplane-rwx-efs"),
@@ -479,9 +452,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     # Job dropped once Ready; only the PVC remains composed.
                     "pvc-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(pvc_ready), ready=fnv1.READY_TRUE),
                 },
@@ -515,9 +485,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     "pvc-cluster-a": fnv1.Resource(
                         resource=resource.dict_to_struct(_pvc_object("cluster-a-pc")), ready=fnv1.READY_TRUE
                     ),
@@ -554,9 +521,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     "pvc-cluster-a": fnv1.Resource(
                         resource=resource.dict_to_struct(_pvc_object("cluster-a-pc")), ready=fnv1.READY_TRUE
                     ),
@@ -596,8 +560,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "namespace-a": fnv1.Resource(resource=resource.dict_to_struct(_namespace_object("a-pc"))),
-                    "namespace-b": fnv1.Resource(resource=resource.dict_to_struct(_namespace_object("b-pc"))),
                     # Cluster a is Ready, so its Job is dropped; b is still Hydrating.
                     "pvc-a": fnv1.Resource(
                         resource=resource.dict_to_struct(_pvc_object("a-pc")), ready=fnv1.READY_TRUE
@@ -649,9 +611,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     # Latched Ready with the Job already dropped: only the PVC.
                     "pvc-cluster-a": fnv1.Resource(
                         resource=resource.dict_to_struct(_pvc_object("cluster-a-pc")), ready=fnv1.READY_TRUE
@@ -699,9 +658,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ),
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     "pvc-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_pvc_object("cluster-a-pc"))),
                 },
             ),
@@ -750,9 +706,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     # Ready: the auth Secret and Job are both dropped, only the PVC remains.
                     "pvc-cluster-a": fnv1.Resource(
                         resource=resource.dict_to_struct(_pvc_object("cluster-a-pc")), ready=fnv1.READY_TRUE
@@ -805,9 +758,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     ready=fnv1.READY_TRUE,
                 ),
                 resources={
-                    "namespace-cluster-a": fnv1.Resource(
-                        resource=resource.dict_to_struct(_namespace_object("cluster-a-pc"))
-                    ),
                     "pvc-cluster-a": fnv1.Resource(
                         resource=resource.dict_to_struct(_pvc_object("cluster-a-pc")), ready=fnv1.READY_TRUE
                     ),

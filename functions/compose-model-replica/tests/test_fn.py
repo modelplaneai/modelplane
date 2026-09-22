@@ -136,29 +136,6 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
                 resources={
-                    "namespace": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            {
-                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-                                "kind": "Object",
-                                "spec": {
-                                    "managementPolicies": ["Observe", "Create", "Update"],
-                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "cluster-a-pc"},
-                                    "readiness": {"policy": "SuccessfulCreate"},
-                                    "forProvider": {
-                                        "manifest": {
-                                            "apiVersion": "v1",
-                                            "kind": "Namespace",
-                                            "metadata": {
-                                                "name": "mp-ml-team-51733",
-                                                "labels": {"modelplane.ai/namespace": "ml-team"},
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        ),
-                    ),
                     "model-serving-main": fnv1.Resource(
                         resource=resource.dict_to_struct(
                             {
