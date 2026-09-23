@@ -1,0 +1,20 @@
+# Chainsaw defaults for the cloud serving-stack tests. run.sh registers the
+# two clusters on the command line (--cluster controlplane=... --cluster
+# workload=...), so this file carries only behavior: generous assert timeout
+# for the serving-stack install waves, and no cleanup — the clusters are
+# deleted wholesale by --clean, and on failure the stack should survive for
+# debugging.
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: modelplane-e2e-clouds
+spec:
+  timeouts:
+    apply: 2m
+    assert: 5m
+    cleanup: 2m
+    delete: 2m
+    error: 2m
+    exec: 5m
+  cleanup:
+    skipDelete: true

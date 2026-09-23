@@ -1,0 +1,19 @@
+# The cloud serving stack under test, applied directly rather than composed
+# by an InferenceCluster: source: Existing hard-wires cloud=Existing, and a
+# test-only override field isn't worth the API surface. Which cloud comes
+# from the values-<cloud>.yaml the Chainsaw test binds in ($values). The
+# kubeconfig Secret is the same one run.sh builds for the model e2e, so the
+# stack installs onto the workload kind cluster, whose KWOK nodes are shaped
+# like that cloud's GPU pools (nodes.yaml).
+apiVersion: infrastructure.modelplane.ai/v1alpha1
+kind: ServingStack
+metadata:
+  name: e2e-cloud
+  namespace: modelplane-system
+spec:
+  cloud: ($values.cloud)
+  stack: Standard
+  secrets:
+    - type: Kubeconfig
+      name: local-cluster-kubeconfig
+      key: kubeconfig

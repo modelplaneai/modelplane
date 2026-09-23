@@ -93,6 +93,36 @@ class TestComponents(unittest.TestCase):
                         with self.subTest(cloud=cloud, stack=stack, key=c.key):
                             self.assertTrue(c.wait, "a depended-on chart must set wait")
 
+    def test_no_wildcard_tolerations(self) -> None:
+        # A keyless toleration tolerates every taint, so the pod lands
+        # on tainted GPU nodes: control-plane charts squat on
+        # accelerated capacity and their eviction stalls autoscaler
+        # scale-down. aicr's bundler stamps exactly that wildcard on
+        # every pod it renders; the generator scopes each one
+        # (TOLERATIONS in generate.py). This pins that no keyless
+        # toleration survives in any joined stack, chart values and
+        # manifests alike.
+        def check(node: object, where: str) -> None:
+            if isinstance(node, dict):
+                for key, val in node.items():
+                    if key == "tolerations" and isinstance(val, list):
+                        for toleration in val:
+                            self.assertTrue(
+                                isinstance(toleration, dict) and "key" in toleration,
+                                f"keyless (wildcard) toleration in {where}",
+                            )
+                    else:
+                        check(val, where)
+            elif isinstance(node, list):
+                for item in node:
+                    check(item, where)
+
+        for cloud in stacks.clouds():
+            for stack in stacks.stacks():
+                for c in stacks.join(cloud, stack):
+                    with self.subTest(cloud=cloud, stack=stack, key=c.key):
+                        check(c.values if isinstance(c, stacks.Chart) else c.manifests, c.key)
+
     def test_unknown_cloud_and_stack_fail_closed(self) -> None:
         # The Literal types reject these at type-checking time; this
         # exercises the runtime guard behind them, which catches the API

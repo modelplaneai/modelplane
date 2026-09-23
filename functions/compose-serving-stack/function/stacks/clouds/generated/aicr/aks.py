@@ -39,17 +39,17 @@ COMPONENTS: list[Component] = [
                     "limits": {"cpu": "50m", "memory": "320Mi"},
                     "requests": {"cpu": "50m", "memory": "320Mi"},
                 },
-                "tolerations": [{"operator": "Exists"}],
+                "tolerations": [],
             },
             "crds": {"enabled": True},
             "fullnameOverride": "cert-manager",
             "prometheus": {"servicemonitor": {"enabled": False}},
             "resources": {"limits": {"cpu": "50m", "memory": "90Mi"}, "requests": {"cpu": "50m", "memory": "90Mi"}},
-            "startupapicheck": {"enabled": True, "tolerations": [{"operator": "Exists"}]},
-            "tolerations": [{"operator": "Exists"}],
+            "startupapicheck": {"enabled": True, "tolerations": []},
+            "tolerations": [],
             "webhook": {
                 "resources": {"limits": {"cpu": "50m", "memory": "40Mi"}, "requests": {"cpu": "50m", "memory": "40Mi"}},
-                "tolerations": [{"operator": "Exists"}],
+                "tolerations": [],
             },
         },
     ),
@@ -62,8 +62,8 @@ COMPONENTS: list[Component] = [
         version="0.19.0",
         wait=True,
         values={
-            "gc": {"enable": True, "tolerations": [{"operator": "Exists"}]},
-            "master": {"enable": True, "tolerations": [{"operator": "Exists"}]},
+            "gc": {"enable": True, "tolerations": []},
+            "master": {"enable": True, "tolerations": []},
             "topologyUpdater": {
                 "createCRDs": True,
                 "enable": False,
@@ -96,7 +96,7 @@ COMPONENTS: list[Component] = [
                         "requests": {"cpu": "1000m", "memory": "2000Mi"},
                     }
                 },
-                "tolerations": [{"operator": "Exists"}],
+                "tolerations": [],
             },
             "fullnameOverride": "skyhook-operator",
             "limitRange": {
@@ -131,7 +131,7 @@ COMPONENTS: list[Component] = [
                         "limits": {"cpu": "500m", "memory": "512Mi"},
                         "requests": {"cpu": "100m", "memory": "128Mi"},
                     },
-                    "tolerations": [{"operator": "Exists"}],
+                    "tolerations": [],
                 },
                 "enabled": False,
             },
@@ -145,9 +145,9 @@ COMPONENTS: list[Component] = [
                     "limits": {"cpu": "500m", "memory": "512Mi"},
                     "requests": {"cpu": "100m", "memory": "128Mi"},
                 },
-                "tolerations": [{"operator": "Exists"}],
+                "tolerations": [],
             },
-            "kube-state-metrics": {"fullnameOverride": "kube-state-metrics", "tolerations": [{"operator": "Exists"}]},
+            "kube-state-metrics": {"fullnameOverride": "kube-state-metrics", "tolerations": []},
             "nodeExporter": {"enabled": True},
             "prometheus": {
                 "prometheusSpec": {
@@ -160,7 +160,7 @@ COMPONENTS: list[Component] = [
                             "spec": {"accessModes": ["ReadWriteOnce"], "resources": {"requests": {"storage": "50Gi"}}}
                         }
                     },
-                    "tolerations": [{"operator": "Exists"}],
+                    "tolerations": [],
                     "podMonitorSelectorNilUsesHelmValues": False,
                     "podMonitorNamespaceSelector": {},
                     "additionalScrapeConfigs": [
@@ -190,13 +190,10 @@ COMPONENTS: list[Component] = [
             },
             "prometheus-node-exporter": {
                 "fullnameOverride": "prometheus-node-exporter",
-                "tolerations": [{"operator": "Exists"}],
+                "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
             },
-            "prometheusOperator": {
-                "admissionWebhooks": {"patch": {"tolerations": [{"operator": "Exists"}]}},
-                "tolerations": [{"operator": "Exists"}],
-            },
-            "thanosRuler": {"thanosRulerSpec": {"tolerations": [{"operator": "Exists"}]}},
+            "prometheusOperator": {"admissionWebhooks": {"patch": {"tolerations": []}}, "tolerations": []},
+            "thanosRuler": {"thanosRulerSpec": {"tolerations": []}},
         },
     ),
     Chart(
@@ -311,7 +308,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                     "requests": {"cpu": "200m", "memory": "300Mi"},
                 },
                 "runtimeClass": "nvidia-container-runtime",
-                "tolerations": [{"operator": "Exists"}],
+                "tolerations": [],
                 "upgradeCRD": True,
             },
             "toolkit": {
@@ -346,7 +343,7 @@ DCGM_FI_PROF_PIPE_FP16_ACTIVE, gauge, Ratio of cycles the fp16 pipes are active 
                     "template": {
                         "metadata": {"labels": {"app.kubernetes.io/name": "nvidia-toolkit-hardening"}},
                         "spec": {
-                            "tolerations": [{"operator": "Exists"}],
+                            "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
                             "affinity": {
                                 "nodeAffinity": {
                                     "requiredDuringSchedulingIgnoredDuringExecution": {
@@ -444,7 +441,7 @@ done
                 "ephemeral_storage_pod_usage": True,
             },
             "prometheus": {"enable": True, "release": "kube-prometheus-stack"},
-            "tolerations": [{"operator": "Exists"}],
+            "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
         },
     ),
     Chart(
@@ -460,7 +457,7 @@ done
                 "affinity": {},
                 "podAnnotations": {"aicr.run/gpu-operator-chart-version": "v26.3.3"},
                 "priorityClassName": "",
-                "tolerations": [{"operator": "Exists"}],
+                "tolerations": [],
             },
             "fullnameOverride": "nvidia-dra-driver-gpu",
             "gpuResourcesEnabledOverride": True,
@@ -486,7 +483,10 @@ done
         depends_on=["cert-manager", "gpu-operator", "prometheus-operator-crds"],
         values={
             "fullnameOverride": "nvsentinel",
-            "global": {"systemNodeTolerations": [{"operator": "Exists"}], "tolerations": [{"operator": "Exists"}]},
+            "global": {
+                "systemNodeTolerations": [{"operator": "Exists"}],
+                "tolerations": [{"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}],
+            },
             "janitor-provider": {"csp": {"provider": "generic"}},
             "labeler": {"assumeDriverInstalled": True},
             "metadata-collector": {"runtimeClassName": "nvidia-container-runtime"},
@@ -585,7 +585,7 @@ done
                     },
                 ],
             },
-            "tolerations": [{"operator": "Exists"}],
+            "tolerations": [],
         },
     ),
 ]

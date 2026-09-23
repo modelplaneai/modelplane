@@ -23,11 +23,55 @@ METALLB_URL=https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/man
 # Pinned by digest (a multi-arch manifest list) so a moving :latest can't flake
 # the verify curl pod.
 CURL_IMAGE=curlimages/curl@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+# KWOK chart version 0.3.0 is appVersion v0.8.0. --cloud mode installs it for
+# the fake GPU nodes (see e2e/clouds/); the model e2e doesn't use it.
+KWOK_CHART_REPO=https://kwok.sigs.k8s.io/charts/
+KWOK_CHART_VERSION=0.3.0
 ROOT="$(git rev-parse --show-toplevel)"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
-if [ "${1:-}" = "--clean" ]; then
+# Flags pick the mode:
+#   --cloud <c>  install cloud c's serving stack (eks, aks, gke, nebius,
+#                vultr or existing) on the workload cluster (KWOK fakes its
+#                GPU pool) instead of the model path; apply + wait +
+#                placement asserts all run as one Chainsaw test, so
+#                --verify is implied.
+#   --no-apply  finish the control plane but skip the model manifests (or the
+#               Chainsaw test) — for gradual, manual apply/debugging.
+#   --verify    after apply, wait for the ModelService and assert a live 200,
+#               exiting non-zero on failure. This is exactly what CI runs, so
+#               running it locally gives the same pass/fail signal (dev/CI parity).
+#   --clean     tear both clusters down.
+cloud=""
+apply_manifests=1
+verify=0
+clean=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--clean) clean=1 ;;
+	--no-apply) apply_manifests=0 ;;
+	--verify) verify=1 ;;
+	--cloud)
+		shift
+		cloud="${1:-}"
+		;;
+	*)
+		echo "unknown flag: $1 (expected --cloud <cloud>, --no-apply, --verify, --clean)" >&2
+		exit 2
+		;;
+	esac
+	shift
+done
+case "$cloud" in
+"" | eks | aks | gke | nebius | vultr | existing) ;;
+*)
+	echo "--cloud must be eks, aks, gke, nebius, vultr or existing (got: $cloud)" >&2
+	exit 2
+	;;
+esac
+
+if [ "$clean" = 1 ]; then
 	# Always delete both clusters — don't gate kind delete on project stop's exit
 	# code (it can exit 0 without removing the cluster). project stop is
 	# best-effort for the local registry it also manages.
@@ -101,17 +145,34 @@ metadata: { name: kind-l2, namespace: metallb-system }
 spec: { ipAddressPools: [kind-pool] }
 POOL
 
-# Fake DRA GPUs so a `claim: DRA` engine's ResourceClaim binds on this GPU-less
-# node (vendored dra-example-driver — see dra-example-driver.yaml). Without a DRA
-# driver the ResourceClaim stays Pending and the engine pod never schedules; the
-# fleet scheduler also rejects an engine whose only device is Synthetic.
-log "Installing dra-example-driver (fake GPUs) on the workload cluster"
-kubectl --context "$WLCTX" apply -f "$ROOT/e2e/dra-example-driver.yaml"
-kubectl --context "$WLCTX" -n dra-example-driver rollout status ds/dra-example-driver-kubeletplugin --timeout=120s
+if [ -z "$cloud" ]; then
+	# Fake DRA GPUs so a `claim: DRA` engine's ResourceClaim binds on this GPU-less
+	# node (vendored dra-example-driver — see dra-example-driver.yaml). Without a DRA
+	# driver the ResourceClaim stays Pending and the engine pod never schedules; the
+	# fleet scheduler also rejects an engine whose only device is Synthetic.
+	log "Installing dra-example-driver (fake GPUs) on the workload cluster"
+	kubectl --context "$WLCTX" apply -f "$ROOT/e2e/dra-example-driver.yaml"
+	kubectl --context "$WLCTX" -n dra-example-driver rollout status ds/dra-example-driver-kubeletplugin --timeout=120s
 
-# BYO clusters aren't labelled by Modelplane; the gpu-synthetic pool selects on this.
-log "Labelling the workload node for pool gpu-synthetic"
-kubectl --context "$WLCTX" label node "${WL}-control-plane" modelplane.ai/pool=gpu-synthetic --overwrite
+	# BYO clusters aren't labelled by Modelplane; the gpu-synthetic pool selects on this.
+	log "Labelling the workload node for pool gpu-synthetic"
+	kubectl --context "$WLCTX" label node "${WL}-control-plane" modelplane.ai/pool=gpu-synthetic --overwrite
+else
+	# Cloud mode fakes the GPU pool instead of the GPU: KWOK manages Nodes
+	# annotated kwok.x-k8s.io/node=fake (the Chainsaw test applies them,
+	# shaped like the cloud's GPU pools) and its stage-fast Stages keep them
+	# Ready and mark every pod scheduled onto them Running — so the stack's
+	# GPU DaemonSets and helm --wait behave as on a real tainted cloud pool.
+	# The real kind node stays untouched and plays the untainted system pool.
+	log "Installing KWOK (fake kubelets) on the workload cluster"
+	helm upgrade --install kwok kwok \
+		--kube-context "$WLCTX" --namespace kube-system \
+		--repo "$KWOK_CHART_REPO" --version "$KWOK_CHART_VERSION" \
+		--set hostNetwork=true --wait
+	helm upgrade --install kwok-stages stage-fast \
+		--kube-context "$WLCTX" --namespace kube-system \
+		--repo "$KWOK_CHART_REPO" --version "$KWOK_CHART_VERSION"
+fi
 
 # No system PATH in the nix app, so a Docker config using credsStore "desktop"
 # would break package resolution. The provider packages are public.
@@ -121,23 +182,13 @@ printf '{}' >"$docker_config/config.json"
 export DOCKER_CONFIG="$docker_config"
 
 # Render the manifests with the detected subnet prefix (the InferenceGateway's
-# MetalLB addressPool is the only IP baked into them). Flags pick the mode:
-#   --no-apply  install and finish the control plane but skip the model
-#               manifests — for gradual, manual apply/debugging.
-#   --verify    after apply, wait for the ModelService and assert a live 200,
-#               exiting non-zero on failure. This is exactly what CI runs, so
-#               running it locally gives the same pass/fail signal (dev/CI parity).
+# MetalLB addressPool is the only IP baked into them). Cloud mode applies the
+# ServingStack via Chainsaw instead and skips them (no IPs baked in there).
 rendered="$work/rendered"
 mkdir -p "$rendered"
 cp "$ROOT/e2e/manifests/"*.yaml "$rendered/"
 sed -i.bak "s/172\.18\.255/${PREFIX}.255/g" "$rendered/"*.yaml && rm -f "$rendered/"*.bak
 cpctx="kind-$CP"
-apply_manifests=1
-verify=0
-case "${1:-}" in
---no-apply) apply_manifests=0 ;;
---verify) verify=1 ;;
-esac
 
 log "Building + running the control plane"
 cd "$ROOT"
@@ -168,6 +219,65 @@ kubectl --context "$cpctx" patch provider.pkg.crossplane.io upbound-provider-hel
 	printf 'apiVersion: v1\nkind: Secret\nmetadata: {name: local-cluster-kubeconfig, namespace: modelplane-system}\nstringData:\n  kubeconfig: |\n'
 	kind get kubeconfig --internal --name "$WL" | sed 's/^/    /'
 } | kubectl --context "$cpctx" apply -f -
+
+if [ -n "$cloud" ]; then
+	# Cloud mode composes exactly one XR, and its pipeline calls two
+	# functions: compose-serving-stack, then compose-usages (see
+	# apis/servingstacks/composition.yaml). Park every other function at
+	# zero replicas to give the serving-stack install the runner's memory:
+	# a Deployment with zero desired replicas still reports Available, so
+	# the package revisions stay healthy — the same mechanism that keeps
+	# the safe-start cloud providers dormant. runtimeConfigRef binds like
+	# the provider-helm patch above: the runtime reconciler applies it to
+	# the already-installed revision. The model e2e keeps every function:
+	# its path composes most of them.
+	log "Scaling composition functions the ServingStack pipeline doesn't call to zero"
+	kubectl --context "$cpctx" apply -f - <<'DRC'
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: scaled-to-zero
+spec:
+  deploymentTemplate:
+    spec:
+      replicas: 0
+      selector: {}
+      template: {}
+DRC
+	kubectl --context "$cpctx" get functions.pkg.crossplane.io -o name |
+		grep -Ev 'compose-serving-stack|compose-usages' |
+		while read -r fn; do
+			kubectl --context "$cpctx" patch "$fn" --type merge \
+				-p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"scaled-to-zero"}}}'
+		done
+
+	# One Chainsaw run applies the fake GPU nodes and the ServingStack XR,
+	# waits for the XR Ready, and audits pod placement/tolerations — so cloud
+	# mode always verifies; there is no fire-and-forget variant to drift from
+	# CI. Chainsaw talks to both clusters via kubeconfigs registered on the
+	# command line (kubectl in script steps gets the right KUBECONFIG
+	# injected per operation).
+	kind get kubeconfig --name "$CP" >"$work/cp.kubeconfig"
+	kind get kubeconfig --name "$WL" >"$work/wl.kubeconfig"
+	if [ "$apply_manifests" = 0 ]; then
+		trap - EXIT # keep $work so the kubeconfigs survive for a manual run
+		log "--no-apply: control plane ready; run the test yourself:
+  chainsaw test --config $ROOT/e2e/clouds/chainsaw/.chainsaw.yaml \\
+    --cluster controlplane=$work/cp.kubeconfig --cluster workload=$work/wl.kubeconfig \\
+    --values $ROOT/e2e/clouds/values-$cloud.yaml \\
+    $ROOT/e2e/clouds/chainsaw"
+		exit 0
+	fi
+	log "Running the $cloud serving-stack test (apply + wait + placement audit)"
+	chainsaw test \
+		--config "$ROOT/e2e/clouds/chainsaw/.chainsaw.yaml" \
+		--cluster "controlplane=$work/cp.kubeconfig" \
+		--cluster "workload=$work/wl.kubeconfig" \
+		--values "$ROOT/e2e/clouds/values-$cloud.yaml" \
+		"$ROOT/e2e/clouds/chainsaw"
+	log "Cloud serving stack OK: the $cloud stack installed and placed correctly"
+	exit 0
+fi
 
 if [ "$apply_manifests" = 0 ]; then
 	trap - EXIT # keep $work so the rendered manifests survive for manual apply

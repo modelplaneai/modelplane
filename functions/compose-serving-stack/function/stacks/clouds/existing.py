@@ -89,6 +89,16 @@ COMPONENTS: list[Component] = [
             # Disable components we don't need for observability.
             "grafana": {"enabled": False},
             "alertmanager": {"enabled": False},
+            # The node-exporter chart's default toleration is keyless -
+            # it tolerates every taint, landing the pod on tainted GPU
+            # nodes by accident rather than by intent. Scope it to the
+            # GPU taint, mirroring the generated clouds (TOLERATIONS in
+            # generate.py); as a DaemonSet it still reaches every node.
+            "prometheus-node-exporter": {
+                "tolerations": [
+                    {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"},
+                ],
+            },
         },
     ),
     Chart(

@@ -1,0 +1,24 @@
+# The EKS leg of the cloud e2e matrix: what an EKS GPU node looks like, and
+# which serving stack to install. Bound into nodes.yaml and serving-stack.yaml
+# by Chainsaw (--values). The labels mirror what compose-eks-cluster stamps on
+# GPU node groups (modelplane.ai/*) plus what NFD/GFD would set on a real GPU
+# node (gpu.present, pci-10de.present) — pre-set because NFD's worker on a
+# KWOK node is fake and never labels anything. The taint is the one
+# compose-eks-cluster applies.
+cloud: EKS
+slug: eks
+expectedDaemonsets: >-
+  nvidia-dra-driver/nvidia-dra-driver-gpu-kubelet-plugin=2
+  node-feature-discovery/mp-node-feature-discovery-worker=3
+  monitoring/prometheus-node-exporter=3
+node:
+  gpuTaintValue: "true"
+  labels:
+    type: kwok
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    node.kubernetes.io/instance-type: p5.48xlarge
+    modelplane.ai/pool: gpu-fake
+    modelplane.ai/gpu: h100
+    nvidia.com/gpu.present: "true"
+    feature.node.kubernetes.io/pci-10de.present: "true"

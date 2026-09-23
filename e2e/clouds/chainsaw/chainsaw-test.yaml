@@ -1,0 +1,65 @@
+# Install one cloud's serving stack on the workload kind cluster and assert
+# placement. The cloud is selected by the values file run.sh passes
+# (--values ../values-<cloud>.yaml): it shapes the fake GPU nodes and picks
+# the ServingStack's spec.cloud. The real kind node plays the untainted
+# system pool; the KWOK nodes play the tainted GPU pool. See ../../README.md.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: serving-stack-cloud
+spec:
+  steps:
+    - name: fake-gpu-nodes
+      try:
+        - apply:
+            cluster: workload
+            file: ../nodes.yaml
+    - name: serving-stack
+      try:
+        - apply:
+            cluster: controlplane
+            file: ../serving-stack.yaml
+        - assert:
+            cluster: controlplane
+            timeout: 30m
+            resource:
+              apiVersion: infrastructure.modelplane.ai/v1alpha1
+              kind: ServingStack
+              metadata:
+                name: e2e-cloud
+                namespace: modelplane-system
+              status:
+                (conditions[?type == 'Ready']):
+                  - status: "True"
+      catch:
+        - get:
+            cluster: controlplane
+            apiVersion: infrastructure.modelplane.ai/v1alpha1
+            kind: ServingStack
+            namespace: modelplane-system
+            format: yaml
+        - script:
+            cluster: controlplane
+            content: kubectl get releases.helm.m.crossplane.io,objects.kubernetes.m.crossplane.io -A || true
+    - name: placement
+      try:
+        # verify-placement.sh first waits for the values file's
+        # expectedDaemonsets to fan out to the fake nodes (KWOK fakes their
+        # pods Running) — a toleration too narrow to reach the tainted pool
+        # shows up as a shortfall — then audits every pod's tolerations and
+        # placement, catching the opposite class: tolerating taints it
+        # shouldn't. The list lives in the values file because the component
+        # sets and chart names differ per cloud-
+        - script:
+            cluster: workload
+            timeout: 10m
+            env:
+              - name: CLOUD
+                value: ($values.slug)
+              - name: EXPECTED_DAEMONSETS
+                value: ($values.expectedDaemonsets)
+            content: bash ../verify-placement.sh "$CLOUD"
+      catch:
+        - script:
+            cluster: workload
+            content: kubectl get nodes -o wide; kubectl get pods -A -o wide || true
