@@ -133,15 +133,13 @@ args:
 
 <!-- vale Google.Acronyms = NO -->
 The cache PVC needs a `ReadWriteMany` (RWX) StorageClass on the workload cluster.
-What the platform admin must set up depends on the cloud:
+Some cluster sources provide one automatically; on others the platform admin
+sets one up. See [Register a Cluster]({{< ref "/platform/inference-cluster.md#cache-storage" >}})
+for what each source provides and how to bring your own backend.
 <!-- vale Google.Acronyms = YES -->
 
-- **GKE** and **EKS:** auto-provisioned. Nothing for the admin to do.
-- **Existing:** the admin sets up a `ReadWriteMany` StorageClass on the cluster.
-
-Either way, your `ModelCache` and `ModelDeployment` specs are the same. How
-storage is provided on each cluster source, and how to bring your own backend, is
-covered in [Register a Cluster]({{< ref "/platform/inference-cluster.md#cache-storage" >}}).
+Your `ModelCache` and `ModelDeployment` specs are the same on every cluster
+source.
 
 ## Example
 
