@@ -48,6 +48,7 @@ CONDITION_REASON_CACHE_RESOLVED = "ModelCacheResolved"
 CONDITION_REASON_CACHE_UNRESOLVED = "ModelCacheUnresolved"
 CONDITION_REASON_CACHE_NOT_FOUND = "ModelCacheNotFound"
 CONDITION_REASON_INSUFFICIENT_CAPACITY = "InsufficientCapacity"
+CONDITION_REASON_NO_CACHE_STORAGE = "NoCacheStorage"
 CONDITION_REASON_INVALID_NODE_SELECTOR = "InvalidNodeSelector"
 CONDITION_REASON_REPLICAS_CREATED = "ReplicasCreated"
 CONDITION_REASON_SCHEDULING = "Scheduling"
@@ -236,10 +237,12 @@ class Composer:
         # Candidate clusters are those matching the deployment's own
         # clusterSelector, narrowed further to where the referenced ModelCache
         # stages its weights. Both selectors are matchLabels (AND semantics), so
-        # the candidate set is their intersection. Constraining placement to the
-        # cache's footprint keeps a replica from landing on a cluster the cache
-        # never staged to, where its PVC wouldn't exist and the pod would be
-        # stuck on a volume mount (#186).
+        # the candidate set is their intersection, further narrowed below to the
+        # clusters with cache storage. Constraining placement to the cache's
+        # footprint keeps a replica from landing on a cluster the cache never
+        # staged to, where its PVC wouldn't exist and the pod would be stuck on a
+        # volume mount (#186).
+        cache_resolved = False
         clusters_match_labels = None
         if self.xr.spec.template.spec.clusterSelector and self.xr.spec.template.spec.clusterSelector.matchLabels:
             clusters_match_labels = dict(self.xr.spec.template.spec.clusterSelector.matchLabels)
@@ -247,6 +250,7 @@ class Composer:
         if self.xr.spec.template.spec.modelCacheRef:
             resolution, cache_match_labels = self.resolve_cache_footprint(self.xr.spec.template.spec.modelCacheRef)
             if resolution is Resolution.PRESENT:
+                cache_resolved = True
                 # The cache resolved, so its footprint is known; merge its labels
                 # so new replicas land only where it stages. Empty labels (the
                 # cache stages everywhere) add no constraint.
@@ -296,6 +300,16 @@ class Composer:
 
         self.clusters = [_inference_cluster(icv1alpha1.InferenceCluster.model_validate(c)) for c in cluster_dicts]
         self.all_replicas = [mrv1alpha1.ModelReplica.model_validate(r) for r in replica_dicts]
+
+        # compose-model-cache stages a cache only onto the clusters its selector
+        # matches that report cache storage in status.cache, since the cache's
+        # PVC needs an RWX StorageClass. A cluster without one isn't a candidate,
+        # so a replica already on one is re-placed, as it is when the cache's
+        # selector stops matching its cluster.
+        if cache_resolved:
+            self.clusters = [
+                c for c in self.clusters if c.status and c.status.cache and c.status.cache.storageClassName
+            ]
 
         return True
 
@@ -597,7 +611,13 @@ class Composer:
         scheduled = len(matched) > 0 and any_observed
         desired = int(self.xr.spec.replicas)
 
-        if not matched:
+        cache_ref = self.xr.spec.template.spec.modelCacheRef
+        if not matched and cache_ref and not self.clusters:
+            # Some cluster matched, or resolve_inputs would have stopped, so only
+            # the cache storage filter can have emptied the candidates.
+            reason = CONDITION_REASON_NO_CACHE_STORAGE
+            msg = f"0 of {desired} replicas scheduled: no candidate cluster has storage for ModelCache {cache_ref.name}"
+        elif not matched:
             reason = CONDITION_REASON_INSUFFICIENT_CAPACITY
             msg = f"0 of {desired} replicas scheduled (checked {len(self.clusters)} clusters)"
         elif scheduled:
