@@ -128,12 +128,16 @@ def cache_env(replica: v1alpha1.ModelReplica) -> list[dict]:
     return [{"name": "HF_HUB_CACHE", "value": CACHE_MOUNT_PATH}]
 
 
-# Well-known name of the per-cluster shared ModelExpress server that
-# compose-serving-stack installs in `default` on a Dynamo cluster. One server
-# per cluster: engine pods reach it by its Service name. A cross-function
+# Well-known name and namespace of the per-cluster shared ModelExpress server
+# that compose-serving-stack installs on a Dynamo cluster. One server per
+# cluster, serving every team: engine pods run in their team's mirrored
+# namespace (remote_namespace), so they reach it by a namespace-qualified name.
+# <name>.<namespace>.svc resolves through the pod's DNS search path whatever
+# the cluster's domain, which an Existing cluster chooses. A cross-function
 # contract (compose-serving-stack owns the server and Service); the two
-# functions hard-code the string independently and must change together.
+# functions hard-code the strings independently and must change together.
 _MODELEXPRESS_SERVER_SERVICE = "modelexpress-server"
+_MODELEXPRESS_NAMESPACE = "default"
 
 # Port the ModelExpress server listens on. Must stay in sync with
 # compose-serving-stack's _MODELEXPRESS_PORT.
@@ -164,14 +168,15 @@ def modelexpress_env(replica: v1alpha1.ModelReplica, stack: str) -> list[dict]:
     the hydration Job sees it. The cost is that identical caches can't share a
     source.
 
-    POD_* identify the publishing pod. A 0.5.0 server owns the ModelMetadata CRs
-    with them so Kubernetes garbage-collects them; the pinned 0.4.1 ignores
-    them, so a server bump is a version change rather than a code one.
+    POD_* identify the publishing pod. The pinned 0.4.1 server ignores them. A
+    0.5.0 server owns a ModelMetadata CR by its publishing pod, so Kubernetes
+    garbage-collects it, but only for a pod in the server's own namespace;
+    owner references can't cross namespaces, and engines run in their team's.
     """
     ref = replica.spec.modelCacheRef
     if not ref or stack != "Dynamo":
         return []
-    address = f"{_MODELEXPRESS_SERVER_SERVICE}:{_MODELEXPRESS_PORT}"
+    address = f"{_MODELEXPRESS_SERVER_SERVICE}.{_MODELEXPRESS_NAMESPACE}.svc:{_MODELEXPRESS_PORT}"
     return [
         {"name": "MX_SERVER_ADDRESS", "value": address},
         {"name": "MODEL_EXPRESS_URL", "value": address},

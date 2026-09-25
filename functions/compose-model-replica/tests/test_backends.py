@@ -1247,8 +1247,9 @@ class TestModelExpressEnv(unittest.TestCase):
             self.assertEqual(env_names, want_env_names, f"{clique_name}: {env_names}")
             self.assertEqual(container["env"][0], base.grove_leader_address_env())
             server_env = next(e for e in container["env"] if e["name"] == "MX_SERVER_ADDRESS")
-            # The per-cluster shared server's well-known Service.
-            self.assertEqual(server_env["value"], "modelexpress-server:8001")
+            # The per-cluster shared server's well-known Service, qualified by
+            # its namespace because the engine runs in its team's namespace.
+            self.assertEqual(server_env["value"], "modelexpress-server.default.svc:8001")
             mxurl_env = next(e for e in container["env"] if e["name"] == "MODEL_EXPRESS_URL")
             self.assertEqual(mxurl_env["value"], server_env["value"])
             self.assertEqual(container["securityContext"], {"capabilities": {"add": ["IPC_LOCK"]}})
@@ -1274,13 +1275,12 @@ class TestModelExpressEnv(unittest.TestCase):
         container = out["model-serving-main"].spec.forProvider.manifest["spec"]["template"]["spec"]["containers"][0]
         env = {e["name"]: e for e in container["env"]}
         self.assertEqual(set(env), self._MODELEXPRESS_ENV_NAMES | {self._CACHE_ENV_NAME})
-        self.assertEqual(env["MX_SERVER_ADDRESS"]["value"], "modelexpress-server:8001")
+        self.assertEqual(env["MX_SERVER_ADDRESS"]["value"], "modelexpress-server.default.svc:8001")
         self.assertEqual(env["MX_P2P_METADATA"]["value"], "1")
         self.assertEqual(env["HF_HUB_CACHE"]["value"], "/mnt/models")
         # Isolates this cache's P2P source identity, qualified by the
         # Modelplane namespace (like cache_pvc_name) so two namespaces' caches
-        # of the same name can't collide in the workload cluster's shared
-        # `default` namespace.
+        # of the same name can't collide at the cluster's one shared server.
         self.assertEqual(env["MX_MODEL_REVISION"]["value"], base.cache_pvc_name("ml-team", "qwen"))
         for name, field in (
             ("POD_NAME", "metadata.name"),
