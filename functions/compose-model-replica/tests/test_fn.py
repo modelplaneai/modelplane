@@ -43,6 +43,29 @@ def setUpModule() -> None:
     logging.configure(level=logging.Level.DISABLED)
 
 
+def _observed_object(*, ready: bool) -> fnv1.Resource:
+    """A composed provider-kubernetes Object as observed back, with the Ready
+    condition its readiness policy derives."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Unavailable",
+                            "lastTransitionTime": "2025-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
     """Tests for FunctionRunner.RunFunction."""
 
@@ -438,12 +461,29 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
         want3.requirements.resources["cluster"].CopyFrom(cluster_requirement)
 
+        # Unified routing fronts the serving pods with an InferencePool + endpoint
+        # picker; their manifests are asserted in detail in test_backends. Here we
+        # only check the function wired the whole set in (and dropped the plain
+        # Service), then drop their manifests so the golden covers the dispatch,
+        # wiring and readiness the function itself owns.
+        routing_keys = {
+            "inference-pool",
+            "epp",
+            "epp-config",
+            "epp-role",
+            "epp-rolebinding",
+            "epp-serviceaccount",
+            "epp-service",
+        }
+        for key in routing_keys:
+            want1.desired.resources[key].CopyFrom(fnv1.Resource())
+
         # Case 4: the resources from case 1 now exist in observed, and the
         # workload Object reports Available (so its derived Ready is True). The
-        # function marks every composed resource ready (it can now observe them),
-        # the workload because it's serving and the rest because existing is
-        # being ready for them. Built from case 1, mutating only what the
-        # observed-ready transition changes: the four ready flags, the
+        # function marks each observed resource ready once its Object reports
+        # Ready: the workload because it's serving and the rest because existing
+        # is being ready for them. Built from case 1, mutating only what the
+        # observed-ready transition changes: the three ready flags, the
         # acceptance/readiness conditions, and the dropped first-reconcile event.
         req4 = fnv1.RunFunctionRequest()
         req4.CopyFrom(req1)
@@ -471,12 +511,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 ),
             )
         )
-        # The other two are observed simply by being present; their content
-        # doesn't matter, only that the function can see them. (The InferencePool +
-        # endpoint picker resources aren't observed here, so they stay unready and
-        # are excluded from the golden below - test_backends covers their manifests.)
+        # The other two have no runtime readiness to wait on, so under their
+        # SuccessfulCreate policy provider-kubernetes reports them Ready once
+        # applied. (The InferencePool + endpoint picker resources aren't
+        # observed here, so they stay unready.)
         for key in ("model-route", "resource-claim-main-standalone"):
-            req4.observed.resources[key].CopyFrom(fnv1.Resource(resource=structpb.Struct()))
+            req4.observed.resources[key].CopyFrom(_observed_object(ready=True))
 
         want4 = fnv1.RunFunctionResponse()
         want4.CopyFrom(want1)
@@ -493,27 +533,44 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         # not yet observed), so it's gone now.
         del want4.results[:]
 
+        # Case 5: everything from case 4 plus the routing objects is observed,
+        # but the endpoint picker's Service failed to apply, say because its
+        # name was invalid, so its Object isn't Ready. Being observed isn't
+        # being applied, so it stays unready and holds the replica unready with
+        # it. Built from case 4, mutating only the routing objects' ready flags.
+        req5 = fnv1.RunFunctionRequest()
+        req5.CopyFrom(req4)
+        for key in routing_keys:
+            req5.observed.resources[key].CopyFrom(_observed_object(ready=key != "epp-service"))
+
+        want5 = fnv1.RunFunctionResponse()
+        want5.CopyFrom(want4)
+        for key in routing_keys - {"epp-service"}:
+            want5.desired.resources[key].ready = fnv1.READY_TRUE
+
+        # Case 6: as case 5, but everything applied and the endpoint picker's
+        # Deployment isn't Available yet, so its Object's CEL-derived Ready is
+        # False. The gateway fails closed without a picker, so the replica stays
+        # unready with it.
+        req6 = fnv1.RunFunctionRequest()
+        req6.CopyFrom(req4)
+        for key in routing_keys:
+            req6.observed.resources[key].CopyFrom(_observed_object(ready=key != "epp"))
+
+        want6 = fnv1.RunFunctionResponse()
+        want6.CopyFrom(want4)
+        for key in routing_keys - {"epp"}:
+            want6.desired.resources[key].ready = fnv1.READY_TRUE
+
         cases = [
             Case(name="cluster ready composes native Deployment", req=req1, want=want1),
             Case(name="cluster not resolved returns waiting conditions", req=req2, want=want2),
             Case(name="cluster without providerConfigRef returns waiting conditions", req=req3, want=want3),
             Case(name="observed resources are marked ready", req=req4, want=want4),
+            Case(name="an object that failed to apply stays unready", req=req5, want=want5),
+            Case(name="an unavailable endpoint picker stays unready", req=req6, want=want6),
         ]
 
-        # Unified routing fronts the serving pods with an InferencePool + endpoint
-        # picker; their manifests are asserted in detail in test_backends. Here we
-        # only check the function wired the whole set in (and dropped the plain
-        # Service), then drop them so the golden covers the dispatch and wiring the
-        # function itself owns.
-        routing_keys = {
-            "inference-pool",
-            "epp",
-            "epp-config",
-            "epp-role",
-            "epp-rolebinding",
-            "epp-serviceaccount",
-            "epp-service",
-        }
         for case in cases:
             with self.subTest(case.name):
                 got = await self.runner.RunFunction(case.req, None)
@@ -527,7 +584,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     for key in routing_keys:
                         manifest = resources[key]["resource"]["spec"]["forProvider"]["manifest"]
                         self.assertEqual(manifest["metadata"]["namespace"], "mp-ml-team-51733", key)
-                        resources.pop(key, None)
+                        del resources[key]["resource"]
                 self.assertEqual(
                     json_format.MessageToDict(case.want),
                     got_dict,

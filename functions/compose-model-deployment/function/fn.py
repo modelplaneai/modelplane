@@ -524,9 +524,9 @@ class Composer:
 
         A replica whose cluster has no hostname gets no endpoint, and so does
         one whose ModelReplica isn't Ready. The replica's Ready tracks the
-        engine workloads serving and the remote Service and HTTPRoute that front
-        them, which is the whole path this endpoint advertises. Composing it any
-        earlier routes traffic at pods still pulling images or loading weights,
+        engine workloads and endpoint picker being available and the rest of the
+        routing objects in front of them being applied. Composing it any earlier
+        routes traffic at pods still pulling images or loading weights,
         returning 503s during deployment and scale-up (#102). The endpoint
         appears on the reconcile that first observes the replica Ready, and is
         withdrawn again if the replica stops being Ready, pulling a dead backend
