@@ -49,26 +49,6 @@ against this capacity without knowing which cluster it runs on.
 {{< /tab >}}
 {{< /tabs >}}
 
-## Set up the InferenceGateway
-
-<!-- vale ai-tells.EmptyPadding = NO -->
-The `InferenceGateway` installs Traefik Proxy and MetalLB on the control plane.
-Traefik routes inference traffic to model replicas. MetalLB assigns Traefik's
-`LoadBalancer` service an external IP on kind, which doesn't have a cloud load
-balancer. You need one named `default` per control plane.
-<!-- vale ai-tells.EmptyPadding = YES -->
-
-If you run the control plane on a cloud cluster with native `LoadBalancer`
-support, omit the `loadBalancer` field.
-
-{{< manifests "getting-started/inference-gateway.yaml" >}}
-
-Wait until the gateway is ready:
-
-```bash
-kubectl wait --for=condition=Ready ig/default --timeout=5m
-```
-
 ## Configure cloud credentials
 
 Give the control plane credentials so it can provision clusters in your cloud
@@ -210,7 +190,7 @@ kubectl apply -f {{< manifest-url "getting-started/gke/platform.yaml" >}}
 Modelplane provisions the cluster. This takes about 15 minutes:
 
 ```bash
-kubectl wait --for=condition=Ready ic/starter --timeout=20m
+kubectl wait --for=condition=Ready ic/gke-us-central --timeout=20m
 ```
 {{< /tab >}}
 
@@ -258,12 +238,54 @@ This is the same reconciliation loop Crossplane uses to configure other
 infrastructure, extended to the inference layer.
 {{< /hint >}}
 
-Once the cluster is `Ready` the ML team can deploy a model on it.
-
 {{< hint "note" >}}
 A cloud GPU cluster costs money while it runs. To stop the tour and resume
 later, follow [Clean up]({{< ref "getting-started/clean-up.md" >}}).
 {{< /hint >}}
+
+## Set up the InferenceGateway
+
+<!-- vale ai-tells.EmptyPadding = NO -->
+The `InferenceGateway` is the address callers reach your models through. It
+speaks the OpenAI and Anthropic APIs, authenticates callers, and resolves the
+model a request names to a `ModelService`.
+<!-- vale ai-tells.EmptyPadding = YES -->
+
+It runs on an `InferenceCluster`, named by `spec.clusterName`
+Each cloud's manifest names the cluster you just registered, so pick your
+cloud's tab.
+
+This one is the smallest useful shape: it answers on its address over plain HTTP
+and doesn't authenticate callers. See
+[Set Up the Gateway]({{< ref "/platform/inference-gateway" >}})
+for an example with TLS and authentication.
+
+{{< tabs >}}
+{{< tab "EKS" >}}
+{{< manifests "getting-started/eks/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "GKE" >}}
+{{< manifests "getting-started/gke/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "AKS" >}}
+{{< manifests "getting-started/aks/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "Nebius" >}}
+{{< manifests "getting-started/nebius/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< tab "Vultr" >}}
+{{< manifests "getting-started/vultr/inference-gateway.yaml" >}}
+{{< /tab >}}
+{{< /tabs >}}
+
+Wait until the gateway is ready:
+
+```bash
+kubectl wait --for=condition=Ready ig/public --timeout=5m
+```
+
+With the cluster registered and a gateway in front of it, the ML team can deploy
+a model.
 
 ## Next step
 

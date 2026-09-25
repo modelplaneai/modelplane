@@ -179,17 +179,21 @@
               # The control plane is up and healthy - finish the setup the
               # install guide otherwise does by hand. prerequisites.yaml
               # carries the modelplane-system namespace, composition RBAC, and
-              # provider-helm's DeploymentRuntimeConfig and ImageConfig.
+              # the DeploymentRuntimeConfigs and ImageConfigs for provider-helm
+              # and provider-kubernetes.
               kubectl apply -f docs/manifests/install/prerequisites.yaml
 
               # crossplane project run installs providers before
               # prerequisites.yaml is applied, and Crossplane resolves
               # ImageConfig runtime configs only at ProviderRevision creation -
-              # so provider-helm always comes up on the default runtime config,
-              # whose ServiceAccount lacks the RBAC granted above. Point it at
+              # so both providers come up on the default runtime config:
+              # provider-helm without the RBAC granted above, and
+              # provider-kubernetes without --sanitize-secrets. Point each at
               # its DeploymentRuntimeConfig explicitly.
               kubectl patch provider.pkg.crossplane.io upbound-provider-helm --type merge \
                 -p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-helm-modelplane"}}}'
+              kubectl patch provider.pkg.crossplane.io upbound-provider-kubernetes --type merge \
+                -p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-kubernetes-modelplane"}}}'
             fi
 
             # When running via nix.sh, the cluster lives inside the container's

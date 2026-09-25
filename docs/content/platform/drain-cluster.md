@@ -29,7 +29,7 @@ Add a taint to `spec.taints`, each with a `key`, an optional `value`, and an
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: gpu-us-east
+  name: gke-us-east
 spec:
   taints:
   - key: modelplane.ai/maintenance
@@ -89,7 +89,7 @@ Modelplane doesn't publish a per-cluster replica count. Check a drain the way
 you check a drained node, by listing the replicas still placed on the cluster:
 
 ```bash
-kubectl get modelreplica -l modelplane.ai/cluster=gpu-us-east
+kubectl get modelreplica -l modelplane.ai/cluster=gke-us-east
 ```
 
 Once that returns nothing, or only replicas that tolerate the taint and are

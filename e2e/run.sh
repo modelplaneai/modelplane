@@ -3,13 +3,12 @@
 # `nix run .#e2e` (which provides the tooling and the Nix-built function
 # images). See README.md.
 #
-# Two clusters, because the control-plane InferenceGateway (Traefik) and the
-# workload ServingStack (Envoy) both install the Gateway API CRDs — on one
-# cluster they race for the same cluster-scoped CRDs and the gateway wedges. So:
+# Two clusters:
 #   - a workload kind cluster (this script creates it), registered via
-#     source: Existing, where the serving stack + model run;
+#     source: Existing, where the serving stack, the InferenceGateway and the
+#     model run;
 #   - a control-plane cluster (crossplane project run manages it) with crossplane
-#     + the config + the InferenceGateway.
+#     + the config.
 set -euo pipefail
 
 CP=modelplane-e2e-local
@@ -38,10 +37,9 @@ if [ "${1:-}" = "--clean" ]; then
 	exit 0
 fi
 
-# One temp dir for everything this run creates (the isolated Docker config and
-# the rendered manifests), removed on exit. mktemp -d gives a fresh unique path
-# and the trap captures it on the next line, so the rm -rf can never reach a real
-# directory. --no-apply clears the trap to keep the dir for manual apply.
+# One temp dir for everything this run creates (the isolated Docker config),
+# removed on exit. mktemp -d gives a fresh unique path and the trap captures it
+# on the next line, so the rm -rf can never reach a real directory.
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -67,12 +65,12 @@ else
 fi
 
 # Both kind clusters share one Docker network; MetalLB hands out LoadBalancer IPs
-# from it, and the control plane must ROUTE to the workload gateway's IP across
-# it. So the pools must sit inside the *actual* kind subnet — normally
+# from it, and the control plane must ROUTE to the workload gateways' IPs across
+# it. So the pool must sit inside the *actual* kind subnet — normally
 # 172.18.0.0/16, but kind bumps to 172.19/172.20/... when earlier Docker networks
-# already hold 172.18. Detect it and derive both pools (this one and the
-# InferenceGateway's) from the same prefix; a hardcoded 172.18 leaves the LB IP
-# off-subnet and silently breaks cross-cluster routing (curl times out).
+# already hold 172.18. Detect it and derive the pool from its prefix; a hardcoded
+# 172.18 leaves the LB IPs off-subnet and silently breaks cross-cluster routing
+# (curl times out).
 # `|| true` so a detection miss (grep finds nothing) doesn't trip set -e here —
 # the explicit check below then reports it instead of an opaque abort.
 SUBNET="$(docker network inspect kind -f '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' | grep -E '^[0-9]+\.' | head -1 || true)"
@@ -81,11 +79,12 @@ PREFIX="$(printf '%s' "$SUBNET" | cut -d. -f1-2)"
 	echo "could not detect the kind Docker subnet" >&2
 	exit 1
 }
-log "kind Docker subnet ${SUBNET} -> MetalLB pools ${PREFIX}.255.x"
+log "kind Docker subnet ${SUBNET} -> MetalLB pool ${PREFIX}.255.x"
 
-# The serving stack doesn't install MetalLB, so the workload Envoy gateway needs
-# it here. Use a range disjoint from the InferenceGateway's pool (.200-.250) —
-# both clusters share the subnet, so their pools must not overlap.
+# The serving stack doesn't install MetalLB, so the workload cluster needs it
+# here. Both gateways live on this cluster: the cluster gateway fronting the
+# engine pods, and the InferenceGateway callers reach. The pool has to be big
+# enough for two LoadBalancer Services.
 log "Installing MetalLB on the workload cluster (pool ${PREFIX}.255.100-.149)"
 kubectl --context "$WLCTX" apply -f "$METALLB_URL"
 kubectl --context "$WLCTX" -n metallb-system rollout status deploy/controller --timeout=180s
@@ -120,17 +119,13 @@ mkdir -p "$docker_config"
 printf '{}' >"$docker_config/config.json"
 export DOCKER_CONFIG="$docker_config"
 
-# Render the manifests with the detected subnet prefix (the InferenceGateway's
-# MetalLB addressPool is the only IP baked into them). Flags pick the mode:
+# Flags pick the mode:
 #   --no-apply  install and finish the control plane but skip the model
 #               manifests — for gradual, manual apply/debugging.
 #   --verify    after apply, wait for the ModelService and assert a live 200,
 #               exiting non-zero on failure. This is exactly what CI runs, so
 #               running it locally gives the same pass/fail signal (dev/CI parity).
-rendered="$work/rendered"
-mkdir -p "$rendered"
-cp "$ROOT/e2e/manifests/"*.yaml "$rendered/"
-sed -i.bak "s/172\.18\.255/${PREFIX}.255/g" "$rendered/"*.yaml && rm -f "$rendered/"*.bak
+manifests="$ROOT/e2e/manifests"
 cpctx="kind-$CP"
 apply_manifests=1
 verify=0
@@ -153,13 +148,16 @@ crossplane project run \
 
 # Config healthy. Finish the setup the install guide does by hand (as the
 # nix run app now does too, PR #375): apply the RBAC prerequisites, then point
-# provider-helm at the DeploymentRuntimeConfig they define. Providers install
-# before prerequisites.yaml, and an ImageConfig binds only at ProviderRevision
-# creation, so provider-helm otherwise comes up without the granted RBAC.
-log "Finishing control-plane setup: prerequisites + provider-helm runtime config"
+# the two providers at the DeploymentRuntimeConfigs they define. Providers
+# install before prerequisites.yaml, and an ImageConfig binds only at
+# ProviderRevision creation, so provider-helm otherwise comes up without the
+# granted RBAC and provider-kubernetes without --sanitize-secrets.
+log "Finishing control-plane setup: prerequisites + provider runtime configs"
 kubectl --context "$cpctx" apply -f "$ROOT/docs/manifests/install/prerequisites.yaml"
 kubectl --context "$cpctx" patch provider.pkg.crossplane.io upbound-provider-helm --type merge \
 	-p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-helm-modelplane"}}}'
+kubectl --context "$cpctx" patch provider.pkg.crossplane.io upbound-provider-kubernetes --type merge \
+	-p '{"spec":{"runtimeConfigRef":{"apiVersion":"pkg.crossplane.io/v1beta1","kind":"DeploymentRuntimeConfig","name":"provider-kubernetes-modelplane"}}}'
 
 # The InferenceCluster (source: Existing) reads this kubeconfig to reach the
 # workload cluster; --internal gives an address routable from the control plane's
@@ -170,14 +168,13 @@ kubectl --context "$cpctx" patch provider.pkg.crossplane.io upbound-provider-hel
 } | kubectl --context "$cpctx" apply -f -
 
 if [ "$apply_manifests" = 0 ]; then
-	trap - EXIT # keep $work so the rendered manifests survive for manual apply
-	log "--no-apply: control plane ready; apply manifests from $rendered (kept for you)"
+	log "--no-apply: control plane ready; apply manifests from $manifests"
 	exit 0
 fi
 
-# RBAC is in place, so the InferenceGateway composes its native cluster resources
-# without wedging. Apply the model manifests.
-kubectl --context "$cpctx" apply -f "$rendered/"
+# RBAC is in place, so the compositions can reach the workload cluster. Apply the
+# model manifests.
+kubectl --context "$cpctx" apply -f "$manifests/"
 
 if [ "$verify" = 0 ]; then
 	log "Done. Curl the ModelService per the README; clean up with: nix run .#e2e -- --clean"
@@ -186,24 +183,94 @@ fi
 
 # --verify: project run returns once the config is healthy and the resources are
 # applied, so the serving-stack install and model rollout are still reconciling.
-# Wait for the ModelService to publish an address, then route a real request to
+# Wait for the ModelService to report RoutingReady, then route a real request to
 # the engine and assert a 200. Any failure exits non-zero — that is what makes
 # this usable as a CI gate.
 log "Verifying the model serves end to end"
 ns=ml-team
 svc=mock
 
-addr=""
+# Wait for the ModelService to report RoutingReady, which means its route is
+# composed and applied on every gateway serving it. status.model and the
+# gateway's endpoints both publish long before that - neither depends on a
+# replica existing - so gating on either would start curling while the engine is
+# still rolling out.
+ready=""
 for _ in $(seq 1 80); do
-	addr="$(kubectl --context "$cpctx" -n "$ns" get modelservice "$svc" -o jsonpath='{.status.address}' 2>/dev/null || true)"
-	[ -n "$addr" ] && break
+	ready="$(kubectl --context "$cpctx" -n "$ns" get modelservice "$svc" \
+		-o jsonpath='{.status.conditions[?(@.type=="RoutingReady")].status}' 2>/dev/null || true)"
+	[ "$ready" = "True" ] && break
 	sleep 15
 done
-[ -n "$addr" ] || {
-	echo "verify: ModelService $ns/$svc never published an address" >&2
+[ "$ready" = "True" ] || {
+	echo "verify: ModelService $ns/$svc never became RoutingReady" >&2
+	kubectl --context "$cpctx" -n "$ns" get modelservice "$svc" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' >&2 || true
+	kubectl --context "$cpctx" -n "$ns" get modelendpoint -o wide >&2 || true
+	kubectl --context "$cpctx" -n "$ns" get modelreplica -o wide >&2 || true
 	exit 1
 }
-log "ModelService address: $addr"
+
+# AI Gateway rolls the gateway's proxy pods once the first route reaches it, to
+# stamp them with the hash of its sidecar's config, so a fresh gateway is still
+# replacing its pods when the route goes ready. Requests during that rollout
+# can fail, so wait for it to finish before asserting anything. The rollout
+# starts only once AI Gateway has seen the route, so first wait for the stamp.
+proxy=gateway.envoyproxy.io/owning-gateway-name=inference-gateway
+stamp=""
+for _ in $(seq 1 40); do
+	stamp="$(kubectl --context "$WLCTX" -n envoy-gateway-system get deploy -l "$proxy" \
+		-o jsonpath='{.items[0].spec.template.metadata.annotations.aigateway\.envoyproxy\.io/extproc-config-hash}' 2>/dev/null || true)"
+	[ -n "$stamp" ] && break
+	sleep 3
+done
+[ -n "$stamp" ] || {
+	echo "verify: AI Gateway never stamped the InferenceGateway's proxy pods" >&2
+	exit 1
+}
+kubectl --context "$WLCTX" -n envoy-gateway-system rollout status deploy -l "$proxy" --timeout=5m || {
+	echo "verify: the InferenceGateway's proxy pods never finished rolling out" >&2
+	kubectl --context "$WLCTX" -n envoy-gateway-system get pods -l "$proxy" -o wide >&2 || true
+	exit 1
+}
+
+# A caller names a ModelService as the request's model, so read it from status.
+model="$(kubectl --context "$cpctx" -n "$ns" get modelservice "$svc" -o jsonpath='{.status.model}')"
+[ -n "$model" ] || {
+	echo "verify: ModelService $ns/$svc published no model name" >&2
+	exit 1
+}
+
+base=""
+for _ in $(seq 1 80); do
+	base="$(kubectl --context "$cpctx" get inferencegateway local -o jsonpath='{.status.endpoints.openAI}' 2>/dev/null || true)"
+	[ -n "$base" ] && break
+	sleep 15
+done
+[ -n "$base" ] || {
+	echo "verify: InferenceGateway local never published an OpenAI endpoint" >&2
+	exit 1
+}
+log "Gateway ${base}, model ${model}"
+
+# GET a URL from the workload cluster, reporting curl's own exit code rather
+# than an HTTP status. Used to assert a request is refused before there is any
+# HTTP response to report. -k skips server verification, so a non-zero exit is
+# the server rejecting us rather than us rejecting its certificate.
+wl_curl_exit() {
+	local pod="$1" url="$2"
+	kubectl --context "$WLCTX" -n default run "$pod" --restart=Never \
+		--labels=app.kubernetes.io/name=e2e-verify --image="$CURL_IMAGE" \
+		--command -- sh -c "curl -sS -k --max-time 15 -o /dev/null \"$url\"; echo EXIT=\$?" \
+		>/dev/null 2>&1 || true
+	local c=""
+	for _ in $(seq 1 30); do
+		c="$(kubectl --context "$WLCTX" -n default logs "$pod" 2>/dev/null | sed -n 's/.*EXIT=\([0-9]*\).*/\1/p' || true)"
+		[ -n "$c" ] && break
+		sleep 2
+	done
+	kubectl --context "$WLCTX" -n default delete pod "$pod" --now >/dev/null 2>&1 || true
+	printf '%s' "$c"
+}
 
 # The address is on the kind Docker subnet the host can't route to on macOS, so
 # curl from a pod on the control plane, reading the status from the pod's logs
@@ -227,31 +294,203 @@ curl_status() {
 	printf '%s' "$c"
 }
 
-# OpenAI /v1/chat/completions, retried: the address can publish a moment before
-# the cross-cluster route is serving, and a slower CI runner widens that gap.
-oai='{"model":"'"$svc"'","messages":[{"role":"user","content":"ping"}]}'
+# curl_body is the same, but returns the response body. Used where the assertion
+# is about what came back rather than only that something did.
+curl_body() {
+	local pod="$1" url="$2"
+	shift 2
+	kubectl --context "$cpctx" -n "$ns" run "$pod" --restart=Never \
+		--labels=app.kubernetes.io/name=e2e-verify --image="$CURL_IMAGE" \
+		--command -- curl -sS --max-time 15 "$url" "$@" >/dev/null 2>&1 || true
+	local b=""
+	for _ in $(seq 1 30); do
+		b="$(kubectl --context "$cpctx" -n "$ns" logs "$pod" 2>/dev/null || true)"
+		[ -n "$b" ] && break
+		sleep 2
+	done
+	printf '%s' "$b"
+}
+
+cleanup_verify_pods() {
+	kubectl --context "$cpctx" -n "$ns" delete pod -l app.kubernetes.io/name=e2e-verify --now >/dev/null 2>&1 || true
+}
+
+# The gateway authenticates callers against the key in
+# e2e/manifests/10-inference-gateway.yaml. OpenAI requests send it as a bearer
+# token, Anthropic ones in x-api-key.
+caller_key=sk-e2e-caller
+
+# OpenAI /v1/chat/completions, retried: the gateway can publish an endpoint a
+# moment before the route is serving, and a slower CI runner widens that gap.
+oai='{"model":"'"$model"'","messages":[{"role":"user","content":"ping"}]}'
 code=""
 for attempt in $(seq 1 10); do
-	code="$(curl_status "e2e-verify-oai-$attempt" "$addr/v1/chat/completions" -H 'content-type: application/json' -d "$oai")"
+	code="$(curl_status "e2e-verify-oai-$attempt" "$base/chat/completions" -H "authorization: Bearer $caller_key" -H 'content-type: application/json' -d "$oai")"
 	log "verify attempt $attempt (OpenAI): HTTP ${code:-none}"
 	[ "$code" = "200" ] && break
 	sleep 10
 done
 [ "$code" = "200" ] || {
-	echo "verify: $addr/v1/chat/completions did not return 200 within retries (last: ${code:-none})" >&2
-	kubectl --context "$cpctx" -n "$ns" delete pod -l app.kubernetes.io/name=e2e-verify --now >/dev/null 2>&1 || true
+	echo "verify: $base/chat/completions did not return 200 within retries (last: ${code:-none})" >&2
+	cleanup_verify_pods
 	exit 1
 }
 
-# Anthropic Messages API on the same address: vLLM serves /v1/messages alongside
-# the OpenAI routes (PR #360) and the route preserves the path. Serving is up by
-# now, so one attempt suffices.
-ant='{"model":"'"$svc"'","max_tokens":16,"messages":[{"role":"user","content":"ping"}]}'
-mcode="$(curl_status e2e-verify-anthropic "$addr/v1/messages" -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' -d "$ant")"
-log "verify (Anthropic /v1/messages): HTTP ${mcode:-none}"
-kubectl --context "$cpctx" -n "$ns" delete pod -l app.kubernetes.io/name=e2e-verify --now >/dev/null 2>&1 || true
-[ "$mcode" = "200" ] || {
-	echo "verify: $addr/v1/messages did not return 200 (last: ${mcode:-none})" >&2
+# The same request with no key, and with a key no Secret holds, is refused.
+for nokey in none wrong; do
+	if [ "$nokey" = none ]; then
+		kcode="$(curl_status "e2e-verify-nokey-$nokey" "$base/chat/completions" -H 'content-type: application/json' -d "$oai")"
+	else
+		kcode="$(curl_status "e2e-verify-nokey-$nokey" "$base/chat/completions" -H 'authorization: Bearer sk-wrong' -H 'content-type: application/json' -d "$oai")"
+	fi
+	log "verify (key: ${nokey}): HTTP ${kcode:-none}"
+	[ "$kcode" = "401" ] || {
+		echo "verify: expected 401 for a request with key ${nokey}, got ${kcode:-none}" >&2
+		cleanup_verify_pods
+		exit 1
+	}
+done
+
+# The engine only answers to the name Modelplane started it under, and rejects
+# anything else with a 404. So a 200 above already proves the gateway rewrote the
+# caller's ModelService name to the deployment's. Assert the response reports the
+# served model rather than what the caller asked for, which is the visible half
+# of the same mechanism.
+body="$(curl_body e2e-verify-served "$base/chat/completions" -H "authorization: Bearer $caller_key" -H 'content-type: application/json' -d "$oai")"
+case "$body" in
+*'"model": "ml-team/mock-demo"'* | *'"model":"ml-team/mock-demo"'*)
+	log "verify (model rewriting): caller asked for ${model}, engine served ml-team/mock-demo"
+	;;
+*)
+	echo "verify: response did not report the served model; got: $body" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+esac
+
+# A model no ModelService claims must not route anywhere. Catches a route
+# matching too broadly, which would send a caller to an arbitrary backend.
+ncode="$(curl_status e2e-verify-unknown "$base/chat/completions" -H "authorization: Bearer $caller_key" \
+	-H 'content-type: application/json' -d '{"model":"ml-team/nope","messages":[{"role":"user","content":"ping"}]}')"
+log "verify (unknown model): HTTP ${ncode:-none}"
+[ "$ncode" = "200" ] && {
+	echo "verify: an unclaimed model name was routed and served" >&2
+	cleanup_verify_pods
 	exit 1
 }
-log "End to end OK: $addr serves OpenAI (/v1/chat/completions) and Anthropic (/v1/messages)"
+
+# The cluster gateway must refuse a caller that presents no client certificate.
+# Every check above goes through the InferenceGateway, which holds a
+# certificate, so none of them would notice this lapsing. A ClientTrafficPolicy
+# that stopped applying, or an HTTP listener beside the HTTPS one, would leave
+# the engines open to anything that can reach the load balancer.
+#
+# Run from the workload cluster, where the Service compose-inference-gateway
+# composed resolves the gateway's name. A plain GET is enough: the handshake
+# fails before any request is sent. The trailing dot skips the pod's search
+# domains, which ndots:5 would otherwise try ahead of the name itself. A resolve
+# failure returns curl 6, which the checks below reject rather than pass.
+cluster_gw_name="$(kubectl --context "$cpctx" get inferencecluster local -o jsonpath='{.status.gateway.hostname}')"
+cluster_gw="https://${cluster_gw_name}./v1/models"
+ecode="$(wl_curl_exit e2e-verify-nocert "$cluster_gw")"
+log "verify (cluster gateway, no client certificate): curl exit ${ecode:-none}"
+case "$ecode" in
+0)
+	echo "verify: the cluster gateway served a caller presenting no client certificate" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+35 | 52 | 55 | 56) ;;
+*)
+	echo "verify: expected the cluster gateway to refuse an uncertified caller mid-handshake," >&2
+	echo "verify: but curl failed with ${ecode:-no exit code}, which is a different failure" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+esac
+
+# And nothing on port 80. The serving HTTPRoutes carry no sectionName, so they
+# attach to every listener there is, and an HTTP listener would serve the
+# engines without a certificate. The gateway's only listener is HTTPS, and the
+# load balancer publishes a port per listener, so the connection is refused.
+hcode="$(wl_curl_exit e2e-verify-plaintext "http://${cluster_gw_name}./v1/models")"
+log "verify (cluster gateway, plaintext): curl exit ${hcode:-none}"
+case "$hcode" in
+0)
+	echo "verify: the cluster gateway served plaintext HTTP on port 80" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+7 | 28 | 35 | 52 | 56) ;;
+*)
+	echo "verify: expected no listener on port 80, but curl failed with ${hcode:-no exit code}," >&2
+	echo "verify: which is a different failure" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+esac
+
+# /v1/models lists what this gateway serves. Only exact model matches appear, so
+# this also proves the route matches exactly rather than by pattern.
+models="$(curl_body e2e-verify-models "$base/models" -H "authorization: Bearer $caller_key")"
+case "$models" in
+*"$model"*) log "verify (/v1/models): lists ${model}" ;;
+*)
+	echo "verify: /v1/models did not list $model; got: $models" >&2
+	cleanup_verify_pods
+	exit 1
+	;;
+esac
+
+# Anthropic's Messages API on the same gateway. The endpoint's API is OpenAI, so
+# the gateway translates the request. The mock serves /v1/messages too, the way
+# vLLM does, so a 200 alone doesn't tell translation from passthrough. The key
+# goes in x-api-key, as Anthropic clients send it.
+anthropic_base="${base%/v1}/anthropic/v1"
+ant='{"model":"'"$model"'","max_tokens":16,"messages":[{"role":"user","content":"ping"}]}'
+mcode="$(curl_status e2e-verify-anthropic "$anthropic_base/messages" -H "x-api-key: $caller_key" -H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' -d "$ant")"
+log "verify (Anthropic /v1/messages): HTTP ${mcode:-none}"
+[ "$mcode" = "200" ] || {
+	echo "verify: $anthropic_base/messages did not return 200 (got: ${mcode:-none})" >&2
+	cleanup_verify_pods
+	exit 1
+}
+
+# Assert the gateway emits a usage record attributing the request's tokens to
+# its caller. Read it off the InferenceGateway's Envoy. It runs two proxy pods
+# and each request lands on either, so read both. --tail has to be explicit,
+# because with a selector kubectl logs keeps only the last 10 lines per pod.
+usage="$(kubectl --context "$WLCTX" -n envoy-gateway-system logs \
+	-l "$proxy" -c envoy --tail=200 2>/dev/null |
+	grep '"input_tokens":12' | tail -1 || true)"
+# Check each field on its own. The access log serialises its keys
+# alphabetically, so a single glob spanning two of them depends on that order.
+#
+# The endpoint is the ModelRoute's backend for it, in ml-team's mirrored
+# namespace (child_name("mp", "ml-team")) and named after the route
+# (child_name("mock", "local")) and the endpoint.
+missing=""
+for want in \
+	'"caller":"e2e"' \
+	'"service":"'"$model"'"' \
+	'"endpoint":"mp-ml-team-51733/mock-local-' \
+	'"served_model":"ml-team/mock-demo"' \
+	'"input_tokens":12' \
+	'"output_tokens":9' \
+	'"total_tokens":21' \
+	'"status":200'; do
+	case "$usage" in
+	*"$want"*) ;;
+	*) missing="$missing $want" ;;
+	esac
+done
+[ -z "$missing" ] || {
+	echo "verify: usage record missing:$missing" >&2
+	echo "verify: record was: ${usage:-none}" >&2
+	cleanup_verify_pods
+	exit 1
+}
+log "verify (usage record): ${usage}"
+
+cleanup_verify_pods
+log "End to end OK: ${base} authenticates callers, serves ${model} over OpenAI and Anthropic, rewrites the model, and meters it"

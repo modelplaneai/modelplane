@@ -76,9 +76,8 @@ _CACHE_VOLUME = "model-cache"
 def cache_pvc_name(namespace: str, cache_name: str) -> str:
     # MUST stay in sync with compose-model-cache's _pvc_name()
     # (functions/compose-model-cache/function/fn.py) — both sides share
-    # resource.child_name("modelcache", namespace, name). The namespace
-    # qualifier keeps caches of the same name from different Modelplane
-    # namespaces from colliding in the workload cluster's `default` namespace.
+    # resource.child_name("modelcache", namespace, name), so a replica mounts the
+    # PVC the cache composes by the same name in the same mirrored namespace.
     return resource.child_name("modelcache", namespace, cache_name)
 
 
@@ -190,7 +189,7 @@ def modelexpress_security_context(replica: v1alpha1.ModelReplica, stack: str) ->
 
     Gated like modelexpress_env, but unlike that env this isn't inert. The
     restricted Pod Security Standard permits no added capability except
-    NET_BIND_SERVICE, so a workload cluster that labels REMOTE_NAMESPACE
+    NET_BIND_SERVICE, so a workload cluster that labels the serving namespace
     pod-security.kubernetes.io/enforce=restricted rejects every
     cache-referencing engine on a Dynamo cluster, whether it loads through
     ModelExpress or not. Modelplane doesn't set that label on the clusters it
@@ -206,9 +205,19 @@ def modelexpress_security_context(replica: v1alpha1.ModelReplica, stack: str) ->
     return {"capabilities": {"add": ["IPC_LOCK"]}}
 
 
-# Namespace for serving workloads (and their ResourceClaimTemplate) on remote
-# clusters.
-REMOTE_NAMESPACE = "default"
+# Serving workloads (and their ResourceClaimTemplate) land in a namespace
+# mirroring the ModelReplica's own, so a deployment in namespace `ml-team`
+# composes into child_name("mp", "ml-team") on the serving cluster and can't
+# collide with another team's. compose-inference-cluster composes the namespace
+# itself, once per team on the cluster; the name is a cross-function contract
+# with it.
+_NS_PREFIX = "mp"
+
+
+def remote_namespace(replica: v1alpha1.ModelReplica) -> str:
+    """The namespace on the serving cluster this replica's objects land in."""
+    return resource.child_name(_NS_PREFIX, _namespace(replica.metadata))
+
 
 # Port the engine serves its OpenAI-compatible API on. A contract shared with
 # the ModelEndpoint URLs, so it must not diverge between backends.
@@ -628,7 +637,7 @@ def resource_claim_template(
         {
             "apiVersion": _DRA_API_VERSION,
             "kind": "ResourceClaimTemplate",
-            "metadata": {"name": claim_template_name(replica, engine, member), "namespace": REMOTE_NAMESPACE},
+            "metadata": {"name": claim_template_name(replica, engine, member), "namespace": remote_namespace(replica)},
             "spec": {"spec": {"devices": {"requests": device_requests}}},
         },
     )

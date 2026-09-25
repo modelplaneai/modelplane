@@ -23,9 +23,9 @@ This is not a production setup and takes around 45 minutes to run.
 
 ## What you'll build
 
-The platform team provisions a starter cluster and grows it to two larger-GPU
-regions; the ML team serves a model on the L4, then scales it onto a bigger GPU,
-all behind one endpoint.
+The platform team provisions a first, small-GPU cluster and grows it to two
+larger-GPU regions; the ML team serves a model on the L4, then scales it onto a
+bigger GPU, all behind one endpoint.
 
 {{< asciinema src="what-youll-build.cast" poster="npt:2:13" >}}
 

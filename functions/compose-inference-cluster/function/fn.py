@@ -38,18 +38,21 @@ from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 from models.ai.modelplane.inferenceclass import v1alpha1 as iclv1alpha1
 from models.ai.modelplane.inferencecluster import v1alpha1
+from models.ai.modelplane.inferencegateway import v1alpha1 as igv1alpha1
 from models.ai.modelplane.infrastructure.akscluster import v1alpha1 as aksv1alpha1
 from models.ai.modelplane.infrastructure.ekscluster import v1alpha1 as eksv1alpha1
 from models.ai.modelplane.infrastructure.gkecluster import v1alpha1 as gkev1alpha1
 from models.ai.modelplane.infrastructure.nebiuscluster import v1alpha1 as nebiusv1alpha1
 from models.ai.modelplane.infrastructure.servingstack import v1alpha1 as ssv1alpha1
 from models.ai.modelplane.infrastructure.vultrcluster import v1alpha1 as vultrv1alpha1
+from models.ai.modelplane.modelcache import v1alpha1 as mcv1alpha1
 from models.io.crossplane.apiextensions.managedresourceactivationpolicy import (
     v1alpha1 as mrapv1alpha1,
 )
 from models.io.crossplane.m.kubernetes.clusterproviderconfig import (
     v1alpha1 as k8scpcv1alpha1,
 )
+from models.io.crossplane.m.kubernetes.object import v1alpha1 as k8sobjv1alpha1
 from models.io.crossplane.protection.clusterusage import v1beta1 as clusterusagev1beta1
 from models.io.crossplane.protection.usage import v1beta1 as usagev1beta1
 from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
@@ -84,10 +87,25 @@ BACKEND_RESOURCE_KEY = "serving-stack"
 # deletion while ModelReplicas are scheduled to it.
 _REPLICA_GUARD_RESOURCE_KEY = "usage-replicas"
 
-# Label stamped on ModelReplicas by compose-model-deployment, carrying the name
-# of the InferenceCluster the replica is scheduled to. Kept in sync with that
-# function's _LABEL_CLUSTER.
+# Label stamped on ModelReplicas by compose-model-deployment, and on ModelRoutes
+# by compose-model-service, carrying the name of the InferenceCluster the object
+# is scheduled to. This function selects both by it to find the namespaces whose
+# mirror it must compose on the cluster. Kept in sync with those functions'
+# _LABEL_CLUSTER.
 _LABEL_CLUSTER = "modelplane.ai/cluster"
+
+# A namespaced resource in control-plane namespace `ml-team` composes its objects
+# into child_name("mp", "ml-team") on the cluster, e.g. `mp-ml-team-1a2b3`, so a
+# name need only be unique within a team. The hash keeps a long team namespace
+# within Kubernetes' 63 character limit, and the prefix keeps a team namespace
+# named `default` or `kube-system` off the cluster's own. provider-kubernetes
+# won't create that namespace, so this function does, one per team that has a
+# ModelReplica, ModelRoute or ModelCache on the cluster. The name and label are a
+# cross-function contract with compose-model-replica, compose-model-route and
+# compose-model-cache, whose objects land there, and with both gateways'
+# listeners, which select routes by the label.
+_NS_PREFIX = "mp"
+_NS_LABEL = "modelplane.ai/namespace"
 
 # Secret type that couples compose-gke-cluster (writer) to this function
 # (reader). Every other secret type is a provider identity type, passed through
@@ -174,6 +192,38 @@ def _name(meta: metav1.ObjectMeta | None) -> str:
     return meta.name
 
 
+def _namespace(meta: metav1.ObjectMeta | None) -> str:
+    """The object's namespace, always set on namespaced resources read from the API server."""
+    if meta is None or meta.namespace is None:
+        raise ValueError("metadata.namespace is unexpectedly absent")
+    return meta.namespace
+
+
+def _gateway_hostname(cluster_name: str) -> str:
+    """The internal name an InferenceGateway addresses this cluster's gateway by.
+
+    Modelplane derives and resolves this itself, so a platform publishes no DNS
+    per cluster: compose-inference-gateway composes a Service of this name on
+    each InferenceGateway's cluster, pointing at this cluster's gateway address.
+    The name doubles as the SNI an InferenceGateway sends and the SAN on this
+    cluster
+    gateway's serving certificate, so it is stable and identical from every
+    cluster.
+
+    The first label is the Service's name, which must be a DNS-1035 label:
+    lowercase alphanumeric and '-', starting with a letter. A cluster name is a
+    DNS-1123 subdomain, so it may contain dots or start with a digit; the
+    "gateway" literal keeps the label starting with a letter. child_name hashes
+    the raw cluster name, so two clusters whose names differ only in '.' versus
+    '-' still get distinct labels; the dots are replaced afterwards, in the
+    result rather than the input, so the sanitising can't collapse that
+    distinction. NOTE(negz): assumes the cluster's DNS domain is the default
+    cluster.local.
+    """
+    label = resource.child_name("gateway", cluster_name).replace(".", "-")
+    return f"{label}.{_NAMESPACE_SYSTEM}.svc.cluster.local"
+
+
 class FunctionRunner(grpcv1.FunctionRunnerServiceServicer):
     """A FunctionRunner handles gRPC RunFunctionRequests."""
 
@@ -202,15 +252,27 @@ class Composer:
         # Resolved InferenceClasses, keyed by class name. Populated by
         # resolve_classes().
         self.classes: dict[str, iclv1alpha1.InferenceClass] = {}
+        # Client CA per InferenceGateway, keyed by gateway name.
+        self.gateway_cas: dict[str, str] = {}
 
     def compose(self) -> None:
-        # The replica guard runs first, before any early return. It only
-        # depends on which ModelReplicas reference this cluster, not on the
-        # cluster's source or whether its classes resolve. Gating it behind
-        # those would drop the guard on a reconcile where classes are
-        # transiently unresolved, deleting the ClusterUsage and letting the
-        # cluster be deleted while replicas still use it.
+        # Crossplane discards a function's desired resources on any reconcile
+        # that still has unfulfilled required resources, and re-invokes it once
+        # they resolve. So every resource this function reads is required here,
+        # up front, before any desired state is composed: that keeps them all on
+        # the first invocation for Crossplane to resolve in one pass, rather than
+        # a later require costing another round-trip on which this run's desired
+        # state is thrown away.
+        self.require_inputs()
+
+        # The replica guard, namespaces, and gateway CAs all run before any early
+        # return: none depends on the cluster's source or whether its classes
+        # resolve. Gating the guard behind those would drop its ClusterUsage on a
+        # reconcile where classes are transiently unresolved and let the cluster
+        # be deleted while replicas still use it.
         self.compose_replica_guard()
+        self.compose_namespaces()
+        self.resolve_gateway_cas()
 
         cluster = self.xr.spec.cluster
         if not cluster:
@@ -274,6 +336,49 @@ class Composer:
         activated = status.get("activated") or []
         return all(kind in activated for kind in kinds)
 
+    def require_inputs(self) -> None:
+        """Require every resource this function reads. See compose() for why up front.
+
+        The ModelReplicas and ModelRoutes scheduled to this cluster (by
+        _LABEL_CLUSTER) drive the deletion guard and the mirrored namespaces; the
+        InferenceGateways carry the client CAs the cluster gateway must accept;
+        and the InferenceClasses back the node pools.
+        """
+        name = _name(self.xr.metadata)
+        for kind, key in (("ModelReplica", "model-replicas"), ("ModelRoute", "model-routes")):
+            response.require_resources(
+                self.rsp,
+                name=key,
+                api_version="modelplane.ai/v1alpha1",
+                kind=kind,
+                match_labels={_LABEL_CLUSTER: name},
+            )
+        # ModelCaches can't be label-selected to a cluster (one cache fans out to
+        # many), so require them all and filter by status.clusters[] in
+        # compose_namespaces. A ModelCacheHydration, one per cluster and
+        # _LABEL_CLUSTER-selectable like the replicas and routes, is the eventual
+        # replacement.
+        response.require_resources(
+            self.rsp,
+            name="model-caches",
+            api_version="modelplane.ai/v1alpha1",
+            kind="ModelCache",
+        )
+        response.require_resources(
+            self.rsp,
+            name="gateways",
+            api_version="modelplane.ai/v1alpha1",
+            kind="InferenceGateway",
+        )
+        for class_name in sorted({p.className for p in (self.xr.spec.nodePools or [])}):
+            response.require_resources(
+                self.rsp,
+                name=f"class-{class_name}",
+                api_version="modelplane.ai/v1alpha1",
+                kind="InferenceClass",
+                match_name=class_name,
+            )
+
     def compose_replica_guard(self) -> None:
         """Block deletion of the InferenceCluster while ModelReplicas use it.
 
@@ -291,19 +396,11 @@ class Composer:
         deletion of its `of` resource until the Usage itself is gone.
 
         The guard is gated on observing ModelReplicas labelled for this cluster,
-        across all namespaces. While any exist the ClusterUsage is composed and
-        the cluster can't be deleted. When the last replica goes the function
-        stops composing it; if a delete was already attempted, replayDeletion
-        re-issues it once the ClusterUsage is gone.
+        across all namespaces (required in require_inputs). While any exist the
+        ClusterUsage is composed and the cluster can't be deleted. When the last
+        replica goes the function stops composing it; if a delete was already
+        attempted, replayDeletion re-issues it once the ClusterUsage is gone.
         """
-        response.require_resources(
-            self.rsp,
-            name="model-replicas",
-            api_version="modelplane.ai/v1alpha1",
-            kind="ModelReplica",
-            match_labels={_LABEL_CLUSTER: _name(self.xr.metadata)},
-        )
-
         replicas = request.get_required_resources(self.req, "model-replicas")
         if not replicas:
             return
@@ -324,21 +421,84 @@ class Composer:
         )
         self.rsp.desired.resources[_REPLICA_GUARD_RESOURCE_KEY].ready = fnv1.READY_TRUE
 
+    def compose_namespaces(self) -> None:
+        """Compose the mirrored namespace each team's objects land in on the cluster.
+
+        A ModelReplica, ModelRoute or ModelCache in control-plane namespace
+        `ml-team` composes its objects into `mp-ml-team-<hash>` here, but
+        provider-kubernetes won't create that namespace, so this does, one per team
+        with any of the three on the cluster. Replicas and routes are label-
+        selected to this cluster (require_inputs), so every one returned counts;
+        caches fan out to many clusters, so only those whose status.clusters[]
+        names this cluster do.
+
+        The namespace is composed no-Delete so a team's namespace outlives the
+        removal of any one of its objects. It's marked ready unconditionally: a
+        namespace appearing for a newly-scheduled team must not flap the whole
+        cluster's readiness, and a real failure to create it surfaces on the
+        object whose own objects can't land.
+        """
+        name = _name(self.xr.metadata)
+        # Replicas and routes are label-selected to this cluster, so every one
+        # returned counts.
+        namespaces = {
+            _namespace(metav1.ObjectMeta.model_validate(o["metadata"]))
+            for key in ("model-replicas", "model-routes")
+            for o in request.get_required_resources(self.req, key)
+        }
+        # Caches carry no cluster label, so filter the fleet-wide list to those
+        # whose status names this cluster.
+        for c in request.get_required_resources(self.req, "model-caches"):
+            cache = mcv1alpha1.ModelCache.model_validate(c)
+            if cache.status and cache.status.clusters and any(sc.name == name for sc in cache.status.clusters):
+                namespaces.add(_namespace(cache.metadata))
+
+        pc = resource.child_name(name, "cluster-kubeconfig")
+        for ns in sorted(namespaces):
+            obj = k8sobjv1alpha1.Object(
+                metadata=metav1.ObjectMeta(namespace=_NAMESPACE_SYSTEM),
+                spec=k8sobjv1alpha1.Spec(
+                    providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(
+                        kind="ClusterProviderConfig",
+                        name=pc,
+                    ),
+                    readiness=k8sobjv1alpha1.Readiness(policy="SuccessfulCreate"),
+                    forProvider=k8sobjv1alpha1.ForProvider(
+                        manifest={
+                            "apiVersion": "v1",
+                            "kind": "Namespace",
+                            "metadata": {"name": resource.child_name(_NS_PREFIX, ns), "labels": {_NS_LABEL: ns}},
+                        }
+                    ),
+                ),
+            )
+            obj.spec.managementPolicies = ["Observe", "Create", "Update"]
+            key = f"namespace-{ns}"
+            resource.update(self.rsp.desired.resources[key], obj)
+            self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
+
+    def resolve_gateway_cas(self) -> None:
+        """Collect the client CA of every InferenceGateway in the fleet.
+
+        Any gateway may forward to this cluster, and each signs its client
+        certificate with a CA of its own, so the cluster gateway has to accept
+        all of them. Read here rather than on the ServingStack because a
+        ServingStack knows only its own cluster, and this is fleet-wide state.
+
+        A gateway that hasn't published a CA yet is skipped. Its cluster's
+        cert-manager may still be installing, and refusing traffic from every
+        gateway because one isn't ready would be worse than accepting the rest.
+        """
+        for g in request.get_required_resources(self.req, "gateways"):
+            gw = igv1alpha1.InferenceGateway.model_validate(g)
+            if gw.status and gw.status.clientCACertificate:
+                self.gateway_cas[_name(gw.metadata)] = gw.status.clientCACertificate
+
     def resolve_classes(self) -> bool:
         """Declare and fetch every InferenceClass referenced by
-        spec.nodePools[].className. Returns False if any is missing,
-        in which case the function gates and waits."""
-        pools = self.xr.spec.nodePools or []
-        class_names = sorted({p.className for p in pools})
-
-        for name in class_names:
-            response.require_resources(
-                self.rsp,
-                name=f"class-{name}",
-                api_version="modelplane.ai/v1alpha1",
-                kind="InferenceClass",
-                match_name=name,
-            )
+        spec.nodePools[].className (required in require_inputs). Returns False if
+        any is missing, in which case the function gates and waits."""
+        class_names = sorted({p.className for p in (self.xr.spec.nodePools or [])})
 
         missing: list[str] = []
         for name in class_names:
@@ -612,10 +772,21 @@ class Composer:
         including cloud specifics like where the node image puts the
         NVIDIA driver.
         """
+        # The gateway's name and the CAs it should accept client certificates
+        # from. The name is Modelplane's own, derived from this cluster's name;
+        # the CAs are from every InferenceGateway in the fleet, because any of
+        # them may forward here and each signs its client certificate with its
+        # own CA.
+        gateway = ssv1alpha1.Gateway(hostname=_gateway_hostname(_name(self.xr.metadata)))
+        if self.gateway_cas:
+            gateway.clientCAs = [
+                ssv1alpha1.ClientCA(name=name, certificate=cert) for name, cert in sorted(self.gateway_cas.items())
+            ]
         spec = ssv1alpha1.Spec(
             secrets=backend_secrets,
             stack=self.xr.spec.stack,
             cloud=cloud,
+            gateway=gateway,
         )
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
@@ -690,6 +861,32 @@ class Composer:
         gateway_address = self.observed_gateway_address()
         if gateway_address:
             status.gateway = v1alpha1.Gateway(address=gateway_address)
+            # Republished from the ServingStack so an InferenceGateway can
+            # validate this cluster's gateway without reading a ServingStack,
+            # which is machine-generated and not something another composition
+            # should depend on the shape of.
+            ca = self.observed_gateway_ca()
+            if ca:
+                status.gateway.caCertificate = ca
+            # The hostname is what makes this cluster schedulable, so it is
+            # published only once traffic to it is mutually authenticated in
+            # both directions. That needs three things:
+            #
+            # An address, because an InferenceGateway addresses this cluster by
+            # name, so publishing a name that resolves to nothing strands every
+            # request routed to it.
+            #
+            # This cluster's CA, so an InferenceGateway can tell it reached this
+            # cluster rather than whatever else answers on that address.
+            #
+            # At least one InferenceGateway CA, because the cluster gateway only
+            # demands a client certificate when it has one to check against, and
+            # a cluster gateway with nothing to trust serves nothing (see the
+            # serving stack's serves_gateway). Publishing the hostname anyway
+            # would make the cluster schedulable when it has no front door, so
+            # every request routed to it would be stranded.
+            if ca and self.gateway_cas:
+                status.gateway.hostname = _gateway_hostname(_name(self.xr.metadata))
         resource.update_status(self.rsp.desired.composite, status)
 
     def derive_conditions(self, *, cluster_ready: bool) -> None:
@@ -1420,6 +1617,19 @@ class Composer:
         if not gke_secrets:
             return None
         return next((s for s in gke_secrets if s.type == secret_type), None)
+
+    def observed_gateway_ca(self) -> str | None:
+        """The cluster gateway's CA certificate, from the observed backend.
+
+        Read by dict rather than through a typed model, matching
+        observed_gateway_address, so it works for any backend following the
+        status.gateway contract.
+        """
+        observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+        if not observed:
+            return None
+        d = resource.struct_to_dict(observed.resource)
+        return d.get("status", {}).get("gateway", {}).get("caCertificate")
 
     def observed_gateway_address(self) -> str | None:
         """Read the backend's gateway address from observed state.

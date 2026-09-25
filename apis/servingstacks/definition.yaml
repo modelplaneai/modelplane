@@ -35,6 +35,7 @@ spec:
             required:
             - cloud
             - secrets
+            - gateway
             # A ServingStack is machine-generated, but the API server still
             # serves and accepts it, so this lets the compose function trust
             # that a Kubeconfig secret is present rather than checking in code.
@@ -126,6 +127,7 @@ spec:
                 type: object
                 description: >-
                   Configuration for the cluster's inference traffic gateway.
+                required: [hostname]
                 properties:
                   className:
                     type: string
@@ -135,38 +137,43 @@ spec:
                       GatewayClass named envoy.
                     minLength: 1
                     maxLength: 63
-                  listeners:
+                  hostname:
+                    type: string
+                    description: >-
+                      The name this cluster's gateway is reached by, projected
+                      from the InferenceCluster. The gateway serves a
+                      certificate for it, so an InferenceGateway can originate
+                      TLS and know it reached the right cluster.
+                    minLength: 1
+                    maxLength: 253
+                  clientCAs:
                     type: array
                     description: >-
-                      Gateway listeners. Defaults to a single HTTP listener on
-                      port 80 if not specified.
-                    maxItems: 8
+                      PEM certificates of the CAs whose client certificates this
+                      gateway accepts, one per InferenceGateway in the fleet.
+                      Projected from the InferenceCluster, which reads them from
+                      each gateway's status.
+
+                      The gateway refuses a request without a client
+                      certificate signed by one of these.
+                    maxItems: 32
                     x-kubernetes-list-type: map
                     x-kubernetes-list-map-keys:
                     - name
                     items:
                       type: object
-                      required:
-                      - name
-                      - port
-                      - protocol
+                      required: [name, certificate]
                       properties:
                         name:
                           type: string
-                          description: Unique listener name.
-                          maxLength: 63
+                          description: The InferenceGateway this CA belongs to.
                           minLength: 1
-                        port:
-                          type: integer
-                          description: Port number for this listener.
-                          minimum: 1
-                          maximum: 65535
-                        protocol:
+                          maxLength: 253
+                        certificate:
                           type: string
-                          description: Protocol for this listener.
-                          enum:
-                          - HTTP
-                          - TCP
+                          description: The CA certificate, PEM encoded.
+                          minLength: 1
+                          maxLength: 16384
             type: object
           status:
             description: ServingStackStatus defines the observed state of ServingStack.
@@ -181,6 +188,13 @@ spec:
                     description: >-
                       The gateway's external address, once assigned by the
                       cloud load balancer.
+                  caCertificate:
+                    type: string
+                    maxLength: 16384
+                    description: >-
+                      PEM certificate of the CA that signed this gateway's
+                      serving certificate. An InferenceGateway validates the
+                      gateway's serving certificate against it.
             type: object
         required:
         - spec

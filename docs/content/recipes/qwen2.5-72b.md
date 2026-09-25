@@ -63,7 +63,7 @@ they land one on the A100 and one on the H100. Modelplane labels each
 replica's endpoint with the cluster it runs on, so the service can split
 traffic between the platforms by weight. This service pairs the deployment
 label with each cluster label and gives each GPU half of the live traffic
-behind the same URL:
+under the same model name:
 
 {{< manifests "recipes/qwen2.5-72b/model-service-split.yaml" >}}
 

@@ -48,6 +48,6 @@ spec:
                 args:
                 - "--model=NousResearch/Meta-Llama-3.1-8B-Instruct"
             # The id clients pass as "model" in OpenAI requests.
-                - "--served-model-name=llama-3.1-8b"
+                - "--served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)"
             # Cap the context so the KV cache fits beside the weights on the L4.
                 - "--max-model-len=8192"

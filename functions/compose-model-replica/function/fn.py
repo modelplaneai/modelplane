@@ -143,9 +143,9 @@ class Composer:
 
         Every engine composes to a Deployment, LeaderWorkerSet, or PodCliqueSet (with its
         members' ResourceClaimTemplates) via the backend its roles select; the
-        backends build no routing. routing.apply then fronts the engines with the
-        surface serving.mode selects: a Service (Unified) or an InferencePool +
-        endpoint picker (PrefillDecode).
+        backends build no routing. routing.apply then fronts the engines with an
+        InferencePool and endpoint picker, whose scoring serving.mode selects.
+        Everything lands in the namespace mirroring the replica's own.
         """
         # resolve_inputs runs first and returns False unless the cluster's
         # status.providerConfigRef.name is set, so it's present here.

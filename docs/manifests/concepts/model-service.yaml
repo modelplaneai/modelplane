@@ -1,14 +1,11 @@
-# A ModelService exposes one or more ModelDeployments via a single
-# OpenAI-compatible endpoint. It composes a Gateway-API HTTPRoute on the
-# control plane that load-balances across every ModelEndpoint matching
-# its selector.
+# A ModelService exposes one or more ModelDeployments as a single model a caller
+# can name. It selects ModelEndpoints by label; Modelplane composes one
+# ModelEndpoint per ModelReplica, labeled `modelplane.ai/deployment:
+# <deployment-name>`, so this selector reaches every replica of the deployment.
 #
-# Modelplane composes one ModelEndpoint per ModelReplica, labeled
-# `modelplane.ai/deployment: <deployment-name>`. So a ModelService with
-# that label selector reaches every replica of the named deployment.
-#
-# Once the service is ready, its public address is on status.address:
-#   kubectl get ms qwen3-8b -n ml-team -o jsonpath='{.status.address}'
+# A caller reaches the model by naming it,
+# <namespace>/<service> (ml-team/qwen3-8b here), as the model in an OpenAI or
+# Anthropic request to an InferenceGateway that serves it.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelService
 metadata:
@@ -16,6 +13,7 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: qwen3-8b
+    selector:
       matchLabels:
         modelplane.ai/deployment: qwen3-8b

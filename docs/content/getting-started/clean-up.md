@@ -3,7 +3,8 @@ title: Clean up
 weight: 60
 description: Tear down everything you created during the tour.
 ---
-Delete the model resources, clusters, and finally the control plane.
+Delete the model resources, the gateway, the clusters, and finally the control
+plane.
 
 ## Delete model resources
 
@@ -19,6 +20,16 @@ Wait for all model replicas to finish:
 
 ```bash
 kubectl get modelreplica -n ml-team --watch
+```
+
+## Delete the gateway
+
+Delete the gateway before its cluster. The `InferenceGateway` runs a load balancer
+on the cluster it names; deleting it while that cluster is still up lets the load
+balancer be removed, rather than leaking it when the cluster goes.
+
+```bash
+kubectl delete ig --all
 ```
 
 ## Delete the clusters

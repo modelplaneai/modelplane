@@ -30,4 +30,5 @@ spec:
                 image: vllm/vllm-openai:v0.23.0
                 args:
                 - --model=Qwen/Qwen2.5-0.5B-Instruct
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
                 - --dtype=half

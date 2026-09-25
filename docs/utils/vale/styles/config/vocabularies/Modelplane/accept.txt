@@ -487,6 +487,10 @@ overcommit
 per-pool
 per-cluster
 per-replica
+per-service
+[Ff]ailover
+PKI
+trust-manager
 [Rr]e-placement
 sub-node
 under-count

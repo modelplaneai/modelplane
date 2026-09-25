@@ -15,11 +15,19 @@ spec:
     served: true
     referenceable: true
     additionalPrinterColumns:
-    - name: ADDRESS
+    - name: MODEL
       type: string
-      jsonPath: .status.address
+      jsonPath: .status.model
     schema:
       openAPIV3Schema:
+        description: >-
+          A ModelService is one model as a caller sees it: a stable name that
+          resolves to whichever ModelEndpoint should serve the next request. The
+          endpoints behind it can be replicas Modelplane runs, models bought from
+          a provider, or both, in more than one region.
+
+          A caller reaches it by naming it as the model in an ordinary OpenAI or
+          Anthropic request to any InferenceGateway that serves it.
         type: object
         required: [spec]
         properties:
@@ -30,41 +38,136 @@ spec:
               endpoints:
                 type: array
                 description: >-
-                  Endpoints to route traffic to. Each entry selects a
-                  set of ModelEndpoints by label. Traffic is split across
-                  entries in proportion to their weights, and load-balanced
-                  as evenly as possible across the endpoints an entry matches.
+                  A priority order over ModelEndpoints, each entry selecting a
+                  set of them by label. priority orders entries into failover
+                  tiers, and weight splits traffic within a tier, for canarying
+                  or biasing towards chosen capacity.
                 minItems: 1
+                maxItems: 32
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [name]
                 items:
                   type: object
-                  required: [selector]
+                  required: [name, selector]
                   properties:
+                    name:
+                      type: string
+                      description: >-
+                        A stable name for this entry, unique within the service.
+                        For example stable, canary, or a provider's name.
+                      minLength: 1
+                      maxLength: 63
+                      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                    priority:
+                      type: integer
+                      description: >-
+                        Lower is preferred. Entries at the same priority share
+                        traffic by weight. A higher-numbered entry takes a growing
+                        share of traffic as lower-numbered ones lose healthy
+                        endpoints, and takes over entirely once they have none.
+
+                        A failed request is retried, on another endpoint at the
+                        same priority if there is one and then at the next, and
+                        each attempt gets that endpoint's own model name,
+                        credential and path. Retrying is only possible until the
+                        first byte reaches the caller, because after that the
+                        tokens are already sent, so a backend that dies
+                        mid-stream truncates the response instead.
+                      format: int32
+                      minimum: 0
+                      maximum: 63
+                      default: 0
                     weight:
                       type: integer
                       description: >-
-                        Weight determines the share of traffic sent to this
-                        entry's endpoints, relative to the other entries. An
-                        entry with weight 2 receives twice the traffic of an
-                        entry with weight 1. The weight is spread as evenly as
-                        possible across all endpoints the entry matches.
+                        Share of traffic for this entry relative to the other
+                        entries at the same priority, spread as evenly as
+                        possible across the endpoints it matches. A pair of
+                        entries weighted 90 and 10 is a canary.
+
+                        At least 1. A weight of 0 doesn't deprioritise a
+                        backend, it drops it from the gateway's load assignment
+                        entirely, which is indistinguishable from removing the
+                        entry and easy to mistake for parking it. Remove the
+                        entry instead.
+                      format: int32
                       minimum: 1
                       maximum: 1000000
                       default: 1
                     selector:
                       type: object
+                      description: >-
+                        Selects ModelEndpoints in this ModelService's namespace.
+                        Scope a service to a region by selecting only endpoints
+                        in it; Modelplane stamps an InferenceCluster's labels
+                        onto every endpoint composed there, so the region is
+                        declared once on the cluster.
                       required: [matchLabels]
                       properties:
                         matchLabels:
                           type: object
                           additionalProperties:
                             type: string
+                            maxLength: 63
+                          minProperties: 1
+                          maxProperties: 16
+              timeouts:
+                type: object
+                description: >-
+                  How long a gateway waits on this service's endpoints. The right
+                  values depend on the model and on whether callers stream, so
+                  set them from its observed response times.
+                default: {}
+                properties:
+                  request:
+                    type: string
+                    description: >-
+                      How long a request may take end to end, including
+                      retries. Set it above the longest response you
+                      expect: prefill plus the maximum output tokens at the
+                      model's decode rate.
+                    pattern: '^([0-9]{1,5}(h|m|s|ms)){1,4}$'
+                    default: 300s
+                  idle:
+                    type: string
+                    description: >-
+                      How long an endpoint may send nothing. Before its first
+                      byte, the gateway abandons it, counts it as failed, and
+                      retries the request, on another endpoint if there is one.
+                      After that the stream is cut short. A streamed response
+                      sends its first byte after prefill, so for streaming
+                      callers this bounds time to first token and every gap
+                      between chunks. A non-streamed response sends nothing until
+                      it's complete, so if any caller doesn't stream, set this at
+                      least as long as request, or to 0s to disable it.
+                    pattern: '^([0-9]{1,5}(h|m|s|ms)){1,4}$'
+                    default: 60s
           status:
             type: object
             properties:
-              address:
+              model:
                 type: string
                 description: >-
-                  Public address where this service is reachable.
+                  The name a caller passes as the request's model. Namespaced, so
+                  two services can't collide.
+              routes:
+                type: object
+                description: >-
+                  Counts of the ModelRoutes this service composes, one per gateway
+                  that serves it. ready is how many are carrying traffic; total is
+                  how many gateways serve the service. Per-gateway detail,
+                  including each gateway's address, is on the ModelRoutes
+                  themselves: kubectl get modelroutes -l
+                  modelplane.ai/service=<name>.
+                properties:
+                  total:
+                    type: integer
+                    format: int32
+                    minimum: 0
+                  ready:
+                    type: integer
+                    format: int32
+                    minimum: 0
               conditions:
                 type: array
                 items:

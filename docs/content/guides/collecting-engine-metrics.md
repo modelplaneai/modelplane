@@ -38,8 +38,10 @@ so reference it by number with `targetPort`:
 {{< manifests "guides/collecting-engine-metrics/podmonitor.yaml" >}}
 
 The engine pods and the `PodMonitor` CRD live on the workload cluster, not the
-control plane, so apply it there. Then read the metrics from the in-cluster
-Prometheus over a `port-forward`:
+control plane, so apply it there. The pods run in the namespace Modelplane
+mirrors `ml-team` into, which `kubectl get ns -l modelplane.ai/namespace=ml-team`
+finds. Then read the metrics from the in-cluster Prometheus over a
+`port-forward`:
 
 ```bash
 kubectl -n monitoring port-forward svc/prometheus-prometheus 9090:9090   # workload cluster

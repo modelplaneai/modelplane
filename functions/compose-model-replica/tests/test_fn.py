@@ -160,7 +160,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "kind": "Deployment",
                                             "metadata": {
                                                 "name": resource.child_name("test-replica", "main"),
-                                                "namespace": "default",
+                                                "namespace": "mp-ml-team-51733",
                                             },
                                             "spec": {
                                                 "replicas": 1,
@@ -244,12 +244,12 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                             "kind": "HTTPRoute",
                                             "metadata": {
                                                 "name": "test-replica",
-                                                "namespace": "default",
+                                                "namespace": "mp-ml-team-51733",
                                             },
                                             "spec": {
                                                 "parentRefs": [
                                                     {
-                                                        "name": "inference-gateway",
+                                                        "name": "cluster-gateway",
                                                         "namespace": "modelplane-system",
                                                     },
                                                 ],
@@ -310,7 +310,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                                 "name": resource.child_name(
                                                     "test-replica", "main", "standalone", "devices"
                                                 ),
-                                                "namespace": "default",
+                                                "namespace": "mp-ml-team-51733",
                                             },
                                             "spec": {
                                                 "spec": {
@@ -522,7 +522,11 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 if "model-serving-main" in resources:
                     self.assertLessEqual(routing_keys, set(resources))
                     self.assertNotIn("model-service", resources)
+                    # The routing objects land in the mirrored namespace too,
+                    # before they're dropped from the golden below.
                     for key in routing_keys:
+                        manifest = resources[key]["resource"]["spec"]["forProvider"]["manifest"]
+                        self.assertEqual(manifest["metadata"]["namespace"], "mp-ml-team-51733", key)
                         resources.pop(key, None)
                 self.assertEqual(
                     json_format.MessageToDict(case.want),

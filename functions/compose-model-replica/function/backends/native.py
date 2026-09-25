@@ -111,7 +111,7 @@ class NativeBackend:
         deployment = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
-            "metadata": {"name": name, "namespace": base.REMOTE_NAMESPACE},
+            "metadata": {"name": name, "namespace": base.remote_namespace(replica)},
             "spec": {
                 "replicas": int(engine.copies or 1),
                 "selector": {"matchLabels": selector},

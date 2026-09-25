@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, conint, constr
+from pydantic import AwareDatetime, BaseModel, Field, constr
 
 from .....io.k8s.apimachinery.pkg.apis.meta import v1
 
@@ -41,18 +41,14 @@ class Crossplane(BaseModel):
     resourceRefs: list[ResourceRef] | None = None
 
 
-class Listener(BaseModel):
-    name: constr(min_length=1, max_length=63)
+class ClientCA(BaseModel):
+    certificate: constr(min_length=1, max_length=16384)
     """
-    Unique listener name.
+    The CA certificate, PEM encoded.
     """
-    port: conint(ge=1, le=65535)
+    name: constr(min_length=1, max_length=253)
     """
-    Port number for this listener.
-    """
-    protocol: Literal['HTTP', 'TCP']
-    """
-    Protocol for this listener.
+    The InferenceGateway this CA belongs to.
     """
 
 
@@ -61,9 +57,14 @@ class Gateway(BaseModel):
     """
     GatewayClass name. Override if the cluster already has a GatewayClass named envoy.
     """
-    listeners: list[Listener] | None = Field(None, max_length=8)
+    clientCAs: list[ClientCA] | None = Field(None, max_length=32)
     """
-    Gateway listeners. Defaults to a single HTTP listener on port 80 if not specified.
+    PEM certificates of the CAs whose client certificates this gateway accepts, one per InferenceGateway in the fleet. Projected from the InferenceCluster, which reads them from each gateway's status.
+    The gateway refuses a request without a client certificate signed by one of these.
+    """
+    hostname: constr(min_length=1, max_length=253)
+    """
+    The name this cluster's gateway is reached by, projected from the InferenceCluster. The gateway serves a certificate for it, so an InferenceGateway can originate TLS and know it reached the right cluster.
     """
 
 
@@ -100,7 +101,7 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
-    gateway: Gateway | None = None
+    gateway: Gateway
     """
     Configuration for the cluster's inference traffic gateway.
     """
@@ -127,6 +128,10 @@ class GatewayModel(BaseModel):
     address: constr(max_length=256) | None = None
     """
     The gateway's external address, once assigned by the cloud load balancer.
+    """
+    caCertificate: constr(max_length=16384) | None = None
+    """
+    PEM certificate of the CA that signed this gateway's serving certificate. An InferenceGateway validates the gateway's serving certificate against it.
     """
 
 

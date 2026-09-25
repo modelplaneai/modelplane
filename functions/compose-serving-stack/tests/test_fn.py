@@ -57,9 +57,27 @@ _RELEASE_REF = ("helm.m.crossplane.io/v1beta1", "Release")
 _OBJECT_REF = ("kubernetes.m.crossplane.io/v1alpha1", "Object")
 
 _GATEWAY_READY_CEL = "has(object.status.addresses) && object.status.addresses.size() > 0"
+_CERTIFICATE_READY_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+)
+_BUNDLE_SYNCED_CEL = (
+    "has(object.status) && has(object.status.conditions) && "
+    "object.status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')"
+)
+_POLICY_ACCEPTED_CEL = (
+    "has(object.status) && has(object.status.ancestors) && "
+    "object.status.ancestors.exists(a, has(a.conditions) && "
+    "a.conditions.exists(c, c.type == 'Accepted' && c.status == 'True'))"
+)
 _MODELEXPRESS_READY_CEL = (
     'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
 )
+
+# The name InferenceGateways reach the test stack's gateway by, and one
+# InferenceGateway's client CA for it to trust. With both, the gateway serves.
+_GATEWAY_HOSTNAME = "test-backend.gateways.example.com"
+_CLIENT_CA = "-----BEGIN CERTIFICATE-----\nfleet\n-----END CERTIFICATE-----\n"
 
 # Resolve the vendored CRD bundles via the installed function package:
 # the sandboxed test check runs against the venv's copy, not the tree.
@@ -92,6 +110,10 @@ def _request(cloud: str, stack: str, observed: dict | None = None) -> fnv1.RunFu
                                     type="GoogleApplicationCredentials", name="sa-secret", key="private_key"
                                 ),
                             ],
+                            gateway=v1alpha1.Gateway(
+                                hostname=_GATEWAY_HOSTNAME,
+                                clientCAs=[v1alpha1.ClientCA(name="eu", certificate=_CLIENT_CA)],
+                            ),
                         ),
                     ).model_dump(exclude_none=True, mode="json")
                 ),
@@ -136,15 +158,31 @@ def _release(
     return res
 
 
-def _object(key: str, manifest: dict, cel: str | None = None) -> fnv1.Resource:
-    """The expected Object for one manifest, built from literal arguments."""
+def _object(
+    key: str,
+    manifest: dict,
+    cel: str | None = None,
+    *,
+    labeled: bool = True,
+    management_policies: list | None = None,
+) -> fnv1.Resource:
+    """The expected Object for one manifest, built from literal arguments.
+
+    The gateway PKI objects carry no resource label (nothing selects them in
+    a Usage), so labeled=False builds them without one.
+    """
     model = k8sobjv1alpha1.Object(
-        metadata=metav1.ObjectMeta(labels={"modelplane.ai/resource": key}),
+        # Omit metadata entirely when unlabeled: a null metadata would serialize
+        # into the composed resource rather than being absent, as it is when the
+        # function passes none.
+        **({"metadata": metav1.ObjectMeta(labels={"modelplane.ai/resource": key})} if labeled else {}),
         spec=k8sobjv1alpha1.Spec(
             providerConfigRef=k8sobjv1alpha1.ProviderConfigRef(kind="ProviderConfig", name=_PC_NAME),
             forProvider=k8sobjv1alpha1.ForProvider(manifest=manifest),
         ),
     )
+    if management_policies:
+        model.spec.managementPolicies = management_policies
     if cel is not None:
         model.spec.readiness = k8sobjv1alpha1.Readiness(policy="DeriveFromCelQuery", celQuery=cel)
     res = fnv1.Resource()
@@ -256,6 +294,15 @@ _EXISTING_DYNAMO_USAGES = {
     "usage-cert-manager-by-envoy-gateway": _usage(_RELEASE_REF, "cert-manager", _RELEASE_REF, "envoy-gateway"),
     "usage-ai-gateway-crds-by-ai-gateway": _usage(_RELEASE_REF, "ai-gateway-crds", _RELEASE_REF, "ai-gateway"),
     "usage-gateway-namespace-by-gateway-proxy": _usage(_OBJECT_REF, "gateway-namespace", _OBJECT_REF, "gateway-proxy"),
+    "usage-cert-manager-by-gateway-selfsigned-issuer": _usage(
+        _RELEASE_REF, "cert-manager", _OBJECT_REF, "gateway-selfsigned-issuer"
+    ),
+    "usage-gateway-namespace-by-gateway-selfsigned-issuer": _usage(
+        _OBJECT_REF, "gateway-namespace", _OBJECT_REF, "gateway-selfsigned-issuer"
+    ),
+    "usage-gateway-selfsigned-issuer-by-trust-manager": _usage(
+        _OBJECT_REF, "gateway-selfsigned-issuer", _RELEASE_REF, "trust-manager"
+    ),
     "usage-kai-scheduler-by-kai-queue-root": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue-root"),
     "usage-kai-scheduler-by-kai-queue": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue"),
     "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server": _usage(
@@ -297,7 +344,15 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         repository="https://charts.jetstack.io",
         version="v1.20.2",
         wait=True,
-        values={"crds": {"enabled": True, "keep": False}},
+        # clusterResourceNamespace and enableCertificateOwnerRef are forced by
+        # fn._helm_release for every cloud's cert-manager: the ClusterIssuer CA
+        # lives in modelplane-system, and a deleted ModelRoute's client
+        # certificate Secret must go with its Certificate.
+        values={
+            "crds": {"enabled": True},
+            "clusterResourceNamespace": "modelplane-system",
+            "enableCertificateOwnerRef": True,
+        },
     )
     out["kube-prometheus-stack"] = _release(
         key="kube-prometheus-stack",
@@ -376,7 +431,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-gateway-system",
         chart="gateway-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v1.8.1",
+        version="v1.8.4",
         values={
             "config": {
                 "envoyGateway": {
@@ -413,7 +468,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-ai-gateway-system",
         chart="ai-gateway-crds-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v0.7.0",
+        version="v1.1.0",
         wait=True,
     )
     out["ai-gateway"] = _release(
@@ -422,21 +477,26 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         namespace="envoy-ai-gateway-system",
         chart="ai-gateway-helm",
         repository="oci://docker.io/envoyproxy",
-        version="v0.7.0",
+        version="v1.1.0",
+        values={"controller": {"logRequestHeaderAttributes": "x-modelplane-caller:caller"}},
     )
     for doc in _crds("gaie.yaml"):
         key = f"gaie-crds-{doc['metadata']['name']}"
         out[key] = _object(key, doc)
     out["gateway-namespace"] = _object(
         "gateway-namespace",
-        {"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "modelplane-system"}},
+        {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {"name": "modelplane-system", "labels": {"modelplane.ai/namespace": "modelplane-system"}},
+        },
     )
     out["gateway-proxy"] = _object(
         "gateway-proxy",
         {
             "apiVersion": "gateway.envoyproxy.io/v1alpha1",
             "kind": "EnvoyProxy",
-            "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
             "spec": {
                 "provider": {
                     "type": "Kubernetes",
@@ -592,7 +652,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
                 "parametersRef": {
                     "group": "gateway.envoyproxy.io",
                     "kind": "EnvoyProxy",
-                    "name": "inference-gateway",
+                    "name": "cluster-gateway",
                     "namespace": "modelplane-system",
                 },
             },
@@ -603,20 +663,166 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         {
             "apiVersion": "gateway.networking.k8s.io/v1",
             "kind": "Gateway",
-            "metadata": {"name": "inference-gateway", "namespace": "modelplane-system"},
+            "metadata": {"name": "cluster-gateway", "namespace": "modelplane-system"},
             "spec": {
                 "gatewayClassName": "envoy",
                 "listeners": [
                     {
-                        "name": "http",
-                        "protocol": "HTTP",
-                        "port": 80,
-                        "allowedRoutes": {"namespaces": {"from": "All"}},
+                        "name": "https",
+                        "protocol": "HTTPS",
+                        "port": 443,
+                        "hostname": _GATEWAY_HOSTNAME,
+                        "tls": {"mode": "Terminate", "certificateRefs": [{"name": "cluster-gateway-serving"}]},
+                        "allowedRoutes": {
+                            "namespaces": {
+                                "from": "Selector",
+                                "selector": {
+                                    "matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]
+                                },
+                            }
+                        },
                     },
                 ],
             },
         },
         cel=_GATEWAY_READY_CEL,
+    )
+
+    # --- the cluster gateway's PKI, issued for its hostname ---
+    out["gateway-ca-certificate"] = _object(
+        "gateway-ca-certificate",
+        {
+            "apiVersion": "cert-manager.io/v1",
+            "kind": "Certificate",
+            "metadata": {"name": "modelplane-cluster-ca", "namespace": "modelplane-system"},
+            "spec": {
+                "isCA": True,
+                "commonName": f"modelplane cluster CA {_GATEWAY_HOSTNAME}",
+                "secretName": "modelplane-cluster-ca",
+                "duration": "87600h",
+                "renewBefore": "8760h",
+                "privateKey": {"algorithm": "ECDSA", "size": 256},
+                "issuerRef": {"name": "modelplane-selfsigned", "kind": "Issuer", "group": "cert-manager.io"},
+            },
+        },
+        cel=_CERTIFICATE_READY_CEL,
+        labeled=False,
+    )
+    out["gateway-ca-issuer"] = _object(
+        "gateway-ca-issuer",
+        {
+            "apiVersion": "cert-manager.io/v1",
+            "kind": "Issuer",
+            "metadata": {"name": "modelplane-cluster-ca", "namespace": "modelplane-system"},
+            "spec": {"ca": {"secretName": "modelplane-cluster-ca"}},
+        },
+        labeled=False,
+    )
+    out["gateway-serving-certificate"] = _object(
+        "gateway-serving-certificate",
+        {
+            "apiVersion": "cert-manager.io/v1",
+            "kind": "Certificate",
+            "metadata": {"name": "cluster-gateway-serving", "namespace": "modelplane-system"},
+            "spec": {
+                "secretName": "cluster-gateway-serving",
+                "dnsNames": [_GATEWAY_HOSTNAME],
+                "duration": "2160h",
+                "renewBefore": "720h",
+                "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
+                "issuerRef": {"name": "modelplane-cluster-ca", "kind": "Issuer", "group": "cert-manager.io"},
+            },
+        },
+        cel=_CERTIFICATE_READY_CEL,
+        labeled=False,
+    )
+    out["gateway-ca-bundle"] = _object(
+        "gateway-ca-bundle",
+        {
+            "apiVersion": "trust.cert-manager.io/v1alpha1",
+            "kind": "Bundle",
+            "metadata": {"name": "modelplane-cluster-ca"},
+            "spec": {
+                "sources": [{"secret": {"name": "modelplane-cluster-ca", "key": "ca.crt"}}],
+                "target": {
+                    "configMap": {"key": "ca.crt"},
+                    "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "modelplane-system"}},
+                },
+            },
+        },
+        cel=_BUNDLE_SYNCED_CEL,
+        labeled=False,
+    )
+    out["gateway-ca-configmap"] = _object(
+        "gateway-ca-configmap",
+        {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {"name": "modelplane-cluster-ca", "namespace": "modelplane-system"},
+        },
+        labeled=False,
+        management_policies=["Observe"],
+    )
+    out["gateway-client-ca-bundle"] = _object(
+        "gateway-client-ca-bundle",
+        {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {"name": "modelplane-inference-gateway-cas", "namespace": "modelplane-system"},
+            "data": {"ca.crt": _CLIENT_CA},
+        },
+        labeled=False,
+    )
+    out["gateway-client-auth"] = _object(
+        "gateway-client-auth",
+        {
+            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+            "kind": "ClientTrafficPolicy",
+            "metadata": {"name": "cluster-gateway-client-auth", "namespace": "modelplane-system"},
+            "spec": {
+                "targetRefs": [
+                    {
+                        "group": "gateway.networking.k8s.io",
+                        "kind": "Gateway",
+                        "name": "cluster-gateway",
+                        "sectionName": "https",
+                    }
+                ],
+                "tls": {
+                    "clientValidation": {
+                        "caCertificateRefs": [
+                            {"kind": "ConfigMap", "group": "", "name": "modelplane-inference-gateway-cas"}
+                        ]
+                    }
+                },
+            },
+        },
+        cel=_POLICY_ACCEPTED_CEL,
+        labeled=False,
+    )
+
+    # --- the gateway PKI trust anchor, common components on every cluster ---
+    out["gateway-selfsigned-issuer"] = _object(
+        "gateway-selfsigned-issuer",
+        {
+            "apiVersion": "cert-manager.io/v1",
+            "kind": "Issuer",
+            "metadata": {"name": "modelplane-selfsigned", "namespace": "modelplane-system"},
+            "spec": {"selfSigned": {}},
+        },
+    )
+    out["trust-manager"] = _release(
+        key="trust-manager",
+        release="mp-trust-manager",
+        namespace="modelplane-system",
+        chart="trust-manager",
+        repository="oci://quay.io/jetstack/charts",
+        version="v0.25.0",
+        values={
+            "crds": {"enabled": True, "keep": True},
+            "app": {"trust": {"namespace": "modelplane-system"}},
+            "defaultPackage": {"enabled": False},
+        },
     )
 
     return out
@@ -661,6 +867,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             "kai-queue-root",  # -> kai-scheduler
             "kai-queue",  # -> kai-scheduler
             "modelexpress-server",  # -> modelexpress-crds
+            "gateway-selfsigned-issuer",  # -> cert-manager, gateway-namespace
+            "trust-manager",  # -> gateway-selfsigned-issuer
         }
         first_wave = {k: v for k, v in full.items() if k not in dep_gated}
 
@@ -742,6 +950,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                         namespace="other-ns",
                                     ),
                                 ],
+                                gateway=v1alpha1.Gateway(hostname=_GATEWAY_HOSTNAME),
                             ),
                         ).model_dump(exclude_none=True, mode="json")
                     ),
@@ -755,6 +964,212 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         helm_pc = resource.struct_to_dict(got.desired.resources["provider-config-helm"].resource)
         self.assertEqual("NebiusServiceAccountCredentials", helm_pc["spec"]["identity"]["type"])
 
+    async def test_cluster_gateway_composes_mtls_with_ca(self) -> None:
+        """A cluster with an InferenceGateway CA serves mTLS: it issues its own
+        PKI, republishes the CA without its key, demands a client certificate on
+        its HTTPS listener, and publishes the CA in status.
+
+        The hostname is a full Service FQDN, so the CA certificate's commonName
+        overflows the 64-byte X.509 limit and is truncated.
+        """
+        hostname = "gateway-test-backend-12345.modelplane-system.svc.cluster.local"
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.ServingStack(
+                            metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                            spec=v1alpha1.Spec(
+                                cloud="Existing",
+                                stack="Standard",
+                                secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
+                                gateway=v1alpha1.Gateway(
+                                    hostname=hostname,
+                                    # Deliberately out of name order, to prove the
+                                    # bundle sorts before concatenating.
+                                    clientCAs=[
+                                        v1alpha1.ClientCA(name="fleet-b", certificate="BBB"),
+                                        v1alpha1.ClientCA(name="fleet-a", certificate="AAA"),
+                                    ],
+                                ),
+                            ),
+                        ).model_dump(exclude_none=True, mode="json")
+                    ),
+                ),
+                # PCs observed, the self-signed Issuer Ready (so trust-manager and
+                # the CA chain proceed), and the CA ConfigMap trust-manager syncs
+                # carrying the certificate back for status.
+                resources=_observed_pcs()
+                | {
+                    "gateway-selfsigned-issuer": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {"status": {"conditions": [{"type": "Ready", "status": "True"}]}}
+                        )
+                    ),
+                    "gateway-ca-configmap": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {"status": {"atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}}}}
+                        )
+                    ),
+                },
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+
+        def manifest(key: str) -> dict:
+            return resource.struct_to_dict(got.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+
+        ca_cert = manifest("gateway-ca-certificate")
+        self.assertEqual(
+            "modelplane cluster CA gateway-test-backend-12345.modelplane-syst", ca_cert["spec"]["commonName"]
+        )
+        self.assertLessEqual(len(ca_cert["spec"]["commonName"]), 64)
+        self.assertTrue(ca_cert["spec"]["isCA"])
+        self.assertEqual("modelplane-selfsigned", ca_cert["spec"]["issuerRef"]["name"])
+
+        serving = manifest("gateway-serving-certificate")
+        self.assertEqual([hostname], serving["spec"]["dnsNames"])
+        self.assertEqual("modelplane-cluster-ca", serving["spec"]["issuerRef"]["name"])
+
+        bundle = manifest("gateway-ca-bundle")
+        self.assertEqual("trust.cert-manager.io/v1alpha1", bundle["apiVersion"])
+        self.assertEqual([{"secret": {"name": "modelplane-cluster-ca", "key": "ca.crt"}}], bundle["spec"]["sources"])
+
+        # Observed only, never managed: trust-manager owns the ConfigMap.
+        ca_cm = got.desired.resources["gateway-ca-configmap"]
+        self.assertEqual(["Observe"], resource.struct_to_dict(ca_cm.resource)["spec"]["managementPolicies"])
+
+        # Every InferenceGateway's CA, sorted by name and concatenated.
+        client_bundle = manifest("gateway-client-ca-bundle")
+        self.assertEqual("AAA\nBBB\n", client_bundle["data"]["ca.crt"])
+
+        client_auth = manifest("gateway-client-auth")
+        self.assertEqual("ClientTrafficPolicy", client_auth["kind"])
+        self.assertEqual("https", client_auth["spec"]["targetRefs"][0]["sectionName"])
+        self.assertEqual(
+            "modelplane-inference-gateway-cas",
+            client_auth["spec"]["tls"]["clientValidation"]["caCertificateRefs"][0]["name"],
+        )
+
+        # One HTTPS listener, terminating TLS with the serving certificate.
+        gateway = manifest("gateway")
+        self.assertEqual(
+            [
+                {
+                    "name": "https",
+                    "protocol": "HTTPS",
+                    "port": 443,
+                    "hostname": hostname,
+                    "tls": {"mode": "Terminate", "certificateRefs": [{"name": "cluster-gateway-serving"}]},
+                    "allowedRoutes": {
+                        "namespaces": {
+                            "from": "Selector",
+                            "selector": {
+                                "matchExpressions": [{"key": "modelplane.ai/namespace", "operator": "Exists"}]
+                            },
+                        }
+                    },
+                }
+            ],
+            gateway["spec"]["listeners"],
+        )
+
+        status = resource.struct_to_dict(got.desired.composite.resource)["status"]
+        self.assertEqual("CLUSTERCA", status["gateway"]["caCertificate"])
+
+        # Every PKI resource must be tracked for readiness:
+        # compose_gateway_pki marks only the keys it returns, so one composed
+        # but not returned would silently hold the cluster un-Ready. Observe
+        # each Ready and assert it's marked ready, which fails if the key was
+        # dropped from the rendered list. (The self-signed Issuer and
+        # trust-manager are stack components, covered by the golden test.)
+        pki_keys = [
+            "gateway-ca-certificate",
+            "gateway-ca-issuer",
+            "gateway-serving-certificate",
+            "gateway-ca-bundle",
+            "gateway-ca-configmap",
+            "gateway-client-ca-bundle",
+            "gateway-client-auth",
+        ]
+        for key in pki_keys:
+            req.observed.resources[key].CopyFrom(
+                fnv1.Resource(
+                    resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+                )
+            )
+        # Preserve the CA ConfigMap's data alongside its Ready condition.
+        req.observed.resources["gateway-ca-configmap"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "status": {
+                            "conditions": [{"type": "Ready", "status": "True"}],
+                            "atProvider": {"manifest": {"data": {"ca.crt": "CLUSTERCA"}}},
+                        }
+                    }
+                )
+            )
+        )
+        got = await self.runner.RunFunction(req, None)
+        for key in pki_keys:
+            self.assertEqual(fnv1.READY_TRUE, got.desired.resources[key].ready, f"{key} not marked ready")
+
+    async def test_cluster_gateway_without_ca_serves_nothing(self) -> None:
+        """A cluster with no InferenceGateway CA withholds the Gateway entirely
+        rather than serving the engines unauthenticated, and warns."""
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.ServingStack(
+                            metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
+                            spec=v1alpha1.Spec(
+                                cloud="Existing",
+                                stack="Standard",
+                                secrets=[v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig")],
+                                gateway=v1alpha1.Gateway(hostname="gw.clusters.example.com"),
+                            ),
+                        ).model_dump(exclude_none=True, mode="json")
+                    ),
+                ),
+                resources=_observed_pcs(),
+            ),
+        )
+        got = await self.runner.RunFunction(req, None)
+        # The GatewayClass and the cluster's own PKI are composed, so the CA is
+        # ready to publish when the first InferenceGateway's CA arrives. The
+        # Gateway, the client CA bundle and the policy demanding a client
+        # certificate aren't, and nor is the Usage protecting the Gateway.
+        gateway_keys = {k for k in got.desired.resources if k.startswith(("gateway", "usage-gateway"))}
+        self.assertEqual(
+            {
+                "gateway-class",
+                "gateway-ca-certificate",
+                "gateway-ca-issuer",
+                "gateway-serving-certificate",
+                "gateway-ca-bundle",
+                "gateway-ca-configmap",
+                "gateway-namespace",
+                "usage-gateway-namespace-by-gateway-proxy",
+                "usage-gateway-namespace-by-gateway-selfsigned-issuer",
+                "usage-gateway-selfsigned-issuer-by-trust-manager",
+            },
+            gateway_keys,
+        )
+        self.assertEqual(
+            [
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message=(
+                        "Gateway gw.clusters.example.com not served: no InferenceGateway has published a client "
+                        "CA for this cluster to trust, and serving without one would accept unauthenticated callers"
+                    ),
+                )
+            ],
+            list(got.results),
+        )
+
 
 # The composed-resource key a component renders under is its identity:
 # renaming one deletes and recreates the remote resource (for an Object
@@ -764,12 +1179,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
 # make sure that's intended, then update the inventory and the release
 # notes.
 
+# Every cloud and stack, for a stack with an InferenceGateway CA to trust (as
+# _request builds), so the Gateway and its client-auth policy are included.
 _ALWAYS = frozenset(
     {
         "provider-config-kubernetes",
         "provider-config-helm",
         "gateway",
         "gateway-class",
+        "gateway-ca-certificate",
+        "gateway-ca-issuer",
+        "gateway-serving-certificate",
+        "gateway-ca-bundle",
+        "gateway-ca-configmap",
+        "gateway-client-ca-bundle",
+        "gateway-client-auth",
         "usage-gateway-class-by-gateway",
         "usage-envoy-gateway-by-gateway-class",
     }
@@ -786,9 +1210,14 @@ _COMMON = frozenset(
         "gaie-crds-inferencepools.inference.networking.x-k8s.io",
         "gateway-namespace",
         "gateway-proxy",
+        "gateway-selfsigned-issuer",
+        "trust-manager",
         "usage-ai-gateway-crds-by-ai-gateway",
         "usage-cert-manager-by-envoy-gateway",
+        "usage-cert-manager-by-gateway-selfsigned-issuer",
         "usage-gateway-namespace-by-gateway-proxy",
+        "usage-gateway-namespace-by-gateway-selfsigned-issuer",
+        "usage-gateway-selfsigned-issuer-by-trust-manager",
     }
 )
 

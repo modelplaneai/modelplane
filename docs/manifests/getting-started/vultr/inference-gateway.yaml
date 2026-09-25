@@ -1,0 +1,10 @@
+# An InferenceGateway is the front door for inference requests: the only address
+# a caller sees. It speaks the OpenAI and Anthropic APIs and resolves the model a
+# request names to a ModelService. It runs on an InferenceCluster, named by
+# spec.clusterName. This one sets no auth, so it authenticates nobody.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceGateway
+metadata:
+  name: public
+spec:
+  clusterName: vultr-ewr

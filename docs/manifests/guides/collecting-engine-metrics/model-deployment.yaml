@@ -7,7 +7,10 @@
 #
 #   --max-model-len=16384   caps the context; the default 32K KV cache is wasteful
 #                           for a model this size and a demo this small.
-#   --served-model-name     the id clients pass as "model" in OpenAI requests.
+#   --served-model-name     the name this engine answers to. Reference the env
+#                           var Modelplane injects, so the engine comes up under
+#                           the name the gateway routes to. A caller names a
+#                           ModelService, not this.
 #
 # vLLM exposes Prometheus metrics at /metrics on its serving port (:8000) with no
 # extra flag, which is what the example's PodMonitor scrapes.
@@ -48,5 +51,5 @@ spec:
                 image: vllm/vllm-openai:v0.23.0
                 args:
                 - "--model=Qwen/Qwen2.5-0.5B-Instruct"
-                - "--served-model-name=qwen2.5-0.5b"
+                - "--served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)"
                 - "--max-model-len=16384"

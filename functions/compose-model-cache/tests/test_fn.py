@@ -211,7 +211,7 @@ def _pvc_object(pc: str, *, storage_class: str = "modelplane-rwx") -> dict:
                 "manifest": {
                     "apiVersion": "v1",
                     "kind": "PersistentVolumeClaim",
-                    "metadata": {"name": _PVC_NAME, "namespace": "default", "labels": _LABELS},
+                    "metadata": {"name": _PVC_NAME, "namespace": "mp-ml-team-51733", "labels": _LABELS},
                     "spec": {
                         "accessModes": ["ReadWriteMany"],
                         "resources": {"requests": {"storage": "20Gi"}},
@@ -237,7 +237,7 @@ def _job_object(pc: str, *, command: str = _HYDRATE_CMD, env: list | None = None
                 "manifest": {
                     "apiVersion": "batch/v1",
                     "kind": "Job",
-                    "metadata": {"name": _JOB_NAME, "namespace": "default", "labels": _LABELS},
+                    "metadata": {"name": _JOB_NAME, "namespace": "mp-ml-team-51733", "labels": _LABELS},
                     "spec": {
                         "backoffLimit": 3,
                         "ttlSecondsAfterFinished": 180,
@@ -283,7 +283,7 @@ def _auth_object(pc: str) -> dict:
                 "manifest": {
                     "apiVersion": "v1",
                     "kind": "Secret",
-                    "metadata": {"name": _AUTH_NAME, "namespace": "default", "labels": _LABELS},
+                    "metadata": {"name": _AUTH_NAME, "namespace": "mp-ml-team-51733", "labels": _LABELS},
                     "data": {"HF_TOKEN": _TOKEN_B64},
                 },
             },

@@ -29,7 +29,7 @@ spec:
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: gpu-us-west
+  name: gke-us-west
   labels:
     modelplane.ai/region: us-west
 spec:
@@ -49,7 +49,7 @@ spec:
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: gpu-us-east
+  name: gke-us-east
   labels:
     modelplane.ai/region: us-east
 spec:
