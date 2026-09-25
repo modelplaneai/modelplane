@@ -519,6 +519,9 @@ class Composer:
                 ),
             )
             response.normal(self.rsp, f"Waiting for InferenceClasses: {', '.join(missing)}")
+            # Only the guard and namespaces, both marked ready, are composed
+            # while waiting, so the XR would otherwise be ready.
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return False
 
         return True

@@ -205,6 +205,9 @@ class Composer:
                 )
                 return project
             response.normal(self.rsp, f"Waiting for GCP {cred_kind} {cred_name}")
+            # Nothing is composed while waiting for the project, and an XR with
+            # no composed resources would otherwise be trivially ready.
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return None
         if cred_kind == "ClusterProviderConfig":
             pc = gcpcpcv1beta1.ClusterProviderConfig.model_validate(d)

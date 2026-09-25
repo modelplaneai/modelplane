@@ -550,6 +550,9 @@ class Composer:
                     reason=CONDITION_REASON_NO_CLUSTERS,
                 ),
             )
+            # Nothing is composed with no cluster to stage onto, and an XR with
+            # no composed resources would otherwise be trivially ready.
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return
         response.set_conditions(
             self.rsp,
@@ -583,6 +586,9 @@ class Composer:
                 self.rsp,
                 f"authSecret {_namespace(self.xr.metadata)}/{auth.name} is missing or has no key {key!r}",
             )
+            # Only the PVCs are composed while the token is missing, and once
+            # they bind the XR would otherwise be ready.
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
         elif any(p == PHASE_FAILED for _, p in per_cluster_phase):
             response.set_conditions(
                 self.rsp,

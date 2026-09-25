@@ -292,6 +292,9 @@ class Composer:
                 ),
             )
             response.warning(self.rsp, "No InferenceClusters found")
+            # Nothing is composed with no cluster to schedule onto, and an XR
+            # with no composed resources would otherwise be trivially ready.
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return False
 
         self.clusters = [_inference_cluster(icv1alpha1.InferenceCluster.model_validate(c)) for c in cluster_dicts]

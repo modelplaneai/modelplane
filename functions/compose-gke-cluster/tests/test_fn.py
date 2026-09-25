@@ -580,8 +580,36 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
         want2.requirements.resources["gcp-provider-config"].CopyFrom(_GCP_PROVIDER_CONFIG_SELECTOR)
 
+        # The ProviderConfig resolved to nothing and no cluster is observed to
+        # take the project from, so nothing can be composed. The XR is marked
+        # not ready rather than left to aggregate to trivially ready.
+        req3 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        _gke_xr().model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req3.required_resources["gcp-provider-config"].SetInParent()
+
+        want3 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="Waiting for GCP ClusterProviderConfig default",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want3.requirements.resources["gcp-provider-config"].CopyFrom(_GCP_PROVIDER_CONFIG_SELECTOR)
+
         cases = [
             Case(name="first pass composes infra resources; IAM binding gated", req=req1, want=want1),
+            Case(name="a missing ProviderConfig composes nothing and isn't ready", req=req3, want=want3),
             Case(
                 name="second pass with observed SA email composes IAM binding and marks ready resources",
                 req=req2,

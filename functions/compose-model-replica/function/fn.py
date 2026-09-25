@@ -116,6 +116,9 @@ class Composer:
                 ),
             )
             response.normal(self.rsp, "Waiting for cluster to be resolved")
+            # Nothing is composed while waiting, and an XR with no composed
+            # resources would otherwise be trivially ready.
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return False
 
         self.ic = icv1alpha1.InferenceCluster.model_validate(ic_dict)
@@ -134,6 +137,7 @@ class Composer:
                 ),
             )
             response.normal(self.rsp, "Waiting for cluster providerConfigRef")
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return False
 
         return True

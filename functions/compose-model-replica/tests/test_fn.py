@@ -392,7 +392,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
 
         want2 = fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(),
+            # Nothing is composed while waiting, so the XR is marked not ready
+            # rather than left to aggregate to trivially ready.
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
             conditions=[
                 fnv1.Condition(
                     type="ModelAccepted",
@@ -438,7 +440,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
 
         want3 = fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
             conditions=[
                 fnv1.Condition(
                     type="ModelAccepted",

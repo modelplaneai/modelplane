@@ -311,10 +311,13 @@ def _early_return_guard_case() -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctio
     want = fnv1.RunFunctionResponse(
         meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
         desired=fnv1.State(
+            # The guard and namespace are marked ready, so the XR is marked not
+            # ready while it waits for its classes.
+            composite=fnv1.Resource(ready=fnv1.READY_FALSE),
             resources={
                 "usage-replicas": _guard_clusterusage(),
                 "namespace-team-a": _namespace_object("team-a", "mp-team-a-bd964"),
-            }
+            },
         ),
         context=structpb.Struct(),
     )

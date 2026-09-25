@@ -588,7 +588,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 want=_want(
                     fnv1.RunFunctionResponse(
                         meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-                        desired=fnv1.State(),
+                        desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
                         conditions=[
                             fnv1.Condition(
                                 type="ReplicasScheduled",
