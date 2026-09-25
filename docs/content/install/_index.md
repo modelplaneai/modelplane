@@ -1,6 +1,7 @@
 ---
 title: Install
 weight: 8
+navLanding: "Install the control plane"
 description: Stand up the Modelplane control plane on a Kubernetes cluster you run.
 ---
 Modelplane's control plane is where everything runs: the Crossplane runtime, the
