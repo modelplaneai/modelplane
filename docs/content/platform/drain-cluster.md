@@ -93,4 +93,7 @@ kubectl get modelreplica -l modelplane.ai/cluster=gke-us-east
 ```
 
 Once that returns nothing, or only replicas that tolerate the taint and are
-meant to stay, the drain is done and you can remove the cluster.
+meant to stay, the drain is done. The cluster still refuses deletion while an
+`InferenceGateway` runs on it, a `ModelService` routes through such a gateway, or
+a `ModelCache` stages onto it. A taint doesn't move a cache; narrow its
+`clusterSelector` to take it off the cluster.

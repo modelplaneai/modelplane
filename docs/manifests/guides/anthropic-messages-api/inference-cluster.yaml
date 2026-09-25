@@ -4,8 +4,12 @@
 # the cluster with the credentials of the Nebius ClusterProviderConfig named
 # default, the same identity that provisions it.
 #
-# Delete with foreground cascading deletion for a clean teardown, so the
-# inference stack uninstalls before the cluster's API server goes away:
+# Clean teardown - delete the model resources and the gateway first (the
+# cluster refuses deletion while anything runs on it), then the cluster with
+# foreground cascading deletion, so the inference stack uninstalls before the
+# cluster's API server goes away:
+#   kubectl delete modeldeployment,modelservice qwen3-8b -n ml-team --cascade=foreground
+#   kubectl delete inferencegateway public --cascade=foreground
 #   kubectl delete inferencecluster nebius-eu-north --cascade=foreground
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster

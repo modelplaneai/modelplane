@@ -206,7 +206,22 @@ def _namespace_object(ns: str, name: str) -> fnv1.Resource:
     )
 
 
-def _guard_clusterusage() -> fnv1.Resource:
+def _gateway_item(name: str, cluster: str) -> fnv1.Resource:
+    """An observed InferenceGateway running on the named cluster, with no client
+    CA published yet so it doesn't change the ServingStack's gateway spec."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "InferenceGateway",
+                "metadata": {"name": name},
+                "spec": {"clusterName": cluster},
+            }
+        )
+    )
+
+
+def _guard_clusterusage(reason: str) -> fnv1.Resource:
     """The reason-only ClusterUsage the guard composes for test-cluster."""
     return fnv1.Resource(
         resource=resource.dict_to_struct(
@@ -219,7 +234,7 @@ def _guard_clusterusage() -> fnv1.Resource:
                         "kind": "InferenceCluster",
                         "resourceRef": {"name": "test-cluster"},
                     },
-                    "reason": "ModelReplicas are scheduled to this InferenceCluster",
+                    "reason": reason,
                     "replayDeletion": True,
                 },
             }
@@ -228,21 +243,19 @@ def _guard_clusterusage() -> fnv1.Resource:
     )
 
 
-def _replica_guard_case(
+def _guard_case(
     base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
 ) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
-    """Build the replica-guard-and-namespaces case from a base request and response.
+    """Build the guard-and-namespaces case from a base request and response.
 
-    Observes two ModelReplicas in different namespaces, both labelled for the
-    cluster, so the function composes a single reason-only ClusterUsage blocking
-    the InferenceCluster's deletion regardless of replica count or namespace.
-
-    It also observes ModelRoutes and ModelCaches, so the mirrored namespaces the
-    function composes are the deduplicated union across all three: team-a
-    (replica), team-b (replica and route), team-c (route), team-d (cache staging
-    onto this cluster). A cache staging only onto another cluster (team-e) is
-    filtered out by its status.clusters[], proving the namespaces track what
-    actually lands here.
+    Observes ModelReplicas, ModelRoutes and ModelCaches across several
+    namespaces, so the function composes a single reason-only ClusterUsage
+    blocking the InferenceCluster's deletion, whatever their count or namespace,
+    and mirrors the deduplicated union of their namespaces: team-a (replica),
+    team-b (replica and route), team-c (route), team-d (cache staging onto this
+    cluster). A cache staging only onto another cluster (team-e) is filtered out
+    by its status.clusters[], proving the namespaces track what actually lands
+    here. The guard's reason names every kind in use.
     """
     req = fnv1.RunFunctionRequest()
     req.CopyFrom(base_req)
@@ -255,7 +268,9 @@ def _replica_guard_case(
 
     want = fnv1.RunFunctionResponse()
     want.CopyFrom(base_want)
-    want.desired.resources["usage-replicas"].CopyFrom(_guard_clusterusage())
+    want.desired.resources["usage-replicas"].CopyFrom(
+        _guard_clusterusage("ModelReplicas, ModelRoutes and ModelCaches use this InferenceCluster")
+    )
     want.desired.resources["namespace-team-a"].CopyFrom(_namespace_object("team-a", "mp-team-a-bd964"))
     want.desired.resources["namespace-team-b"].CopyFrom(_namespace_object("team-b", "mp-team-b-6bd62"))
     want.desired.resources["namespace-team-c"].CopyFrom(_namespace_object("team-c", "mp-team-c-d79d9"))
@@ -263,20 +278,85 @@ def _replica_guard_case(
     return req, want
 
 
-def _empty_replicas_case(
+def _route_guard_case(
     base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
 ) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
-    """The guard requirement resolved to zero replicas: no ClusterUsage.
+    """A ModelRoute on the cluster composes the guard on its own.
 
-    This is the teardown transition - the last replica is gone, so the function
-    stops composing the guard and the cluster becomes deletable. base_want must
-    not contain usage-replicas.
+    A route composes its routing Objects through the cluster's
+    ClusterProviderConfig, so it blocks deletion without any replica there, and
+    its team's namespace is mirrored.
     """
     req = fnv1.RunFunctionRequest()
     req.CopyFrom(base_req)
-    # An empty-but-present requirement, as Crossplane returns when the selector
+    req.required_resources["model-routes"].items.append(_route_item("svc-eu", "team-c"))
+
+    want = fnv1.RunFunctionResponse()
+    want.CopyFrom(base_want)
+    want.desired.resources["usage-replicas"].CopyFrom(_guard_clusterusage("ModelRoutes use this InferenceCluster"))
+    want.desired.resources["namespace-team-c"].CopyFrom(_namespace_object("team-c", "mp-team-c-d79d9"))
+    return req, want
+
+
+def _cache_guard_case(
+    base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
+) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
+    """A ModelCache staging onto the cluster composes the guard on its own.
+
+    A cache composes its PVC through the cluster's ClusterProviderConfig, so it
+    blocks deletion without any replica there, and its team's namespace is
+    mirrored.
+    """
+    req = fnv1.RunFunctionRequest()
+    req.CopyFrom(base_req)
+    req.required_resources["model-caches"].items.append(_cache_item("qwen", "team-d", ["test-cluster"]))
+
+    want = fnv1.RunFunctionResponse()
+    want.CopyFrom(base_want)
+    want.desired.resources["usage-replicas"].CopyFrom(_guard_clusterusage("ModelCaches use this InferenceCluster"))
+    want.desired.resources["namespace-team-d"].CopyFrom(_namespace_object("team-d", "mp-team-d-c2383"))
+    return req, want
+
+
+def _gateway_guard_case(
+    base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
+) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
+    """An InferenceGateway running on the cluster composes the guard on its own.
+
+    A gateway composes its Gateway and routing Objects through the cluster's
+    ClusterProviderConfig just as a replica does, so it blocks deletion too. It
+    is cluster scoped, so it mirrors no namespace.
+    """
+    req = fnv1.RunFunctionRequest()
+    req.CopyFrom(base_req)
+    req.required_resources["gateways"].items.append(_gateway_item("public", "test-cluster"))
+
+    want = fnv1.RunFunctionResponse()
+    want.CopyFrom(base_want)
+    want.desired.resources["usage-replicas"].CopyFrom(
+        _guard_clusterusage("InferenceGateways use this InferenceCluster")
+    )
+    return req, want
+
+
+def _unused_case(
+    base_req: fnv1.RunFunctionRequest, base_want: fnv1.RunFunctionResponse
+) -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctionResponse]:
+    """Every guard requirement resolved to nothing on this cluster: no ClusterUsage.
+
+    This is the teardown transition - the last user is gone, so the function
+    stops composing the guard and the cluster becomes deletable. A cache staging
+    onto another cluster and a gateway running on another cluster don't hold it.
+    base_want must not contain usage-replicas.
+    """
+    req = fnv1.RunFunctionRequest()
+    req.CopyFrom(base_req)
+    # Empty-but-present requirements, as Crossplane returns when a selector
     # matched nothing.
     req.required_resources["model-replicas"].ClearField("items")
+    req.required_resources["model-routes"].ClearField("items")
+    req.required_resources["model-caches"].items.append(_cache_item("kimi", "team-e", ["other-cluster"]))
+    req.required_resources["gateways"].items.append(_gateway_item("elsewhere", "other-cluster"))
     return req, base_want
 
 
@@ -312,7 +392,7 @@ def _early_return_guard_case() -> tuple[fnv1.RunFunctionRequest, fnv1.RunFunctio
         meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
         desired=fnv1.State(
             resources={
-                "usage-replicas": _guard_clusterusage(),
+                "usage-replicas": _guard_clusterusage("ModelReplicas use this InferenceCluster"),
                 "namespace-team-a": _namespace_object("team-a", "mp-team-a-bd964"),
             }
         ),
@@ -2717,10 +2797,13 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         # The guard cases reuse case 1's request and response.
         guard_cases = [
             Case(
-                "ModelReplicas and ModelRoutes compose the guard and the mirrored namespaces",
-                *_replica_guard_case(req1, want1),
+                "ModelReplicas, ModelRoutes and ModelCaches compose the guard and the mirrored namespaces",
+                *_guard_case(req1, want1),
             ),
-            Case("no ModelReplicas leaves the cluster deletable", *_empty_replicas_case(req1, want1)),
+            Case("a ModelRoute on the cluster composes the guard", *_route_guard_case(req1, want1)),
+            Case("a ModelCache staging onto the cluster composes the guard", *_cache_guard_case(req1, want1)),
+            Case("an InferenceGateway on the cluster composes the guard", *_gateway_guard_case(req1, want1)),
+            Case("nothing on the cluster leaves it deletable", *_unused_case(req1, want1)),
             Case("guard is composed even when compose returns early", *_early_return_guard_case()),
         ]
 

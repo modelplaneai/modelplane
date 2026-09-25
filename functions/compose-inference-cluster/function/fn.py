@@ -84,14 +84,19 @@ CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 BACKEND_RESOURCE_KEY = "serving-stack"
 
 # Composed resource key for the ClusterUsage that blocks the InferenceCluster's
-# deletion while ModelReplicas are scheduled to it.
-_REPLICA_GUARD_RESOURCE_KEY = "usage-replicas"
+# deletion while anything composes objects onto it.
+#
+# NOTE(negz): The key predates the guard covering more than ModelReplicas.
+# Crossplane deletes a composed resource whose key disappears before it applies
+# the one that replaces it, so renaming the key would drop the guard for a
+# moment on upgrade.
+_DELETION_GUARD_RESOURCE_KEY = "usage-replicas"
 
 # Label stamped on ModelReplicas by compose-model-deployment, and on ModelRoutes
 # by compose-model-service, carrying the name of the InferenceCluster the object
-# is scheduled to. This function selects both by it to find the namespaces whose
-# mirror it must compose on the cluster. Kept in sync with those functions'
-# _LABEL_CLUSTER.
+# is scheduled to. This function selects both by it to hold the deletion guard
+# and to find the namespaces whose mirror it must compose on the cluster. Kept
+# in sync with those functions' _LABEL_CLUSTER.
 _LABEL_CLUSTER = "modelplane.ai/cluster"
 
 # A namespaced resource in control-plane namespace `ml-team` composes its objects
@@ -265,12 +270,12 @@ class Composer:
         # state is thrown away.
         self.require_inputs()
 
-        # The replica guard, namespaces, and gateway CAs all run before any early
-        # return: none depends on the cluster's source or whether its classes
-        # resolve. Gating the guard behind those would drop its ClusterUsage on a
-        # reconcile where classes are transiently unresolved and let the cluster
-        # be deleted while replicas still use it.
-        self.compose_replica_guard()
+        # The deletion guard, namespaces, and gateway CAs all run before any
+        # early return: none depends on the cluster's source or whether its
+        # classes resolve. Gating the guard behind those would drop its
+        # ClusterUsage on a reconcile where classes are transiently unresolved
+        # and let the cluster be deleted while something still uses it.
+        self.compose_deletion_guard()
         self.compose_namespaces()
         self.resolve_gateway_cas()
 
@@ -340,9 +345,10 @@ class Composer:
         """Require every resource this function reads. See compose() for why up front.
 
         The ModelReplicas and ModelRoutes scheduled to this cluster (by
-        _LABEL_CLUSTER) drive the deletion guard and the mirrored namespaces; the
-        InferenceGateways carry the client CAs the cluster gateway must accept;
-        and the InferenceClasses back the node pools.
+        _LABEL_CLUSTER), and the ModelCaches staging onto it, drive the deletion
+        guard and the mirrored namespaces; the InferenceGateways carry the
+        client CAs the cluster gateway must accept, and those running here also
+        drive the guard; and the InferenceClasses back the node pools.
         """
         name = _name(self.xr.metadata)
         for kind, key in (("ModelReplica", "model-replicas"), ("ModelRoute", "model-routes")):
@@ -355,7 +361,7 @@ class Composer:
             )
         # ModelCaches can't be label-selected to a cluster (one cache fans out to
         # many), so require them all and filter by status.clusters[] in
-        # compose_namespaces. A ModelCacheHydration, one per cluster and
+        # caches_on_cluster. A ModelCacheHydration, one per cluster and
         # _LABEL_CLUSTER-selectable like the replicas and routes, is the eventual
         # replacement.
         response.require_resources(
@@ -379,47 +385,79 @@ class Composer:
                 match_name=class_name,
             )
 
-    def compose_replica_guard(self) -> None:
-        """Block deletion of the InferenceCluster while ModelReplicas use it.
+    def compose_deletion_guard(self) -> None:
+        """Block deletion of the InferenceCluster while anything composes onto it.
 
-        Deleting an InferenceCluster out from under running ModelReplicas
-        strands them: their workloads' provider-kubernetes Objects lose the
-        ClusterProviderConfig (and the cluster) they need to finalize, and they
-        wedge until their finalizers are removed by hand.
+        ModelReplicas, ModelRoutes, ModelCaches and InferenceGateways all compose
+        provider-kubernetes Objects onto the cluster through its
+        ClusterProviderConfig. Deleting the InferenceCluster out from under any
+        of them strands those Objects: they lose the ClusterProviderConfig (and
+        the cluster) they need to finalize, and they wedge until their
+        finalizers are removed by hand.
 
-        ModelReplicas are namespaced and the InferenceCluster is cluster scoped,
-        so a Usage can't reference the cluster from a replica: a namespaced
-        Usage's `by` can't reach a namespaced replica from the cluster's scope,
-        and a ClusterUsage's `by` can't reach a namespaced replica at all. So
-        instead of protecting the cluster *by* the replicas, this protects it
-        with a ClusterUsage that has no `by` at all. A reason-only Usage blocks
+        Most of them are namespaced and the InferenceCluster is cluster scoped,
+        so a Usage can't reference the cluster from them: a namespaced Usage's
+        `by` can't reach a namespaced resource from the cluster's scope, and a
+        ClusterUsage's `by` can't reach a namespaced resource at all. So instead
+        of protecting the cluster *by* its users, this protects it with a
+        ClusterUsage that has no `by` at all. A reason-only Usage blocks
         deletion of its `of` resource until the Usage itself is gone.
 
-        The guard is gated on observing ModelReplicas labelled for this cluster,
-        across all namespaces (required in require_inputs). While any exist the
-        ClusterUsage is composed and the cluster can't be deleted. When the last
-        replica goes the function stops composing it; if a delete was already
+        The guard is composed while any user is observed (required in
+        require_inputs): a ModelReplica or ModelRoute labelled for this cluster,
+        a ModelCache staging onto it, or an InferenceGateway running on it. When
+        the last goes the function stops composing it; if a delete was already
         attempted, replayDeletion re-issues it once the ClusterUsage is gone.
         """
-        replicas = request.get_required_resources(self.req, "model-replicas")
-        if not replicas:
+        name = _name(self.xr.metadata)
+        gateways = [
+            igv1alpha1.InferenceGateway.model_validate(g) for g in request.get_required_resources(self.req, "gateways")
+        ]
+        in_use = {
+            "ModelReplicas": bool(request.get_required_resources(self.req, "model-replicas")),
+            "ModelRoutes": bool(request.get_required_resources(self.req, "model-routes")),
+            "ModelCaches": bool(self.caches_on_cluster()),
+            "InferenceGateways": any(gw.spec.clusterName == name for gw in gateways),
+        }
+        users = [kind for kind, used in in_use.items() if used]
+        if not users:
             return
+        # Names the kinds in use, so whoever's delete is refused knows what to
+        # delete first.
+        reason = f"{users[0]} use this InferenceCluster"
+        if len(users) > 1:
+            reason = f"{', '.join(users[:-1])} and {users[-1]} use this InferenceCluster"
 
         resource.update(
-            self.rsp.desired.resources[_REPLICA_GUARD_RESOURCE_KEY],
+            self.rsp.desired.resources[_DELETION_GUARD_RESOURCE_KEY],
             clusterusagev1beta1.ClusterUsage(
                 spec=clusterusagev1beta1.Spec(
                     of=clusterusagev1beta1.Of(
                         apiVersion="modelplane.ai/v1alpha1",
                         kind="InferenceCluster",
-                        resourceRef=clusterusagev1beta1.ResourceRef(name=_name(self.xr.metadata)),
+                        resourceRef=clusterusagev1beta1.ResourceRef(name=name),
                     ),
-                    reason="ModelReplicas are scheduled to this InferenceCluster",
+                    reason=reason,
                     replayDeletion=True,
                 ),
             ),
         )
-        self.rsp.desired.resources[_REPLICA_GUARD_RESOURCE_KEY].ready = fnv1.READY_TRUE
+        self.rsp.desired.resources[_DELETION_GUARD_RESOURCE_KEY].ready = fnv1.READY_TRUE
+
+    def caches_on_cluster(self) -> list[mcv1alpha1.ModelCache]:
+        """The ModelCaches staging onto this cluster.
+
+        Caches carry no cluster label, since one fans out to many clusters, so
+        this filters the fleet-wide list to those whose status.clusters[] names
+        this cluster.
+        """
+        name = _name(self.xr.metadata)
+        staged = []
+        for c in request.get_required_resources(self.req, "model-caches"):
+            cache = mcv1alpha1.ModelCache.model_validate(c)
+            if cache.status and cache.status.clusters and any(sc.name == name for sc in cache.status.clusters):
+                staged.append(cache)
+        return staged
 
     def compose_namespaces(self) -> None:
         """Compose the mirrored namespace each team's objects land in on the cluster.
@@ -427,10 +465,7 @@ class Composer:
         A ModelReplica, ModelRoute or ModelCache in control-plane namespace
         `ml-team` composes its objects into `mp-ml-team-<hash>` here, but
         provider-kubernetes won't create that namespace, so this does, one per team
-        with any of the three on the cluster. Replicas and routes are label-
-        selected to this cluster (require_inputs), so every one returned counts;
-        caches fan out to many clusters, so only those whose status.clusters[]
-        names this cluster do.
+        with any of the three on the cluster.
 
         The namespace is composed no-Delete so a team's namespace outlives the
         removal of any one of its objects. It's marked ready unconditionally: a
@@ -446,12 +481,7 @@ class Composer:
             for key in ("model-replicas", "model-routes")
             for o in request.get_required_resources(self.req, key)
         }
-        # Caches carry no cluster label, so filter the fleet-wide list to those
-        # whose status names this cluster.
-        for c in request.get_required_resources(self.req, "model-caches"):
-            cache = mcv1alpha1.ModelCache.model_validate(c)
-            if cache.status and cache.status.clusters and any(sc.name == name for sc in cache.status.clusters):
-                namespaces.add(_namespace(cache.metadata))
+        namespaces |= {_namespace(c.metadata) for c in self.caches_on_cluster()}
 
         pc = resource.child_name(name, "cluster-kubeconfig")
         for ns in sorted(namespaces):

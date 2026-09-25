@@ -23,8 +23,9 @@
 # filesystem mounted on every node group, served through Nebius's
 # csi-mounted-fs-path CSI driver as the modelplane-rwx-fs StorageClass.
 #
-# Delete this InferenceCluster with foreground cascading deletion for a
-# clean teardown:
+# Delete what runs on this InferenceCluster first, since it refuses deletion
+# while anything uses it, then delete it with foreground cascading deletion
+# for a clean teardown:
 #
 #   kubectl delete inferencecluster nebius-eu-north --cascade=foreground
 #

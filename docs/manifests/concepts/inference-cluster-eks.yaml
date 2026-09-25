@@ -16,8 +16,9 @@
 # a 'modelplane-rwx-efs' StorageClass pinned to it. The admin does
 # nothing, and provisioned EKS clusters take no StorageClass override.
 #
-# Delete this InferenceCluster with foreground cascading deletion for a
-# clean teardown:
+# Delete what runs on this InferenceCluster first, since it refuses deletion
+# while anything uses it, then delete it with foreground cascading deletion
+# for a clean teardown:
 #
 #   kubectl delete inferencecluster eks-us-west --cascade=foreground
 #
