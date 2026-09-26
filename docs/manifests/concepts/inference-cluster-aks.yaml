@@ -21,8 +21,9 @@
 # modelplane-rwx-fs StorageClass (Premium)
 # and the driver provisions the backing storage account on demand.
 #
-# Delete this InferenceCluster with foreground cascading deletion for a
-# clean teardown:
+# Delete what runs on this InferenceCluster first, since it refuses deletion
+# while anything uses it, then delete it with foreground cascading deletion
+# for a clean teardown:
 #
 #   kubectl delete inferencecluster aks-westeurope --cascade=foreground
 #

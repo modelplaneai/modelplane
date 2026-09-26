@@ -8,28 +8,25 @@ plane.
 
 ## Delete model resources
 
-Delete model resources before clusters. Deleting a cluster first leaves the
-deployments reconciling against infrastructure that no longer exists.
+Delete model resources before clusters. A cluster refuses deletion while
+anything still runs on it. Foreground cascading deletion holds each resource
+until what it composed on the clusters is gone, so a cluster isn't released
+while that's still being removed:
 
 ```bash
-kubectl delete md --all -n ml-team
-kubectl delete ms --all -n ml-team
-```
-
-Wait for all model replicas to finish:
-
-```bash
-kubectl get modelreplica -n ml-team --watch
+kubectl delete md --all -n ml-team --cascade=foreground
+kubectl delete ms --all -n ml-team --cascade=foreground
 ```
 
 ## Delete the gateway
 
 Delete the gateway before its cluster. The `InferenceGateway` runs a load balancer
 on the cluster it names; deleting it while that cluster is still up lets the load
-balancer be removed, rather than leaking it when the cluster goes.
+balancer be removed, rather than leaking it when the cluster goes. Foreground
+deletion holds the gateway until its objects on the cluster are deleted:
 
 ```bash
-kubectl delete ig --all
+kubectl delete ig --all --cascade=foreground
 ```
 
 ## Delete the clusters

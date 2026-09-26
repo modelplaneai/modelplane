@@ -9,9 +9,10 @@
 #
 # eu-north1 (Finland) keeps inference in the EU for data residency.
 #
-# Clean teardown - delete the ML resources first (they hold a usage on the
-# cluster), then the cluster:
-#   kubectl delete modeldeployment,modelservice,modelcache laguna -n ml-team
+# Clean teardown - delete the ML resources, and any InferenceGateway running
+# on the cluster, first (the cluster refuses deletion while they use it), then
+# the cluster:
+#   kubectl delete modeldeployment,modelservice,modelcache laguna -n ml-team --cascade=foreground
 #   kubectl delete inferencecluster nebius-eu-north --cascade=foreground
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
