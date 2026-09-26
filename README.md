@@ -54,12 +54,14 @@ spec:
               containers:
               - name: engine
                 image: vllm/vllm-openai:v0.23.0
-                args: ["--model=Qwen/Qwen2.5-0.5B-Instruct"]
+                args:
+                - --model=Qwen/Qwen2.5-0.5B-Instruct
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
 ```
 
 Modelplane schedules the replica onto a cluster with free, compatible GPUs and
-deploys the serving engine. Expose it behind one OpenAI-compatible endpoint with
-a `ModelService`:
+deploys the serving engine. Give callers one model name for it at the gateway
+with a `ModelService`:
 
 ```yaml
 apiVersion: modelplane.ai/v1alpha1
@@ -69,7 +71,8 @@ metadata:
   namespace: ml-team
 spec:
   endpoints:
-  - selector:
+  - name: qwen-demo
+    selector:
       matchLabels:
         modelplane.ai/deployment: qwen-demo
 ```
@@ -95,8 +98,8 @@ everything in between composed for you:
   devices a node pool offers and how to provision it), fronted by an
   `InferenceGateway`.
 - **Developers** create a `ModelDeployment` (a model's engines, replica count,
-  and an optional `ModelCache`) and a `ModelService` (one endpoint across the
-  replicas it selects).
+  and an optional `ModelCache`) and a `ModelService` (one model name, at the
+  gateway, across the replicas it selects).
 - **Modelplane composes** a `ModelReplica` per cluster and a `ModelEndpoint` per
   replica.
 
