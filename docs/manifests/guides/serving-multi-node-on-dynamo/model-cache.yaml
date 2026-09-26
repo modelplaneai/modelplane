@@ -1,7 +1,9 @@
 # The shared read-write-many cache the gang serves from, hydrated once from
 # Hugging Face. Both gang pods mount it and read weights from it over EFS,
 # instead of each pulling its own copy. Qwen2.5-14B is open, so it needs no
-# token. Its FP16 weights are about 29 GB, so sizeGiB leaves headroom.
+# token. Its FP16 weights are about 29 GB, so sizeGiB leaves headroom. The
+# clusterSelector stages it only on the Dynamo cluster, not the getting started
+# tour's, and the deployment follows it there.
 apiVersion: modelplane.ai/v1alpha1
 kind: ModelCache
 metadata:
@@ -12,3 +14,6 @@ spec:
   huggingFace:
     repo: Qwen/Qwen2.5-14B-Instruct
     sizeGiB: 40
+  clusterSelector:
+    matchLabels:
+      modelplane.ai/stack: dynamo

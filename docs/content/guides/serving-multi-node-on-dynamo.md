@@ -30,7 +30,7 @@ ModelExpress on the cluster.
 Provisioning the pool and installing the stack takes about 15 minutes:
 
 ```bash
-kubectl wait --for=condition=Ready ic/eks-us-east --timeout=20m
+kubectl wait --for=condition=Ready ic/eks-us-east-dynamo --timeout=20m
 ```
 
 ## Cache the weights
@@ -102,7 +102,7 @@ Each replica is a gang of two nodes, so a second replica needs two more nodes.
 Grow the pool to four, then scale the deployment:
 
 ```bash
-kubectl patch ic/eks-us-east --type=json -p '[
+kubectl patch ic/eks-us-east-dynamo --type=json -p '[
   {"op":"replace","path":"/spec/nodePools/0/nodeCount","value":4},
   {"op":"replace","path":"/spec/nodePools/0/minNodeCount","value":4},
   {"op":"replace","path":"/spec/nodePools/0/maxNodeCount","value":4}]'
