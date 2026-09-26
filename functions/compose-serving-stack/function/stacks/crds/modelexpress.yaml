@@ -10,8 +10,8 @@
 #
 # Both CRDs are installed once per Dynamo cluster by the serving stack (not
 # per-cache by compose-model-cache). The custom resources themselves are
-# Namespaced: an engine pod's ModelExpress client publishes them into its own
-# namespace (POD_NAMESPACE), where peers in that namespace discover them.
+# Namespaced: the cluster's one ModelExpress server writes them into its own
+# namespace (its POD_NAMESPACE) on behalf of the engines that report to it.
 #
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0

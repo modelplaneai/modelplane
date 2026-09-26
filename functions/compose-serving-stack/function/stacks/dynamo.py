@@ -35,9 +35,9 @@ import yaml
 from function.stacks.components import Chart, Component, Manifests
 
 # The name and the `default` namespace are a cross-function contract:
-# compose-model-replica points engine pods at this Service by name and
-# runs them in that namespace. Both functions hard-code the strings, so
-# they change together.
+# compose-model-replica points engine pods, which run in their team's
+# own namespace, at this Service by its namespace-qualified name. Both
+# functions hard-code the strings, so they change together.
 _MODELEXPRESS_NAMESPACE = "default"
 _MODELEXPRESS_SERVER_NAME = "modelexpress-server"
 _MODELEXPRESS_IMAGE = "nvcr.io/nvidia/ai-dynamo/modelexpress-server:0.4.1"

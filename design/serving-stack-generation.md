@@ -88,9 +88,9 @@ answers each of them:
 | a `ResourceClaimTemplate` naming the `gpu.nvidia.com` device class | the NVIDIA GPU DRA driver |
 
 Plain string contracts run beside those API contracts. A replica reaches
-ModelExpress at `modelexpress-server:8001`, sets `schedulerName: kai-scheduler`,
-and labels pods `kai.scheduler/queue: modelplane` for a `Queue` the serving
-stack creates.
+ModelExpress at `modelexpress-server.default.svc:8001`, sets
+`schedulerName: kai-scheduler`, and labels pods
+`kai.scheduler/queue: modelplane` for a `Queue` the serving stack creates.
 
 Modelplane composes a `grove.io/v1alpha1` resource against a chart pinned at
 `v0.1.0-alpha.12-rc2`. Neither an alpha API nor a pre-release chart promises
