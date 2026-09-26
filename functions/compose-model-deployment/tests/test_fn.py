@@ -159,12 +159,15 @@ def _cluster(
     hostname: str | None = "cluster.clusters.example.com",
     nodes: int = 2,
     placement_labels: dict[str, str] | None = None,
+    cache_storage: bool = False,
 ) -> dict:
     """An InferenceCluster input fixture, dumped to a dict.
 
     A ready cluster has a Ready=True condition and a gateway hostname. ready=False
     flips the condition to Unavailable; hostname=None drops the gateway entirely
     (mirroring an offline cluster). nodes=0 yields a pool with no capacity.
+    cache_storage reports an RWX StorageClass in status.cache, which a cluster
+    needs to stage a ModelCache.
     """
     return icv1alpha1.InferenceCluster(
         metadata=metav1.ObjectMeta(name=name),
@@ -189,6 +192,7 @@ def _cluster(
                 )
             ],
             gateway=icv1alpha1.Gateway(address="10.0.0.1", hostname=hostname) if hostname else None,
+            cache=icv1alpha1.CacheModel(storageClassName="rwx") if cache_storage else None,
             providerConfigRef=icv1alpha1.ProviderConfigRef(name=name),
             gpuPools=[
                 icv1alpha1.GpuPool(
@@ -211,6 +215,9 @@ def _cluster(
 
 # A ready cluster with a two-node GPU pool. Reused across most cases.
 _CLUSTER_A = _cluster("cluster-a")
+
+# cluster-a with the RWX storage a ModelCache needs.
+_CLUSTER_A_CACHE = _cluster("cluster-a", cache_storage=True)
 
 
 def _cache(name: str, *, match_labels: dict[str, str] | None = None) -> dict:
@@ -293,6 +300,23 @@ _EXISTING_REPLICA = mrv1alpha1.ModelReplica(
         ],
     ),
 ).model_dump(exclude_none=True, mode="json")
+
+# The ModelReplica a deployment that references ModelCache qwen composes on
+# cluster-b, as the first replica there.
+_CACHED_REPLICA_B = {
+    "apiVersion": "modelplane.ai/v1alpha1",
+    "kind": "ModelReplica",
+    "metadata": {
+        "name": "my-model-f0b76",
+        "namespace": "ml-team",
+        "labels": {
+            "modelplane.ai/deployment": "my-model",
+            "modelplane.ai/cluster": "cluster-b",
+            "modelplane.ai/replica-index": "0",
+        },
+    },
+    "spec": {"clusterName": "cluster-b", "modelCacheRef": {"name": "qwen"}, "engines": _REPLICA_ENGINES},
+}
 
 # The requirements selectors every want echoes back. Both are bare selectors
 # matching all resources of the kind.
@@ -843,7 +867,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             ),
             Case(
                 name="modelCacheRef is propagated onto the composed replica",
-                req=_req(xr_cached, clusters=[_CLUSTER_A], cache=_cache("qwen")),
+                req=_req(xr_cached, clusters=[_CLUSTER_A_CACHE], cache=_cache("qwen")),
                 want=_want(
                     fnv1.RunFunctionResponse(
                         meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
@@ -912,7 +936,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="cache clusterSelector is intersected with the deployment's",
                 req=_req(
                     xr_cached_selector,
-                    clusters=[_CLUSTER_A],
+                    clusters=[_CLUSTER_A_CACHE],
                     cache=_cache("qwen", match_labels={"tier": "gpu"}),
                 ),
                 want=_want(
@@ -974,6 +998,152 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         context=structpb.Struct(),
                     ),
                     cluster_labels={"region": "us-east", "tier": "gpu"},
+                    cache_name="qwen",
+                ),
+            ),
+            Case(
+                # compose-model-cache stages only onto clusters that report cache
+                # storage, so cluster-a, which reports none, can't host the
+                # replica's PVC. The replica lands on cluster-b, though cluster-a
+                # would win the tiebreak by name.
+                name="a cached replica lands only on a cluster with cache storage",
+                req=_req(
+                    xr_cached,
+                    clusters=[_CLUSTER_A, _cluster("cluster-b", cache_storage=True)],
+                    cache=_cache("qwen"),
+                ),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-b-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(_CACHED_REPLICA_B)
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ModelCacheResolved",
+                                status=fnv1.STATUS_CONDITION_TRUE,
+                                reason="ModelCacheResolved",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="Scheduling",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
+                            ),
+                        ],
+                        results=[
+                            fnv1.Result(
+                                severity=fnv1.SEVERITY_NORMAL,
+                                message="Scheduled 1 replicas across 1 clusters: cluster-b",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    ),
+                    cache_name="qwen",
+                ),
+            ),
+            Case(
+                # A replica is running on cluster-a, which has no cache storage,
+                # say because the bug this guards against put it there. Its PVC
+                # never appears, so it's dropped and re-placed on cluster-b, the
+                # way a replica is when the cache's selector stops matching.
+                name="a running cached replica on a cluster without cache storage is re-placed",
+                req=_req(
+                    xr_cached,
+                    clusters=[_CLUSTER_A, _cluster("cluster-b", cache_storage=True)],
+                    replicas=[_EXISTING_REPLICA],
+                    observed={"replica-cluster-a-0": _replica_status(_EXISTING_REPLICA, ready=True)},
+                    cache=_cache("qwen"),
+                ),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 1, "ready": 0}}}),
+                            ),
+                            resources={
+                                "replica-cluster-b-0": fnv1.Resource(
+                                    resource=resource.dict_to_struct(_CACHED_REPLICA_B)
+                                ),
+                            },
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ModelCacheResolved",
+                                status=fnv1.STATUS_CONDITION_TRUE,
+                                reason="ModelCacheResolved",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="Scheduling",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="ModelStarting",
+                                message="0 of 1 ready",
+                            ),
+                        ],
+                        results=[
+                            fnv1.Result(
+                                severity=fnv1.SEVERITY_NORMAL,
+                                message="Scheduled 1 replicas across 1 clusters: cluster-b",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    ),
+                    cache_name="qwen",
+                ),
+            ),
+            Case(
+                # The only candidate has no cache storage, so the cache can't
+                # stage there and nothing is placed. ReplicasScheduled says why
+                # rather than blaming capacity.
+                name="no candidate with cache storage places nothing",
+                req=_req(xr_cached, clusters=[_CLUSTER_A], cache=_cache("qwen")),
+                want=_want(
+                    fnv1.RunFunctionResponse(
+                        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                        desired=fnv1.State(
+                            composite=fnv1.Resource(
+                                resource=resource.dict_to_struct({"status": {"replicas": {"total": 0, "ready": 0}}}),
+                                ready=fnv1.READY_FALSE,
+                            ),
+                        ),
+                        conditions=[
+                            fnv1.Condition(
+                                type="ModelCacheResolved",
+                                status=fnv1.STATUS_CONDITION_TRUE,
+                                reason="ModelCacheResolved",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasScheduled",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="NoCacheStorage",
+                                message="0 of 1 replicas scheduled: no candidate cluster has storage for ModelCache qwen",
+                            ),
+                            fnv1.Condition(
+                                type="ReplicasReady",
+                                status=fnv1.STATUS_CONDITION_FALSE,
+                                reason="NoReplicasScheduled",
+                            ),
+                        ],
+                        context=structpb.Struct(),
+                    ),
                     cache_name="qwen",
                 ),
             ),

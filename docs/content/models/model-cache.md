@@ -72,11 +72,11 @@ container's `env`.
 
 An optional `clusterSelector` scopes where the cache is staged. Omitting it
 stages the cache on every cluster in the fleet; setting `matchLabels` restricts
-it to clusters carrying those labels. A `ModelDeployment` that references the cache
-places *new* replicas only onto clusters within this footprint, so narrowing the
-selector also narrows where replicas can land: a replica never schedules to a
-cluster the cache didn't stage to. Replicas already running are left where they
-are.
+it to clusters carrying those labels. Either way, a cluster with no
+[cache storage](#storage-prerequisites) is skipped. A `ModelDeployment` that
+references the cache places replicas only on clusters the cache stages to, and
+moves a replica off a cluster the cache stops staging to, since the cache's
+volume is removed from it.
 
 ## Loading from cache
 
