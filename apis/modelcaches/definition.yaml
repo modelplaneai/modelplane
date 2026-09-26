@@ -15,10 +15,10 @@ spec:
     served: true
     referenceable: true
     additionalPrinterColumns:
-    - name: SOURCE
+    - name: REPO
       type: string
-      jsonPath: .spec.source.huggingFace.repo
-    - name: READY
+      jsonPath: .spec.huggingFace.repo
+    - name: STAGED
       type: string
       jsonPath: .status.summary.ready
     schema:
