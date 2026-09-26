@@ -4,7 +4,7 @@
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceClass
 metadata:
-  name: l4-1x-g6
+  name: l4-1x-g6-8xlarge
 spec:
   description: "EKS g6.8xlarge, 1x NVIDIA L4"
   provisioning:

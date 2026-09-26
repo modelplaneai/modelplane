@@ -6,9 +6,10 @@
 apiVersion: modelplane.ai/v1alpha1
 kind: InferenceCluster
 metadata:
-  name: eks-us-east
+  name: eks-us-east-dynamo
   labels:
     modelplane.ai/region: us-east
+    modelplane.ai/stack: dynamo
 spec:
   stack: Dynamo
   cluster:
@@ -17,7 +18,7 @@ spec:
       region: us-east-1
   nodePools:
   - name: gpu-l4
-    className: l4-1x-g6
+    className: l4-1x-g6-8xlarge
     nodeCount: 2
     minNodeCount: 2
     maxNodeCount: 2
