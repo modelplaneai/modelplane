@@ -643,7 +643,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         # doesn't depend on the token, so a cache isn't pruned for a missing one
         # - but the hydration Job and token Secret are held back. ArtifactReady
         # is False with reason AuthSecretMissing, and a warning names the Secret
-        # and key so the user can fix it instead of seeing the XR stall. ---
+        # and key so the user can fix it instead of seeing the XR stall. The XR
+        # is marked not ready, since the PVC alone would make it ready once it
+        # binds. ---
         want10 = fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
@@ -656,6 +658,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             },
                         },
                     ),
+                    ready=fnv1.READY_FALSE,
                 ),
                 resources={
                     "pvc-cluster-a": fnv1.Resource(resource=resource.dict_to_struct(_pvc_object("cluster-a-pc"))),
@@ -782,6 +785,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             desired=fnv1.State(
                 composite=fnv1.Resource(
                     resource=resource.dict_to_struct({"status": {"summary": {"ready": "0/0"}, "clusters": []}}),
+                    ready=fnv1.READY_FALSE,
                 ),
             ),
             conditions=[

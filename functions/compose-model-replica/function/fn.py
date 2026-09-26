@@ -19,8 +19,8 @@ composes the cluster-level serving resources for each of the replica's worker
 engines. An engine's member roles select its backend: a Standalone member composes
 to a Deployment (native), a Leader plus Worker to the cluster's chosen multi-node
 backend - a LeaderWorkerSet (llm-d) or a PodCliqueSet (Grove), per the
-InferenceCluster's stack. One shared Service and HTTPRoute front all of
-a replica's engines.
+InferenceCluster's stack. One HTTPRoute, InferencePool and endpoint picker
+front all of a replica's engines.
 
 Each member's template is a curated subset of PodTemplateSpec. The container
 named "engine" is the inference engine; its image, command, and args are passed
@@ -116,6 +116,9 @@ class Composer:
                 ),
             )
             response.normal(self.rsp, "Waiting for cluster to be resolved")
+            # Nothing is composed while waiting, and an XR with no composed
+            # resources would otherwise be trivially ready.
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return False
 
         self.ic = icv1alpha1.InferenceCluster.model_validate(ic_dict)
@@ -134,6 +137,7 @@ class Composer:
                 ),
             )
             response.normal(self.rsp, "Waiting for cluster providerConfigRef")
+            self.rsp.desired.composite.ready = fnv1.READY_FALSE
             return False
 
         return True
@@ -218,23 +222,15 @@ class Composer:
         )
 
         # Per-resource readiness. Crossplane gates the XR's Ready on every
-        # composed resource being ready, so the function must mark each one - a
-        # composed resource isn't ready just because provider-kubernetes set its
-        # Object's own Ready condition. Marking a resource ready asserts the
-        # function observed it ready, so we only ever mark a resource we can see
-        # in observed state. A workload additionally gates on the model actually
-        # serving; the Service, HTTPRoute, and ResourceClaimTemplates have no
-        # runtime readiness to wait on (existing is being ready), so observing
-        # them is enough. A freshly composed resource isn't in observed yet, so
-        # it stays unready until the next reconcile sees it applied.
-        workloads = set(workload_keys)
+        # composed resource being ready, but doesn't read a composed resource's
+        # own Ready condition, so the function relays it. Each Object's
+        # readiness policy decides that condition: a workload and the endpoint
+        # picker are Ready once their CEL query sees them available, anything
+        # else once applied. Envoy AI Gateway fails closed without a picker,
+        # whatever the pool's failureMode says, so the replica can't serve
+        # until its picker is available.
         for key in self.rsp.desired.resources:
-            if key not in self.req.observed.resources:
-                continue
-            if key in workloads:
-                if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
-                    self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
-            else:
+            if resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True":
                 self.rsp.desired.resources[key].ready = fnv1.READY_TRUE
 
     def _workload_accepted(self, key: str) -> bool:
