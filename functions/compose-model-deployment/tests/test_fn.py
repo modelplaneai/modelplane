@@ -645,8 +645,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 # Zero desired parks the deployment before resolve_inputs runs:
                 # no requirements are declared (the want carries none), nothing
                 # is composed, and both conditions read True with the
-                # ScaledToZero reason rather than a capacity failure.
-                name="scaled to zero composes nothing and reports ScaledToZero",
+                # NoReplicasDesired reason rather than a capacity failure.
+                name="scaled to zero composes nothing and reports NoReplicasDesired",
                 req=_req(xr_zero),
                 want=fnv1.RunFunctionResponse(
                     meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
@@ -660,13 +660,13 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         fnv1.Condition(
                             type="ReplicasScheduled",
                             status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="ScaledToZero",
+                            reason="NoReplicasDesired",
                             message="0 replicas desired",
                         ),
                         fnv1.Condition(
                             type="ReplicasReady",
                             status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="ScaledToZero",
+                            reason="NoReplicasDesired",
                             message="0 replicas desired",
                         ),
                     ],
@@ -701,13 +701,13 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         fnv1.Condition(
                             type="ReplicasScheduled",
                             status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="ScaledToZero",
+                            reason="NoReplicasDesired",
                             message="0 replicas desired",
                         ),
                         fnv1.Condition(
                             type="ReplicasReady",
                             status=fnv1.STATUS_CONDITION_TRUE,
-                            reason="ScaledToZero",
+                            reason="NoReplicasDesired",
                             message="0 replicas desired",
                         ),
                     ],

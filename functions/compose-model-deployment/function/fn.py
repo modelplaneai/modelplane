@@ -54,7 +54,7 @@ CONDITION_REASON_SCHEDULING = "Scheduling"
 CONDITION_REASON_NO_REPLICAS_SCHEDULED = "NoReplicasScheduled"
 CONDITION_REASON_ALL_REPLICAS_READY = "AllReplicasReady"
 CONDITION_REASON_MODEL_STARTING = "ModelStarting"
-CONDITION_REASON_SCALED_TO_ZERO = "ScaledToZero"
+CONDITION_REASON_NO_REPLICAS_DESIRED = "NoReplicasDesired"
 
 # Label keys stamped on the ModelReplicas and ModelEndpoints this function
 # composes, identifying the deployment and cluster they belong to.
@@ -579,7 +579,7 @@ class Composer:
 
         Both conditions read True: at zero desired there is nothing left to
         schedule or to wait on, the same way a Kubernetes Deployment at zero
-        replicas reports Available. The ScaledToZero reason is what separates
+        replicas reports Available. The NoReplicasDesired reason is what separates
         a parked deployment from one that wants replicas and can't place them.
         """
         # Transition event while composed resources still exist; once they're
@@ -596,13 +596,13 @@ class Composer:
             resource.Condition(
                 typ=CONDITION_TYPE_REPLICAS_SCHEDULED,
                 status="True",
-                reason=CONDITION_REASON_SCALED_TO_ZERO,
+                reason=CONDITION_REASON_NO_REPLICAS_DESIRED,
                 message="0 replicas desired",
             ),
             resource.Condition(
                 typ=CONDITION_TYPE_REPLICAS_READY,
                 status="True",
-                reason=CONDITION_REASON_SCALED_TO_ZERO,
+                reason=CONDITION_REASON_NO_REPLICAS_DESIRED,
                 message="0 replicas desired",
             ),
         )
