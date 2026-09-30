@@ -39,6 +39,9 @@ clouds:
   - name: Vultr
     term: Vultr
     icon: brand-vultr
+  - name: Vultr bare metal
+    term: VultrBaremetal
+    icon: brand-vultr
 gpus:
   - name: A16
     mem: 16G
@@ -50,6 +53,8 @@ gpus:
     mem: 80G
   - name: H200
     mem: 141G
+  - name: MI325X
+    mem: 256G
 servingModes:
   - Standalone
   - LeaderWorker

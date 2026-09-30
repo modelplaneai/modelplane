@@ -1,0 +1,33 @@
+# A bare-metal-backed InferenceCluster: provisions Vultr bare metal
+# servers (one CPU-only management server plus the GPU pool below) and
+# installs a k3s cluster onto them over SSH, then the serving stack.
+# The composed ServingStack gets cloud: VultrBaremetal and
+# accelerators: [AMD], so the AMD GPU operator installs (DRA mode) and the
+# NVIDIA components stay out.
+#
+# Bare metal has no autoscaling (pools are fixed size) and only the
+# Standard stack is supported. Provisioning a bare metal server takes
+# tens of minutes; expect the cluster to sit in Provisioning for a
+# while.
+#
+# Delete with foreground cascading deletion for a clean teardown:
+#
+#   kubectl delete inferencecluster vultr-baremetal-ord --cascade=foreground
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: vultr-baremetal-ord
+  labels:
+    modelplane.ai/region: ord
+spec:
+  cluster:
+    source: VultrBaremetal
+    vultrBaremetal:
+      region: ord
+      ssh:
+        secretRef:
+          name: vultr-baremetal-ssh
+  nodePools:
+    - name: gpu-mi325x
+      className: vultr-mi325x-8x
+      nodeCount: 1

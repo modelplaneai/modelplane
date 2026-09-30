@@ -194,13 +194,33 @@ class Vultr(BaseModel):
     """
 
 
+class AcceleratorModel4(BaseModel):
+    count: conint(ge=1, le=16)
+    type: constr(min_length=1, max_length=63)
+    """
+    GPU accelerator type (e.g. amd-mi355x, nvidia-h100). Reported on the consuming InferenceCluster's status.
+    """
+
+
+class VultrBaremetal(BaseModel):
+    accelerator: AcceleratorModel4
+    """
+    GPU accelerator the plan carries. Provisioning input only: the scheduler matches against spec.devices, not this block. The type's vendor prefix (amd-, nvidia-) selects the GPU node taint and labels.
+    """
+    plan: constr(min_length=1, max_length=63)
+    """
+    Vultr bare metal plan ID (e.g. vbm-256c-3072gb-8-mi355x-gpu). The plan determines the GPU model and count; the accelerator block below is informational.
+    """
+
+
 class Provisioning(BaseModel):
     aks: Aks | None = None
     eks: Eks | None = None
     gke: Gke | None = None
     nebius: Nebius | None = None
-    provider: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr']
+    provider: Literal['GKE', 'EKS', 'AKS', 'Nebius', 'Vultr', 'VultrBaremetal']
     vultr: Vultr | None = None
+    vultrBaremetal: VultrBaremetal | None = None
 
 
 class Spec(BaseModel):

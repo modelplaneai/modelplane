@@ -1,0 +1,30 @@
+# GPU classes for the Vultr bare metal test. Bare metal plan
+# availability is region-gated; check before picking a region:
+#
+#   curl -s "https://api.vultr.com/v2/regions/<region>/availability" \
+#     -H "Authorization: Bearer $VULTR_API_KEY" | jq '.available_plans[]' | grep vbm
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceClass
+metadata:
+  name: vultr-mi325x-8x
+spec:
+  description: "Vultr vbm-256c-3072gb-8-mi325x-gpu, 8x AMD Instinct MI325X 256GB"
+  provisioning:
+    provider: VultrBaremetal
+    vultrBaremetal:
+      plan: vbm-256c-3072gb-8-mi325x-gpu
+      accelerator:
+        type: amd-mi325x
+        count: 8
+  devices:
+  - name: gpu
+    claim: DRA
+    driver: gpu.amd.com
+    deviceClassName: gpu.amd.com
+    count: 8
+    attributes:
+      productName: { string: AMD_Instinct_MI325_OAM }
+    capacity:
+      # The MI325X's usable HBM3e as the AMD DRA driver's ResourceSlices
+      # report it, not its nominal 256GB.
+      memory: { value: "262128Mi" }

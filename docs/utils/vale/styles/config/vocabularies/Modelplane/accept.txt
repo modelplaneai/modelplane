@@ -29,6 +29,11 @@ ModelReplica
 ModelReplicas
 ModelService
 ModelServices
+K3sCluster
+VultrBaremetalCluster
+VultrBaremetal
+VultrCluster
+ServiceLB
 
 # Spec fields and config keys
 clusterSelector
@@ -111,6 +116,12 @@ vLLM
 [Hh]uggingFace
 NVIDIA
 NVLink
+AMD
+Instinct
+ROCm
+amdgpu
+CUDA
+HBM3e
 Envoy
 Traefik
 MetalLB
@@ -252,6 +263,8 @@ L4
 L40S
 H100
 H200
+MI325X
+MI355X
 EFA
 BF16
 FP16
@@ -540,6 +553,7 @@ all-or-nothing
 routable
 pipeline-parallel
 Qwen2.5-14B
+Qwen2.5-0.5B
 
 agent
 requirement

@@ -1,0 +1,37 @@
+# A small model to prove placement and serving on the bare metal
+# cluster. The device selector matches against the capacity the
+# vultr-mi325x-8x class declares (262128Mi), not the pod's resource
+# requests, so >= 200Gi lands it on the MI325X pool; the claim takes 1
+# of the node's 8 GPUs. The engine is AMD's ROCm vLLM build (the CDNA
+# variant covers MI325X/gfx942) - the upstream vllm/vllm-openai image
+# is CUDA-only. Unlike that image, rocm/vllm's entrypoint is not the
+# OpenAI server, so the command invokes it explicitly. No ModelCache:
+# the engine pulls weights straight from Hugging Face.
+apiVersion: modelplane.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: ml-team
+spec:
+  replicas: 1
+  template:
+    spec:
+      engines:
+      - name: qwen
+        members:
+        - role: Standalone
+          nodeSelector:
+            devices:
+            - name: gpu
+              count: 1
+              selectors:
+              - cel: |
+                  device.capacity["gpu.amd.com"].memory.compareTo(quantity("200Gi")) >= 0
+          template:
+            spec:
+              containers:
+              - name: engine
+                image: rocm/vllm:rocm7.14.1_cdna_ubuntu24.04_py3.14_pytorch_2.11_vllm_0.23.0
+                command: ["vllm", "serve", "Qwen/Qwen2.5-0.5B-Instruct"]
+                args:
+                - --served-model-name=$(MODELPLANE_SERVED_MODEL_NAME)
