@@ -2854,6 +2854,422 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         want_creds.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
         want_creds.requirements.resources["model-caches"].CopyFrom(_caches_selector())
 
+        # --- EKS with endpointAccess Private and a user System pool. The
+        # access mode passes through to the EKSCluster spec, the System pool
+        # passes through with role System and its instance type (replacing
+        # the injected default downstream), and status.gpuPools lists only
+        # the GPU pool. ---
+        req16 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="EKS",
+                                    endpointAccess="Private",
+                                    eks=v1alpha1.Eks(region="us-west-2"),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="sys-pool",
+                                        role="System",
+                                        instanceType="m6i.2xlarge",
+                                        nodeCount=2,
+                                        minNodeCount=1,
+                                        maxNodeCount=3,
+                                    ),
+                                    v1alpha1.NodePool(
+                                        name="l4-pool",
+                                        className="gpu-l4-eks",
+                                        nodeCount=2,
+                                        maxNodeCount=4,
+                                        zones=["us-west-2a", "us-west-2b"],
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req16.required_resources["class-gpu-l4-eks"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_l4_eks)),
+        )
+
+        want16 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "providerConfigRef": {
+                                    "name": "test-cluster-cluster-kubeconfig-d0f89",
+                                },
+                                "namespace": "modelplane-system",
+                                "gpuPools": [
+                                    {
+                                        "name": "l4-pool",
+                                        "nodes": 4,
+                                        "devices": [
+                                            {
+                                                "name": "gpu",
+                                                "claim": "DRA",
+                                                "driver": "gpu.nvidia.com",
+                                                "deviceClassName": "gpu.nvidia.com",
+                                                "count": 1,
+                                                "capacity": {"memory": {"value": "24Gi"}},
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ),
+                ),
+                resources={
+                    "eks-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "EKSCluster",
+                                "metadata": {
+                                    "name": "test-cluster",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "region": "us-west-2",
+                                    "kubernetesVersion": "1.36",
+                                    "endpointAccess": "Private",
+                                    "nodePools": [
+                                        {
+                                            "name": "sys-pool",
+                                            "role": "System",
+                                            "instanceType": "m6i.2xlarge",
+                                            "nodeCount": 2,
+                                            "minNodeCount": 1,
+                                            "maxNodeCount": 3,
+                                        },
+                                        {
+                                            "name": "l4-pool",
+                                            "role": "GPU",
+                                            "instanceType": "g6.xlarge",
+                                            "nodeCount": 2,
+                                            "minNodeCount": None,
+                                            "maxNodeCount": 4,
+                                            "diskSizeGb": 100,
+                                            "gpu": {
+                                                "acceleratorType": "nvidia-l4",
+                                            },
+                                            "zones": ["us-west-2a", "us-west-2b"],
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCluster",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want16.requirements.resources["class-gpu-l4-eks"].CopyFrom(class_selector_eks)
+        want16.requirements.resources["gateways"].CopyFrom(_gateways_selector())
+        want16.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+        want16.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
+        want16.requirements.resources["model-caches"].CopyFrom(_caches_selector())
+
+        # --- Nebius with endpointAccess Public and a user System pool. An
+        # mk8s cluster's private endpoint always exists, so Public normalizes
+        # to PublicAndPrivate on the NebiusCluster spec; the System pool
+        # passes through with its platform and preset. ---
+        req17 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="Nebius",
+                                    endpointAccess="Public",
+                                    nebius=v1alpha1.Nebius(),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="sys-pool",
+                                        role="System",
+                                        instanceType="cpu-d3.8vcpu-32gb",
+                                        minNodeCount=1,
+                                        maxNodeCount=3,
+                                    ),
+                                    v1alpha1.NodePool(
+                                        name="h100-pool",
+                                        className="gpu-h100-nebius",
+                                        nodeCount=2,
+                                        maxNodeCount=4,
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req17.required_resources["class-gpu-h100-nebius"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_h100_nebius)),
+        )
+
+        want17 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "providerConfigRef": {
+                                    "name": "test-cluster-cluster-kubeconfig-d0f89",
+                                },
+                                "namespace": "modelplane-system",
+                                "gpuPools": [
+                                    {
+                                        "name": "h100-pool",
+                                        "nodes": 4,
+                                        "devices": [
+                                            {
+                                                "name": "gpu",
+                                                "claim": "DRA",
+                                                "driver": "gpu.nvidia.com",
+                                                "deviceClassName": "gpu.nvidia.com",
+                                                "count": 8,
+                                                "capacity": {"memory": {"value": "81559Mi"}},
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ),
+                ),
+                resources={
+                    "nebius-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "NebiusCluster",
+                                "metadata": {
+                                    "name": "test-cluster",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "kubernetesVersion": "1.34",
+                                    "endpointAccess": "PublicAndPrivate",
+                                    "nodePools": [
+                                        {
+                                            "name": "sys-pool",
+                                            "role": "System",
+                                            "platform": "cpu-d3",
+                                            "preset": "8vcpu-32gb",
+                                            "nodeCount": 1,
+                                            "minNodeCount": 1,
+                                            "maxNodeCount": 3,
+                                        },
+                                        {
+                                            "name": "h100-pool",
+                                            "role": "GPU",
+                                            "platform": "gpu-h100-sxm",
+                                            "preset": "8gpu-128vcpu-1600gb",
+                                            "diskSizeGb": 200,
+                                            "nodeCount": 2,
+                                            "maxNodeCount": 4,
+                                            "gpu": {
+                                                "acceleratorType": "nvidia-h100",
+                                                "driversPreset": "cuda13.0",
+                                            },
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCluster",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want17.requirements.resources["class-gpu-h100-nebius"].CopyFrom(class_selector_nebius)
+        want17.requirements.resources["gateways"].CopyFrom(_gateways_selector())
+        want17.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+        want17.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
+        want17.requirements.resources["model-caches"].CopyFrom(_caches_selector())
+
+        # --- AKS with endpointAccess Private and a user System pool. Private
+        # passes through to the AKSCluster spec (whose XRD only knows Public
+        # and Private); the System pool passes through with its VM size. ---
+        req18 = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        v1alpha1.InferenceCluster(
+                            metadata=metav1.ObjectMeta(
+                                name="test-cluster",
+                                namespace="modelplane-system",
+                            ),
+                            spec=v1alpha1.Spec(
+                                cluster=v1alpha1.Cluster(
+                                    source="AKS",
+                                    endpointAccess="Private",
+                                    aks=v1alpha1.Aks(location="westeurope"),
+                                ),
+                                nodePools=[
+                                    v1alpha1.NodePool(
+                                        name="syspool",
+                                        role="System",
+                                        instanceType="Standard_D8s_v5",
+                                        minNodeCount=1,
+                                        maxNodeCount=3,
+                                    ),
+                                    v1alpha1.NodePool(
+                                        name="h100pool",
+                                        className="gpu-h100-aks",
+                                        nodeCount=2,
+                                        minNodeCount=1,
+                                        maxNodeCount=4,
+                                    ),
+                                ],
+                            ),
+                        ).model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req18.required_resources["class-gpu-h100-aks"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(inference_class_h100_aks)),
+        )
+
+        want18 = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        {
+                            "status": {
+                                "providerConfigRef": {
+                                    "name": "test-cluster-cluster-kubeconfig-d0f89",
+                                },
+                                "namespace": "modelplane-system",
+                                "gpuPools": [
+                                    {
+                                        "name": "h100pool",
+                                        "nodes": 4,
+                                        "devices": [
+                                            {
+                                                "name": "gpu",
+                                                "claim": "DRA",
+                                                "driver": "gpu.nvidia.com",
+                                                "deviceClassName": "gpu.nvidia.com",
+                                                "count": 8,
+                                                "capacity": {"memory": {"value": "81559Mi"}},
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ),
+                ),
+                resources={
+                    "aks-cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                                "kind": "AKSCluster",
+                                "metadata": {
+                                    "name": "test-cluster",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "location": "westeurope",
+                                    "kubernetesVersion": "1.34",
+                                    "endpointAccess": "Private",
+                                    "nodePools": [
+                                        {
+                                            "name": "syspool",
+                                            "role": "System",
+                                            "vmSize": "Standard_D8s_v5",
+                                            "nodeCount": 1,
+                                            "minNodeCount": 1,
+                                            "maxNodeCount": 3,
+                                        },
+                                        {
+                                            "name": "h100pool",
+                                            "role": "GPU",
+                                            "vmSize": "Standard_ND96isr_H100_v5",
+                                            "diskSizeGb": 200,
+                                            "nodeCount": 2,
+                                            "minNodeCount": 1,
+                                            "maxNodeCount": 4,
+                                            "gpu": {
+                                                "acceleratorType": "nvidia-h100",
+                                            },
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                    ),
+                },
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Provisioning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCluster",
+                ),
+            ],
+            context=structpb.Struct(),
+        )
+        want18.requirements.resources["class-gpu-h100-aks"].CopyFrom(class_selector_aks)
+        want18.requirements.resources["gateways"].CopyFrom(_gateways_selector())
+        want18.requirements.resources["model-replicas"].CopyFrom(_replicas_selector("test-cluster"))
+        want18.requirements.resources["model-routes"].CopyFrom(_routes_selector("test-cluster"))
+        want18.requirements.resources["model-caches"].CopyFrom(_caches_selector())
+
         # Every cloud cluster composes an activation policy; with the policy
         # observed Healthy the cluster XR is composed.
         for req, want, kinds in [
@@ -2872,6 +3288,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             (req14, want14, fn._ACTIVATE_VULTR),
             (req_creds_vultr, want_creds_vultr, fn._ACTIVATE_VULTR),
             (req15, want15, fn._ACTIVATE_VULTR),
+            (req16, want16, fn._ACTIVATE_AWS),
+            (req17, want17, fn._ACTIVATE_NEBIUS),
+            (req18, want18, fn._ACTIVATE_AZURE),
         ]:
             _observe_activated(req, kinds)
             _want_activation(want, kinds)
@@ -2941,6 +3360,21 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="Vultr cluster ready composes CPC without identity, ServingStack, and Usage",
                 req=req15,
                 want=want15,
+            ),
+            Case(
+                name="EKS endpointAccess and System pool pass through to the EKSCluster spec",
+                req=req16,
+                want=want16,
+            ),
+            Case(
+                name="Nebius normalizes Public to PublicAndPrivate and passes the System pool through",
+                req=req17,
+                want=want17,
+            ),
+            Case(
+                name="AKS endpointAccess Private and System pool pass through to the AKSCluster spec",
+                req=req18,
+                want=want18,
             ),
             *guard_cases,
         ]

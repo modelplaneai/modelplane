@@ -16,6 +16,7 @@
 
 import dataclasses
 import unittest
+from typing import Literal
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -227,6 +228,36 @@ def _nodepool_gpu(cred_kind: str = _DEFAULT_CRED_KIND, cred_name: str = _DEFAULT
                         "cloud.google.com/gke-nvidia-gpu-dra-driver": "true",
                     },
                 },
+            },
+        },
+    }
+
+
+def _router(cred_kind: str = _DEFAULT_CRED_KIND, cred_name: str = _DEFAULT_CRED_NAME) -> dict:
+    return {
+        "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+        "kind": "Router",
+        "spec": {
+            "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+            "forProvider": {
+                "region": "us-central1",
+                "networkSelector": {"matchControllerRef": True},
+            },
+        },
+    }
+
+
+def _router_nat(cred_kind: str = _DEFAULT_CRED_KIND, cred_name: str = _DEFAULT_CRED_NAME) -> dict:
+    return {
+        "apiVersion": "compute.gcp.m.upbound.io/v1beta1",
+        "kind": "RouterNAT",
+        "spec": {
+            "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+            "forProvider": {
+                "region": "us-central1",
+                "routerSelector": {"matchControllerRef": True},
+                "natIpAllocateOption": "AUTO_ONLY",
+                "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
             },
         },
     }
@@ -597,6 +628,205 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(got),
                     "-want, +got",
                 )
+
+    async def test_endpoint_access(self) -> None:
+        """A non-Public endpointAccess makes the nodes private and composes
+        the Cloud Router and NAT their egress needs; Private additionally
+        disables the public endpoint."""
+        accesses: list[tuple[Literal["PublicAndPrivate", "Private"], bool]] = [
+            ("PublicAndPrivate", False),
+            ("Private", True),
+        ]
+        for access, private_endpoint in accesses:
+            with self.subTest(access=access):
+                xr = _gke_xr()
+                xr.spec.endpointAccess = access
+
+                req = fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                xr.model_dump(exclude_none=True, mode="json"),
+                            ),
+                        ),
+                    ),
+                )
+                req.required_resources["gcp-provider-config"].items.append(
+                    fnv1.Resource(resource=resource.dict_to_struct(_GCP_PROVIDER_CONFIG))
+                )
+
+                cluster = _cluster()
+                cluster["spec"]["forProvider"]["privateClusterConfig"] = {
+                    "enablePrivateNodes": True,
+                    "enablePrivateEndpoint": private_endpoint,
+                    "masterIpv4CidrBlock": "10.3.0.0/28",
+                    "masterGlobalAccessConfig": {"enabled": True},
+                }
+
+                want = fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(_expected_status()),
+                        ),
+                        resources={
+                            "network": fnv1.Resource(
+                                resource=resource.dict_to_struct(_network()),
+                            ),
+                            "projectservice-filestore": fnv1.Resource(
+                                resource=resource.dict_to_struct(_projectservice_filestore()),
+                            ),
+                            "subnet": fnv1.Resource(
+                                resource=resource.dict_to_struct(_subnet()),
+                            ),
+                            "router": fnv1.Resource(
+                                resource=resource.dict_to_struct(_router()),
+                            ),
+                            "router-nat": fnv1.Resource(
+                                resource=resource.dict_to_struct(_router_nat()),
+                            ),
+                            "cluster": fnv1.Resource(
+                                resource=resource.dict_to_struct(cluster),
+                            ),
+                            "nodepool-system": fnv1.Resource(
+                                resource=resource.dict_to_struct(_nodepool_system()),
+                            ),
+                            "nodepool-gpu-pool": fnv1.Resource(
+                                resource=resource.dict_to_struct(_nodepool_gpu()),
+                            ),
+                            "service-account": fnv1.Resource(
+                                resource=resource.dict_to_struct(_service_account()),
+                            ),
+                            "service-account-key": fnv1.Resource(
+                                resource=resource.dict_to_struct(_service_account_key()),
+                            ),
+                            "provider-config-kubernetes": fnv1.Resource(
+                                resource=resource.dict_to_struct(_provider_config_kubernetes()),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "provider-config-helm": fnv1.Resource(
+                                resource=resource.dict_to_struct(_provider_config_helm()),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                        },
+                    ),
+                    context=structpb.Struct(),
+                )
+                want.requirements.resources["gcp-provider-config"].CopyFrom(_GCP_PROVIDER_CONFIG_SELECTOR)
+
+                got = await self.runner.RunFunction(req, None)
+                self.assertEqual(
+                    json_format.MessageToDict(want),
+                    json_format.MessageToDict(got),
+                    "-want, +got",
+                )
+
+    async def test_user_system_pool(self) -> None:
+        """A declared System pool composes like any other pool and replaces
+        the injected default system node pool."""
+        xr = _gke_xr()
+        xr.spec.nodePools = [
+            v1alpha1.NodePool(
+                name="sys",
+                role="System",
+                machineType="e2-standard-8",
+                nodeCount=2,
+                minNodeCount=1,
+                maxNodeCount=3,
+            ),
+            *xr.spec.nodePools,
+        ]
+
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        xr.model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        req.required_resources["gcp-provider-config"].items.append(
+            fnv1.Resource(resource=resource.dict_to_struct(_GCP_PROVIDER_CONFIG))
+        )
+
+        want = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(_expected_status()),
+                ),
+                resources={
+                    "network": fnv1.Resource(
+                        resource=resource.dict_to_struct(_network()),
+                    ),
+                    "projectservice-filestore": fnv1.Resource(
+                        resource=resource.dict_to_struct(_projectservice_filestore()),
+                    ),
+                    "subnet": fnv1.Resource(
+                        resource=resource.dict_to_struct(_subnet()),
+                    ),
+                    "cluster": fnv1.Resource(
+                        resource=resource.dict_to_struct(_cluster()),
+                    ),
+                    "nodepool-sys": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "container.gcp.m.upbound.io/v1beta1",
+                                "kind": "NodePool",
+                                "spec": {
+                                    "providerConfigRef": {
+                                        "kind": _DEFAULT_CRED_KIND,
+                                        "name": _DEFAULT_CRED_NAME,
+                                    },
+                                    "forProvider": {
+                                        "location": "us-central1",
+                                        "clusterSelector": {"matchControllerRef": True},
+                                        "initialNodeCount": 2,
+                                        "autoscaling": {"minNodeCount": 1, "maxNodeCount": 3},
+                                        "nodeConfig": {
+                                            "machineType": "e2-standard-8",
+                                            "diskSizeGb": 100,
+                                            "imageType": "COS_CONTAINERD",
+                                            "oauthScopes": [
+                                                "https://www.googleapis.com/auth/cloud-platform",
+                                            ],
+                                            "labels": {"modelplane.ai/pool": "sys"},
+                                        },
+                                    },
+                                },
+                            },
+                        ),
+                    ),
+                    "nodepool-gpu-pool": fnv1.Resource(
+                        resource=resource.dict_to_struct(_nodepool_gpu()),
+                    ),
+                    "service-account": fnv1.Resource(
+                        resource=resource.dict_to_struct(_service_account()),
+                    ),
+                    "service-account-key": fnv1.Resource(
+                        resource=resource.dict_to_struct(_service_account_key()),
+                    ),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config_kubernetes()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                    "provider-config-helm": fnv1.Resource(
+                        resource=resource.dict_to_struct(_provider_config_helm()),
+                        ready=fnv1.READY_TRUE,
+                    ),
+                },
+            ),
+            context=structpb.Struct(),
+        )
+        want.requirements.resources["gcp-provider-config"].CopyFrom(_GCP_PROVIDER_CONFIG_SELECTOR)
+
+        got = await self.runner.RunFunction(req, None)
+        self.assertEqual(
+            json_format.MessageToDict(want),
+            json_format.MessageToDict(got),
+            "-want, +got",
+        )
 
     async def test_custom_credentials(self) -> None:
         """Custom credentials flow through to all cloud MRs.

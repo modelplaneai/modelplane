@@ -144,6 +144,12 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
+    endpointAccess: Literal['Public', 'PublicAndPrivate', 'Private'] | None = (
+        'PublicAndPrivate'
+    )
+    """
+    Who can reach the cluster's API server endpoint. Public enables only the public endpoint. PublicAndPrivate (the default) enables both the public endpoint and in-VPC access. Private disables the public endpoint; anything that manages the cluster, including the Modelplane management plane, must then reach the API server over private connectivity (VPC peering, VPN, or similar) that you provide.
+    """
     kubernetesVersion: constr(min_length=1, max_length=16) | None = '1.36'
     """
     EKS cluster Kubernetes version. Must be a version EKS currently supports. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.

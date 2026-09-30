@@ -129,6 +129,10 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
+    endpointAccess: Literal['PublicAndPrivate', 'Private'] | None = 'PublicAndPrivate'
+    """
+    Who can reach the cluster's API server endpoint. An mk8s cluster always has a private in-VPC endpoint, so PublicAndPrivate (the default) adds a public endpoint alongside it and Private creates none; there is no public-only mode. With Private, anything that manages the cluster, including the Modelplane management plane, must reach the private endpoint over connectivity you provide.
+    """
     kubernetesVersion: constr(min_length=1, max_length=16) | None = '1.34'
     """
     mk8s cluster Kubernetes version. Must be a version mk8s currently supports. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.

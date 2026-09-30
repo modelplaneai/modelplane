@@ -16,7 +16,7 @@
 
 import dataclasses
 import unittest
-from typing import Any
+from typing import Any, Literal
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -1259,6 +1259,125 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                     json_format.MessageToDict(case.want),
                     json_format.MessageToDict(got),
                 )
+
+    async def test_endpoint_access(self) -> None:
+        """endpointAccess maps to the cluster's vpcConfig endpoint booleans."""
+        accesses: list[tuple[Literal["Public", "PublicAndPrivate", "Private"], bool, bool]] = [
+            ("Public", True, False),
+            ("PublicAndPrivate", True, True),
+            ("Private", False, True),
+        ]
+        for access, public, private in accesses:
+            with self.subTest(access=access):
+                xr = _xr()
+                xr.spec.endpointAccess = access
+
+                cluster = _eks_cluster()
+                cluster["spec"]["forProvider"]["vpcConfig"]["endpointPublicAccess"] = public
+                cluster["spec"]["forProvider"]["vpcConfig"]["endpointPrivateAccess"] = private
+                want_resources = _expected_resources()
+                want_resources["cluster"] = fnv1.Resource(resource=resource.dict_to_struct(cluster))
+
+                req = fnv1.RunFunctionRequest(
+                    observed=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                xr.model_dump(exclude_none=True, mode="json"),
+                            ),
+                        ),
+                    ),
+                )
+                want = fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(
+                            resource=resource.dict_to_struct(_expected_status()),
+                        ),
+                        resources=want_resources,
+                    ),
+                    context=structpb.Struct(),
+                )
+
+                got = await self.runner.RunFunction(req, None)
+                self.assertEqual(
+                    json_format.MessageToDict(want),
+                    json_format.MessageToDict(got),
+                )
+
+    async def test_user_system_pool(self) -> None:
+        """A declared System pool composes like any other pool and replaces
+        the injected default system node group."""
+        xr = _xr()
+        xr.spec.nodePools = [
+            v1alpha1.NodePool(
+                name="sys",
+                role="System",
+                instanceType="m6i.2xlarge",
+                nodeCount=2,
+                minNodeCount=1,
+                maxNodeCount=3,
+            ),
+            *xr.spec.nodePools,
+        ]
+
+        want_resources = _expected_resources()
+        del want_resources["nodegroup-system"]
+        want_resources["nodegroup-sys"] = fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "apiVersion": "eks.aws.m.upbound.io/v1beta1",
+                    "kind": "NodeGroup",
+                    "spec": {
+                        "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                        "managementPolicies": ["Observe", "Create", "Update", "Delete"],
+                        "initProvider": {"scalingConfig": {"desiredSize": 2}},
+                        "forProvider": {
+                            "region": "us-west-2",
+                            "amiType": "AL2023_x86_64_STANDARD",
+                            "instanceTypes": ["m6i.2xlarge"],
+                            "diskSize": 100,
+                            "clusterNameSelector": {"matchControllerRef": True},
+                            "nodeRoleArnSelector": {
+                                "matchControllerRef": True,
+                                "matchLabels": {"modelplane.ai/iam-role": "node"},
+                            },
+                            "subnetIdSelector": {
+                                "matchControllerRef": True,
+                                "matchLabels": {"modelplane.ai/subnet-tier": "private"},
+                            },
+                            "scalingConfig": {"minSize": 1, "maxSize": 3},
+                            "labels": {"modelplane.ai/pool": "sys"},
+                        },
+                    },
+                },
+            ),
+        )
+
+        req = fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(
+                        xr.model_dump(exclude_none=True, mode="json"),
+                    ),
+                ),
+            ),
+        )
+        want = fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=fnv1.Resource(
+                    resource=resource.dict_to_struct(_expected_status()),
+                ),
+                resources=want_resources,
+            ),
+            context=structpb.Struct(),
+        )
+
+        got = await self.runner.RunFunction(req, None)
+        self.assertEqual(
+            json_format.MessageToDict(want),
+            json_format.MessageToDict(got),
+        )
 
     async def test_compose_capacity_block(self) -> None:
         """A Capacity Block pool composes a launch template and a CAPACITY_BLOCK node group.

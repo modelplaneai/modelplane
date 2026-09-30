@@ -49,6 +49,10 @@ class Crossplane(BaseModel):
 
 
 class Networking(BaseModel):
+    masterCidr: constr(max_length=18) | None = '10.3.0.0/28'
+    """
+    /28 range for the control plane. Used only when endpointAccess is not Public. Must not overlap the node, pod, or service CIDRs.
+    """
     nodeCidr: constr(max_length=18) | None = '10.0.0.0/24'
     """
     Primary IP range for nodes.
@@ -125,6 +129,10 @@ class Spec(BaseModel):
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource
+    """
+    endpointAccess: Literal['Public', 'PublicAndPrivate', 'Private'] | None = 'Public'
+    """
+    Who can reach the cluster's API server endpoint. Public (the default) exposes a public endpoint and gives nodes public IPs. PublicAndPrivate keeps the public endpoint but makes the nodes private, adding a Cloud Router and NAT for their egress. Private additionally disables the public endpoint; anything that manages the cluster, including the Modelplane management plane, must then reach the API server over private connectivity (VPC peering, VPN, or similar) that you provide. Immutable; recreate the cluster to change it.
     """
     kubernetesVersion: constr(min_length=1, max_length=16) | None = '1.35'
     """

@@ -16,6 +16,7 @@
 
 import dataclasses
 import unittest
+from typing import Literal
 
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -96,17 +97,21 @@ _TEMPLATE_CACHE_MOUNT = {
 def _xr(
     pools: list[v1alpha1.NodePool],
     credentials: v1alpha1.Credentials | None = None,
+    endpoint_access: Literal["PublicAndPrivate", "Private"] | None = None,
 ) -> dict:
     """A NebiusCluster XR with the given node pools, as a request dict."""
+    spec = v1alpha1.Spec(
+        nodePools=pools,
+        credentials=credentials,
+    )
+    if endpoint_access is not None:
+        spec.endpointAccess = endpoint_access
     return v1alpha1.NebiusCluster(
         metadata=metav1.ObjectMeta(
             name="test-cluster",
             namespace="modelplane-system",
         ),
-        spec=v1alpha1.Spec(
-            nodePools=pools,
-            credentials=credentials,
-        ),
+        spec=spec,
     ).model_dump(exclude_none=True, mode="json")
 
 
@@ -117,10 +122,13 @@ def _req(
     *,
     with_provider_config: bool = True,
     provider_config_resource: dict | None = None,
+    endpoint_access: Literal["PublicAndPrivate", "Private"] | None = None,
 ) -> fnv1.RunFunctionRequest:
     req = fnv1.RunFunctionRequest(
         observed=fnv1.State(
-            composite=fnv1.Resource(resource=resource.dict_to_struct(_xr(pools, credentials))),
+            composite=fnv1.Resource(
+                resource=resource.dict_to_struct(_xr(pools, credentials, endpoint_access)),
+            ),
             resources=observed_resources or {},
         ),
     )
@@ -175,6 +183,14 @@ def _cluster(cred_kind: str = "ClusterProviderConfig", cred_name: str = "default
             "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
         },
     }
+
+
+def _private_cluster() -> dict:
+    """The cluster golden with endpointAccess Private: the always-present
+    private endpoint stands alone, with no public endpoint beside it."""
+    cluster = _cluster()
+    cluster["spec"]["forProvider"]["controlPlane"]["endpoints"] = {}
+    return cluster
 
 
 def _filesystem(cred_kind: str = "ClusterProviderConfig", cred_name: str = "default") -> dict:
@@ -284,6 +300,32 @@ def _nodegroup_system(cred_kind: str = "ClusterProviderConfig", cred_name: str =
                     ],
                     **_TEMPLATE_CACHE_MOUNT,
                     "metadata": {"labels": {"modelplane.ai/pool": "system"}},
+                },
+            },
+        },
+    }
+
+
+def _nodegroup_system_user(cred_kind: str = "ClusterProviderConfig", cred_name: str = "default") -> dict:
+    """A declared System pool's node group, replacing the injected default."""
+    return {
+        "apiVersion": "mk8s.nebius.m.upbound.io/v1beta1",
+        "kind": "NodeGroup",
+        "spec": {
+            "providerConfigRef": {"kind": cred_kind, "name": cred_name},
+            "forProvider": {
+                "name": "test-cluster-sys",
+                "parentIdSelector": {"matchControllerRef": True},
+                "version": "1.34",
+                "autoscaling": {"minNodeCount": 1, "maxNodeCount": 3},
+                "template": {
+                    "resources": {"platform": "cpu-d3", "preset": "8vcpu-32gb"},
+                    "bootDisk": {"sizeGibibytes": 100, "type": "NETWORK_SSD"},
+                    "networkInterfaces": [
+                        {"subnetIdSelector": {"matchControllerRef": True}},
+                    ],
+                    **_TEMPLATE_CACHE_MOUNT,
+                    "metadata": {"labels": {"modelplane.ai/pool": "sys"}},
                 },
             },
         },
@@ -411,6 +453,15 @@ _GPU_POOL = v1alpha1.NodePool(
     diskSizeGb=200,
     maxNodeCount=4,
     gpu=v1alpha1.Gpu(acceleratorType="nvidia-h100"),
+)
+
+_SYSTEM_POOL_USER = v1alpha1.NodePool(
+    name="sys",
+    role="System",
+    platform="cpu-d3",
+    preset="8vcpu-32gb",
+    minNodeCount=1,
+    maxNodeCount=3,
 )
 
 
@@ -700,6 +751,86 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                                     _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
                                 ),
                                 ready=fnv1.READY_TRUE,
+                            ),
+                            "provider-config-kubernetes": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                                ),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "provider-config-helm": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                                ),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                        },
+                    ),
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="endpointAccess Private composes no public endpoint",
+                req=_req([_GPU_POOL], endpoint_access="Private"),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                        resources={
+                            "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
+                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_private_cluster())),
+                            "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
+                            "cloud-init": fnv1.Resource(
+                                resource=resource.dict_to_struct(_cloud_init_secret()),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "nodegroup-system": fnv1.Resource(resource=resource.dict_to_struct(_nodegroup_system())),
+                            "nodegroup-gpu-h100": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
+                                ),
+                            ),
+                            "provider-config-kubernetes": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    _provider_config("kubernetes.m.crossplane.io/v1alpha1", "ProviderConfig"),
+                                ),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "provider-config-helm": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    _provider_config("helm.m.crossplane.io/v1beta1", "ProviderConfig"),
+                                ),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                        },
+                    ),
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="a declared System pool replaces the injected default",
+                req=_req([_SYSTEM_POOL_USER, _GPU_POOL]),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                        resources={
+                            "network": fnv1.Resource(resource=resource.dict_to_struct(_network())),
+                            "subnet": fnv1.Resource(resource=resource.dict_to_struct(_subnet())),
+                            "cluster": fnv1.Resource(resource=resource.dict_to_struct(_cluster())),
+                            "filesystem": fnv1.Resource(resource=resource.dict_to_struct(_filesystem())),
+                            "cloud-init": fnv1.Resource(
+                                resource=resource.dict_to_struct(_cloud_init_secret()),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "nodegroup-sys": fnv1.Resource(
+                                resource=resource.dict_to_struct(_nodegroup_system_user()),
+                            ),
+                            "nodegroup-gpu-h100": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    _nodegroup_gpu({}, autoscaling={"minNodeCount": 1, "maxNodeCount": 4}),
+                                ),
                             ),
                             "provider-config-kubernetes": fnv1.Resource(
                                 resource=resource.dict_to_struct(

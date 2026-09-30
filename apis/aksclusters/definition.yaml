@@ -53,6 +53,24 @@ spec:
                   available.
                 minLength: 1
                 maxLength: 16
+              endpointAccess:
+                type: string
+                default: Public
+                x-kubernetes-validations:
+                - rule: self == oldSelf
+                  message: endpointAccess is immutable; recreate the cluster to change its endpoint access.
+                description: >-
+                  Who can reach the cluster's API server endpoint. Public
+                  (the default) exposes a public endpoint. Private makes
+                  the cluster a private cluster: the API server is only
+                  reachable inside the virtual network, and its public
+                  FQDN resolves to the private IP. Anything that manages
+                  the cluster, including the Modelplane management plane,
+                  must then reach the API server over private connectivity
+                  (VNet peering, VPN, or similar) that you provide. AKS
+                  has no both-public-and-private mode. Immutable; recreate
+                  the cluster to change it.
+                enum: [Public, Private]
               credentials:
                 type: object
                 description: >-
@@ -97,6 +115,9 @@ spec:
                 description: >-
                   Node pools for the cluster. At least one System pool is
                   required for controllers and infrastructure workloads.
+                  The first System pool becomes the cluster's default node
+                  pool, which AKS requires inline on the cluster; changing
+                  which pool is first rotates the default pool.
                 minItems: 1
                 maxItems: 8
                 x-kubernetes-list-type: map

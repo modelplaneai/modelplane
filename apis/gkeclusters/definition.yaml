@@ -49,6 +49,24 @@ spec:
                   by the REGULAR release channel.
                 minLength: 1
                 maxLength: 16
+              endpointAccess:
+                type: string
+                default: Public
+                x-kubernetes-validations:
+                - rule: self == oldSelf
+                  message: endpointAccess is immutable; recreate the cluster to change its endpoint access.
+                description: >-
+                  Who can reach the cluster's API server endpoint. Public
+                  (the default) exposes a public endpoint and gives nodes
+                  public IPs. PublicAndPrivate keeps the public endpoint
+                  but makes the nodes private, adding a Cloud Router and
+                  NAT for their egress. Private additionally disables the
+                  public endpoint; anything that manages the cluster,
+                  including the Modelplane management plane, must then
+                  reach the API server over private connectivity (VPC
+                  peering, VPN, or similar) that you provide. Immutable;
+                  recreate the cluster to change it.
+                enum: [Public, PublicAndPrivate, Private]
               credentials:
                 type: object
                 description: >-
@@ -88,6 +106,14 @@ spec:
                     type: string
                     default: "10.0.0.0/24"
                     description: Primary IP range for nodes.
+                    maxLength: 18
+                  masterCidr:
+                    type: string
+                    default: "10.3.0.0/28"
+                    description: >-
+                      /28 range for the control plane. Used only when
+                      endpointAccess is not Public. Must not overlap the
+                      node, pod, or service CIDRs.
                     maxLength: 18
               nodePools:
                 type: array

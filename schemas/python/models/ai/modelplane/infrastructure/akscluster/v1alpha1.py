@@ -122,6 +122,10 @@ class Spec(BaseModel):
     """
     Configures how Crossplane will reconcile this composite resource
     """
+    endpointAccess: Literal['Public', 'Private'] | None = 'Public'
+    """
+    Who can reach the cluster's API server endpoint. Public (the default) exposes a public endpoint. Private makes the cluster a private cluster: the API server is only reachable inside the virtual network, and its public FQDN resolves to the private IP. Anything that manages the cluster, including the Modelplane management plane, must then reach the API server over private connectivity (VNet peering, VPN, or similar) that you provide. AKS has no both-public-and-private mode. Immutable; recreate the cluster to change it.
+    """
     kubernetesVersion: constr(min_length=1, max_length=16) | None = '1.34'
     """
     AKS cluster Kubernetes version. Must be a version AKS currently supports. Defaults to a version where Dynamic Resource Allocation (how GPUs bind to pods) is generally available.
@@ -136,7 +140,7 @@ class Spec(BaseModel):
     """
     nodePools: list[NodePool] = Field(..., max_length=8, min_length=1)
     """
-    Node pools for the cluster. At least one System pool is required for controllers and infrastructure workloads.
+    Node pools for the cluster. At least one System pool is required for controllers and infrastructure workloads. The first System pool becomes the cluster's default node pool, which AKS requires inline on the cluster; changing which pool is first rotates the default pool.
     """
 
 

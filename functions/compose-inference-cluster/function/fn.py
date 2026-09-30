@@ -25,9 +25,11 @@ for BYO (Existing) clusters the class is a pure description of pools
 that already exist. Either way, the class's resources block populates
 status.gpuPools so the scheduler can match models.
 
-For provisioned clusters, a system node pool is injected automatically
-to host control-plane components (Envoy Gateway, Prometheus, etc.).
-The system pool is not exposed in the user-facing API.
+For provisioned clusters, a system node pool hosts control-plane
+components (Envoy Gateway, Prometheus, etc.). A default one is
+injected automatically unless the user declares their own pools with
+role System, which pass through to the cloud cluster XR and replace
+the injected default.
 """
 
 from typing import Final, Literal
@@ -160,6 +162,8 @@ _ACTIVATE_GCP = (
     "serviceaccounts.cloudplatform.gcp.m.upbound.io",
     "serviceaccountkeys.cloudplatform.gcp.m.upbound.io",
     "networks.compute.gcp.m.upbound.io",
+    "routers.compute.gcp.m.upbound.io",
+    "routernats.compute.gcp.m.upbound.io",
     "subnetworks.compute.gcp.m.upbound.io",
     "clusters.container.gcp.m.upbound.io",
     "nodepools.container.gcp.m.upbound.io",
@@ -197,6 +201,26 @@ def _namespace(meta: metav1.ObjectMeta | None) -> str:
     if meta is None or meta.namespace is None:
         raise ValueError("metadata.namespace is unexpectedly absent")
     return meta.namespace
+
+
+def _system_instance_type(pool: v1alpha1.NodePool) -> str:
+    """A System pool's machine size, which the XRD requires."""
+    if not pool.instanceType:
+        raise ValueError(f"System pool {pool.name} has no instanceType")
+    return pool.instanceType
+
+
+def _system_nebius_shape(pool: v1alpha1.NodePool) -> tuple[str, str]:
+    """A Nebius System pool's compute platform and resource preset.
+
+    Nebius has no single size string, so instanceType joins the two with a
+    dot (e.g. cpu-d3.4vcpu-16gb), which the XRD's validation requires.
+    Neither part contains a dot of its own, so the split is unambiguous.
+    """
+    platform, _, preset = _system_instance_type(pool).partition(".")
+    if not platform or not preset:
+        raise ValueError(f"System pool {pool.name} instanceType is not of the form platform.preset")
+    return platform, preset
 
 
 def _gateway_hostname(cluster_name: str) -> str:
@@ -370,7 +394,7 @@ class Composer:
             api_version="modelplane.ai/v1alpha1",
             kind="InferenceGateway",
         )
-        for class_name in sorted({p.className for p in (self.xr.spec.nodePools or [])}):
+        for class_name in sorted({p.className for p in (self.xr.spec.nodePools or []) if p.className}):
             response.require_resources(
                 self.rsp,
                 name=f"class-{class_name}",
@@ -497,8 +521,9 @@ class Composer:
     def resolve_classes(self) -> bool:
         """Declare and fetch every InferenceClass referenced by
         spec.nodePools[].className (required in require_inputs). Returns False if
-        any is missing, in which case the function gates and waits."""
-        class_names = sorted({p.className for p in (self.xr.spec.nodePools or [])})
+        any is missing, in which case the function gates and waits. System pools
+        carry a machine size instead of a class, so they resolve nothing."""
+        class_names = sorted({p.className for p in (self.xr.spec.nodePools or []) if p.className})
 
         missing: list[str] = []
         for name in class_names:
@@ -928,12 +953,25 @@ class Composer:
         Combines the cluster-level config (region) with the GPU pools derived
         from the user's node pools + referenced classes. The project is derived
         by compose-gke-cluster from the referenced ProviderConfig. The system
-        pool is injected by compose-gke-cluster.
+        pool is injected by compose-gke-cluster unless the user declares their
+        own System pools, which pass through with their machine size.
         """
         gke_node_pools: list[gkev1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
+            if pool.role == "System":
+                gke_node_pools.append(
+                    gkev1alpha1.NodePool(
+                        name=pool.name,
+                        role="System",
+                        machineType=_system_instance_type(pool),
+                        nodeCount=pool.nodeCount,
+                        minNodeCount=pool.minNodeCount,
+                        maxNodeCount=pool.maxNodeCount,
+                    )
+                )
+                continue
+            cls = self.classes.get(pool.className) if pool.className else None
             if not cls or not cls.spec.provisioning or not cls.spec.provisioning.gke:
                 msg = f"InferenceClass {pool.className} has no GKE provisioning block"
                 response.set_conditions(
@@ -970,6 +1008,11 @@ class Composer:
             kubernetesVersion=gke.kubernetesVersion,
             nodePools=gke_node_pools,
         )
+        # Only set endpointAccess when the user chose one, so the GKECluster
+        # XRD's own default applies otherwise (resource.update serializes
+        # with exclude_unset).
+        if self.xr.spec.cluster.endpointAccess:
+            gke_spec.endpointAccess = self.xr.spec.cluster.endpointAccess
         if gke.credentials:
             gke_spec.credentials = gkev1alpha1.Credentials(
                 type=gke.credentials.type,
@@ -991,12 +1034,26 @@ class Composer:
 
         Combines the cluster-level config (region) with GPU node pools
         derived from the user's node pools + referenced classes. The
-        system pool is injected by compose-eks-cluster.
+        system pool is injected by compose-eks-cluster unless the user
+        declares their own System pools, which pass through with their
+        machine size.
         """
         eks_node_pools: list[eksv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
+            if pool.role == "System":
+                eks_node_pools.append(
+                    eksv1alpha1.NodePool(
+                        name=pool.name,
+                        role="System",
+                        instanceType=_system_instance_type(pool),
+                        nodeCount=pool.nodeCount,
+                        minNodeCount=pool.minNodeCount,
+                        maxNodeCount=pool.maxNodeCount,
+                    )
+                )
+                continue
+            cls = self.classes.get(pool.className) if pool.className else None
             if not cls or not cls.spec.provisioning or not cls.spec.provisioning.eks:
                 msg = f"InferenceClass {pool.className} has no EKS provisioning block"
                 response.set_conditions(
@@ -1042,6 +1099,11 @@ class Composer:
             kubernetesVersion=eks.kubernetesVersion,
             nodePools=eks_node_pools,
         )
+        # Only set endpointAccess when the user chose one, so the EKSCluster
+        # XRD's own default applies otherwise (resource.update serializes
+        # with exclude_unset).
+        if self.xr.spec.cluster.endpointAccess:
+            eks_spec.endpointAccess = self.xr.spec.cluster.endpointAccess
         if eks.credentials:
             eks_spec.credentials = eksv1alpha1.Credentials(
                 type=eks.credentials.type,
@@ -1063,12 +1125,26 @@ class Composer:
 
         Combines the cluster-level config (location) with GPU node pools
         derived from the user's node pools + referenced classes. The
-        system pool is injected by compose-aks-cluster.
+        system pool is injected by compose-aks-cluster unless the user
+        declares their own System pools, which pass through with their
+        machine size.
         """
         aks_node_pools: list[aksv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
+            if pool.role == "System":
+                aks_node_pools.append(
+                    aksv1alpha1.NodePool(
+                        name=pool.name,
+                        role="System",
+                        vmSize=_system_instance_type(pool),
+                        nodeCount=pool.nodeCount,
+                        minNodeCount=pool.minNodeCount,
+                        maxNodeCount=pool.maxNodeCount,
+                    )
+                )
+                continue
+            cls = self.classes.get(pool.className) if pool.className else None
             if not cls or not cls.spec.provisioning or not cls.spec.provisioning.aks:
                 msg = f"InferenceClass {pool.className} has no AKS provisioning block"
                 response.set_conditions(
@@ -1113,6 +1189,15 @@ class Composer:
             kubernetesVersion=aks.kubernetesVersion,
             nodePools=aks_node_pools,
         )
+        # Only set endpointAccess when the user chose one, so the AKSCluster
+        # XRD's own default applies otherwise. The XRD rejects
+        # PublicAndPrivate for AKS, so only the AKSCluster's two literal
+        # values can arrive here.
+        access = self.xr.spec.cluster.endpointAccess
+        if access == "Public":
+            aks_spec.endpointAccess = "Public"
+        elif access == "Private":
+            aks_spec.endpointAccess = "Private"
         if aks.credentials:
             aks_spec.credentials = aksv1alpha1.Credentials(
                 type=aks.credentials.type,
@@ -1134,12 +1219,31 @@ class Composer:
 
         Combines the cluster-level config (project, credentials) with GPU
         node pools derived from the user's node pools + referenced classes.
-        The system pool is injected by compose-nebius-cluster.
+        The system pool is injected by compose-nebius-cluster unless the
+        user declares their own System pools, which pass through with their
+        platform and preset.
         """
         nebius_node_pools: list[nebiusv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
+            if pool.role == "System":
+                platform, preset = _system_nebius_shape(pool)
+                system_pool = nebiusv1alpha1.NodePool(
+                    name=pool.name,
+                    role="System",
+                    platform=platform,
+                    preset=preset,
+                    nodeCount=pool.nodeCount,
+                )
+                # As for GPU pools below, only set the autoscaling bounds
+                # when the pool opts in, so fixed-size pools stay fixed.
+                if pool.maxNodeCount is not None:
+                    system_pool.maxNodeCount = pool.maxNodeCount
+                if pool.minNodeCount is not None:
+                    system_pool.minNodeCount = pool.minNodeCount
+                nebius_node_pools.append(system_pool)
+                continue
+            cls = self.classes.get(pool.className) if pool.className else None
             if not cls or not cls.spec.provisioning or not cls.spec.provisioning.nebius:
                 msg = f"InferenceClass {pool.className} has no Nebius provisioning block"
                 response.set_conditions(
@@ -1190,6 +1294,13 @@ class Composer:
             kubernetesVersion=nebius.kubernetesVersion,
             nodePools=nebius_node_pools,
         )
+        # Only set endpointAccess when the user chose one, so the
+        # NebiusCluster XRD's own default applies otherwise. An mk8s
+        # cluster's private endpoint always exists, so Public maps to
+        # PublicAndPrivate.
+        access = self.xr.spec.cluster.endpointAccess
+        if access:
+            spec.endpointAccess = "PublicAndPrivate" if access == "Public" else access
         if nebius.credentials:
             spec.credentials = nebiusv1alpha1.Credentials(
                 type=nebius.credentials.type,
@@ -1291,12 +1402,30 @@ class Composer:
 
         Combines the cluster-level config (region) with GPU node pools
         derived from the user's node pools + referenced classes. The
-        system pool is injected by compose-vultr-cluster.
+        system pool is injected by compose-vultr-cluster unless the user
+        declares their own System pools, which pass through with their
+        plan. endpointAccess is not mapped: VKE has no private control
+        plane, and the XRD rejects anything but Public.
         """
         vultr_node_pools: list[vultrv1alpha1.NodePool] = []
 
         for pool in self.xr.spec.nodePools or []:
-            cls = self.classes.get(pool.className)
+            if pool.role == "System":
+                system_pool = vultrv1alpha1.NodePool(
+                    name=pool.name,
+                    role="System",
+                    plan=_system_instance_type(pool),
+                    nodeCount=pool.nodeCount,
+                )
+                # As for GPU pools below, only set the autoscaling bounds
+                # when the pool opts in, so fixed-size pools stay fixed.
+                if pool.maxNodeCount is not None:
+                    system_pool.maxNodeCount = pool.maxNodeCount
+                if pool.minNodeCount is not None:
+                    system_pool.minNodeCount = pool.minNodeCount
+                vultr_node_pools.append(system_pool)
+                continue
+            cls = self.classes.get(pool.className) if pool.className else None
             if not cls or not cls.spec.provisioning or not cls.spec.provisioning.vultr:
                 msg = f"InferenceClass {pool.className} has no Vultr provisioning block"
                 response.set_conditions(
@@ -1583,6 +1712,8 @@ class Composer:
         """
         gpu_pools = []
         for pool in self.xr.spec.nodePools or []:
+            if pool.role == "System" or not pool.className:
+                continue
             cls = self.classes.get(pool.className)
             if not cls or not cls.spec.devices:
                 continue

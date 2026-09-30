@@ -41,6 +41,8 @@ from models.io.upbound.m.gcp.cloudplatform.serviceaccountkey import (
 )
 from models.io.upbound.m.gcp.clusterproviderconfig import v1beta1 as gcpcpcv1beta1
 from models.io.upbound.m.gcp.compute.network import v1beta1 as networkv1beta1
+from models.io.upbound.m.gcp.compute.router import v1beta1 as routerv1beta1
+from models.io.upbound.m.gcp.compute.routernat import v1beta1 as routernatv1beta1
 from models.io.upbound.m.gcp.compute.subnetwork import v1beta1 as subnetv1beta1
 from models.io.upbound.m.gcp.container.cluster import v1beta1 as clusterv1beta1
 from models.io.upbound.m.gcp.container.nodepool import v1beta1 as nodepoolv1beta1
@@ -51,9 +53,10 @@ from models.io.upbound.m.gcp.providerconfig import v1beta1 as gcppcv1beta1
 _RANGE_PODS = "pods"
 _RANGE_SERVICES = "services"
 
-# System pool injected into every GKE cluster to host control-plane
-# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part of
-# the user-facing API — compose-inference-cluster only passes GPU pools.
+# System pool injected into a GKE cluster to host control-plane
+# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.) when the
+# spec declares no System pool of its own. Declared System pools compose
+# like any other pool and replace this default.
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_MACHINE_TYPE = "e2-standard-4"
 _SYSTEM_POOL_NODE_COUNT = 1
@@ -172,6 +175,14 @@ class Composer:
         creds = self.xr.spec.credentials
         return creds.name if creds and creds.name else "default"
 
+    def _endpoint_access(self) -> str:
+        return self.xr.spec.endpointAccess or "Public"
+
+    def _has_user_system_pool(self) -> bool:
+        """Whether the spec declares its own System pool, replacing the
+        injected default."""
+        return any(pool.role == "System" for pool in self.xr.spec.nodePools)
+
     def resolve_project(self) -> str | None:
         """Fetch the GCP provider config and return its projectID.
 
@@ -236,6 +247,7 @@ class Composer:
         self.compose_network()
         self.compose_filestore_api()
         self.compose_subnet()
+        self.compose_nat()
         self.compose_cluster()
         self.compose_node_pools()
         self.compose_service_account()
@@ -313,7 +325,105 @@ class Composer:
             ),
         )
 
+    def compose_nat(self) -> None:
+        """Compose a Cloud Router and NAT for private nodes' egress.
+
+        Only composed when the cluster's nodes are private (endpointAccess
+        is not Public): private nodes have no public IPs, so without NAT
+        they can't pull images from registries outside Google's network.
+        """
+        if self._endpoint_access() == "Public":
+            return
+
+        resource.update(
+            self.rsp.desired.resources["router"],
+            routerv1beta1.Router(
+                spec=routerv1beta1.Spec(
+                    providerConfigRef=routerv1beta1.ProviderConfigRef(
+                        kind=self._cred_kind(),
+                        name=self._cred_name(),
+                    ),
+                    forProvider=routerv1beta1.ForProvider(
+                        region=self.xr.spec.region,
+                        networkSelector=routerv1beta1.NetworkSelector(
+                            matchControllerRef=True,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        resource.update(
+            self.rsp.desired.resources["router-nat"],
+            routernatv1beta1.RouterNAT(
+                spec=routernatv1beta1.Spec(
+                    providerConfigRef=routernatv1beta1.ProviderConfigRef(
+                        kind=self._cred_kind(),
+                        name=self._cred_name(),
+                    ),
+                    forProvider=routernatv1beta1.ForProvider(
+                        region=self.xr.spec.region,
+                        routerSelector=routernatv1beta1.RouterSelector(
+                            matchControllerRef=True,
+                        ),
+                        natIpAllocateOption="AUTO_ONLY",
+                        sourceSubnetworkIpRangesToNat="ALL_SUBNETWORKS_ALL_IP_RANGES",
+                    ),
+                ),
+            ),
+        )
+
     def compose_cluster(self) -> None:
+        access = self._endpoint_access()
+        private_cluster_config = None
+        if access != "Public":
+            networking = self.xr.spec.networking or v1alpha1.Networking()
+            # Global access lets a management plane peered from another
+            # region still reach a Private endpoint.
+            private_cluster_config = clusterv1beta1.PrivateClusterConfig(
+                enablePrivateNodes=True,
+                enablePrivateEndpoint=access == "Private",
+                masterIpv4CidrBlock=networking.masterCidr,
+                masterGlobalAccessConfig=clusterv1beta1.MasterGlobalAccessConfig(
+                    enabled=True,
+                ),
+            )
+
+        fp = clusterv1beta1.ForProvider(
+            location=self.xr.spec.region,
+            deletionProtection=False,
+            removeDefaultNodePool=True,
+            initialNodeCount=1,
+            minMasterVersion=self.xr.spec.kubernetesVersion,
+            networkSelector=clusterv1beta1.NetworkSelector(
+                matchControllerRef=True,
+            ),
+            subnetworkSelector=clusterv1beta1.SubnetworkSelector(
+                matchControllerRef=True,
+            ),
+            ipAllocationPolicy=clusterv1beta1.IpAllocationPolicy(
+                clusterSecondaryRangeName=_RANGE_PODS,
+                servicesSecondaryRangeName=_RANGE_SERVICES,
+            ),
+            releaseChannel=clusterv1beta1.ReleaseChannel(
+                channel="REGULAR",
+            ),
+            workloadIdentityConfig=clusterv1beta1.WorkloadIdentityConfig(
+                workloadPool=f"{self.project}.svc.id.goog",
+            ),
+            # Enable the Filestore CSI driver addon so the
+            # modelplane-rwx StorageClass has a provisioner. Without
+            # it the ModelCache RWX PVC stays Pending forever (we
+            # enable file.googleapis.com and compose the
+            # StorageClass, but nothing runs the provisioner).
+            addonsConfig=clusterv1beta1.AddonsConfig(
+                gcpFilestoreCsiDriverConfig=clusterv1beta1.GcpFilestoreCsiDriverConfig(
+                    enabled=True,
+                ),
+            ),
+        )
+        if private_cluster_config:
+            fp.privateClusterConfig = private_cluster_config
+
         resource.update(
             self.rsp.desired.resources["cluster"],
             clusterv1beta1.Cluster(
@@ -322,39 +432,7 @@ class Composer:
                         kind=self._cred_kind(),
                         name=self._cred_name(),
                     ),
-                    forProvider=clusterv1beta1.ForProvider(
-                        location=self.xr.spec.region,
-                        deletionProtection=False,
-                        removeDefaultNodePool=True,
-                        initialNodeCount=1,
-                        minMasterVersion=self.xr.spec.kubernetesVersion,
-                        networkSelector=clusterv1beta1.NetworkSelector(
-                            matchControllerRef=True,
-                        ),
-                        subnetworkSelector=clusterv1beta1.SubnetworkSelector(
-                            matchControllerRef=True,
-                        ),
-                        ipAllocationPolicy=clusterv1beta1.IpAllocationPolicy(
-                            clusterSecondaryRangeName=_RANGE_PODS,
-                            servicesSecondaryRangeName=_RANGE_SERVICES,
-                        ),
-                        releaseChannel=clusterv1beta1.ReleaseChannel(
-                            channel="REGULAR",
-                        ),
-                        workloadIdentityConfig=clusterv1beta1.WorkloadIdentityConfig(
-                            workloadPool=f"{self.project}.svc.id.goog",
-                        ),
-                        # Enable the Filestore CSI driver addon so the
-                        # modelplane-rwx StorageClass has a provisioner. Without
-                        # it the ModelCache RWX PVC stays Pending forever (we
-                        # enable file.googleapis.com and compose the
-                        # StorageClass, but nothing runs the provisioner).
-                        addonsConfig=clusterv1beta1.AddonsConfig(
-                            gcpFilestoreCsiDriverConfig=clusterv1beta1.GcpFilestoreCsiDriverConfig(
-                                enabled=True,
-                            ),
-                        ),
-                    ),
+                    forProvider=fp,
                     writeConnectionSecretToRef=clusterv1beta1.WriteConnectionSecretToRef(
                         name=_kubeconfig_secret_name(self.xr),
                     ),
@@ -363,7 +441,8 @@ class Composer:
         )
 
     def compose_node_pools(self) -> None:
-        self._compose_system_pool()
+        if not self._has_user_system_pool():
+            self._compose_system_pool()
         for pool in self.xr.spec.nodePools:
             node_config = nodepoolv1beta1.NodeConfig(
                 machineType=pool.machineType,
@@ -652,7 +731,10 @@ class Composer:
             "service-account",
             "service-account-key",
         ]
-        managed_resources.append(f"nodepool-{_SYSTEM_POOL_NAME}")
+        if self._endpoint_access() != "Public":
+            managed_resources += ["router", "router-nat"]
+        if not self._has_user_system_pool():
+            managed_resources.append(f"nodepool-{_SYSTEM_POOL_NAME}")
         managed_resources += [f"nodepool-{pool.name}" for pool in self.xr.spec.nodePools]
         if self.observed_sa_email():
             managed_resources.append("iam-binding")

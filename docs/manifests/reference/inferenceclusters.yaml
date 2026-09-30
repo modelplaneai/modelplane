@@ -5,9 +5,15 @@ metadata:
 spec:
   cluster:
     source: GKE
+    endpointAccess: PublicAndPrivate
     gke:
       region: us-central1
   nodePools:
+    - name: system
+      role: System
+      instanceType: e2-standard-8
+      minNodeCount: 1
+      maxNodeCount: 3
     - name: h100-pool
       className: h100-8x-byo
       nodeCount: 2

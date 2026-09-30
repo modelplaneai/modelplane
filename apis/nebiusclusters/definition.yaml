@@ -46,6 +46,22 @@ spec:
                   available.
                 minLength: 1
                 maxLength: 16
+              endpointAccess:
+                type: string
+                default: PublicAndPrivate
+                x-kubernetes-validations:
+                - rule: self == oldSelf
+                  message: endpointAccess is immutable; recreate the cluster to change its endpoint access.
+                description: >-
+                  Who can reach the cluster's API server endpoint. An mk8s
+                  cluster always has a private in-VPC endpoint, so
+                  PublicAndPrivate (the default) adds a public endpoint
+                  alongside it and Private creates none; there is no
+                  public-only mode. With Private, anything that manages
+                  the cluster, including the Modelplane management plane,
+                  must reach the private endpoint over connectivity you
+                  provide.
+                enum: [PublicAndPrivate, Private]
               credentials:
                 type: object
                 description: >-

@@ -276,6 +276,39 @@ _GPU_POOL_GOLDEN = _node_pool(
     max_nodes=4,
 )
 
+_SYSTEM_POOL_USER = v1alpha1.NodePool(
+    name="sys",
+    role="System",
+    plan="vc2-4c-8gb",
+    nodeCount=2,
+    minNodeCount=1,
+    maxNodeCount=3,
+)
+
+_SYSTEM_POOL_USER_2 = v1alpha1.NodePool(
+    name="sys2",
+    role="System",
+    plan="vc2-6c-16gb",
+    nodeCount=1,
+    minNodeCount=1,
+    maxNodeCount=2,
+)
+
+
+def _cluster_with_user_inline_pool() -> dict:
+    """The cluster golden with the first declared System pool inline."""
+    cluster = _cluster()
+    cluster["spec"]["forProvider"]["nodePools"] = {
+        "label": "sys",
+        "plan": "vc2-4c-8gb",
+        "nodeQuantity": 2,
+        "autoScaler": True,
+        "minNodes": 1,
+        "maxNodes": 3,
+        "labels": [{"key": "modelplane.ai/pool", "value": "sys"}],
+    }
+    return cluster
+
 
 class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
     """Tests for FunctionRunner.RunFunction."""
@@ -458,6 +491,9 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                 name="minNodeCount sets the autoscaler floor; System pool carries no taint",
                 req=_req(
                     [
+                        # The first System pool takes the cluster's inline
+                        # slot; "workers" composes as a separate pool.
+                        _SYSTEM_POOL_USER,
                         v1alpha1.NodePool(
                             name="workers",
                             role="System",
@@ -468,7 +504,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         ),
                     ],
                     observed_resources={
-                        "cluster": _observed_ready(_cluster()),
+                        "cluster": _observed_ready(_cluster_with_user_inline_pool()),
                     },
                 ),
                 want=fnv1.RunFunctionResponse(
@@ -477,7 +513,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                         composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
                         resources={
                             "cluster": fnv1.Resource(
-                                resource=resource.dict_to_struct(_cluster()),
+                                resource=resource.dict_to_struct(_cluster_with_user_inline_pool()),
                                 ready=fnv1.READY_TRUE,
                             ),
                             "node-pool-workers": fnv1.Resource(
@@ -535,6 +571,51 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
                             "gpu-observer": fnv1.Resource(
                                 resource=resource.dict_to_struct(_gpu_observer()),
                                 ready=fnv1.READY_TRUE,
+                            ),
+                        },
+                    ),
+                    context=structpb.Struct(),
+                ),
+            ),
+            Case(
+                name="a declared System pool becomes the inline pool; a second one composes separately",
+                req=_req(
+                    [_SYSTEM_POOL_USER, _SYSTEM_POOL_USER_2, _GPU_POOL],
+                    observed_resources={
+                        "cluster": _observed_ready(_cluster_with_user_inline_pool()),
+                    },
+                ),
+                want=fnv1.RunFunctionResponse(
+                    meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+                    desired=fnv1.State(
+                        composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                        resources={
+                            "cluster": fnv1.Resource(
+                                resource=resource.dict_to_struct(_cluster_with_user_inline_pool()),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "node-pool-sys2": fnv1.Resource(
+                                resource=resource.dict_to_struct(
+                                    _node_pool(
+                                        label="sys2",
+                                        plan="vc2-6c-16gb",
+                                        node_quantity=1,
+                                        labels=[{"key": "modelplane.ai/pool", "value": "sys2"}],
+                                        auto_scaler=True,
+                                        min_nodes=1,
+                                        max_nodes=2,
+                                    ),
+                                ),
+                            ),
+                            "node-pool-gpu-l40s": fnv1.Resource(
+                                resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
+                            ),
+                            "provider-config-kubernetes": fnv1.Resource(
+                                resource=resource.dict_to_struct(_provider_config()),
+                                ready=fnv1.READY_TRUE,
+                            ),
+                            "gpu-observer": fnv1.Resource(
+                                resource=resource.dict_to_struct(_gpu_observer()),
                             ),
                         },
                     ),

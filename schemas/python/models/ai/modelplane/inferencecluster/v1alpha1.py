@@ -134,6 +134,10 @@ class Cluster(BaseModel):
     """
     EKS cluster configuration. Required when source is EKS.
     """
+    endpointAccess: Literal['Public', 'PublicAndPrivate', 'Private'] | None = None
+    """
+    Who can reach the cluster's API server. Omitted keeps the cloud's default. With Private you provide the private connectivity (VPC peering, VPN, or similar) Modelplane needs to manage the cluster. Only the API server is affected; the serving gateway stays public. Immutable; recreate the cluster to change it.
+    """
     existing: Existing | None = None
     """
     Bring-your-own cluster configuration. Required when source is Existing. Modelplane manages the inference stack on the cluster but does not provision the cluster itself.
@@ -220,13 +224,17 @@ class NodePool(BaseModel):
     """
     Capacity Block reservation backing this node pool. EKS only. Large GPU instances (e.g. p5en.48xlarge) are rarely available on demand; AWS allocates them via Capacity Blocks for ML. Set this to back the pool with a Capacity Block you have purchased. The pool's zones must match the reservation's Availability Zone, and nodeCount must not exceed the reserved instance count. Omit for on-demand pools.
     """
-    className: constr(min_length=1, max_length=253)
+    className: constr(min_length=1, max_length=253) | None = None
     """
-    Name of the InferenceClass describing this pool's hardware.
+    Name of the InferenceClass describing this pool's hardware. Required for GPU pools.
     """
     fabric: Fabric | None = None
     """
     High-performance node-to-node fabric for multi-node engines, so a gang's tensor-parallel traffic isn't capped by TCP. Omit for standard VPC networking.
+    """
+    instanceType: constr(min_length=1, max_length=127) | None = None
+    """
+    Machine size for a System pool, in the cloud's native form: an EC2 instance type on EKS (e.g. m6i.xlarge), a machine type on GKE (e.g. e2-standard-4), a VM size on AKS (e.g. Standard_D4s_v5), or a plan on Vultr (e.g. vc2-6c-16gb). Nebius sizes a node with a compute platform and a resource preset; join them with a dot (e.g. cpu-d3.4vcpu-16gb). Required for System pools.
     """
     maxNodeCount: conint(ge=1) | None = None
     """
@@ -235,6 +243,10 @@ class NodePool(BaseModel):
     minNodeCount: conint(ge=0) | None = None
     name: constr(max_length=40)
     nodeCount: conint(ge=0) | None = 1
+    role: Literal['System', 'GPU'] | None = 'GPU'
+    """
+    Determines what workloads this pool runs. GPU pools host inference workloads and take their shape from className. System pools host the serving stack and infrastructure components and take their shape from instanceType; declaring one or more System pools replaces the automatically provisioned system pool.
+    """
     zones: list[str] | None = None
     """
     Zones to restrict this node pool to. Required for provisioned pools because not all zones in a region have every GPU type.
@@ -270,7 +282,7 @@ class Spec(BaseModel):
     """
     nodePools: list[NodePool] | None = Field(None, max_length=8, min_length=1)
     """
-    GPU node pools available on this cluster. Each pool references an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools for control-plane components are provisioned automatically.
+    Node pools available on this cluster. GPU pools (the default role) reference an InferenceClass that describes the hardware shape and (for provisioned clusters) how to create the pool. System pools host the serving stack and other infrastructure components; one is provisioned automatically unless you declare your own with role System, in which case only your System pools are created.
     """
     placement: Placement | None = None
     """
@@ -375,7 +387,7 @@ class Status(BaseModel):
     """
     gpuPools: list[GpuPool] | None = Field(None, max_length=8)
     """
-    Schedulable GPU node pools on this cluster, derived from the referenced classes and the per-pool node counts. ModelDeployment scheduling matches against these.
+    Schedulable GPU node pools on this cluster, derived from the GPU pools' referenced classes and per-pool node counts. System pools don't appear here. ModelDeployment scheduling matches against these.
     """
     namespace: str | None = None
     """

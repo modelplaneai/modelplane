@@ -46,10 +46,12 @@ from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 from models.io.upbound.m.vultr.vke.kubernetes import v1beta1 as vkev1beta1
 from models.io.upbound.m.vultr.vke.kubernetesnodepool import v1beta1 as vkenodepoolv1beta1
 
-# System pool injected into every VKE cluster to host control-plane
-# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.). Not part of
-# the user-facing API - compose-inference-cluster only passes GPU pools. The
-# plan matches the Nebius system pool's shape (16 GB memory).
+# System pool injected into a VKE cluster to host control-plane
+# components (Envoy Gateway, LeaderWorkerSet, cert-manager, etc.) when the
+# spec declares no System pool of its own. The first System pool (declared
+# or injected) is the cluster's inline pool; remaining pools compose as
+# separate KubernetesNodePools. The plan matches the Nebius system pool's
+# shape (16 GB memory).
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_PLAN = "vc2-6c-16gb"
 _SYSTEM_POOL_MIN_NODES = 1
@@ -155,6 +157,12 @@ class Composer:
         creds = self.xr.spec.credentials
         return creds.name if creds and creds.name else "default"
 
+    def _default_pool(self) -> v1alpha1.NodePool | None:
+        """The first declared System pool, which becomes the cluster's
+        inline node pool. None when the spec declares no System pool and
+        the injected default is used instead."""
+        return next((pool for pool in self.xr.spec.nodePools if pool.role == "System"), None)
+
     def compose(self) -> None:
         self.compose_cluster()
         if self._cluster_ready() or self._dependents_observed():
@@ -181,9 +189,9 @@ class Composer:
         return "provider-config-kubernetes" in observed or any(name.startswith("node-pool-") for name in observed)
 
     def compose_cluster(self) -> None:
-        """Compose the VKE cluster with the fixed system node pool.
-        User-defined pools are separate KubernetesNodePool resources composed
-        after the cluster is Ready, giving them an independent lifecycle."""
+        """Compose the VKE cluster with a system node pool inline. Other
+        pools are separate KubernetesNodePool resources composed after the
+        cluster is Ready, giving them an independent lifecycle."""
         cluster = vkev1beta1.Kubernetes(
             spec=vkev1beta1.Spec(
                 providerConfigRef=vkev1beta1.ProviderConfigRef(
@@ -195,7 +203,7 @@ class Composer:
                     region=self.xr.spec.region,
                     version=self.xr.spec.kubernetesVersion,
                     haControlplanes=True,
-                    nodePools=self._system_pool(),
+                    nodePools=self._inline_system_pool(),
                 ),
                 writeConnectionSecretToRef=vkev1beta1.WriteConnectionSecretToRef(
                     name=_kubeconfig_secret_name(self.xr),
@@ -205,10 +213,13 @@ class Composer:
         resource.update(self.rsp.desired.resources["cluster"], cluster)
 
     def compose_node_pools(self) -> None:
-        """Compose a KubernetesNodePool for each user-defined pool. Gated on
-        the cluster being Ready so the cluster ID is available for the
-        selector."""
+        """Compose a KubernetesNodePool for each pool that isn't the
+        cluster's inline pool. Gated on the cluster being Ready so the
+        cluster ID is available for the selector."""
+        default_pool = self._default_pool()
         for pool in self.xr.spec.nodePools:
+            if default_pool is not None and pool.name == default_pool.name:
+                continue
             resource.update(
                 self.rsp.desired.resources[f"node-pool-{pool.name}"],
                 self._node_pool(pool),
@@ -272,17 +283,34 @@ class Composer:
             ),
         )
 
-    def _system_pool(self) -> vkev1beta1.NodePools:
-        """The system node pool for control-plane components."""
-        return vkev1beta1.NodePools(
-            label=_SYSTEM_POOL_NAME,
-            plan=_SYSTEM_POOL_PLAN,
-            nodeQuantity=_SYSTEM_POOL_MIN_NODES,
-            autoScaler=True,
-            minNodes=_SYSTEM_POOL_MIN_NODES,
-            maxNodes=_SYSTEM_POOL_MAX_NODES,
-            labels=[vkev1beta1.Label(key=_LABEL_POOL, value=_SYSTEM_POOL_NAME)],
+    def _inline_system_pool(self) -> vkev1beta1.NodePools:
+        """The cluster's inline system node pool: the first declared System
+        pool, or the injected default when none is declared. VKE's inline
+        pool is create-only, so post-create changes to it don't apply."""
+        pool = self._default_pool()
+        if pool is None:
+            return vkev1beta1.NodePools(
+                label=_SYSTEM_POOL_NAME,
+                plan=_SYSTEM_POOL_PLAN,
+                nodeQuantity=_SYSTEM_POOL_MIN_NODES,
+                autoScaler=True,
+                minNodes=_SYSTEM_POOL_MIN_NODES,
+                maxNodes=_SYSTEM_POOL_MAX_NODES,
+                labels=[vkev1beta1.Label(key=_LABEL_POOL, value=_SYSTEM_POOL_NAME)],
+            )
+        np = vkev1beta1.NodePools(
+            label=pool.name,
+            plan=pool.plan,
+            nodeQuantity=pool.nodeCount,
+            labels=[vkev1beta1.Label(key=_LABEL_POOL, value=pool.name)],
         )
+        # As for separate pools, maxNodeCount opts into VKE's server-side
+        # autoscaling.
+        if pool.maxNodeCount is not None:
+            np.autoScaler = True
+            np.minNodes = pool.minNodeCount if pool.minNodeCount is not None else pool.nodeCount
+            np.maxNodes = pool.maxNodeCount
+        return np
 
     def _node_pool(self, pool: v1alpha1.NodePool) -> vkenodepoolv1beta1.KubernetesNodePool:
         """Map an XR node pool to a KubernetesNodePool managed resource."""

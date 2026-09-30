@@ -44,12 +44,50 @@ The `cluster.source` discriminator picks one of two models:
   pools from each pool's `InferenceClass`, labels the pool's nodes so the
   scheduler's placement is enforced, and provisions the storage class for model
   weights. It also injects a non-GPU **system pool** with opinionated defaults to
-  run the inference stack, so you only declare the GPU pools you want.
+  run the inference stack, so you only declare the GPU pools you want. To size
+  the system pool yourself, declare one - see
+  [System node pools](#system-node-pools).
 - **Existing (`Existing`).** A kubeconfig `Secret` provides access to a cluster
   you run yourself. Modelplane installs the serving stack it needs but doesn't
   provision infrastructure, and each pool's `InferenceClass` provides hardware
   capabilities for scheduling only. You're responsible for the cluster meeting
   [Modelplane's requirements](#requirements-for-an-existing-cluster).
+
+## System node pools
+
+Every provisioned cluster has a **system pool**: a few non-GPU nodes that run
+the inference stack. Modelplane creates one with sensible defaults, so most
+clusters never mention it.
+
+To pick the machine size or node counts yourself, declare the pool with
+`role: System`:
+
+```yaml
+nodePools:
+  - name: system
+    role: System
+    instanceType: m6i.2xlarge
+    minNodeCount: 1
+    maxNodeCount: 3
+  - name: h100-pool
+    className: h100-8x
+```
+
+A System pool names the cloud's machine size directly in `instanceType`
+rather than referencing an `InferenceClass`, and declaring one replaces the
+pool Modelplane would otherwise create. Keep `minNodeCount` at 1 or higher:
+with no system nodes, nothing runs the serving stack.
+
+## Endpoint access
+
+`cluster.endpointAccess` sets who can reach a provisioned cluster's API
+server: `Public`, `PublicAndPrivate`, or `Private`. Omit it to keep each
+cloud's default. With `Private` the Modelplane management plane can only
+manage the cluster over private connectivity you provide, such as VPC
+peering or a VPN, and the cluster stays unready until that connectivity
+exists. This governs only the API server; the serving gateway's load
+balancer stays public regardless. The field is immutable: recreate the
+cluster to change it.
 
 ## Requirements for an existing cluster
 

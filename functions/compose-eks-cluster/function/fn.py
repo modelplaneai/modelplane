@@ -101,9 +101,10 @@ _NODE_GROUP_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"
 # or object rather than erroring.
 _ORPHAN_MANAGEMENT: list[_ManagementPolicy] = ["Observe", "Create", "Update"]
 
-# System node group injected into every EKS cluster to host control-plane
-# components (Envoy Gateway, KEDA, KServe controller, etc.). Not part of
-# the user-facing API — compose-inference-cluster only passes GPU groups.
+# System node group injected into an EKS cluster to host control-plane
+# components when the spec
+# declares no System pool of its own. Declared System pools compose like
+# any other pool and replace this default.
 _SYSTEM_POOL_NAME = "system"
 _SYSTEM_POOL_INSTANCE_TYPE = "m6i.xlarge"
 _SYSTEM_POOL_NODE_COUNT = 1
@@ -406,6 +407,14 @@ class Composer:
     def _cred_name(self) -> str:
         creds = self.xr.spec.credentials
         return creds.name if creds and creds.name else "default"
+
+    def _endpoint_access(self) -> str:
+        return self.xr.spec.endpointAccess or "PublicAndPrivate"
+
+    def _has_user_system_pool(self) -> bool:
+        """Whether the spec declares its own System pool, replacing the
+        injected default."""
+        return any(pool.role == "System" for pool in self.xr.spec.nodePools)
 
     def compose(self) -> None:
         self.compose_network()
@@ -796,9 +805,12 @@ class Composer:
                             authenticationMode="API_AND_CONFIG_MAP",
                             bootstrapClusterCreatorAdminPermissions=True,
                         ),
+                        # Private access serves the nodes (and, with Private, the
+                        # management plane over the user's own connectivity);
+                        # public access serves anything outside the VPC.
                         vpcConfig=clusterv1beta1.VpcConfig(
-                            endpointPrivateAccess=True,
-                            endpointPublicAccess=True,
+                            endpointPrivateAccess=self._endpoint_access() != "Public",
+                            endpointPublicAccess=self._endpoint_access() != "Private",
                             subnetIdSelector=clusterv1beta1.SubnetIdSelector(
                                 matchControllerRef=True,
                             ),
@@ -838,8 +850,10 @@ class Composer:
         )
 
     def compose_node_groups(self) -> None:
-        """Compose the system and user-declared GPU node groups."""
-        self._compose_system_node_group()
+        """Compose the declared node groups, plus the default system node
+        group when the spec declares no System pool of its own."""
+        if not self._has_user_system_pool():
+            self._compose_system_node_group()
         for pool in self.xr.spec.nodePools:
             capacity_block = pool.capacityBlock
             efa = pool.fabric == _FABRIC_EFA
@@ -1713,7 +1727,6 @@ class Composer:
             "iam-attach-node-ecr",
             "cluster",
             "cluster-auth",
-            f"nodegroup-{_SYSTEM_POOL_NAME}",
             "efs-filesystem",
             "efs-security-group",
             "efs-security-group-ingress",
@@ -1727,6 +1740,8 @@ class Composer:
             "iam-attach-cluster-autoscaler",
             "pod-identity-cluster-autoscaler",
         ]
+        if not self._has_user_system_pool():
+            managed_resources.append(f"nodegroup-{_SYSTEM_POOL_NAME}")
         for i in range(len(self._networking().subnetCidrs or [])):
             managed_resources.append(f"subnet-{i}")
             managed_resources.append(f"private-subnet-{i}")
