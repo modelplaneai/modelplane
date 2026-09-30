@@ -25,18 +25,22 @@ let
       );
 
   # Each function exports a 'function' Python module, so tests must run from
-  # a directory where that module is importable via the venv. We copy tests/
-  # from the source tree and run unittest against the venv's Python.
+  # a directory where that module is importable via the venv, and one pytest
+  # session can't hold two functions' tests. We copy tests/ from the source
+  # tree and run pytest against the venv's Python. We also copy pyproject.toml
+  # for its [tool.pytest] config, which pytest finds in its rootdir.
   mkFunctionTest =
     name:
     let
       venv = pythonSet.mkVirtualEnv "${name}-test-env" {
         ${name} = [ ];
+        pytest = [ ];
       };
     in
     pkgs.runCommand "modelplane-test-${name}" { } ''
       cp -r ${self}/functions/${name}/tests tests
-      ${venv}/bin/python -m unittest discover -s tests -v
+      cp ${self}/pyproject.toml pyproject.toml
+      ${venv}/bin/python -m pytest tests
       mkdir -p $out
       touch $out/.tests-passed
     '';
