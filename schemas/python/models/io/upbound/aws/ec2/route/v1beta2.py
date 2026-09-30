@@ -277,7 +277,7 @@ class ForProvider(BaseModel):
     """
     coreNetworkArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of a core network.
+    ARN of a core network.
     """
     destinationCidrBlock: str | None = None
     """
@@ -350,6 +350,10 @@ class ForProvider(BaseModel):
     networkInterfaceIdSelector: NetworkInterfaceIdSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate networkInterfaceId.
+    """
+    odbNetworkArn: str | None = None
+    """
+    ARN of an ODB network.
     """
     region: str
     """
@@ -413,7 +417,7 @@ class InitProvider(BaseModel):
     """
     coreNetworkArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of a core network.
+    ARN of a core network.
     """
     destinationCidrBlock: str | None = None
     """
@@ -486,6 +490,10 @@ class InitProvider(BaseModel):
     networkInterfaceIdSelector: NetworkInterfaceIdSelector | None = None
     """
     Selector for a NetworkInterface in ec2 to populate networkInterfaceId.
+    """
+    odbNetworkArn: str | None = None
+    """
+    ARN of an ODB network.
     """
     routeTableId: str | None = None
     """
@@ -624,7 +632,7 @@ class AtProvider(BaseModel):
     """
     coreNetworkArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of a core network.
+    ARN of a core network.
     """
     destinationCidrBlock: str | None = None
     """
@@ -669,6 +677,10 @@ class AtProvider(BaseModel):
     networkInterfaceId: str | None = None
     """
     Identifier of an EC2 network interface.
+    """
+    odbNetworkArn: str | None = None
+    """
+    ARN of an ODB network.
     """
     origin: str | None = None
     """
@@ -738,6 +750,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

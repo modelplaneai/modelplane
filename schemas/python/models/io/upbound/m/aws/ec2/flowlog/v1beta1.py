@@ -69,11 +69,11 @@ class DestinationOptions(BaseModel):
     """
     hiveCompatiblePartitions: bool | None = None
     """
-    Indicates whether to use Hive-compatible prefixes for flow logs stored in Amazon S3. Default value: false.
+    Whether to use Hive-compatible prefixes for flow logs stored in Amazon S3. Default value: false.
     """
     perHourPartition: bool | None = None
     """
-    Indicates whether to partition the flow log per hour. This reduces the cost and response time for queries. Default value: false.
+    Whether to partition the flow log per hour. This reduces the cost and response time for queries. Default value: false.
     """
 
 
@@ -182,6 +182,17 @@ class SubnetIdSelector(BaseModel):
     """
 
 
+class TagFieldSpecificationItem(BaseModel):
+    resourceType: str | None = None
+    """
+    Resource type to associate the tag keys with. Valid values: instance, network-interface, auto-scaling-group.
+    """
+    tagKeys: list[str] | None = None
+    """
+    Ordered list of tag keys, on resources of resource_type, to display in Flow Log records. The position of each key determines which field it populates in log_format (e.g., the first instance tag key populates $${instance-tag} and the second populates $${instance-tag-2}).
+    """
+
+
 class VpcIdRef(BaseModel):
     name: str
     """
@@ -232,7 +243,7 @@ class ForProvider(BaseModel):
     """
     destinationOptions: DestinationOptions | None = None
     """
-    Describes the destination options for a flow log. More details below.
+    Destination options for a flow log. More details below.
     """
     eniId: str | None = None
     """
@@ -268,13 +279,11 @@ class ForProvider(BaseModel):
     """
     logFormat: str | None = None
     """
-    The fields to include in the flow log record. Accepted format example: "$${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport}".
+    Fields to include in the flow log record. Accepted format example: "$${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport}".
     """
     maxAggregationInterval: float | None = None
     """
-    The maximum interval of time during which a flow of packets is captured and aggregated into a flow log record.
-    Valid Values: 60 seconds (1 minute) or 600 seconds (10 minutes). Default: 600.
-    When transit_gateway_id or transit_gateway_attachment_id is specified, max_aggregation_interval must be 60 seconds (1 minute).
+    Maximum interval of time during which a flow of packets is captured and aggregated into a flow log record. Valid Values: 60 seconds (1 minute) or 600 seconds (10 minutes). Default: 600. When transit_gateway_id or transit_gateway_attachment_id is specified, max_aggregation_interval must be 60 seconds (1 minute).
     """
     region: str
     """
@@ -297,13 +306,17 @@ class ForProvider(BaseModel):
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
+    tagFieldSpecification: list[TagFieldSpecificationItem] | None = None
+    """
+    Tag configuration for the Flow Logs Amazon EC2 Tags feature fields (e.g., $${instance-tag}) used in log_format. More details below.
+    """
     tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
     trafficType: str | None = None
     """
-    The type of traffic to capture. Valid values: ACCEPT,REJECT, ALL. Required if eni_id, regional_nat_gateway_id, subnet_id, or vpc_id is specified.
+    Type of traffic to capture. Valid values: ACCEPT,REJECT, ALL. Required if eni_id, regional_nat_gateway_id, subnet_id, or vpc_id is specified.
     """
     transitGatewayAttachmentId: str | None = None
     """
@@ -342,7 +355,7 @@ class InitProvider(BaseModel):
     """
     destinationOptions: DestinationOptions | None = None
     """
-    Describes the destination options for a flow log. More details below.
+    Destination options for a flow log. More details below.
     """
     eniId: str | None = None
     """
@@ -378,13 +391,11 @@ class InitProvider(BaseModel):
     """
     logFormat: str | None = None
     """
-    The fields to include in the flow log record. Accepted format example: "$${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport}".
+    Fields to include in the flow log record. Accepted format example: "$${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport}".
     """
     maxAggregationInterval: float | None = None
     """
-    The maximum interval of time during which a flow of packets is captured and aggregated into a flow log record.
-    Valid Values: 60 seconds (1 minute) or 600 seconds (10 minutes). Default: 600.
-    When transit_gateway_id or transit_gateway_attachment_id is specified, max_aggregation_interval must be 60 seconds (1 minute).
+    Maximum interval of time during which a flow of packets is captured and aggregated into a flow log record. Valid Values: 60 seconds (1 minute) or 600 seconds (10 minutes). Default: 600. When transit_gateway_id or transit_gateway_attachment_id is specified, max_aggregation_interval must be 60 seconds (1 minute).
     """
     regionalNatGatewayId: str | None = None
     """
@@ -402,13 +413,17 @@ class InitProvider(BaseModel):
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
+    tagFieldSpecification: list[TagFieldSpecificationItem] | None = None
+    """
+    Tag configuration for the Flow Logs Amazon EC2 Tags feature fields (e.g., $${instance-tag}) used in log_format. More details below.
+    """
     tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
     trafficType: str | None = None
     """
-    The type of traffic to capture. Valid values: ACCEPT,REJECT, ALL. Required if eni_id, regional_nat_gateway_id, subnet_id, or vpc_id is specified.
+    Type of traffic to capture. Valid values: ACCEPT,REJECT, ALL. Required if eni_id, regional_nat_gateway_id, subnet_id, or vpc_id is specified.
     """
     transitGatewayAttachmentId: str | None = None
     """
@@ -505,7 +520,7 @@ class AtProvider(BaseModel):
     """
     destinationOptions: DestinationOptions | None = None
     """
-    Describes the destination options for a flow log. More details below.
+    Destination options for a flow log. More details below.
     """
     eniId: str | None = None
     """
@@ -529,13 +544,11 @@ class AtProvider(BaseModel):
     """
     logFormat: str | None = None
     """
-    The fields to include in the flow log record. Accepted format example: "$${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport}".
+    Fields to include in the flow log record. Accepted format example: "$${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport}".
     """
     maxAggregationInterval: float | None = None
     """
-    The maximum interval of time during which a flow of packets is captured and aggregated into a flow log record.
-    Valid Values: 60 seconds (1 minute) or 600 seconds (10 minutes). Default: 600.
-    When transit_gateway_id or transit_gateway_attachment_id is specified, max_aggregation_interval must be 60 seconds (1 minute).
+    Maximum interval of time during which a flow of packets is captured and aggregated into a flow log record. Valid Values: 60 seconds (1 minute) or 600 seconds (10 minutes). Default: 600. When transit_gateway_id or transit_gateway_attachment_id is specified, max_aggregation_interval must be 60 seconds (1 minute).
     """
     region: str | None = None
     """
@@ -550,17 +563,21 @@ class AtProvider(BaseModel):
     """
     Subnet ID to attach to.
     """
+    tagFieldSpecification: list[TagFieldSpecificationItem] | None = None
+    """
+    Tag configuration for the Flow Logs Amazon EC2 Tags feature fields (e.g., $${instance-tag}) used in log_format. More details below.
+    """
     tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
     trafficType: str | None = None
     """
-    The type of traffic to capture. Valid values: ACCEPT,REJECT, ALL. Required if eni_id, regional_nat_gateway_id, subnet_id, or vpc_id is specified.
+    Type of traffic to capture. Valid values: ACCEPT,REJECT, ALL. Required if eni_id, regional_nat_gateway_id, subnet_id, or vpc_id is specified.
     """
     transitGatewayAttachmentId: str | None = None
     """
@@ -613,6 +630,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

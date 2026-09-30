@@ -123,11 +123,15 @@ class ForProvider(BaseModel):
     """
     disableSessionTags: bool | None = None
     """
-    Disable the tags that are automatically added to role session by Amazon EKS.
+    Disable the tags that are automatically added to role session by Amazon EKS. Must be set to true when policy is specified.
     """
     namespace: str | None = None
     """
     The name of the Kubernetes namespace inside the cluster to create the association in. The service account and the pods that use the service account must be in this namespace.
+    """
+    policy: str | None = None
+    """
+    An IAM policy in JSON format (as an escaped string) that applies additional restrictions to this Pod Identity association beyond the IAM policies attached to the IAM role. The effective permissions are the intersection of the role's policies and this policy, allowing you to enforce least privilege across multiple associations that share the same role. Requires disable_session_tags = true.
     """
     region: str
     """
@@ -136,7 +140,7 @@ class ForProvider(BaseModel):
     """
     roleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
+    ARN of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
     """
     roleArnRef: RoleArnRef | None = None
     """
@@ -156,7 +160,7 @@ class ForProvider(BaseModel):
     """
     targetRoleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the IAM role to be chained to the the IAM role specified as role_arn.
+    ARN of the IAM role to be chained to the the IAM role specified as role_arn.
     """
     targetRoleArnRef: TargetRoleArnRef | None = None
     """
@@ -183,15 +187,19 @@ class InitProvider(BaseModel):
     """
     disableSessionTags: bool | None = None
     """
-    Disable the tags that are automatically added to role session by Amazon EKS.
+    Disable the tags that are automatically added to role session by Amazon EKS. Must be set to true when policy is specified.
     """
     namespace: str | None = None
     """
     The name of the Kubernetes namespace inside the cluster to create the association in. The service account and the pods that use the service account must be in this namespace.
     """
+    policy: str | None = None
+    """
+    An IAM policy in JSON format (as an escaped string) that applies additional restrictions to this Pod Identity association beyond the IAM policies attached to the IAM role. The effective permissions are the intersection of the role's policies and this policy, allowing you to enforce least privilege across multiple associations that share the same role. Requires disable_session_tags = true.
+    """
     roleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
+    ARN of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
     """
     roleArnRef: RoleArnRef | None = None
     """
@@ -211,7 +219,7 @@ class InitProvider(BaseModel):
     """
     targetRoleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the IAM role to be chained to the the IAM role specified as role_arn.
+    ARN of the IAM role to be chained to the the IAM role specified as role_arn.
     """
     targetRoleArnRef: TargetRoleArnRef | None = None
     """
@@ -306,7 +314,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     associationArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the association.
+    ARN of the association.
     """
     associationId: str | None = None
     """
@@ -318,7 +326,7 @@ class AtProvider(BaseModel):
     """
     disableSessionTags: bool | None = None
     """
-    Disable the tags that are automatically added to role session by Amazon EKS.
+    Disable the tags that are automatically added to role session by Amazon EKS. Must be set to true when policy is specified.
     """
     externalId: str | None = None
     """
@@ -329,6 +337,10 @@ class AtProvider(BaseModel):
     """
     The name of the Kubernetes namespace inside the cluster to create the association in. The service account and the pods that use the service account must be in this namespace.
     """
+    policy: str | None = None
+    """
+    An IAM policy in JSON format (as an escaped string) that applies additional restrictions to this Pod Identity association beyond the IAM policies attached to the IAM role. The effective permissions are the intersection of the role's policies and this policy, allowing you to enforce least privilege across multiple associations that share the same role. Requires disable_session_tags = true.
+    """
     region: str | None = None
     """
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
@@ -336,7 +348,7 @@ class AtProvider(BaseModel):
     """
     roleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
+    ARN of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
     """
     serviceAccount: str | None = None
     """
@@ -352,7 +364,7 @@ class AtProvider(BaseModel):
     """
     targetRoleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the IAM role to be chained to the the IAM role specified as role_arn.
+    ARN of the IAM role to be chained to the the IAM role specified as role_arn.
     """
 
 
@@ -393,6 +405,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

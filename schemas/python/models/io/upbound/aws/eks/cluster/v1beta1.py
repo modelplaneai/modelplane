@@ -61,6 +61,91 @@ class EncryptionConfigItem(BaseModel):
     """
 
 
+class ServiceNodePortRangeItem(BaseModel):
+    maxPort: float | None = None
+    """
+    The maximum port number in the range. Valid range: 10260 to 32767. Default is 32767. Must be greater than or equal to min_port.
+    """
+    minPort: float | None = None
+    """
+    The minimum port number in the range. Valid range: 10260 to 32767. Default is 30000.
+    """
+
+
+class KubeApiServerConfigItem(BaseModel):
+    eventTtl: str | None = None
+    """
+    The duration that Kubernetes events are retained. Must be a single-unit duration (e.g., 30m, 1h). Valid range: 10m to 60m. Default is 1h.
+    """
+    serviceNodePortRange: list[ServiceNodePortRangeItem] | None = None
+    """
+    Configuration block for the port range available for NodePort services. Detailed below.
+    """
+
+
+class HorizontalPodAutoscalerControllerConfigItem(BaseModel):
+    horizontalPodAutoscalerSyncPeriod: str | None = None
+    """
+    The interval between each sync of the horizontal pod autoscaler. Must be a single-unit duration (e.g., 10s, 15s). Valid range: 10s to 15s. Default is 15s.
+    """
+
+
+class PodGcControllerConfigItem(BaseModel):
+    terminatedPodGcThreshold: float | None = None
+    """
+    The number of terminated pods that can exist before the pod garbage collector starts deleting them. Valid range: 0 to 12500. Refer to the aws_eks_cluster_versions data source for any version-specific constraints.
+    """
+
+
+class KubeControllerManagerConfigItem(BaseModel):
+    horizontalPodAutoscalerControllerConfig: (
+        list[HorizontalPodAutoscalerControllerConfigItem] | None
+    ) = None
+    """
+    Configuration block for the horizontal pod autoscaler controller. Detailed below.
+    """
+    podGcControllerConfig: list[PodGcControllerConfigItem] | None = None
+    """
+    Configuration block for the pod garbage collection controller. Detailed below.
+    """
+
+
+class ResourceItem(BaseModel):
+    name: str | None = None
+    """
+    The name of the resource (e.g., cpu, memory, nvidia.com/gpu).
+    """
+    weight: float | None = None
+    """
+    The weight assigned to the resource for scoring. Must be between 1 and 100.
+    """
+
+
+class ScoringStrategyItem(BaseModel):
+    resource: list[ResourceItem] | None = None
+    """
+    List of resource weight configuration blocks for scoring nodes. Detailed below.
+    """
+    type: str | None = None
+    """
+    The scoring strategy type. Valid values are LeastAllocated and MostAllocated. Default is LeastAllocated.
+    """
+
+
+class NodeResourcesFitItem(BaseModel):
+    scoringStrategy: list[ScoringStrategyItem] | None = None
+    """
+    Configuration block for the scoring strategy used to rank nodes during scheduling. Detailed below.
+    """
+
+
+class KubeSchedulerConfigItem(BaseModel):
+    nodeResourcesFit: list[NodeResourcesFitItem] | None = None
+    """
+    Configuration block for the NodeResourcesFit scheduler plugin. Detailed below.
+    """
+
+
 class ElasticLoadBalancingItem(BaseModel):
     enabled: bool | None = None
     """
@@ -88,6 +173,17 @@ class ControlPlanePlacementItem(BaseModel):
     """
     The name of the placement group for the Kubernetes control plane instances. This setting can't be changed after cluster creation.
     """
+    spreadLevel: str | None = None
+    """
+    Placement group spread level for etcd instances. Valid values: host, rack.
+    """
+
+
+class EtcdPlacementItem(BaseModel):
+    spreadLevel: str | None = None
+    """
+    Placement group spread level for etcd instances. Valid values: host, rack.
+    """
 
 
 class OutpostConfigItem(BaseModel):
@@ -99,6 +195,15 @@ class OutpostConfigItem(BaseModel):
     """
     An object representing the placement configuration for all the control plane instances of your local Amazon EKS cluster on AWS Outpost.
     The control_plane_placement configuration block supports the following arguments:
+    """
+    etcdInstanceType: str | None = None
+    """
+    Amazon EC2 instance type for etcd instances of your local Amazon EKS cluster on AWS Outposts.
+    """
+    etcdPlacement: list[EtcdPlacementItem] | None = None
+    """
+    Placement configuration for the etcd instances of your local Amazon EKS cluster on an AWS Outpost.
+    The etcd_placement configuration block supports the following arguments:
     """
     outpostArns: list[str] | None = None
     """
@@ -251,6 +356,10 @@ class SubnetIdSelector(BaseModel):
 
 
 class VpcConfigItem(BaseModel):
+    controlPlaneEgressMode: str | None = None
+    """
+    Egress mode for the EKS control plane. Valid values are AWS_MANAGED and CUSTOMER_ROUTED. Defaults to AWS_MANAGED. Changing from CUSTOMER_ROUTED back to AWS_MANAGED forces a new resource.
+    """
     endpointPrivateAccess: bool | None = None
     """
     Whether the Amazon EKS private API server endpoint is enabled. Default is false.
@@ -328,6 +437,18 @@ class ForProvider(BaseModel):
     forceUpdateVersion: bool | None = None
     """
     Force version update by overriding upgrade-blocking readiness checks when updating a cluster.
+    """
+    kubeApiServerConfig: list[KubeApiServerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes API server. Detailed below.
+    """
+    kubeControllerManagerConfig: list[KubeControllerManagerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes controller manager. Detailed below.
+    """
+    kubeSchedulerConfig: list[KubeSchedulerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes scheduler. Detailed below.
     """
     kubernetesNetworkConfig: list[KubernetesNetworkConfigItem] | None = None
     """
@@ -416,6 +537,18 @@ class InitProvider(BaseModel):
     forceUpdateVersion: bool | None = None
     """
     Force version update by overriding upgrade-blocking readiness checks when updating a cluster.
+    """
+    kubeApiServerConfig: list[KubeApiServerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes API server. Detailed below.
+    """
+    kubeControllerManagerConfig: list[KubeControllerManagerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes controller manager. Detailed below.
+    """
+    kubeSchedulerConfig: list[KubeSchedulerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes scheduler. Detailed below.
     """
     kubernetesNetworkConfig: list[KubernetesNetworkConfigItem] | None = None
     """
@@ -592,6 +725,10 @@ class VpcConfigItemModel(BaseModel):
     """
     (Computed) Cluster security group that is created by Amazon EKS for the cluster. Managed node groups use this security group for control-plane-to-data-plane communication.
     """
+    controlPlaneEgressMode: str | None = None
+    """
+    Egress mode for the EKS control plane. Valid values are AWS_MANAGED and CUSTOMER_ROUTED. Defaults to AWS_MANAGED. Changing from CUSTOMER_ROUTED back to AWS_MANAGED forces a new resource.
+    """
     endpointPrivateAccess: bool | None = None
     """
     Whether the Amazon EKS private API server endpoint is enabled. Default is false.
@@ -678,6 +815,18 @@ class AtProvider(BaseModel):
     identity: list[IdentityItem] | None = None
     """
     Attribute block containing identity provider information for your cluster. Only available on Kubernetes version 1.13 and 1.14 clusters created or upgraded on or after September 3, 2019. Detailed below.
+    """
+    kubeApiServerConfig: list[KubeApiServerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes API server. Detailed below.
+    """
+    kubeControllerManagerConfig: list[KubeControllerManagerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes controller manager. Detailed below.
+    """
+    kubeSchedulerConfig: list[KubeSchedulerConfigItem] | None = None
+    """
+    Configuration block for customizing the Kubernetes scheduler. Detailed below.
     """
     kubernetesNetworkConfig: list[KubernetesNetworkConfigItemModel] | None = None
     """
@@ -775,6 +924,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

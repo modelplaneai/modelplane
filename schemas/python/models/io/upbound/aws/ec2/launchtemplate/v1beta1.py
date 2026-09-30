@@ -693,6 +693,10 @@ class NetworkInterface(BaseModel):
     """
     The integer index of the network interface attachment.
     """
+    enaQueueCount: float | None = None
+    """
+    The number of ENA queues to be created with the instance. Requires an instance type and operating system that support ENA queue configuration.
+    """
     enaSrdSpecification: list[EnaSrdSpecificationItem] | None = None
     """
     Configuration for Elastic Network Adapter (ENA) Express settings. Applies to network interfaces that use the ena Express feature. See details below.
@@ -1449,6 +1453,10 @@ class NetworkInterfaceModel(BaseModel):
     """
     The integer index of the network interface attachment.
     """
+    enaQueueCount: float | None = None
+    """
+    The number of ENA queues to be created with the instance. Requires an instance type and operating system that support ENA queue configuration.
+    """
     enaSrdSpecification: list[EnaSrdSpecificationItem] | None = None
     """
     Configuration for Elastic Network Adapter (ENA) Express settings. Applies to network interfaces that use the ena Express feature. See details below.
@@ -1728,6 +1736,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

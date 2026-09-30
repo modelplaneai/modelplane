@@ -57,31 +57,31 @@ class Ipv4IpamPoolIdSelector(BaseModel):
 class ForProvider(BaseModel):
     assignGeneratedIpv6CidrBlock: bool | None = None
     """
-    Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id
+    Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id.
     """
     cidrBlock: str | None = None
     """
-    The IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
+    IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
     """
     enableDnsHostnames: bool | None = None
     """
-    A boolean flag to enable/disable DNS hostnames in the VPC. Defaults false.
+    Whether to enable DNS hostnames in the VPC. Defaults to false.
     """
     enableDnsSupport: bool | None = None
     """
-    A boolean flag to enable/disable DNS support in the VPC. Defaults to true.
+    Whether to enable DNS support in the VPC. Defaults to true.
     """
     enableNetworkAddressUsageMetrics: bool | None = None
     """
-    Indicates whether Network Address Usage metrics are enabled for your VPC. Defaults to false.
+    Whether to enable Network Address Usage metrics for your VPC. Defaults to false.
     """
     instanceTenancy: str | None = None
     """
-    A tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
+    Tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
     """
     ipv4IpamPoolId: str | None = None
     """
-    The ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
+    ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
     """
     ipv4IpamPoolIdRef: Ipv4IpamPoolIdRef | None = None
     """
@@ -93,7 +93,7 @@ class ForProvider(BaseModel):
     """
     ipv4NetmaskLength: float | None = None
     """
-    The netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
+    Netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
     """
     ipv6CidrBlock: str | None = None
     """
@@ -125,31 +125,31 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     assignGeneratedIpv6CidrBlock: bool | None = None
     """
-    Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id
+    Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id.
     """
     cidrBlock: str | None = None
     """
-    The IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
+    IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
     """
     enableDnsHostnames: bool | None = None
     """
-    A boolean flag to enable/disable DNS hostnames in the VPC. Defaults false.
+    Whether to enable DNS hostnames in the VPC. Defaults to false.
     """
     enableDnsSupport: bool | None = None
     """
-    A boolean flag to enable/disable DNS support in the VPC. Defaults to true.
+    Whether to enable DNS support in the VPC. Defaults to true.
     """
     enableNetworkAddressUsageMetrics: bool | None = None
     """
-    Indicates whether Network Address Usage metrics are enabled for your VPC. Defaults to false.
+    Whether to enable Network Address Usage metrics for your VPC. Defaults to false.
     """
     instanceTenancy: str | None = None
     """
-    A tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
+    Tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
     """
     ipv4IpamPoolId: str | None = None
     """
-    The ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
+    ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
     """
     ipv4IpamPoolIdRef: Ipv4IpamPoolIdRef | None = None
     """
@@ -161,7 +161,7 @@ class InitProvider(BaseModel):
     """
     ipv4NetmaskLength: float | None = None
     """
-    The netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
+    Netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
     """
     ipv6CidrBlock: str | None = None
     """
@@ -268,27 +268,27 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    Amazon Resource Name (ARN) of VPC
+    ARN of VPC.
     """
     assignGeneratedIpv6CidrBlock: bool | None = None
     """
-    Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id
+    Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block. Default is false. Conflicts with ipv6_ipam_pool_id.
     """
     cidrBlock: str | None = None
     """
-    The IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
+    IPv4 CIDR block for the VPC. CIDR can be explicitly set or it can be derived from IPAM using ipv4_netmask_length.
     """
     defaultNetworkAclId: str | None = None
     """
-    The ID of the network ACL created by default on VPC creation
+    ID of the network ACL created by default on VPC creation.
     """
     defaultRouteTableId: str | None = None
     """
-    The ID of the route table created by default on VPC creation
+    ID of the route table created by default on VPC creation.
     """
     defaultSecurityGroupId: str | None = None
     """
-    The ID of the security group created by default on VPC creation
+    ID of the security group created by default on VPC creation.
     """
     dhcpOptionsId: str | None = None
     """
@@ -296,35 +296,35 @@ class AtProvider(BaseModel):
     """
     enableDnsHostnames: bool | None = None
     """
-    A boolean flag to enable/disable DNS hostnames in the VPC. Defaults false.
+    Whether to enable DNS hostnames in the VPC. Defaults to false.
     """
     enableDnsSupport: bool | None = None
     """
-    A boolean flag to enable/disable DNS support in the VPC. Defaults to true.
+    Whether to enable DNS support in the VPC. Defaults to true.
     """
     enableNetworkAddressUsageMetrics: bool | None = None
     """
-    Indicates whether Network Address Usage metrics are enabled for your VPC. Defaults to false.
+    Whether to enable Network Address Usage metrics for your VPC. Defaults to false.
     """
     id: str | None = None
     """
-    The ID of the VPC
+    ID of the VPC.
     """
     instanceTenancy: str | None = None
     """
-    A tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
+    Tenancy option for instances launched into the VPC. Default is default, which ensures that EC2 instances launched in this VPC use the EC2 instance tenancy attribute specified when the EC2 instance is launched. The only other option is dedicated, which ensures that EC2 instances launched in this VPC are run on dedicated tenancy instances regardless of the tenancy attribute specified at launch. This has a dedicated per region fee of $2 per hour, plus an hourly per instance usage fee.
     """
     ipv4IpamPoolId: str | None = None
     """
-    The ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
+    ID of an IPv4 IPAM pool you want to use for allocating this VPC's CIDR. IPAM is a VPC feature that you can use to automate your IP address management workflows including assigning, tracking, troubleshooting, and auditing IP addresses across AWS Regions and accounts. Using IPAM you can monitor IP address usage throughout your AWS Organization.
     """
     ipv4NetmaskLength: float | None = None
     """
-    The netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
+    Netmask length of the IPv4 CIDR you want to allocate to this VPC. Requires specifying a ipv4_ipam_pool_id.
     """
     ipv6AssociationId: str | None = None
     """
-    The association ID for the IPv6 CIDR block.
+    Association ID for the IPv6 CIDR block.
     """
     ipv6CidrBlock: str | None = None
     """
@@ -344,13 +344,11 @@ class AtProvider(BaseModel):
     """
     mainRouteTableId: str | None = None
     """
-    The ID of the main route table associated with
-    this VPC. Note that you can change a VPC's main route table by using an
-    aws_main_route_table_association.
+    ID of the main route table associated with this VPC. Note that you can change a VPC's main route table by using an aws_main_route_table_association.
     """
     ownerId: str | None = None
     """
-    The ID of the AWS account that owns the VPC.
+    ID of the AWS account that owns the VPC.
     """
     region: str | None = None
     """
@@ -363,7 +361,7 @@ class AtProvider(BaseModel):
     """
     tagsAll: dict[str, str] | None = None
     """
-    A map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
     """
 
 
@@ -404,6 +402,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -108,25 +108,25 @@ spec:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-eks
-      version: v2.6.0
+      version: v2.8.1
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-ec2
-      version: v2.6.0
+      version: v2.8.1
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-iam
-      version: v2.6.0
+      version: v2.8.1
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/upbound/provider-aws-efs
-      version: v2.6.0
+      version: v2.8.1
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1

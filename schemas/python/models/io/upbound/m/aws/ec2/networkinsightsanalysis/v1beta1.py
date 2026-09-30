@@ -186,7 +186,7 @@ class Spec(BaseModel):
 class AlternatePathHint(BaseModel):
     componentArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the component.
+    ARN of the component.
     """
     componentId: str | None = None
     """
@@ -855,6 +855,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

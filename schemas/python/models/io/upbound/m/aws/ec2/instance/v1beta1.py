@@ -129,7 +129,7 @@ class EbsBlockDeviceItem(BaseModel):
     """
     kmsKeyId: str | None = None
     """
-    Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
+    ARN of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
     kmsKeyIdRef: KmsKeyIdRef | None = None
     """
@@ -209,7 +209,7 @@ class SpotOptions(BaseModel):
 class InstanceMarketOptions(BaseModel):
     marketType: str | None = None
     """
-    Type of market for the instance. Valid values are spot and capacity-block. Defaults to spot. Required if spot_options is specified.
+    Type of market for the instance. Valid values are spot, capacity-block, and interruptible-capacity-reservation. Use interruptible-capacity-reservation to launch instances into interruptible Capacity Reservations. Defaults to spot. Required if spot_options is specified.
     """
     spotOptions: SpotOptions | None = None
     """
@@ -369,7 +369,7 @@ class RootBlockDevice(BaseModel):
     """
     kmsKeyId: str | None = None
     """
-    Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
+    ARN of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
     kmsKeyIdRef: KmsKeyIdRef | None = None
     """
@@ -1006,7 +1006,7 @@ class EbsBlockDeviceItemModel(BaseModel):
     """
     kmsKeyId: str | None = None
     """
-    Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
+    ARN of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
     snapshotId: str | None = None
     """
@@ -1087,7 +1087,7 @@ class RootBlockDeviceModel(BaseModel):
     """
     kmsKeyId: str | None = None
     """
-    Amazon Resource Name (ARN) of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
+    ARN of the KMS Key to use when encrypting the volume. Must be configured to perform drift detection.
     """
     tags: dict[str, str] | None = None
     """
@@ -1449,6 +1449,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -31,9 +31,13 @@ class ForProvider(BaseModel):
     """
     ipv6CidrBlockNetworkBorderGroup: str | None = None
     ipv6IpamPoolId: str | None = None
+    """
+    (String) VPC ID.
+    """
     ipv6NetmaskLength: float | None = None
     region: str
     """
+    (String) AWS Region for this resource.
     Region is the region you'd like your resource to be created in.
     """
     tags: dict[str, str] | None = None
@@ -60,6 +64,9 @@ class InitProvider(BaseModel):
     """
     ipv6CidrBlockNetworkBorderGroup: str | None = None
     ipv6IpamPoolId: str | None = None
+    """
+    (String) VPC ID.
+    """
     ipv6NetmaskLength: float | None = None
     tags: dict[str, str] | None = None
 
@@ -172,9 +179,21 @@ class AtProvider(BaseModel):
     and instance_tenancy arguments become computed attributes
     """
     defaultNetworkAclId: str | None = None
+    """
+    (String) VPC ID.
+    """
     defaultRouteTableId: str | None = None
+    """
+    (String) VPC ID.
+    """
     defaultSecurityGroupId: str | None = None
+    """
+    (String) VPC ID.
+    """
     dhcpOptionsId: str | None = None
+    """
+    (String) VPC ID.
+    """
     enableDnsHostnames: bool | None = None
     """
     is true
@@ -187,22 +206,38 @@ class AtProvider(BaseModel):
     Whether destroying the resource deletes the default VPC. Default: false
     """
     id: str | None = None
+    """
+    (String) VPC ID.
+    """
     instanceTenancy: str | None = None
     """
     The allowed tenancy of instances launched into the VPC
     """
     ipv6AssociationId: str | None = None
+    """
+    (String) VPC ID.
+    """
     ipv6CidrBlock: str | None = None
     """
     and instance_tenancy arguments become computed attributes
     """
     ipv6CidrBlockNetworkBorderGroup: str | None = None
     ipv6IpamPoolId: str | None = None
+    """
+    (String) VPC ID.
+    """
     ipv6NetmaskLength: float | None = None
     mainRouteTableId: str | None = None
+    """
+    (String) VPC ID.
+    """
     ownerId: str | None = None
+    """
+    (String) VPC ID.
+    """
     region: str | None = None
     """
+    (String) AWS Region for this resource.
     Region is the region you'd like your resource to be created in.
     """
     tags: dict[str, str] | None = None
@@ -246,6 +281,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

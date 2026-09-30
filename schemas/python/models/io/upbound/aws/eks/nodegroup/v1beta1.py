@@ -287,6 +287,25 @@ class VersionSelector(BaseModel):
     """
 
 
+class WarmPoolConfigItem(BaseModel):
+    maxGroupPreparedCapacity: float | None = None
+    """
+    Maximum number of instances that are allowed to be in the warm pool combined with the Auto Scaling Group. Use -1 to specify an unlimited capacity.
+    """
+    minSize: float | None = None
+    """
+    Minimum number of instances to maintain in the warm pool. Defaults to 0.
+    """
+    poolState: str | None = None
+    """
+    Instance state to transition warm pool instances to. Valid values: STOPPED, RUNNING, HIBERNATED. Defaults to STOPPED.
+    """
+    reuseOnScaleIn: bool | None = None
+    """
+    Whether to return instances in the Auto Scaling Group to the warm pool on scale in. Not supported on Bottlerocket. Defaults to false.
+    """
+
+
 class ForProvider(BaseModel):
     amiType: str | None = None
     """
@@ -397,6 +416,10 @@ class ForProvider(BaseModel):
     """
     Selector for a Cluster in eks to populate version.
     """
+    warmPoolConfig: list[WarmPoolConfigItem] | None = None
+    """
+    Configuration block with EC2 Auto Scaling warm pool settings. Including this block enables the warm pool; removing it disables and removes the warm pool. See warm_pool_config below for details.
+    """
 
 
 class InitProvider(BaseModel):
@@ -491,6 +514,10 @@ class InitProvider(BaseModel):
     versionSelector: VersionSelector | None = None
     """
     Selector for a Cluster in eks to populate version.
+    """
+    warmPoolConfig: list[WarmPoolConfigItem] | None = None
+    """
+    Configuration block with EC2 Auto Scaling warm pool settings. Including this block enables the warm pool; removing it disables and removes the warm pool. See warm_pool_config below for details.
     """
 
 
@@ -701,6 +728,10 @@ class AtProvider(BaseModel):
     """
     Kubernetes version. Defaults to EKS Cluster Kubernetes version.
     """
+    warmPoolConfig: list[WarmPoolConfigItem] | None = None
+    """
+    Configuration block with EC2 Auto Scaling warm pool settings. Including this block enables the warm pool; removing it disables and removes the warm pool. See warm_pool_config below for details.
+    """
 
 
 class Condition(BaseModel):
@@ -740,6 +771,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

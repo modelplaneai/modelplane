@@ -104,7 +104,7 @@ class CloudwatchLogOptions(BaseModel):
     """
     bgpLogGroupArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the CloudWatch log group to send BGP logs to.
+    ARN of the CloudWatch log group to send BGP logs to.
     """
     bgpLogOutputFormat: str | None = None
     """
@@ -116,7 +116,7 @@ class CloudwatchLogOptions(BaseModel):
     """
     logGroupArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the CloudWatch log group to send logs to.
+    ARN of the CloudWatch log group to send logs to.
     """
     logOutputFormat: str | None = None
     """
@@ -839,7 +839,7 @@ class VgwTelemetryItem(BaseModel):
     """
     certificateArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the VPN tunnel endpoint certificate.
+    ARN of the VPN tunnel endpoint certificate.
     """
     lastStatusChange: str | None = None
     """
@@ -862,7 +862,7 @@ class VgwTelemetryItem(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    Amazon Resource Name (ARN) of the VPN Connection.
+    ARN of the VPN Connection.
     """
     coreNetworkArn: str | None = None
     """
@@ -1200,6 +1200,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

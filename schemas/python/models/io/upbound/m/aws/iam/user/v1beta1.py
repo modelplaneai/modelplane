@@ -13,10 +13,7 @@ from ......k8s.apimachinery.pkg.apis.meta import v1
 class ForProvider(BaseModel):
     forceDestroy: bool | None = None
     """
-    when destroying this user, destroy even if it
-    has non-provider-managed iam access keys, login profile or mfa devices. without force_destroy
-    a user with non-provider-managed access keys and login profile will fail to be destroyed.
-    delete user even if it has non-provider-managed iam access keys, login profile or mfa devices
+    This only deletes objects when the user is destroyed, not when setting this parameter to true. If setting this field in the same operation that would require replacing the user or destroying the user, this flag will not work
     """
     path: str | None = None
     """
@@ -35,10 +32,7 @@ class ForProvider(BaseModel):
 class InitProvider(BaseModel):
     forceDestroy: bool | None = None
     """
-    when destroying this user, destroy even if it
-    has non-provider-managed iam access keys, login profile or mfa devices. without force_destroy
-    a user with non-provider-managed access keys and login profile will fail to be destroyed.
-    delete user even if it has non-provider-managed iam access keys, login profile or mfa devices
+    This only deletes objects when the user is destroyed, not when setting this parameter to true. If setting this field in the same operation that would require replacing the user or destroying the user, this flag will not work
     """
     path: str | None = None
     """
@@ -123,10 +117,7 @@ class AtProvider(BaseModel):
     """
     forceDestroy: bool | None = None
     """
-    when destroying this user, destroy even if it
-    has non-provider-managed iam access keys, login profile or mfa devices. without force_destroy
-    a user with non-provider-managed access keys and login profile will fail to be destroyed.
-    delete user even if it has non-provider-managed iam access keys, login profile or mfa devices
+    This only deletes objects when the user is destroyed, not when setting this parameter to true. If setting this field in the same operation that would require replacing the user or destroying the user, this flag will not work
     """
     id: str | None = None
     """
@@ -191,6 +182,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

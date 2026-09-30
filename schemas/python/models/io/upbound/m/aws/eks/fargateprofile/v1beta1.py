@@ -158,7 +158,7 @@ class ForProvider(BaseModel):
     """
     podExecutionRoleArn: str | None = None
     """
-    Amazon Resource Name (ARN) of the IAM Role that provides permissions for the EKS Fargate Profile.
+    ARN of the IAM Role that provides permissions for the EKS Fargate Profile.
     """
     podExecutionRoleArnRef: PodExecutionRoleArnRef | None = None
     """
@@ -210,7 +210,7 @@ class InitProvider(BaseModel):
     """
     podExecutionRoleArn: str | None = None
     """
-    Amazon Resource Name (ARN) of the IAM Role that provides permissions for the EKS Fargate Profile.
+    ARN of the IAM Role that provides permissions for the EKS Fargate Profile.
     """
     podExecutionRoleArnRef: PodExecutionRoleArnRef | None = None
     """
@@ -307,7 +307,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    Amazon Resource Name (ARN) of the EKS Fargate Profile.
+    ARN of the EKS Fargate Profile.
     """
     clusterName: str | None = None
     """
@@ -319,7 +319,7 @@ class AtProvider(BaseModel):
     """
     podExecutionRoleArn: str | None = None
     """
-    Amazon Resource Name (ARN) of the IAM Role that provides permissions for the EKS Fargate Profile.
+    ARN of the IAM Role that provides permissions for the EKS Fargate Profile.
     """
     region: str | None = None
     """
@@ -385,6 +385,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

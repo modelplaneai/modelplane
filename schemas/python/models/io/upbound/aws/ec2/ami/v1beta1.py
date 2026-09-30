@@ -126,7 +126,7 @@ class ForProvider(BaseModel):
     """
     bootMode: str | None = None
     """
-    Boot mode of the AMI. For more information, see Boot modes in the Amazon Elastic Compute Cloud User Guide.
+    Boot mode of the AMI. For more information, see Boot modes in the EC2 User Guide.
     """
     deprecationTime: str | None = None
     """
@@ -193,7 +193,7 @@ class ForProvider(BaseModel):
     """
     tpmSupport: str | None = None
     """
-    If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the Amazon Elastic Compute Cloud User Guide.
+    If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the EC2 User Guide.
     """
     uefiData: str | None = None
     """
@@ -214,7 +214,7 @@ class InitProvider(BaseModel):
     """
     bootMode: str | None = None
     """
-    Boot mode of the AMI. For more information, see Boot modes in the Amazon Elastic Compute Cloud User Guide.
+    Boot mode of the AMI. For more information, see Boot modes in the EC2 User Guide.
     """
     deprecationTime: str | None = None
     """
@@ -276,7 +276,7 @@ class InitProvider(BaseModel):
     """
     tpmSupport: str | None = None
     """
-    If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the Amazon Elastic Compute Cloud User Guide.
+    If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the EC2 User Guide.
     """
     uefiData: str | None = None
     """
@@ -426,7 +426,7 @@ class AtProvider(BaseModel):
     """
     bootMode: str | None = None
     """
-    Boot mode of the AMI. For more information, see Boot modes in the Amazon Elastic Compute Cloud User Guide.
+    Boot mode of the AMI. For more information, see Boot modes in the EC2 User Guide.
     """
     deprecationTime: str | None = None
     """
@@ -538,7 +538,7 @@ class AtProvider(BaseModel):
     """
     tpmSupport: str | None = None
     """
-    If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the Amazon Elastic Compute Cloud User Guide.
+    If the image is configured for NitroTPM support, the value is v2.0. For more information, see NitroTPM in the EC2 User Guide.
     """
     uefiData: str | None = None
     """
@@ -593,6 +593,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -224,7 +224,7 @@ class ForProvider(BaseModel):
     privateDnsEnabled: bool | None = None
     """
     Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
-    Defaults to false.
+    Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
     """
     region: str
     """
@@ -317,7 +317,7 @@ class InitProvider(BaseModel):
     privateDnsEnabled: bool | None = None
     """
     Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
-    Defaults to false.
+    Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
     """
     resourceConfigurationArn: str | None = None
     """
@@ -494,7 +494,7 @@ class SubnetConfigurationItemModel(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the VPC endpoint.
+    ARN of the VPC endpoint.
     """
     autoAccept: bool | None = None
     """
@@ -539,7 +539,7 @@ class AtProvider(BaseModel):
     privateDnsEnabled: bool | None = None
     """
     Whether or not to associate a private hosted zone with the specified VPC. Applicable for endpoints of type Interface. Most users will want this enabled to allow services within the VPC to automatically use the endpoint.
-    Defaults to false.
+    Defaults to false. If vpc_endpoint_type is anything other than Interface, changing this value forces a new resource to be created.
     """
     region: str | None = None
     """
@@ -642,6 +642,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -49,11 +49,11 @@ class ForProvider(BaseModel):
     """
     outpostArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the Outpost on which to create the Capacity Reservation.
+    ARN of the Outpost on which to create the Capacity Reservation.
     """
     placementGroupArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the cluster placement group in which to create the Capacity Reservation.
+    ARN of the cluster placement group in which to create the Capacity Reservation.
     """
     region: str
     """
@@ -109,11 +109,11 @@ class InitProvider(BaseModel):
     """
     outpostArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the Outpost on which to create the Capacity Reservation.
+    ARN of the Outpost on which to create the Capacity Reservation.
     """
     placementGroupArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the cluster placement group in which to create the Capacity Reservation.
+    ARN of the cluster placement group in which to create the Capacity Reservation.
     """
     tags: dict[str, str] | None = None
     """
@@ -269,7 +269,7 @@ class AtProvider(BaseModel):
     """
     outpostArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the Outpost on which to create the Capacity Reservation.
+    ARN of the Outpost on which to create the Capacity Reservation.
     """
     ownerId: str | None = None
     """
@@ -277,7 +277,7 @@ class AtProvider(BaseModel):
     """
     placementGroupArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the cluster placement group in which to create the Capacity Reservation.
+    ARN of the cluster placement group in which to create the Capacity Reservation.
     """
     region: str | None = None
     """
@@ -335,6 +335,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

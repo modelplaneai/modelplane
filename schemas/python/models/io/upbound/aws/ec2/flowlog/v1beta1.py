@@ -150,6 +150,17 @@ class SubnetIdSelector(BaseModel):
     """
 
 
+class TagFieldSpecificationItem(BaseModel):
+    resourceType: str | None = None
+    """
+    Resource type to associate the tag keys with. Valid values: instance, network-interface, auto-scaling-group.
+    """
+    tagKeys: list[str] | None = None
+    """
+    Ordered list of tag keys, on resources of resource_type, to display in Flow Log records. The position of each key determines which field it populates in log_format (e.g., the first instance tag key populates $${instance-tag} and the second populates $${instance-tag-2}).
+    """
+
+
 class VpcIdRef(BaseModel):
     name: str
     """
@@ -257,6 +268,10 @@ class ForProvider(BaseModel):
     """
     Selector for a Subnet in ec2 to populate subnetId.
     """
+    tagFieldSpecification: list[TagFieldSpecificationItem] | None = None
+    """
+    Tag configuration for the Flow Logs Amazon EC2 Tags feature fields (e.g., $${instance-tag}) used in log_format. More details below.
+    """
     tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
@@ -361,6 +376,10 @@ class InitProvider(BaseModel):
     subnetIdSelector: SubnetIdSelector | None = None
     """
     Selector for a Subnet in ec2 to populate subnetId.
+    """
+    tagFieldSpecification: list[TagFieldSpecificationItem] | None = None
+    """
+    Tag configuration for the Flow Logs Amazon EC2 Tags feature fields (e.g., $${instance-tag}) used in log_format. More details below.
     """
     tags: dict[str, str] | None = None
     """
@@ -528,6 +547,10 @@ class AtProvider(BaseModel):
     """
     Subnet ID to attach to.
     """
+    tagFieldSpecification: list[TagFieldSpecificationItem] | None = None
+    """
+    Tag configuration for the Flow Logs Amazon EC2 Tags feature fields (e.g., $${instance-tag}) used in log_format. More details below.
+    """
     tags: dict[str, str] | None = None
     """
     Key-value map of resource tags.
@@ -591,6 +614,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

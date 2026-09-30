@@ -139,7 +139,7 @@ class ForProvider(BaseModel):
     """
     throughputMode: str | None = None
     """
-    Throughput mode for the file system. Defaults to bursting. Valid values: bursting, provisioned, or elastic. When using provisioned, also set provisioned_throughput_in_mibps.
+    Throughput mode for the file system. Defaults to bursting, matching the CreateFileSystem API default. Note that AWS recommends , and elastic is the default in the Amazon EFS console. Valid values: bursting, provisioned, or elastic. When using provisioned, also set provisioned_throughput_in_mibps.
     """
 
 
@@ -193,7 +193,7 @@ class InitProvider(BaseModel):
     """
     throughputMode: str | None = None
     """
-    Throughput mode for the file system. Defaults to bursting. Valid values: bursting, provisioned, or elastic. When using provisioned, also set provisioned_throughput_in_mibps.
+    Throughput mode for the file system. Defaults to bursting, matching the CreateFileSystem API default. Note that AWS recommends , and elastic is the default in the Amazon EFS console. Valid values: bursting, provisioned, or elastic. When using provisioned, also set provisioned_throughput_in_mibps.
     """
 
 
@@ -277,7 +277,7 @@ class SizeInByte(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    Amazon Resource Name of the file system.
+    ARN of the file system.
     """
     availabilityZoneId: str | None = None
     """
@@ -357,7 +357,7 @@ class AtProvider(BaseModel):
     """
     throughputMode: str | None = None
     """
-    Throughput mode for the file system. Defaults to bursting. Valid values: bursting, provisioned, or elastic. When using provisioned, also set provisioned_throughput_in_mibps.
+    Throughput mode for the file system. Defaults to bursting, matching the CreateFileSystem API default. Note that AWS recommends , and elastic is the default in the Amazon EFS console. Valid values: bursting, provisioned, or elastic. When using provisioned, also set provisioned_throughput_in_mibps.
     """
 
 
@@ -398,6 +398,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

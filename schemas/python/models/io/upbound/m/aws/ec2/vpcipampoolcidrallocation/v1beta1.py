@@ -96,6 +96,10 @@ class ForProvider(BaseModel):
     Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
+    tags: dict[str, str] | None = None
+    """
+    Key-value map of resource tags.
+    """
 
 
 class InitProvider(BaseModel):
@@ -126,6 +130,10 @@ class InitProvider(BaseModel):
     netmaskLength: float | None = None
     """
     The netmask length of the CIDR you would like to allocate to the IPAM pool. Valid Values: 0-128.
+    """
+    tags: dict[str, str] | None = None
+    """
+    Key-value map of resource tags.
     """
 
 
@@ -237,6 +245,14 @@ class AtProvider(BaseModel):
     """
     The type of the resource.
     """
+    tags: dict[str, str] | None = None
+    """
+    Key-value map of resource tags.
+    """
+    tagsAll: dict[str, str] | None = None
+    """
+    Map of tags assigned to the resource, including those inherited from the provider default_tags configuration block.
+    """
 
 
 class Condition(BaseModel):
@@ -276,6 +292,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

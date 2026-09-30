@@ -104,7 +104,7 @@ class ForProvider(BaseModel):
     """
     gatewayLoadBalancerArns: list[str] | None = None
     """
-    Amazon Resource Names (ARNs) of one or more Gateway Load Balancers for the endpoint service.
+    ARNs of one or more Gateway Load Balancers for the endpoint service.
     """
     gatewayLoadBalancerArnsRefs: list[GatewayLoadBalancerArnsRef] | None = None
     """
@@ -116,7 +116,7 @@ class ForProvider(BaseModel):
     """
     networkLoadBalancerArns: list[str] | None = None
     """
-    Amazon Resource Names (ARNs) of one or more Network Load Balancers for the endpoint service.
+    ARNs of one or more Network Load Balancers for the endpoint service.
     """
     networkLoadBalancerArnsRefs: list[NetworkLoadBalancerArnsRef] | None = None
     """
@@ -156,7 +156,7 @@ class InitProvider(BaseModel):
     """
     gatewayLoadBalancerArns: list[str] | None = None
     """
-    Amazon Resource Names (ARNs) of one or more Gateway Load Balancers for the endpoint service.
+    ARNs of one or more Gateway Load Balancers for the endpoint service.
     """
     gatewayLoadBalancerArnsRefs: list[GatewayLoadBalancerArnsRef] | None = None
     """
@@ -168,7 +168,7 @@ class InitProvider(BaseModel):
     """
     networkLoadBalancerArns: list[str] | None = None
     """
-    Amazon Resource Names (ARNs) of one or more Network Load Balancers for the endpoint service.
+    ARNs of one or more Network Load Balancers for the endpoint service.
     """
     networkLoadBalancerArnsRefs: list[NetworkLoadBalancerArnsRef] | None = None
     """
@@ -288,7 +288,7 @@ class AtProvider(BaseModel):
     """
     arn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the VPC endpoint service.
+    ARN of the VPC endpoint service.
     """
     availabilityZones: list[str] | None = None
     """
@@ -300,7 +300,7 @@ class AtProvider(BaseModel):
     """
     gatewayLoadBalancerArns: list[str] | None = None
     """
-    Amazon Resource Names (ARNs) of one or more Gateway Load Balancers for the endpoint service.
+    ARNs of one or more Gateway Load Balancers for the endpoint service.
     """
     id: str | None = None
     """
@@ -312,7 +312,7 @@ class AtProvider(BaseModel):
     """
     networkLoadBalancerArns: list[str] | None = None
     """
-    Amazon Resource Names (ARNs) of one or more Network Load Balancers for the endpoint service.
+    ARNs of one or more Network Load Balancers for the endpoint service.
     """
     privateDnsName: str | None = None
     """
@@ -394,6 +394,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

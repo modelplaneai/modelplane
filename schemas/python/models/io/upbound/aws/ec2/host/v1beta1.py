@@ -37,7 +37,7 @@ class ForProvider(BaseModel):
     """
     outpostArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the AWS Outpost on which to allocate the Dedicated Host.
+    ARN of the AWS Outpost on which to allocate the Dedicated Host.
     """
     region: str
     """
@@ -77,7 +77,7 @@ class InitProvider(BaseModel):
     """
     outpostArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the AWS Outpost on which to allocate the Dedicated Host.
+    ARN of the AWS Outpost on which to allocate the Dedicated Host.
     """
     tags: dict[str, str] | None = None
     """
@@ -217,7 +217,7 @@ class AtProvider(BaseModel):
     """
     outpostArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the AWS Outpost on which to allocate the Dedicated Host.
+    ARN of the AWS Outpost on which to allocate the Dedicated Host.
     """
     ownerId: str | None = None
     """
@@ -275,6 +275,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

@@ -148,7 +148,7 @@ class Spec(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    The Amazon Resource Name (ARN) specifying the role.
+    ARN specifying the role.
     """
     awsServiceName: str | None = None
     """
@@ -168,7 +168,7 @@ class AtProvider(BaseModel):
     """
     id: str | None = None
     """
-    The Amazon Resource Name (ARN) of the role.
+    ARN of the role.
     """
     name: str | None = None
     """
@@ -229,6 +229,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

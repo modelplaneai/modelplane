@@ -251,7 +251,7 @@ class NameSelector(BaseModel):
 class IamInstanceProfile(BaseModel):
     arn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the instance profile. Conflicts with name.
+    ARN of the instance profile. Conflicts with name.
     """
     arnRef: ArnRef | None = None
     """
@@ -691,6 +691,10 @@ class NetworkInterface(BaseModel):
     """
     The integer index of the network interface attachment.
     """
+    enaQueueCount: float | None = None
+    """
+    The number of ENA queues to be created with the instance. Requires an instance type and operating system that support ENA queue configuration.
+    """
     enaSrdSpecification: EnaSrdSpecification | None = None
     """
     Configuration for Elastic Network Adapter (ENA) Express settings. Applies to network interfaces that use the ena Express feature. See details below.
@@ -963,7 +967,7 @@ class ForProvider(BaseModel):
     """
     description: str | None = None
     """
-    Description of the launch template.
+    Description of the launch template version (VersionDescription in the EC2 API). Launch templates in AWS do not have a template-level description; whenever a change to this resource creates a new version, the new version is created with this description. To give each version a distinct description, update this argument in the same apply as the other changes.
     """
     disableApiStop: bool | None = None
     """
@@ -1137,7 +1141,7 @@ class InitProvider(BaseModel):
     """
     description: str | None = None
     """
-    Description of the launch template.
+    Description of the launch template version (VersionDescription in the EC2 API). Launch templates in AWS do not have a template-level description; whenever a change to this resource creates a new version, the new version is created with this description. To give each version a distinct description, update this argument in the same apply as the other changes.
     """
     disableApiStop: bool | None = None
     """
@@ -1408,7 +1412,7 @@ class EbsModel(BaseModel):
 class IamInstanceProfileModel(BaseModel):
     arn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the instance profile. Conflicts with name.
+    ARN of the instance profile. Conflicts with name.
     """
     name: str | None = None
     """
@@ -1440,6 +1444,10 @@ class NetworkInterfaceModel(BaseModel):
     deviceIndex: float | None = None
     """
     The integer index of the network interface attachment.
+    """
+    enaQueueCount: float | None = None
+    """
+    The number of ENA queues to be created with the instance. Requires an instance type and operating system that support ENA queue configuration.
     """
     enaSrdSpecification: EnaSrdSpecification | None = None
     """
@@ -1510,7 +1518,7 @@ class NetworkInterfaceModel(BaseModel):
 class AtProvider(BaseModel):
     arn: str | None = None
     """
-    Amazon Resource Name (ARN) of the launch template.
+    ARN of the launch template.
     """
     blockDeviceMappings: list[BlockDeviceMapping] | None = None
     """
@@ -1536,7 +1544,7 @@ class AtProvider(BaseModel):
     """
     description: str | None = None
     """
-    Description of the launch template.
+    Description of the launch template version (VersionDescription in the EC2 API). Launch templates in AWS do not have a template-level description; whenever a change to this resource creates a new version, the new version is created with this description. To give each version a distinct description, update this argument in the same apply as the other changes.
     """
     disableApiStop: bool | None = None
     """
@@ -1718,6 +1726,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

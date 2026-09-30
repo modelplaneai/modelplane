@@ -12,7 +12,13 @@ from .....k8s.apimachinery.pkg.apis.meta import v1
 
 class AccessScope(BaseModel):
     namespaces: list[str] | None = None
+    """
+    The namespaces to which the access scope applies when type is namespace.
+    """
     type: str | None = None
+    """
+    Valid values are namespace or cluster.
+    """
 
 
 class Policy(BaseModel):
@@ -88,7 +94,13 @@ class PrincipalArnSelector(BaseModel):
 
 class ForProvider(BaseModel):
     accessScope: AccessScope | None = None
+    """
+    The configuration block to determine the scope of the access. See access_scope Block below.
+    """
     clusterName: str | None = None
+    """
+    Name of the EKS Cluster.
+    """
     clusterNameRef: ClusterNameRef | None = None
     """
     Reference to a Cluster in eks to populate clusterName.
@@ -98,7 +110,13 @@ class ForProvider(BaseModel):
     Selector for a Cluster in eks to populate clusterName.
     """
     policyArn: str
+    """
+    The ARN of the access policy that you're associating.
+    """
     principalArn: str | None = None
+    """
+    The IAM Principal ARN which requires Authentication access to the EKS cluster.
+    """
     principalArnRef: PrincipalArnRef | None = None
     """
     Reference to a AccessEntry in eks to populate principalArn.
@@ -109,12 +127,16 @@ class ForProvider(BaseModel):
     """
     region: str
     """
+    Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
 
 
 class InitProvider(BaseModel):
     accessScope: AccessScope | None = None
+    """
+    The configuration block to determine the scope of the access. See access_scope Block below.
+    """
 
 
 class ProviderConfigRef(BaseModel):
@@ -199,14 +221,33 @@ class Spec(BaseModel):
 
 class AtProvider(BaseModel):
     accessScope: AccessScope | None = None
+    """
+    The configuration block to determine the scope of the access. See access_scope Block below.
+    """
     associatedAt: str | None = None
+    """
+    Date and time in RFC3339 format that the policy was associated.
+    """
     clusterName: str | None = None
+    """
+    Name of the EKS Cluster.
+    """
     id: str | None = None
     modifiedAt: str | None = None
+    """
+    Date and time in RFC3339 format that the policy was updated.
+    """
     policyArn: str | None = None
+    """
+    The ARN of the access policy that you're associating.
+    """
     principalArn: str | None = None
+    """
+    The IAM Principal ARN which requires Authentication access to the EKS cluster.
+    """
     region: str | None = None
     """
+    Region where this resource will be managed. Defaults to the Region set in the provider configuration.
     Region is the region you'd like your resource to be created in.
     """
 
@@ -248,6 +289,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

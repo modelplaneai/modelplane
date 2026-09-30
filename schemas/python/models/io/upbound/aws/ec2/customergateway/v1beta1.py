@@ -21,7 +21,7 @@ class ForProvider(BaseModel):
     """
     certificateArn: str | None = None
     """
-    The Amazon Resource Name (ARN) for the customer gateway certificate.
+    ARN for the customer gateway certificate.
     """
     deviceName: str | None = None
     """
@@ -58,7 +58,7 @@ class InitProvider(BaseModel):
     """
     certificateArn: str | None = None
     """
-    The Amazon Resource Name (ARN) for the customer gateway certificate.
+    ARN for the customer gateway certificate.
     """
     deviceName: str | None = None
     """
@@ -191,7 +191,7 @@ class AtProvider(BaseModel):
     """
     certificateArn: str | None = None
     """
-    The Amazon Resource Name (ARN) for the customer gateway certificate.
+    ARN for the customer gateway certificate.
     """
     deviceName: str | None = None
     """
@@ -262,6 +262,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

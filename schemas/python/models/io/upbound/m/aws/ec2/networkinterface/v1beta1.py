@@ -10,6 +10,24 @@ from pydantic import AwareDatetime, BaseModel, Field
 from ......k8s.apimachinery.pkg.apis.meta import v1
 
 
+class EnaSrdUdpSpecification(BaseModel):
+    enaSrdUdpEnabled: bool | None = None
+    """
+    Indicates whether UDP traffic uses ENA Express. Requires ena_srd_enabled to be true.
+    """
+
+
+class EnaSrdSpecification(BaseModel):
+    enaSrdEnabled: bool | None = None
+    """
+    Indicates whether ENA Express is enabled for the network interface.
+    """
+    enaSrdUdpSpecification: EnaSrdUdpSpecification | None = None
+    """
+    Configures ENA Express for UDP network traffic. See ENA SRD UDP Specification below for more details.
+    """
+
+
 class Policy(BaseModel):
     resolution: Literal['Required', 'Optional'] | None = 'Required'
     """
@@ -101,6 +119,10 @@ class ForProvider(BaseModel):
     description: str | None = None
     """
     Description for the network interface.
+    """
+    enaSrdSpecification: EnaSrdSpecification | None = None
+    """
+    Configures ENA Express for the network interface. The ENI must be attached to an instance to configure ENA Express. See ENA SRD Specification below for more details.
     """
     enablePrimaryIpv6: bool | None = None
     """
@@ -202,6 +224,10 @@ class InitProvider(BaseModel):
     description: str | None = None
     """
     Description for the network interface.
+    """
+    enaSrdSpecification: EnaSrdSpecification | None = None
+    """
+    Configures ENA Express for the network interface. The ENI must be attached to an instance to configure ENA Express. See ENA SRD Specification below for more details.
     """
     enablePrimaryIpv6: bool | None = None
     """
@@ -388,6 +414,10 @@ class AtProvider(BaseModel):
     """
     Description for the network interface.
     """
+    enaSrdSpecification: EnaSrdSpecification | None = None
+    """
+    Configures ENA Express for the network interface. The ENI must be attached to an instance to configure ENA Express. See ENA SRD Specification below for more details.
+    """
     enablePrimaryIpv6: bool | None = None
     """
     Enables assigning a primary IPv6 Global Unicast Address (GUA) to the network interface (ENI) in dual-stack or IPv6-only subnets. This ensures the instance attached to the ENI retains a consistent IPv6 address. Once enabled, the first IPv6 GUA becomes the primary IPv6 address and cannot be disabled. The primary IPv6 address remains assigned until the instance is terminated or the ENI is detached. Enabling and subsequent disabling forces recreation of the ENI.
@@ -529,6 +559,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """

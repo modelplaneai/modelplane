@@ -62,10 +62,17 @@ class ClusterNameSelector(BaseModel):
     """
 
 
+class NamespaceConfig(BaseModel):
+    namespace: str | None = None
+    """
+    Name of the Kubernetes namespace to install the add-on in. Once you install an add-on in a specific namespace, you must remove and re-create the add-on to change its namespace. For more details see the Custom namespace for add-ons.
+    """
+
+
 class PodIdentityAssociationItem(BaseModel):
     roleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
+    ARN of the IAM role to associate with the service account. The EKS Pod Identity agent manages credentials to assume this role for applications in the containers in the pods that use this service account.
     """
     serviceAccount: str | None = None
     """
@@ -133,7 +140,11 @@ class ForProvider(BaseModel):
     """
     configurationValues: str | None = None
     """
-    custom configuration values for addons with single JSON string. This JSON string value must match the JSON schema derived from describe-addon-configuration.
+    Custom configuration values for addons with single JSON string. This JSON string value must match the JSON schema derived from describe-addon-configuration.
+    """
+    namespaceConfig: NamespaceConfig | None = None
+    """
+    Namespace configuration for the add-on. See namespace_config below for details.
     """
     podIdentityAssociation: list[PodIdentityAssociationItem] | None = None
     """
@@ -158,7 +169,7 @@ class ForProvider(BaseModel):
     """
     serviceAccountRoleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of an
+    ARN of an
     existing IAM role to bind to the add-on's service account. The role must be
     assigned the IAM permissions required by the add-on. If you don't specify
     an existing IAM role, then the add-on uses the permissions assigned to the node
@@ -204,7 +215,11 @@ class InitProvider(BaseModel):
     """
     configurationValues: str | None = None
     """
-    custom configuration values for addons with single JSON string. This JSON string value must match the JSON schema derived from describe-addon-configuration.
+    Custom configuration values for addons with single JSON string. This JSON string value must match the JSON schema derived from describe-addon-configuration.
+    """
+    namespaceConfig: NamespaceConfig | None = None
+    """
+    Namespace configuration for the add-on. See namespace_config below for details.
     """
     podIdentityAssociation: list[PodIdentityAssociationItem] | None = None
     """
@@ -224,7 +239,7 @@ class InitProvider(BaseModel):
     """
     serviceAccountRoleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of an
+    ARN of an
     existing IAM role to bind to the add-on's service account. The role must be
     assigned the IAM permissions required by the add-on. If you don't specify
     an existing IAM role, then the add-on uses the permissions assigned to the node
@@ -320,7 +335,7 @@ class AtProvider(BaseModel):
     """
     arn: str | None = None
     """
-    Amazon Resource Name (ARN) of the EKS add-on.
+    ARN of the EKS add-on.
     """
     clusterName: str | None = None
     """
@@ -328,7 +343,7 @@ class AtProvider(BaseModel):
     """
     configurationValues: str | None = None
     """
-    custom configuration values for addons with single JSON string. This JSON string value must match the JSON schema derived from describe-addon-configuration.
+    Custom configuration values for addons with single JSON string. This JSON string value must match the JSON schema derived from describe-addon-configuration.
     """
     createdAt: str | None = None
     """
@@ -341,6 +356,10 @@ class AtProvider(BaseModel):
     modifiedAt: str | None = None
     """
     Date and time in RFC3339 format that the EKS add-on was updated.
+    """
+    namespaceConfig: NamespaceConfig | None = None
+    """
+    Namespace configuration for the add-on. See namespace_config below for details.
     """
     podIdentityAssociation: list[PodIdentityAssociationItem] | None = None
     """
@@ -365,7 +384,7 @@ class AtProvider(BaseModel):
     """
     serviceAccountRoleArn: str | None = None
     """
-    The Amazon Resource Name (ARN) of an
+    ARN of an
     existing IAM role to bind to the add-on's service account. The role must be
     assigned the IAM permissions required by the add-on. If you don't specify
     an existing IAM role, then the add-on uses the permissions assigned to the node
@@ -419,6 +438,13 @@ class Status(BaseModel):
     conditions: list[Condition] | None = None
     """
     Conditions of the resource.
+    """
+    lastHandledReconcileAt: str | None = None
+    """
+    LastHandledReconcileAt holds the value of the most recent
+    reconcile-requested-at annotation token that the controller has
+    processed. Users can compare this to the annotation to determine
+    whether a reconcile request has been handled.
     """
     observedGeneration: int | None = None
     """
