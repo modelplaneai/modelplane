@@ -15,7 +15,6 @@
 """Tests for the compose-model-endpoint function."""
 
 import asyncio
-import base64
 import dataclasses
 import json
 
@@ -27,9 +26,7 @@ from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
 from models.ai.modelplane.modelendpoint import v1alpha1
-
-_NS = "ml-team"
-_NAME = "together-kimi-k2"
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 
 @dataclasses.dataclass
@@ -41,188 +38,197 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def _xr(**spec) -> dict:  # noqa: ANN003
-    """The ModelEndpoint XR, built from the generated model so a field the XRD
-    doesn't define can't creep into a test."""
-    xr = v1alpha1.ModelEndpoint(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="ModelEndpoint",
-        metadata={"name": _NAME, "namespace": _NS},
-        spec=v1alpha1.Spec(origin="https://api.together.xyz", **spec),
-    )
-    return xr.model_dump(exclude_none=True, mode="json", by_alias=True)
-
-
-def _api_key(secret: str, key: str = "apiKey") -> v1alpha1.Credential:
-    """An API key credential read from the named Secret."""
-    return v1alpha1.Credential(
-        method="APIKey", apiKey=v1alpha1.ApiKey(secretRef=v1alpha1.SecretRef(name=secret, key=key))
-    )
-
-
-def _secret(name: str, data: dict[str, str]) -> dict:
-    """A Secret as the API server stores it, values base64 encoded."""
-    return {
-        "apiVersion": "v1",
-        "kind": "Secret",
-        "metadata": {"name": name, "namespace": _NS},
-        "data": {k: base64.b64encode(v.encode()).decode() for k, v in data.items()},
-    }
-
-
-def _credential_requirement(name: str) -> fnv1.Requirements:
-    return fnv1.Requirements(
-        resources={"credential": fnv1.ResourceSelector(api_version="v1", kind="Secret", match_name=name, namespace=_NS)}
+def _model_endpoint(*, credential_key: str | None) -> fnv1.Resource:
+    """The together-kimi-k2 XR, with an API key under credential_key of together-api-key, or no credential if None."""
+    credential = None
+    if credential_key is not None:
+        credential = v1alpha1.Credential(
+            method="APIKey",
+            apiKey=v1alpha1.ApiKey(secretRef=v1alpha1.SecretRef(name="together-api-key", key=credential_key)),
+        )
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            v1alpha1.ModelEndpoint(
+                apiVersion="modelplane.ai/v1alpha1",
+                kind="ModelEndpoint",
+                metadata=metav1.ObjectMeta(name="together-kimi-k2", namespace="ml-team"),
+                spec=v1alpha1.Spec(origin="https://api.together.xyz", credential=credential),
+            ).model_dump(exclude_none=True, mode="json", by_alias=True)
+        )
     )
 
 
-def _response(
-    *,
-    reason: str,
-    status: fnv1.Status,
-    message: str | None = None,
-    requirements: fnv1.Requirements | None = None,
-) -> fnv1.RunFunctionResponse:
-    """The whole response. This function composes no resources, so desired
-    carries only the composite's readiness, which mirrors EndpointReady, and
-    asserting the whole thing proves it stays that way."""
-    ready = fnv1.READY_TRUE if status == fnv1.STATUS_CONDITION_TRUE else fnv1.READY_FALSE
-    rsp = fnv1.RunFunctionResponse(
-        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-        desired=fnv1.State(composite=fnv1.Resource(ready=ready)),
-        context=structpb.Struct(),
-        conditions=[
-            fnv1.Condition(type=fn.CONDITION_TYPE_ENDPOINT_READY, status=status, reason=reason, message=message)
-        ],
+def _credential_secret(*, key: str) -> fnv1.Resource:
+    """The together-api-key Secret, as the credential requirement returns it, holding sk-abc under key."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "v1",
+                "kind": "Secret",
+                "metadata": {"name": "together-api-key", "namespace": "ml-team"},
+                # Base64 encoded, as the API server stores it. c2stYWJj is
+                # "sk-abc".
+                "data": {key: "c2stYWJj"},
+            }
+        )
     )
-    if requirements is not None:
-        rsp.requirements.CopyFrom(requirements)
-    if message is not None:
-        rsp.results.append(fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message=message))
-    return rsp
-
-
-COMPOSE_CASES = [
-    Case(
-        name="no credential: usable as soon as it exists",
-        req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_xr()))),
-        ),
-        want=_response(
-            reason=fn.CONDITION_REASON_ENDPOINT_USABLE,
-            status=fnv1.STATUS_CONDITION_TRUE,
-        ),
-    ),
-    Case(
-        name="a credential that resolves",
-        req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_xr(credential=_api_key("together-api-key"))))
-            ),
-            required_resources={
-                "credential": fnv1.Resources(
-                    items=[
-                        fnv1.Resource(
-                            resource=resource.dict_to_struct(_secret("together-api-key", {"apiKey": "sk-abc"}))
-                        )
-                    ]
-                )
-            },
-        ),
-        want=_response(
-            reason=fn.CONDITION_REASON_ENDPOINT_USABLE,
-            status=fnv1.STATUS_CONDITION_TRUE,
-            requirements=_credential_requirement("together-api-key"),
-        ),
-    ),
-    Case(
-        name="a credential Secret that does not exist",
-        req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_xr(credential=_api_key("together-api-key"))))
-            ),
-            required_resources={"credential": fnv1.Resources(items=[])},
-        ),
-        want=_response(
-            reason=fn.CONDITION_REASON_CREDENTIAL_MISSING,
-            status=fnv1.STATUS_CONDITION_FALSE,
-            message="Secret together-api-key does not exist",
-            requirements=_credential_requirement("together-api-key"),
-        ),
-    ),
-    Case(
-        # A Secret that exists but lacks the key is the likelier mistake,
-        # and would otherwise surface as a 401 from the provider.
-        name="a credential Secret missing the key",
-        req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_xr(credential=_api_key("together-api-key"))))
-            ),
-            required_resources={
-                "credential": fnv1.Resources(
-                    items=[
-                        fnv1.Resource(
-                            resource=resource.dict_to_struct(_secret("together-api-key", {"token": "sk-abc"}))
-                        )
-                    ]
-                )
-            },
-        ),
-        want=_response(
-            reason=fn.CONDITION_REASON_CREDENTIAL_MISSING,
-            status=fnv1.STATUS_CONDITION_FALSE,
-            message="Secret together-api-key has no key apiKey",
-            requirements=_credential_requirement("together-api-key"),
-        ),
-    ),
-    Case(
-        name="a credential under a non-default key",
-        req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(
-                    resource=resource.dict_to_struct(
-                        _xr(credential=_api_key("together-api-key", key="TOGETHER_API_KEY"))
-                    )
-                )
-            ),
-            required_resources={
-                "credential": fnv1.Resources(
-                    items=[
-                        fnv1.Resource(
-                            resource=resource.dict_to_struct(
-                                _secret("together-api-key", {"TOGETHER_API_KEY": "sk-abc"})
-                            )
-                        )
-                    ]
-                )
-            },
-        ),
-        want=_response(
-            reason=fn.CONDITION_REASON_ENDPOINT_USABLE,
-            status=fnv1.STATUS_CONDITION_TRUE,
-            requirements=_credential_requirement("together-api-key"),
-        ),
-    ),
-    Case(
-        name="an unresolved credential requirement",
-        req=fnv1.RunFunctionRequest(
-            observed=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_xr(credential=_api_key("together-api-key"))))
-            ),
-        ),
-        want=_response(
-            reason=fn.CONDITION_REASON_WAITING_FOR_CREDENTIAL,
-            status=fnv1.STATUS_CONDITION_FALSE,
-            message="Waiting for Secret together-api-key to resolve",
-            requirements=_credential_requirement("together-api-key"),
-        ),
-    ),
-]
 
 
 def _to_dict(msg: message.Message) -> dict:
     """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
+
+
+# This function composes no resources, so desired carries only the composite's
+# readiness, which mirrors EndpointReady. Comparing the whole response proves it
+# stays that way. The desired XR is written inline although every case has it:
+# it's a bare fnv1.Resource carrying only readiness, so a helper would only
+# rename its constructor.
+COMPOSE_CASES = [
+    Case(
+        name="no credential: usable as soon as it exists",
+        req=fnv1.RunFunctionRequest(observed=fnv1.State(composite=_model_endpoint(credential_key=None))),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_TRUE)),
+            context=structpb.Struct(),
+            conditions=[
+                fnv1.Condition(type="EndpointReady", status=fnv1.STATUS_CONDITION_TRUE, reason="EndpointUsable"),
+            ],
+        ),
+    ),
+    Case(
+        name="a credential that resolves: usable",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_endpoint(credential_key="apiKey")),
+            required_resources={"credential": fnv1.Resources(items=[_credential_secret(key="apiKey")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_TRUE)),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "credential": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", match_name="together-api-key", namespace="ml-team"
+                    )
+                }
+            ),
+            conditions=[
+                fnv1.Condition(type="EndpointReady", status=fnv1.STATUS_CONDITION_TRUE, reason="EndpointUsable"),
+            ],
+        ),
+    ),
+    Case(
+        name="a credential Secret that does not exist: credential missing",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_endpoint(credential_key="apiKey")),
+            required_resources={"credential": fnv1.Resources()},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Secret together-api-key does not exist")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "credential": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", match_name="together-api-key", namespace="ml-team"
+                    )
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="EndpointReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="CredentialMissing",
+                    message="Secret together-api-key does not exist",
+                ),
+            ],
+        ),
+    ),
+    # A Secret that exists but lacks the key is the likelier mistake, and would
+    # otherwise surface as a 401 from the provider.
+    Case(
+        name="a credential Secret missing the key: credential missing",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_endpoint(credential_key="apiKey")),
+            required_resources={"credential": fnv1.Resources(items=[_credential_secret(key="token")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Secret together-api-key has no key apiKey")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "credential": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", match_name="together-api-key", namespace="ml-team"
+                    )
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="EndpointReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="CredentialMissing",
+                    message="Secret together-api-key has no key apiKey",
+                ),
+            ],
+        ),
+    ),
+    Case(
+        name="a credential under a non-default key: usable",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_endpoint(credential_key="TOGETHER_API_KEY")),
+            required_resources={"credential": fnv1.Resources(items=[_credential_secret(key="TOGETHER_API_KEY")])},
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_TRUE)),
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "credential": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", match_name="together-api-key", namespace="ml-team"
+                    )
+                }
+            ),
+            conditions=[
+                fnv1.Condition(type="EndpointReady", status=fnv1.STATUS_CONDITION_TRUE, reason="EndpointUsable"),
+            ],
+        ),
+    ),
+    Case(
+        name="an unresolved credential requirement: wait for it to resolve",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(composite=_model_endpoint(credential_key="apiKey")),
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=fnv1.Resource(ready=fnv1.READY_FALSE)),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for Secret together-api-key to resolve")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "credential": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", match_name="together-api-key", namespace="ml-team"
+                    )
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="EndpointReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForCredential",
+                    message="Waiting for Secret together-api-key to resolve",
+                ),
+            ],
+        ),
+    ),
+]
 
 
 @pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)

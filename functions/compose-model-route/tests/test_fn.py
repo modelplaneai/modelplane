@@ -15,7 +15,6 @@
 """Tests for the compose-model-route function."""
 
 import asyncio
-import base64
 import dataclasses
 import json
 
@@ -26,23 +25,8 @@ from function import fn
 from google.protobuf import duration_pb2 as durationpb
 from google.protobuf import json_format, message
 from google.protobuf import struct_pb2 as structpb
-from models.ai.modelplane.inferencecluster import v1alpha1 as icv1alpha1
-from models.ai.modelplane.inferencegateway import v1alpha1 as igv1alpha1
-from models.ai.modelplane.modelendpoint import v1alpha1 as mev1alpha1
 from models.ai.modelplane.modelroute import v1alpha1
-
-_NS = "ml-team"
-_SVC = "assistant"
-_MODEL = f"{_NS}/{_SVC}"
-_GW = "eu"
-_CLUSTER_CA = "-----BEGIN CERTIFICATE-----\ncluster\n-----END CERTIFICATE-----\n"
-_CLIENT_CA = "-----BEGIN CERTIFICATE-----\nclient\n-----END CERTIFICATE-----\n"
-
-
-def _be(ep: str) -> str:
-    """A composed backend object's name: child_name of the ModelRoute's own name
-    (service-gateway) and the endpoint's."""
-    return resource.child_name(f"{_SVC}-{_GW}", ep)
+from models.io.k8s.apimachinery.pkg.apis.meta import v1 as metav1
 
 
 @dataclasses.dataclass
@@ -54,200 +38,479 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-def _entry(
-    label: str, *, name: str | None = None, priority: int | None = None, weight: int | None = None
-) -> v1alpha1.Endpoint:
-    kwargs = {}
-    if priority is not None:
-        kwargs["priority"] = priority
-    if weight is not None:
-        kwargs["weight"] = weight
-    return v1alpha1.Endpoint(
-        name=name or label,
-        selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": label}),
-        **kwargs,
-    )
-
-
-def _route_xr(entries: list[v1alpha1.Endpoint], *, gateway: str = _GW) -> dict:
-    xr = v1alpha1.ModelRoute(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="ModelRoute",
-        metadata={"name": f"{_SVC}-{gateway}", "namespace": _NS},
-        spec=v1alpha1.Spec(
-            gatewayName=gateway,
-            serviceName=_SVC,
-            endpoints=entries,
-            timeouts=v1alpha1.Timeouts(request="600s", idle="0s"),
-        ),
-    )
-    return xr.model_dump(exclude_none=True, mode="json", by_alias=True)
-
-
-def _endpoint(
-    name: str,
-    *,
-    origin: str,
-    model: str | None = None,
-    api: mev1alpha1.Api | None = None,
-    credential: str | None = None,
-    ready: bool = True,
-    composed: bool = False,
-) -> dict:
-    ep = mev1alpha1.ModelEndpoint(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="ModelEndpoint",
-        metadata={"name": name, "namespace": _NS},
-        spec=mev1alpha1.Spec(
-            origin=origin,
-            **({"model": model} if model else {}),
-            **({"api": api} if api else {}),
-            **(
-                {
-                    "credential": mev1alpha1.Credential(
-                        method="APIKey", apiKey=mev1alpha1.ApiKey(secretRef=mev1alpha1.SecretRef(name=credential))
-                    )
-                }
-                if credential
-                else {}
-            ),
-        ),
-    )
-    d = ep.model_dump(exclude_none=True, mode="json", by_alias=True)
-    if composed:
-        d["metadata"]["labels"] = {"modelplane.ai/cluster": "gw-eu", "modelplane.ai/deployment": "d"}
-    d["status"] = {
-        "conditions": [
-            {
-                "type": "EndpointReady",
-                "status": "True" if ready else "False",
-                "reason": "EndpointUsable" if ready else "CredentialMissing",
-                "lastTransitionTime": "2026-06-08T00:00:00Z",
-            }
-        ]
-    }
-    return d
-
-
-def _gateway(*, client_ca: str | None = _CLIENT_CA, address: str | None = "203.0.113.1", tls: bool = False) -> dict:
-    spec = igv1alpha1.Spec(clusterName="gw-eu")
-    if tls:
-        spec.tls = igv1alpha1.Tls(certificateRefs=[igv1alpha1.CertificateRef(name="eu-tls")])
-    gw = igv1alpha1.InferenceGateway(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="InferenceGateway",
-        metadata={"name": _GW},
-        spec=spec,
-    )
-    d = gw.model_dump(exclude_none=True, mode="json", by_alias=True)
-    status: dict = {}
-    if address:
-        status["address"] = address
-    if client_ca:
-        status["clientCACertificate"] = client_ca
-    if status:
-        d["status"] = status
-    return d
-
-
-def _cluster(name: str, *, provider_config: str | None = "gw-eu-pc", ca: str | None = _CLUSTER_CA) -> dict:
-    c = icv1alpha1.InferenceCluster(
-        apiVersion="modelplane.ai/v1alpha1",
-        kind="InferenceCluster",
-        metadata={"name": name},
-        spec=icv1alpha1.Spec(
-            cluster=icv1alpha1.Cluster(
-                source="Existing",
-                existing=icv1alpha1.Existing(
-                    secretRef=icv1alpha1.SecretRef(name=f"{name}-kubeconfig", key="kubeconfig")
+def _model_route(*, endpoints: list[v1alpha1.Endpoint]) -> fnv1.Resource:
+    """The ModelRoute XR pinning ml-team's assistant service to gateway eu."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            v1alpha1.ModelRoute(
+                apiVersion="modelplane.ai/v1alpha1",
+                kind="ModelRoute",
+                metadata=metav1.ObjectMeta(name="assistant-eu", namespace="ml-team"),
+                spec=v1alpha1.Spec(
+                    gatewayName="eu",
+                    serviceName="assistant",
+                    endpoints=endpoints,
+                    timeouts=v1alpha1.Timeouts(request="600s", idle="0s"),
                 ),
-            )
-        ),
-    )
-    d = c.model_dump(exclude_none=True, mode="json", by_alias=True)
-    status: dict = {}
-    if provider_config:
-        status["providerConfigRef"] = {"name": provider_config}
-    if ca:
-        status["gateway"] = {"caCertificate": ca}
-    if status:
-        d["status"] = status
-    return d
-
-
-def _secret(name: str, data: dict[str, str]) -> dict:
-    return {
-        "apiVersion": "v1",
-        "kind": "Secret",
-        "metadata": {"name": name, "namespace": _NS},
-        "data": {k: base64.b64encode(v.encode()).decode() for k, v in data.items()},
-    }
-
-
-def _required(**resources) -> dict:  # noqa: ANN003
-    return {
-        name: fnv1.Resources(items=[fnv1.Resource(resource=resource.dict_to_struct(r)) for r in items])
-        for name, items in resources.items()
-    }
-
-
-def _requirements(entries: list[v1alpha1.Endpoint], *, credentials: dict[str, str] | None = None) -> fnv1.Requirements:
-    """The requirements the function emits: the named gateway, every cluster, a
-    ModelEndpoint selector per entry, and a Secret per endpoint that names a
-    credential (endpoint name -> Secret name)."""
-    reqs = {
-        "gateway": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name=_GW),
-        "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
-    }
-    for entry in entries:
-        reqs[f"endpoints-{entry.name}"] = fnv1.ResourceSelector(
-            api_version="modelplane.ai/v1alpha1",
-            kind="ModelEndpoint",
-            namespace=_NS,
-            match_labels=fnv1.MatchLabels(labels=dict(entry.selector.matchLabels)),
+            ).model_dump(exclude_none=True, mode="json", by_alias=True)
         )
-    for endpoint, secret in (credentials or {}).items():
-        reqs[f"credential-{endpoint}"] = fnv1.ResourceSelector(
-            api_version="v1", kind="Secret", namespace=_NS, match_name=secret
-        )
-    return fnv1.Requirements(resources=reqs)
-
-
-def _not_ready(
-    status: dict, reason: str, message: str, requirements: fnv1.Requirements, *, warning: str | None = None
-) -> fnv1.RunFunctionResponse:
-    """The whole response for a pass that composes nothing: the status counts so
-    far, a not-ready composite, one RoutingReady=False condition, and the reason
-    as a result. A warning about endpoints dropped before the tier emptied
-    precedes it."""
-    results = []
-    if warning is not None:
-        results.append(fnv1.Result(severity=fnv1.SEVERITY_WARNING, message=warning))
-    results.append(fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message=message))
-    return fnv1.RunFunctionResponse(
-        meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-        desired=fnv1.State(
-            composite=fnv1.Resource(
-                resource=resource.dict_to_struct({"status": status}),
-                ready=fnv1.READY_FALSE,
-            )
-        ),
-        context=structpb.Struct(),
-        requirements=requirements,
-        conditions=[
-            fnv1.Condition(
-                type=fn.CONDITION_TYPE_ROUTING_READY,
-                status=fnv1.STATUS_CONDITION_FALSE,
-                reason=reason,
-                message=message,
-            )
-        ],
-        results=results,
     )
 
 
-def _manifest(rsp: fnv1.RunFunctionResponse, key: str) -> dict:
-    return resource.struct_to_dict(rsp.desired.resources[key].resource)["spec"]["forProvider"]["manifest"]
+def _desired_model_route(*, address: str | None, total_endpoints: int, ready_endpoints: int) -> fnv1.Resource:
+    """The desired ModelRoute XR, not yet ready, reporting its model, its gateway's address and its endpoint counts."""
+    status: dict = {"model": "ml-team/assistant"}
+    if address is not None:
+        status["address"] = address
+    status["endpoints"] = {"total": total_endpoints, "ready": ready_endpoints}
+    return fnv1.Resource(resource=resource.dict_to_struct({"status": status}), ready=fnv1.READY_FALSE)
+
+
+def _inference_gateway(*, tls: bool, address: str, client_ca_published: bool) -> fnv1.Resource:
+    """The InferenceGateway eu on cluster gw-eu, as the gateway requirement returns it."""
+    spec: dict = {"clusterName": "gw-eu"}
+    if tls:
+        spec["tls"] = {"certificateRefs": [{"name": "eu-tls"}]}
+    status: dict = {"address": address}
+    if client_ca_published:
+        status["clientCACertificate"] = "-----BEGIN CERTIFICATE-----\nclient\n-----END CERTIFICATE-----\n"
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "InferenceGateway",
+                "metadata": {"name": "eu"},
+                "spec": spec,
+                "status": status,
+            }
+        )
+    )
+
+
+def _inference_cluster(*, gateway_ca_published: bool) -> fnv1.Resource:
+    """The InferenceCluster gw-eu the gateway runs on, as the clusters requirement returns it."""
+    status: dict = {"providerConfigRef": {"name": "gw-eu-pc"}}
+    if gateway_ca_published:
+        status["gateway"] = {"caCertificate": "-----BEGIN CERTIFICATE-----\ncluster\n-----END CERTIFICATE-----\n"}
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "InferenceCluster",
+                "metadata": {"name": "gw-eu"},
+                "spec": {
+                    "cluster": {
+                        "source": "Existing",
+                        "existing": {"secretRef": {"name": "gw-eu-kubeconfig", "key": "kubeconfig"}},
+                    },
+                    "stack": "Standard",
+                },
+                "status": status,
+            }
+        )
+    )
+
+
+def _composed_endpoint(*, model: str | None) -> fnv1.Resource:
+    """The ready ModelEndpoint self, which Modelplane composed on gw-eu, as an endpoints requirement returns it."""
+    spec: dict = {"origin": "https://gw-eu.example.com"}
+    if model is not None:
+        spec["model"] = model
+    spec["api"] = {"schema": "OpenAI", "prefix": "/v1"}
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "ModelEndpoint",
+                "metadata": {
+                    "name": "self",
+                    "namespace": "ml-team",
+                    "labels": {"modelplane.ai/cluster": "gw-eu", "modelplane.ai/deployment": "d"},
+                },
+                "spec": spec,
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "EndpointReady",
+                            "status": "True",
+                            "reason": "EndpointUsable",
+                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                        }
+                    ]
+                },
+            }
+        )
+    )
+
+
+def _third_party_endpoint(
+    *,
+    name: str,
+    origin: str,
+    model: str | None,
+    schema: str,
+    api_key_secret: str | None,
+    ready: bool,
+    reason: str,
+) -> fnv1.Resource:
+    """A ModelEndpoint without the cluster label, so third-party; ready and reason set its EndpointReady condition."""
+    spec: dict = {"origin": origin}
+    if model is not None:
+        spec["model"] = model
+    spec["api"] = {"schema": schema, "prefix": "/v1"}
+    if api_key_secret is not None:
+        spec["credential"] = {"method": "APIKey", "apiKey": {"secretRef": {"name": api_key_secret, "key": "apiKey"}}}
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "modelplane.ai/v1alpha1",
+                "kind": "ModelEndpoint",
+                "metadata": {"name": name, "namespace": "ml-team"},
+                "spec": spec,
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "EndpointReady",
+                            "status": "True" if ready else "False",
+                            "reason": reason,
+                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                        }
+                    ]
+                },
+            }
+        )
+    )
+
+
+def _api_key_secret(*, name: str, data: dict[str, str]) -> fnv1.Resource:
+    """A Secret in ml-team holding an endpoint's API key, as a credential requirement returns it."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "v1",
+                "kind": "Secret",
+                "metadata": {"name": name, "namespace": "ml-team"},
+                "data": data,
+            }
+        )
+    )
+
+
+def _composed_endpoint_backend() -> fnv1.Resource:
+    """The composed Backend for self, pinning this route's copy of gw-eu's CA and presenting its client certificate."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                            "kind": "Backend",
+                            "metadata": {"name": "assistant-eu-self-a42e6", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "endpoints": [{"fqdn": {"hostname": "gw-eu.example.com", "port": 443}}],
+                                "tls": {
+                                    "caCertificateRefs": [
+                                        {"kind": "ConfigMap", "group": "", "name": "assistant-eu-gw-eu-ca-3dd16"}
+                                    ],
+                                    "sni": "gw-eu.example.com",
+                                    "clientCertificateRef": {
+                                        "kind": "Secret",
+                                        "group": "",
+                                        "name": "assistant-eu-client-08324",
+                                    },
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _composed_endpoint_ai_backend() -> fnv1.Resource:
+    """The composed AIServiceBackend for self, which keeps the caller header because Modelplane operates self."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "aigateway.envoyproxy.io/v1beta1",
+                            "kind": "AIServiceBackend",
+                            "metadata": {"name": "assistant-eu-self-a42e6", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "schema": {"name": "OpenAI", "prefix": "/v1"},
+                                "backendRef": {
+                                    "group": "gateway.envoyproxy.io",
+                                    "kind": "Backend",
+                                    "name": "assistant-eu-self-a42e6",
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _third_party_backend(*, name: str, hostname: str) -> fnv1.Resource:
+    """A composed Backend for a third-party endpoint, which trusts the system CAs."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                            "kind": "Backend",
+                            "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "endpoints": [{"fqdn": {"hostname": hostname, "port": 443}}],
+                                "tls": {"wellKnownCACertificates": "System", "sni": hostname},
+                            },
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _third_party_ai_backend(*, name: str, schema: str) -> fnv1.Resource:
+    """A composed AIServiceBackend for a third-party endpoint, which strips the caller header."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "aigateway.envoyproxy.io/v1beta1",
+                            "kind": "AIServiceBackend",
+                            "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "schema": {"name": schema, "prefix": "/v1"},
+                                "backendRef": {"group": "gateway.envoyproxy.io", "kind": "Backend", "name": name},
+                                "headerMutation": {"remove": ["x-modelplane-caller"]},
+                            },
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _credential(*, name: str, api_key: str) -> fnv1.Resource:
+    """The composed copy of an endpoint's API key Secret, under the apiKey key the AI Gateway reads."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "v1",
+                            "kind": "Secret",
+                            "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
+                            "type": "Opaque",
+                            "data": {"apiKey": api_key},
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _credential_policy(*, name: str, auth: dict) -> fnv1.Resource:
+    """The composed BackendSecurityPolicy sending an endpoint's API key the way auth says."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "aigateway.envoyproxy.io/v1beta1",
+                            "kind": "BackendSecurityPolicy",
+                            "metadata": {"name": name, "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                **auth,
+                                "targetRefs": [
+                                    {"group": "aigateway.envoyproxy.io", "kind": "AIServiceBackend", "name": name}
+                                ],
+                            },
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _cluster_ca() -> fnv1.Resource:
+    """The composed ConfigMap holding gw-eu's gateway CA, named for this route so no other route composes it."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {"policy": "SuccessfulCreate"},
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "v1",
+                            "kind": "ConfigMap",
+                            "metadata": {"name": "assistant-eu-gw-eu-ca-3dd16", "namespace": "mp-ml-team-51733"},
+                            "data": {"ca.crt": "-----BEGIN CERTIFICATE-----\ncluster\n-----END CERTIFICATE-----\n"},
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _client_certificate() -> fnv1.Resource:
+    """The composed client Certificate the composed endpoint's backend presents."""
+    # Issued from the gateway's CA ClusterIssuer into this namespace. Named for
+    # this route, so no other route in the namespace composes it, and deleted
+    # with the route, so it sets no managementPolicies.
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {
+                        "policy": "DeriveFromCelQuery",
+                        "celQuery": (
+                            "has(object.status) && has(object.status.conditions) && "
+                            "object.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')"
+                        ),
+                    },
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "cert-manager.io/v1",
+                            "kind": "Certificate",
+                            "metadata": {"name": "assistant-eu-client-08324", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                "secretName": "assistant-eu-client-08324",
+                                "commonName": "inference-gateway-eu",
+                                "usages": ["client auth", "digital signature", "key encipherment"],
+                                "duration": "2160h",
+                                "renewBefore": "720h",
+                                "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
+                                "issuerRef": {
+                                    "name": "inference-gateway-ca",
+                                    "kind": "ClusterIssuer",
+                                    "group": "cert-manager.io",
+                                },
+                            },
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+
+def _ai_gateway_route(*, section_name: str, backend_refs: list[dict]) -> fnv1.Resource:
+    """The composed AIGatewayRoute matching ml-team/assistant, bound to the gateway's section_name listener."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-pc"},
+                    "readiness": {
+                        "policy": "DeriveFromCelQuery",
+                        "celQuery": (
+                            "has(object.status) && has(object.status.conditions) && "
+                            "object.status.conditions.exists(c, c.type == 'Accepted' && c.status == 'True')"
+                        ),
+                    },
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "aigateway.envoyproxy.io/v1beta1",
+                            "kind": "AIGatewayRoute",
+                            "metadata": {"name": "assistant", "namespace": "mp-ml-team-51733"},
+                            "spec": {
+                                # The route lives in the team's namespace but
+                                # attaches across to the gateway.
+                                "parentRefs": [
+                                    {
+                                        "group": "gateway.networking.k8s.io",
+                                        "kind": "Gateway",
+                                        "name": "inference-gateway",
+                                        "namespace": "modelplane-system",
+                                        "sectionName": section_name,
+                                    }
+                                ],
+                                "rules": [
+                                    {
+                                        "matches": [
+                                            {
+                                                "headers": [
+                                                    {
+                                                        "type": "Exact",
+                                                        "name": "x-ai-eg-model",
+                                                        "value": "ml-team/assistant",
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "backendRefs": backend_refs,
+                                        "timeouts": {"request": "600s"},
+                                        "streamIdleTimeout": "0s",
+                                        "modelsOwnedBy": "ml-team",
+                                    }
+                                ],
+                                # Declaring the token costs is what makes the
+                                # ext-proc ask a backend for usage on a streamed
+                                # response, which otherwise reports none, and is
+                                # where the metered counts in the access log
+                                # come from.
+                                "llmRequestCosts": [
+                                    {"metadataKey": "llm_input_token", "type": "InputToken"},
+                                    {"metadataKey": "llm_output_token", "type": "OutputToken"},
+                                    {"metadataKey": "llm_total_token", "type": "TotalToken"},
+                                ],
+                            },
+                        }
+                    },
+                },
+            }
+        )
+    )
 
 
 def _to_dict(msg: message.Message) -> dict:
@@ -255,475 +518,1528 @@ def _to_dict(msg: message.Message) -> dict:
     return json.loads(json_format.MessageToJson(msg, sort_keys=True))
 
 
-# Passes where a route can't be composed compose nothing and say why. Asserting
-# the whole response proves nothing is composed against a cluster the route
-# can't yet reach, rather than a subset being applied.
-def _gates_cases() -> list[Case]:
-    composed = _endpoint("self", origin="https://gw-eu.example.com", composed=True)
-    return [
-        Case(
-            name="the gateway's client PKI hasn't issued, so nothing can name its certificate",
-            req=fnv1.RunFunctionRequest(
-                observed=fnv1.State(
-                    composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr([_entry("d")])))
-                ),
-                required_resources=_required(
-                    gateway=[_gateway(client_ca=None)],
-                    clusters=[_cluster("gw-eu")],
-                    **{"endpoints-d": [composed]},
-                ),
+# Every ModelRoute here sets timeouts other than the ModelService's defaults, so
+# the AIGatewayRoute's timeouts can only have come from the ModelRoute. Every
+# object composed onto the gateway's cluster lands in mp-ml-team-51733, the
+# namespace mirroring the route's own. compose-inference-cluster composes that
+# namespace, so it isn't among the composed resources.
+#
+# The cases where the route can't be composed compose nothing and say why. Their
+# whole responses show that no subset of the route is applied.
+#
+# Secret data is base64 encoded, as the API server stores it: c2stMQ== is
+# "sk-1", c2stdG9n "sk-tog" and c2stcHJvdmlkZXI= "sk-provider".
+COMPOSE_CASES = [
+    Case(
+        name="the gateway's client PKI hasn't issued, so nothing can name its certificate",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
             ),
-            want=_not_ready(
-                {"model": _MODEL, "endpoints": {"total": 0, "ready": 0}},
-                fn.CONDITION_REASON_WAITING_FOR_GATEWAY,
-                "InferenceGateway eu has not published its client CA",
-                _requirements([_entry("d")]),
-            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=False)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(items=[_composed_endpoint(model=None)]),
+            },
         ),
-        Case(
-            name="no selected endpoint is ready",
-            req=fnv1.RunFunctionRequest(
-                observed=fnv1.State(
-                    composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr([_entry("d")])))
-                ),
-                required_resources=_required(
-                    gateway=[_gateway()],
-                    clusters=[_cluster("gw-eu")],
-                    **{"endpoints-d": [_endpoint("self", origin="https://gw-eu.example.com", ready=False)]},
-                ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(composite=_desired_model_route(address=None, total_endpoints=0, ready_endpoints=0)),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL, message="InferenceGateway eu has not published its client CA"
+                )
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
             ),
-            want=_not_ready(
-                {
-                    "model": _MODEL,
-                    "address": "203.0.113.1",
-                    "endpoints": {"total": 1, "ready": 0},
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForGateway",
+                    message="InferenceGateway eu has not published its client CA",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="no selected endpoint is ready",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="self",
+                            origin="https://gw-eu.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=False,
+                            reason="CredentialMissing",
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=0)
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="None of the 1 selected ModelEndpoints is ready to carry traffic",
+                )
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="NoReadyEndpoints",
+                    message="None of the 1 selected ModelEndpoints is ready to carry traffic",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="a composed endpoint whose cluster has published no gateway CA is dropped",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=False)]),
+                "endpoints-d": fnv1.Resources(items=[_composed_endpoint(model=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=0)
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message="Endpoints left out of the route, their cluster has published no gateway CA: self",
+                ),
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="None of the 1 selected ModelEndpoints is ready to carry traffic",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="NoReadyEndpoints",
+                    message="None of the 1 selected ModelEndpoints is ready to carry traffic",
+                )
+            ],
+        ),
+    ),
+    # The endpoint's credential names the apiKey key, which its Secret lacks.
+    Case(
+        name="a credential Secret missing its key drops the endpoint",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="a",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "a"}),
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-a": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="wrongkey",
+                            origin="https://a.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret="k",
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+                "credential-wrongkey": fnv1.Resources(items=[_api_key_secret(name="k", data={"token": "c2stMQ=="})]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=0)
+            ),
+            results=[
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_WARNING,
+                    message="Endpoints left out of the route, their credential Secret missing or missing its key: wrongkey",
+                ),
+                fnv1.Result(
+                    severity=fnv1.SEVERITY_NORMAL,
+                    message="None of the 1 selected ModelEndpoints is ready to carry traffic",
+                ),
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-a": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "a"}),
+                    ),
+                    "credential-wrongkey": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", namespace="ml-team", match_name="k"
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="NoReadyEndpoints",
+                    message="None of the 1 selected ModelEndpoints is ready to carry traffic",
+                )
+            ],
+        ),
+    ),
+    # A composed self-hosted endpoint at priority 0 and a third-party provider at
+    # priority 1.
+    Case(
+        name="a composed endpoint and a third-party provider get backends, a credential, a cluster CA and a route",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                            priority=0,
+                        ),
+                        v1alpha1.Endpoint(
+                            name="together",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "together"}),
+                            priority=1,
+                        ),
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(items=[_composed_endpoint(model="d")]),
+                "endpoints-together": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="together",
+                            origin="https://api.together.xyz",
+                            model="Qwen/Qwen2.5",
+                            schema="OpenAI",
+                            api_key_secret="together-key",
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+                "credential-together": fnv1.Resources(
+                    items=[_api_key_secret(name="together-key", data={"apiKey": "c2stdG9n"})]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=2, ready_endpoints=2),
+                resources={
+                    "backend-self": _composed_endpoint_backend(),
+                    "aibackend-self": _composed_endpoint_ai_backend(),
+                    "backend-together": _third_party_backend(
+                        name="assistant-eu-together-20044", hostname="api.together.xyz"
+                    ),
+                    "aibackend-together": _third_party_ai_backend(name="assistant-eu-together-20044", schema="OpenAI"),
+                    "credential-together": _credential(
+                        name="assistant-eu-together-credential-fe51d", api_key="c2stdG9n"
+                    ),
+                    "credpolicy-together": _credential_policy(
+                        name="assistant-eu-together-20044",
+                        auth={
+                            "type": "APIKey",
+                            "apiKey": {"secretRef": {"name": "assistant-eu-together-credential-fe51d"}},
+                        },
+                    ),
+                    "cluster-ca-gw-eu": _cluster_ca(),
+                    "client-certificate": _client_certificate(),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[
+                            {"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0, "modelNameOverride": "d"},
+                            {
+                                "name": "assistant-eu-together-20044",
+                                "weight": 1,
+                                "priority": 1,
+                                "modelNameOverride": "Qwen/Qwen2.5",
+                            },
+                        ],
+                    ),
                 },
-                fn.CONDITION_REASON_NO_ENDPOINTS,
-                "None of the 1 selected ModelEndpoints is ready to carry traffic",
-                _requirements([_entry("d")]),
             ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                    "endpoints-together": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "together"}),
+                    ),
+                    "credential-together": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", namespace="ml-team", match_name="together-key"
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
         ),
-        Case(
-            name="a composed endpoint whose cluster withdrew its CA is dropped",
-            req=fnv1.RunFunctionRequest(
-                observed=fnv1.State(
-                    composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr([_entry("d")])))
-                ),
-                required_resources=_required(
-                    gateway=[_gateway()],
-                    clusters=[_cluster("gw-eu", ca=None)],
-                    **{"endpoints-d": [composed]},
-                ),
+    ),
+    # Without TLS there's only the HTTP listener.
+    Case(
+        name="the route binds to the HTTP listener of a gateway without TLS",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
             ),
-            want=_not_ready(
-                {
-                    "model": _MODEL,
-                    "address": "203.0.113.1",
-                    "endpoints": {"total": 1, "ready": 0},
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(items=[_composed_endpoint(model=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-self": _composed_endpoint_backend(),
+                    "aibackend-self": _composed_endpoint_ai_backend(),
+                    "cluster-ca-gw-eu": _cluster_ca(),
+                    "client-certificate": _client_certificate(),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
+                    ),
                 },
-                fn.CONDITION_REASON_NO_ENDPOINTS,
-                "None of the 1 selected ModelEndpoints is ready to carry traffic",
-                _requirements([_entry("d")]),
-                warning="Endpoints left out of the route, their cluster has published no gateway CA: self",
             ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
         ),
-        Case(
-            name="a credential Secret missing its key drops the endpoint",
-            req=fnv1.RunFunctionRequest(
-                observed=fnv1.State(
-                    composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr([_entry("a")])))
-                ),
-                required_resources=_required(
-                    gateway=[_gateway()],
-                    clusters=[_cluster("gw-eu")],
-                    **{
-                        "endpoints-a": [_endpoint("wrongkey", origin="https://a.example.com", credential="k")],
-                        "credential-wrongkey": [_secret("k", {"token": "sk-1"})],
-                    },
-                ),
+    ),
+    # A TLS gateway serves inference on its HTTPS listener alone, so the route
+    # binds there. Binding to :80 on a TLS gateway would carry credentials in the
+    # clear.
+    Case(
+        name="the route binds to the HTTPS listener of a TLS gateway",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
             ),
-            want=_not_ready(
-                {
-                    "model": _MODEL,
-                    "address": "203.0.113.1",
-                    "endpoints": {"total": 1, "ready": 0},
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=True, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(items=[_composed_endpoint(model=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-self": _composed_endpoint_backend(),
+                    "aibackend-self": _composed_endpoint_ai_backend(),
+                    "cluster-ca-gw-eu": _cluster_ca(),
+                    "client-certificate": _client_certificate(),
+                    "route": _ai_gateway_route(
+                        section_name="https",
+                        backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
+                    ),
                 },
-                fn.CONDITION_REASON_NO_ENDPOINTS,
-                "None of the 1 selected ModelEndpoints is ready to carry traffic",
-                _requirements([_entry("a")], credentials={"wrongkey": "k"}),
-                warning=(
-                    "Endpoints left out of the route, their credential Secret missing or missing its key: wrongkey"
-                ),
             ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
         ),
-    ]
+    ),
+    Case(
+        name="the status reports the gateway's address and the endpoint counts",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.9", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(items=[_composed_endpoint(model=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.9", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-self": _composed_endpoint_backend(),
+                    "aibackend-self": _composed_endpoint_ai_backend(),
+                    "cluster-ca-gw-eu": _cluster_ca(),
+                    "client-certificate": _client_certificate(),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    # A canary entry and a catch-all entry must not both weight one endpoint; the
+    # first that matches it wins. The endpoint isn't Modelplane-composed, so no
+    # client certificate is issued.
+    Case(
+        name="an endpoint matched twice belongs to the first entry",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="canary",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "kimi"}),
+                            priority=0,
+                        ),
+                        v1alpha1.Endpoint(
+                            name="catchall",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "kimi"}),
+                            priority=1,
+                        ),
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-canary": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="kimi-a",
+                            origin="https://a.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+                "endpoints-catchall": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="kimi-a",
+                            origin="https://a.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-kimi-a": _third_party_backend(name="assistant-eu-kimi-a-bf6de", hostname="a.example.com"),
+                    "aibackend-kimi-a": _third_party_ai_backend(name="assistant-eu-kimi-a-bf6de", schema="OpenAI"),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[{"name": "assistant-eu-kimi-a-bf6de", "weight": 1, "priority": 0}],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-canary": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "kimi"}),
+                    ),
+                    "endpoints-catchall": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "kimi"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    # A ModelService's priorities are an ordering; Envoy's are levels it walks
+    # from 0. A user writing 0 and 5, or a tier gone unready during a roll, would
+    # otherwise leave gaps in what Envoy gets. The middle tier here has no ready
+    # endpoint, so it drops out and must not leave a hole behind it: two tiers
+    # survive, renumbered 0 and 1.
+    Case(
+        name="priorities are renumbered without gaps",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="a",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "a"}),
+                            priority=0,
+                        ),
+                        v1alpha1.Endpoint(
+                            name="b",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "b"}),
+                            priority=5,
+                        ),
+                        v1alpha1.Endpoint(
+                            name="c",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "c"}),
+                            priority=9,
+                        ),
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-a": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="a-0",
+                            origin="https://a.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+                "endpoints-b": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="b-0",
+                            origin="https://b.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=False,
+                            reason="CredentialMissing",
+                        )
+                    ]
+                ),
+                "endpoints-c": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="c-0",
+                            origin="https://c.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=3, ready_endpoints=2),
+                resources={
+                    "backend-a-0": _third_party_backend(name="assistant-eu-a-0-b66b8", hostname="a.example.com"),
+                    "aibackend-a-0": _third_party_ai_backend(name="assistant-eu-a-0-b66b8", schema="OpenAI"),
+                    "backend-c-0": _third_party_backend(name="assistant-eu-c-0-782db", hostname="c.example.com"),
+                    "aibackend-c-0": _third_party_ai_backend(name="assistant-eu-c-0-782db", schema="OpenAI"),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[
+                            {"name": "assistant-eu-a-0-b66b8", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-c-0-782db", "weight": 1, "priority": 1},
+                        ],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-a": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "a"}),
+                    ),
+                    "endpoints-b": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "b"}),
+                    ),
+                    "endpoints-c": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "c"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    # An entry's weight is written once but applied per backend, so it spreads
+    # over the endpoints it matched while the ratio between entries survives: 90
+    # over three is 30 each, 10 over one is 10, reduced by the gcd to the
+    # smallest equivalent integers.
+    Case(
+        name="a weight spreads across a tier's endpoints, ratio preserved",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="big",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "big"}),
+                            weight=90,
+                        ),
+                        v1alpha1.Endpoint(
+                            name="small",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "small"}),
+                            weight=10,
+                        ),
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-big": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="big-0",
+                            origin="https://big-0.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="big-1",
+                            origin="https://big-1.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="big-2",
+                            origin="https://big-2.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                    ]
+                ),
+                "endpoints-small": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="small-0",
+                            origin="https://small-0.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=4, ready_endpoints=4),
+                resources={
+                    "backend-big-0": _third_party_backend(
+                        name="assistant-eu-big-0-1e944", hostname="big-0.example.com"
+                    ),
+                    "aibackend-big-0": _third_party_ai_backend(name="assistant-eu-big-0-1e944", schema="OpenAI"),
+                    "backend-big-1": _third_party_backend(
+                        name="assistant-eu-big-1-91055", hostname="big-1.example.com"
+                    ),
+                    "aibackend-big-1": _third_party_ai_backend(name="assistant-eu-big-1-91055", schema="OpenAI"),
+                    "backend-big-2": _third_party_backend(
+                        name="assistant-eu-big-2-5c954", hostname="big-2.example.com"
+                    ),
+                    "aibackend-big-2": _third_party_ai_backend(name="assistant-eu-big-2-5c954", schema="OpenAI"),
+                    "backend-small-0": _third_party_backend(
+                        name="assistant-eu-small-0-60d20", hostname="small-0.example.com"
+                    ),
+                    "aibackend-small-0": _third_party_ai_backend(name="assistant-eu-small-0-60d20", schema="OpenAI"),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[
+                            {"name": "assistant-eu-big-0-1e944", "weight": 3, "priority": 0},
+                            {"name": "assistant-eu-big-1-91055", "weight": 3, "priority": 0},
+                            {"name": "assistant-eu-big-2-5c954", "weight": 3, "priority": 0},
+                            {"name": "assistant-eu-small-0-60d20", "weight": 1, "priority": 0},
+                        ],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-big": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "big"}),
+                    ),
+                    "endpoints-small": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "small"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    # Weight 1 over five endpoints must floor none of them to 0, which would drop
+    # them from the load assignment rather than share.
+    Case(
+        name="a weight below its endpoint count floors no endpoint",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="many",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "many"}),
+                            weight=1,
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-many": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="many-0",
+                            origin="https://many-0.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="many-1",
+                            origin="https://many-1.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="many-2",
+                            origin="https://many-2.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="many-3",
+                            origin="https://many-3.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="many-4",
+                            origin="https://many-4.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=5, ready_endpoints=5),
+                resources={
+                    "backend-many-0": _third_party_backend(
+                        name="assistant-eu-many-0-e4e60", hostname="many-0.example.com"
+                    ),
+                    "aibackend-many-0": _third_party_ai_backend(name="assistant-eu-many-0-e4e60", schema="OpenAI"),
+                    "backend-many-1": _third_party_backend(
+                        name="assistant-eu-many-1-b8a15", hostname="many-1.example.com"
+                    ),
+                    "aibackend-many-1": _third_party_ai_backend(name="assistant-eu-many-1-b8a15", schema="OpenAI"),
+                    "backend-many-2": _third_party_backend(
+                        name="assistant-eu-many-2-a7a3b", hostname="many-2.example.com"
+                    ),
+                    "aibackend-many-2": _third_party_ai_backend(name="assistant-eu-many-2-a7a3b", schema="OpenAI"),
+                    "backend-many-3": _third_party_backend(
+                        name="assistant-eu-many-3-db5a5", hostname="many-3.example.com"
+                    ),
+                    "aibackend-many-3": _third_party_ai_backend(name="assistant-eu-many-3-db5a5", schema="OpenAI"),
+                    "backend-many-4": _third_party_backend(
+                        name="assistant-eu-many-4-bd6f9", hostname="many-4.example.com"
+                    ),
+                    "aibackend-many-4": _third_party_ai_backend(name="assistant-eu-many-4-bd6f9", schema="OpenAI"),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[
+                            {"name": "assistant-eu-many-0-e4e60", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-many-1-b8a15", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-many-2-a7a3b", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-many-3-db5a5", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-many-4-bd6f9", "weight": 1, "priority": 0},
+                        ],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-many": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "many"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    # A max-weight entry beside a tiny one spread over two endpoints scales past
+    # the per-backendRef limit even though every weight is in bounds, so it
+    # rescales to the limit rather than composing a route the API server rejects.
+    Case(
+        name="an extreme but valid ratio is clamped to the limit",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="big",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "big"}),
+                            priority=0,
+                            weight=1000000,
+                        ),
+                        v1alpha1.Endpoint(
+                            name="small",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "small"}),
+                            priority=0,
+                            weight=1,
+                        ),
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-big": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="big-0",
+                            origin="https://big-0.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+                "endpoints-small": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="small-0",
+                            origin="https://small-0.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="small-1",
+                            origin="https://small-1.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=3, ready_endpoints=3),
+                resources={
+                    "backend-big-0": _third_party_backend(
+                        name="assistant-eu-big-0-1e944", hostname="big-0.example.com"
+                    ),
+                    "aibackend-big-0": _third_party_ai_backend(name="assistant-eu-big-0-1e944", schema="OpenAI"),
+                    "backend-small-0": _third_party_backend(
+                        name="assistant-eu-small-0-60d20", hostname="small-0.example.com"
+                    ),
+                    "aibackend-small-0": _third_party_ai_backend(name="assistant-eu-small-0-60d20", schema="OpenAI"),
+                    "backend-small-1": _third_party_backend(
+                        name="assistant-eu-small-1-cad94", hostname="small-1.example.com"
+                    ),
+                    "aibackend-small-1": _third_party_ai_backend(name="assistant-eu-small-1-cad94", schema="OpenAI"),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[
+                            {"name": "assistant-eu-big-0-1e944", "weight": 1000000, "priority": 0},
+                            {"name": "assistant-eu-small-0-60d20", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-small-1-cad94", "weight": 1, "priority": 0},
+                        ],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-big": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "big"}),
+                    ),
+                    "endpoints-small": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "small"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    # The remainder is handed to the first endpoints of a tier, so the order must
+    # be the endpoints' names rather than the API server's unspecified list order,
+    # or the composed weights churn.
+    Case(
+        name="endpoints are ordered by name for a stable split",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="z",
+                            origin="https://z.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="a",
+                            origin="https://a.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                        _third_party_endpoint(
+                            name="m",
+                            origin="https://m.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret=None,
+                            ready=True,
+                            reason="EndpointUsable",
+                        ),
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=3, ready_endpoints=3),
+                resources={
+                    "backend-a": _third_party_backend(name="assistant-eu-a-18a56", hostname="a.example.com"),
+                    "aibackend-a": _third_party_ai_backend(name="assistant-eu-a-18a56", schema="OpenAI"),
+                    "backend-m": _third_party_backend(name="assistant-eu-m-4d1e4", hostname="m.example.com"),
+                    "aibackend-m": _third_party_ai_backend(name="assistant-eu-m-4d1e4", schema="OpenAI"),
+                    "backend-z": _third_party_backend(name="assistant-eu-z-e5d6f", hostname="z.example.com"),
+                    "aibackend-z": _third_party_ai_backend(name="assistant-eu-z-e5d6f", schema="OpenAI"),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[
+                            {"name": "assistant-eu-a-18a56", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-m-4d1e4", "weight": 1, "priority": 0},
+                            {"name": "assistant-eu-z-e5d6f", "weight": 1, "priority": 0},
+                        ],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="a backend speaking OpenAI's API gets the key as a bearer token",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="provider",
+                            origin="https://api.example.com",
+                            model=None,
+                            schema="OpenAI",
+                            api_key_secret="provider-key",
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+                "credential-provider": fnv1.Resources(
+                    items=[_api_key_secret(name="provider-key", data={"apiKey": "c2stcHJvdmlkZXI="})]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-provider": _third_party_backend(
+                        name="assistant-eu-provider-348cb", hostname="api.example.com"
+                    ),
+                    "aibackend-provider": _third_party_ai_backend(name="assistant-eu-provider-348cb", schema="OpenAI"),
+                    "credential-provider": _credential(
+                        name="assistant-eu-provider-credential-4d66b", api_key="c2stcHJvdmlkZXI="
+                    ),
+                    "credpolicy-provider": _credential_policy(
+                        name="assistant-eu-provider-348cb",
+                        auth={
+                            "type": "APIKey",
+                            "apiKey": {"secretRef": {"name": "assistant-eu-provider-credential-4d66b"}},
+                        },
+                    ),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[{"name": "assistant-eu-provider-348cb", "weight": 1, "priority": 0}],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                    "credential-provider": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", namespace="ml-team", match_name="provider-key"
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="a backend speaking Anthropic's API gets the key in x-api-key",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                )
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[_inference_gateway(tls=False, address="203.0.113.1", client_ca_published=True)]
+                ),
+                "clusters": fnv1.Resources(items=[_inference_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(
+                    items=[
+                        _third_party_endpoint(
+                            name="provider",
+                            origin="https://api.example.com",
+                            model=None,
+                            schema="Anthropic",
+                            api_key_secret="provider-key",
+                            ready=True,
+                            reason="EndpointUsable",
+                        )
+                    ]
+                ),
+                "credential-provider": fnv1.Resources(
+                    items=[_api_key_secret(name="provider-key", data={"apiKey": "c2stcHJvdmlkZXI="})]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-provider": _third_party_backend(
+                        name="assistant-eu-provider-348cb", hostname="api.example.com"
+                    ),
+                    "aibackend-provider": _third_party_ai_backend(
+                        name="assistant-eu-provider-348cb", schema="Anthropic"
+                    ),
+                    "credential-provider": _credential(
+                        name="assistant-eu-provider-credential-4d66b", api_key="c2stcHJvdmlkZXI="
+                    ),
+                    "credpolicy-provider": _credential_policy(
+                        name="assistant-eu-provider-348cb",
+                        auth={
+                            "type": "AnthropicAPIKey",
+                            "anthropicAPIKey": {"secretRef": {"name": "assistant-eu-provider-credential-4d66b"}},
+                        },
+                    ),
+                    "route": _ai_gateway_route(
+                        section_name="http",
+                        backend_refs=[{"name": "assistant-eu-provider-348cb", "weight": 1, "priority": 0}],
+                    ),
+                },
+            ),
+            results=[
+                fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for the route on gateway eu to be accepted")
+            ],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                    "credential-provider": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", namespace="ml-team", match_name="provider-key"
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForRoute",
+                    message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+]
 
 
-@pytest.mark.parametrize("case", _gates_cases(), ids=lambda case: case.name)
-def test_gates(case: Case) -> None:
-    """A pass where a route can't be composed composes nothing and says why."""
+@pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
+def test_compose(case: Case) -> None:
+    """RunFunction composes a ModelRoute's backends and AIGatewayRoute, or composes nothing and says why."""
     got = asyncio.run(fn.FunctionRunner().RunFunction(case.req, None))
     assert _to_dict(got) == _to_dict(case.want)
-
-
-def test_compose() -> None:
-    """A composed endpoint and a third-party provider get backends, a credential, a cluster CA and a route."""
-    # A composed self-hosted endpoint at priority 0 and a third-party provider
-    # at priority 1.
-    entries = [_entry("d", priority=0), _entry("together", priority=1)]
-    req = fnv1.RunFunctionRequest(
-        observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr(entries)))),
-        required_resources=_required(
-            gateway=[_gateway()],
-            clusters=[_cluster("gw-eu")],
-            **{
-                "endpoints-d": [
-                    _endpoint("self", origin="https://gw-eu.example.com", model="d", composed=True),
-                ],
-                "endpoints-together": [
-                    _endpoint(
-                        "together",
-                        origin="https://api.together.xyz",
-                        model="Qwen/Qwen2.5",
-                        credential="together-key",
-                    ),
-                ],
-                "credential-together": [_secret("together-key", {"apiKey": "sk-tog"})],
-            },
-        ),
-    )
-    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
-
-    # The exact set, so an unexpected extra object fails the test. The
-    # mirrored namespace isn't here: compose-inference-cluster composes it.
-    assert set(got.desired.resources) == {
-        "client-certificate",
-        "backend-self",
-        "aibackend-self",
-        "backend-together",
-        "aibackend-together",
-        "credential-together",
-        "credpolicy-together",
-        "cluster-ca-gw-eu",
-        "route",
-    }
-
-    route = _manifest(got, "route")
-    # The timeouts are the ModelRoute's, which _route_xr sets to values
-    # other than the ModelService's defaults.
-    assert route["spec"]["rules"] == [
-        {
-            "matches": [{"headers": [{"type": "Exact", "name": "x-ai-eg-model", "value": _MODEL}]}],
-            "backendRefs": [
-                {"name": _be("self"), "weight": 1, "priority": 0, "modelNameOverride": "d"},
-                {
-                    "name": _be("together"),
-                    "weight": 1,
-                    "priority": 1,
-                    "modelNameOverride": "Qwen/Qwen2.5",
-                },
-            ],
-            "timeouts": {"request": "600s"},
-            "streamIdleTimeout": "0s",
-            "modelsOwnedBy": _NS,
-        }
-    ]
-    # Declaring the token costs is what makes the ext-proc ask a backend for
-    # usage on a streamed response, which otherwise reports none, and is
-    # where the metered counts in the access log come from.
-    assert route["spec"]["llmRequestCosts"] == [
-        {"metadataKey": "llm_input_token", "type": "InputToken"},
-        {"metadataKey": "llm_output_token", "type": "OutputToken"},
-        {"metadataKey": "llm_total_token", "type": "TotalToken"},
-    ]
-
-    # The composed backend pins its cluster's CA and presents the client
-    # certificate, both this route's own; the third-party one uses the
-    # system trust store.
-    assert _manifest(got, "backend-self")["spec"]["tls"] == {
-        "caCertificateRefs": [{"kind": "ConfigMap", "group": "", "name": "assistant-eu-gw-eu-ca-3dd16"}],
-        "sni": "gw-eu.example.com",
-        "clientCertificateRef": {"kind": "Secret", "group": "", "name": "assistant-eu-client-08324"},
-    }
-    assert _manifest(got, "backend-together")["spec"]["tls"] == {
-        "wellKnownCACertificates": "System",
-        "sni": "api.together.xyz",
-    }
-
-    # The caller header is stripped only for the backend we don't operate.
-    assert "headerMutation" not in _manifest(got, "aibackend-self")["spec"]
-    assert _manifest(got, "aibackend-together")["spec"]["headerMutation"] == {"remove": ["x-modelplane-caller"]}
-
-    # The credential is republished under the fixed apiKey key.
-    assert _manifest(got, "credential-together")["data"] == {"apiKey": base64.b64encode(b"sk-tog").decode()}
-    # Named for this route, so no other route in the namespace composes it.
-    assert _manifest(got, "cluster-ca-gw-eu") == {
-        "apiVersion": "v1",
-        "kind": "ConfigMap",
-        "metadata": {"name": "assistant-eu-gw-eu-ca-3dd16", "namespace": "mp-ml-team-51733"},
-        "data": {"ca.crt": _CLUSTER_CA},
-    }
-
-    # Every composed object lands in the namespace mirroring the route's own,
-    # which compose-inference-cluster composes.
-    for key in ("backend-self", "backend-together", "credential-together", "cluster-ca-gw-eu", "route"):
-        assert _manifest(got, key)["metadata"]["namespace"] == "mp-ml-team-51733", key
-
-    # The route lives in the team namespace but attaches across to the gateway.
-    assert route["spec"]["parentRefs"][0]["namespace"] == "modelplane-system"
-
-    # The client certificate the backends present, issued from the gateway's
-    # CA ClusterIssuer into this namespace. Named for this route, so no other
-    # route in the namespace composes it, and deleted with the route.
-    assert (
-        "managementPolicies"
-        not in resource.struct_to_dict(got.desired.resources["client-certificate"].resource)["spec"]
-    )
-    assert _manifest(got, "client-certificate") == {
-        "apiVersion": "cert-manager.io/v1",
-        "kind": "Certificate",
-        "metadata": {"name": "assistant-eu-client-08324", "namespace": "mp-ml-team-51733"},
-        "spec": {
-            "secretName": "assistant-eu-client-08324",
-            "commonName": "inference-gateway-eu",
-            "usages": ["client auth", "digital signature", "key encipherment"],
-            "duration": "2160h",
-            "renewBefore": "720h",
-            "privateKey": {"algorithm": "ECDSA", "size": 256, "rotationPolicy": "Always"},
-            "issuerRef": {"name": "inference-gateway-ca", "kind": "ClusterIssuer", "group": "cert-manager.io"},
-        },
-    }
-
-
-@pytest.mark.parametrize(("tls", "want"), [(False, "http"), (True, "https")])
-def test_route_binds_to_the_listener_matching_the_gateways_tls(tls: bool, want: str) -> None:
-    """The route binds to the HTTPS listener on a TLS gateway, and to the HTTP listener otherwise."""
-    # A TLS gateway serves inference on its HTTPS listener alone, so the route
-    # binds there; without TLS there's only the HTTP listener. Binding to :80 on
-    # a TLS gateway would carry credentials in the clear.
-    req = fnv1.RunFunctionRequest(
-        observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr([_entry("d")])))),
-        required_resources=_required(
-            gateway=[_gateway(tls=tls)],
-            clusters=[_cluster("gw-eu")],
-            **{"endpoints-d": [_endpoint("self", origin="https://gw-eu.example.com", composed=True)]},
-        ),
-    )
-    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
-    assert _manifest(got, "route")["spec"]["parentRefs"][0]["sectionName"] == want
-
-
-def test_status_reports_address_and_counts() -> None:
-    """The status reports the model name, the gateway's address, and the endpoint counts."""
-    req = fnv1.RunFunctionRequest(
-        observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr([_entry("d")])))),
-        required_resources=_required(
-            gateway=[_gateway(address="203.0.113.9")],
-            clusters=[_cluster("gw-eu")],
-            **{"endpoints-d": [_endpoint("self", origin="https://gw-eu.example.com", composed=True)]},
-        ),
-    )
-    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
-    assert resource.struct_to_dict(got.desired.composite.resource)["status"] == {
-        "model": _MODEL,
-        "address": "203.0.113.9",
-        "endpoints": {"total": 1, "ready": 1},
-    }
-
-
-def test_an_endpoint_matched_twice_belongs_to_the_first_entry() -> None:
-    """An endpoint two entries match belongs to the first of them."""
-    # A canary entry and a catch-all entry must not both weight one endpoint;
-    # the first that matches it wins.
-    entries = [_entry("kimi", name="canary", priority=0), _entry("kimi", name="catchall", priority=1)]
-    req = fnv1.RunFunctionRequest(
-        observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr(entries)))),
-        required_resources=_required(
-            gateway=[_gateway()],
-            clusters=[_cluster("gw-eu")],
-            **{
-                "endpoints-canary": [_endpoint("kimi-a", origin="https://a.example.com")],
-                "endpoints-catchall": [_endpoint("kimi-a", origin="https://a.example.com")],
-            },
-        ),
-    )
-    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
-    # Neither endpoint is Modelplane-composed, so no client certificate is
-    # issued.
-    assert "client-certificate" not in got.desired.resources
-    refs = _manifest(got, "route")["spec"]["rules"][0]["backendRefs"]
-    assert refs == [{"name": _be("kimi-a"), "weight": 1, "priority": 0}]
-    assert resource.struct_to_dict(got.desired.composite.resource)["status"]["endpoints"] == {"total": 1, "ready": 1}
-
-
-def test_priorities_are_renumbered_without_gaps() -> None:
-    """The priorities of the tiers that have a ready endpoint are renumbered from 0, without gaps."""
-    # A ModelService's priorities are an ordering; Envoy's are levels it walks
-    # from 0. A user writing 0 and 5, or a tier gone unready during a roll,
-    # would otherwise leave gaps in what Envoy gets.
-    entries = [_entry("a", priority=0), _entry("b", priority=5), _entry("c", priority=9)]
-    req = fnv1.RunFunctionRequest(
-        observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr(entries)))),
-        required_resources=_required(
-            gateway=[_gateway()],
-            clusters=[_cluster("gw-eu")],
-            **{
-                # The middle tier has no ready endpoint, so it drops out and
-                # must not leave a hole behind it.
-                "endpoints-a": [_endpoint("a-0", origin="https://a.example.com")],
-                "endpoints-b": [_endpoint("b-0", origin="https://b.example.com", ready=False)],
-                "endpoints-c": [_endpoint("c-0", origin="https://c.example.com")],
-            },
-        ),
-    )
-    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
-    refs = _manifest(got, "route")["spec"]["rules"][0]["backendRefs"]
-    assert [r["priority"] for r in refs] == [0, 1], "two tiers survive, renumbered 0 and 1"
-
-
-@dataclasses.dataclass
-class WeightCase:
-    """A weight-distribution case: the entries and the endpoints each matched,
-    and the whole backendRefs list the route should carry."""
-
-    name: str
-    entries: list[v1alpha1.Endpoint]
-    endpoints: dict[str, list[dict]]
-    want_refs: list[dict]
-
-
-def _weight_distribution_cases() -> list[WeightCase]:
-    def _origins(*names_: str) -> list[dict]:
-        return [_endpoint(n, origin=f"https://{n}.example.com") for n in names_]
-
-    def _ref(ep: str, weight: int, priority: int = 0) -> dict:
-        return {"name": _be(ep), "weight": weight, "priority": priority}
-
-    return [
-        WeightCase(
-            # An entry's weight is written once but applied per backend, so it
-            # spreads over the endpoints it matched while the ratio between
-            # entries survives: 90 over three is 30 each, 10 over one is 10,
-            # reduced by the gcd to the smallest equivalent integers.
-            name="a weight spreads across a tier's endpoints, ratio preserved",
-            entries=[_entry("big", weight=90), _entry("small", weight=10)],
-            endpoints={
-                "endpoints-big": _origins("big-0", "big-1", "big-2"),
-                "endpoints-small": _origins("small-0"),
-            },
-            want_refs=[
-                _ref("big-0", 3),
-                _ref("big-1", 3),
-                _ref("big-2", 3),
-                _ref("small-0", 1),
-            ],
-        ),
-        WeightCase(
-            # Weight 1 over five endpoints must floor none of them to 0, which
-            # would drop them from the load assignment rather than share.
-            name="a weight below its endpoint count floors no endpoint",
-            entries=[_entry("many", weight=1)],
-            endpoints={"endpoints-many": _origins("many-0", "many-1", "many-2", "many-3", "many-4")},
-            want_refs=[_ref(f"many-{i}", 1) for i in range(5)],
-        ),
-        WeightCase(
-            # A max-weight entry beside a tiny one spread over two endpoints
-            # scales past the per-backendRef limit even though every weight is
-            # in bounds, so it rescales to the limit rather than composing a
-            # route the API server rejects.
-            name="an extreme but valid ratio is clamped to the limit",
-            entries=[_entry("big", weight=1000000, priority=0), _entry("small", weight=1, priority=0)],
-            endpoints={"endpoints-big": _origins("big-0"), "endpoints-small": _origins("small-0", "small-1")},
-            want_refs=[_ref("big-0", 1000000), _ref("small-0", 1), _ref("small-1", 1)],
-        ),
-        WeightCase(
-            # The remainder is handed to the first endpoints of a tier, so the
-            # order must be the endpoints' names rather than the API server's
-            # unspecified list order, or the composed weights churn.
-            name="endpoints are ordered by name for a stable split",
-            entries=[_entry("d")],
-            endpoints={"endpoints-d": _origins("z", "a", "m")},
-            want_refs=[_ref("a", 1), _ref("m", 1), _ref("z", 1)],
-        ),
-    ]
-
-
-@pytest.mark.parametrize("case", _weight_distribution_cases(), ids=lambda case: case.name)
-def test_weight_distribution(case: WeightCase) -> None:
-    """Each entry's weight is distributed across the endpoints it matched."""
-    req = fnv1.RunFunctionRequest(
-        observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr(case.entries)))),
-        required_resources=_required(gateway=[_gateway()], clusters=[_cluster("gw-eu")], **case.endpoints),
-    )
-    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
-    assert _manifest(got, "route")["spec"]["rules"][0]["backendRefs"] == case.want_refs
-
-
-@dataclasses.dataclass
-class CredentialCase:
-    """A credential case: the API a keyed backend speaks, and the whole
-    BackendSecurityPolicy composed for it."""
-
-    name: str
-    api: mev1alpha1.Api | None
-    want: dict
-
-
-def _credential_policy_cases() -> list[CredentialCase]:
-    secret = resource.child_name(f"{_SVC}-{_GW}", "provider", "credential")
-    target = {"group": "aigateway.envoyproxy.io", "kind": "AIServiceBackend", "name": _be("provider")}
-    return [
-        CredentialCase(
-            name="a backend speaking OpenAI's API gets the key as a bearer token",
-            api=None,
-            want={
-                "apiVersion": "aigateway.envoyproxy.io/v1beta1",
-                "kind": "BackendSecurityPolicy",
-                "metadata": {"name": _be("provider"), "namespace": "mp-ml-team-51733"},
-                "spec": {
-                    "type": "APIKey",
-                    "apiKey": {"secretRef": {"name": secret}},
-                    "targetRefs": [target],
-                },
-            },
-        ),
-        CredentialCase(
-            name="a backend speaking Anthropic's API gets the key in x-api-key",
-            api=mev1alpha1.Api(schema="Anthropic"),
-            want={
-                "apiVersion": "aigateway.envoyproxy.io/v1beta1",
-                "kind": "BackendSecurityPolicy",
-                "metadata": {"name": _be("provider"), "namespace": "mp-ml-team-51733"},
-                "spec": {
-                    "type": "AnthropicAPIKey",
-                    "anthropicAPIKey": {"secretRef": {"name": secret}},
-                    "targetRefs": [target],
-                },
-            },
-        ),
-    ]
-
-
-@pytest.mark.parametrize("case", _credential_policy_cases(), ids=lambda case: case.name)
-def test_credential_policy(case: CredentialCase) -> None:
-    """A keyed backend's BackendSecurityPolicy sends the key the way its API expects."""
-    req = fnv1.RunFunctionRequest(
-        observed=fnv1.State(composite=fnv1.Resource(resource=resource.dict_to_struct(_route_xr([_entry("d")])))),
-        required_resources=_required(
-            gateway=[_gateway()],
-            clusters=[_cluster("gw-eu")],
-            **{
-                "endpoints-d": [
-                    _endpoint(
-                        "provider",
-                        origin="https://api.example.com",
-                        api=case.api,
-                        credential="provider-key",
-                    )
-                ],
-                "credential-provider": [_secret("provider-key", {"apiKey": "sk-provider"})],
-            },
-        ),
-    )
-    got = asyncio.run(fn.FunctionRunner().RunFunction(req, None))
-    assert _manifest(got, "credpolicy-provider") == case.want

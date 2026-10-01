@@ -281,8 +281,8 @@ can have its own `test_<module>.py` too.
 
 The canonical form is a table of `Case`s, each running the function on a
 `RunFunctionRequest` and comparing the whole `RunFunctionResponse` against an
-expected one, rather than asserting on individual fields. `compose-usages` is a
-small example. The skeleton:
+expected one, rather than asserting on individual fields. `compose-model-cache`
+is a good example. The skeleton:
 
 ```python
 @dataclasses.dataclass
@@ -321,19 +321,47 @@ plain functions, with no classes, fixtures, or `conftest.py`. They call the
 async `RunFunction` with `asyncio.run` rather than needing a plugin, and check
 errors with `pytest.raises(..., match=...)`.
 
-Build the XR with `resource.dict_to_struct(xr.model_dump(exclude_none=True,
-mode="json"))` from a generated Pydantic model; build other observed, desired,
-and required resources as plain dicts. Because `want` is the whole response, it
-must include the parts the function always emits: `meta.ttl` (60s), an empty
-`context`, and any conditions, results, and requirements. Give observed
-conditions a fixed `lastTransitionTime` so the input is deterministic. Protobuf
-maps (`desired.resources`, `requirements.resources`) compare
-order-independently, but repeated fields (`conditions`, `results`, status
-arrays) must match the order the function emits.
+Cases are data, so a reader should be able to see everything a case asserts by
+reading it:
 
-Some existing tests (`compose-serving-stack`, the second method in
-`compose-eks-cluster`) predate this form and assert on individual fields. Don't
-model new tests on them.
+- **Write each case out in full.** Repetition between cases is fine. Don't
+  derive one case from another, or from a shared base, by copying and mutating
+  it, and don't change a request or response once it's built. Pass
+  requirements, conditions, and results to the constructor.
+- **A resource that appears in three or more cases gets a helper,** the XR
+  included. Count resources by the role they play, such as "the GPU node pool"
+  or "an endpoint's Backend". An observed resource plays a different role from
+  the desired resource it reflects, so it gets its own helper. A helper builds
+  that one resource and returns the `fnv1.Resource` that carries it, or a dict
+  where another resource embeds it. Everything that varies between the cases
+  that use it is a keyword argument with no default, including readiness as an
+  `fnv1.Ready` value, so every call shows every value that varies. Write a
+  resource that appears in one or two cases inline. Never write a helper that
+  builds a whole request, response, map of resources, or case.
+- **Name a case for what its input sets up** and what it expects. Put a comment
+  on the case as a whole directly above its `Case(`. A short comment beside a
+  single value can explain that value.
+- **Compare the whole output, once.** A test that calls the same entry point
+  with different data belongs in that entry point's table as another case.
+- **Write values as literals,** in requests and expectations alike, including
+  names the function hashes. An expectation computed by code, whether the code
+  under test or the SDK's `child_name`, passes whatever that code does.
+- **Build the XR from its generated model,** with
+  `resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json",
+  by_alias=True))`. Write composed and observed resources as dicts in their wire
+  form. The generated models include schema defaults, so a model doesn't fix its
+  own wire form: the SDK sends only the fields a function sets, while the API
+  server fills in the defaults.
+- **Say why where a test departs from a rule,** in a comment beside the
+  departure.
+
+Because `want` is the whole response, it must include the parts the function
+always emits: `meta.ttl` (60s), an empty `context`, and any conditions, results,
+and requirements. Give observed conditions a fixed `lastTransitionTime` so the
+input is deterministic. Protobuf maps (`desired.resources`,
+`requirements.resources`) compare order-independently, but repeated fields
+(`conditions`, `results`, status arrays) must match the order the function
+emits.
 
 `nix flake check` runs every function's tests. To run one function's while
 you work on it:

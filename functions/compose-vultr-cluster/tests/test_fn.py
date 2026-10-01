@@ -39,254 +39,240 @@ class Case:
     want: fnv1.RunFunctionResponse
 
 
-# Name of the cluster's connection secret. Derived like the function derives
-# it - the hash suffix depends only on the parent and child names.
-_KUBECONFIG_SECRET_NAME = resource.child_name("test-cluster", "kubeconfig")
-
-# The system node pool injected inline into every cluster.
-_SYSTEM_POOL = {
-    "label": "system",
-    "plan": "vc2-6c-16gb",
-    "nodeQuantity": 1,
-    "autoScaler": True,
-    "minNodes": 1,
-    "maxNodes": 2,
-    "labels": [{"key": "modelplane.ai/pool", "value": "system"}],
-}
-
-# The taint every GPU pool carries.
-_GPU_TAINTS = [
-    {"key": "nvidia.com/gpu", "value": "true", "effect": "NoSchedule"},
-]
-
-
-def _xr(pools: list[v1alpha1.NodePool]) -> dict:
-    """A VultrCluster XR with the given node pools, as a request dict."""
-    return v1alpha1.VultrCluster(
+def _xr(*, node_pools: list[v1alpha1.NodePool]) -> fnv1.Resource:
+    """The observed VultrCluster XR, with the given node pools."""
+    xr = v1alpha1.VultrCluster(
         metadata=metav1.ObjectMeta(
             name="test-cluster",
             namespace="modelplane-system",
         ),
         spec=v1alpha1.Spec(
             region="ewr",
-            nodePools=pools,
+            nodePools=node_pools,
         ),
-    ).model_dump(exclude_none=True, mode="json")
+    )
+    return fnv1.Resource(resource=resource.dict_to_struct(xr.model_dump(exclude_none=True, mode="json", by_alias=True)))
 
 
-def _req(
-    pools: list[v1alpha1.NodePool],
-    observed_resources: dict[str, fnv1.Resource] | None = None,
-) -> fnv1.RunFunctionRequest:
-    return fnv1.RunFunctionRequest(
-        observed=fnv1.State(
-            composite=fnv1.Resource(resource=resource.dict_to_struct(_xr(pools))),
-            resources=observed_resources or {},
+def _desired_xr() -> fnv1.Resource:
+    """The desired XR, publishing the cluster's kubeconfig Secret."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "status": {
+                    "secrets": [
+                        {
+                            "type": "Kubeconfig",
+                            "name": "test-cluster-kubeconfig-55b57",
+                            "key": "kubeconfig",
+                        },
+                    ],
+                },
+            }
         ),
     )
 
 
-def _cluster(
-    cred_kind: str = "ClusterProviderConfig",
-    cred_name: str = "default",
-) -> dict:
-    """A Kubernetes cluster golden with only the system pool."""
-    return {
-        "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
-        "kind": "Kubernetes",
-        "spec": {
-            "providerConfigRef": {"kind": cred_kind, "name": cred_name},
-            "forProvider": {
-                "label": "test-cluster",
-                "region": "ewr",
-                "version": "v1.36.2+1",
-                "haControlplanes": True,
-                "nodePools": _SYSTEM_POOL,
-            },
-            "writeConnectionSecretToRef": {"name": _KUBECONFIG_SECRET_NAME},
-        },
-    }
-
-
-def _provider_config() -> dict:
-    """A provider-kubernetes ProviderConfig golden pointing at the kubeconfig."""
-    return {
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-        "kind": "ProviderConfig",
-        "metadata": {
-            "name": _KUBECONFIG_SECRET_NAME,
-            "namespace": "modelplane-system",
-        },
-        "spec": {
-            "credentials": {
-                "source": "Secret",
-                "secretRef": {
-                    "namespace": "modelplane-system",
-                    "name": _KUBECONFIG_SECRET_NAME,
-                    "key": "kubeconfig",
+def _cluster(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed VKE cluster."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                "kind": "Kubernetes",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                    "forProvider": {
+                        "label": "test-cluster",
+                        "region": "ewr",
+                        "version": "v1.36.2+1",
+                        "haControlplanes": True,
+                        # The system node pool the function adds inline to every cluster.
+                        "nodePools": {
+                            "label": "system",
+                            "plan": "vc2-6c-16gb",
+                            "nodeQuantity": 1,
+                            "autoScaler": True,
+                            "minNodes": 1,
+                            "maxNodes": 2,
+                            "labels": [{"key": "modelplane.ai/pool", "value": "system"}],
+                        },
+                    },
+                    "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
                 },
-            },
-        },
+            }
+        ),
+        ready=ready,
+    )
+
+
+def _observed_cluster(*, ready: bool) -> fnv1.Resource:
+    """The VKE cluster as observed, with a Ready condition that's True if ready and False if not."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                "kind": "Kubernetes",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                    "forProvider": {
+                        "label": "test-cluster",
+                        "region": "ewr",
+                        "version": "v1.36.2+1",
+                        "haControlplanes": True,
+                        "nodePools": {
+                            "label": "system",
+                            "plan": "vc2-6c-16gb",
+                            "nodeQuantity": 1,
+                            "autoScaler": True,
+                            "minNodes": 1,
+                            "maxNodes": 2,
+                            "labels": [{"key": "modelplane.ai/pool", "value": "system"}],
+                        },
+                    },
+                    "writeConnectionSecretToRef": {"name": "test-cluster-kubeconfig-55b57"},
+                },
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "Ready",
+                            "status": "True" if ready else "False",
+                            "reason": "Available" if ready else "Unavailable",
+                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            }
+        ),
+    )
+
+
+def _gpu_node_pool(*, node_quantity: int, autoscaling: dict | None, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed KubernetesNodePool for the gpu-l40s pool, with autoscaling if given."""
+    for_provider: dict[str, Any] = {
+        "label": "gpu-l40s",
+        "plan": "vcg-l40s-16c-180g-48vram",
+        "nodeQuantity": node_quantity,
+        "labels": [
+            {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
+            {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
+            {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
+        ],
+        "clusterIdSelector": {"matchControllerRef": True},
+        "taints": [{"key": "nvidia.com/gpu", "value": "true", "effect": "NoSchedule"}],
     }
+    if autoscaling is not None:
+        for_provider.update(autoscaling)
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                "kind": "KubernetesNodePool",
+                "spec": {
+                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                    "forProvider": for_provider,
+                },
+            }
+        ),
+        ready=ready,
+    )
 
 
-def _gpu_observer() -> dict:
-    """A provider-kubernetes Object golden that observes the GPU validator DS."""
-    return {
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
-        "kind": "Object",
-        "metadata": {"namespace": "modelplane-system"},
-        "spec": {
-            "managementPolicies": ["Observe"],
-            "providerConfigRef": {
+def _provider_config() -> fnv1.Resource:
+    """The composed provider-kubernetes ProviderConfig for the cluster, which is always ready."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
                 "kind": "ProviderConfig",
-                "name": _KUBECONFIG_SECRET_NAME,
-            },
-            "readiness": {
-                "policy": "DeriveFromCelQuery",
-                "celQuery": (
-                    "has(object.status.numberReady)"
-                    " && object.status.desiredNumberScheduled >= 1"
-                    " && object.status.numberReady == object.status.desiredNumberScheduled"
-                ),
-            },
-            "forProvider": {
-                "manifest": {
-                    "apiVersion": "apps/v1",
-                    "kind": "DaemonSet",
-                    "metadata": {
-                        "name": "nvidia-operator-validator",
-                        "namespace": "gpu-operator",
+                "metadata": {
+                    "name": "test-cluster-kubeconfig-55b57",
+                    "namespace": "modelplane-system",
+                },
+                "spec": {
+                    "credentials": {
+                        "source": "Secret",
+                        "secretRef": {
+                            "namespace": "modelplane-system",
+                            "name": "test-cluster-kubeconfig-55b57",
+                            "key": "kubeconfig",
+                        },
                     },
                 },
-            },
-        },
-    }
+            }
+        ),
+        ready=fnv1.READY_TRUE,
+    )
 
 
-def _node_pool(
-    label: str,
-    plan: str,
-    node_quantity: int,
-    labels: list,
-    taints: list | None = None,
-    *,
-    auto_scaler: bool = False,
-    min_nodes: int | None = None,
-    max_nodes: int | None = None,
-    cred_kind: str = "ClusterProviderConfig",
-    cred_name: str = "default",
-) -> dict:
-    """A KubernetesNodePool golden."""
-    fp: dict[str, Any] = {
-        "label": label,
-        "plan": plan,
-        "nodeQuantity": node_quantity,
-        "labels": labels,
-        "clusterIdSelector": {"matchControllerRef": True},
-    }
-    if taints:
-        fp["taints"] = taints
-    if auto_scaler:
-        fp["autoScaler"] = True
-        fp["minNodes"] = min_nodes
-        fp["maxNodes"] = max_nodes
-    return {
-        "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
-        "kind": "KubernetesNodePool",
-        "spec": {
-            "providerConfigRef": {"kind": cred_kind, "name": cred_name},
-            "forProvider": fp,
-        },
-    }
-
-
-def _status() -> dict:
-    return {
-        "status": {
-            "secrets": [
-                {
-                    "type": "Kubeconfig",
-                    "name": _KUBECONFIG_SECRET_NAME,
-                    "key": "kubeconfig",
+def _gpu_observer(*, ready: fnv1.Ready) -> fnv1.Resource:
+    """The composed Object observing the GPU validator DaemonSet."""
+    return fnv1.Resource(
+        resource=resource.dict_to_struct(
+            {
+                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                "kind": "Object",
+                "metadata": {"namespace": "modelplane-system"},
+                "spec": {
+                    "managementPolicies": ["Observe"],
+                    "providerConfigRef": {
+                        "kind": "ProviderConfig",
+                        "name": "test-cluster-kubeconfig-55b57",
+                    },
+                    "readiness": {
+                        "policy": "DeriveFromCelQuery",
+                        "celQuery": (
+                            "has(object.status.numberReady)"
+                            " && object.status.desiredNumberScheduled >= 1"
+                            " && object.status.numberReady == object.status.desiredNumberScheduled"
+                        ),
+                    },
+                    "forProvider": {
+                        "manifest": {
+                            "apiVersion": "apps/v1",
+                            "kind": "DaemonSet",
+                            "metadata": {
+                                "name": "nvidia-operator-validator",
+                                "namespace": "gpu-operator",
+                            },
+                        },
+                    },
                 },
-            ],
-        },
-    }
+            }
+        ),
+        ready=ready,
+    )
 
 
-def _observed_ready(desired: dict) -> fnv1.Resource:
-    """An observed variant of a desired resource with a Ready=True condition."""
-    observed = {
-        **desired,
-        "status": {
-            "conditions": [
-                {
-                    "type": "Ready",
-                    "status": "True",
-                    "reason": "Available",
-                    "lastTransitionTime": "2024-01-01T00:00:00Z",
-                },
-            ],
-        },
-    }
-    return fnv1.Resource(resource=resource.dict_to_struct(observed))
-
-
-def _observed_unready(desired: dict) -> fnv1.Resource:
-    """An observed variant of a desired resource with a Ready=False condition."""
-    observed = {
-        **desired,
-        "status": {
-            "conditions": [
-                {
-                    "type": "Ready",
-                    "status": "False",
-                    "reason": "Unavailable",
-                    "lastTransitionTime": "2024-01-01T00:00:00Z",
-                },
-            ],
-        },
-    }
-    return fnv1.Resource(resource=resource.dict_to_struct(observed))
-
-
-_GPU_POOL = v1alpha1.NodePool(
-    name="gpu-l40s",
-    role="GPU",
-    plan="vcg-l40s-16c-180g-48vram",
-    maxNodeCount=4,
-    gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
-)
-
-_GPU_POOL_GOLDEN = _node_pool(
-    label="gpu-l40s",
-    plan="vcg-l40s-16c-180g-48vram",
-    node_quantity=1,
-    labels=[
-        {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
-        {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
-        {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
-    ],
-    taints=_GPU_TAINTS,
-    auto_scaler=True,
-    min_nodes=1,
-    max_nodes=4,
-)
+def _to_dict(msg: message.Message) -> dict:
+    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
+    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
 
 
 COMPOSE_CASES = [
     Case(
         name="cluster composed first; node pools withheld until cluster Ready",
-        req=_req([_GPU_POOL]),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+            ),
+        ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                composite=_desired_xr(),
                 resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(_cluster()),
-                    ),
+                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
@@ -294,31 +280,37 @@ COMPOSE_CASES = [
     ),
     Case(
         name="node pools and GPU observer composed once cluster is Ready; autoscaling from maxNodeCount",
-        req=_req(
-            [_GPU_POOL],
-            observed_resources={
-                "cluster": _observed_ready(_cluster()),
-            },
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(ready=True),
+                },
+            ),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                composite=_desired_xr(),
                 resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(_cluster()),
-                        ready=fnv1.READY_TRUE,
+                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "node-pool-gpu-l40s": _gpu_node_pool(
+                        node_quantity=1,
+                        autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "node-pool-gpu-l40s": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
-                    ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_provider_config()),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "gpu-observer": fnv1.Resource(
-                        resource=resource.dict_to_struct(_gpu_observer()),
-                    ),
+                    "provider-config-kubernetes": _provider_config(),
+                    "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
@@ -326,31 +318,69 @@ COMPOSE_CASES = [
     ),
     Case(
         name="dependents kept when the cluster Ready condition transiently regresses",
-        req=_req(
-            [_GPU_POOL],
-            observed_resources={
-                "cluster": _observed_unready(_cluster()),
-                "provider-config-kubernetes": _observed_ready(_provider_config()),
-            },
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(ready=False),
+                    "provider-config-kubernetes": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "ProviderConfig",
+                                "metadata": {
+                                    "name": "test-cluster-kubeconfig-55b57",
+                                    "namespace": "modelplane-system",
+                                },
+                                "spec": {
+                                    "credentials": {
+                                        "source": "Secret",
+                                        "secretRef": {
+                                            "namespace": "modelplane-system",
+                                            "name": "test-cluster-kubeconfig-55b57",
+                                            "key": "kubeconfig",
+                                        },
+                                    },
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                composite=_desired_xr(),
                 resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(_cluster()),
+                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "node-pool-gpu-l40s": _gpu_node_pool(
+                        node_quantity=1,
+                        autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "node-pool-gpu-l40s": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
-                    ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_provider_config()),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "gpu-observer": fnv1.Resource(
-                        resource=resource.dict_to_struct(_gpu_observer()),
-                    ),
+                    "provider-config-kubernetes": _provider_config(),
+                    "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
@@ -358,32 +388,73 @@ COMPOSE_CASES = [
     ),
     Case(
         name="observed node pool alone keeps dependents composed",
-        req=_req(
-            [_GPU_POOL],
-            observed_resources={
-                "cluster": _observed_unready(_cluster()),
-                "node-pool-gpu-l40s": _observed_ready(_GPU_POOL_GOLDEN),
-            },
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(ready=False),
+                    "node-pool-gpu-l40s": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                                "kind": "KubernetesNodePool",
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "forProvider": {
+                                        "label": "gpu-l40s",
+                                        "plan": "vcg-l40s-16c-180g-48vram",
+                                        "nodeQuantity": 1,
+                                        "labels": [
+                                            {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
+                                            {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
+                                            {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
+                                        ],
+                                        "clusterIdSelector": {"matchControllerRef": True},
+                                        "taints": [{"key": "nvidia.com/gpu", "value": "true", "effect": "NoSchedule"}],
+                                        "autoScaler": True,
+                                        "minNodes": 1,
+                                        "maxNodes": 4,
+                                    },
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                composite=_desired_xr(),
                 resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(_cluster()),
-                    ),
-                    "node-pool-gpu-l40s": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
+                    "cluster": _cluster(ready=fnv1.READY_UNSPECIFIED),
+                    "node-pool-gpu-l40s": _gpu_node_pool(
+                        node_quantity=1,
+                        autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
                         ready=fnv1.READY_TRUE,
                     ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_provider_config()),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "gpu-observer": fnv1.Resource(
-                        resource=resource.dict_to_struct(_gpu_observer()),
-                    ),
+                    "provider-config-kubernetes": _provider_config(),
+                    "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
@@ -391,51 +462,37 @@ COMPOSE_CASES = [
     ),
     Case(
         name="fixed-size GPU pool",
-        req=_req(
-            [
-                v1alpha1.NodePool(
-                    name="gpu-l40s",
-                    role="GPU",
-                    plan="vcg-l40s-16c-180g-48vram",
-                    nodeCount=2,
-                    gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            nodeCount=2,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
                 ),
-            ],
-            observed_resources={
-                "cluster": _observed_ready(_cluster()),
-            },
+                resources={
+                    "cluster": _observed_cluster(ready=True),
+                },
+            ),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                composite=_desired_xr(),
                 resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(_cluster()),
-                        ready=fnv1.READY_TRUE,
+                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "node-pool-gpu-l40s": _gpu_node_pool(
+                        node_quantity=2,
+                        autoscaling=None,
+                        ready=fnv1.READY_UNSPECIFIED,
                     ),
-                    "node-pool-gpu-l40s": fnv1.Resource(
-                        resource=resource.dict_to_struct(
-                            _node_pool(
-                                label="gpu-l40s",
-                                plan="vcg-l40s-16c-180g-48vram",
-                                node_quantity=2,
-                                labels=[
-                                    {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
-                                    {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
-                                    {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
-                                ],
-                                taints=_GPU_TAINTS,
-                            ),
-                        ),
-                    ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_provider_config()),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "gpu-observer": fnv1.Resource(
-                        resource=resource.dict_to_struct(_gpu_observer()),
-                    ),
+                    "provider-config-kubernetes": _provider_config(),
+                    "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
@@ -443,50 +500,54 @@ COMPOSE_CASES = [
     ),
     Case(
         name="minNodeCount sets the autoscaler floor; System pool carries no taint",
-        req=_req(
-            [
-                v1alpha1.NodePool(
-                    name="workers",
-                    role="System",
-                    plan="vc2-6c-16gb",
-                    nodeCount=2,
-                    minNodeCount=2,
-                    maxNodeCount=5,
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="workers",
+                            role="System",
+                            plan="vc2-6c-16gb",
+                            nodeCount=2,
+                            minNodeCount=2,
+                            maxNodeCount=5,
+                        ),
+                    ],
                 ),
-            ],
-            observed_resources={
-                "cluster": _observed_ready(_cluster()),
-            },
+                resources={
+                    "cluster": _observed_cluster(ready=True),
+                },
+            ),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                composite=_desired_xr(),
                 resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(_cluster()),
-                        ready=fnv1.READY_TRUE,
-                    ),
+                    "cluster": _cluster(ready=fnv1.READY_TRUE),
                     "node-pool-workers": fnv1.Resource(
                         resource=resource.dict_to_struct(
-                            _node_pool(
-                                label="workers",
-                                plan="vc2-6c-16gb",
-                                node_quantity=2,
-                                labels=[{"key": "modelplane.ai/pool", "value": "workers"}],
-                                auto_scaler=True,
-                                min_nodes=2,
-                                max_nodes=5,
-                            ),
+                            {
+                                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                                "kind": "KubernetesNodePool",
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "forProvider": {
+                                        "label": "workers",
+                                        "plan": "vc2-6c-16gb",
+                                        "nodeQuantity": 2,
+                                        "labels": [{"key": "modelplane.ai/pool", "value": "workers"}],
+                                        "clusterIdSelector": {"matchControllerRef": True},
+                                        "autoScaler": True,
+                                        "minNodes": 2,
+                                        "maxNodes": 5,
+                                    },
+                                },
+                            }
                         ),
                     ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_provider_config()),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "gpu-observer": fnv1.Resource(
-                        resource=resource.dict_to_struct(_gpu_observer()),
-                    ),
+                    "provider-config-kubernetes": _provider_config(),
+                    "gpu-observer": _gpu_observer(ready=fnv1.READY_UNSPECIFIED),
                 },
             ),
             context=structpb.Struct(),
@@ -494,46 +555,123 @@ COMPOSE_CASES = [
     ),
     Case(
         name="VultrCluster Ready only once the gpu-observer is Ready",
-        req=_req(
-            [_GPU_POOL],
-            observed_resources={
-                "cluster": _observed_ready(_cluster()),
-                "node-pool-gpu-l40s": _observed_ready(_GPU_POOL_GOLDEN),
-                "gpu-observer": _observed_ready(_gpu_observer()),
-            },
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(
+                    node_pools=[
+                        v1alpha1.NodePool(
+                            name="gpu-l40s",
+                            role="GPU",
+                            plan="vcg-l40s-16c-180g-48vram",
+                            maxNodeCount=4,
+                            gpu=v1alpha1.Gpu(acceleratorType="nvidia-l40s"),
+                        ),
+                    ],
+                ),
+                resources={
+                    "cluster": _observed_cluster(ready=True),
+                    "node-pool-gpu-l40s": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "vke.vultr.m.upbound.io/v1beta1",
+                                "kind": "KubernetesNodePool",
+                                "spec": {
+                                    "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "default"},
+                                    "forProvider": {
+                                        "label": "gpu-l40s",
+                                        "plan": "vcg-l40s-16c-180g-48vram",
+                                        "nodeQuantity": 1,
+                                        "labels": [
+                                            {"key": "modelplane.ai/pool", "value": "gpu-l40s"},
+                                            {"key": "modelplane.ai/gpu", "value": "nvidia-l40s"},
+                                            {"key": "nvidia.com/gpu.deploy.device-plugin", "value": "false"},
+                                        ],
+                                        "clusterIdSelector": {"matchControllerRef": True},
+                                        "taints": [{"key": "nvidia.com/gpu", "value": "true", "effect": "NoSchedule"}],
+                                        "autoScaler": True,
+                                        "minNodes": 1,
+                                        "maxNodes": 4,
+                                    },
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                    "gpu-observer": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "metadata": {"namespace": "modelplane-system"},
+                                "spec": {
+                                    "managementPolicies": ["Observe"],
+                                    "providerConfigRef": {
+                                        "kind": "ProviderConfig",
+                                        "name": "test-cluster-kubeconfig-55b57",
+                                    },
+                                    "readiness": {
+                                        "policy": "DeriveFromCelQuery",
+                                        "celQuery": (
+                                            "has(object.status.numberReady)"
+                                            " && object.status.desiredNumberScheduled >= 1"
+                                            " && object.status.numberReady == object.status.desiredNumberScheduled"
+                                        ),
+                                    },
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "apps/v1",
+                                            "kind": "DaemonSet",
+                                            "metadata": {
+                                                "name": "nvidia-operator-validator",
+                                                "namespace": "gpu-operator",
+                                            },
+                                        },
+                                    },
+                                },
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Available",
+                                            "lastTransitionTime": "2024-01-01T00:00:00Z",
+                                        },
+                                    ],
+                                },
+                            }
+                        ),
+                    ),
+                },
+            ),
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
             desired=fnv1.State(
-                composite=fnv1.Resource(resource=resource.dict_to_struct(_status())),
+                composite=_desired_xr(),
                 resources={
-                    "cluster": fnv1.Resource(
-                        resource=resource.dict_to_struct(_cluster()),
+                    "cluster": _cluster(ready=fnv1.READY_TRUE),
+                    "node-pool-gpu-l40s": _gpu_node_pool(
+                        node_quantity=1,
+                        autoscaling={"autoScaler": True, "minNodes": 1, "maxNodes": 4},
                         ready=fnv1.READY_TRUE,
                     ),
-                    "node-pool-gpu-l40s": fnv1.Resource(
-                        resource=resource.dict_to_struct(_GPU_POOL_GOLDEN),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "provider-config-kubernetes": fnv1.Resource(
-                        resource=resource.dict_to_struct(_provider_config()),
-                        ready=fnv1.READY_TRUE,
-                    ),
-                    "gpu-observer": fnv1.Resource(
-                        resource=resource.dict_to_struct(_gpu_observer()),
-                        ready=fnv1.READY_TRUE,
-                    ),
+                    "provider-config-kubernetes": _provider_config(),
+                    "gpu-observer": _gpu_observer(ready=fnv1.READY_TRUE),
                 },
             ),
             context=structpb.Struct(),
         ),
     ),
 ]
-
-
-def _to_dict(msg: message.Message) -> dict:
-    """msg as a dict with sorted keys, so pytest's diff of two lines them up."""
-    return json.loads(json_format.MessageToJson(msg, sort_keys=True))
 
 
 @pytest.mark.parametrize("case", COMPOSE_CASES, ids=lambda case: case.name)
