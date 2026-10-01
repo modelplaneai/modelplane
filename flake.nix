@@ -174,6 +174,7 @@
           stop = apps.stop { inherit crossplane; };
           e2e = apps.e2e { inherit crossplane functionsPkg; };
           stacks = apps.stacks { inherit (pkgs) aicr; };
+          requirements-doc = apps.requirements-doc { };
         }
       );
 

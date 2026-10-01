@@ -97,6 +97,13 @@ nix run .#e2e -- --verify  # same, then wait for readiness and assert a live 200
 nix run .#e2e -- --clean   # tear both clusters down
 ```
 
+`--provided` (combinable with `--verify`) registers the workload cluster with
+`components: Provided`: the substrate is pre-installed from the generated
+`e2e/provided/` inputs under non-`mp-` release names, one chart is held back to
+assert the `RequirementsMet` condition names it and flips once installed, and
+Modelplane must compose no Helm release of its own. The `E2E` workflow runs it
+under the `test-e2e-provided` label.
+
 `crossplane project run` installs the config and applies the resources, then
 returns; the serving-stack install and model rollout reconcile in the background.
 So wait for the `ModelService` to become ready before curling. The gateway's

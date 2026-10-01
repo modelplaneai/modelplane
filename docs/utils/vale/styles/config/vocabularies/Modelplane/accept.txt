@@ -118,6 +118,10 @@ NIXL
 NixlConnector
 GPUDirect
 Prometheus
+Grafana
+Alertmanager
+NFD
+CDI
 ArgoCD
 FluxCD
 GitHub

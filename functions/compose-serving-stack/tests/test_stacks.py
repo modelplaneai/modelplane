@@ -124,6 +124,29 @@ class TestComponents(unittest.TestCase):
                     with self.subTest(cloud=cloud, stack=stack, key=c.key):
                         check(c.values if isinstance(c, stacks.Chart) else c.manifests, c.key)
 
+    def test_required_crd_versions_are_singular(self) -> None:
+        # A RequiredCRD renders as one APIService observe Object, which
+        # encodes exactly one group-version. join() fails closed on any
+        # other count; this documents it against the real lists.
+        for cloud in stacks.clouds():
+            for stack in stacks.stacks():
+                for c in stacks.join(cloud, stack):
+                    for r in c.requires:
+                        if isinstance(r, stacks.RequiredCRD):
+                            with self.subTest(cloud=cloud, stack=stack, key=c.key, req=r.key):
+                                self.assertEqual(1, len(r.versions))
+
+    def test_existing_substrate_components_state_requirements(self) -> None:
+        # Provided mode can only select Existing, and there every
+        # substrate component must say what the cluster supplies in its
+        # place, or state why nothing is checkable. join() fails closed
+        # on this; the test documents it against the real lists.
+        for stack in stacks.stacks():
+            for c in stacks.join("Existing", stack):
+                if c.role == "substrate":
+                    with self.subTest(stack=stack, key=c.key):
+                        self.assertTrue(c.requires or c.unchecked)
+
     def test_unknown_cloud_and_stack_fail_closed(self) -> None:
         # The Literal types reject these at type-checking time; this
         # exercises the runtime guard behind them, which catches the API

@@ -128,6 +128,32 @@ spec:
                               ReadWriteMany dynamic provisioning).
                             minLength: 1
                             maxLength: 253
+                      components:
+                        type: string
+                        default: Managed
+                        x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: >-
+                            spec.cluster.existing.components is immutable;
+                            recreate the cluster to change who supplies the
+                            serving substrate.
+                        description: >-
+                          Who supplies the serving substrate on this cluster.
+                          Managed (the default) has Modelplane install every
+                          serving stack component. Provided installs no
+                          substrate: the cluster already runs cert-manager,
+                          the gateway stack, Prometheus, the GPU DRA driver
+                          and the stack's workload controller, and Modelplane
+                          verifies they are present (the RequirementsMet
+                          condition reports what's missing) and composes only
+                          its own configuration on top. All or nothing; the
+                          cluster provides the whole substrate or none of it.
+                          Immutable because flipping it would uninstall a
+                          live cluster's substrate or adopt one Modelplane
+                          doesn't own.
+                        enum:
+                        - Managed
+                        - Provided
                   gke:
                     type: object
                     description: >-

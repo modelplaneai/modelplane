@@ -20,9 +20,15 @@ pins that by hand in the same shape a generator emits. Where a
 component also appears on a generated cloud, this file states the same
 pin, so one review moves both halves when a version changes -
 regenerate, then mirror the shared pins here.
+
+This half also carries requirement data (`requires`, `unchecked`,
+`not_needed`): what a cluster must already supply per component when it
+provides the substrate itself (spec.components: Provided). Existing is
+the only cloud that mode can select, so only this half and the shared
+halves it joins with state it.
 """
 
-from function.stacks.components import Chart, Component
+from function.stacks.components import Chart, Component, RequiredCRD, RequiredObject
 
 COMPONENTS: list[Component] = [
     Chart(
@@ -40,6 +46,12 @@ COMPONENTS: list[Component] = [
         # Objects, and removing their CRDs would stop provider-kubernetes
         # observing them to release their finalizers.
         values={"crds": {"enabled": True}},
+        requires=[
+            RequiredCRD(key="crds", name="certificates.cert-manager.io", versions=["v1"]),
+        ],
+        unchecked=[
+            "The cert-manager controller and webhook are running and issue Certificates.",
+        ],
     ),
     Chart(
         key="kube-prometheus-stack",
@@ -94,6 +106,23 @@ COMPONENTS: list[Component] = [
             "grafana": {"enabled": False},
             "alertmanager": {"enabled": False},
         },
+        requires=[
+            RequiredCRD(key="podmonitors", name="podmonitors.monitoring.coreos.com", versions=["v1"]),
+            RequiredCRD(key="servicemonitors", name="servicemonitors.monitoring.coreos.com", versions=["v1"]),
+        ],
+        unchecked=[
+            "Prometheus discovers `PodMonitor` objects in every namespace:"
+            " with the chart, set `podMonitorSelectorNilUsesHelmValues` to"
+            " false and `podMonitorNamespaceSelector` to empty."
+            " Modelplane's scrape targets are `PodMonitor` objects in"
+            " workload namespaces, and the chart's default release label"
+            " selector never matches them.",
+            "A scrape job for the Envoy Gateway proxy pods' stats"
+            " endpoint, if you want request metrics at the proxy level.",
+        ],
+        not_needed=[
+            "Modelplane disables Grafana and Alertmanager.",
+        ],
     ),
     Chart(
         key="node-feature-discovery",
@@ -123,6 +152,17 @@ COMPONENTS: list[Component] = [
                 ],
             },
         },
+        requires=[
+            RequiredCRD(key="nodefeatures", name="nodefeatures.nfd.k8s-sigs.io", versions=["v1alpha1"]),
+        ],
+        unchecked=[
+            "The NFD worker runs on the GPU nodes and labels them with"
+            " `feature.node.kubernetes.io/pci-10de` and friends. If GPU"
+            " nodes are tainted, the worker must tolerate the taint, or"
+            " the DRA driver's `kubelet` plugin never schedules there and"
+            " every GPU ResourceClaim stays pending with all components"
+            " looking healthy.",
+        ],
     ),
     # Publishes each GPU node's devices as DRA ResourceSlices and
     # registers the gpu.nvidia.com DeviceClass ModelReplica
@@ -141,5 +181,27 @@ COMPONENTS: list[Component] = [
             "gpuResourcesEnabledOverride": True,
             "resources": {"computeDomains": {"enabled": False}},
         },
+        requires=[
+            # Observing the DeviceClass at resource.k8s.io/v1 also
+            # proves the cluster serves GA DRA, which means Kubernetes
+            # 1.34 or newer.
+            RequiredObject(
+                key="deviceclass",
+                api_version="resource.k8s.io/v1",
+                kind="DeviceClass",
+                name="gpu.nvidia.com",
+            ),
+        ],
+        unchecked=[
+            "The NVIDIA kernel driver and Container Toolkit on every"
+            " GPU node, from the node image or the GPU Operator. The"
+            " requirements for an existing cluster state the versions.",
+            "The driver's `kubelet` plugin publishes each GPU node's devices as ResourceSlices.",
+            "No device plugin advertising `nvidia.com/gpu`: a second"
+            " allocator would hand out the same GPUs behind DRA's back.",
+        ],
+        not_needed=[
+            "Modelplane disables `ComputeDomains` (multi-node NVLink) and their prerequisites.",
+        ],
     ),
 ]

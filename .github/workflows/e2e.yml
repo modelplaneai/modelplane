@@ -97,3 +97,68 @@ jobs:
       - name: Teardown
         if: always()
         run: nix run .#e2e -- --clean
+
+  # The Provided-mode variant: the substrate is pre-installed on the
+  # workload cluster and Modelplane only checks it (see e2e/run.sh
+  # --provided). Its own label, because it roughly doubles the e2e
+  # minutes and the RequirementsMet flow only needs exercising on
+  # changes near the serving stack.
+  e2e-provided:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.action == 'labeled' && github.event.label.name == 'test-e2e-provided')
+      || (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'test-e2e-provided'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Cleanup Disk
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          tool-cache: true
+          swap-storage: false
+          large-packages: false
+          docker-images: false
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: log-lines = 500
+
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+        with:
+          use-flakehub: false
+
+      - name: Run e2e (provided)
+        run: nix run .#e2e --print-build-logs -- --provided --verify
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          mkdir -p e2e-logs
+          nix develop --command bash -c '
+            kind export logs e2e-logs/control-plane --name modelplane-e2e-local || true
+            kind export logs e2e-logs/workload --name modelplane-e2e-workload || true
+            kubectl --context kind-modelplane-e2e-local get composite -o wide > e2e-logs/composites.txt 2>&1 || true
+            kubectl --context kind-modelplane-e2e-local get inferencecluster local -o yaml > e2e-logs/inferencecluster.yaml 2>&1 || true
+            kubectl --context kind-modelplane-e2e-local -n ml-team get modeldeployment,modelreplica,modelendpoint,modelservice -o yaml > e2e-logs/model.yaml 2>&1 || true
+          '
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-provided-diagnostics
+          path: e2e-logs
+          if-no-files-found: ignore
+
+      - name: Teardown
+        if: always()
+        run: nix run .#e2e -- --clean

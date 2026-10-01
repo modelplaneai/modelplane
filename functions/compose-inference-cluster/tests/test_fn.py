@@ -940,6 +940,83 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
         want3.requirements.resources["class-gpu-l4"].CopyFrom(class_selector)
 
+        # --- Case 3b: Provided mode threads spec.components to the
+        # ServingStack and mirrors RequirementsMet as Checking until the
+        # backend first reports. Derived from Case 1: same cluster, the
+        # existing block gains components: Provided. ---
+        req_provided = fnv1.RunFunctionRequest()
+        req_provided.CopyFrom(req1)
+        xr = resource.struct_to_dict(req_provided.observed.composite.resource)
+        xr["spec"]["cluster"]["existing"]["components"] = "Provided"
+        req_provided.observed.composite.resource.CopyFrom(resource.dict_to_struct(xr))
+
+        want_provided = fnv1.RunFunctionResponse()
+        want_provided.CopyFrom(want1)
+        ss = resource.struct_to_dict(want_provided.desired.resources["serving-stack"].resource)
+        ss["spec"]["components"] = "Provided"
+        want_provided.desired.resources["serving-stack"].resource.CopyFrom(resource.dict_to_struct(ss))
+        want_provided.conditions.append(
+            fnv1.Condition(
+                type="RequirementsMet",
+                status=fnv1.STATUS_CONDITION_FALSE,
+                reason="Checking",
+                message="Waiting for the serving stack to check the cluster's substrate",
+            )
+        )
+
+        # --- Case 3c: the backend's RequirementsMet is mirrored verbatim
+        # once it reports. The backend observed unready with the condition
+        # naming what the cluster is missing. ---
+        req_mirror = fnv1.RunFunctionRequest()
+        req_mirror.CopyFrom(req_provided)
+        req_mirror.observed.resources["serving-stack"].CopyFrom(
+            fnv1.Resource(
+                resource=resource.dict_to_struct(
+                    {
+                        "apiVersion": "infrastructure.modelplane.ai/v1alpha1",
+                        "kind": "ServingStack",
+                        "metadata": {"name": "test-cluster-serving-stack-fd00b"},
+                        "status": {
+                            "conditions": [
+                                {"type": "Ready", "status": "False"},
+                                {
+                                    "type": "RequirementsMet",
+                                    "status": "False",
+                                    "reason": "MissingRequirements",
+                                    "message": "The cluster is missing: cert-manager"
+                                    " (API v1.cert-manager.io not served)",
+                                },
+                            ],
+                        },
+                    }
+                )
+            )
+        )
+
+        want_mirror = fnv1.RunFunctionResponse()
+        want_mirror.CopyFrom(want_provided)
+        del want_mirror.conditions[:]
+        want_mirror.conditions.extend(
+            [
+                fnv1.Condition(
+                    type="ClusterReady",
+                    status=fnv1.STATUS_CONDITION_TRUE,
+                    reason="ClusterRunning",
+                ),
+                fnv1.Condition(
+                    type="BackendReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="Installing",
+                ),
+                fnv1.Condition(
+                    type="RequirementsMet",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="MissingRequirements",
+                    message="The cluster is missing: cert-manager (API v1.cert-manager.io not served)",
+                ),
+            ]
+        )
+
         # --- Case 4: EKS cluster first pass - no observed EKS, classes resolved. ---
         inference_class_l4_eks = {
             "apiVersion": "modelplane.ai/v1alpha1",
@@ -3332,6 +3409,8 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             want1,
             want2,
             want3,
+            want_provided,
+            want_mirror,
             want4,
             want5,
             want6,
@@ -3549,6 +3628,14 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
             Case(name="GKE cluster first pass composes GKECluster XR only", req=req2, want=want2),
             Case(name="GKE credentials pass through to GKECluster spec", req=req_creds, want=want_creds),
             Case(name="existing cluster second pass with backend ready", req=req3, want=want3),
+            Case(
+                name="provided components thread to the backend and mirror as checking",
+                req=req_provided,
+                want=want_provided,
+            ),
+            Case(
+                name="provided components mirror the backend's missing requirements", req=req_mirror, want=want_mirror
+            ),
             Case(name="EKS cluster first pass composes EKSCluster XR only", req=req4, want=want4),
             Case(name="EKS cluster not ready re-emits existing CPC unchanged", req=req5, want=want5),
             Case(name="GKE cluster ready composes CPC, backend, usage, and RWX StorageClass", req=req6, want=want6),

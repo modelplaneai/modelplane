@@ -32,6 +32,14 @@ prerequisites. The hand-rendered pieces are the ones that read
 spec.gateway, which is per-cluster configuration rather than stack data:
 the gateway pair, its PKI, and the Usages sequencing the pair's teardown
 ahead of the Envoy Gateway release.
+
+In Provided mode (spec.components, Existing clusters only) the cluster
+supplies the substrate itself. No substrate component renders; each
+one's requires entries render instead, as observe-only Objects on the
+target cluster, and the RequirementsMet condition reports what the
+cluster is missing. Modelplane's own config components still compose,
+their substrate depends_on edges gated on those checks, so nothing is
+ever applied into a cluster whose API can't accept it.
 """
 
 import grpc
@@ -136,6 +144,63 @@ _POLICY_ACCEPTED_CEL = (
     "object.status.ancestors.exists(a, has(a.conditions) && "
     "a.conditions.exists(c, c.type == 'Accepted' && c.status == 'True'))"
 )
+
+# The Provided-mode condition: does the cluster supply what the skipped
+# substrate components would have installed? Reported on the
+# ServingStack and mirrored onto the InferenceCluster. False with
+# MissingRequirements names exactly what's missing; Checking means the
+# observe Objects haven't reported yet.
+CONDITION_TYPE_REQUIREMENTS_MET = "RequirementsMet"
+CONDITION_REASON_REQUIREMENTS_MET = "RequirementsMet"
+CONDITION_REASON_MISSING = "MissingRequirements"
+CONDITION_REASON_CHECKING = "Checking"
+
+# CEL readiness for a RequiredObject with no query of its own: Ready
+# once the object is observed at all. DeriveFromCelQuery rather than
+# SuccessfulCreate because an observe-only Object never creates
+# anything - readiness must derive from what was observed.
+_OBSERVED_CEL = "has(object.metadata.name)"
+
+# CEL readiness for a RequiredCRD's APIService: the aggregator reports
+# Available once the group-version actually serves.
+_APISERVICE_AVAILABLE_CEL = (
+    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+)
+
+
+def _apiservice_name(r: stacks.RequiredCRD) -> str:
+    """The aggregated APIService name for a RequiredCRD: <version>.<group>."""
+    return f"{r.versions[0]}.{r.name.split('.', 1)[1]}"
+
+
+def _requirement_manifest(r: stacks.RequiredCRD | stacks.RequiredObject) -> tuple[dict, str]:
+    """The manifest an observe-only requirement check points at, and the
+    CEL query that makes it Ready.
+
+    A RequiredCRD is checked through the aggregated APIService the API
+    server auto-registers for every served group-version
+    (<version>.<group>), not the CRD itself. Observing the CRD would
+    copy its whole OpenAPI schema into the Object's status and back
+    into every RunFunctionRequest - hundreds of kilobytes, nested past
+    the protobuf decoder's depth limit. The APIService is a few hundred
+    bytes and proves the same thing at group-version granularity, with
+    an Available condition to gate on; the generated requirements docs
+    still name the CRD itself. A RequiredObject observes the named
+    cluster-scoped object with its own query, if any.
+    """
+    if isinstance(r, stacks.RequiredCRD):
+        return (
+            {
+                "apiVersion": "apiregistration.k8s.io/v1",
+                "kind": "APIService",
+                "metadata": {"name": _apiservice_name(r)},
+            },
+            _APISERVICE_AVAILABLE_CEL,
+        )
+    return (
+        {"apiVersion": r.api_version, "kind": r.kind, "metadata": {"name": r.name}},
+        r.ready or _OBSERVED_CEL,
+    )
 
 
 def _name(meta: metav1.ObjectMeta | None) -> str:
@@ -317,13 +382,46 @@ class Composer:
             if nvlink_pools:
                 components = stacks.civo.with_nvlink_disabled(components, nvlink_pools)
 
-        rendered = self.compose_components(components)
+        if self.xr.spec.components != "Provided":
+            rendered = self.compose_components(components)
+            rendered += self.compose_gateway()
+            rendered += self.compose_gateway_pki()
+            self.compose_component_usages(components)
+            self.compose_gateway_usages()
+            self.write_status()
+            self.mark_readiness(rendered)
+            return
+
+        # Provided: the cluster supplies the substrate. Substrate
+        # components render as their requirement checks instead, and
+        # only Modelplane's config components (plus the gateway pair)
+        # compose - each substrate depends_on edge gated on the checks
+        # standing in for it. The checks count toward readiness, so the
+        # composite isn't Ready until the cluster meets every
+        # requirement, and RequirementsMet says what's missing.
+        checks = self.compose_requirements(components)
+        gates = {
+            c.key: (stacks.components.requirement_keys(c) if c.role == "substrate" else stacks.components.doc_keys(c))
+            for c in components
+        }
+        config = [c for c in components if c.role == "config"]
+        rendered = self.compose_components(config, gates=gates)
         rendered += self.compose_gateway()
-        rendered += self.compose_gateway_pki()
-        self.compose_component_usages(components)
-        self.compose_gateway_usages()
+        # The PKI composes cert-manager and trust-manager CRs, so in
+        # Provided mode it waits for the checks standing in for both -
+        # the same gate a config component's depends_on edge gets.
+        pki_deps = [
+            key
+            for c in components
+            if c.key in ("cert-manager", "trust-manager")
+            for key in stacks.components.requirement_keys(c)
+        ]
+        rendered += self.compose_gateway_pki(require=pki_deps)
+        self.compose_component_usages(config)
+        self.compose_gateway_usages(provided=True)
+        self.set_requirements_condition(components)
         self.write_status()
-        self.mark_readiness(rendered)
+        self.mark_readiness(rendered + checks)
 
     def compose_provider_configs(self) -> None:
         """Build ProviderConfigs from the XR's secrets.
@@ -403,7 +501,11 @@ class Composer:
             ),
         )
 
-    def compose_components(self, components: list[stacks.Component]) -> list[str]:
+    def compose_components(
+        self,
+        components: list[stacks.Component],
+        gates: dict[str, list[str]] | None = None,
+    ) -> list[str]:
         """Render every component of the joined stack.
 
         A Chart renders as one provider-helm Release under the entry's
@@ -422,17 +524,26 @@ class Composer:
         Release reports Ready when Helm deploys it, not when its
         workloads run, so this is deploy-order, not health-order.
 
+        `gates` overrides which observed keys a dependency's Ready is
+        read from. Provided mode passes the full joined map with each
+        substrate component standing behind its requirement checks, so
+        a config component's edge onto skipped substrate gates on the
+        cluster actually serving the API (an empty list gates on
+        nothing). Default: the components' own rendered docs.
+
         Returns the composed-resource keys it rendered, for readiness.
         """
         pc_observed = self.provider_configs_observed()
         pc = _pc_name(self.xr)
-        docs = {c.key: stacks.components.doc_keys(c) for c in components}
+        # A new name rather than narrowing the parameter: deps_ready
+        # closes over it, and a closed-over variable doesn't narrow.
+        gate_keys = gates if gates is not None else {c.key: stacks.components.doc_keys(c) for c in components}
 
         def deps_ready(c: stacks.Component) -> bool:
             return all(
                 resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True"
                 for dep in c.depends_on
-                for key in docs[dep]
+                for key in gate_keys[dep]
             )
 
         rendered: list[str] = []
@@ -470,6 +581,13 @@ class Composer:
         outlives the Envoy Gateway release whose webhooks need it, and
         so on. Usages reference nothing on the remote cluster, so they
         compose ungated and are ready on arrival.
+
+        An edge onto a component outside the given list derives no
+        Usage. That's the Provided path, where only config components
+        are passed: their substrate dependencies are the cluster's own
+        installs, which no Usage on the control plane can hold - the
+        user's controllers must outlive Modelplane's config on
+        teardown, which the requirements docs state.
         """
         refs: dict[str, tuple[str, str]] = {}
         docs: dict[str, list[str]] = {}
@@ -481,6 +599,8 @@ class Composer:
 
         for c in components:
             for dep in c.depends_on:
+                if dep not in docs:
+                    continue
                 for of_key in docs[dep]:
                     for by_key in docs[c.key]:
                         key = f"usage-{of_key}-by-{by_key}"
@@ -547,7 +667,7 @@ class Composer:
             rendered.append(key)
         return rendered
 
-    def compose_gateway_pki(self) -> list[str]:
+    def compose_gateway_pki(self, require: list[str] | None = None) -> list[str]:
         """Compose the cluster gateway's certificate, and the requirement that a
         caller present one of its own.
 
@@ -561,9 +681,18 @@ class Composer:
         so the requirement waits for the first one, and serves_gateway withholds
         the listener it would have governed until then.
 
+        `require` names observed keys whose Ready gates first creation,
+        the same gate a config component's depends_on edge gets: Provided
+        mode passes the cert-manager and trust-manager checks, so no
+        Certificate or Bundle is applied into a cluster that doesn't
+        serve their APIs.
+
         Returns the composed-resource keys it rendered, for readiness.
         """
-        pc_observed = self.provider_configs_observed()
+        gate = self.provider_configs_observed() and all(
+            resource.get_condition(self.req.observed.resources.get(key), "Ready").status == "True"
+            for key in require or []
+        )
         pc = _pc_name(self.xr)
         gw = self.xr.spec.gateway
 
@@ -626,7 +755,7 @@ class Composer:
             ),
         ]
         for key, manifest in certs:
-            if not (pc_observed or key in self.req.observed.resources):
+            if not (gate or key in self.req.observed.resources):
                 continue
             cel = _CERTIFICATE_READY_CEL if manifest["kind"] == "Certificate" else None
             resource.update(self.rsp.desired.resources[key], _k8s_object(pc, manifest, ready_when=cel))
@@ -644,7 +773,7 @@ class Composer:
         # so the key is read once, in-cluster, by a controller already entitled to
         # it. trust-manager also rejects any PEM block that isn't a CERTIFICATE,
         # so it can't be made to republish a key by naming the wrong source key.
-        if pc_observed or "gateway-ca-bundle" in self.req.observed.resources:
+        if gate or "gateway-ca-bundle" in self.req.observed.resources:
             resource.update(
                 self.rsp.desired.resources["gateway-ca-bundle"],
                 _k8s_object(
@@ -673,7 +802,7 @@ class Composer:
 
         # Observed, not managed: trust-manager owns this ConfigMap, and this only
         # needs to read the certificate back out so status can publish it.
-        if pc_observed or "gateway-ca-configmap" in self.req.observed.resources:
+        if gate or "gateway-ca-configmap" in self.req.observed.resources:
             resource.update(
                 self.rsp.desired.resources["gateway-ca-configmap"],
                 _k8s_object(
@@ -693,7 +822,7 @@ class Composer:
         client_cas = gw.clientCAs
         if not client_cas:
             return rendered
-        if not (pc_observed or "gateway-client-ca-bundle" in self.req.observed.resources):
+        if not (gate or "gateway-client-ca-bundle" in self.req.observed.resources):
             return rendered
         # One ConfigMap holding every InferenceGateway's CA, concatenated, which
         # is what a PEM trust bundle is.
@@ -744,7 +873,7 @@ class Composer:
         rendered.append("gateway-client-auth")
         return rendered
 
-    def compose_gateway_usages(self) -> None:
+    def compose_gateway_usages(self, *, provided: bool = False) -> None:
         """Compose Usages ordering the hand-rendered gateway teardown.
 
         The Envoy Gateway controller must outlive the Gateway and
@@ -758,10 +887,17 @@ class Composer:
         Gateway to be protected by. A Usage whose "by" selector matches
         nothing errors on every reconcile, and compose_gateway withholds the
         Gateway until the cluster has an InferenceGateway CA to trust.
+
+        In Provided mode the envoy-gateway Release doesn't exist - the
+        cluster runs its own controller - so that edge is skipped, and
+        processing the GatewayClass finalizer on teardown relies on the
+        user keeping that controller alive.
         """
-        usages = [
-            ("usage-envoy-gateway-by-gateway-class", _RELEASE_REF, "envoy-gateway", _OBJECT_REF, "gateway-class"),
-        ]
+        usages = []
+        if not provided:
+            usages.append(
+                ("usage-envoy-gateway-by-gateway-class", _RELEASE_REF, "envoy-gateway", _OBJECT_REF, "gateway-class")
+            )
         if self.serves_gateway():
             usages.insert(
                 0,
@@ -789,6 +925,102 @@ class Composer:
         d = resource.struct_to_dict(obj.resource)
         data = d.get("status", {}).get("atProvider", {}).get("manifest", {}).get("data", {})
         return data.get("ca.crt") or None
+
+    def compose_requirements(self, components: list[stacks.Component]) -> list[str]:
+        """Render every substrate component's requirement checks.
+
+        One observe-only Object per requirement, keyed
+        require-<component>-<requirement> (stacks.components.
+        requirement_keys), observing the served API or cluster-scoped
+        object the provided cluster must supply in its place. The
+        Observe management policy means creating one touches nothing
+        remote and neither does deleting it; provider-kubernetes keeps
+        re-observing, so a check flips Ready when the admin installs
+        the missing piece - and flips back if it's removed. Gated on
+        the ProviderConfigs like every remote-cluster resource.
+
+        Returns the composed-resource keys it rendered; they count
+        toward readiness so the composite can't be Ready with an unmet
+        requirement.
+        """
+        pc_observed = self.provider_configs_observed()
+        pc = _pc_name(self.xr)
+        rendered: list[str] = []
+        for c in components:
+            if c.role != "substrate":
+                continue
+            for key, r in zip(stacks.components.requirement_keys(c), c.requires, strict=True):
+                if not (pc_observed or key in self.req.observed.resources):
+                    continue
+                manifest, cel = _requirement_manifest(r)
+                obj = _k8s_object(
+                    pc,
+                    manifest,
+                    metadata=metav1.ObjectMeta(labels={_LABEL_RESOURCE: key}),
+                    ready_when=cel,
+                    management_policies=["Observe"],
+                )
+                resource.update(self.rsp.desired.resources[key], obj)
+                rendered.append(key)
+        return rendered
+
+    def set_requirements_condition(self, components: list[stacks.Component]) -> None:
+        """Derive the RequirementsMet condition from the observed checks.
+
+        The condition is the primary UX for a provided cluster: the
+        message names every unmet requirement in one place, instead of
+        the user chasing per-Object errors. A check whose Synced is
+        False was unobservable (the object doesn't exist, or the
+        kubeconfig can't read it); Synced True with Ready False means
+        the object exists but fails its query (a CRD not serving an
+        accepted version). Checks not yet observed report Checking.
+        """
+        missing: list[str] = []
+        checking = False
+        for c in components:
+            if c.role != "substrate":
+                continue
+            for key, r in zip(stacks.components.requirement_keys(c), c.requires, strict=True):
+                observed = self.req.observed.resources.get(key)
+                if observed is None:
+                    checking = True
+                    continue
+                if resource.get_condition(observed, "Ready").status == "True":
+                    continue
+                synced = resource.get_condition(observed, "Synced").status
+                if synced == "False":
+                    detail = "not served" if isinstance(r, stacks.RequiredCRD) else "not found"
+                elif synced != "True":
+                    checking = True
+                    continue
+                elif isinstance(r, stacks.RequiredCRD):
+                    detail = "not available"
+                else:
+                    detail = "not ready"
+                what = f"API {_apiservice_name(r)}" if isinstance(r, stacks.RequiredCRD) else f"{r.kind} {r.name}"
+                missing.append(f"{c.key} ({what} {detail})")
+
+        if missing:
+            condition = resource.Condition(
+                typ=CONDITION_TYPE_REQUIREMENTS_MET,
+                status="False",
+                reason=CONDITION_REASON_MISSING,
+                message=f"The cluster is missing: {'; '.join(missing)}",
+            )
+        elif checking:
+            condition = resource.Condition(
+                typ=CONDITION_TYPE_REQUIREMENTS_MET,
+                status="False",
+                reason=CONDITION_REASON_CHECKING,
+                message="Checking the cluster provides the serving substrate",
+            )
+        else:
+            condition = resource.Condition(
+                typ=CONDITION_TYPE_REQUIREMENTS_MET,
+                status="True",
+                reason=CONDITION_REASON_REQUIREMENTS_MET,
+            )
+        response.set_conditions(self.rsp, condition)
 
     def write_status(self) -> None:
         """Extract the gateway address from the observed Gateway Object and

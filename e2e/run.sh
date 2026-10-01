@@ -100,6 +100,57 @@ metadata: { name: kind-l2, namespace: metallb-system }
 spec: { ipAddressPools: [kind-pool] }
 POOL
 
+apply_manifests=1
+verify=0
+provided=0
+for arg in "$@"; do
+	case "$arg" in
+	--no-apply) apply_manifests=0 ;;
+	--verify) verify=1 ;;
+	--provided) provided=1 ;;
+	esac
+done
+
+# Provided mode pre-installs the serving substrate on the workload
+# cluster from the generated e2e/provided/ inputs — the exact charts,
+# versions and values Modelplane would install, under non-mp release
+# names, proving Modelplane composes against a substrate it doesn't
+# own. install_chart reads one chart's line from charts.tsv.
+TAB="$(printf '\t')"
+install_chart() {
+	local key="$1" k chart repo version namespace wait ref
+	local args=()
+	while IFS="$TAB" read -r k chart repo version namespace wait; do
+		[ "$k" = "$key" ] || continue
+		args=(--namespace "$namespace" --create-namespace --version "$version")
+		ref="$chart"
+		case "$repo" in
+		oci://*) ref="$repo/$chart" ;;
+		*) args+=(--repo "$repo") ;;
+		esac
+		[ -f "$ROOT/e2e/provided/values/$key.yaml" ] && args+=(-f "$ROOT/e2e/provided/values/$key.yaml")
+		[ "$wait" = "true" ] && args+=(--wait --timeout 10m)
+		helm --kube-context "$WLCTX" upgrade --install "byo-$key" "$ref" "${args[@]}"
+		return 0
+	done <"$ROOT/e2e/provided/charts.tsv"
+	echo "chart $key not found in e2e/provided/charts.tsv" >&2
+	return 1
+}
+
+# kube-prometheus-stack is held back: after the manifests apply, the run
+# asserts RequirementsMet=False names it, installs it, and asserts the
+# condition flips — the continuous re-check the observe Objects buy.
+HOLDBACK=kube-prometheus-stack
+if [ "$provided" = 1 ]; then
+	log "Provided mode: pre-installing the serving substrate (holding back $HOLDBACK)"
+	while IFS="$TAB" read -r key _ _ _ _ _; do
+		case "$key" in '' | \#*) continue ;; esac
+		[ "$key" = "$HOLDBACK" ] && continue
+		install_chart "$key"
+	done <"$ROOT/e2e/provided/charts.tsv"
+	kubectl --context "$WLCTX" apply -f "$ROOT/e2e/provided/manifests.yaml"
+fi
+
 # Fake DRA GPUs so a `claim: DRA` engine's ResourceClaim binds on this GPU-less
 # node (vendored dra-example-driver — see dra-example-driver.yaml). Without a DRA
 # driver the ResourceClaim stays Pending and the engine pod never schedules; the
@@ -125,14 +176,21 @@ export DOCKER_CONFIG="$docker_config"
 #   --verify    after apply, wait for the ModelService and assert a live 200,
 #               exiting non-zero on failure. This is exactly what CI runs, so
 #               running it locally gives the same pass/fail signal (dev/CI parity).
+#   --provided  register the workload cluster with components: Provided — the
+#               substrate pre-installed above, Modelplane only checking it — and
+#               assert the RequirementsMet flow before the usual verify.
 manifests="$ROOT/e2e/manifests"
+if [ "$provided" = 1 ]; then
+	# The cluster supplies the substrate this run pre-installed above;
+	# patch the InferenceCluster in a rendered copy.
+	rendered="$work/rendered"
+	mkdir -p "$rendered"
+	cp "$ROOT/e2e/manifests/"*.yaml "$rendered/"
+	sed -i.bak 's/^    existing:$/    existing:\n      components: Provided/' \
+		"$rendered/30-inference-cluster.yaml" && rm -f "$rendered/"*.bak
+	manifests="$rendered"
+fi
 cpctx="kind-$CP"
-apply_manifests=1
-verify=0
-case "${1:-}" in
---no-apply) apply_manifests=0 ;;
---verify) verify=1 ;;
-esac
 
 log "Building + running the control plane"
 cd "$ROOT"
@@ -175,6 +233,76 @@ fi
 # RBAC is in place, so the compositions can reach the workload cluster. Apply the
 # model manifests.
 kubectl --context "$cpctx" apply -f "$manifests/"
+
+if [ "$provided" = 1 ]; then
+	# The InferenceCluster mirrors the backend's RequirementsMet. First it
+	# must go False naming the held-back chart, then flip once the chart
+	# installs, then the serving stack must have composed no Helm release.
+	requirements() {
+		kubectl --context "$cpctx" get inferencecluster local \
+			-o jsonpath="{.status.conditions[?(@.type=='RequirementsMet')].$1}" 2>/dev/null || true
+	}
+
+	# On a fresh cluster the condition must go False naming the held-back
+	# chart; a rerun against a surviving cluster already has the holdback
+	# installed and settles at True without ever naming it, so accept
+	# either and only run the flip where it exists. CI always runs fresh.
+	log "Provided: waiting for RequirementsMet (False naming $HOLDBACK, or True on a rerun)"
+	state=""
+	for _ in $(seq 1 60); do
+		st="$(requirements status)"
+		if [ "$st" = "True" ]; then
+			state=met
+			break
+		fi
+		if [ "$st" = "False" ] && requirements message | grep -q "$HOLDBACK"; then
+			state=missing
+			break
+		fi
+		sleep 10
+	done
+	case "$state" in
+	met)
+		log "Provided: requirements already met; skipping the holdback flip"
+		;;
+	missing)
+		log "Provided: installing $HOLDBACK and waiting for RequirementsMet to flip"
+		install_chart "$HOLDBACK"
+		ok=0
+		for _ in $(seq 1 60); do
+			if [ "$(requirements status)" = "True" ]; then
+				ok=1
+				break
+			fi
+			sleep 10
+		done
+		[ "$ok" = 1 ] || {
+			echo "verify: RequirementsMet never flipped to True after installing $HOLDBACK" >&2
+			kubectl --context "$cpctx" get inferencecluster local -o yaml >&2 || true
+			exit 1
+		}
+		;;
+	*)
+		echo "verify: RequirementsMet never reported $HOLDBACK missing nor settled True" >&2
+		kubectl --context "$cpctx" get inferencecluster local -o yaml >&2 || true
+		exit 1
+		;;
+	esac
+
+	# Scoped to the ServingStack's own composed resources: the control
+	# plane's InferenceGateway legitimately composes Releases of its own
+	# (Traefik, MetalLB), which are not this assertion's business.
+	log "Provided: asserting the serving stack composed no Helm releases"
+	ss_name="$(kubectl --context "$cpctx" -n modelplane-system get servingstacks.infrastructure.modelplane.ai \
+		-o jsonpath='{.items[0].metadata.name}')"
+	releases="$(kubectl --context "$cpctx" get releases.helm.m.crossplane.io -A \
+		-l "crossplane.io/composite=$ss_name" --no-headers 2>/dev/null | grep -c . || true)"
+	[ "$releases" = "0" ] || {
+		echo "verify: expected the serving stack to compose no Release managed resources, found $releases" >&2
+		kubectl --context "$cpctx" get releases.helm.m.crossplane.io -A -l "crossplane.io/composite=$ss_name" >&2 || true
+		exit 1
+	}
+fi
 
 if [ "$verify" = 0 ]; then
 	log "Done. Curl the ModelService per the README; clean up with: nix run .#e2e -- --clean"

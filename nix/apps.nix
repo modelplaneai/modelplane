@@ -325,6 +325,9 @@
             pkgs.gawk
             pkgs.kind
             pkgs.kubectl
+            # --provided pre-installs the substrate charts on the
+            # workload cluster (see e2e/provided/).
+            pkgs.kubernetes-helm
             pkgs.curl
             pkgs.docker-client
             pkgs.git
@@ -350,6 +353,28 @@
   # PATH matches its pin, so bumping aicr means updating nix/aicr.nix and
   # generate.py together. Extra args name the clouds to regenerate, e.g.:
   # nix run .#stacks -- gke
+  # Regenerate the serving stack requirements docs page
+  # (docs/content/platform/serving-stack-requirements.md) from the
+  # requirement data the component lists carry. The
+  # requirements-doc-current flake check fails CI when the page is
+  # stale, so run this after changing the stack data.
+  requirements-doc = _: {
+    type = "app";
+    meta.description = "Regenerate the serving stack requirements docs page";
+    program = pkgs.lib.getExe (
+      pkgs.writeShellApplication {
+        name = "modelplane-requirements-doc";
+        runtimeInputs = [
+          (pkgs.python312.withPackages (ps: [ ps.pyyaml ]))
+        ];
+        inheritPath = false;
+        text = ''
+          python3 functions/compose-serving-stack/requirements_doc.py
+        '';
+      }
+    );
+  };
+
   stacks =
     { aicr }:
     {

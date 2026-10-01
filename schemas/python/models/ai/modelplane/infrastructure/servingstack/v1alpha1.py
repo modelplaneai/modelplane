@@ -115,6 +115,10 @@ class Spec(BaseModel):
     """
     The cloud the target cluster runs on. Selects the fixed set of components and versions this stack installs there, which is resolved per cloud at build time and changes only with a Modelplane release. Mirrors InferenceCluster.spec.cluster.source; the cluster composition sets it.
     """
+    components: Literal['Managed', 'Provided'] | None = 'Managed'
+    """
+    Who supplies the serving substrate. Managed (the default) has Modelplane install every component. Provided, valid only on an Existing cluster, installs no substrate charts or vendored CRDs: Modelplane verifies the cluster supplies them - reported through the RequirementsMet condition - and composes only its own configuration on top. All or nothing. Mirrors InferenceCluster.spec.cluster.existing.components; the cluster composition sets it.
+    """
     crossplane: Crossplane | None = None
     """
     Configures how Crossplane will reconcile this composite resource

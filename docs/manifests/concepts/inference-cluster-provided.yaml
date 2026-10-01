@@ -1,0 +1,28 @@
+# An InferenceCluster on an existing cluster that already runs the
+# serving substrate: cert-manager, the Envoy and AI gateway stack,
+# kube-prometheus-stack, the NVIDIA DRA driver, and the stack's
+# workload controller.
+#
+# components: Provided keeps Modelplane from installing any of them, so
+# nothing conflicts with the cluster's own installs. Modelplane checks
+# the cluster supplies what the stack needs and reports what's missing
+# through the RequirementsMet condition; see the serving stack
+# requirements page for the full list.
+apiVersion: modelplane.ai/v1alpha1
+kind: InferenceCluster
+metadata:
+  name: byo-provided
+  labels:
+    modelplane.ai/region: us-east
+spec:
+  cluster:
+    source: Existing
+    existing:
+      components: Provided
+      secretRef:
+        name: byo-cluster-kubeconfig
+        key: kubeconfig
+  nodePools:
+  - name: gpu-h100
+    className: h100-8x-byo
+    nodeCount: 2

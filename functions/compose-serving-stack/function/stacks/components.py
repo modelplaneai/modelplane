@@ -32,6 +32,63 @@ from typing import Any, Literal
 Cloud = Literal["GKE", "EKS", "AKS", "Nebius", "Vultr", "Civo", "Existing"]
 Stack = Literal["Standard", "Dynamo"]
 
+# Who a component belongs to when the cluster provides the substrate
+# (ServingStack spec.components: Provided). A substrate component is
+# skipped there - the cluster already runs it - and its `requires`
+# entries are checked in its place. A config component is Modelplane's
+# own configuration on top of the substrate (the gateway namespace and
+# EnvoyProxy, the KAI Queues, the ModelExpress server) and composes in
+# every mode.
+Role = Literal["substrate", "config"]
+
+
+@dataclass
+class RequiredCRD:
+    """A CRD a provided cluster must serve in a substrate component's place.
+
+    Checked through the aggregated APIService the API server registers
+    for every served group-version (<version>.<group>), not the CRD
+    itself: a CRD manifest carries its whole OpenAPI schema, too large
+    and too deeply nested to haul through the composition pipeline on
+    every reconcile. Served-API granularity is the whole checkable
+    surface anyway - chart and controller versions aren't recoverable
+    from a CRD either, so they belong in the component's `unchecked`
+    notes. The generated docs still name the CRD itself.
+
+    `versions` holds exactly one entry today: the APIService check
+    encodes one group-version, and join() fails closed on more until a
+    requirement actually needs any-of semantics.
+
+    `key` suffixes the composed-resource key (see requirement_keys), so
+    it only needs to be unique within one component's requires list.
+    """
+
+    key: str
+    name: str  # <plural>.<group>, the CRD's metadata.name
+    versions: list[str]  # served versions accepted
+
+
+@dataclass
+class RequiredObject:
+    """A cluster-scoped object a provided cluster must already carry.
+
+    For substrate whose footprint isn't a CRD: the NVIDIA DRA driver is
+    checked through the gpu.nvidia.com DeviceClass it registers.
+    Observing it also proves the cluster serves the object's API group,
+    so a RequiredObject on a versioned core API doubles as a floor check
+    (resource.k8s.io/v1 means Kubernetes 1.34). `ready` is an optional
+    CEL query over the observed manifest, as on Manifests.
+    """
+
+    key: str
+    api_version: str
+    kind: str
+    name: str
+    ready: str | None = None
+
+
+Requirement = RequiredCRD | RequiredObject
+
 
 @dataclass
 class Chart:
@@ -56,6 +113,18 @@ class Chart:
     depends on, so the install gate orders on health rather than
     deploy - the generator derives it from the dependency edges, and the
     hand-written files state it where a cross-half edge lands on them.
+
+    `role`, `requires`, `unchecked` and `not_needed` describe the
+    component when the cluster provides the substrate instead of
+    Modelplane installing it (spec.components: Provided, Existing
+    clusters only). `requires` is what gets checked in the component's
+    place; `unchecked` is what a provided cluster must also supply but
+    no observe Object can verify (controllers running, node drivers,
+    values wiring), stated for the generated requirements docs; and
+    `not_needed` is what the component would normally bring that
+    Modelplane doesn't use, so users know what they can skip. Only the
+    Existing halves carry them - the generated clouds never join in
+    Provided mode.
     """
 
     key: str
@@ -67,6 +136,10 @@ class Chart:
     wait: bool = False
     depends_on: list[str] = field(default_factory=list)
     values: dict[str, Any] | None = None
+    role: Role = "substrate"
+    requires: list[Requirement] = field(default_factory=list)
+    unchecked: list[str] = field(default_factory=list)
+    not_needed: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -82,12 +155,21 @@ class Manifests:
     applied to every doc in the entry (see fn.py's _k8s_object): use it
     when readiness must reflect a controller-populated status field,
     and keep an entry to one doc when only that doc has one.
+
+    `role`, `requires`, `unchecked` and `not_needed` behave as on
+    Chart. Most Manifests entries are Modelplane's own configuration
+    (role config); the substrate ones are the vendored CRD bundles a
+    provided cluster brings itself.
     """
 
     key: str
     manifests: list[dict[str, Any]]
     depends_on: list[str] = field(default_factory=list)
     ready: str | None = None
+    role: Role = "substrate"
+    requires: list[Requirement] = field(default_factory=list)
+    unchecked: list[str] = field(default_factory=list)
+    not_needed: list[str] = field(default_factory=list)
 
 
 # A plain assignment rather than a `type` statement: the packages
@@ -109,3 +191,14 @@ def doc_keys(component: Component) -> list[str]:
     if isinstance(component, Chart) or len(component.manifests) == 1:
         return [component.key]
     return [f"{component.key}-{doc['metadata']['name']}" for doc in component.manifests]
+
+
+def requirement_keys(component: Component) -> list[str]:
+    """Composed-resource keys of a component's checks in Provided mode.
+
+    One observe Object per requirement, keyed
+    `require-<component.key>-<requirement.key>`. The same rename caveat
+    as doc_keys applies in the harmless direction: renaming recreates
+    the Object, but an observe-only Object touches nothing remote.
+    """
+    return [f"require-{component.key}-{r.key}" for r in component.requires]

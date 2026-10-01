@@ -24,19 +24,34 @@ stack's own file. See design/serving-stack-generation.md.
 from function.stacks import common, components, dynamo, standard
 from function.stacks.clouds import civo, existing, nebius, vultr
 from function.stacks.clouds.generated.aicr import aks, eks, gke
-from function.stacks.components import Chart, Cloud, Component, Manifests, Stack
+from function.stacks.components import (
+    Chart,
+    Cloud,
+    Component,
+    Manifests,
+    RequiredCRD,
+    RequiredObject,
+    Stack,
+)
 
 __all__ = [
     "Chart",
     "Cloud",
     "Component",
     "Manifests",
+    "RequiredCRD",
+    "RequiredObject",
     "Stack",
     "clouds",
     "components",
     "join",
     "stacks",
 ]
+
+# Kubernetes label values cap at 63 characters, and fn.py labels every
+# composed resource with its key (_LABEL_RESOURCE), so a requirement
+# key that renders longer than this couldn't be composed.
+_MAX_KEY = 63
 
 # The cloud halves, keyed by the InferenceCluster's source values. EKS,
 # AKS and GKE come from clouds/generated/aicr/, written by
@@ -74,7 +89,13 @@ def join(cloud: Cloud, stack: Stack) -> list[Component]:
     unknown cloud or stack, on a key two lists both produce, and on a
     depends_on edge naming a component the join didn't produce - which
     catches a generator allowlist that dropped something another
-    component needs.
+    component needs. The Provided-mode requirement data is held to the
+    same bar: requirement keys must be unique and composable, only a
+    substrate component may carry them, and on Existing - the one cloud
+    Provided mode can select - every substrate component must say what
+    a provided cluster supplies in its place (`requires`) or state why
+    nothing is checkable (`unchecked`), so no component can silently
+    become uncheckable.
     """
     if cloud not in _CLOUDS:
         raise ValueError(f"unknown cloud {cloud!r}; known: {', '.join(_CLOUDS)}")
@@ -89,9 +110,11 @@ def join(cloud: Cloud, stack: Stack) -> list[Component]:
         raise ValueError(f"{cloud}/{stack}: duplicate component keys {duplicates}")
 
     # The composed-resource keys a component renders under (one per
-    # manifest for a multi-doc bundle) must be unique across the join
+    # manifest for a multi-doc bundle, plus one observe Object per
+    # requirement in Provided mode) must be unique across the join
     # too, or two components would fight over one desired resource.
     rendered = [k for c in joined for k in components.doc_keys(c)]
+    rendered += [k for c in joined for k in components.requirement_keys(c)]
     duplicates = sorted({k for k in rendered if rendered.count(k) > 1})
     if duplicates:
         raise ValueError(f"{cloud}/{stack}: duplicate composed-resource keys {duplicates}")
@@ -102,4 +125,30 @@ def join(cloud: Cloud, stack: Stack) -> list[Component]:
             if dep not in known:
                 raise ValueError(f"{cloud}/{stack}: {c.key} depends on {dep!r}, which the join did not produce")
 
+    _validate_requirements(cloud, stack, joined)
+
     return joined
+
+
+def _validate_requirements(cloud: Cloud, stack: Stack, joined: list[Component]) -> None:
+    """Validate the joined components' Provided-mode requirement data.
+
+    Split from join() only to keep it under the branch-count lint
+    threshold; the failure semantics are join()'s.
+    """
+    for c in joined:
+        if c.role == "config" and (c.requires or c.unchecked or c.not_needed):
+            raise ValueError(f"{cloud}/{stack}: {c.key} is config; requirement data belongs on substrate components")
+        for key in components.requirement_keys(c):
+            if len(key) > _MAX_KEY:
+                raise ValueError(f"{cloud}/{stack}: requirement key {key!r} exceeds {_MAX_KEY} characters")
+        for r in c.requires:
+            # The APIService check encodes one group-version; any-of
+            # waits until a requirement actually needs it.
+            if isinstance(r, components.RequiredCRD) and len(r.versions) != 1:
+                raise ValueError(f"{cloud}/{stack}: {c.key} requirement {r.key!r} must accept exactly one version")
+
+    if cloud == "Existing":
+        silent = sorted(c.key for c in joined if c.role == "substrate" and not (c.requires or c.unchecked))
+        if silent:
+            raise ValueError(f"{cloud}/{stack}: substrate components without requires or unchecked notes: {silent}")

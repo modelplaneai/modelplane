@@ -20,7 +20,7 @@ the generated halves on the clouds a generator covers once upstream
 carries an lws component (NVIDIA/aicr#2500 tracks the aicr one).
 """
 
-from function.stacks.components import Chart, Component
+from function.stacks.components import Chart, Component, RequiredCRD
 
 COMPONENTS: list[Component] = [
     Chart(
@@ -30,5 +30,11 @@ COMPONENTS: list[Component] = [
         chart="lws",
         repository="oci://registry.k8s.io/lws/charts",
         version="v0.8.0",
+        requires=[
+            RequiredCRD(key="lws", name="leaderworkersets.leaderworkerset.x-k8s.io", versions=["v1"]),
+        ],
+        unchecked=[
+            "The LeaderWorkerSet controller is running. Modelplane composes against the v0.8 line.",
+        ],
     ),
 ]

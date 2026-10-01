@@ -142,6 +142,33 @@ in
         touch $out/.stacks-current
       '';
 
+  # Fail if the generated serving stack requirements outputs are
+  # stale: regenerate the docs page and the e2e substrate inputs from
+  # the component lists' requirement data and diff against what's
+  # checked in. Catches a stack-data change committed without
+  # `nix run .#requirements-doc` and a hand-edit to a generated file.
+  # Runs the generator twice so non-determinism fails here rather than
+  # flapping CI.
+  requirements-doc-current =
+    pkgs.runCommand "modelplane-requirements-doc-current"
+      {
+        nativeBuildInputs = [
+          (pkgs.python312.withPackages (ps: [ ps.pyyaml ]))
+        ];
+      }
+      ''
+        cp -r ${self} src
+        chmod -R u+w src
+        cd src
+        python3 functions/compose-serving-stack/requirements_doc.py
+        python3 functions/compose-serving-stack/requirements_doc.py
+        diff -u ${self}/docs/content/platform/serving-stack-requirements.md \
+          docs/content/platform/serving-stack-requirements.md
+        diff -ru ${self}/e2e/provided e2e/provided
+        mkdir -p $out
+        touch $out/.requirements-doc-current
+      '';
+
   # Fail if any hand-written source file is missing its Apache 2.0 license
   # header. Scoped to the files we author: the composition functions and the
   # docs manifest validator. Generated models under schemas/python carry their

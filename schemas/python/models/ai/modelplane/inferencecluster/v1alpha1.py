@@ -95,6 +95,10 @@ class Existing(BaseModel):
     """
     ModelCache configuration for this cluster.
     """
+    components: Literal['Managed', 'Provided'] | None = 'Managed'
+    """
+    Who supplies the serving substrate on this cluster. Managed (the default) has Modelplane install every serving stack component. Provided installs no substrate: the cluster already runs cert-manager, the gateway stack, Prometheus, the GPU DRA driver and the stack's workload controller, and Modelplane verifies they are present (the RequirementsMet condition reports what's missing) and composes only its own configuration on top. All or nothing; the cluster provides the whole substrate or none of it. Immutable because flipping it would uninstall a live cluster's substrate or adopt one Modelplane doesn't own.
+    """
     identitySecretRef: IdentitySecretRef | None = None
     """
     Optional reference to a Secret containing cloud provider credentials for IAM-based authentication. The type selects which cloud identity the ProviderConfigs authenticate as, and must match the cloud the existing cluster runs on.

@@ -93,28 +93,31 @@ def _crds(filename: str) -> list[dict]:
     ]
 
 
-def _request(cloud: str, stack: str, observed: dict | None = None) -> fnv1.RunFunctionRequest:
+def _request(
+    cloud: str, stack: str, observed: dict | None = None, components: str | None = None
+) -> fnv1.RunFunctionRequest:
     """Build a RunFunctionRequest for a test-backend ServingStack."""
+    spec = v1alpha1.Spec(
+        cloud=cloud,  # ty: ignore[invalid-argument-type]  # cases pass values of the literal
+        stack=stack,  # ty: ignore[invalid-argument-type]
+        secrets=[
+            v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
+            v1alpha1.Secret(type="GoogleApplicationCredentials", name="sa-secret", key="private_key"),
+        ],
+        gateway=v1alpha1.Gateway(
+            hostname=_GATEWAY_HOSTNAME,
+            clientCAs=[v1alpha1.ClientCA(name="eu", certificate=_CLIENT_CA)],
+        ),
+    )
+    if components is not None:
+        spec.components = components  # ty: ignore[invalid-assignment]
     return fnv1.RunFunctionRequest(
         observed=fnv1.State(
             composite=fnv1.Resource(
                 resource=resource.dict_to_struct(
                     v1alpha1.ServingStack(
                         metadata=metav1.ObjectMeta(name="test-backend", namespace="test-ns"),
-                        spec=v1alpha1.Spec(
-                            cloud=cloud,  # ty: ignore[invalid-argument-type]  # cases pass values of the literal
-                            stack=stack,  # ty: ignore[invalid-argument-type]
-                            secrets=[
-                                v1alpha1.Secret(type="Kubeconfig", name="kube-secret", key="kubeconfig"),
-                                v1alpha1.Secret(
-                                    type="GoogleApplicationCredentials", name="sa-secret", key="private_key"
-                                ),
-                            ],
-                            gateway=v1alpha1.Gateway(
-                                hostname=_GATEWAY_HOSTNAME,
-                                clientCAs=[v1alpha1.ClientCA(name="eu", certificate=_CLIENT_CA)],
-                            ),
-                        ),
+                        spec=spec,
                     ).model_dump(exclude_none=True, mode="json")
                 ),
             ),
@@ -303,6 +306,7 @@ _EXISTING_DYNAMO_USAGES = {
     "usage-gateway-selfsigned-issuer-by-trust-manager": _usage(
         _OBJECT_REF, "gateway-selfsigned-issuer", _RELEASE_REF, "trust-manager"
     ),
+    "usage-envoy-gateway-by-gateway-proxy": _usage(_RELEASE_REF, "envoy-gateway", _OBJECT_REF, "gateway-proxy"),
     "usage-kai-scheduler-by-kai-queue-root": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue-root"),
     "usage-kai-scheduler-by-kai-queue": _usage(_RELEASE_REF, "kai-scheduler", _OBJECT_REF, "kai-queue"),
     "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server": _usage(
@@ -432,6 +436,7 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
         chart="gateway-helm",
         repository="oci://docker.io/envoyproxy",
         version="v1.8.4",
+        wait=True,
         values={
             "config": {
                 "envoyGateway": {
@@ -828,7 +833,11 @@ def _existing_dynamo_stack() -> dict[str, fnv1.Resource]:
     return out
 
 
-def _response(resources: dict[str, fnv1.Resource], status: dict | None = None) -> fnv1.RunFunctionResponse:
+def _response(
+    resources: dict[str, fnv1.Resource],
+    status: dict | None = None,
+    conditions: list[fnv1.Condition] | None = None,
+) -> fnv1.RunFunctionResponse:
     """A whole expected response: 60s TTL, empty context, the XR status."""
     return fnv1.RunFunctionResponse(
         meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
@@ -837,6 +846,7 @@ def _response(resources: dict[str, fnv1.Resource], status: dict | None = None) -
             resources=resources,
         ),
         context=structpb.Struct(),
+        conditions=conditions or [],
     )
 
 
@@ -863,7 +873,7 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         dep_gated = {
             "envoy-gateway",  # -> cert-manager
             "ai-gateway",  # -> ai-gateway-crds
-            "gateway-proxy",  # -> gateway-namespace
+            "gateway-proxy",  # -> gateway-namespace, envoy-gateway
             "kai-queue-root",  # -> kai-scheduler
             "kai-queue",  # -> kai-scheduler
             "modelexpress-server",  # -> modelexpress-crds
@@ -1272,6 +1282,280 @@ class TestFunctionRunner(unittest.IsolatedAsyncioTestCase):
         )
 
 
+# --- Provided mode (spec.components: Provided, Existing clusters) ---
+#
+# The substrate isn't composed; its requirement checks are, as
+# observe-only Objects. Expectations are literals typed here, same as
+# the Managed cases above.
+
+
+_APISERVICE_AVAILABLE_CEL = (
+    'has(object.status.conditions) && object.status.conditions.exists(c, c.type == "Available" && c.status == "True")'
+)
+
+
+def _require_api(key: str, apiservice: str) -> fnv1.Resource:
+    """The expected observe Object for a RequiredCRD, from literals.
+
+    apiservice is the aggregated APIService name, <version>.<group>.
+    """
+    return _object(
+        key,
+        {"apiVersion": "apiregistration.k8s.io/v1", "kind": "APIService", "metadata": {"name": apiservice}},
+        cel=_APISERVICE_AVAILABLE_CEL,
+        management_policies=["Observe"],
+    )
+
+
+def _provided_checks() -> dict[str, fnv1.Resource]:
+    """Every requirement check the Existing/Dynamo stack renders."""
+    return {
+        "require-cert-manager-crds": _require_api("require-cert-manager-crds", "v1.cert-manager.io"),
+        "require-kube-prometheus-stack-podmonitors": _require_api(
+            "require-kube-prometheus-stack-podmonitors", "v1.monitoring.coreos.com"
+        ),
+        "require-kube-prometheus-stack-servicemonitors": _require_api(
+            "require-kube-prometheus-stack-servicemonitors", "v1.monitoring.coreos.com"
+        ),
+        "require-node-feature-discovery-nodefeatures": _require_api(
+            "require-node-feature-discovery-nodefeatures", "v1alpha1.nfd.k8s-sigs.io"
+        ),
+        "require-nvidia-dra-driver-gpu-deviceclass": _object(
+            "require-nvidia-dra-driver-gpu-deviceclass",
+            {"apiVersion": "resource.k8s.io/v1", "kind": "DeviceClass", "metadata": {"name": "gpu.nvidia.com"}},
+            cel="has(object.metadata.name)",
+            management_policies=["Observe"],
+        ),
+        "require-envoy-gateway-gatewayclasses": _require_api(
+            "require-envoy-gateway-gatewayclasses", "v1.gateway.networking.k8s.io"
+        ),
+        "require-envoy-gateway-gateways": _require_api(
+            "require-envoy-gateway-gateways", "v1.gateway.networking.k8s.io"
+        ),
+        "require-envoy-gateway-httproutes": _require_api(
+            "require-envoy-gateway-httproutes", "v1.gateway.networking.k8s.io"
+        ),
+        "require-envoy-gateway-envoyproxies": _require_api(
+            "require-envoy-gateway-envoyproxies", "v1alpha1.gateway.envoyproxy.io"
+        ),
+        "require-envoy-gateway-backends": _require_api(
+            "require-envoy-gateway-backends", "v1alpha1.gateway.envoyproxy.io"
+        ),
+        "require-envoy-gateway-ctp": _require_api("require-envoy-gateway-ctp", "v1alpha1.gateway.envoyproxy.io"),
+        "require-ai-gateway-crds-routes": _require_api(
+            "require-ai-gateway-crds-routes", "v1alpha1.aigateway.envoyproxy.io"
+        ),
+        "require-gaie-crds-pools": _require_api("require-gaie-crds-pools", "v1.inference.networking.k8s.io"),
+        "require-grove-podcliquesets": _require_api("require-grove-podcliquesets", "v1alpha1.grove.io"),
+        "require-kai-scheduler-queues": _require_api("require-kai-scheduler-queues", "v2.scheduling.run.ai"),
+        "require-trust-manager-bundles": _require_api(
+            "require-trust-manager-bundles", "v1alpha1.trust.cert-manager.io"
+        ),
+    }
+
+
+# The config components Modelplane still composes in Provided mode, by
+# composed-resource key, plus the gateway pair.
+_PROVIDED_CONFIG_KEYS = frozenset(
+    {
+        "gateway-namespace",
+        "gateway-selfsigned-issuer",
+        "gateway-proxy",
+        "kai-queue-root",
+        "kai-queue",
+        "modelexpress-crds-modelmetadatas.modelexpress.nvidia.com",
+        "modelexpress-crds-modelcacheentries.modelexpress.nvidia.com",
+        "modelexpress-server-sa",
+        "modelexpress-server-role",
+        "modelexpress-server-rolebinding",
+        "modelexpress-server-svc",
+        "modelexpress-server",
+        "gateway-class",
+        "gateway",
+    }
+)
+
+# The Usages that survive in Provided mode: config-to-config edges and
+# the hand-written Gateway -> GatewayClass edge. Every edge onto skipped
+# substrate (kai-scheduler, envoy-gateway, cert-manager, the AI gateway
+# CRDs) is gone - there is nothing composed to hold.
+# The gateway PKI is hand-rendered, not stack data; in Provided mode it
+# waits for the cert-manager and trust-manager checks, so it renders in
+# the same wave as their dependents.
+_PROVIDED_PKI_KEYS = frozenset(
+    {
+        "gateway-ca-certificate",
+        "gateway-ca-issuer",
+        "gateway-serving-certificate",
+        "gateway-ca-bundle",
+        "gateway-ca-configmap",
+        "gateway-client-ca-bundle",
+        "gateway-client-auth",
+    }
+)
+
+_PROVIDED_USAGES = {
+    "usage-gateway-class-by-gateway": _usage(_OBJECT_REF, "gateway-class", _OBJECT_REF, "gateway"),
+    "usage-gateway-namespace-by-gateway-selfsigned-issuer": _usage(
+        _OBJECT_REF, "gateway-namespace", _OBJECT_REF, "gateway-selfsigned-issuer"
+    ),
+    "usage-gateway-namespace-by-gateway-proxy": _usage(_OBJECT_REF, "gateway-namespace", _OBJECT_REF, "gateway-proxy"),
+    "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server": _usage(
+        _OBJECT_REF, "modelexpress-crds-modelmetadatas.modelexpress.nvidia.com", _OBJECT_REF, "modelexpress-server"
+    ),
+    "usage-modelexpress-crds-modelcacheentries.modelexpress.nvidia.com-by-modelexpress-server": _usage(
+        _OBJECT_REF, "modelexpress-crds-modelcacheentries.modelexpress.nvidia.com", _OBJECT_REF, "modelexpress-server"
+    ),
+}
+
+
+def _requirements_condition(status: "fnv1.Status", reason: str, message: str = "") -> fnv1.Condition:
+    c = fnv1.Condition(type="RequirementsMet", status=status, reason=reason)
+    if message:
+        c.message = message
+    return c
+
+
+class TestProvided(unittest.IsolatedAsyncioTestCase):
+    maxDiff = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = fn.FunctionRunner()
+
+    async def test_compose(self) -> None:
+        stack = _existing_dynamo_stack()
+        config = {k: v for k, v in stack.items() if k in _PROVIDED_CONFIG_KEYS}
+        pki = {k: v for k, v in stack.items() if k in _PROVIDED_PKI_KEYS}
+
+        # Second pass: PCs observed. The checks and the dependency-free
+        # config wave render; gateway-proxy waits on the envoy-gateway
+        # checks, the Queues on the kai-scheduler check, the
+        # ModelExpress server on its CRDs, the self-signed Issuer and
+        # the PKI on the cert-manager (and trust-manager) checks.
+        dep_gated = {
+            "gateway-proxy",  # -> gateway-namespace, envoy-gateway checks
+            "gateway-selfsigned-issuer",  # -> cert-manager check, gateway-namespace
+            "kai-queue-root",  # -> kai-scheduler check
+            "kai-queue",  # -> kai-scheduler check
+            "modelexpress-server",  # -> modelexpress-crds
+        }
+        first_wave = {k: v for k, v in config.items() if k not in dep_gated}
+
+        # Third pass: every check and every config resource observed
+        # Ready (the gateway with its address), so the whole desired
+        # state is marked ready and the condition is met.
+        observed_ready = _observed_pcs()
+        for key in list(_provided_checks()) + [k for k in (config | pki) if k != "gateway"]:
+            observed_ready[key] = fnv1.Resource(
+                resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+            )
+        observed_ready["gateway"] = fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "status": {
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                        "atProvider": {
+                            "manifest": {"status": {"addresses": [{"type": "IPAddress", "value": "203.0.113.7"}]}},
+                        },
+                    },
+                }
+            )
+        )
+        all_ready = copy.deepcopy(_provider_configs() | _PROVIDED_USAGES | _provided_checks() | config | pki)
+        for res in all_ready.values():
+            res.ready = fnv1.READY_TRUE
+
+        # Failing pass: every check observed Ready except the KAI Queue
+        # CRD, whose observe failed (Synced False: the CRD doesn't
+        # exist). The Queues never compose and the condition names it.
+        observed_missing = _observed_pcs()
+        for key in _provided_checks():
+            observed_missing[key] = fnv1.Resource(
+                resource=resource.dict_to_struct({"status": {"conditions": [{"type": "Ready", "status": "True"}]}})
+            )
+        observed_missing["require-kai-scheduler-queues"] = fnv1.Resource(
+            resource=resource.dict_to_struct(
+                {
+                    "status": {
+                        "conditions": [
+                            {"type": "Synced", "status": "False", "reason": "ReconcileError"},
+                            {"type": "Ready", "status": "False"},
+                        ],
+                    },
+                }
+            )
+        )
+        checks_missing = copy.deepcopy(_provided_checks())
+        for key, res in checks_missing.items():
+            if key != "require-kai-scheduler-queues":
+                res.ready = fnv1.READY_TRUE
+
+        cases = [
+            Case(
+                name="first pass composes only the provider configs and config usages, checking",
+                req=_request("Existing", "Dynamo", components="Provided"),
+                want=_response(
+                    _provider_configs(ready=False) | _PROVIDED_USAGES,
+                    conditions=[
+                        _requirements_condition(
+                            fnv1.STATUS_CONDITION_FALSE,
+                            "Checking",
+                            "Checking the cluster provides the serving substrate",
+                        ),
+                    ],
+                ),
+            ),
+            Case(
+                name="second pass renders the checks and the dependency-free config wave",
+                req=_request("Existing", "Dynamo", observed=_observed_pcs(), components="Provided"),
+                want=_response(
+                    _provider_configs() | _PROVIDED_USAGES | _provided_checks() | first_wave,
+                    conditions=[
+                        _requirements_condition(
+                            fnv1.STATUS_CONDITION_FALSE,
+                            "Checking",
+                            "Checking the cluster provides the serving substrate",
+                        ),
+                    ],
+                ),
+            ),
+            Case(
+                name="a failed check blocks its dependents and names what's missing",
+                req=_request("Existing", "Dynamo", observed=observed_missing, components="Provided"),
+                # The cert-manager and trust-manager checks are Ready, so
+                # the PKI renders alongside the still-gated first wave.
+                want=_response(
+                    _provider_configs() | _PROVIDED_USAGES | checks_missing | first_wave | pki,
+                    conditions=[
+                        _requirements_condition(
+                            fnv1.STATUS_CONDITION_FALSE,
+                            "MissingRequirements",
+                            "The cluster is missing: kai-scheduler (API v2.scheduling.run.ai not served)",
+                        ),
+                    ],
+                ),
+            ),
+            Case(
+                name="all checks and config ready marks everything ready and the requirements met",
+                req=_request("Existing", "Dynamo", observed=observed_ready, components="Provided"),
+                want=_response(
+                    all_ready,
+                    status={"gateway": {"address": "203.0.113.7"}},
+                    conditions=[_requirements_condition(fnv1.STATUS_CONDITION_TRUE, "RequirementsMet")],
+                ),
+            ),
+        ]
+        for case in cases:
+            with self.subTest(case.name):
+                got = await self.runner.RunFunction(case.req, None)
+                self.assertEqual(
+                    json_format.MessageToDict(case.want),
+                    json_format.MessageToDict(got),
+                    "-want, +got",
+                )
+
+
 # The composed-resource key a component renders under is its identity:
 # renaming one deletes and recreates the remote resource (for an Object
 # holding a CRD, the CRD and its CRs). This pins the full key set per
@@ -1316,6 +1600,7 @@ _COMMON = frozenset(
         "usage-ai-gateway-crds-by-ai-gateway",
         "usage-cert-manager-by-envoy-gateway",
         "usage-cert-manager-by-gateway-selfsigned-issuer",
+        "usage-envoy-gateway-by-gateway-proxy",
         "usage-gateway-namespace-by-gateway-proxy",
         "usage-gateway-namespace-by-gateway-selfsigned-issuer",
         "usage-gateway-selfsigned-issuer-by-trust-manager",
@@ -1429,6 +1714,71 @@ _INVENTORY = {
     "Existing": _HAND_WRITTEN,
 }
 
+# Provided-mode inventories (Existing only): the substrate keys are
+# replaced by their require-* checks, whose keys are identity too -
+# renaming one only churns control-plane Objects, but keep it reviewed.
+# Config components and the gateway pair stay; the usage-envoy-gateway
+# edges and every edge onto skipped substrate are gone.
+_PROVIDED_COMMON = frozenset(
+    {
+        "provider-config-kubernetes",
+        "provider-config-helm",
+        "gateway",
+        "gateway-class",
+        "gateway-ca-certificate",
+        "gateway-ca-issuer",
+        "gateway-serving-certificate",
+        "gateway-ca-bundle",
+        "gateway-ca-configmap",
+        "gateway-client-ca-bundle",
+        "gateway-client-auth",
+        "gateway-selfsigned-issuer",
+        "require-trust-manager-bundles",
+        "usage-gateway-namespace-by-gateway-selfsigned-issuer",
+        "usage-gateway-class-by-gateway",
+        "require-cert-manager-crds",
+        "require-kube-prometheus-stack-podmonitors",
+        "require-kube-prometheus-stack-servicemonitors",
+        "require-node-feature-discovery-nodefeatures",
+        "require-nvidia-dra-driver-gpu-deviceclass",
+        "require-envoy-gateway-gatewayclasses",
+        "require-envoy-gateway-gateways",
+        "require-envoy-gateway-httproutes",
+        "require-envoy-gateway-envoyproxies",
+        "require-envoy-gateway-backends",
+        "require-envoy-gateway-ctp",
+        "require-ai-gateway-crds-routes",
+        "require-gaie-crds-pools",
+        "gateway-namespace",
+        "gateway-proxy",
+        "usage-gateway-namespace-by-gateway-proxy",
+    }
+)
+
+_PROVIDED_STANDARD = frozenset(
+    {
+        "require-leader-worker-set-lws",
+    }
+)
+
+_PROVIDED_DYNAMO = frozenset(
+    {
+        "require-grove-podcliquesets",
+        "require-kai-scheduler-queues",
+        "kai-queue",
+        "kai-queue-root",
+        "modelexpress-crds-modelcacheentries.modelexpress.nvidia.com",
+        "modelexpress-crds-modelmetadatas.modelexpress.nvidia.com",
+        "modelexpress-server",
+        "modelexpress-server-role",
+        "modelexpress-server-rolebinding",
+        "modelexpress-server-sa",
+        "modelexpress-server-svc",
+        "usage-modelexpress-crds-modelcacheentries.modelexpress.nvidia.com-by-modelexpress-server",
+        "usage-modelexpress-crds-modelmetadatas.modelexpress.nvidia.com-by-modelexpress-server",
+    }
+)
+
 
 class TestKeyInventory(unittest.IsolatedAsyncioTestCase):
     maxDiff = None
@@ -1455,3 +1805,19 @@ class TestKeyInventory(unittest.IsolatedAsyncioTestCase):
                         )
                     got = await self.runner.RunFunction(_request(cloud, stack, observed=observed), None)
                     self.assertEqual(expected, set(got.desired.resources.keys()))
+
+    async def test_provided_composed_resource_keys(self) -> None:
+        for stack, stack_keys in (("Standard", _PROVIDED_STANDARD), ("Dynamo", _PROVIDED_DYNAMO)):
+            with self.subTest(stack=stack):
+                expected = _PROVIDED_COMMON | stack_keys
+                observed = _observed_pcs()
+                for key in expected:
+                    observed[key] = fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {"status": {"conditions": [{"type": "Ready", "status": "True"}]}}
+                        )
+                    )
+                got = await self.runner.RunFunction(
+                    _request("Existing", stack, observed=observed, components="Provided"), None
+                )
+                self.assertEqual(expected, set(got.desired.resources.keys()))

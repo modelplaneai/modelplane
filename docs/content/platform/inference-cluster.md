@@ -50,6 +50,11 @@ The `cluster.source` discriminator picks one of two models:
   provision infrastructure, and each pool's `InferenceClass` provides hardware
   capabilities for scheduling only. You're responsible for the cluster meeting
   [Modelplane's requirements](#requirements-for-an-existing-cluster).
+  If the cluster already runs the serving substrate - cert-manager, a gateway
+  stack, Prometheus - set `existing.components: Provided` and Modelplane
+  installs none of it, verifying the cluster meets the
+  [serving stack requirements]({{< ref "/platform/serving-stack-requirements.md" >}})
+  instead and reporting what's missing through the `RequirementsMet` condition.
 
 ## Requirements for an existing cluster
 
@@ -77,11 +82,18 @@ An existing cluster must meet what Modelplane would otherwise set up for you:
   address.
 - **No conflicting Gateway controller.** Modelplane installs Envoy Gateway and
   owns its `GatewayClass`. Don't run another controller claiming the same class.
+  With `components: Provided` this inverts: the cluster runs its own Envoy
+  Gateway, which serves the `GatewayClass` Modelplane composes.
 - **A `ReadWriteMany` StorageClass**, if you use a `ModelCache`. See
   [Cache storage](#cache-storage).
 - **Any multi-node fabric you need.** For multi-node serving you provide and
   configure the RDMA or InfiniBand fabric and its drivers. Modelplane installs
   those only on the clouds it provisions.
+
+With `components: Provided` the cluster provides the serving stack itself on
+top of all this; the
+[serving stack requirements]({{< ref "/platform/serving-stack-requirements.md" >}})
+page lists what that adds, per component.
 
 ## Serving stack
 

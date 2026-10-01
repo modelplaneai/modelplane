@@ -82,6 +82,19 @@ CONDITION_REASON_BACKEND_HEALTHY = "BackendHealthy"
 CONDITION_REASON_INSTALLING = "Installing"
 CONDITION_REASON_INVALID_NODE_POOL = "InvalidNodePool"
 
+# Mirrored from the backend ServingStack on Provided-mode Existing
+# clusters: whether the cluster supplies the serving substrate the
+# stack would otherwise install. compose-serving-stack derives it from
+# its requirement checks; this function re-emits it here so the user
+# reads what's missing off the InferenceCluster they created, not a
+# composed XR they'd have to find. Checking covers the window before
+# the backend first reports.
+CONDITION_TYPE_REQUIREMENTS_MET = "RequirementsMet"
+CONDITION_REASON_CHECKING = "Checking"
+
+# spec.cluster.existing.components value that selects Provided mode.
+_COMPONENTS_PROVIDED = "Provided"
+
 # Composed resource key for the backend XR.
 BACKEND_RESOURCE_KEY = "serving-stack"
 
@@ -848,10 +861,46 @@ class Composer:
                 # type defaults to GCP in the XRD; coalesce so it's never None.
                 ssv1alpha1.Secret(type=identity.type or _IDENTITY_TYPE_GCP, name=identity.name, key=identity.key),
             )
-        self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_EXISTING)
+        provided = existing.components == _COMPONENTS_PROVIDED
+        self.compose_serving_stack(backend_secrets, CLUSTER_SOURCE_EXISTING, provided=provided)
 
         self.write_status(self.gpu_pools())
         self.derive_conditions(cluster_ready=True)
+        if provided:
+            self.mirror_requirements_condition()
+
+    def mirror_requirements_condition(self) -> None:
+        """Re-emit the backend's RequirementsMet condition on this XR.
+
+        The backend ServingStack derives it from its requirement checks
+        on the target cluster; mirroring status, reason and message
+        verbatim keeps the single source of truth there while surfacing
+        it where the user looks. Until the backend first reports - it
+        composes a reconcile after the ServingStack does - the mirror
+        says Checking.
+        """
+        observed = self.req.observed.resources.get(BACKEND_RESOURCE_KEY)
+        condition = resource.get_condition(observed, CONDITION_TYPE_REQUIREMENTS_MET)
+        if condition.status not in ("True", "False"):
+            response.set_conditions(
+                self.rsp,
+                resource.Condition(
+                    typ=CONDITION_TYPE_REQUIREMENTS_MET,
+                    status="False",
+                    reason=CONDITION_REASON_CHECKING,
+                    message="Waiting for the serving stack to check the cluster's substrate",
+                ),
+            )
+            return
+        response.set_conditions(
+            self.rsp,
+            resource.Condition(
+                typ=CONDITION_TYPE_REQUIREMENTS_MET,
+                status=condition.status,
+                reason=condition.reason,
+                message=condition.message,
+            ),
+        )
 
     def compose_serving_stack(
         self,
@@ -859,6 +908,7 @@ class Composer:
         cloud: Cloud,
         *,
         gpu: ssv1alpha1.Gpu | None = None,
+        provided: bool = False,
     ) -> None:
         """Compose a ServingStack XR with the given secrets.
 
@@ -867,7 +917,10 @@ class Composer:
         including cloud specifics like where the node image puts the
         NVIDIA driver. gpu carries per-pool driver configuration the
         component list can't know at build time (see
-        civo_nvlink_disabled_pools).
+        civo_nvlink_disabled_pools). provided (Existing clusters only)
+        selects Provided mode, where the cluster supplies the substrate
+        and the stack only checks it; spec.components stays unset
+        otherwise so every other path composes byte-identically.
         """
         # The gateway's name and the CAs it should accept client certificates
         # from. The name is Modelplane's own, derived from this cluster's name;
@@ -887,6 +940,8 @@ class Composer:
         )
         if gpu is not None:
             spec.gpu = gpu
+        if provided:
+            spec.components = _COMPONENTS_PROVIDED
         resource.update(
             self.rsp.desired.resources[BACKEND_RESOURCE_KEY],
             ssv1alpha1.ServingStack(

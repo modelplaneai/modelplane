@@ -32,7 +32,7 @@ from typing import Any
 
 import yaml
 
-from function.stacks.components import Chart, Component, Manifests
+from function.stacks.components import Chart, Component, Manifests, RequiredCRD
 
 # The name and the `default` namespace are a cross-function contract:
 # compose-model-replica points engine pods, which run in their team's
@@ -97,6 +97,16 @@ COMPONENTS: list[Component] = [
         chart="grove-charts",
         repository="oci://ghcr.io/ai-dynamo/grove",
         version="v0.1.0-alpha.12-rc2",
+        requires=[
+            RequiredCRD(key="podcliquesets", name="podcliquesets.grove.io", versions=["v1alpha1"]),
+        ],
+        unchecked=[
+            "Grove's API is v1alpha1 with no compatibility promise"
+            " between versions, so a provided install must run the exact"
+            " pinned version. A CRD check can't tell alpha revisions"
+            " apart. Prefer Managed for the Dynamo stack until Grove"
+            " stabilizes.",
+        ],
     ),
     Chart(
         key="kai-scheduler",
@@ -108,6 +118,15 @@ COMPONENTS: list[Component] = [
         # The Queue CRs below depend on this chart: KAI must serve the
         # Queue CRD and its webhook before they are first applied.
         wait=True,
+        requires=[
+            RequiredCRD(key="queues", name="queues.scheduling.run.ai", versions=["v2"]),
+        ],
+        unchecked=[
+            "The scheduler answers to the `schedulerName` value"
+            " `kai-scheduler`, the name Modelplane's engine pods"
+            " request. Its Queue webhook must be serving. Modelplane"
+            " composes against the v0.16 line.",
+        ],
     ),
     # KAI refuses to schedule a pod whose queue doesn't exist. Its chart
     # installs a default hierarchy, but nothing ties Modelplane's
@@ -118,19 +137,24 @@ COMPONENTS: list[Component] = [
     # first leaves the CRs hanging with no controller to finalize them.
     Manifests(
         key="kai-queue-root",
+        role="config",
         depends_on=["kai-scheduler"],
         manifests=[_kai_queue("modelplane-root", None)],
     ),
     Manifests(
         key="kai-queue",
+        role="config",
         depends_on=["kai-scheduler"],
         manifests=[_kai_queue("modelplane", "modelplane-root")],
     ),
     # ModelExpress CRDs (ModelMetadata, ModelCacheEntry), the metadata
     # backend the shared server uses. Vendored from the upstream
-    # release.
+    # release. Config, not substrate: they pair 1:1 with the server
+    # below, which Modelplane runs in every mode, and nothing else on a
+    # cluster brings them.
     Manifests(
         key="modelexpress-crds",
+        role="config",
         manifests=_crds("modelexpress.yaml"),
     ),
     # The shared ModelExpress server, one per Dynamo cluster. It's
@@ -142,6 +166,7 @@ COMPONENTS: list[Component] = [
     # and the depends_on edge, and a single-doc entry keeps its key.
     Manifests(
         key="modelexpress-server-sa",
+        role="config",
         manifests=[
             {
                 "apiVersion": "v1",
@@ -157,6 +182,7 @@ COMPONENTS: list[Component] = [
     # own Helm chart Role.
     Manifests(
         key="modelexpress-server-role",
+        role="config",
         manifests=[
             {
                 "apiVersion": "rbac.authorization.k8s.io/v1",
@@ -184,6 +210,7 @@ COMPONENTS: list[Component] = [
     ),
     Manifests(
         key="modelexpress-server-rolebinding",
+        role="config",
         manifests=[
             {
                 "apiVersion": "rbac.authorization.k8s.io/v1",
@@ -206,6 +233,7 @@ COMPONENTS: list[Component] = [
     ),
     Manifests(
         key="modelexpress-server-svc",
+        role="config",
         manifests=[
             {
                 "apiVersion": "v1",
@@ -222,6 +250,7 @@ COMPONENTS: list[Component] = [
     # outlive it for cleanup to resolve.
     Manifests(
         key="modelexpress-server",
+        role="config",
         depends_on=["modelexpress-crds"],
         ready=_MODELEXPRESS_SERVER_READY_CEL,
         manifests=[

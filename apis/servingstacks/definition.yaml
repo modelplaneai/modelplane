@@ -45,7 +45,25 @@ spec:
             x-kubernetes-validations:
             - rule: "self.secrets.exists(s, s.type == 'Kubeconfig')"
               message: spec.secrets must include a Kubeconfig entry.
+            - rule: "!has(self.components) || self.components != 'Provided' || self.cloud == 'Existing'"
+              message: spec.components Provided is only supported when cloud is Existing.
             properties:
+              components:
+                type: string
+                default: Managed
+                description: >-
+                  Who supplies the serving substrate. Managed (the default)
+                  has Modelplane install every component. Provided, valid
+                  only on an Existing cluster, installs no substrate charts
+                  or vendored CRDs: Modelplane verifies the cluster supplies
+                  them - reported through the RequirementsMet condition - and
+                  composes only its own configuration on top. All or
+                  nothing. Mirrors
+                  InferenceCluster.spec.cluster.existing.components; the
+                  cluster composition sets it.
+                enum:
+                - Managed
+                - Provided
               cloud:
                 type: string
                 description: >-

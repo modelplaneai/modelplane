@@ -35,7 +35,7 @@ from typing import Any
 
 import yaml
 
-from function.stacks.components import Chart, Component, Manifests
+from function.stacks.components import Chart, Component, Manifests, RequiredCRD
 
 # The AI Gateway controller supplies the ext-proc extension server that
 # Envoy Gateway delegates InferencePool backend resolution to, so
@@ -96,6 +96,9 @@ COMPONENTS: list[Component] = [
         # against the joined list. Envoy Gateway needs it for its
         # webhooks.
         depends_on=["cert-manager"],
+        # gateway-proxy below depends on this chart, so its Ready must
+        # mean healthy, not just deployed.
+        wait=True,
         # The extensionManager block points Envoy Gateway at the Envoy AI
         # Gateway controller's ext-proc server and declares InferencePool
         # a backend resource, so HTTPRoute -> InferencePool backendRefs
@@ -134,6 +137,26 @@ COMPONENTS: list[Component] = [
                 },
             },
         },
+        requires=[
+            RequiredCRD(key="gatewayclasses", name="gatewayclasses.gateway.networking.k8s.io", versions=["v1"]),
+            RequiredCRD(key="gateways", name="gateways.gateway.networking.k8s.io", versions=["v1"]),
+            RequiredCRD(key="httproutes", name="httproutes.gateway.networking.k8s.io", versions=["v1"]),
+            RequiredCRD(key="envoyproxies", name="envoyproxies.gateway.envoyproxy.io", versions=["v1alpha1"]),
+            RequiredCRD(key="backends", name="backends.gateway.envoyproxy.io", versions=["v1alpha1"]),
+            # The gateway PKI composes a ClientTrafficPolicy to require
+            # client certificates (fn.py's compose_gateway_pki), so a
+            # provided install must serve it too.
+            RequiredCRD(key="ctp", name="clienttrafficpolicies.gateway.envoyproxy.io", versions=["v1alpha1"]),
+        ],
+        unchecked=[
+            "The Envoy Gateway controller runs with the"
+            " `extensionManager` wired exactly as the values above:"
+            " external processing delegated to the AI Gateway"
+            " controller's Service, with the Backend API enabled and"
+            " InferencePool declared a backend resource. Without it,"
+            " HTTPRoute to InferencePool `backendRefs` never route,"
+            " with every component looking healthy.",
+        ],
     ),
     Chart(
         key="ai-gateway-crds",
@@ -144,6 +167,14 @@ COMPONENTS: list[Component] = [
         version=_AI_GATEWAY_VERSION,
         # ai-gateway depends on this chart.
         wait=True,
+        requires=[
+            RequiredCRD(key="routes", name="aigatewayroutes.aigateway.envoyproxy.io", versions=["v1alpha1"]),
+        ],
+        unchecked=[
+            "The AI Gateway APIs are v1alpha1 and move with the"
+            " controller. A provided install tracks the pinned"
+            f" {_AI_GATEWAY_VERSION} release.",
+        ],
     ),
     Chart(
         key="ai-gateway",
@@ -169,6 +200,13 @@ COMPONENTS: list[Component] = [
         # fix in flight as #2601). That failure is visible, where a lost caller
         # isn't.
         values={"controller": {"logRequestHeaderAttributes": f"{_CALLER_HEADER}:caller"}},
+        unchecked=[
+            "The AI Gateway controller is reachable at"
+            f" `ai-gateway-controller.{_AI_GATEWAY_NAMESPACE}.svc.cluster.local:1063`,"
+            " the address Modelplane's Envoy Gateway `extensionManager`"
+            " values point at. A controller installed elsewhere never"
+            " receives the external processing traffic.",
+        ],
     ),
     # Gateway API Inference Extension CRDs, providing the InferencePool
     # that disaggregated replicas front their decode endpoints with.
@@ -176,6 +214,9 @@ COMPONENTS: list[Component] = [
     Manifests(
         key="gaie-crds",
         manifests=_crds("gaie.yaml"),
+        requires=[
+            RequiredCRD(key="pools", name="inferencepools.inference.networking.k8s.io", versions=["v1"]),
+        ],
     ),
     # Both gateways live here, with the fleet gateway's own healthz and redirect
     # routes, and nothing else provisions the namespace. The gateways' listeners
@@ -184,6 +225,7 @@ COMPONENTS: list[Component] = [
     # Without it the gateways' own routes wouldn't attach.
     Manifests(
         key="gateway-namespace",
+        role="config",
         manifests=[
             {
                 "apiVersion": "v1",
@@ -204,7 +246,12 @@ COMPONENTS: list[Component] = [
     # GatewayClass references it via parametersRef.
     Manifests(
         key="gateway-proxy",
-        depends_on=["gateway-namespace"],
+        role="config",
+        # envoy-gateway serves the EnvoyProxy CRD this CR instantiates.
+        # The edge orders install on the API existing - in Provided mode
+        # it maps to the envoy-gateway requirement checks - and holds
+        # the release on teardown until the CR is gone.
+        depends_on=["gateway-namespace", "envoy-gateway"],
         manifests=[
             {
                 "apiVersion": "gateway.envoyproxy.io/v1alpha1",
@@ -228,6 +275,7 @@ COMPONENTS: list[Component] = [
     # namespace it lives in.
     Manifests(
         key="gateway-selfsigned-issuer",
+        role="config",
         depends_on=["cert-manager", "gateway-namespace"],
         manifests=[
             {
@@ -269,6 +317,15 @@ COMPONENTS: list[Component] = [
             # it drops an init container and the image pull it waits on.
             "defaultPackage": {"enabled": False},
         },
+        requires=[
+            RequiredCRD(key="bundles", name="bundles.trust.cert-manager.io", versions=["v1alpha1"]),
+        ],
+        unchecked=[
+            "trust-manager watches modelplane-system as its trust"
+            " namespace, where the gateway PKI composes its Bundle."
+            " An install watching another namespace never syncs the"
+            " Bundle, and the control plane can't read the cluster CA.",
+        ],
     ),
     # The DRA driver's kubelet plugin runs at system-node-critical
     # priority. GKE only admits such pods in a namespace whose
@@ -276,8 +333,18 @@ COMPONENTS: list[Component] = [
     # daemonset gets FailedCreate and never publishes ResourceSlices.
     # Laid down everywhere: it only grants headroom, so it's harmless on
     # clusters that don't restrict them.
+    # Substrate, not config: it targets the namespace the DRA driver
+    # chart installs into, which a provided cluster's driver may not
+    # even use, and granting the headroom belongs to whoever installed
+    # the driver there.
     Manifests(
         key="dra-driver-critical-pods-quota",
+        unchecked=[
+            "On clusters that restrict `system-node-critical` pods by"
+            " namespace quota (GKE does), the DRA driver's namespace"
+            " needs a `ResourceQuota` admitting them, or the `kubelet`"
+            " plugin `DaemonSet` never starts.",
+        ],
         manifests=[
             {
                 "apiVersion": "v1",
